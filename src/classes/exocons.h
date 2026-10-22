@@ -76,12 +76,10 @@ namespace alienorum
 
     struct IAUConstellationDef
     {
-        const char* abbrev;
-        const char* name;
-        const char* genitive;
+        std::string abbrev, name, genitive;
     };
 
-    extern const IAUConstellationDef iau_constellations[EXOCONS_NUM_IAU_CONSTELLATIONS];
+    const std::vector<IAUConstellationDef>& iau_constellation_definitions();
 
     class ExoConsGenerator
     {

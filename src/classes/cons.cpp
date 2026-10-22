@@ -206,7 +206,7 @@ Constellation *identify_cons_from_coords(double RA, double Decl)
     }
     if (polar) return polar;
 
-    return nullptr;                     // This line never executes but it prevents a compiler warning.
+    return nullptr;
 }
 
 Constellation *identify_cons_of_star(Star *s)

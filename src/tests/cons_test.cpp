@@ -257,10 +257,11 @@ TEST_F(ConstellationTest, HeliocentricConstellations_LoadAndContainExpectedStars
     }
 
     // Verify all 88 standard IAU constellations are loaded for the heliocentric vantage
-    for (int i = 0; i < EXOCONS_NUM_IAU_CONSTELLATIONS; i++)
+    const auto& definitions = iau_constellation_definitions();
+    ASSERT_EQ(definitions.size(), EXOCONS_NUM_IAU_CONSTELLATIONS);
+    for (const auto& entry : definitions)
     {
-        EXPECT_TRUE(sun_cons.count(iau_constellations[i].abbrev) > 0)
-            << "Missing IAU constellation: " << iau_constellations[i].abbrev;
+        EXPECT_TRUE(sun_cons.count(entry.abbrev) > 0) << "Missing IAU constellation: " << entry.abbrev;
     }
 
     auto has_line_with_star = [](const Constellation* cons, const std::string& star) -> bool

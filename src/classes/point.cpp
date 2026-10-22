@@ -26,7 +26,6 @@ Point ecliptic_north = Point::from_ra_dec(ecliptic_north_RA_J2000, ecliptic_nort
 // galactic_north_Decl_J2000 (misc.h) still hold the IAU values, for anything that has to speak to
 // the outside world in published galactic coordinates.
 Point galactic_north = Point::from_ra_dec(galactic_north_RA_J2000, galactic_north_Decl_J2000, light_year) * -1.0;
-Point milky_way_center_Mly;
 
 Rotation ICRF_to_ecliptic = align_points_3d(ecliptic_north, yaxis, center);
 

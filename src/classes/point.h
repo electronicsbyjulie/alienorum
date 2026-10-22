@@ -144,7 +144,7 @@ Point apply_precession_rotation(const Point &vec, double zeta, double z, double 
 void convert_to_J2000(const double RA_radians, const double Decl_radians, double input_year, double &RA_J2000, double &Decl_J2000, bool is_besselian);
 
 extern Point center, xaxis, yaxis, zaxis;
-extern Point ecliptic_north, galactic_north, milky_way_center_Mly;
+extern Point ecliptic_north, galactic_north;
 extern Rotation ICRF_to_ecliptic;
 extern Point velocity;
 

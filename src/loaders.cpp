@@ -1623,10 +1623,7 @@ namespace
             //   1-  6  I6    ---     Planet    [1,]?+ Asteroid number (blank if unnumbered)
             CatalogReader::read_field_onebased(buffer, 1, 6, field);
             row.number = atoi(field);
-            if (row.number == 5747)
-            {
-                row.name = "Williamina";
-            }
+
 
             //  60- 64  F5.1  km      Diam      ? IRAS diameter (see E.F.Tedesco, pp.1151-1161; catalog <II/190>)
             CatalogReader::read_field_onebased(buffer, 60, 64, field);

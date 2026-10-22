@@ -2,6 +2,7 @@
 #include <cstdio>
 #include <cstring>
 #include <fstream>
+#include <filesystem>
 #include <sstream>
 #include <algorithm>
 #include <iostream>
@@ -19,97 +20,45 @@ extern SDL_Window* window;
 
 namespace alienorum
 {
-    const IAUConstellationDef iau_constellations[EXOCONS_NUM_IAU_CONSTELLATIONS] =
+    const std::vector<IAUConstellationDef>& iau_constellation_definitions()
     {
-        {"And", "Andromeda", "Andromedae"},
-        {"Ant", "Antlia", "Antliae"},
-        {"Aps", "Apus", "Apodis"},
-        {"Aqr", "Aquarius", "Aquarii"},
-        {"Aql", "Aquila", "Aquilae"},
-        {"Ara", "Ara", "Arae"},
-        {"Ari", "Aries", "Arietis"},
-        {"Aur", "Auriga", "Aurigae"},
-        {"Boo", "Bootes", "Bootis"},
-        {"Cae", "Caelum", "Caeli"},
-        {"Cam", "Camelopardalis", "Camelopardalis"},
-        {"Cnc", "Cancer", "Cancri"},
-        {"CVn", "Canes Venatici", "Canum Venaticorum"},
-        {"CMa", "Canis Major", "Canis Majoris"},
-        {"CMi", "Canis Minor", "Canis Minoris"},
-        {"Cap", "Capricornus", "Capricorni"},
-        {"Car", "Carina", "Carinae"},
-        {"Cas", "Cassiopeia", "Cassiopeiae"},
-        {"Cen", "Centaurus", "Centauri"},
-        {"Cep", "Cepheus", "Cephei"},
-        {"Cet", "Cetus", "Ceti"},
-        {"Cha", "Chamaeleon", "Chamaeleontis"},
-        {"Cir", "Circinus", "Circini"},
-        {"Col", "Columba", "Columbae"},
-        {"Com", "Coma Berenices", "Comae Berenices"},
-        {"CrA", "Corona Australis", "Coronae Australis"},
-        {"CrB", "Corona Borealis", "Coronae Borealis"},
-        {"Crv", "Corvus", "Corvi"},
-        {"Crt", "Crater", "Crateris"},
-        {"Cru", "Crux", "Crucis"},
-        {"Cyg", "Cygnus", "Cygni"},
-        {"Del", "Delphinus", "Delphini"},
-        {"Dor", "Dorado", "Doradus"},
-        {"Dra", "Draco", "Draconis"},
-        {"Equ", "Equuleus", "Equulei"},
-        {"Eri", "Eridanus", "Eridani"},
-        {"For", "Fornax", "Fornacis"},
-        {"Gem", "Gemini", "Geminorum"},
-        {"Gru", "Grus", "Gruis"},
-        {"Her", "Hercules", "Herculis"},
-        {"Hor", "Horologium", "Horologii"},
-        {"Hya", "Hydra", "Hydrae"},
-        {"Hyi", "Hydrus", "Hydri"},
-        {"Ind", "Indus", "Indi"},
-        {"Lac", "Lacerta", "Lacertae"},
-        {"Leo", "Leo", "Leonis"},
-        {"LMi", "Leo Minor", "Leonis Minoris"},
-        {"Lep", "Lepus", "Leporis"},
-        {"Lib", "Libra", "Librae"},
-        {"Lup", "Lupus", "Lupi"},
-        {"Lyn", "Lynx", "Lyncis"},
-        {"Lyr", "Lyra", "Lyrae"},
-        {"Men", "Mensa", "Mensae"},
-        {"Mic", "Microscopium", "Microscopii"},
-        {"Mon", "Monoceros", "Monocerotis"},
-        {"Mus", "Musca", "Muscae"},
-        {"Nor", "Norma", "Normae"},
-        {"Oct", "Octans", "Octantis"},
-        {"Oph", "Ophiuchus", "Ophiuchi"},
-        {"Ori", "Orion", "Orionis"},
-        {"Pav", "Pavo", "Pavonis"},
-        {"Peg", "Pegasus", "Pegasi"},
-        {"Per", "Perseus", "Persei"},
-        {"Phe", "Phoenix", "Phoenicis"},
-        {"Pic", "Pictor", "Pictoris"},
-        {"Psc", "Pisces", "Piscium"},
-        {"PsA", "Piscis Austrinus", "Piscis Austrini"},
-        {"Pup", "Puppis", "Puppis"},
-        {"Pyx", "Pyxis", "Pyxidis"},
-        {"Ret", "Reticulum", "Reticuli"},
-        {"Sge", "Sagitta", "Sagittae"},
-        {"Sgr", "Sagittarius", "Sagittarii"},
-        {"Sco", "Scorpius", "Scorpii"},
-        {"Scl", "Sculptor", "Sculptoris"},
-        {"Sct", "Scutum", "Scuti"},
-        {"Ser", "Serpens", "Serpentis"},
-        {"Sex", "Sextans", "Sextantis"},
-        {"Tau", "Taurus", "Tauri"},
-        {"Tel", "Telescopium", "Telescopii"},
-        {"Tri", "Triangulum", "Trianguli"},
-        {"TrA", "Triangulum Australe", "Trianguli Australis"},
-        {"Tuc", "Tucana", "Tucanae"},
-        {"UMa", "Ursa Major", "Ursae Majoris"},
-        {"UMi", "Ursa Minor", "Ursae Minoris"},
-        {"Vel", "Vela", "Velorum"},
-        {"Vir", "Virgo", "Virginis"},
-        {"Vol", "Volans", "Volantis"},
-        {"Vul", "Vulpecula", "Vulpeculae"}
-    };
+        static std::map<std::string, std::vector<IAUConstellationDef>> cache;
+        static std::mutex cache_mutex;
+        std::lock_guard<std::mutex> lock(cache_mutex);
+        const std::string path = std::filesystem::absolute("consline.dat").string();
+        auto found = cache.find(path);
+        if (found == cache.end())
+        {
+            std::vector<IAUConstellationDef> definitions;
+            std::unordered_set<std::string> seen;
+            std::ifstream input(path);
+            std::string line;
+            bool have_vantage = false;
+            while (std::getline(input, line))
+            {
+                if (line.empty()) continue;
+                if (line[0] == ':')
+                {
+                    if (have_vantage) break;
+                    have_vantage = true;
+                    continue;
+                }
+                if (line[0] != '~') continue;
+                std::istringstream fields(line.substr(1));
+                IAUConstellationDef entry;
+                std::getline(fields, entry.abbrev, ',');
+                std::getline(fields, entry.name, ',');
+                std::getline(fields, entry.genitive, ',');
+                entry.abbrev = trim(entry.abbrev);
+                entry.name = trim(entry.name);
+                entry.genitive = trim(entry.genitive);
+                if (entry.abbrev.size() != 3 || entry.name.empty() || entry.genitive.empty()) continue;
+                if (seen.insert(entry.abbrev).second) definitions.push_back(std::move(entry));
+            }
+            found = cache.emplace(path, std::move(definitions)).first;
+        }
+        return found->second;
+    }
 
     std::vector<Constellation> ExoConsGenerator::pending_cons;
     std::vector<Constellation> ExoConsGenerator::generated_cons;
@@ -163,12 +112,9 @@ namespace alienorum
 
     const IAUConstellationDef* ExoConsGenerator::find_iau_def(const std::string& abbrev)
     {
-        for (int i = 0; i < EXOCONS_NUM_IAU_CONSTELLATIONS; i++)
+        for (const auto& entry : iau_constellation_definitions())
         {
-            if (abbrev == iau_constellations[i].abbrev)
-            {
-                return &iau_constellations[i];
-            }
+            if (abbrev == entry.abbrev) return &entry;
         }
         return nullptr;
     }
@@ -1200,17 +1146,18 @@ namespace alienorum
         };
 
         // 5. Line generation per cluster
+        const auto& naming_catalog = iau_constellation_definitions();
         size_t name_cursor = 0;
         auto allocate_cons_name = [&](std::string& out_abbrev, std::string& out_name, std::string& out_genitive)
         {
-            while (name_cursor < EXOCONS_NUM_IAU_CONSTELLATIONS)
+            while (name_cursor < naming_catalog.size())
             {
-                std::string cand_abbr = iau_constellations[name_cursor].abbrev;
+                std::string cand_abbr = naming_catalog[name_cursor].abbrev;
                 if (!existing_cons_abbrevs.count(cand_abbr))
                 {
-                    out_abbrev = iau_constellations[name_cursor].abbrev;
-                    out_name = iau_constellations[name_cursor].name;
-                    out_genitive = iau_constellations[name_cursor].genitive;
+                    out_abbrev = naming_catalog[name_cursor].abbrev;
+                    out_name = naming_catalog[name_cursor].name;
+                    out_genitive = naming_catalog[name_cursor].genitive;
                     existing_cons_abbrevs.insert(cand_abbr);
                     name_cursor++;
                     return;

@@ -3324,11 +3324,17 @@ TEST_F(CatalogParsingTest, ExactEdgeOnCatalogPlaceholdersUseDiskForAnyHost)
     TestCatalogReader reader;
     std::map<int, std::vector<int>> rows;
     unsigned int count = 0;
-    for (int index = 0; index < 4; ++index)
+    for (int index = 0; index < 5; ++index)
     {
         json source = {{"hostname", host->name}, {"pl_name", "Synthetic planet " + std::to_string(index)},
             {"pl_orbper", 20 * pow(3, index)}, {"pl_msinie", 2},
             {"pl_orbincl", index == 1 ? 89.92 : 90.0}, {"tran_flag", index == 2 ? 1 : 0}};
+        if (index == 2) source["tran_flag"] = true;
+        if (index == 4)
+        {
+            source.erase("tran_flag");
+            source["detection_type"] = "Radial Velocity, Primary Transit";
+        }
         if (index == 3) source["pl_orbincl"] = nullptr;
         bool valid = false;
         ExoRow row = reader.exorow_from_json(source, &valid);
@@ -3340,10 +3346,10 @@ TEST_F(CatalogParsingTest, ExactEdgeOnCatalogPlaceholdersUseDiskForAnyHost)
         ExoRow restored;
         ASSERT_TRUE(reader.exorow_read_line(cache, restored));
         fclose(cache);
-        EXPECT_EQ(restored.transiting, index == 2);
+        EXPECT_EQ(restored.transiting, index == 2 || index == 4);
         ASSERT_TRUE(reader.add_exoplanet_from_row(restored, host, rows, count));
     }
-    const double expected[] = {37, 89.92, 90, 37};
+    const double expected[] = {37, 89.92, 90, 37, 90};
     for (int pass = 0; pass < 3; ++pass)
     {
         reader.apply_exoplanet_names(rows);
@@ -3362,4 +3368,15 @@ TEST_F(CatalogParsingTest, ExactEdgeOnCatalogPlaceholdersUseDiskForAnyHost)
         }
     }
     delete_the_universe();
+}
+
+TEST_F(CatalogParsingTest, WideOrbitsWithoutPeriodsRemainValidForArbitraryNames)
+{
+    json wide = {{"pl_name", "Synthetic wide companion"}, {"hostname", "Synthetic primary"},
+        {"pl_orbsmax", 450.0}, {"pl_orbper", nullptr}, {"ra", 12.0}, {"dec", 34.0}};
+    json rows = json::array({wide});
+    CatalogReader::dedup_planets(rows);
+    ASSERT_EQ(rows.size(), 1u);
+    EXPECT_EQ(rows.front()["pl_name"], wide["pl_name"]);
+    EXPECT_DOUBLE_EQ(rows.front()["pl_orbsmax"], 450);
 }
