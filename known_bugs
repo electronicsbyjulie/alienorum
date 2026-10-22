@@ -1,3 +1,7 @@
+FIXED (2026-10-22): Stellar Neighborhood normalizes white-dwarf RGB channels before display conversion, preserving the hue instead of clipping every channel to white. The fifty-fold saturation boost now acts on the preserved color.
+
+Original request: Render white-dwarf swatches in bright, distinguishable colors; saturation changes alone still appear white.
+
 FIXED (2026-10-22): White-dwarf swatches in Stellar Neighborhood multiply HSV saturation by fifty, capped at one, while preserving hue and brightness.
 
 Original request: Exaggerate the white-dwarf swatch colors with fifty times the saturation; eight times still appears white.

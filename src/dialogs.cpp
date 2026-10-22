@@ -3159,7 +3159,8 @@ void draw_stellar_neighborhood(ImGuiIO &io)
             ImGui::PushID(i);
             if (s->is_white_dwarf())
             {
-                const RGB3 rgb = Color::rgb_from_color(Color::color_from_star(0, s, s->BV_color));
+                // Swatches show hue at full brightness; stellar intensity would clip every channel to white.
+                const RGB3 rgb = Color::rgb_from_color(Color::color_from_star(0, s, s->BV_color), -1);
                 ImVec4 swatch(rgb.r / 255.0f, rgb.g / 255.0f, rgb.b / 255.0f, 1);
                 float hue, saturation, value;
                 ImGui::ColorConvertRGBtoHSV(swatch.x, swatch.y, swatch.z, hue, saturation, value);
