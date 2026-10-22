@@ -13,4 +13,9 @@ FIXED (2026-10-22): WD and Sunlike filters are mutually exclusive; white-dwarf r
 
 Original request: Add WD (for white dwarf) as an option in Stellar Neighborhood, mutually exclusive with Sunlike: selecting one deselects the other. Show each white dwarf's color in its list entry if possible.
 
-WD1330+6435 cannot be found by that ID or by its synonyms WD1328+648, WD1330+643, or its LHS number. THIS IS A REGRESSION. Recall that white dwarfs must be findable by all their IDs.
+Double check Planet::classify(). A planet of 6 Earth masses becomes an ice giant even if the density runs in the thousands of g/cm^3. If this is correct, explain why here.
+
+Clicking certain lists and dropdowns reverts star labels back on. Only the star label list should do this.
+
+
+FIXED (2026-10-22): Grayscale PNG bump maps now apply the sea-level offset before scaling to meters, removing a spurious elevation increase of about 10 km.

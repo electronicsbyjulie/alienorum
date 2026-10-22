@@ -1489,7 +1489,7 @@ bool Map::load_from_png(std::string filename, bool as_bump, double bump_scale)
 
                 if (as_bump)
                 {
-                    double val = bump_scale * ( 0.00392 * pixel[0]) - 0.5;
+                    double val = bump_scale * (pixel[0] / 255.0 - 0.5);
                     if (bump_resample) bump_src_data[i] = val;
                     else bump_data[i] = val;
                 }

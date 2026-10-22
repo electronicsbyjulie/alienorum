@@ -1,3 +1,4 @@
+#include <filesystem>
 #include <cmath>
 #include <cstring>
 #include <fstream>
@@ -1085,4 +1086,16 @@ TEST(MapTest, GenerationStampsAreNeverReusedAndNeverZero)
         EXPECT_NE(b.gen, a.gen);
         previous = b.gen;
     }
+}
+
+TEST(MapTest, GrayscaleBumpMapsApplyTheDatumInsideTheScale)
+{
+    const std::string path = "maps/Earth_bump.png";
+    if (!std::filesystem::exists(path)) GTEST_SKIP() << "Earth bump image is absent";
+    Map map;
+    ASSERT_TRUE(map.load_from_png(path));
+    const double lat = 25 * fiftyseventh, lon = 0;
+    const RGB3 pixel = map.color_at(lat, lon);
+    ASSERT_TRUE(map.load_from_png(path, true, 20000));
+    EXPECT_NEAR(map.elevation_at(lat, lon), 20000 * (pixel.r / 255.0 - 0.5), 1e-8);
 }
