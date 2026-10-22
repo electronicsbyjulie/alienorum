@@ -751,7 +751,13 @@ double Planet::equilibrium_temperature()
 
 double Planet::estimate_surface_temperature()
 {
-    if (temperature) return temperature;
+    if (temperature)
+    {
+        // Catalog and editor temperatures still constrain which gases can remain aloft.
+        if (atm && atm->comp && !uses_gaseous_map(type))
+            temperature = condense_atmosphere(NAN, temperature);
+        return temperature;
+    }
     if (uses_gaseous_map(type)) return temperature = equilibrium_temperature();         // For gas giants, just give equilibrium temp.
     const double surface_k = temperature_at_pressure(get_surface_pressure());
     return temperature = condense_atmosphere(equilibrium_temperature(), surface_k);
@@ -802,14 +808,16 @@ double Planet::condense_atmosphere(double equilibrium_k, double surface_k)
     if (!(total_fraction > 0))
     {
         atm->surface_pressure = atm->tau = 0;
-        return equilibrium_k;
+        return std::isfinite(equilibrium_k) ? equilibrium_k : surface_k;
     }
-    // Preserve unspecified constituents; do not manufacture a gas to fill a catalog gap.
-    const double unspecified = atm->surface_pressure * std::max(0.0, 1.0 - total_fraction);
+    // Fractions describe relative abundances, as in mean_molar_mass(). Missing catalog
+    // constituents must not become an anonymous gas that survives every cold limit.
+    for (double& value : partial) value /= total_fraction;
     for (int iteration = 0; iteration < 256; ++iteration)
     {
         const double previous_pressure = atm->surface_pressure;
-        double pressure = unspecified;
+        double pressure = 0;
+        bool changed = false;
         for (int i = 0; i < 16; ++i)
         {
             const Phase& phase = phases[i];
@@ -821,10 +829,20 @@ double Planet::condense_atmosphere(double equilibrium_k, double surface_k)
                     exponent += phase.fusion_j / 8.314462618
                         * (1.0 / phase.triple_k - 1.0 / surface_k);
                 const double saturation = phase.reference_pa * std::exp(std::min(700.0, exponent));
+                const double previous = partial[i];
                 partial[i] = std::min(partial[i], saturation);
                 if (partial[i] < 1e-8) partial[i] = 0;
+                changed = changed || partial[i] != previous;
             }
             pressure += partial[i];
+        }
+        if (!changed) return surface_k;
+        if (!std::isfinite(equilibrium_k))
+        {
+            // Preserve a supplied surface temperature unless condensation changes its
+            // greenhouse contribution; do not replace observed warm temperatures.
+            atm->calculate_tau(previous_pressure);
+            equilibrium_k = surface_k / std::pow(1.0 + 1.8 * atm->tau, 0.25);
         }
         if (pressure < 1e-6) pressure = 0;
         atm->surface_pressure = pressure;

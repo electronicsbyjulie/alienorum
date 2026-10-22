@@ -1944,3 +1944,46 @@ TEST_F(PlanetClassificationEvidenceTest, ExplicitMassEditsClearTheOldMinimumAndE
     EXPECT_TRUE(std::isnan(body->radius_error_upper));
     EXPECT_FALSE(body->classification_evidence["density_is_lower_bound"].get<bool>());
 }
+
+TEST_F(PlanetClassificationEvidenceTest, StoredColdTemperaturesAlsoCondenseAtmospheres)
+{
+    Planet* world = make_planet(make_star());
+    world->temperature = 35;
+    Atmosphere* air = world->ensure_atmosphere();
+    air->surface_pressure = oneatm;
+    AtmosphereComposition* gases = air->ensure_composition();
+    gases->N2_portion = 0.99;
+    gases->CO2_portion = 0.01;
+    EXPECT_LE(world->estimate_surface_temperature(), 35);
+    EXPECT_LT(air->surface_pressure, 1);
+    EXPECT_DOUBLE_EQ(gases->CO2_portion, 0);
+    const double temperature = world->temperature;
+    const double pressure = air->surface_pressure;
+    EXPECT_NEAR(world->estimate_surface_temperature(), temperature, 1e-7);
+    EXPECT_NEAR(air->surface_pressure, pressure, 1e-7);
+}
+
+TEST_F(PlanetClassificationEvidenceTest, WarmObservedTemperatureSurvivesPhaseChecks)
+{
+    Planet* world = make_planet(make_star());
+    world->temperature = 288;
+    AtmosphereComposition* gases = world->ensure_atmosphere()->ensure_composition();
+    gases->N2_portion = 0.78;
+    gases->O2_portion = 0.21;
+    gases->Ar_portion = 0.01;
+    EXPECT_DOUBLE_EQ(world->estimate_surface_temperature(), 288);
+    EXPECT_DOUBLE_EQ(world->get_surface_pressure(), oneatm);
+}
+
+TEST_F(PlanetClassificationEvidenceTest, IncompleteAbundancesCannotPreserveAnAnonymousColdAtmosphere)
+{
+    Planet* world = make_planet(make_star());
+    world->temperature = 2;
+    AtmosphereComposition* gases = world->ensure_atmosphere()->ensure_composition();
+    gases->N2_portion = 0.9;
+    gases->CO2_portion = 0.05;
+    EXPECT_TRUE(std::isfinite(world->estimate_surface_temperature()));
+    EXPECT_DOUBLE_EQ(world->get_surface_pressure(), 0);
+    EXPECT_DOUBLE_EQ(gases->N2_portion, 0);
+    EXPECT_DOUBLE_EQ(gases->CO2_portion, 0);
+}
