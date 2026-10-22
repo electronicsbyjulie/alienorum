@@ -1,2 +1,0 @@
-
-[x] Looking due west and down from the surface of an ice giant causes the horizon to disappear. Fixed by projecting the gaseous horizon independently of compass heading, including straight-down views.
