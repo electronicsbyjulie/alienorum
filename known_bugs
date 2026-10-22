@@ -1,3 +1,7 @@
+FIXED (2026-10-22): Constellation genitives remain Canis Majoris and Canis Minoris in the naming catalog.
+
+Original request: Restore Canis Majoris and Canis Minoris and preserve those spellings.
+
 
 FIXED (2026-10-22): Surface atmospheres now condense gases above their saturation partial pressures and iterate pressure, composition, and greenhouse temperature to convergence. Negligible residual atmospheres become vacuum, including after cosmic-shoreline estimates. Stored surface temperatures also enforce phase limits; incomplete abundance lists cannot leave an anonymous noncondensing atmosphere. Warm supplied temperatures are preserved.
 
