@@ -936,6 +936,65 @@ TEST_F(RenderingRegressionTest, DISABLED_HorizonMotionCpuTimings)
     }
 }
 
+TEST_F(RenderingRegressionTest, GaseousHorizonIsVisibleAndIndependentOfCompassHeading)
+{
+    Planet* world = surface();
+    world->cloud_map = new SceneryTestMap();
+    world->volumetric_mean_radius = 25362000;
+    world->mass = 14.536 * earth_mass;
+    const auto capture = [&]()
+    {
+        freeze_surface_time();
+        find_horizon();
+        draw_horizon();
+        auto pixels = render();
+        ImGui::NewFrame();
+        return pixels;
+    };
+    for (cel_obj_type type : {ice_giant, gas_giant})
+    {
+        world->type = type;
+        for (double elevation : {-89.0, -60.0, -30.0, -5.0, 0.0, 30.0, 89.0, 90.0})
+        {
+            altitude = elevation * fiftyseventh;
+            azimuth = 0;
+            const auto expected = capture();
+            if (elevation <= 0)
+            {
+                // OpenGL readback starts at the bottom row.
+                const size_t bottom_center = render_width / 2 * 4;
+                EXPECT_GT(expected[bottom_center + 3], 0) << "Elevation " << elevation;
+            }
+            for (double bearing : {1.0, 45.0, 90.0, 135.0, 180.0, 225.0, 269.9, 270.0, 270.1, 315.0, 359.0})
+            {
+                azimuth = bearing * fiftyseventh;
+                const auto actual = capture();
+                EXPECT_EQ(image_difference(actual, expected), 0)
+                    << "Type " << static_cast<int>(type) << ", bearing " << bearing << ", elevation " << elevation;
+            }
+        }
+    }
+}
+
+TEST_F(RenderingRegressionTest, GaseousHorizonCoversNadirAndLeavesZenithClear)
+{
+    Planet* world = surface();
+    world->type = ice_giant;
+    world->volumetric_mean_radius = 25362000;
+    world->cloud_map = new SceneryTestMap();
+    for (double elevation : {-90.0, -89.9, 89.9, 90.0})
+    {
+        altitude = elevation * fiftyseventh;
+        azimuth = 270 * fiftyseventh;
+        find_horizon();
+        draw_horizon();
+        const auto pixels = render();
+        ImGui::NewFrame();
+        for (size_t i = 3; i < pixels.size(); i += 4)
+            EXPECT_EQ(pixels[i], elevation < 0 ? 255 : 0) << "Elevation " << elevation << ", pixel " << i / 4;
+    }
+}
+
 TEST_F(RenderingRegressionTest, GpuGroundMatchesReferenceDuringTravelAndPanning)
 {
     #if !horizon_gpu_ground_painting

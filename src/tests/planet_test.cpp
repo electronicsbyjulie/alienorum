@@ -2,16 +2,329 @@
 #include <cmath>
 #include <cstring>
 #include <vector>
+#include <filesystem>
+#include <fstream>
+#include <chrono>
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp>
 #include "../classes/planet.h"
 #include "../classes/cat.h"
+#include "../classes/chemistry.h"
 #include "../visuals.h"
 #include "../loaders.h"
 #include "universe_fixture.h"
 
 using namespace alienorum;
 using json = nlohmann::json;
+
+class PlanetClassificationEvidenceTest : public UniverseFixture
+{
+protected:
+    void TearDown() override
+    {
+        delete_the_universe();
+        UniverseFixture::TearDown();
+    }
+};
+
+TEST_F(PlanetClassificationEvidenceTest, EstimatedRadiusNeverBecomesObservedDensity)
+{
+    Planet* planet = make_planet(make_star(), "Estimated radius");
+    planet->mass = 3 * earth_mass;
+    planet->volumetric_mean_radius = 0;
+    planet->mass_evidence = PlanetMeasurement::observed;
+    planet->classify(false, false, true);
+    EXPECT_EQ(planet->radius_evidence, PlanetMeasurement::estimated);
+    EXPECT_FALSE(planet->classification_evidence["density_observed"].get<bool>());
+    planet->mass = 20 * earth_mass;
+    planet->classify(false, true, true);
+    EXPECT_EQ(planet->type, ice_giant);
+    EXPECT_EQ(planet->radius_evidence, PlanetMeasurement::estimated);
+    EXPECT_FALSE(planet->classification_evidence["density_observed"].get<bool>());
+    const json before = planet->classification_evidence;
+    planet->classify(false, false, true);
+    EXPECT_EQ(planet->classification_evidence, before);
+    EXPECT_EQ(planet->atm, nullptr);
+}
+
+TEST_F(PlanetClassificationEvidenceTest, MissingPhysicalPropertiesCannotLeaveAStellarType)
+{
+    Star* host = make_star("Unmeasured planet host");
+    for (Planet* body : {static_cast<Planet*>(new Planet()), static_cast<Planet*>(new Moon())})
+    {
+        body->orbit = new Orbit();
+        body->orbit->center = host;
+        body->orbit->semimajor_axis = AU;
+        append_cel(body);
+        EXPECT_EQ(body->type, rocky);
+        body->classify();
+        EXPECT_EQ(body->type, rocky);
+        EXPECT_NE(body->typeclass(), class_star);
+        EXPECT_EQ(body->classification_evidence["basis"], "insufficient_planetary_properties");
+        EXPECT_EQ(body->atm, nullptr);
+    }
+}
+
+TEST_F(PlanetClassificationEvidenceTest, MinimumMassAndUncertaintiesSurviveUniverseSaves)
+{
+    Planet* planet = make_planet(make_star(), "Minimum mass");
+    planet->mass = 4 * earth_mass;
+    planet->msini = planet->mass;
+    planet->mass_error_upper = 0.3 * earth_mass;
+    planet->mass_error_lower = -0.2 * earth_mass;
+    planet->radius_error_upper = 1000;
+    planet->radius_error_lower = -2000;
+    planet->classify(false, true, true);
+    EXPECT_EQ(planet->mass_evidence, PlanetMeasurement::minimum);
+    EXPECT_TRUE(planet->classification_evidence["density_is_lower_bound"].get<bool>());
+    EXPECT_FALSE(planet->classification_evidence["density_observed"].get<bool>());
+    Planet restored;
+    ASSERT_TRUE(restored.from_json(planet->to_json()));
+    EXPECT_EQ(restored.mass_evidence, PlanetMeasurement::minimum);
+    EXPECT_EQ(restored.radius_evidence, PlanetMeasurement::observed);
+    EXPECT_DOUBLE_EQ(restored.mass_error_lower, -0.2 * earth_mass);
+    EXPECT_DOUBLE_EQ(restored.radius_error_upper, 1000);
+    EXPECT_EQ(restored.classification_evidence, planet->classification_evidence);
+}
+
+TEST_F(PlanetClassificationEvidenceTest, ShortPeriodLowMassBodiesDoNotBecomeHotJupiters)
+{
+    Star* star = make_star();
+    Planet* planet = make_planet(star, "Close low-mass planet", 0.02 * AU);
+    planet->mass = 10 * earth_mass;
+    planet->volumetric_mean_radius = 4 * earth_radius;
+    planet->orbit->period = 2 * oneday;
+    planet->classify(false, true, true);
+    EXPECT_EQ(planet->type, ice_giant);
+    star->has_hot_jupiter = true;
+    planet->classify(true, true, true);
+    EXPECT_EQ(planet->type, ice_giant);
+    EXPECT_EQ(planet->atm, nullptr);
+}
+
+TEST_F(PlanetClassificationEvidenceTest, OrbitalAncestryUsesTheActualHostAndHandlesCycles)
+{
+    Star* primary = make_star("Primary");
+    Star* secondary = make_star("Secondary");
+    secondary->make_companion_of(primary, 'B');
+    Planet* planet = make_planet(secondary, "Secondary planet");
+    Planet* moon = new Moon();
+    moon->mass = lunar_mass;
+    moon->volumetric_mean_radius = 1737400;
+    moon->orbit = new Orbit();
+    moon->orbit->center = planet;
+    moon->orbit->semimajor_axis = 384400000;
+    moon->orbit->period = 2 * oneday;
+    append_cel(moon);
+    moon->classify(false, true, true);
+    EXPECT_EQ(moon->classification_evidence["host"], "Secondary");
+    EXPECT_EQ(moon->type, rocky);
+    planet->orbit->center = moon;
+    moon->classify(false, false, true);
+    EXPECT_TRUE(moon->classification_evidence["irradiation_earth"].is_null());
+    EXPECT_EQ(moon->atm, nullptr);
+}
+
+TEST_F(PlanetClassificationEvidenceTest, ObservedDensityAndTypeLocksOutrankChemistry)
+{
+    Star* host = make_star();
+    Planet* planet = make_planet(host, "Observed density");
+    planet->mass = 8 * earth_mass;
+    planet->volumetric_mean_radius = 1.6 * earth_radius;
+    for (double metal : {-0.5, 0.0, 0.5})
+    {
+        host->metallicity = metal;
+        host->metallicity_ratio = "[Fe/H]";
+        host->metallicity_source = "NASA pscomppars";
+        host->metallicity_error_upper = 0.05;
+        host->metallicity_error_lower = -0.05;
+        planet->classify(false, true, true);
+        EXPECT_EQ(planet->type, rocky);
+        EXPECT_FALSE(planet->classification_evidence["metallicity_applied"].get<bool>());
+    }
+    planet->lock_type = true;
+    planet->type = waterworld;
+    planet->classify(false, true, true);
+    EXPECT_EQ(planet->type, waterworld);
+    EXPECT_EQ(planet->classification_evidence["basis"], "explicit_type_lock");
+}
+
+TEST_F(PlanetClassificationEvidenceTest, SyntheticModelExercisesValidationAndApplicabilityGates)
+{
+    struct Directory
+    {
+        std::filesystem::path original = std::filesystem::current_path();
+        std::filesystem::path temporary = std::filesystem::temp_directory_path() /
+            ("alienorum_prior_test_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+        Directory()
+        {
+            std::filesystem::create_directories(temporary / "catalogs/NASA");
+            std::filesystem::current_path(temporary);
+        }
+        ~Directory()
+        {
+            std::filesystem::current_path(original);
+            std::filesystem::remove_all(temporary);
+        }
+    } directory;
+    const json model =
+    {
+        {"schema", 1}, {"enabled", true}, {"improvement_95_percent_host_bootstrap", {0.01, 0.02}},
+        {"baseline_coefficients", {-1.0, 0.0, 0.0}}, {"metallicity_coefficients", {-1.0, 0.0, 0.0, 4.0}},
+        {"maximum_metallicity_error", 0.2}, {"maximum_mass_relative_error", 0.35},
+        {"domain", {{"mass_earth", {1, 30}}, {"irradiation_earth", {0.1, 3000}},
+            {"metallicity_dex", {-0.5, 0.5}}, {"temperature_k", {4900, 6300}}}}
+    };
+    std::ofstream("catalogs/NASA/classification_model.json") << model;
+    Star* host = make_star();
+    host->metallicity = 0.5;
+    host->metallicity_ratio = "[Fe/H]";
+    host->metallicity_source = "NASA pscomppars";
+    host->metallicity_error_upper = 0.05;
+    host->metallicity_error_lower = -0.05;
+    Planet* planet = make_planet(host, "Prior case");
+    planet->mass = 3 * earth_mass;
+    planet->mass_evidence = PlanetMeasurement::observed;
+    planet->mass_error_upper = 0.2 * earth_mass;
+    planet->mass_error_lower = -0.2 * earth_mass;
+    planet->radius_evidence = PlanetMeasurement::estimated;
+    planet->classify(false, false, true);
+    EXPECT_EQ(planet->type, ice_giant);
+    EXPECT_TRUE(planet->classification_evidence["metallicity_applied"].get<bool>());
+    const json first = planet->classification_evidence;
+    planet->classify(false, false, true);
+    EXPECT_EQ(planet->classification_evidence, first);
+    EXPECT_FALSE(planet_envelope_prior(*host, 3, 1, 0.5).applicable);
+    EXPECT_FALSE(planet_envelope_prior(*host, 100, 1, 0.1).applicable);
+    host->metallicity_ratio = "[M/H]";
+    EXPECT_FALSE(planet_envelope_prior(*host, 3, 1, 0.1).applicable);
+    host->metallicity_ratio = "[Fe/H]";
+    host->metallicity_source = "XHIP V/137D C";
+    EXPECT_FALSE(planet_envelope_prior(*host, 3, 1, 0.1).applicable);
+}
+
+struct SolarPrediction
+{
+    const char* name;
+    cel_obj_type expected;
+};
+
+class SolarSystemClassificationTest : public UniverseFixture, public ::testing::WithParamInterface<SolarPrediction>
+{
+protected:
+    std::map<std::string, json> physical_rows;
+    std::map<std::string, CelestialObject*> objects;
+    Star* sun = nullptr;
+
+    void SetUp() override
+    {
+        UniverseFixture::SetUp();
+        std::ifstream input("catalogs/planets.json");
+        ASSERT_TRUE(input.good());
+        const json catalog = json::parse(input);
+        for (const auto& row : catalog) physical_rows[row.at("BODYNAME").get<std::string>()] = row;
+        sun = make_star("Sun");
+        objects["Sun"] = sun;
+    }
+
+    void TearDown() override
+    {
+        delete_the_universe();
+        UniverseFixture::TearDown();
+    }
+
+    Planet* physical_body(const std::string& name)
+    {
+        auto found = objects.find(name);
+        if (found != objects.end()) return dynamic_cast<Planet*>(found->second);
+        const json& row = physical_rows.at(name);
+        const std::string parent_name = row.at("CENTER_OF_ORBIT").get<std::string>();
+        CelestialObject* parent = parent_name == "Sun" ? static_cast<CelestialObject*>(sun) : physical_body(parent_name);
+        Planet* body = parent_name == "Sun" ? new Planet() : new Moon();
+        snprintf(body->name, sizeof(body->name), "%s", name.c_str());
+        // The source catalog uses kilograms; the engine stores mass in grams.
+        body->mass = 1000 * row.at("Mass").get<double>();
+        if (row.contains("VolMeanRad")) body->volumetric_mean_radius = row.at("VolMeanRad").get<double>();
+        else
+        {
+            // The local catalog stores full ellipsoid diameters in kilometres.
+            body->volumetric_mean_radius = 500 * cbrt(row.at("Width").get<double>() *
+                row.at("Height").get<double>() * row.at("Depth").get<double>());
+        }
+        body->mass_evidence = PlanetMeasurement::observed;
+        body->radius_evidence = PlanetMeasurement::observed;
+        body->albedo = row.value("BondAlbedo", 0.0);
+        body->temperature = row.value("SurfaceTemperature", 0.0);
+        body->orbit = new Orbit();
+        body->orbit->center = parent;
+        body->orbit->semimajor_axis = row.at("SEMIMAJOR_AXIS").get<double>();
+        body->orbit->period = row.at("OrbitPeriod").get<double>();
+        body->cenobj = parent;
+        // Read physical inputs only: catalog class labels, maps and atmospheres are excluded.
+        body->lock_type = false;
+        append_cel(body);
+        objects[name] = body;
+        return body;
+    }
+};
+
+TEST_P(SolarSystemClassificationTest, PredictsFromPhysicalInputsAcrossStartingClasses)
+{
+    const SolarPrediction prediction = GetParam();
+    Planet* body = physical_body(prediction.name);
+    ASSERT_NE(body, nullptr);
+    const double catalog_temperature = body->temperature;
+    const double observed_mass = body->mass, observed_radius = body->volumetric_mean_radius;
+    const std::vector<cel_obj_type> starting_classes =
+    {
+        rocky, icy, lavaworld, waterworld, hycean, ice_giant, gas_giant, hot_jupiter, clearskies
+    };
+    for (bool known_solar_iron : {false, true})
+    {
+        sun->metallicity = known_solar_iron ? 0.0 : NAN;
+        sun->metallicity_ratio = "[Fe/H]";
+        sun->metallicity_source = "Solar reference";
+        sun->metallicity_error_upper = sun->metallicity_error_lower = 0;
+        for (bool supplied_temperature : {false, true})
+        {
+            body->temperature = supplied_temperature ? catalog_temperature : 0;
+            json common_evidence;
+            for (cel_obj_type initial : starting_classes)
+            {
+                SCOPED_TRACE(::testing::Message() << prediction.name << ", initial=" << static_cast<int>(initial)
+                    << ", solar_iron=" << known_solar_iron << ", stored_temperature=" << supplied_temperature);
+                body->type = initial;
+                body->classify();
+                EXPECT_EQ(body->type, prediction.expected) << body->classification_evidence.dump();
+                EXPECT_TRUE(body->classification_evidence["density_observed"].get<bool>());
+                EXPECT_FALSE(body->classification_evidence["metallicity_applied"].get<bool>());
+                EXPECT_EQ(body->classification_evidence["host"], "Sun");
+                EXPECT_EQ(body->atm, nullptr);
+                EXPECT_DOUBLE_EQ(body->mass, observed_mass);
+                EXPECT_DOUBLE_EQ(body->volumetric_mean_radius, observed_radius);
+                if (common_evidence.is_null()) common_evidence = body->classification_evidence;
+                EXPECT_EQ(body->classification_evidence, common_evidence);
+                body->classify();
+                EXPECT_EQ(body->type, prediction.expected);
+                EXPECT_EQ(body->classification_evidence, common_evidence);
+                EXPECT_EQ(body->atm, nullptr);
+            }
+        }
+    }
+}
+
+// Expected broad physical classes are independent of any labels in planets.json.
+// Europa and the other icy moons can contain substantial rock as well as ice.
+INSTANTIATE_TEST_SUITE_P(SolarPredictions, SolarSystemClassificationTest, ::testing::Values(
+    SolarPrediction{"Mercury", rocky}, SolarPrediction{"Venus", rocky},
+    SolarPrediction{"Earth", rocky}, SolarPrediction{"Mars", rocky},
+    SolarPrediction{"Jupiter", gas_giant}, SolarPrediction{"Saturn", gas_giant},
+    SolarPrediction{"Uranus", ice_giant}, SolarPrediction{"Neptune", ice_giant},
+    SolarPrediction{"Moon", rocky}, SolarPrediction{"Phobos", rocky}, SolarPrediction{"Deimos", rocky},
+    SolarPrediction{"Io", rocky}, SolarPrediction{"Europa", icy}, SolarPrediction{"Ganymede", icy},
+    SolarPrediction{"Callisto", icy}, SolarPrediction{"Enceladus", icy}, SolarPrediction{"Titan", icy},
+    SolarPrediction{"Triton", icy}),
+    [](const ::testing::TestParamInfo<SolarPrediction>& info) { return std::string(info.param.name); });
 
 class LavaMapTest : public UniverseFixture
 {

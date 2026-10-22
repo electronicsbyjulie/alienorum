@@ -20,6 +20,16 @@ fi
 
 VCPKG_TRIPLET=x64-mingw-static
 
+# Install the current tracked stellar catalog, including its abundance metadata.
+gzip -dc catalogs/soles_alienorum.dat.gz > catalogs/soles_alienorum.dat.tmp
+mv catalogs/soles_alienorum.dat.tmp catalogs/soles_alienorum.dat
+
+# Only the generated model ships; source catalogs are runtime downloads.
+if [ ! -s catalogs/NASA/classification_model.json ]; then
+    echo "Missing classification model." >&2
+    exit 1
+fi
+
 # The fixed host supplement is installed by CMake and must ship with every release.
 if [ ! -s catalogs/exoplanet_host_positions.dat ]; then
     echo "Missing catalog: catalogs/exoplanet_host_positions.dat" >&2

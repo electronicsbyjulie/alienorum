@@ -1661,7 +1661,320 @@ public:
     using CatalogReader::exorow_read_line;
     using CatalogReader::exorow_write_line;
     using CatalogReader::accept_exoplanet_source;
+    using CatalogReader::merge_exoplanet_metallicity;
+    using CatalogReader::apply_exoplanet_metallicity;
+    using CatalogReader::apply_stellar_abundances;
 };
+
+class StellarDownloadTest : public CatalogParsingTest
+{
+protected:
+    std::filesystem::path original, temporary;
+    void SetUp() override
+    {
+        CatalogParsingTest::SetUp();
+        original = std::filesystem::current_path();
+        temporary = std::filesystem::temp_directory_path() /
+            ("alienorum_source_download_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+        std::filesystem::create_directories(temporary / "catalogs");
+        std::filesystem::current_path(temporary);
+        abort_load = false;
+    }
+    void TearDown() override
+    {
+        abort_load = false;
+        delete_the_universe();
+        std::filesystem::current_path(original);
+        std::filesystem::remove_all(temporary);
+        CatalogParsingTest::TearDown();
+    }
+    class Reader : public CatalogReader
+    {
+    public:
+        std::atomic<int> requests{0};
+        bool fail = false;
+        bool post_unavailable = false;
+    protected:
+        bool fetch_stellar_catalog_json(const std::string& url, const std::string& form, json& result) override
+        {
+            ++requests;
+            if (fail) return false;
+            if (post_unavailable && !form.empty()) return false;
+            if (url.find("exoplanetarchive") != std::string::npos)
+                result = json::array({{{"hostname", "Target"}, {"st_met", 0.0}, {"st_metratio", "[Fe/H]"}}});
+            else if (url.find("voparis") != std::string::npos)
+                result = json::array({{{"hostname", "EU host"}, {"st_met", 0.2}}});
+            else if (url.find("data/?") != std::string::npos)
+                result = {{"values", json::array({{{"name", "HD 10"}}})}};
+            else if (url.find("composition?") != std::string::npos)
+            {
+                result = json::array();
+                for (const char* element : {"Fe", "Mg", "Si", "C", "O"})
+                    result.push_back(
+                    {
+                        {"name", "HD 10"}, {"all_names", {"HD 10", "HIP 100"}}, {"element", element},
+                        {"solarnorm", "asplund09"}, {"median_value", 0.1}, {"plusminus", 0.03}
+                    });
+            }
+            else if (url.find("gea.esac") != std::string::npos)
+                result = json::array({{{"source_id", uint64_t(1234567890123456789)}, {"original_ext_source_id", "101"}}});
+            else if ((url + form).find("137D") != std::string::npos)
+                result = json::array({{{"HIP", 101}, {"[Fe/H]", -0.4}, {"q_[Fe/H]", "B"}, {"e_[Fe/H]", 9.99}}});
+            else
+                result =
+                {
+                    {"metadata", json::array({{{"name", "GaiaDR3"}}, {{"name", "flagSp"}}, {{"name", "flagSpFit"}},
+                        {{"name", "flagRed"}}, {{"name", "SNRpxCCD3"}}, {{"name", "[Fe/H]"}}, {{"name", "f_[Fe/H]"}}})},
+                    {"data", json::array({json::array({uint64_t(1234567890123456789), 0, 0, 0, 50, -0.3, 0})})}
+                };
+            return true;
+        }
+    };
+};
+
+TEST_F(StellarDownloadTest, DownloadsMissingSourcesAndAppliesThemBeforeCondensation)
+{
+    Star* target = make_star("Target");
+    target->HD = 10;
+    target->HIP = 100;
+    Star* eu = make_star("EU host");
+    Star* compiled = make_star("Compiled");
+    compiled->HIP = 101;
+    Reader reader;
+    reader.prepare_stellar_chemistry();
+    EXPECT_EQ(reader.requests, 8);
+    EXPECT_DOUBLE_EQ(target->metallicity, 0);
+    EXPECT_DOUBLE_EQ(eu->metallicity, 0.2);
+    EXPECT_DOUBLE_EQ(compiled->metallicity, -0.4);
+    EXPECT_TRUE(std::isnan(compiled->metallicity_error_upper));
+    ASSERT_TRUE(target->stellar_abundances.contains("Hypatia"));
+    ASSERT_TRUE(compiled->stellar_abundances.contains("GALAH DR4"));
+    for (const char* path :
+        {"NASA/stellar_metallicity.json", "ExoplanetEU/stellar_metallicity.json", "XHIP/stellar_metallicity.json",
+         "Hypatia/stellar_abundances.json", "GALAH/stellar_abundances.json", "GaiaDR3/hipparcos_crossmatch.json"})
+        EXPECT_TRUE(std::filesystem::exists(std::filesystem::path("catalogs") / path));
+    reader.prepare_stellar_chemistry();
+    EXPECT_EQ(reader.requests, 8);
+}
+
+TEST_F(StellarDownloadTest, EitherCondensedFormSuppressesAllSourceDownloads)
+{
+    for (const char* path : {"catalogs/soles_alienorum.dat", "catalogs/soles_alienorum.dat.gz"})
+    {
+        std::ofstream(path) << "fixture";
+        Reader reader;
+        reader.prepare_stellar_chemistry();
+        EXPECT_EQ(reader.requests, 0);
+        std::filesystem::remove(path);
+    }
+}
+
+TEST_F(StellarDownloadTest, TapQueriesCanFallBackToGet)
+{
+    Star* target = make_star("Target");
+    target->HD = 10;
+    target->HIP = 100;
+    Star* compiled = make_star("Compiled");
+    compiled->HIP = 101;
+    Reader reader;
+    reader.post_unavailable = true;
+    reader.prepare_stellar_chemistry();
+    EXPECT_EQ(reader.requests, 13);
+    EXPECT_DOUBLE_EQ(target->metallicity, 0);
+    EXPECT_DOUBLE_EQ(compiled->metallicity, -0.4);
+    EXPECT_TRUE(target->stellar_abundances.contains("Hypatia"));
+    EXPECT_TRUE(compiled->stellar_abundances.contains("GALAH DR4"));
+}
+
+TEST_F(StellarDownloadTest, FailureAndCancellationDoNotPublishPartialSnapshots)
+{
+    Reader reader;
+    reader.fail = true;
+    reader.prepare_stellar_chemistry();
+    EXPECT_GT(reader.requests, 0);
+    EXPECT_TRUE(std::filesystem::is_empty("catalogs"));
+    const int requests = reader.requests;
+    abort_load = true;
+    reader.prepare_stellar_chemistry();
+    EXPECT_EQ(reader.requests, requests);
+}
+
+TEST_F(CatalogParsingTest, AbundanceMatchingRejectsUnresolvedBinaryIdentifiers)
+{
+    struct Directory
+    {
+        std::filesystem::path original = std::filesystem::current_path();
+        std::filesystem::path temporary = std::filesystem::temp_directory_path() /
+            ("alienorum_abundance_test_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+        ~Directory()
+        {
+            std::filesystem::current_path(original);
+            std::filesystem::remove_all(temporary);
+        }
+    } directory;
+    std::filesystem::create_directories(directory.temporary / "catalogs/Hypatia");
+    std::filesystem::current_path(directory.temporary);
+    const json table =
+    {
+        {"schema", 1}, {"source", "Hypatia"}, {"solar_scale", "asplund09"},
+        {"solar", {{"Fe", 7.5}}}, {"reference", "fixture"},
+        {"rows", json::array(
+        {
+            {{"name", "Component A"}, {"hd", 12}, {"elements", {{"Fe",
+                {{"dex", 0.1}, {"error", 0.05}, {"ratio", "[Fe/H]"}, {"quality", "accepted"}}}}}},
+            {{"name", "Unique"}, {"hd", 13}, {"elements", {{"Fe",
+                {{"dex", -0.2}, {"error", 0.03}, {"ratio", "[Fe/H]"}, {"quality", "accepted"}}}}}}
+        })}
+    };
+    std::ofstream("catalogs/Hypatia/stellar_abundances.json") << table;
+    Star* first = make_star("Component A");
+    Star* second = make_star("Component B");
+    Star* unique = make_star("Unique");
+    first->HD = second->HD = 12;
+    unique->HD = 13;
+    TestCatalogReader reader;
+    reader.apply_stellar_abundances(first);
+    reader.apply_stellar_abundances(second);
+    reader.apply_stellar_abundances(unique);
+    EXPECT_FALSE(first->stellar_abundances.is_object());
+    EXPECT_FALSE(second->stellar_abundances.is_object());
+    ASSERT_TRUE(unique->stellar_abundances.contains("Hypatia"));
+    EXPECT_DOUBLE_EQ(unique->metallicity, -0.2);
+    EXPECT_DOUBLE_EQ(unique->metallicity_error_upper, 0.03);
+    delete_the_universe();
+}
+
+TEST_F(CatalogParsingTest, StellarMetallicitySurvivesCatalogAndUniverseRoundTrips)
+{
+    struct RestoreContext
+    {
+        std::filesystem::path original, temporary;
+        Star **hd, **hip;
+        ~RestoreContext()
+        {
+            hdcache = hd;
+            hipcache = hip;
+            std::filesystem::current_path(original);
+            std::error_code error;
+            std::filesystem::remove_all(temporary, error);
+        }
+    } restore
+    {
+        std::filesystem::current_path(),
+        std::filesystem::temp_directory_path() / ("alienorum_metallicity_" +
+            std::to_string(std::chrono::steady_clock::now().time_since_epoch().count())),
+        hdcache, hipcache
+    };
+    std::vector<Star*> hd(MAX_HD + 1, nullptr), hip(MAX_HIP + 1, nullptr);
+    hdcache = hd.data();
+    hipcache = hip.data();
+    std::filesystem::create_directories(restore.temporary / "catalogs");
+    std::filesystem::current_path(restore.temporary);
+    Star* measured = static_cast<Star*>(cels[0]);
+    measured->metallicity = -0.42;
+    measured->metallicity_error_upper = 0.08;
+    measured->metallicity_error_lower = -0.06;
+    measured->metallicity_ratio = "[Fe/H]";
+    measured->metallicity_source = "NASA pscomppars";
+    measured->stellar_abundances = {{"Hypatia", {{"solar_scale", "asplund09"}, {"elements", json::object()}}}};
+    measured->add_catalog_alias("Measured abundance host");
+    Star* solar = make_star("Solar abundance");
+    solar->metallicity = 0;
+    solar->metallicity_ratio = "[M/H]";
+    solar->metallicity_source = "NASA pscomppars";
+    Star* unknown = make_star("Unknown abundance");
+    struct Writer : CatalogReader
+    {
+        using CatalogReader::write_condensed_star_cat_line;
+    } writer;
+    FILE* file = fopen("catalogs/soles_alienorum.dat", "wb");
+    ASSERT_NE(file, nullptr);
+    writer.write_condensed_star_cat_line(file, measured);
+    writer.write_condensed_star_cat_line(file, solar);
+    writer.write_condensed_star_cat_line(file, unknown);
+    fclose(file);
+    const json saved = measured->to_json();
+    const json saved_abundances = measured->stellar_abundances;
+    Star restored;
+    ASSERT_TRUE(restored.from_json(saved));
+    EXPECT_DOUBLE_EQ(restored.metallicity, -0.42);
+    EXPECT_EQ(restored.metallicity_ratio, "[Fe/H]");
+    EXPECT_DOUBLE_EQ(restored.metallicity_error_lower, -0.06);
+    EXPECT_EQ(restored.metallicity_source, "NASA pscomppars");
+    EXPECT_FALSE(unknown->to_json().contains("stellar_metallicity"));
+    ASSERT_TRUE(restored.from_json(unknown->to_json()));
+    EXPECT_TRUE(std::isnan(restored.metallicity));
+    EXPECT_TRUE(restored.metallicity_source.empty());
+    delete_the_universe();
+    CatalogReader reader;
+    ASSERT_EQ(reader.read_condensed_star_cat(), 3);
+    measured = static_cast<Star*>(cels[0]);
+    solar = static_cast<Star*>(cels[1]);
+    unknown = static_cast<Star*>(cels[2]);
+    EXPECT_DOUBLE_EQ(measured->metallicity, -0.42);
+    EXPECT_DOUBLE_EQ(measured->metallicity_error_upper, 0.08);
+    EXPECT_DOUBLE_EQ(measured->metallicity_error_lower, -0.06);
+    EXPECT_EQ(measured->metallicity_ratio, "[Fe/H]");
+    EXPECT_EQ(measured->metallicity_source, "NASA pscomppars");
+    EXPECT_EQ(measured->stellar_abundances, saved_abundances);
+    EXPECT_EQ(measured->catalog_aliases, std::vector<std::string>({"Measured abundance host"}));
+    EXPECT_DOUBLE_EQ(solar->metallicity, 0);
+    EXPECT_EQ(solar->metallicity_ratio, "[M/H]");
+    EXPECT_TRUE(std::isnan(solar->metallicity_error_upper));
+    EXPECT_TRUE(std::isnan(unknown->metallicity));
+    delete_the_universe();
+}
+
+TEST_F(CatalogParsingTest, ExoplanetMetallicityKeepsSourceScaleAndErrorsTogether)
+{
+    json eu =
+    {
+        {"pl_name", "Metal host b"}, {"hostname", "Metal host"}, {"pl_orbper", 30},
+        {"st_met", 0.2}, {"st_metratio", "[Fe/H]"}, {"st_met_source", "exoplanet.eu"}
+    };
+    const json nasa =
+    {
+        {"st_met", 0.0}, {"st_metratio", "[M/H]"}, {"st_met_source", "NASA pscomppars"},
+        {"st_meterr1", 0.03}, {"st_meterr2", -0.05}, {"st_metlim", 0}
+    };
+    TestCatalogReader::merge_exoplanet_metallicity(eu, nasa);
+    EXPECT_EQ(eu["st_met"], 0.0);
+    EXPECT_EQ(eu["st_metratio"], "[M/H]");
+    bool valid = false;
+    ExoRow row = TestCatalogReader::exorow_from_json(eu, &valid);
+    ASSERT_TRUE(valid);
+    FILE* cache = tmpfile();
+    ASSERT_NE(cache, nullptr);
+    TestCatalogReader::exorow_write_line(cache, row);
+    rewind(cache);
+    ExoRow cached;
+    ASSERT_TRUE(TestCatalogReader::exorow_read_line(cache, cached));
+    fclose(cache);
+    EXPECT_DOUBLE_EQ(cached.st_met, 0);
+    EXPECT_DOUBLE_EQ(cached.st_meterr1, 0.03);
+    EXPECT_DOUBLE_EQ(cached.st_meterr2, -0.05);
+    EXPECT_EQ(cached.st_metratio, "[M/H]");
+    EXPECT_EQ(cached.st_met_source, "NASA pscomppars");
+    EXPECT_TRUE(std::isnan(cached.pl_bmasseerr1));
+    Star* host = static_cast<Star*>(cels[0]);
+    host->metallicity = -0.4;
+    host->metallicity_source = "XHIP V/137D B";
+    row.st_met = 0.2;
+    row.st_met_source = "exoplanet.eu";
+    TestCatalogReader::apply_exoplanet_metallicity(row, host);
+    EXPECT_DOUBLE_EQ(host->metallicity, 0.2);
+    TestCatalogReader::apply_exoplanet_metallicity(cached, host);
+    row.st_met = 0.8;
+    row.st_met_source = "exoplanet.eu";
+    TestCatalogReader::apply_exoplanet_metallicity(row, host);
+    EXPECT_DOUBLE_EQ(host->metallicity, 0);
+    EXPECT_EQ(host->metallicity_ratio, "[M/H]");
+    eu["st_metlim"] = 1;
+    EXPECT_TRUE(std::isnan(TestCatalogReader::exorow_from_json(eu, &valid).st_met));
+    json missing = {{"st_met", nullptr}};
+    TestCatalogReader::merge_exoplanet_metallicity(missing, nasa);
+    EXPECT_EQ(missing["st_met_source"], "NASA pscomppars");
+}
 
 TEST_F(CatalogParsingTest, ExoplanetNamesMatchPrimaryComponentsAndConstellationCase)
 {

@@ -5732,6 +5732,25 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
     std::ostringstream identity;
     identity << " SID1 " << std::quoted(link_key(s));
     line += identity.str();
+    if (s->stellar_abundances.is_object() && !s->stellar_abundances.empty())
+    {
+        std::ostringstream extra;
+        extra << " CHEM1 " << std::quoted(s->stellar_abundances.dump());
+        line += extra.str();
+    }
+    if (std::isfinite(s->metallicity))
+    {
+        const json measurement = json::array(
+        {
+            s->metallicity, s->metallicity_ratio,
+            std::isfinite(s->metallicity_error_upper) ? json(s->metallicity_error_upper) : json(nullptr),
+            std::isfinite(s->metallicity_error_lower) ? json(s->metallicity_error_lower) : json(nullptr),
+            s->metallicity_source
+        });
+        std::ostringstream extra;
+        extra << " MET1 " << std::quoted(measurement.dump());
+        line += extra.str();
+    }
     if (s->orbit || s->multisys || s->known_poles || s->has_disk || s->rot_axis_known ||
         s->lock_system_plane || s->lock_equatorial_plane)
     {
@@ -6265,7 +6284,29 @@ int alienorum::CatalogReader::read_condensed_star_cat()
             std::string version, value;
             while (extras >> version)
             {
-                if (version == "ORB1" && extras >> std::quoted(value))
+                if (version == "CHEM1" && extras >> std::quoted(value))
+                {
+                    json chemistry = json::parse(value, nullptr, false);
+                    if (chemistry.is_object()) s->stellar_abundances = std::move(chemistry);
+                }
+                else if (version == "MET1" && extras >> std::quoted(value))
+                {
+                    const json measurement = json::parse(value, nullptr, false);
+                    if (measurement.is_array() && measurement.size() == 5 && measurement[0].is_number() &&
+                        measurement[1].is_string() && measurement[4].is_string())
+                    {
+                        const double metallicity = measurement[0].get<double>();
+                        if (std::isfinite(metallicity))
+                        {
+                            s->metallicity = metallicity;
+                            s->metallicity_ratio = measurement[1].get<std::string>();
+                            s->metallicity_source = measurement[4].get<std::string>();
+                            if (measurement[2].is_number()) s->metallicity_error_upper = measurement[2].get<double>();
+                            if (measurement[3].is_number()) s->metallicity_error_lower = measurement[3].get<double>();
+                        }
+                    }
+                }
+                else if (version == "ORB1" && extras >> std::quoted(value))
                 {
                     json state = json::parse(value);
                     if (state.is_object())
@@ -6553,6 +6594,7 @@ int alienorum::CatalogReader::read_condensed_star_cat()
 
     fclose(fp);
     ((Star*)cels[0])->distance_known = true;
+    for (Star* object : catalog_stars) apply_stellar_abundances(object);
 
     const auto find_saved_star = [&](const json& key) -> Star*
     {
@@ -6849,6 +6891,26 @@ ExoRow CatalogReader::exorow_from_json(const json& row, bool* ok)
     r.st_mass = getd("st_mass");
     r.st_rad = getd("st_rad");
     r.st_rotp = getd("st_rotp");
+    r.pl_bmassprov = gets("pl_bmassprov");
+    r.pl_bmasselim = getd("pl_bmasselim");
+    r.pl_radelim = getd("pl_radelim");
+    r.pl_bmasseerr1 = getd("pl_bmasseerr1");
+    r.pl_bmasseerr2 = getd("pl_bmasseerr2");
+    r.pl_bmassjerr1 = getd("pl_bmassjerr1");
+    r.pl_bmassjerr2 = getd("pl_bmassjerr2");
+    r.pl_radeerr1 = getd("pl_radeerr1");
+    r.pl_radeerr2 = getd("pl_radeerr2");
+    r.pl_radjerr1 = getd("pl_radjerr1");
+    r.pl_radjerr2 = getd("pl_radjerr2");
+    const double metallicity_limit = getd("st_metlim");
+    if (!std::isfinite(metallicity_limit) || metallicity_limit == 0)
+    {
+        r.st_met = getd("st_met");
+        r.st_meterr1 = getd("st_meterr1");
+        r.st_meterr2 = getd("st_meterr2");
+        r.st_metratio = gets("st_metratio");
+        r.st_met_source = gets("st_met_source");
+    }
 
     auto it_spec = row.find("st_spectype");
     if (it_spec != row.end() && !it_spec->is_null() && it_spec->is_string())
@@ -6925,6 +6987,18 @@ void CatalogReader::exorow_write_line(FILE* fp, const ExoRow& row)
     write_exo_double(fp, row.pl_orbeccen);
     write_exo_double(fp, row.pl_orbinclerr1);
     write_exo_double(fp, row.pl_orbinclerr2);
+    write_exo_double(fp, row.st_met);
+    write_exo_double(fp, row.st_meterr1);
+    write_exo_double(fp, row.st_meterr2);
+    write_exo_string(fp, row.st_metratio);
+    write_exo_string(fp, row.st_met_source);
+    write_exo_string(fp, row.pl_bmassprov);
+    const double errors[] =
+    {
+        row.pl_bmasseerr1, row.pl_bmasseerr2, row.pl_bmassjerr1, row.pl_bmassjerr2,
+        row.pl_radeerr1, row.pl_radeerr2, row.pl_radjerr1, row.pl_radjerr2, row.pl_bmasselim, row.pl_radelim
+    };
+    for (double value : errors) write_exo_double(fp, value);
 
     fputc('\n', fp);
 }
@@ -6975,6 +7049,22 @@ bool CatalogReader::exorow_read_line(FILE* fp, ExoRow& row)
     row.pl_orbeccen  = read_exo_double(cursor);
     row.pl_orbinclerr1 = read_exo_double(cursor);
     row.pl_orbinclerr2 = read_exo_double(cursor);
+    row.st_met = read_exo_double(cursor);
+    row.st_meterr1 = read_exo_double(cursor);
+    row.st_meterr2 = read_exo_double(cursor);
+    row.st_metratio = read_exo_string(cursor);
+    row.st_met_source = read_exo_string(cursor);
+    row.pl_bmassprov = read_exo_string(cursor);
+    row.pl_bmasseerr1 = read_exo_double(cursor);
+    row.pl_bmasseerr2 = read_exo_double(cursor);
+    row.pl_bmassjerr1 = read_exo_double(cursor);
+    row.pl_bmassjerr2 = read_exo_double(cursor);
+    row.pl_radeerr1 = read_exo_double(cursor);
+    row.pl_radeerr2 = read_exo_double(cursor);
+    row.pl_radjerr1 = read_exo_double(cursor);
+    row.pl_radjerr2 = read_exo_double(cursor);
+    row.pl_bmasselim = read_exo_double(cursor);
+    row.pl_radelim = read_exo_double(cursor);
 
     return true;
 }
@@ -7102,6 +7192,48 @@ bool CatalogReader::accept_exoplanet_source(json& row, bool from_nasa)
         row["source_catalog"] = "NASA";
     }
     return true;
+}
+
+static int metallicity_source_priority(const std::string& source)
+{
+    if (source == "NASA pscomppars") return 0;
+    if (source == "exoplanet.eu") return 1;
+    if (source.rfind("XHIP V/137D", 0) == 0) return 2;
+    return 3;
+}
+
+void CatalogReader::merge_exoplanet_metallicity(json& destination, const json& source)
+{
+    const auto valid = [](const json& row)
+    {
+        return row.contains("st_met") && row["st_met"].is_number() &&
+            std::isfinite(row["st_met"].get<double>()) &&
+            (!row.contains("st_metlim") || row["st_metlim"].is_null() || row["st_metlim"] == 0);
+    };
+    const auto origin = [](const json& row)
+    {
+        auto it = row.find("st_met_source");
+        return it != row.end() && it->is_string() ? it->get<std::string>() : std::string();
+    };
+    if (!valid(source)) return;
+    if (valid(destination) && metallicity_source_priority(origin(destination)) <=
+        metallicity_source_priority(origin(source))) return;
+    for (const char* key : {"st_met", "st_meterr1", "st_meterr2", "st_metlim", "st_metratio", "st_met_source"})
+    {
+        destination[key] = source.value(key, json());
+    }
+}
+
+void CatalogReader::apply_exoplanet_metallicity(const ExoRow& row, Star* host)
+{
+    if (!host || !std::isfinite(row.st_met)) return;
+    if (std::isfinite(host->metallicity) && metallicity_source_priority(host->metallicity_source) <=
+        metallicity_source_priority(row.st_met_source)) return;
+    host->metallicity = row.st_met;
+    host->metallicity_error_upper = std::isfinite(row.st_meterr1) ? fabs(row.st_meterr1) : NAN;
+    host->metallicity_error_lower = std::isfinite(row.st_meterr2) ? -fabs(row.st_meterr2) : NAN;
+    host->metallicity_ratio = row.st_metratio;
+    host->metallicity_source = row.st_met_source;
 }
 
 Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_starsonly, bool* was_new,
@@ -7432,6 +7564,7 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
 
     if (host_star->is_white_dwarf() && (!(host_star->volumetric_mean_radius > 0) ||
         !std::isfinite(host_star->volumetric_mean_radius))) host_star->estimate_radius();
+    apply_stellar_abundances(host_star);
     return host_star;
 }
 
@@ -7465,12 +7598,16 @@ bool CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, s
     if (!isnan(row.pl_bmassj))
     {
         new_planet->mass = row.pl_bmassj * jupiter_mass;
+        new_planet->mass_error_upper = row.pl_bmassjerr1 * jupiter_mass;
+        new_planet->mass_error_lower = row.pl_bmassjerr2 * jupiter_mass;
         pl_massknown = true;
         pl_mass = new_planet->mass;
     }
     else if (!isnan(row.pl_bmasse))
     {
         new_planet->mass = row.pl_bmasse * earth_mass;
+        new_planet->mass_error_upper = row.pl_bmasseerr1 * earth_mass;
+        new_planet->mass_error_lower = row.pl_bmasseerr2 * earth_mass;
         pl_massknown = true;
         pl_mass = new_planet->mass;
     }
@@ -7478,11 +7615,15 @@ bool CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, s
     if (!isnan(row.pl_radj))
     {
         new_planet->volumetric_mean_radius = row.pl_radj * jupiter_radius;
+        new_planet->radius_error_upper = row.pl_radjerr1 * jupiter_radius;
+        new_planet->radius_error_lower = row.pl_radjerr2 * jupiter_radius;
         pl_radknown = true;
     }
     else if (!isnan(row.pl_rade))
     {
         new_planet->volumetric_mean_radius = row.pl_rade * earth_radius;
+        new_planet->radius_error_upper = row.pl_radeerr1 * earth_radius;
+        new_planet->radius_error_lower = row.pl_radeerr2 * earth_radius;
         pl_radknown = true;
     }
 
@@ -7616,10 +7757,15 @@ bool CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, s
         }
     }
 
-    if (new_planet->mass > 0 && !pl_radknown)
-    {
-        new_planet->estimate_radius();
-    }
+    new_planet->mass_evidence = pl_massknown ? PlanetMeasurement::observed
+        : pl_msini_known ? PlanetMeasurement::minimum : PlanetMeasurement::unknown;
+    if (row.pl_bmassprov == "M-R relationship" || (mass_untrustworthy && pl_massknown))
+        new_planet->mass_evidence = PlanetMeasurement::estimated;
+    else if (row.pl_bmassprov == "Msini") new_planet->mass_evidence = PlanetMeasurement::minimum;
+    new_planet->radius_evidence = pl_radknown ? PlanetMeasurement::observed : PlanetMeasurement::unknown;
+    if (std::isfinite(row.pl_bmasselim) && row.pl_bmasselim != 0)
+        new_planet->mass_evidence = row.pl_bmasselim > 0 ? PlanetMeasurement::minimum : PlanetMeasurement::estimated;
+    if (std::isfinite(row.pl_radelim) && row.pl_radelim != 0) new_planet->radius_evidence = PlanetMeasurement::estimated;
     new_planet->classify(new_planet->is_in_con_HZ(), (pl_massknown || pl_msini_known) && pl_radknown);
 
     new_planet->estimate_albedo_and_absmagn();
@@ -7980,8 +8126,10 @@ void CatalogReader::dedup_planets(json& planets_array)
             {
                 auto& p1_json = planets_array[idx1];
                 const auto& p2_json = planets_array[idx2];
+                merge_exoplanet_metallicity(p1_json, p2_json);
                 for (auto& [key, val] : p2_json.items())
                 {
+                    if (key.rfind("st_met", 0) == 0) continue;
                     if ((key == "pl_orbinclerr1" || key == "pl_orbinclerr2") &&
                         p1_json.contains("pl_orbincl") && !p1_json["pl_orbincl"].is_null() &&
                         p1_json["pl_orbincl"] != p2_json.value("pl_orbincl", json())) continue;
@@ -8082,8 +8230,10 @@ void CatalogReader::dedup_planets(json& planets_array)
                 {
                     auto& p1_json = planets_array[idx1];
                     const auto& p2_json = planets_array[idx2];
+                    merge_exoplanet_metallicity(p1_json, p2_json);
                     for (auto& [key, val] : p2_json.items())
                     {
+                        if (key.rfind("st_met", 0) == 0) continue;
                         if ((key == "pl_orbinclerr1" || key == "pl_orbinclerr2") &&
                             p1_json.contains("pl_orbincl") && !p1_json["pl_orbincl"].is_null() &&
                             p1_json["pl_orbincl"] != p2_json.value("pl_orbincl", json())) continue;
@@ -8186,7 +8336,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
         std::ifstream cache_header(derived_cache);
         std::string version;
         std::getline(cache_header, version);
-        derived_cache_valid = version == "# EXO_EU_LETTERS2";
+        derived_cache_valid = version == "# EXO_CHEMISTRY2";
         // Recover omitted mu Ara records once, without downloading again when the
         // host pass has already refreshed the unified catalog for the planet pass.
         if (version == "# EXO_INCLINATION_ERRORS1" && !radio_silence)
@@ -8278,6 +8428,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                 {
                     continue;
                 }
+                apply_exoplanet_metallicity(row, host_star);
                 if (stars_only)
                 {
                     continue;
@@ -8341,8 +8492,9 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
         // 1. Fetch NASA Data
         std::string nasa_url = "https://exoplanetarchive.ipac.caltech.edu/TAP/sync?maxrec=20000&query="
                                "select+pl_name,hostname,hd_name,hip_name,pl_orbper,pl_orbsmax,pl_orbeccen,pl_orbincl,pl_orbinclerr1,pl_orbinclerr2,pl_orblper,pl_orbtper,pl_tranmid,"
-                               "pl_bmasse,pl_bmassj,pl_msinij,pl_msinie,pl_rade,pl_radj,pl_trueobliq,"
-                               "st_mass,st_rad,sy_dist,ra,dec,sy_vmag,st_spectype,st_teff,st_lum,st_rotp+"
+                               "pl_bmasse,pl_bmasseerr1,pl_bmasseerr2,pl_bmasselim,pl_bmassj,pl_bmassjerr1,pl_bmassjerr2,pl_bmassprov,"
+                               "pl_msinij,pl_msinie,pl_rade,pl_radeerr1,pl_radeerr2,pl_radelim,pl_radj,pl_radjerr1,pl_radjerr2,pl_trueobliq,"
+                               "st_mass,st_rad,sy_dist,ra,dec,sy_vmag,st_spectype,st_teff,st_lum,st_rotp,st_met,st_meterr1,st_meterr2,st_metlim,st_metratio+"
                                "from+pscomppars+order+by+pl_name+asc&format=json";
 
         if (!fetch_tap(nasa_url, readBufferNASA))
@@ -8352,14 +8504,15 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
 
         // 2. Fetch exoplanet.eu Data via PADC VESPA TAP
         // ADQL column aliasing maps EU's schema directly onto NASA's nomenclature.
-        std::string eu_url = "https://voparis-tap-planeto.obspm.fr/tap/sync?"
+        std::string eu_url = "http://voparis-tap-planeto.obspm.fr/tap/sync?"
                              "request=doQuery&lang=ADQL&format=json&maxrec=20000&query="
                              "select+target_name+as+pl_name,alt_target_name,star_name+as+hostname,"
                              "period+as+pl_orbper,semi_major_axis+as+pl_orbsmax,eccentricity+as+pl_orbeccen,inclination+as+pl_orbincl,"
                              "periastron+as+pl_orblper,t_peri+as+pl_orbtper,"
                              "mass+as+pl_bmassj,mass_sin_i+as+pl_msinij,radius+as+pl_radj,"
                              "ra,dec,star_distance+as+sy_dist,mag_v+as+sy_vmag,"
-                             "star_mass+as+st_mass,star_radius+as+st_rad,star_teff+as+st_teff,star_spec_type+as+st_spectype+"
+                             "star_mass+as+st_mass,star_radius+as+st_rad,star_teff+as+st_teff,star_spec_type+as+st_spectype,"
+                             "star_metallicity+as+st_met,'[Fe/H]'+as+st_metratio+"
                              "from+exoplanet.epn_core+where+publication_status='Published+in+a+refereed+paper'+order+by+target_name+asc";
 
         if (!fetch_tap(eu_url, readBufferEU))
@@ -8439,6 +8592,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                 {
                     return;
                 }
+                litem["st_met_source"] = from_nasa ? "NASA pscomppars" : "exoplanet.eu";
                 std::string pl_name = litem.value("pl_name", "");
                 if (pl_name.empty()) return;
                 char cinit = pl_name.c_str()[0];
@@ -8640,8 +8794,10 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                 if (merged_planets.find(target_key) != merged_planets.end())
                 {
                     auto& existing = merged_planets[target_key];
+                    merge_exoplanet_metallicity(existing, litem);
                     for (auto& [key, value] : litem.items())
                     {
+                        if (key.rfind("st_met", 0) == 0) continue;
                         if ((key == "pl_orbinclerr1" || key == "pl_orbinclerr2") &&
                             existing.contains("pl_orbincl") && !existing["pl_orbincl"].is_null() &&
                             existing["pl_orbincl"] != litem.value("pl_orbincl", json())) continue;
@@ -8782,7 +8938,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
     if (cachefp)
     {
         setvbuf(cachefp, cache_io_buf, _IOFBF, sizeof(cache_io_buf));
-        fputs("# EXO_EU_LETTERS2\n", cachefp);
+        fputs("# EXO_CHEMISTRY2\n", cachefp);
     }
 
     int rows_written = 0;
@@ -8864,6 +9020,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
         {
             continue;
         }
+        apply_exoplanet_metallicity(row, host_star);
 
         if (stars_only)
         {
@@ -8917,6 +9074,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
         apply_exoplanet_host_position(row, host_positions);
         bool was_new = false;
         Star* host_star = resolve_or_create_exostar(row, loaded_starsonly, &was_new, &host_lookup);
+        apply_exoplanet_metallicity(row, host_star);
         if (host_star && was_new && cachefp)
         {
             exorow_write_line(cachefp, row);

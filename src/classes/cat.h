@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <set>
 #include <fstream>
 #include <random>
 #include <cmath>
@@ -31,6 +32,12 @@ namespace alienorum
         std::string pl_name, hostname, hd_name, hip_name, st_spectype;
         double sy_dist=NAN, ra=NAN, dec=NAN, st_lum=NAN, sy_vmag=NAN, st_teff=NAN;
         double st_mass=NAN, st_rad=NAN, st_rotp=NAN;
+        double st_met=NAN, st_meterr1=NAN, st_meterr2=NAN;
+        std::string st_metratio, st_met_source;
+        std::string pl_bmassprov;
+        double pl_bmasseerr1=NAN, pl_bmasseerr2=NAN, pl_bmassjerr1=NAN, pl_bmassjerr2=NAN;
+        double pl_radeerr1=NAN, pl_radeerr2=NAN, pl_radjerr1=NAN, pl_radjerr2=NAN;
+        double pl_bmasselim=NAN, pl_radelim=NAN;
         double pl_orbinclerr1=NAN, pl_orbinclerr2=NAN;
         double pl_orbincl=NAN, pl_msinij=NAN, pl_msinie=NAN, pl_bmassj=NAN, pl_bmasse=NAN;
         double pl_radj=NAN, pl_rade=NAN, pl_trueobliq=NAN;
@@ -45,6 +52,7 @@ namespace alienorum
         public:
         std::vector<std::string>find_catalogs(std::string path);
         void download_catalogs(bool have_ihc);
+        void prepare_stellar_chemistry();
 
         // Source Catalogs for Stars
         int read_Gliese_catalog(CelestialObject** cels, int max);
@@ -93,6 +101,7 @@ namespace alienorum
         static void read_field_onebased(const char* buffer, size_t start, int end, char* out);
 
     protected:
+        virtual bool fetch_stellar_catalog_json(const std::string& url, const std::string& form, json& result);
         void apply_exoplanet_names(const std::map<int, std::vector<int>>& planet_celids,
             const ExactStarSearchIndex *lookup = nullptr);
         bool worth_searching(std::string star_name);
@@ -108,11 +117,18 @@ namespace alienorum
         static std::map<std::string, ExoRow> read_exoplanet_host_positions(const char* path);
         static bool apply_exoplanet_host_position(ExoRow& row, const std::map<std::string, ExoRow>& positions);
         static bool accept_exoplanet_source(json& row, bool from_nasa);
+        static void merge_exoplanet_metallicity(json& destination, const json& source);
+        static void apply_exoplanet_metallicity(const ExoRow& row, Star* host);
+        void apply_stellar_abundances(Star* host);
         Star* resolve_or_create_exostar(const ExoRow& row, bool loaded_starsonly, bool* was_new,
             ExactStarSearchIndex *lookup = nullptr);
         bool add_exoplanet_from_row(const ExoRow& row, Star* host_star, std::map<int, std::vector<int>>& planet_celids, unsigned int& result);
 
     private:
+        bool abundance_catalogs_loaded = false;
+        std::vector<json> abundance_catalogs;
+        std::map<std::string, std::vector<std::pair<size_t, size_t>>> abundance_lookup;
+        std::set<uint64_t> duplicate_abundance_hips, duplicate_abundance_hds, duplicate_abundance_gaia;
         // Keep the host and planet passes on one snapshot, including after a failed refresh.
         bool exoplanet_tap_attempted = false;
         json exoplanet_tap_catalog = json::array();

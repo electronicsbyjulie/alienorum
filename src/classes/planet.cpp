@@ -3,8 +3,10 @@
 #include <iomanip>
 #include <random>
 #include <algorithm>
+#include <set>
 
 #include "planet.h"
+#include "chemistry.h"
 #include "star.h"
 #include "point.h"
 #include "patch.h"
@@ -270,147 +272,134 @@ double alienorum::Planet::get_atmospheric_tau()
 
 void Planet::classify()
 {
+    if (lock_type) return;
     classify(is_in_con_HZ());
 }
 
 void Planet::classify(bool HZ, bool mnrk, bool ck)
 {
-    if (lock_type) return;
-    Star *s = nullptr;
-    double density = mnrk ? (mass / sphere_volume(volumetric_mean_radius) * 1e-6) : 0;
-    if (density) cached_density = density;
-    else if (cached_density)
+    if (lock_type)
     {
-        density = cached_density;
-        mnrk = true;
+        classification_evidence = {{"basis", "explicit_type_lock"}, {"class_code", static_cast<int>(type)}};
+        return;
+    }
+    const cel_obj_type previous_type = type;
+    if (mnrk)
+    {
+        if (mass_evidence == PlanetMeasurement::unknown && std::isfinite(mass) && mass > 0)
+            mass_evidence = msini > 0 && mass <= msini * 1.000001 ? PlanetMeasurement::minimum : PlanetMeasurement::observed;
+        if (radius_evidence == PlanetMeasurement::unknown && std::isfinite(volumetric_mean_radius) && volumetric_mean_radius > 0)
+            radius_evidence = PlanetMeasurement::observed;
+    }
+    const bool valid_mass = std::isfinite(mass) && mass > 0;
+    const bool valid_radius = std::isfinite(volumetric_mean_radius) && volumetric_mean_radius > 0;
+    const bool measured_radius = valid_radius && radius_evidence == PlanetMeasurement::observed;
+    const bool measured_density = valid_mass && measured_radius && mass_evidence == PlanetMeasurement::observed;
+    const bool lower_density_bound = valid_mass && measured_radius && mass_evidence == PlanetMeasurement::minimum;
+    const double density = valid_mass && valid_radius ? mass / sphere_volume(volumetric_mean_radius) * 1e-6 : NAN;
+    classification_evidence =
+    {
+        {"mass_evidence", static_cast<int>(mass_evidence)}, {"radius_evidence", static_cast<int>(radius_evidence)},
+        {"density_g_cm3", std::isfinite(density) ? json(density) : json(nullptr)},
+        {"density_observed", measured_density}, {"density_is_lower_bound", lower_density_bound},
+        {"metallicity_applied", false}
+    };
+
+    Star* host = nullptr;
+    Orbit* stellar_orbit = nullptr;
+    std::set<const CelestialObject*> visited;
+    CelestialObject* body = this;
+    while (body && body->orbit && body->orbit->center && visited.insert(body).second)
+    {
+        CelestialObject* parent = body->orbit->center;
+        if (parent->typeclass() == class_star)
+        {
+            host = static_cast<Star*>(parent);
+            stellar_orbit = body->orbit;
+            break;
+        }
+        body = parent;
+    }
+    double irradiation = NAN, equilibrium = NAN;
+    if (host && stellar_orbit && std::isfinite(stellar_orbit->semimajor_axis) && stellar_orbit->semimajor_axis > 0)
+    {
+        const double teff = host->temperature > 0 ? host->temperature : host->estimate_temperature();
+        const double bolometric = host->absolute_magnitude + Star::bolometric_correction(teff);
+        const double luminosity = pow(magnbase, 4.74 - bolometric);
+        irradiation = luminosity / pow(stellar_orbit->semimajor_axis / AU, 2);
+        // A fixed neutral albedo for an unmeasured surface avoids a class/color feedback loop.
+        const double bond = std::isfinite(albedo) && albedo > 0 ? std::clamp(albedo, 0.0, 1.0) : 0.3;
+        equilibrium = pow(irradiation * (1.0 - bond) / (4.0 * STEFAN_BOLTZMANN_NORM), 0.25);
+        classification_evidence["host"] = host->name;
+        classification_evidence["stellar_chemistry"] = host->chemistry_diagnostics();
+        classification_evidence["bond_albedo"] = bond;
+    }
+    const double surface_temperature = std::isfinite(temperature) && temperature > 0 ? temperature : equilibrium;
+    classification_evidence["irradiation_earth"] = std::isfinite(irradiation) ? json(irradiation) : json(nullptr);
+    classification_evidence["equilibrium_temperature_k"] = std::isfinite(equilibrium) ? json(equilibrium) : json(nullptr);
+    classification_evidence["surface_temperature_k"] = std::isfinite(surface_temperature) ? json(surface_temperature) : json(nullptr);
+    if (!valid_mass && !measured_radius)
+    {
+        classification_evidence["basis"] = "insufficient_planetary_properties";
+        classification_evidence["class_code"] = static_cast<int>(type);
+        return;
     }
 
-    /* if (!strcmp(name, "K2-309 Ad"))
-        std::cout << name << " has mass " << mass << " vs. rocky cutoff " << rocky_mass_cutoff
-            << " density " << density
-            << std::endl; */
+    const double radius_earth = volumetric_mean_radius / earth_radius;
+    const bool dense_solid = (measured_density || lower_density_bound) && density >= 3.2 && mass < jupiter_mass;
+    bool solid = dense_solid || (valid_mass && mass < rocky_mass_cutoff && (!measured_radius || radius_earth <= 1.8)) ||
+        (!valid_mass && measured_radius && radius_earth <= 1.8);
+    classification_evidence["basis"] = measured_density ? "observed_mass_and_radius" : lower_density_bound
+        ? "minimum_mass_and_observed_radius" : measured_radius ? "observed_radius" : "mass_with_radius_unavailable_or_estimated";
 
-    if (orbit && orbit->center && orbit->center->typeclass() == class_star)
-        s = (Star*) orbit->center;
-
-    double Teq = equilibrium_temperature();
-    double T = estimate_surface_temperature();
-    if (mass < rocky_mass_cutoff                    // Mass cutoff between rocky planets and ice giants
-        || (mass < jupiter_mass && mnrk && density > rocky_density_cutoff)
-        )
+    if (host && valid_mass && mass_evidence == PlanetMeasurement::observed && !measured_radius && typeclass() == class_planet)
     {
-        if (mnrk && T < water_freezing && density > 0 && density < rocky_density_cutoff) type = icy;
-        else if (T > lava_T_cutoff)
+        const double relative_error = std::isfinite(mass_error_upper) && std::isfinite(mass_error_lower)
+            ? fmax(fabs(mass_error_upper), fabs(mass_error_lower)) / mass : NAN;
+        const MetallicityPrior prior = planet_envelope_prior(*host, mass / earth_mass, irradiation, relative_error);
+        classification_evidence["metallicity_model"] = prior.reason;
+        if (prior.applicable)
         {
-            type = lavaworld;
-            #if debug_planet_class_color
-            std::cout << name << " classified as lavaworld on basis of mass " << (mass/earth_mass)
-                << ", density " << density
-                << ", and temp " << T
-                << "." << std::endl;
-            #endif
-        }
-        else if (T > water_freezing)
-        {
-            type = rocky;
-            #if debug_planet_class_color
-            std::cout << name << " classified as rocky on basis of mass " << (mass/earth_mass)
-                << ", density " << density
-                << ", and temp " << T
-                << "." << std::endl;
-            #endif
-        }
-        else
-        {
-            type = icy;
-            #if debug_planet_class_color
-            std::cout << name << " classified as rocky on basis of mass " << (mass/earth_mass)
-                << ", density " << density
-                << ", and temp " << T
-                << "." << std::endl;
-            #endif
-        }
-    }
-    else if (orbit && orbit->period < oneday*10)
-    {
-        type = hot_jupiter;
-        if (s) s->has_hot_jupiter = true;
-        #if debug_planet_class_color
-        std::cout << name << " classified as hot jupiter on basis of orbit period " << (orbit->period/oneday)
-            << "." << std::endl;
-        #endif
-    }
-    else if (Teq >= 350 && Teq < 800)
-    {
-        // Sudarsky Class III: Too hot for water clouds, too cold for alkali/silicate clouds.
-        type = clearskies;
-        #if debug_planet_class_color
-        std::cout << name << " classified as rocky on basis of eq. temp " << Teq
-            << "." << std::endl;
-        #endif
-    }
-    else if (mass < giant_mass_cutoff               // Mass cutoff between ice giants and gas giants
-        && (!mnrk || density > giant_density_cutoff))
-    {
-        if (HZ)
-        {
-            // If system has a hot Jupiter, estimate a waterworld.
-            // https://doi.org/10.48550/arXiv.astro-ph/0701048
-            if (s && s->has_hot_jupiter && density > waterworld_min_density)
+            classification_evidence["baseline_large_radius_probability"] = prior.baseline;
+            classification_evidence["large_radius_probability"] = prior.probability;
+            // Change a marginal classification only when the validated baseline agrees with it.
+            if (solid == (prior.baseline < 0.5) && (prior.baseline < 0.5) != (prior.probability < 0.5))
             {
-                type = waterworld;
-                #if debug_planet_class_color
-                std::cout << name << " classified as waterworld on basis of mass " << mass
-                    << ", density " << density
-                    << ", habitable zone"
-                    << ", and presence of a hot jupiter in the system."
-                    << std::endl;
-                #endif
-            }
-            else
-            {
-                type = ice_giant;
-                #if debug_planet_class_color
-                std::cout << name << " classified as ice giant on basis of mass " << mass
-                    << ", density " << density
-                    << ", and habitable zone."
-                    << std::endl;
-                #endif
+                solid = prior.probability < 0.5;
+                classification_evidence["metallicity_applied"] = true;
             }
         }
+    }
+    else classification_evidence["metallicity_model"] = "direct_observations_or_no_eligible_host";
+
+    if (solid)
+    {
+        if (std::isfinite(surface_temperature) && surface_temperature > lava_T_cutoff) type = lavaworld;
         else
         {
-            type = ice_giant;
-            #if debug_planet_class_color
-            std::cout << name << " classified as ice giant on basis of mass " << mass
-                << " and density " << density
-                << "." << std::endl;
-            #endif
+            // Dense silicate bodies remain rocky in the cold; porous warm bodies can be rocky too.
+            const bool cold = std::isfinite(equilibrium) ? equilibrium < 170.0
+                : std::isfinite(surface_temperature) && surface_temperature < 170.0;
+            type = cold && !dense_solid ? icy : rocky;
         }
     }
     else
     {
-        type = gas_giant;
-        #if debug_planet_class_color
-        std::cout << name << " classified as gas giant after ruling out other types." << std::endl;
-        #endif
+        const bool giant = (valid_mass && mass >= giant_mass_cutoff) || (measured_radius && radius_earth >= 6.0);
+        if (!giant) type = ice_giant;
+        else if (stellar_orbit && stellar_orbit->period > 0 && stellar_orbit->period < 10 * oneday) type = hot_jupiter;
+        else if (std::isfinite(equilibrium) && equilibrium >= 350 && equilibrium < 800) type = clearskies;
+        else type = gas_giant;
     }
-
-    if (mass && !volumetric_mean_radius && !mnrk)
+    classification_evidence["class_code"] = static_cast<int>(type);
+    if (valid_mass && (!valid_radius || (radius_evidence == PlanetMeasurement::estimated && previous_type != type)))
     {
         estimate_radius();
-        cached_density = (mass / sphere_volume(volumetric_mean_radius) * 1e-6);
+        classification_evidence["radius_evidence"] = static_cast<int>(radius_evidence);
+        if (std::isfinite(volumetric_mean_radius) && volumetric_mean_radius > 0)
+            classification_evidence["density_g_cm3"] = mass / sphere_volume(volumetric_mean_radius) * 1e-6;
     }
-
-    if (!ck)
-    {
-        set_color_from_type(HZ);
-        classify(HZ, mnrk, true);                   // DANGER: recursion
-        set_color_from_type(HZ);
-        #if debug_planet_class_color
-        std::cout << name << " B-V color set to " << BV_color << " based on type." << std::endl;
-        #endif
-    }
+    if (!ck) set_color_from_type(HZ);
 }
 
 double alienorum::Planet::est_local_temp(double lat, double lon)
@@ -433,11 +422,12 @@ double alienorum::Planet::est_local_temp(double lat, double lon)
 
 void Planet::estimate_radius()
 {
+    radius_evidence = PlanetMeasurement::estimated;
     // https://doi.org/10.1051/0004-6361/202348690
-    if ((mass < rocky_mass_cutoff)
+    if ((mass < rocky_mass_cutoff && !uses_gaseous_map(type))
         || uses_rocky_map(type))
         volumetric_mean_radius = 1.02 * earth_radius * pow(mass/earth_mass, 0.27);
-    else if (mass < giant_mass_cutoff) volumetric_mean_radius = 0.56 * earth_radius * pow(mass/earth_mass, 0.67);
+    else if (mass < giant_mass_cutoff) volumetric_mean_radius = fmax(2.0, 0.56 * pow(mass/earth_mass, 0.67)) * earth_radius;
     else if (type == hot_jupiter)
     {
         double volume = mass / hot_jupiter_density;
@@ -1026,6 +1016,7 @@ bool Planet::is_in_con_HZ()
 Planet::Planet()
 {
     _class = class_planet;
+    type = rocky;
     BV_color = 1;
     UB_color = 0.5;
 }
@@ -1105,6 +1096,13 @@ bool Atmosphere::from_json(json j)
 json Planet::to_json()
 {
     json towrite = CelestialObject::to_json();
+    towrite["mass_evidence"] = static_cast<int>(mass_evidence);
+    towrite["radius_evidence"] = static_cast<int>(radius_evidence);
+    if (std::isfinite(mass_error_upper)) towrite["mass_error_upper"] = mass_error_upper;
+    if (std::isfinite(mass_error_lower)) towrite["mass_error_lower"] = mass_error_lower;
+    if (std::isfinite(radius_error_upper)) towrite["radius_error_upper"] = radius_error_upper;
+    if (std::isfinite(radius_error_lower)) towrite["radius_error_lower"] = radius_error_lower;
+    if (classification_evidence.is_object()) towrite["classification_evidence"] = classification_evidence;
 
     if (albedo) towrite["albedo"] = albedo;
     towrite["opposition_surge"] = opposition_surge;
@@ -1155,6 +1153,27 @@ json Planet::to_json()
 bool Planet::from_json(json j)
 {
     CelestialObject::from_json(j);
+    const auto evidence = [&](const char* key)
+    {
+        auto it = j.find(key);
+        if (it == j.end() || !it->is_number_integer()) return PlanetMeasurement::unknown;
+        const int value = it->get<int>();
+        return value >= 0 && value <= static_cast<int>(PlanetMeasurement::estimated)
+            ? static_cast<PlanetMeasurement>(value) : PlanetMeasurement::unknown;
+    };
+    mass_evidence = evidence("mass_evidence");
+    radius_evidence = evidence("radius_evidence");
+    const auto optional_number = [&](const char* key) -> double
+    {
+        auto it = j.find(key);
+        return it != j.end() && it->is_number() && std::isfinite(it->get<double>()) ? it->get<double>() : NAN;
+    };
+    mass_error_upper = optional_number("mass_error_upper");
+    mass_error_lower = optional_number("mass_error_lower");
+    radius_error_upper = optional_number("radius_error_upper");
+    radius_error_lower = optional_number("radius_error_lower");
+    classification_evidence = j.contains("classification_evidence") && j["classification_evidence"].is_object()
+        ? j["classification_evidence"] : json(nullptr);
     try { j.at("albedo").get_to(albedo); } catch (...) { ; }
     try
     {

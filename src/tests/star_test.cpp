@@ -13,6 +13,77 @@
 #include "../classes/wdlimb.h"
 
 using namespace alienorum;
+
+static json chemistry_bundle(bool relative)
+{
+    json bundle;
+    bundle["solar_scale"] = "asplund09";
+    bundle["solar"] = {{"Fe", 7.50}, {"Mg", 7.60}, {"Si", 7.51}, {"C", 8.43}, {"O", 8.69}};
+    for (const char* element : {"Fe", "Mg", "Si", "C", "O"})
+    {
+        const std::string symbol = element;
+        bundle["elements"][symbol] =
+        {
+            {"dex", 0.0}, {"error", 0.02}, {"quality", "accepted"},
+            {"ratio", "[" + symbol + (relative && symbol != "Fe" ? "/Fe]" : "/H]")}
+        };
+    }
+    return bundle;
+}
+
+TEST(StellarChemistryTest, SolarRatiosAndQualifiedProxyHavePropagatedErrors)
+{
+    Star star;
+    star.stellar_abundances["Hypatia"] = chemistry_bundle(false);
+    const json result = star.chemistry_diagnostics();
+    ASSERT_EQ(result.size(), 1u);
+    EXPECT_NEAR(result[0]["Fe_Mg"]["value"].get<double>(), pow(10.0, -0.10), 1e-12);
+    EXPECT_NEAR(result[0]["Mg_Si"]["value"].get<double>(), pow(10.0, 0.09), 1e-12);
+    EXPECT_NEAR(result[0]["C_O"]["value"].get<double>(), pow(10.0, -0.26), 1e-12);
+    EXPECT_GT(result[0]["primordial_iron_to_silicate_proxy"]["value"].get<double>(), 0.25);
+    EXPECT_LT(result[0]["primordial_iron_to_silicate_proxy"]["value"].get<double>(), 0.40);
+    EXPECT_GT(result[0]["primordial_iron_to_silicate_proxy"]["error"].get<double>(), 0);
+    EXPECT_TRUE(result[0]["primordial_iron_to_silicate_proxy"]["planetary_core_fraction"].is_null());
+    Star restored;
+    ASSERT_TRUE(restored.from_json(star.to_json()));
+    EXPECT_EQ(restored.stellar_abundances, star.stellar_abundances);
+    EXPECT_EQ(restored.chemistry_diagnostics(), result);
+}
+
+TEST(StellarChemistryTest, SharedIronReferenceCancelsInElementRatios)
+{
+    Star star;
+    star.stellar_abundances["GALAH DR4"] = chemistry_bundle(true);
+    star.stellar_abundances["GALAH DR4"]["elements"]["Fe"]["error"] = 0.5;
+    const json first = star.chemistry_diagnostics();
+    star.stellar_abundances["GALAH DR4"]["elements"]["Fe"]["dex"] = -0.4;
+    const json second = star.chemistry_diagnostics();
+    EXPECT_NEAR(first[0]["Mg_Si"]["value"].get<double>(), second[0]["Mg_Si"]["value"].get<double>(), 1e-12);
+    const double expected = log(10.0) * pow(10.0, 0.09) * sqrt(2 * 0.02 * 0.02);
+    EXPECT_NEAR(first[0]["Mg_Si"]["error"].get<double>(), expected, 1e-12);
+    EXPECT_NEAR(first[0]["Fe_Mg"]["error"].get<double>(), log(10.0) * pow(10.0, -0.1) * 0.02, 1e-12);
+}
+
+TEST(StellarChemistryTest, MissingElementsAndScalesDoNotCreateMixedSourceCompositions)
+{
+    Star star;
+    json first = chemistry_bundle(false), second = chemistry_bundle(false);
+    first["elements"].erase("Mg");
+    first["elements"].erase("Si");
+    first["elements"].erase("C");
+    first["elements"].erase("O");
+    second["elements"].erase("Fe");
+    second.erase("solar");
+    star.stellar_abundances["Hypatia"] = first;
+    star.stellar_abundances["GALAH DR4"] = second;
+    EXPECT_TRUE(star.chemistry_diagnostics().empty());
+    star.stellar_abundances["Hypatia"] = chemistry_bundle(false);
+    star.stellar_abundances["Hypatia"]["elements"]["Mg"]["error"] = nullptr;
+    const json result = star.chemistry_diagnostics();
+    ASSERT_EQ(result.size(), 1u);
+    EXPECT_TRUE(result[0]["Fe_Mg"]["error"].is_null());
+    EXPECT_TRUE(result[0]["primordial_iron_to_silicate_proxy"]["error"].is_null());
+}
 using json = nlohmann::json;
 
 TEST(WdLimbTest, ReconstructedProfilesPreserveIntegratedHue)

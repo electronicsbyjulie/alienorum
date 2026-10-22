@@ -3352,7 +3352,7 @@ bool draw_single_object(int i)
     
 
     labels_step:
-    Star *s = (cels[i]->type == star) ? (Star*)cels[i] : nullptr;
+    Star *s = cls == class_star ? static_cast<Star*>(cels[i]) : nullptr;
     Star *label_star = s;
     if (s && !obj_is_localsys && s->multisys)
     {
@@ -5574,15 +5574,25 @@ void draw_horizon()
             const double fademult = 255.0 / fadelength,
                 fademr = (double)(rgb.r - fader) / fadelength, fademg = (double)(rgb.g - fadeg) / fadelength;
 
-            for (j = 0; j <= hznodes; j++) if (hz_dx[j%hznodes] > -1e5 && hzheight[j%hznodes] > -1e5)
+            // The gaseous boundary is a smooth horizontal ring. Project its forward
+            // point directly; the first ring sample can lie near the camera plane
+            // and jump across the screen when the heading crosses west.
+            const double dip = acos(surface_radius / (surface_radius + surface_eye));
+            const double relative_elevation = -dip - altitude;
+            if (relative_elevation <= -half_pi)
             {
-                j1 = j%hznodes;
-                if (hzheight[j1] > -1e4)
-                {
-                    hz_y = hz_y1 = hzheight[j1];
-                    break;
-                }
+                hz_y = dispcy * 2;
             }
+            else if (relative_elevation >= half_pi)
+            {
+                hz_y = -fadelength;
+            }
+            else
+            {
+                // Once the fade ends above the viewport, paint the whole view.
+                hz_y = fmax(-fadelength, dispcy - tan(relative_elevation) * dispcx * zoom);
+            }
+            hz_y1 = hz_y;
             if (hz_y < dispcy*2)
             {
                 for (l=0; l<=fadelength; l++)

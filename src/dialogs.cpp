@@ -20,6 +20,7 @@
 #include "classes/clouds_gpu.h"
 #include <cstdint>
 #include <algorithm>
+#include <cctype>
 
 using namespace alienorum;
 
@@ -1794,9 +1795,20 @@ void draw_objedit_window(ImGuiIO& io)
 
             if (sma_res_picker)
             {
-                if (ImGui::BeginListBox("##sma_res_picker", ImVec2(col3+txtwid, txtwid*1.5)))
+                ImGui::Separator();
+                const ImGuiTableFlags flags = ImGuiTableFlags_Sortable | ImGuiTableFlags_SortTristate
+                    | ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp;
+                if (ImGui::BeginTable("##sma_res_picker", 5, flags,
+                    ImVec2(col3+txtwid*1.5, txtwid*1.5+ImGui::GetFrameHeight())))
                 {
-                    int i, j, l, m, n, resno = 0;
+                    ImGui::TableSetupColumn("Resonance with", ImGuiTableColumnFlags_None, 3.5f);
+                    ImGui::TableSetupColumn("Ratio", ImGuiTableColumnFlags_None, 0.7f);
+                    ImGui::TableSetupColumn("Period, d.", ImGuiTableColumnFlags_None, 1.25f);
+                    ImGui::TableSetupColumn("SMA, AU", ImGuiTableColumnFlags_None, 1.15f);
+                    ImGui::TableSetupColumn("HZ?", ImGuiTableColumnFlags_None, 0.45f);
+                    ImGui::TableSetupScrollFreeze(0, 1);
+                    ImGui::TableHeadersRow();
+                    int i, j, m, n;
                     std::vector<CelestialObject*> siblings;
                     for (i=0; cels[i]; i++) if (cels[i]->orbit && cels[i]->orbit->center == cel->orbit->center && cels[i] != cel)
                     {
@@ -1883,30 +1895,48 @@ void draw_objedit_window(ImGuiIO& io)
                             return a.semimajor_axis < b.semimajor_axis;
                         });
 
+                    // Candidates are rebuilt every frame, so apply the active order every time.
+                    ImGuiTableSortSpecs* sort = ImGui::TableGetSortSpecs();
+                    if (sort && sort->SpecsCount)
+                    {
+                        const ImGuiTableColumnSortSpecs spec = sort->Specs[0];
+                        std::stable_sort(candidates.begin(), candidates.end(),
+                            [spec](const CandidatePeriod& a, const CandidatePeriod& b)
+                            {
+                                int comparison = 0;
+                                if (spec.ColumnIndex == 0)
+                                {
+                                    std::string first = a.sibling->name, second = b.sibling->name;
+                                    const auto lowercase = [](unsigned char c) { return std::tolower(c); };
+                                    std::transform(first.begin(), first.end(), first.begin(), lowercase);
+                                    std::transform(second.begin(), second.end(), second.begin(), lowercase);
+                                    comparison = first.compare(second);
+                                }
+                                else
+                                {
+                                    double first = 0, second = 0;
+                                    switch (spec.ColumnIndex)
+                                    {
+                                        case 1: first = static_cast<double>(a.n) / a.m; second = static_cast<double>(b.n) / b.m; break;
+                                        case 2: first = a.period; second = b.period; break;
+                                        case 3: first = a.semimajor_axis; second = b.semimajor_axis; break;
+                                        case 4: first = a.in_hz; second = b.in_hz; break;
+                                    }
+                                    comparison = (first > second) - (first < second);
+                                }
+                                return spec.SortDirection == ImGuiSortDirection_Ascending ? comparison < 0 : comparison > 0;
+                            });
+                        sort->SpecsDirty = false;
+                    }
+
                     n = candidates.size();
                     for (i=0; i<n; i++)
                     {
                         CandidatePeriod &cand = candidates[i];
-                        std::string line = cand.sibling->name;
-                        l = 42 - line.size();
-                        if (l > 0) line += std::string(l, ' ');
-
-                        line += std::to_string(cand.n) + std::string(":") + std::to_string(cand.m);
-                        l = 50 - line.size();
-                        if (l > 0) line += std::string(l, ' ');
-
-                        line += std::to_string(cand.period / oneday);
-                        l = 64 - line.size();
-                        if (l > 0) line += std::string(l, ' ');
-
-                        const double candsma = cand.semimajor_axis / AU;
-                        line += std::to_string(candsma);
-                        l = 73 - line.size();
-                        if (l > 0) line += std::string(l, ' ');
-
-                        if (cand.in_hz) line += "HZ";
-                        
-                        if (ImGui::Selectable(line.c_str(), false))
+                        ImGui::TableNextRow();
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::PushID(i);
+                        if (ImGui::Selectable(cand.sibling->name, false, ImGuiSelectableFlags_SpanAllColumns))
                         {
                             cel->orbit->period = cand.period;
                             cel->orbit->compute_semimajor_axis(cel->mass);
@@ -1918,10 +1948,20 @@ void draw_objedit_window(ImGuiIO& io)
                                 || cel->typeclass() == class_moon               // See Kepler-1625b.
                                 ) ((Planet*)cel)->classify(((Planet*)cel)->is_in_con_HZ(), true);
                         }
+                        ImGui::PopID();
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("%d:%d", cand.n, cand.m);
+                        ImGui::TableSetColumnIndex(2);
+                        ImGui::Text("%.6f", cand.period / oneday);
+                        ImGui::TableSetColumnIndex(3);
+                        ImGui::Text("%.6f", cand.semimajor_axis / AU);
+                        ImGui::TableSetColumnIndex(4);
+                        ImGui::TextUnformatted(cand.in_hz ? "HZ" : "");
                     }
 
-                    ImGui::EndListBox();
+                    ImGui::EndTable();
                 }
+                ImGui::Separator();
             }
 
             if (((!rp && !ra) || (ra >= rp)) && orb->eccentricity >= 0 && orb->eccentricity < 1)
