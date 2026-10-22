@@ -1,5 +1,7 @@
 
-If surface temperature is too cold for any of the atmospheric gases that are present to stay gaseous, then those gases should be limited to at most trace amounts in the atmosphere, and in most cases to zero. If the surface temperature is too cold for any gases, then the atmospheric pressure should be zero, irrespective of cosmic shoreline. This reduction of cold atmospheres will further lower the surface pressure, so it will be important to find the values where the feedback loop converges.
+FIXED (2026-10-22): Surface atmospheres now condense gases above their saturation partial pressures and iterate pressure, composition, and greenhouse temperature to convergence. Negligible residual atmospheres become vacuum, including after cosmic-shoreline estimates.
+
+Original request: If surface temperature is too cold for any of the atmospheric gases that are present to stay gaseous, then those gases should be limited to at most trace amounts in the atmosphere, and in most cases to zero. If the surface temperature is too cold for any gases, then the atmospheric pressure should be zero, irrespective of cosmic shoreline. This reduction of cold atmospheres will further lower the surface pressure, so it will be important to find the values where the feedback loop converges.
 
 FIXED (2026-10-22): New stellar planets and the HZ button use the conservative habitable zone. The orbit editor warns about close or crossing planetary orbits, and the resonance picker filters choices using the same spacing check.
 
@@ -11,3 +13,4 @@ FIXED (2026-10-22): WD and Sunlike filters are mutually exclusive; white-dwarf r
 
 Original request: Add WD (for white dwarf) as an option in Stellar Neighborhood, mutually exclusive with Sunlike: selecting one deselects the other. Show each white dwarf's color in its list entry if possible.
 
+WD1330+6435 cannot be found by that ID or by its synonyms WD1328+648, WD1330+643, or its LHS number. THIS IS A REGRESSION. Recall that white dwarfs must be findable by all their IDs.

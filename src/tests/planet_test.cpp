@@ -1741,3 +1741,72 @@ TEST(OrbitalSpacingTest, ScreensCloseCrossingAndMassiveOrbits)
     EXPECT_FALSE(orbital_spacing_warning(AU, 0, earth_mass, 1.2 * AU, 0, earth_mass, solar_mass));
     EXPECT_FALSE(orbital_spacing_warning(0, 0, earth_mass, AU, 0, earth_mass, solar_mass));
 }
+
+TEST_F(PlanetClassificationEvidenceTest, ColdAtmospheresCondenseAndConverge)
+{
+    Planet* world = make_planet(make_star());
+    Atmosphere* air = world->ensure_atmosphere();
+    AtmosphereComposition* gases = air->ensure_composition();
+    air->surface_pressure = oneatm;
+    gases->N2_portion = 0.99;
+    gases->CO2_portion = 0.01;
+    const double cold = world->condense_atmosphere(35, 35);
+    EXPECT_LT(air->surface_pressure, 1.0);
+    EXPECT_DOUBLE_EQ(gases->CO2_portion, 0);
+    EXPECT_NEAR(cold, 35, 0.1);
+    const double pressure = air->surface_pressure;
+    EXPECT_NEAR(world->condense_atmosphere(35, cold), cold, 1e-6);
+    EXPECT_NEAR(air->surface_pressure, pressure, 1e-6);
+    world->condense_atmosphere(2, 2);
+    EXPECT_DOUBLE_EQ(air->surface_pressure, 0);
+    EXPECT_DOUBLE_EQ(gases->N2_portion, 0);
+    EXPECT_DOUBLE_EQ(air->tau, 0);
+}
+
+TEST_F(PlanetClassificationEvidenceTest, CondensationRetainsWarmAirAndRespectsPartialPressure)
+{
+    Planet* world = make_planet(make_star());
+    Atmosphere* air = world->ensure_atmosphere();
+    AtmosphereComposition* gases = air->ensure_composition();
+    air->surface_pressure = oneatm;
+    gases->N2_portion = 0.78;
+    gases->O2_portion = 0.21;
+    gases->Ar_portion = 0.01;
+    EXPECT_NEAR(world->condense_atmosphere(288, 288), 288, 1e-6);
+    EXPECT_NEAR(air->surface_pressure, oneatm, 1e-6);
+    gases->N2_portion = 0.999;
+    gases->O2_portion = gases->Ar_portion = 0;
+    gases->CO2_portion = 0.001;
+    world->condense_atmosphere(180, 180);
+    EXPECT_NEAR(air->surface_pressure, oneatm, 1e-6);
+    EXPECT_NEAR(gases->CO2_portion, 0.001, 1e-9);
+}
+
+TEST_F(PlanetClassificationEvidenceTest, CondensationRecalculatesGreenhouseCooling)
+{
+    Planet* world = make_planet(make_star());
+    Atmosphere* air = world->ensure_atmosphere();
+    AtmosphereComposition* gases = air->ensure_composition();
+    air->surface_pressure = 5 * oneatm;
+    gases->CO2_portion = 1;
+    const double final_k = world->condense_atmosphere(100, 170);
+    EXPECT_LT(final_k, 110);
+    EXPECT_LT(air->surface_pressure, 100);
+    const double pressure = air->surface_pressure;
+    EXPECT_NEAR(world->condense_atmosphere(100, final_k), final_k, 1e-6);
+    EXPECT_NEAR(air->surface_pressure, pressure, 1e-6);
+}
+
+TEST_F(PlanetClassificationEvidenceTest, TemperatureQueriesApplyColdLimitsWithoutRestoringFrozenGases)
+{
+    Planet* world = make_planet(make_star(), "Frozen atmosphere", 100 * AU);
+    Atmosphere* air = world->ensure_atmosphere();
+    air->surface_pressure = oneatm;
+    air->ensure_composition()->N2_portion = 1;
+    EXPECT_TRUE(std::isfinite(world->estimate_surface_temperature()));
+    EXPECT_LT(air->surface_pressure, 0.1);
+    world->condense_atmosphere(2, 2);
+    air->surface_pressure = oneatm;
+    EXPECT_DOUBLE_EQ(world->condense_atmosphere(2, 2), 2);
+    EXPECT_DOUBLE_EQ(air->surface_pressure, 0);
+}

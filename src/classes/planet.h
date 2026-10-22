@@ -85,6 +85,7 @@ namespace alienorum
         double estimate_bond_albedo();                      // for want of an actual parameter.
         double equilibrium_temperature();
         double estimate_surface_temperature();
+        double condense_atmosphere(double equilibrium_k, double surface_k);
         double temperature_at_pressure(double pressure_pa);  // Same greenhouse formula, at an arbitrary reference level.
         bool set_habitable_orbit();
         bool is_in_con_HZ();                                // True if planet is within the conservative habitable zone.

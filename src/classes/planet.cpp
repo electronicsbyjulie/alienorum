@@ -24,6 +24,9 @@ void alienorum::Planet::setup_atm_ring_props()
     if (estimate_habitability() && type != hycean) ensure_atmosphere()->ensure_composition()->generate_fictitious_habitable();
     else ensure_atmosphere()->ensure_composition()->generate_fictitious_for_planet(type);
 
+    temperature = 0;
+    estimate_surface_temperature();
+
     if (typeclass() == class_planet)
     {
         generate_ring_parameters();
@@ -43,7 +46,9 @@ void alienorum::Planet::apply_cosmic_shoreline()
         double shoreline = CosmicShore::calculate_unified_metric(*(Star*)plc, *this);
         double max_atm_pressure = (shoreline < 0) ? 0 : (pow(10, shoreline) * 503);
         if (isinf(max_atm_pressure)) max_atm_pressure = 0;
-        ensure_atmosphere()->surface_pressure = /*cel_frand(0.1, 1) **/ max_atm_pressure;
+        ensure_atmosphere()->surface_pressure = max_atm_pressure;
+        temperature = 0;
+        estimate_surface_temperature();
     }
 }
 
@@ -709,7 +714,91 @@ double Planet::estimate_surface_temperature()
 {
     if (temperature) return temperature;
     if (uses_gaseous_map(type)) return temperature = equilibrium_temperature();         // For gas giants, just give equilibrium temp.
-    return temperature = temperature_at_pressure(get_surface_pressure());
+    const double surface_k = temperature_at_pressure(get_surface_pressure());
+    return temperature = condense_atmosphere(equilibrium_temperature(), surface_k);
+}
+
+double Planet::condense_atmosphere(double equilibrium_k, double surface_k)
+{
+    if (!atm || !atm->comp || uses_gaseous_map(type) || !(atm->surface_pressure > 0)
+        || !std::isfinite(atm->surface_pressure) || !std::isfinite(surface_k) || surface_k <= 0)
+        return surface_k;
+
+    // Clausius-Clapeyron screening with rounded phase constants in K and J/mol.
+    // Below the triple point, include fusion in the sublimation enthalpy.
+    // Phase data: https://webbook.nist.gov/chemistry/ (Phase change data).
+    struct Phase
+    {
+        double AtmosphereComposition::*portion;
+        double reference_k, reference_pa, triple_k, critical_k, vapor_j, fusion_j;
+    };
+    static const Phase phases[] =
+    {
+        {&AtmosphereComposition::H2_portion, 20.37, oneatm, 13.8, 33.15, 904, 117},
+        {&AtmosphereComposition::He_portion, 4.22, oneatm, 0, 5.20, 83, 0},
+        {&AtmosphereComposition::N2_portion, 77.36, oneatm, 63.15, 126.19, 5560, 720},
+        {&AtmosphereComposition::O2_portion, 90.19, oneatm, 54.36, 154.58, 6820, 444},
+        {&AtmosphereComposition::O3_portion, 161.3, oneatm, 80.7, 261, 15200, 2100},
+        {&AtmosphereComposition::CO2_portion, 216.59, 518500, 216.59, 304.13, 16000, 9000},
+        {&AtmosphereComposition::CH4_portion, 111.66, oneatm, 90.69, 190.56, 8200, 940},
+        {&AtmosphereComposition::SO2_portion, 263.05, oneatm, 197.7, 430.64, 24900, 7400},
+        {&AtmosphereComposition::H2O_portion, 273.16, 611.657, 273.16, 647.10, 45050, 6010},
+        {&AtmosphereComposition::H2S_portion, 212.85, oneatm, 187.6, 373.1, 18700, 2400},
+        {&AtmosphereComposition::HCN_portion, 298.85, oneatm, 259.9, 456.7, 25200, 8400},
+        {&AtmosphereComposition::NH3_portion, 239.82, oneatm, 195.4, 405.4, 23350, 5650},
+        {&AtmosphereComposition::C2H6_portion, 184.55, oneatm, 90.35, 305.32, 14700, 2720},
+        {&AtmosphereComposition::N2O_portion, 184.67, oneatm, 182.3, 309.52, 16500, 6540},
+        {&AtmosphereComposition::CO_portion, 81.64, oneatm, 68.15, 132.86, 6040, 840},
+        {&AtmosphereComposition::Ar_portion, 87.30, oneatm, 83.81, 150.69, 6430, 1180}
+    };
+    AtmosphereComposition& composition = *atm->comp;
+    composition.enforce_integrity();
+    double partial[16], total_fraction = 0;
+    for (int i = 0; i < 16; ++i)
+    {
+        const double fraction = composition.*(phases[i].portion);
+        total_fraction += fraction;
+        partial[i] = atm->surface_pressure * fraction;
+    }
+    if (!(total_fraction > 0))
+    {
+        atm->surface_pressure = atm->tau = 0;
+        return equilibrium_k;
+    }
+    // Preserve unspecified constituents; do not manufacture a gas to fill a catalog gap.
+    const double unspecified = atm->surface_pressure * std::max(0.0, 1.0 - total_fraction);
+    for (int iteration = 0; iteration < 256; ++iteration)
+    {
+        const double previous_pressure = atm->surface_pressure;
+        double pressure = unspecified;
+        for (int i = 0; i < 16; ++i)
+        {
+            const Phase& phase = phases[i];
+            if (surface_k < phase.critical_k && partial[i] > 0)
+            {
+                double exponent = phase.vapor_j / 8.314462618
+                    * (1.0 / phase.reference_k - 1.0 / surface_k);
+                if (surface_k < phase.triple_k)
+                    exponent += phase.fusion_j / 8.314462618
+                        * (1.0 / phase.triple_k - 1.0 / surface_k);
+                const double saturation = phase.reference_pa * std::exp(std::min(700.0, exponent));
+                partial[i] = std::min(partial[i], saturation);
+                if (partial[i] < 1e-8) partial[i] = 0;
+            }
+            pressure += partial[i];
+        }
+        if (pressure < 1e-6) pressure = 0;
+        atm->surface_pressure = pressure;
+        for (int i = 0; i < 16; ++i)
+            composition.*(phases[i].portion) = pressure > 0 ? partial[i] / pressure : 0;
+        atm->calculate_tau(pressure);
+        const double next_k = equilibrium_k * std::pow(1.0 + 1.8 * atm->tau, 0.25);
+        const bool converged = std::abs(previous_pressure - pressure) <= 1e-9 * std::max(1.0, previous_pressure)
+            && std::abs(next_k - surface_k) < 1e-7;
+        surface_k = next_k;
+        if (converged || pressure == 0) break;
+    }
+    return surface_k;
 }
 
 double Planet::temperature_at_pressure(double pressure_pa)
