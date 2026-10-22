@@ -83,6 +83,7 @@ namespace alienorum
         static bool load_comet(CometRow *r, char *buffer = nullptr);            // Same bargain as load_asteroid: pass the line if you already have it, or let it go find the line itself.
         int read_comets_catalog(CelestialObject** cels, int max);
         unsigned int load_exoplanets_from_tap(bool stars_only = false);         // If stars_only, just verify stars/add new stars don't attempt planets.
+        Star* resolve_saved_host(const std::string& name, unsigned int max, ExactStarSearchIndex* lookup);
         int read_exoplanets_catalog(CelestialObject** cels, int max);           // Old method requiring manual download
         static void reconcile_exoplanet_inclinations(Star* host_star, const std::vector<Planet*>& planets, std::vector<double>& pincls, std::vector<double>& pnodes);
         static void dedup_planets(json& planets_array);

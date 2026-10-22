@@ -584,13 +584,12 @@ double Planet::phase_brightness(double alpha)
 
 double Planet::viewer_reflectance_magnitude(CelestialLocation seen_from, double phase, double sourcemagn, double sourcedist)
 {
-    if (!orbit)
-    {
-        std::cerr << "Called viewer_reflectance_magnitude on an object without a center of orbit." << std::endl;
-        throw 0xbadc0de;
-    }
-
     CelestialObject *light_center = get_light_center();
+    if (!light_center)
+    {
+        amt_lit = 0;
+        return INFINITY;
+    }
 
     double r = seen_from.distance_to(location) * invAU;
     double rcen = sourcedist ? sourcedist : (location.distance_to(light_center->location) * invAU);
@@ -1080,16 +1079,14 @@ double alienorum::Planet::atmospheric_horizon_lift()
 
 double alienorum::Planet::mean_instellation()
 {
-    CelestialObject *distancer = this;
+    CelestialObject* lumcen = get_light_center();
+    if (!lumcen) return 0;
+    CelestialObject* distancer = this;
+    while (distancer->orbit && distancer->orbit->center != lumcen)
+        distancer = distancer->orbit->center;
+    if (!distancer->orbit || !distancer->orbit->center) return 0;
+    double mean_dist;
 
-    // Similar algorithm to get_light_center(), but bated one step back.
-    while (distancer->orbit && distancer->orbit->center && distancer->orbit->center->type != star) distancer = distancer->orbit->center;
-    CelestialObject *lumcen = distancer->orbit->center;                     // what would have been the last step if we had used the light center function.
-    assert(lumcen == get_light_center());
-
-    double mean_dist;                                                                       // meters
-
-    if (!distancer->orbit) return 0;
     if (!distancer->orbit->semimajor_axis) distancer->orbit->compute_semimajor_axis(distancer->mass);
     if (!distancer->orbit->semimajor_axis) mean_dist = location.distance_to(distancer->orbit->center->location);
     else mean_dist = distancer->orbit->semimajor_axis;

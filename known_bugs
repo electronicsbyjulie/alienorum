@@ -1,3 +1,7 @@
+FIXED (2026-10-22): Universe JSON loading resolves parent names and catalog aliases after parsing all records, imports referenced illumination stars from local exoplanet caches when loading is deferred, and rejects unresolved or circular links before applying saved edits. Record, class, capacity, and stellar text checks protect imports; repeated loads preserve object identity. Missing optional timestamp files no longer throw. The original private save reaches rendering; 202 related tests pass and the loading tests report zero Valgrind errors.
+
+Original request: Make universe JSON loading robust through both the file dialog and command line, and correctly identify illumination stars.
+
 FIXED (2026-10-22): Cosmic-shoreline pressure estimates saturate at 1,000 bar (1e8 Pa), an explicit simulation ceiling. The exponent is bounded before evaluation, so extreme retention cannot overflow into vacuum. Invalid scores produce zero; phase condensation can still reduce the bounded pressure. Thirty atmosphere, classification, and shoreline checks pass.
 
 Original request: Cap the cosmic shoreline calculation to prevent extreme generated surface pressures.

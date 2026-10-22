@@ -1664,25 +1664,25 @@ bool Star::from_json(json j)
     {
         std::string str;
         j.at("spectral_type").get_to(str);
-        strcpy(spectral_type, str.c_str());
+        snprintf(spectral_type, sizeof(spectral_type), "%s", str.c_str());
     } catch (...) { ; }
     try
     {
         std::string str;
         j.at("Bayer").get_to(str);
-        strcpy(Bayer, str.c_str());
+        snprintf(Bayer, sizeof(Bayer), "%s", str.c_str());
     } catch (...) { ; }
     try
     {
         std::string str;
         j.at("Flamsteed").get_to(str);
-        strcpy(Flamsteed, str.c_str());
+        snprintf(Flamsteed, sizeof(Flamsteed), "%s", str.c_str());
     } catch (...) { ; }
     try
     {
         std::string str;
         j.at("Gliese").get_to(str);
-        strcpy(Gliese, str.c_str());
+        snprintf(Gliese, sizeof(Gliese), "%s", str.c_str());
     } catch (...) { ; }
     try { j.at("HR").get_to(HR); } catch (...) { ; }
     try { j.at("HD").get_to(HD); } catch (...) { ; }
@@ -1750,7 +1750,7 @@ bool Star::from_json(json j)
     {
         std::string str;
         j.at("Bonn_survey").get_to(str);
-        strcpy(Bonn_survey, str.c_str());
+        snprintf(Bonn_survey, sizeof(Bonn_survey), "%s", str.c_str());
     } catch (...) { ; }
     try
     {

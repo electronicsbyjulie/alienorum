@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <gtest/gtest.h>
 #include "../classes/cons.h"
+#include "../classes/cat.h"
 #include "../loaders.h"
 #include "universe_fixture.h"
 
@@ -61,6 +62,261 @@ class SerializationTest : public UniverseFixture
         return nullptr;
     }
 };
+
+TEST_F(SerializationTest, LinksForwardReferencesAndFindsTheIlluminationStar)
+{
+    Star* host = make_star("Zulu Primary");
+    Planet* world = make_planet(host, "Alpha Planet");
+    json records = {{"a", world->to_json()}, {"z", host->to_json()}};
+    write_file("forward_links", records);
+    delete_the_universe();
+    ASSERT_TRUE(load_file("forward_links"));
+    CelestialObject* loaded = find_loaded("Alpha Planet");
+    ASSERT_NE(loaded, nullptr);
+    ASSERT_NE(loaded->orbit, nullptr);
+    EXPECT_EQ(loaded->orbit->center, find_loaded("Zulu Primary"));
+    EXPECT_EQ(loaded->get_light_center(), find_loaded("Zulu Primary"));
+    EXPECT_EQ(loaded->cenobj, find_loaded("Zulu Primary"));
+    delete_the_universe();
+}
+
+TEST_F(SerializationTest, ResolvesAParentThroughItsCatalogAlias)
+{
+    Star* host = make_star("Catalog Display Name");
+    host->add_catalog_alias("Saved Host Identifier");
+    Planet* world = make_planet(host, "Saved Planet");
+    world->ensure_atmosphere()->ensure_composition()->CO2_portion = 0.9;
+    json record = world->to_json();
+    record["orbit"]["center_name"] = "Saved Host Identifier";
+    write_file("alias_parent", {{"planet", record}});
+    ASSERT_TRUE(load_file("alias_parent"));
+    ASSERT_TRUE(load_file("alias_parent"));
+    EXPECT_EQ(ncelobjs, 2);
+    EXPECT_EQ(world->orbit->center, host);
+    EXPECT_EQ(world->get_light_center(), host);
+    ASSERT_NE(world->atm, nullptr);
+    ASSERT_NE(world->atm->comp, nullptr);
+    EXPECT_DOUBLE_EQ(world->atm->comp->CO2_portion, 0.9);
+    delete_the_universe();
+}
+
+TEST_F(SerializationTest, ResolvesAliasesDefinedLaterInTheSameSave)
+{
+    Star* host = make_star("Zulu Primary");
+    host->add_catalog_alias("Saved Host Identifier");
+    Planet* world = make_planet(host, "Alpha Planet");
+    json record = world->to_json();
+    record["orbit"]["center_name"] = "Saved Host Identifier";
+    write_file("forward_alias", {{"a", record}, {"z", host->to_json()}});
+    delete_the_universe();
+    ASSERT_TRUE(load_file("forward_alias"));
+    EXPECT_EQ(find_loaded("Alpha Planet")->get_light_center(), find_loaded("Zulu Primary"));
+    delete_the_universe();
+}
+
+TEST_F(SerializationTest, LegacyIdentityDefaultsRemainStableAcrossRepeatedLoads)
+{
+    Star* host = make_star("Primary");
+    Planet* world = make_planet(host, "Planet");
+    json star_record = host->to_json(), planet_record = world->to_json();
+    for (json* record : {&star_record, &planet_record})
+    {
+        record->erase("!origname");
+        record->erase("!origcenname");
+    }
+    write_file("legacy_identity", {{"a", planet_record}, {"z", star_record}});
+    delete_the_universe();
+    ASSERT_TRUE(load_file("legacy_identity"));
+    ASSERT_TRUE(load_file("legacy_identity"));
+    EXPECT_EQ(ncelobjs, 2);
+    EXPECT_EQ(find_loaded("Planet")->get_light_center(), find_loaded("Primary"));
+    delete_the_universe();
+}
+
+TEST_F(SerializationTest, SharedLoaderWorksWithoutTheDefaultSaveOrOrbitCatalog)
+{
+    const auto root = std::filesystem::temp_directory_path() / "alienorum_shared_json_loader";
+    std::filesystem::create_directories(root);
+    struct RestoreDirectory
+    {
+        std::filesystem::path previous = std::filesystem::current_path();
+        ~RestoreDirectory() { std::filesystem::current_path(previous); }
+    } restore;
+    Star* host = make_star("Primary");
+    Planet* world = make_planet(host, "Planet");
+    write_file("shared_entry", {{"planet", world->to_json()}, {"star", host->to_json()}});
+    std::filesystem::current_path(root);
+    ASSERT_TRUE(load_universe(temp_universe("shared_entry")));
+    ASSERT_TRUE(load_universe(temp_universe("shared_entry")));
+    EXPECT_EQ(ncelobjs, 2);
+    EXPECT_EQ(world->get_light_center(), host);
+    delete_the_universe();
+    std::filesystem::current_path(restore.previous);
+    std::filesystem::remove_all(root);
+}
+
+TEST_F(SerializationTest, ImportsOnlyTheReferencedHostFromTheLocalCache)
+{
+    struct CacheAccess : CatalogReader
+    {
+        using CatalogReader::exorow_write_line;
+    };
+    const auto root = std::filesystem::temp_directory_path() / "alienorum_saved_host_catalog";
+    std::filesystem::create_directories(root / "catalogs");
+    struct RestoreDirectory
+    {
+        std::filesystem::path previous = std::filesystem::current_path();
+        ~RestoreDirectory() { std::filesystem::current_path(previous); }
+    } restore;
+    ExoRow row;
+    row.hostname = "Cached Primary";
+    row.pl_name = "Cached Primary b";
+    row.ra = 61;
+    row.dec = 20;
+    row.sy_dist = 108;
+    row.sy_vmag = 10.1;
+    row.st_teff = 4970;
+    row.st_mass = 1.1;
+    row.st_rad = 1.3;
+    FILE* file = fopen((root / "catalogs" / "exoplanets_stars.dat").string().c_str(), "w");
+    ASSERT_NE(file, nullptr);
+    CacheAccess::exorow_write_line(file, row);
+    row.hostname = "Unrelated Cached Primary";
+    CacheAccess::exorow_write_line(file, row);
+    fclose(file);
+    Planet world;
+    strcpy(world.name, "Saved World");
+    world.origname = world.name;
+    world.mass = earth_mass;
+    world.volumetric_mean_radius = earth_radius;
+    Star source;
+    strcpy(source.name, "Cached Primary");
+    world.orbit = new Orbit();
+    world.orbit->center = &source;
+    world.orbit->center_name = "Cached Primary";
+    world.orbit->semimajor_axis = AU;
+    world.orbit->period = oneyear;
+    write_file("cached_parent", {{"world", world.to_json()}});
+    std::filesystem::current_path(root);
+    ASSERT_TRUE(load_file("cached_parent"));
+    ASSERT_EQ(ncelobjs, 2);
+    CelestialObject* loaded = find_loaded("Saved World");
+    Star* host = static_cast<Star*>(find_loaded("Cached Primary"));
+    ASSERT_NE(loaded, nullptr);
+    ASSERT_NE(host, nullptr);
+    EXPECT_EQ(loaded->get_light_center(), host);
+    EXPECT_DOUBLE_EQ(host->mass, 1.1 * solar_mass);
+    EXPECT_DOUBLE_EQ(host->distance, 108 * parsec);
+    EXPECT_EQ(find_loaded("Unrelated Cached Primary"), nullptr);
+    EXPECT_TRUE(std::isfinite(static_cast<Planet*>(loaded)->viewer_reflectance_magnitude(CelestialLocation())));
+    delete_the_universe();
+    std::filesystem::current_path(restore.previous);
+    std::filesystem::remove_all(root);
+}
+
+TEST_F(SerializationTest, MissingParentRejectsTheSaveBeforeApplyingEdits)
+{
+    Star* host = make_star("Existing Primary");
+    Planet* world = make_planet(host, "Existing Planet");
+    Orbit* original_orbit = world->orbit;
+    json record = world->to_json();
+    record["!name"] = "Changed Planet";
+    record["orbit"]["center_name"] = "Absent Catalog Host";
+    write_file("missing_parent", {{"world", record}});
+    EXPECT_FALSE(load_file("missing_parent"));
+    EXPECT_EQ(ncelobjs, 2);
+    EXPECT_STREQ(world->name, "Existing Planet");
+    EXPECT_EQ(world->orbit, original_orbit);
+    EXPECT_EQ(world->get_light_center(), host);
+    delete_the_universe();
+}
+
+TEST_F(SerializationTest, InvalidRecordsDoNotPartiallyRenameLiveObjects)
+{
+    Star* host = make_star("Existing Primary");
+    json valid = host->to_json();
+    valid["!name"] = "Changed Primary";
+    for (const json& invalid : {json(3), json{{"!name", "Bad"}, {"typeclass", 999}}})
+    {
+        write_file("invalid_record", {{"a", valid}, {"z", invalid}});
+        EXPECT_FALSE(load_file("invalid_record"));
+        EXPECT_STREQ(host->name, "Existing Primary");
+        EXPECT_EQ(ncelobjs, 1);
+    }
+    write_file("invalid_root", json::array());
+    EXPECT_FALSE(load_file("invalid_root"));
+    delete_the_universe();
+}
+
+TEST_F(SerializationTest, CircularParentsAreRejectedBeforeInstallingLinks)
+{
+    Star* host = make_star("Existing Primary");
+    Planet* first = make_planet(host, "First");
+    Planet* second = make_planet(host, "Second");
+    json a = first->to_json(), b = second->to_json();
+    a["orbit"]["center_name"] = "Second";
+    b["orbit"]["center_name"] = "First";
+    write_file("circular_parents", {{"a", a}, {"b", b}});
+    EXPECT_FALSE(load_file("circular_parents"));
+    EXPECT_EQ(first->orbit->center, host);
+    EXPECT_EQ(second->orbit->center, host);
+    delete_the_universe();
+}
+
+TEST_F(SerializationTest, CapacityChecksAlsoCoverOrbitlessObjects)
+{
+    Star* host = make_star("Existing Primary");
+    json a = host->to_json(), b = a;
+    a["!name"] = a["!origname"] = "New Primary A";
+    b["!name"] = b["!origname"] = "New Primary B";
+    write_file("capacity", {{"a", a}, {"b", b}});
+    std::fstream input(temp_universe("capacity"), std::ios::in);
+    EXPECT_FALSE(Serialization::load_all(input, cels, 3));
+    EXPECT_EQ(ncelobjs, 1);
+    EXPECT_EQ(cels[1], nullptr);
+    delete_the_universe();
+}
+
+TEST_F(SerializationTest, LongStellarFieldsAreBoundedDuringImport)
+{
+    Star* host = make_star("Existing Primary");
+    json record = host->to_json();
+    for (const char* key : {"spectral_type", "Bayer", "Flamsteed", "Gliese", "Bonn_survey"})
+        record[key] = std::string(2048, 'A');
+    write_file("long_stellar_fields", {{"star", record}});
+    ASSERT_TRUE(load_file("long_stellar_fields"));
+    EXPECT_LT(strlen(host->spectral_type), sizeof(host->spectral_type));
+    EXPECT_LT(strlen(host->Gliese), sizeof(host->Gliese));
+    EXPECT_LT(strlen(host->Bonn_survey), sizeof(host->Bonn_survey));
+    delete_the_universe();
+}
+
+TEST_F(SerializationTest, BrokenAndCircularIlluminationChainsRemainSafe)
+{
+    Star* host = make_star("Primary");
+    Planet* world = make_planet(host);
+    Planet* moon = make_planet(host, "Nested Body");
+    moon->orbit->center = world;
+    delete world->orbit;
+    world->orbit = nullptr;
+    EXPECT_EQ(moon->get_light_center(), nullptr);
+    EXPECT_DOUBLE_EQ(moon->mean_instellation(), 0);
+    EXPECT_TRUE(std::isinf(moon->viewer_reflectance_magnitude(CelestialLocation())));
+    world->orbit = new Orbit();
+    world->orbit->center = moon;
+    EXPECT_EQ(moon->get_light_center(), nullptr);
+    world->orbit->center = host;
+    EXPECT_EQ(moon->get_light_center(), host);
+    Planet* last = moon;
+    for (int i = 0; i < 8; ++i)
+    {
+        Planet* nested = make_planet(host, ("Nested " + std::to_string(i)).c_str());
+        nested->orbit->center = last;
+        last = nested;
+    }
+    EXPECT_EQ(last->get_light_center(), host);
+    delete_the_universe();
+}
 
 // =====================================================================
 // Whole-universe round trip

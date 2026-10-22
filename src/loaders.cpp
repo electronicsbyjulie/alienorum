@@ -558,10 +558,11 @@ bool load_universe(std::string universe_fname)          // default is on the dec
             ncelobjs = i;
             refresh_star_visibilities();
 
-            std::filesystem::file_time_type ftime_json = std::filesystem::last_write_time("universe.json");
-            std::filesystem::file_time_type ftime_cat = std::filesystem::last_write_time("catalogs" _FILESLASH "star_orbits.dat");
+            std::error_code json_error, catalog_error;
+            const auto ftime_json = std::filesystem::last_write_time(universe_fname, json_error);
+            const auto ftime_cat = std::filesystem::last_write_time("catalogs" _FILESLASH "star_orbits.dat", catalog_error);
             bool resave_json = false;
-            if (ftime_cat > ftime_json)
+            if (!json_error && !catalog_error && ftime_cat > ftime_json)
             {
                 CatalogReader cr;
                 cr.read_star_orbits_dat(cels);

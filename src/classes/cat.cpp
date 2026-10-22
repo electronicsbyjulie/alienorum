@@ -7180,6 +7180,39 @@ static FixedStellarIdentifiers catalog_identifiers(const std::string& name)
     return found != stored.second.end() ? found->second : FixedStellarIdentifiers{};
 }
 
+Star* CatalogReader::resolve_saved_host(const std::string& name, unsigned int max, ExactStarSearchIndex* lookup)
+{
+    const int existing = find_object(name.c_str(), true, 9e29, 0, lookup);
+    if (existing >= 0) return static_cast<Star*>(cels[existing]);
+    const std::string key = stellar_alias_key(name);
+    if (key.empty()) return nullptr;
+    for (const char* path : {"catalogs" _FILESLASH "exoplanets_stars.dat", "catalogs" _FILESLASH "exoplanets_planets.dat"})
+    {
+        FILE* file = fopen(path, "r");
+        if (!file) continue;
+        ExoRow row;
+        bool matched = false;
+        while (exorow_read_line(file, row))
+        {
+            if (key == stellar_alias_key(row.hostname) || key == stellar_alias_key(row.hd_name)
+                || key == stellar_alias_key(row.hip_name))
+            {
+                matched = exorow_has_position(row);
+                if (matched) break;
+            }
+        }
+        fclose(file);
+        if (!matched) continue;
+        // Reserve the terminating null slot, including for arrays smaller than the global limit.
+        if (ncelobjs < 0 || static_cast<unsigned int>(ncelobjs) + 1 >= max) return nullptr;
+        bool was_new = false;
+        Star* host = resolve_or_create_exostar(row, true, &was_new, lookup);
+        if (host) host->add_catalog_alias(name);
+        return host;
+    }
+    return nullptr;
+}
+
 Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_starsonly, bool* was_new,
     ExactStarSearchIndex *lookup)
 {

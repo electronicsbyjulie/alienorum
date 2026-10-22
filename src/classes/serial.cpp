@@ -2,6 +2,9 @@
 #include <iostream>
 #include <cctype>
 #include <set>
+#include <memory>
+#include <tuple>
+#include "cat.h"
 #include "serial.h"
 #include "cons.h"
 
@@ -682,183 +685,274 @@ bool Serialization::save_all(std::fstream& fs, CelestialObject **cels, bool oe)
     }
 }
 
+namespace
+{
+    struct UniverseRecordDeleter
+    {
+        void operator()(CelestialObject* object) const
+        {
+            if (!object) return;
+            // Orbit ownership differs between subclasses; clear it before their destructors run.
+            delete object->orbit;
+            object->orbit = nullptr;
+            delete object;
+        }
+    };
+    using UniverseRecord = std::unique_ptr<CelestialObject, UniverseRecordDeleter>;
+
+    bool read_universe_record(CelestialObject* object, const json& record)
+    {
+        switch (object->typeclass())
+        {
+            case class_galaxy: return static_cast<Galaxy*>(object)->from_json(record);
+            case class_star: return static_cast<Star*>(object)->from_json(record);
+            case class_planet: return static_cast<Planet*>(object)->from_json(record);
+            case class_moon: return static_cast<Moon*>(object)->from_json(record);
+            case class_comet: return static_cast<Comet*>(object)->from_json(record);
+            case class_satellite: return static_cast<Satellite*>(object)->from_json(record);
+            default: return false;
+        }
+    }
+
+    UniverseRecord make_universe_object(int object_class)
+    {
+        switch (object_class)
+        {
+            case class_galaxy: return UniverseRecord(new Galaxy());
+            case class_star: return UniverseRecord(new Star());
+            case class_planet: return UniverseRecord(new Planet());
+            case class_moon: return UniverseRecord(new Moon());
+            case class_comet: return UniverseRecord(new Comet());
+            case class_satellite: return UniverseRecord(new Satellite());
+            default: throw std::runtime_error("Unknown object class");
+        }
+    }
+}
+
 bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned int max, bool aua)
 {
     try
     {
+        if (!cels || !max) throw std::runtime_error("Invalid universe storage");
         json allobj;
         fs >> allobj;
-        int i, j, l, n = allobj.size();
-        for (i=0; cels[i]; i++);
-        ncelobjs = i;
+        // Older empty saves contain null instead of an empty object.
+        if (allobj.is_null()) return true;
+        if (!allobj.is_object()) throw std::runtime_error("Universe root must be an object");
+        unsigned int count = 0;
+        while (count < max && cels[count]) ++count;
+        if (count == max) throw std::runtime_error("Universe storage has no terminating slot");
+        ncelobjs = count;
 
-        // Asteroids can only replace other planets. Keep catalog order within
-        // each class instead of revisiting every star for each small body.
-        std::map<cel_obj_class, std::vector<int>> objects_by_class;
-        for (j=0; j<ncelobjs; j++) objects_by_class[cels[j]->typeclass()].push_back(j);
+        struct PendingRecord
+        {
+            json data;
+            UniverseRecord parsed;
+            CelestialObject* target = nullptr;
+            CelestialObject* parent = nullptr;
+            int index = -1;
+        };
+        std::vector<PendingRecord> pending;
+        using Identity = std::tuple<cel_obj_class, std::string, std::string>;
+        std::map<Identity, CelestialObject*> identities;
+        for (unsigned int i = 0; i < count; ++i)
+            identities.emplace(Identity(cels[i]->typeclass(), cels[i]->origname, cels[i]->origcenname), cels[i]);
+        std::map<CelestialObject*, int> existing_indices;
+        for (unsigned int i = 0; i < count; ++i) existing_indices[cels[i]] = i;
+        std::set<CelestialObject*> replacements;
+        unsigned int additions = 0;
 
-        // Stars whose entry in the file states a planet tally of its own. Those tallies are now
-        // saved, and the pass further down counts the planets it links back up to their star as
-        // well -- do both to the same star and it ends up with twice the planets it has. The file
-        // is the better authority of the two: it was written when the count was complete, whereas
-        // counting here sees only what this file happens to carry, which for a save of just the
-        // edited objects is a fraction of the system, and it credits a star with planets a
-        // catalog already counted once. So a star that brought its own tally keeps it, and the
-        // count below is left to the stars that did not -- which is every star in a file written
-        // before these tallies were saved, so those load exactly as they always have.
+        // Parse every record before changing live objects. Their addresses remain stable on merge.
+        for (const auto& record : allobj.items())
+        {
+            const json& data = record.value();
+            if (!data.is_object() || !data.contains("!name") || !data.at("!name").is_string()
+                || !data.contains("typeclass") || !data.at("typeclass").is_number_integer())
+                throw std::runtime_error("Object record requires a name and an integer class");
+            const std::string name = data.at("!name").get<std::string>();
+            if (name.empty() || name.size() >= name_max_len || name.find('\0') != std::string::npos)
+                throw std::runtime_error("Invalid object name");
+            if (data.contains("orbit") && !data.at("orbit").is_object())
+                throw std::runtime_error("Orbit must be an object");
+            PendingRecord entry;
+            entry.data = data;
+            entry.parsed = make_universe_object(data.at("typeclass").get<int>());
+            if (!read_universe_record(entry.parsed.get(), data))
+                throw std::runtime_error("Invalid object record");
+            const cel_obj_class cls = entry.parsed->typeclass();
+            const cel_obj_type type = entry.parsed->type;
+            if ((cls == class_star && type != star) || (cls == class_galaxy && type != galaxy)
+                || ((cls == class_planet || cls == class_moon) && (type < least_planet || type > most_planet)))
+                throw std::runtime_error("Object type conflicts with its class");
+            if (entry.parsed->orbit && entry.parsed->orbit->center_name.empty())
+                throw std::runtime_error("Orbit requires a parent name");
+            const std::string original = data.value("!origname", name);
+            const std::string center_name = data.value("!origcenname",
+                entry.parsed->orbit ? entry.parsed->orbit->center_name : std::string());
+            entry.data["!origname"] = entry.parsed->origname = original;
+            entry.data["!origcenname"] = entry.parsed->origcenname = center_name;
+            const auto match = identities.find(Identity(cls, original, center_name));
+            entry.target = match == identities.end() ? entry.parsed.get() : match->second;
+            if (entry.target != entry.parsed.get())
+            {
+                if (!replacements.insert(entry.target).second)
+                    throw std::runtime_error("Multiple records replace the same object");
+                entry.index = existing_indices.at(entry.target);
+            }
+            else ++additions;
+            pending.push_back(std::move(entry));
+        }
+        if (additions >= max - count) throw std::runtime_error("Universe object limit exceeded");
+
+        std::map<std::string, std::vector<CelestialObject*>> names;
+        const auto add_name = [&](const std::string& name, CelestialObject* object)
+        {
+            if (!name.empty()) names[stellar_alias_key(name)].push_back(object);
+        };
+        for (unsigned int i = 0; i < count; ++i)
+        {
+            if (cels[i]->deleted && !replacements.count(cels[i])) continue;
+            add_name(cels[i]->name, cels[i]);
+            add_name(cels[i]->origname, cels[i]);
+        }
+        for (const auto& entry : pending)
+        {
+            add_name(entry.parsed->name, entry.target);
+            add_name(entry.parsed->origname, entry.target);
+            if (entry.parsed->typeclass() == class_star)
+            {
+                const Star* star = static_cast<Star*>(entry.parsed.get());
+                for (const auto& alias : star->catalog_aliases) add_name(alias, entry.target);
+                for (const std::string& alias : {star->local_name, std::string(star->Bayer),
+                    std::string(star->Flamsteed), std::string(star->Gliese)}) add_name(alias, entry.target);
+                if (star->HD) add_name("HD " + std::to_string(star->HD), entry.target);
+                if (star->HIP) add_name("HIP " + std::to_string(star->HIP), entry.target);
+            }
+        }
+        ExactStarSearchIndex lookup;
+        CatalogReader catalogs;
+        std::map<CelestialObject*, CelestialObject*> parents;
+        for (auto& entry : pending)
+        {
+            Orbit* orbit = entry.parsed->orbit ? entry.parsed->orbit : entry.target->orbit;
+            if (!orbit) continue;
+            const std::string& name = orbit->center_name;
+            const auto found = names.find(stellar_alias_key(name));
+            if (found != names.end())
+            {
+                for (CelestialObject* candidate : found->second)
+                {
+                    if (candidate == entry.target || !compare_types(candidate->type, entry.parsed->type)) continue;
+                    if (entry.parent && entry.parent != candidate)
+                        throw std::runtime_error("Ambiguous orbit parent: " + name);
+                    entry.parent = candidate;
+                }
+            }
+            if (!entry.parent && cels == ::cels)
+            {
+                // Explicit saves can reference hosts omitted by deferred exoplanet loading.
+                // Resolve aliases first, then import only the referenced host from local catalogs.
+                entry.parent = catalogs.resolve_saved_host(name, max - additions, &lookup);
+            }
+            if (!entry.parent) throw std::runtime_error("Cannot resolve orbit parent: " + name);
+            parents[entry.target] = entry.parent;
+        }
+
+        // Validate the proposed graph, including existing ancestors, before installing any links.
+        std::set<CelestialObject*> checked;
+        for (const auto& entry : pending)
+        {
+            std::set<CelestialObject*> path;
+            CelestialObject* cursor = entry.target;
+            while (cursor && !checked.count(cursor))
+            {
+                if (!path.insert(cursor).second) throw std::runtime_error("Circular orbit hierarchy");
+                const auto next = parents.find(cursor);
+                cursor = next != parents.end() ? next->second : (cursor->orbit ? cursor->orbit->center : nullptr);
+            }
+            checked.insert(path.begin(), path.end());
+        }
+
         std::set<Star*> tally_stated;
-        l = 0;
-        for (auto it = allobj.begin(); it != allobj.end(); ++it)
+        std::vector<int> loaded;
+        for (auto& entry : pending)
         {
-            i = ncelobjs;
-            json js = it.value();
-            cel_obj_class c;
-            js.at("typeclass").get_to(c);
-            std::string name, origname, origcenname;
-            js.at("!name").get_to(name);
-            try { js.at("!origname").get_to(origname); } catch (...) { origname = name; }
-            try { js.at("!origcenname").get_to(origcenname); } catch (...) { origcenname = std::to_string(ncelobjs+1000); }     // at least don't match anything
-            const char *origname_c = origname.c_str(), *origcenname_c = origcenname.c_str();
-
-            for (int candidate : objects_by_class[c])
+            const bool is_new = entry.target == entry.parsed.get();
+            if (is_new)
             {
-                j = candidate;
-                if (strcmp(cels[j]->origname.c_str(), origname_c)) continue;
-                if (strcmp(cels[j]->origcenname.c_str(), origcenname_c)) continue;
-                i = j;
-                break;
+                entry.index = ncelobjs++;
+                cels[entry.index] = entry.parsed.release();
+                cels[ncelobjs] = nullptr;
             }
-
-            #ifdef DEBUG
-            if (i != ncelobjs)
-                std::cout << "Clobbering " << i << " " << cels[i]->name << " with " << name << ", originally " << origname << std::endl << std::flush;
-            else std::cout << "Creating new " << i << " " << name << ", originally " << origname << std::endl << std::flush;
-            #endif
-
-            if (cels[i]) cels[i]->deleted = false;
-
-            switch (c)
-            {
-                case class_galaxy:
-                if (!cels[i]) cels[i] = new Galaxy();
-                ((Galaxy*)cels[i])->from_json(js);
-                break;
-
-                case class_star:
-                if (!cels[i]) cels[i] = new Star();
-                ((Star*)cels[i])->from_json(js);
-                if (js.contains("has_planets")) tally_stated.insert((Star*)cels[i]);
-                ((Star*)cels[i])->update_location(J2000_TIME_T);
-                break;
-
-                case class_planet:
-                if (!cels[i]) cels[i] = new Planet();
-                ((Planet*)cels[i])->from_json(js);
-                break;
-
-                case class_moon:
-                if (!cels[i]) cels[i] = new Moon();
-                ((Moon*)cels[i])->from_json(js);
-                ((Moon*)cels[i])->orbit_type = ot_equatorial;
-                break;
-
-                case class_comet:
-                if (!cels[i]) cels[i] = new Comet();
-                ((Comet*)cels[i])->from_json(js);
-                break;
-
-                case class_satellite:
-                if (!cels[i]) cels[i] = new Satellite();
-                ((Satellite*)cels[i])->from_json(js);
-                break;
-
-                default:
-                std::cerr << "Attempted to load celestial object of blank or unknown type class." << std::endl;
-                return false;
-            }
-
-            cels[i]->user_edited = aua;
-            cels[i]->estimated_poles = true;
-            cels[i]->seqno = i;
-            if (i == ncelobjs) objects_by_class[c].push_back(i);
-
-            mtx.lock();
-            l++;
-            loading_msg = std::string("Loaded ") + std::to_string(l) + std::string(" of ") + std::to_string(n) + std::string(" objects...");
-            mtx.unlock();
-
-            // Nothing below this point applies to a body with no orbit -- there is no center to
-            // look up and no star to credit a planet to -- but skipping straight past the end of
-            // the loop skipped the ncelobjs++ down there as well, and a newly created object that
-            // never advanced the count was simply overwritten by the next one loaded. It went
-            // unnoticed because the orbitless objects in a universe file are nearly always stars
-            // that a catalog has already put in the array, where the count is not meant to
-            // advance; a star the catalogs do not have -- an invented one, or any star at all
-            // when the file is loaded on its own -- was dropped on the floor.
-            if (!cels[i]->orbit)
-            {
-                if (i==ncelobjs) ncelobjs++;
-                continue;
-            }
-            const char* cenname = cels[i]->orbit->center_name.c_str();
-            cels[i]->orbit->center = nullptr;
-            for (j=0; cels[j]; j++)
-            {
-                if (j==i) continue;
-                if (!compare_types(cels[j]->type, cels[i]->type))
-                {
-                    continue;                    // There are two objects named Atlas, and one of them has a companion.
-                }
-                if (!strcmp(cenname, cels[j]->name) || !strcmp(cenname, cels[j]->origname.c_str()))
-                {
-                    cels[i]->orbit->center = cels[j];
-                    break;
-                }
-            }
-            if (!cels[i]->orbit->center)
-                std::cout << "FAILED to place " << cels[i]->name << " in orbit around " << cenname << std::endl;
-
-            if (cels[i]->typeclass() == class_planet || cels[i]->typeclass() == class_moon)
-            {
-                // get_light_center() answers with whatever the orbital hierarchy leads to, and
-                // that is not always a star: it hands back the object itself for anything whose
-                // type is star whatever its class, and after five hops it hands back wherever it
-                // got to. Casting that to Star* and incrementing has_planets writes four bytes
-                // past the end of a smaller object -- which is how a moon left with the default
-                // type overwrote the vtable pointer of the planet allocated next to it. Same
-                // check as Planet::est_bolometric_flux().
-                CelestialObject* lc = cels[i]->get_light_center();
-                Star* s = (lc && lc->typeclass() == class_star) ? (Star*)lc : nullptr;
-                if (!s) std::cerr << "JSON data integrity error! " << cels[i]->name << " has no illumination star." << std::endl << std::flush;
-                else if (cels[i]->typeclass() == class_planet && !tally_stated.count(s) && cels[i]->mass >= 0.01 * earth_mass)        // Do not count asteroids, moons, KBOs in planetary system.
-                {
-                    s->has_planets++;
-                    if (((Planet*)cels[i])->is_in_con_HZ()) s->has_hz_planets++;
-                    s->pl_indices.push_back(i);
-                }
-            }
-
-            if (i==ncelobjs) ncelobjs++;
-            if ((unsigned int)ncelobjs >= max-1) return false;                                // Avoid overflowing the array.
+            else read_universe_record(entry.target, entry.data);
+            CelestialObject* object = entry.target;
+            object->deleted = false;
+            object->user_edited = aua;
+            object->estimated_poles = true;
+            object->seqno = entry.index;
+            object->namelen = strlen(object->name);
+            if (object->orbit) object->orbit->center = entry.parent;
+            object->cenobj = nullptr;
+            if (object->typeclass() == class_moon) static_cast<Moon*>(object)->orbit_type = ot_equatorial;
+            if (object->typeclass() == class_star && entry.data.contains("has_planets"))
+                tally_stated.insert(static_cast<Star*>(object));
+            loaded.push_back(entry.index);
         }
 
-        for (i=0; cels[i]; i++)
+        // All parents now exist, regardless of record order. Establish system roots before deriving locations.
+        for (int index : loaded)
         {
-            cel_obj_class c = cels[i]->typeclass();
-            if (c == class_moon) ((Moon*)cels[i])->update_location(J2000_TIME_T);
-            else if (c == class_planet) ((Planet*)cels[i])->update_location(J2000_TIME_T);
-            else if (c == class_star) ((Star*)cels[i])->update_location(J2000_TIME_T);
+            CelestialObject* object = cels[index];
+            object->cenobj = object;
+            while (object->cenobj->orbit && object->cenobj->orbit->center
+                && object->cenobj->orbit->center->typeclass() != class_galaxy)
+                object->cenobj = object->cenobj->orbit->center;
+            if (object->typeclass() != class_planet) continue;
+            CelestialObject* light = object->get_light_center();
+            if (!light || light->typeclass() != class_star) continue;
+            Star* host = static_cast<Star*>(light);
+            if (!tally_stated.count(host) && object->mass >= 0.01 * earth_mass
+                && std::find(host->pl_indices.begin(), host->pl_indices.end(), index) == host->pl_indices.end())
+            {
+                ++host->has_planets;
+                if (static_cast<Planet*>(object)->is_in_con_HZ()) ++host->has_hz_planets;
+                host->pl_indices.push_back(index);
+            }
         }
-
+        std::set<CelestialObject*> updated;
+        for (int index : loaded)
+        {
+            std::vector<CelestialObject*> path;
+            CelestialObject* object = cels[index];
+            while (object && updated.insert(object).second)
+            {
+                path.push_back(object);
+                object = object->orbit ? object->orbit->center : nullptr;
+            }
+            for (auto it = path.rbegin(); it != path.rend(); ++it)
+            {
+                object = *it;
+                switch (object->typeclass())
+                {
+                    case class_star: static_cast<Star*>(object)->update_location(J2000_TIME_T); break;
+                    case class_planet: static_cast<Planet*>(object)->update_location(J2000_TIME_T); break;
+                    case class_moon: static_cast<Moon*>(object)->update_location(J2000_TIME_T); break;
+                    default: break;
+                }
+            }
+        }
+        std::lock_guard<std::mutex> lock(mtx);
+        loading_msg = "Loaded " + std::to_string(loaded.size()) + " universe objects.";
         return true;
+    }
+    catch (const std::exception& error)
+    {
+        std::cerr << "FAILED to load universe: " << error.what() << std::endl;
+        return false;
     }
     catch (...)
     {
-        #ifdef DEBUG
-        assert(false);
-        #else
-        std::cerr << "FAILED to load universe: incorrectly formatted JSON." << std::endl;
-        #endif
+        std::cerr << "FAILED to load universe: invalid object data." << std::endl;
         return false;
     }
 }
