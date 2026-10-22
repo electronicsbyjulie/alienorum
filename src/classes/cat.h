@@ -55,6 +55,8 @@ namespace alienorum
         void download_catalogs(bool have_ihc);
         void prepare_stellar_chemistry();
 
+        static void apply_local_catalog_metadata(CelestialObject** objects);
+
         // Source Catalogs for Stars
         int read_Gliese_catalog(CelestialObject** cels, int max);
         int read_BrightStars_catalog(CelestialObject** cels, int max);

@@ -1223,3 +1223,17 @@ TEST(CelestialRandomTest, MissingAndExtremeInputsRemainRepeatable)
     EXPECT_EQ(body.rnd_seed, 12345u);
     EXPECT_EQ(body.cel_rand(), first);
 }
+
+TEST(CelestialMetadataTest, RoleAndMapOrientationSurviveSerialization)
+{
+    CelestialObject source;
+    strcpy(source.name, "Synthetic home");
+    source.home_world = true;
+    source.map_inverted = true;
+    source.orbit_center_codes = {"AB", "CD"};
+    CelestialObject restored;
+    ASSERT_TRUE(restored.from_json(source.to_json()));
+    EXPECT_TRUE(restored.home_world);
+    EXPECT_TRUE(restored.map_inverted);
+    EXPECT_EQ(restored.orbit_center_codes, source.orbit_center_codes);
+}

@@ -66,3 +66,5 @@ OPEN (2026-10-22, code audit): The exoplanet catalog regression reports five add
 Audit validation (2026-10-22): Application build passes. Initial full C++ run: 471 passing checks, two failing cases at that time, six skips for disabled GPU terrain/mesh paths. All 14 Python utility checks pass; shell syntax checks pass. Warning review covered all 35 application source units. This audit does not establish that all possible defects are absent.
 
 Tau Ceti validation (2026-10-22): All 22 constellation checks pass, including the Sun–Arcturus shared-constellation regression.
+
+FIXED (2026-10-22): Local-body roles, map inversion, known-pole status, vegetation color, and satellite center codes come from the packaged planet catalog rather than object-name conditions. Saved objects retain role metadata, older universe files import it from the catalog, and a renamed satellite host resolves by its catalog code. Celestial, satellite, and housekeeping checks pass (72 checks); application builds.

@@ -207,14 +207,15 @@ TEST(SatSourceTest, RespectsDownloadInterval)
 class SatellitePopulateTest : public UniverseFixture
 {
     protected:
-    // An Earth for the satellite to orbit, since populate() finds its center by name.
+    // A catalog-coded host; its name does not determine the satellite center.
     Planet* make_earth()
     {
         Star* sun = make_star("Sol");
-        Planet* earth = make_planet(sun, "Earth", AU);
+        Planet* earth = make_planet(sun, "Satellite host", AU);
         earth->volumetric_mean_radius = 6378137.0;
         earth->oblateness = 0;
         earth->mass = earth_mass;
+        earth->orbit_center_codes = {"EA", "EM"};
         earth->J2 = 0.00108262545;
         return earth;
     }
@@ -250,7 +251,7 @@ TEST_F(SatellitePopulateTest, FillsInTheOrbitFromTheCatalogRecord)
     EXPECT_STREQ(sat.name, "ISS (ZARYA)");
     ASSERT_NE(sat.orbit, nullptr);
     ASSERT_NE(sat.orbit->center, nullptr);
-    EXPECT_STREQ(sat.orbit->center->name, "Earth");
+    EXPECT_STREQ(sat.orbit->center->name, "Satellite host");
 
     // Degrees in the file, radians in the program.
     EXPECT_NEAR(sat.orbit->inclination, 51.64 * fiftyseventh, 1e-12);

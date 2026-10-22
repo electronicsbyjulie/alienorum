@@ -225,7 +225,7 @@ double alienorum::CelestialObject::local_solar_time(double lon)
 
 int alienorum::CelestialObject::read_locales(std::string fn)
 {
-    bool upside_down = !strcmp(name, "Venus");          // kludge
+    bool upside_down = map_inverted;
     std::fstream fs(fn, std::ios::in);
     if (fs)
     {
@@ -733,6 +733,9 @@ json CelestialObject::to_json()
     towrite["declination"] = declination * fiftyseven;
     towrite["distance"] = distance / light_year;
     towrite["distance_known"] = distance_known;
+    towrite["home_world"] = home_world;
+    towrite["map_inverted"] = map_inverted;
+    towrite["orbit_center_codes"] = orbit_center_codes;
     towrite["epoch"] = epoch;
     towrite["equinox"] = equinox * fiftyseven;
     towrite["obliquity"] = obliquity * fiftyseven;
@@ -774,6 +777,9 @@ json CelestialObject::to_json()
 
 bool CelestialObject::from_json(json j)
 {
+    home_world = j.value("home_world", false);
+    map_inverted = j.value("map_inverted", false);
+    orbit_center_codes = j.value("orbit_center_codes", std::vector<std::string>{});
     try
     {
         std::string str;
@@ -1180,9 +1186,7 @@ bool Map::load_from_jpeg(std::string filename, bool as_bump, double bump_scale)
     FILE * infile;
     unsigned int row_stride;
 
-    // Venus rotates retrograde, which means actually its north pole points roughly in the direction of its orbit's south pole and vice versa.
-    // But the texture maps put retrograde north at the top. We use prograde north internally, so the maps have to be inverted at load.
-    bool upside_down = filename.find("Venus") != std::string::npos;                 // shame on me for hard coding this - TODO: create a field in planets.json
+    bool upside_down = mcel && mcel->map_inverted;
 
     bool bump_resample = false;
     unsigned long bump_src_w = 0, bump_src_h = 0;
@@ -1323,7 +1327,7 @@ bool Map::load_from_png(std::string filename, bool as_bump, double bump_scale)
     png_infop info_ptr;
     FILE *fp;
 
-    bool upside_down = filename.find("Venus") != std::string::npos;                 // shame on me for hard coding this - TODO: create a field in planets.json
+    bool upside_down = mcel && mcel->map_inverted;
 
     unsigned long bump_src_w = 0, bump_src_h = 0;
     bool bump_resample = false;

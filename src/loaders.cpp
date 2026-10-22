@@ -252,7 +252,7 @@ void load_textures(CelestialObject* cel)
         filename = (std::string)"maps" + _FSSTR + (std::string)cel->name + (std::string)"_night.jpg";
         if (file_exists(filename.c_str()))
         {
-            Map *map = new Map();
+            Map *map = new Map(cel);
             if (map->load_from_jpeg(filename))
             {
                 if (cel->night_map && cel->night_map != map)
@@ -272,7 +272,7 @@ void load_textures(CelestialObject* cel)
             filename = (std::string)"maps" + _FSSTR + (std::string)cel->name + (std::string)"_night.png";
             if (file_exists(filename.c_str()))
             {
-                Map *map = new Map();
+                Map *map = new Map(cel);
                 if (map->load_from_png(filename))
                 {
                     if (cel->night_map && cel->night_map != map)
@@ -301,7 +301,7 @@ void load_textures(CelestialObject* cel)
                 {
                     p->generate_ring_parameters(true);
                 }
-                Map *map = new Map();
+                Map *map = new Map(cel);
                 if (map->load_from_jpeg(filename))
                 {
                     if (cel->ring_map && cel->ring_map != map)
@@ -325,7 +325,7 @@ void load_textures(CelestialObject* cel)
                     {
                         p->generate_ring_parameters(true);
                     }
-                    Map *map = new Map();
+                    Map *map = new Map(cel);
                     if (map->load_from_png(filename))
                     {
                         if (cel->ring_map && cel->ring_map != map)
@@ -349,7 +349,7 @@ void load_textures(CelestialObject* cel)
                 {
                     p->generate_ring_parameters(true);
                 }
-                Map *map = new Map();
+                Map *map = new Map(cel);
                 if (map->load_from_jpeg(filename))
                 {
                     if (cel->ringx_map && cel->ringx_map != map)
@@ -373,7 +373,7 @@ void load_textures(CelestialObject* cel)
                     {
                         p->generate_ring_parameters(true);
                     }
-                    Map *map = new Map();
+                    Map *map = new Map(cel);
                     if (map->load_from_png(filename))
                     {
                         if (cel->ringx_map && cel->ringx_map != map)
@@ -549,7 +549,8 @@ bool load_universe(std::string universe_fname)          // default is on the dec
         if (Serialization::load_all(fs, cels, MAX_CELOBJS))
         {
             fs.close();
-            for (i=0; cels[i]; i++) if (!strcmp(cels[i]->name, "Earth"))
+            CatalogReader::apply_local_catalog_metadata(cels);
+            for (i=0; cels[i]; i++) if (cels[i]->home_world)
             {
                 whereami = iamhome = i;
                 mycenobj = cels[i]->cenobj;
@@ -690,12 +691,10 @@ void load_catalogs()
     cout << "Reading local planets..." << endl << flush;
     npl += cr.read_local_planets(cels, MAX_CELOBJS, cels[0]);
     num_planets += npl;
-    for (i=0; cels[i]; i++) if (!strcmp(cels[i]->name, "Earth"))
+    for (i=0; cels[i]; i++) if (cels[i]->home_world)
     {
         whereami = iamhome = i;
-        ((Planet*)cels[i])->vegetation_r = 49;              // TODO: Add this vegetation color to planets.json or load it from the texture, don't hard code it.
-        ((Planet*)cels[i])->vegetation_g = 65;
-        ((Planet*)cels[i])->vegetation_b = 28;
+
     }
     cout << "Read " << npl << " objects." << endl << flush;
 
@@ -752,7 +751,7 @@ void load_catalogs()
     cout << "Reading local moons..." << endl << flush;
     npl = cr.read_local_planets(cels, MAX_CELOBJS, nullptr, cels[0]);
     num_planets += npl;
-    for (i=0; cels[i]; i++) if (!strcmp(cels[i]->name, "Earth")) whereami = iamhome = i;
+    for (i=0; cels[i]; i++) if (cels[i]->home_world) whereami = iamhome = i;
     cout << "Read " << npl << " objects." << endl << flush;
 
     if (load_aborted()) return;

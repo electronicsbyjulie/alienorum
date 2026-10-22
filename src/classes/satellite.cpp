@@ -358,20 +358,17 @@ bool SatSource::populate(Satellite *sat, unsigned int idx, int hours_threshold)
         }
     }
 
-    if (!strcmp(sr.ORBIT_CENTER.c_str(), "EA")) cenidx = find_object("Earth");
-    else if (!strcmp(sr.ORBIT_CENTER.c_str(), "EM")) cenidx = find_object("Earth");
-    else if (!strcmp(sr.ORBIT_CENTER.c_str(), "SU")) cenidx = 0;
-    else if (!strcmp(sr.ORBIT_CENTER.c_str(), "SS")) cenidx = 0;
-    else if (!strcmp(sr.ORBIT_CENTER.c_str(), "MO")) cenidx = find_object("Moon");
-    else if (!strcmp(sr.ORBIT_CENTER.c_str(), "ME")) cenidx = find_object("Mercury");
-    else if (!strcmp(sr.ORBIT_CENTER.c_str(), "VE")) cenidx = find_object("Venus");
-    else if (!strcmp(sr.ORBIT_CENTER.c_str(), "MA")) cenidx = find_object("Mars");
-    else if (!strcmp(sr.ORBIT_CENTER.c_str(), "JU")) cenidx = find_object("Jupiter");
-    else if (!strcmp(sr.ORBIT_CENTER.c_str(), "SA")) cenidx = find_object("Saturn");
-    else if (!strcmp(sr.ORBIT_CENTER.c_str(), "UR")) cenidx = find_object("Uranus");
-    else if (!strcmp(sr.ORBIT_CENTER.c_str(), "NE")) cenidx = find_object("Neptune");
-    else if (!strcmp(sr.ORBIT_CENTER.c_str(), "PL")) cenidx = find_object("Pluto");
-    else
+    cenidx = -1;
+    for (int i = 0; cels[i]; ++i)
+    {
+        const auto& codes = cels[i]->orbit_center_codes;
+        if (std::find(codes.begin(), codes.end(), sr.ORBIT_CENTER) != codes.end())
+        {
+            cenidx = i;
+            break;
+        }
+    }
+    if (cenidx < 0)
     {
         std::cout << "Unable to add satellite: unsupported orbit center." << std::endl << std::flush;
         return false;

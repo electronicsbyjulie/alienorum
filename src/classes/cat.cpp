@@ -5322,6 +5322,34 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels, int first_host)
     return num_read;
 }
 
+static void apply_body_metadata(CelestialObject* body, const json& record)
+{
+    body->home_world = record.value("home_world", body->home_world);
+    body->map_inverted = record.value("map_inverted", body->map_inverted);
+    body->orbit_center_codes = record.value("orbit_center_codes", body->orbit_center_codes);
+    body->known_poles = record.value("known_poles", body->known_poles);
+    if (body->typeclass() == class_star && record.contains("catalog_aliases"))
+    {
+        for (const auto& alias : record.at("catalog_aliases")) static_cast<Star*>(body)->add_catalog_alias(alias.get<std::string>());
+    }
+}
+
+void CatalogReader::apply_local_catalog_metadata(CelestialObject** objects)
+{
+    std::ifstream file("catalogs/planets.json");
+    if (!file || !objects) return;
+    json records;
+    file >> records;
+    for (const auto& record : records)
+    {
+        const std::string name = record.value("BODYNAME", "");
+        for (int i = 0; objects[i]; ++i)
+        {
+            if (name == objects[i]->name) apply_body_metadata(objects[i], record);
+        }
+    }
+}
+
 int CatalogReader::read_local_planets(CelestialObject **cels, int max, CelestialObject* must_orbit, CelestialObject* mustnt_orbit)
 {
     std::fstream fs(std::string("catalogs" _FILESLASH "planets.json"), std::ios::in);
@@ -5405,6 +5433,8 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
                 m = (p->typeclass() == class_moon) ? ((Moon*)p) : nullptr;
                 createnew = false;
             }
+
+            apply_body_metadata(p, pl);
 
             try
             {
@@ -5561,8 +5591,7 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
 
             if (p->orbit && p->orbit->center && createnew)
             {
-                p->known_poles = p->obliquity && p->equinox;
-                if (!strcmp(p->name, "Earth")) p->known_poles = true;
+                p->known_poles = p->known_poles || (p->obliquity && p->equinox);
                 p->location = p->orbit->center->location;           // Copy the system center and local plane. The local position will auto-fill later.
                 p->location.equatorial_plane.a = p->obliquity;
                 p->location.equatorial_plane.v = Point(std::sin(p->equinox), 0, -std::cos(p->equinox));

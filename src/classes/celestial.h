@@ -335,6 +335,9 @@ namespace alienorum
         double distance = 0;                        // meters
         bool distance_known = false;
         bool known_poles = false;
+        bool home_world = false;
+        bool map_inverted = false;
+        std::vector<std::string> orbit_center_codes;
         bool estimated_poles = false;
         double lon_J2000_offset = 0;
         int rnd_seed = 0;
