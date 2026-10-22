@@ -1989,7 +1989,8 @@ void draw_objedit_window(ImGuiIO& io)
 
             for (int k = 0; cels[k]; k++)
             {
-                if (orbit_conflict(cel, orb->semimajor_axis, cels[k]))
+                if (cels[k]->mass >= 0.01 * cel->mass &&
+                    orbit_conflict(cel, orb->semimajor_axis, cels[k]))
                     ImGui::TextColored(ImVec4(1.0f, 0.55f, 0.2f, 1.0f),
                         "Warning: orbit too close to %s; possible orbital instability.", cels[k]->name);
             }

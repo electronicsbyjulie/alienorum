@@ -2,22 +2,6 @@ FIXED (2026-10-22): Universe JSON loading resolves parent names and catalog alia
 
 Original request: Make universe JSON loading robust through both the file dialog and command line, and correctly identify illumination stars.
 
-FIXED (2026-10-22): Cosmic-shoreline pressure estimates saturate at 1,000 bar (1e8 Pa), an explicit simulation ceiling. The exponent is bounded before evaluation, so extreme retention cannot overflow into vacuum. Invalid scores produce zero; phase condensation can still reduce the bounded pressure. Thirty atmosphere, classification, and shoreline checks pass.
-
-Original request: Cap the cosmic shoreline calculation to prevent extreme generated surface pressures.
-
-FIXED (2026-10-22): Constellation genitives remain Canis Majoris and Canis Minoris in the naming catalog.
-
-Original request: Restore Canis Majoris and Canis Minoris and preserve those spellings.
-
-
-FIXED (2026-10-22): Surface atmospheres now condense gases above their saturation partial pressures and iterate pressure, composition, and greenhouse temperature to convergence. Negligible residual atmospheres become vacuum, including after cosmic-shoreline estimates. Stored surface temperatures also enforce phase limits; incomplete abundance lists cannot leave an anonymous noncondensing atmosphere. Warm supplied temperatures are preserved.
-
-Original request: If surface temperature is too cold for any of the atmospheric gases that are present to stay gaseous, then those gases should be limited to at most trace amounts in the atmosphere, and in most cases to zero. If the surface temperature is too cold for any gases, then the atmospheric pressure should be zero, irrespective of cosmic shoreline. This reduction of cold atmospheres will further lower the surface pressure, so it will be important to find the values where the feedback loop converges.
-
-FIXED (2026-10-22): New stellar planets and the HZ button use the conservative habitable zone. The orbit editor warns about close or crossing planetary orbits, and the resonance picker filters choices using the same spacing check.
-
-Original request: From the Shift+A dialog, adding a new body around a planet defaults to a 7 day orbit and tidal locking. That's good, keep that. If adding a planet around a star, let's default it to the habitable zone. We can also show a visible warning when a planet being edited is too close to another planet's orbit, resulting in orbital instability. Make sure the ratios in the resonance picker would not be close enough to existing bodies to require this same warning.
 
 FIXED (2026-10-22): Terrain generation, water-cloud checks, horizon temperatures, and sun-clock tooltips share a bounded local climate model with pressure-dependent heat transport, elevation cooling in meters, and warm subtropical land. Frost blends gradually across irregular spherical climate boundaries. Earth bump-map and generated-ocean checks pass.
 
