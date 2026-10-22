@@ -3353,3 +3353,35 @@ TEST_F(CatalogParsingTest, ReapplyingPlanetNamesPreservesOrbitFrame)
     }
     delete_the_universe();
 }
+
+TEST_F(CatalogParsingTest, EridaniPlanetsFollowFiftyDegreeDiskAcrossCatalogPasses)
+{
+    Star* host = make_star("82 Eridani");
+    host->HD = 20794;
+    host->has_disk = true;
+    host->disk_heliocen_inclination = 50 * fiftyseventh;
+    TestCatalogReader reader;
+    std::map<int, std::vector<int>> rows;
+    for (double catalog_inclination : {90.0, 30.0, 0.0})
+    {
+        Planet* planet = make_planet(host);
+        planet->orbit->inclination = catalog_inclination * fiftyseventh;
+        planet->msini = 2 * earth_mass;
+        rows[host->seqno].push_back(planet->seqno);
+    }
+    for (int pass = 0; pass < 3; ++pass)
+    {
+        reader.apply_exoplanet_names(rows);
+        for (int index : rows[host->seqno])
+        {
+            Planet* planet = static_cast<Planet*>(cels[index]);
+            planet->update_location(simnow);
+            double inclination = 0, node = 0;
+            incl_and_node_from_system_plane(planet->location.orbital_plane, inclination, node,
+                host->location.system_center);
+            EXPECT_NEAR(inclination * fiftyseven, 50, 1e-6);
+            EXPECT_NEAR(planet->mass / earth_mass, 2 / sin(50 * fiftyseventh), 1e-10);
+        }
+    }
+    delete_the_universe();
+}

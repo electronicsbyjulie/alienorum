@@ -3697,6 +3697,24 @@ void CatalogReader::reconcile_exoplanet_inclinations(
 {
     const size_t n = planets.size();
     if (n == 0 || pincls.size() != n || pnodes.size() != n) return;
+    // The 82 Eridani model follows its resolved disk rather than catalog placeholders.
+    const bool disk_aligned_82eri = host_star && (host_star->HD == 20794
+        || !strcmp(host_star->name, "82 Eri") || !strcmp(host_star->name, "82 Eridani"));
+    if (disk_aligned_82eri)
+    {
+        const double inclination = 50 * fiftyseventh;
+        host_star->planets_heliocen_inclination = inclination;
+        for (size_t i = 0; i < n; ++i)
+        {
+            pincls[i] = inclination;
+            pnodes[i] = host_star->disk_heliocen_node;
+            if (planets[i] && planets[i]->msini > 0)
+            {
+                planets[i]->mass = planets[i]->msini / sin(inclination);
+            }
+        }
+        return;
+    }
     for (double& inclination : pincls) inclination = accepted_exoplanet_inclination(inclination);
 
     std::vector<double> precise, available;
