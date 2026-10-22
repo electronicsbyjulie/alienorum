@@ -2698,6 +2698,8 @@ void draw_system_explorer(ImGuiIO& io)
     std::vector<int> list_item_celids;
     static int item_selected_idx = 0;
     int item_highlighted_idx = -1;
+    int first_visible = -1;
+    bool selected_visible = false;
     ImGui::Text("%s", " Name                                Orbits                            Period, d       Mass, e          HZ?");
     if (ImGui::BeginListBox("##syslist", ImVec2(916, 16 * ImGui::GetTextLineHeightWithSpacing())))
     {
@@ -3007,6 +3009,7 @@ void draw_system_explorer(ImGuiIO& io)
         is_mouse_over_window = true;
 }
 
+bool onlywd = false;
 bool onlysun = false, onlyplt = false, onlyhz = false, onlyknp = false;
 std::vector<int> neighb_celids;
 std::vector<double> neighb_celr;
@@ -3016,7 +3019,9 @@ void draw_stellar_neighborhood(ImGuiIO &io)
     if (!cels[1]) return;
     ImGui::Begin("Stellar Neighborhood", &neighborhood, 0);
 
-    ImGui::Checkbox("Sunlike##", &onlysun);
+    if (ImGui::Checkbox("Sunlike##", &onlysun) && onlysun) onlywd = false;
+    ImGui::SameLine();
+    if (ImGui::Checkbox("WD##neighbors", &onlywd) && onlywd) onlysun = false;
     ImGui::SameLine();
     ImGui::Checkbox("Planets##neighb_must_have_planets", &onlyplt);
     if (minpl < 1) minpl = 1;
@@ -3047,6 +3052,8 @@ void draw_stellar_neighborhood(ImGuiIO &io)
     double r, m;
     static int item_selected_idx = 0;
     int item_highlighted_idx = -1;
+    int first_visible = -1;
+    bool selected_visible = false;
     ImGui::Text("%s", " Name                                Mag.   Sp. Type        Pl./HZ   Distance");
     if (ImGui::BeginListBox("##neighblist", ImVec2(802, 16 * ImGui::GetTextLineHeightWithSpacing())))
     {
@@ -3098,12 +3105,15 @@ void draw_stellar_neighborhood(ImGuiIO &io)
             i = neighb_celids[j];
             Star *s = (Star*)cels[i];
             if (onlysun && !s->is_sunlike()) continue;
+            if (onlywd && !s->is_white_dwarf()) continue;
             if (onlyhz)
             {
                 if (!s->has_hz_planets) continue;
             }
             else if (onlyplt && (s->has_planets < minpl)) continue;
             if (onlyknp && !s->known_poles) continue;
+            if (first_visible < 0) first_visible = j;
+            if (item_selected_idx == j) selected_visible = true;
 
             stringstream line;
             line << cels[i]->name;
@@ -3138,10 +3148,24 @@ void draw_stellar_neighborhood(ImGuiIO &io)
             else if (r < 0.1 * light_year) line << setprecision(3) << (r / AU) << " A.U.";
             else line << setprecision(3) << (r / light_year) << " l.y.";
 
+            ImGui::PushID(i);
+            if (s->is_white_dwarf())
+            {
+                const RGB3 rgb = Color::rgb_from_color(Color::color_from_star(0, s, s->BV_color));
+                const float side = ImGui::GetTextLineHeight();
+                ImGui::ColorButton("##wd_color", ImVec4(rgb.r / 255.0f, rgb.g / 255.0f, rgb.b / 255.0f, 1),
+                    ImGuiColorEditFlags_NoTooltip | ImGuiColorEditFlags_NoDragDrop, ImVec2(side, side));
+                ImGui::SameLine();
+            }
             bool is_selected = (item_selected_idx == j);
             ImGuiSelectableFlags flags = (item_highlighted_idx == j) ? ImGuiSelectableFlags_Highlight : 0;
             if (ImGui::Selectable(line.str().c_str(), is_selected, flags))
+            {
                 item_selected_idx = j;
+                selected_visible = true;
+            }
+
+            ImGui::PopID();
 
             // Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
             if (is_selected)
@@ -3153,7 +3177,8 @@ void draw_stellar_neighborhood(ImGuiIO &io)
     l = neighb_celids.size();
     last_neighb_cen = mycenobj;
 
-    if (item_selected_idx >= neighb_celids.size()) item_selected_idx = 0;
+    if (!selected_visible) item_selected_idx = first_visible;
+    ImGui::BeginDisabled(item_selected_idx < 0);
     if (ImGui::Button("Select##neighbors"))
     {
         selected = neighb_celids[item_selected_idx];
@@ -3196,6 +3221,8 @@ void draw_stellar_neighborhood(ImGuiIO &io)
             cels[neighb_celids[item_selected_idx]]->alert_set = true;
         }
     }
+
+    ImGui::EndDisabled();
 
     ImGui::SetWindowSize(ImVec2(0, 0));                         // Auto size to fit contents.
     ImVec2 pos = ImGui::GetWindowPos(), siz = ImGui::GetWindowSize();
