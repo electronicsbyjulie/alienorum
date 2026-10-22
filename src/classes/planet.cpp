@@ -1299,6 +1299,7 @@ json Planet::to_json()
     {
         towrite["msini"] = msini;
     }
+    towrite["transiting"] = transiting;
     if (std::isfinite(inclination_error_upper)) towrite["inclination_error_upper"] = inclination_error_upper * fiftyseven;
     if (std::isfinite(inclination_error_lower)) towrite["inclination_error_lower"] = inclination_error_lower * fiftyseven;
 
@@ -1359,6 +1360,7 @@ bool Planet::from_json(json j)
     {
         ;
     }
+    transiting = j.value("transiting", false);
     try { inclination_error_upper = j.at("inclination_error_upper").get<double>() * fiftyseventh; } catch (...) { ; }
     try { inclination_error_lower = j.at("inclination_error_lower").get<double>() * fiftyseventh; } catch (...) { ; }
     try { j.at("opposition_surge").get_to(opposition_surge); } catch (...) { ; }

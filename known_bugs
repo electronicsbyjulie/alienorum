@@ -59,7 +59,7 @@ FIXED (2026-10-22, code audit): The Gaia astrometry regression uses a temporary 
 
 RESOLVED (2026-10-22): The current Tau Ceti constellation shapes are accepted. Replaced obsolete individual-line assertions with a regression checking that the Sun and Arcturus share a constellation when viewed from Tau Ceti.
 
-FIXED (2026-10-22): All 82 Eridani planets follow the 50-degree disk inclination, overriding conflicting catalog placeholders and preserving the disk node. Minimum masses are converted consistently; repeated catalog passes retain the same geometry.
+FIXED (2026-10-22): Removed the object-specific inclination exception. For every host, exactly 90-degree catalog inclinations without transit evidence are treated as unknown and use the disk when available. Other values, including 89.92 degrees, remain valid. Transit metadata survives imports, caches, and saved objects; repeated catalog processing preserves inferred geometry.
 
 OPEN (2026-10-22, code audit): The exoplanet catalog regression reports five additional objects after reloading. Reload identity handling remains unresolved.
 

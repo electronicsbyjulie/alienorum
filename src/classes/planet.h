@@ -26,6 +26,7 @@ namespace alienorum
         double radius_error_upper = NAN, radius_error_lower = NAN;
         json classification_evidence = nullptr;
         double msini = 0;
+        bool transiting = false;
         // Published asymmetric inclination errors, in radians.
         double inclination_error_upper = NAN, inclination_error_lower = NAN;
 

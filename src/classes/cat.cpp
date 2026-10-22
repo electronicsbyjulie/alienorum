@@ -3697,25 +3697,12 @@ void CatalogReader::reconcile_exoplanet_inclinations(
 {
     const size_t n = planets.size();
     if (n == 0 || pincls.size() != n || pnodes.size() != n) return;
-    // The 82 Eridani model follows its resolved disk rather than catalog placeholders.
-    const bool disk_aligned_82eri = host_star && (host_star->HD == 20794
-        || !strcmp(host_star->name, "82 Eri") || !strcmp(host_star->name, "82 Eridani"));
-    if (disk_aligned_82eri)
+    for (size_t i = 0; i < n; ++i)
     {
-        const double inclination = 50 * fiftyseventh;
-        host_star->planets_heliocen_inclination = inclination;
-        for (size_t i = 0; i < n; ++i)
-        {
-            pincls[i] = inclination;
-            pnodes[i] = host_star->disk_heliocen_node;
-            if (planets[i] && planets[i]->msini > 0)
-            {
-                planets[i]->mass = planets[i]->msini / sin(inclination);
-            }
-        }
-        return;
+        pincls[i] = accepted_exoplanet_inclination(pincls[i]);
+        // An exact edge-on catalog value is a placeholder without transit evidence.
+        if (pincls[i] == 90 * fiftyseventh && (!planets[i] || !planets[i]->transiting)) pincls[i] = 0;
     }
-    for (double& inclination : pincls) inclination = accepted_exoplanet_inclination(inclination);
 
     std::vector<double> precise, available;
     for (size_t i = 0; i < n; ++i)
@@ -3727,12 +3714,10 @@ void CatalogReader::reconcile_exoplanet_inclinations(
             hot_jupiter_inclination_exemption(planet)) continue;
         const bool published_errors = std::isfinite(planet->inclination_error_upper) &&
             std::isfinite(planet->inclination_error_lower);
-        // Older catalogs omit uncertainty columns even for transit solutions.
-        // Preserve their established edge-on reference priority, while broad
-        // published estimates remain excluded from the reference candidates.
-        const bool transit_reference = pincls[i] >= 80 * fiftyseventh &&
-            pincls[i] <= 100 * fiftyseventh;
-        if (published_errors || transit_reference) precise.push_back(pincls[i]);
+        // Non-placeholder near-edge-on measurements remain useful reference candidates.
+        // This does not classify them as transiting; that status comes from source metadata.
+        const bool edge_on_reference = pincls[i] >= 80 * fiftyseventh && pincls[i] <= 100 * fiftyseventh;
+        if (published_errors || edge_on_reference) precise.push_back(pincls[i]);
     }
     const auto reference = [](std::vector<double> values)
     {
@@ -6933,6 +6918,19 @@ ExoRow CatalogReader::exorow_from_json(const json& row, bool* ok)
         }
     }
 
+    const double transit_flag = getd("tran_flag");
+    std::string method = gets("discoverymethod");
+    if (method.empty()) method = gets("detection_type");
+    std::transform(method.begin(), method.end(), method.begin(), [](unsigned char c) { return std::tolower(c); });
+    bool transit_method = false;
+    std::istringstream methods(method);
+    std::string token;
+    while (std::getline(methods, token, ','))
+    {
+        token = trim(token);
+        transit_method = transit_method || token == "transit" || token == "primary transit";
+    }
+    r.transiting = std::isfinite(transit_flag) ? transit_flag == 1 : transit_method;
     r.pl_orbincl = getd("pl_orbincl");
     r.pl_orbinclerr1 = getd("pl_orbinclerr1");
     r.pl_orbinclerr2 = getd("pl_orbinclerr2");
@@ -7009,6 +7007,7 @@ void CatalogReader::exorow_write_line(FILE* fp, const ExoRow& row)
         row.pl_radeerr1, row.pl_radeerr2, row.pl_radjerr1, row.pl_radjerr2, row.pl_bmasselim, row.pl_radelim
     };
     for (double value : errors) write_exo_double(fp, value);
+    write_exo_double(fp, row.transiting ? 1 : 0);
 
     fputc('\n', fp);
 }
@@ -7075,6 +7074,7 @@ bool CatalogReader::exorow_read_line(FILE* fp, ExoRow& row)
     row.pl_radjerr2 = read_exo_double(cursor);
     row.pl_bmasselim = read_exo_double(cursor);
     row.pl_radelim = read_exo_double(cursor);
+    row.transiting = read_exo_double(cursor) == 1;
 
     return true;
 }
@@ -7587,6 +7587,8 @@ bool CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, s
     new_planet->cenobj = (host_star && host_star->cenobj) ? host_star->cenobj : host_star;
 
     double inclination = accepted_exoplanet_inclination(row.pl_orbincl * fiftyseventh);
+    if (row.pl_orbincl == 90.0 && !row.transiting) inclination = 0;
+    new_planet->transiting = row.transiting;
 
     double pl_mass = 0, pl_msini = 0;
     bool pl_massknown = false, pl_msini_known = false, pl_radknown = false;
@@ -7748,12 +7750,12 @@ bool CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, s
 
     if (mass_untrustworthy)
     {
-        double st_incl = 0;
-        if (host_star->disk_heliocen_inclination)
+        double st_incl = inclination;
+        if (!st_incl && host_star->disk_heliocen_inclination)
         {
             st_incl = host_star->disk_heliocen_inclination;           // e.g. Eps Eri, Tau Cet, 82 Eri
         }
-        else if (host_star->rot_heliocen_incl)
+        else if (!st_incl && host_star->rot_heliocen_incl)
         {
             st_incl = host_star->rot_heliocen_incl;                      // e.g. Alp Men
         }
@@ -8346,7 +8348,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
         std::ifstream cache_header(derived_cache);
         std::string version;
         std::getline(cache_header, version);
-        derived_cache_valid = version == "# EXO_CHEMISTRY2";
+        derived_cache_valid = version == "# EXO_TRANSIT3";
         // Recover omitted mu Ara records once, without downloading again when the
         // host pass has already refreshed the unified catalog for the planet pass.
         if (version == "# EXO_INCLINATION_ERRORS1" && !radio_silence)
@@ -8501,7 +8503,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
 
         // 1. Fetch NASA Data
         std::string nasa_url = "https://exoplanetarchive.ipac.caltech.edu/TAP/sync?maxrec=20000&query="
-                               "select+pl_name,hostname,hd_name,hip_name,pl_orbper,pl_orbsmax,pl_orbeccen,pl_orbincl,pl_orbinclerr1,pl_orbinclerr2,pl_orblper,pl_orbtper,pl_tranmid,"
+                               "select+pl_name,hostname,hd_name,hip_name,tran_flag,discoverymethod,pl_orbper,pl_orbsmax,pl_orbeccen,pl_orbincl,pl_orbinclerr1,pl_orbinclerr2,pl_orblper,pl_orbtper,pl_tranmid,"
                                "pl_bmasse,pl_bmasseerr1,pl_bmasseerr2,pl_bmasselim,pl_bmassj,pl_bmassjerr1,pl_bmassjerr2,pl_bmassprov,"
                                "pl_msinij,pl_msinie,pl_rade,pl_radeerr1,pl_radeerr2,pl_radelim,pl_radj,pl_radjerr1,pl_radjerr2,pl_trueobliq,"
                                "st_mass,st_rad,sy_dist,ra,dec,sy_vmag,st_spectype,st_teff,st_lum,st_rotp,st_met,st_meterr1,st_meterr2,st_metlim,st_metratio+"
@@ -8516,7 +8518,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
         // ADQL column aliasing maps EU's schema directly onto NASA's nomenclature.
         std::string eu_url = "http://voparis-tap-planeto.obspm.fr/tap/sync?"
                              "request=doQuery&lang=ADQL&format=json&maxrec=20000&query="
-                             "select+target_name+as+pl_name,alt_target_name,star_name+as+hostname,"
+                             "select+target_name+as+pl_name,alt_target_name,star_name+as+hostname,detection_type,"
                              "period+as+pl_orbper,semi_major_axis+as+pl_orbsmax,eccentricity+as+pl_orbeccen,inclination+as+pl_orbincl,"
                              "periastron+as+pl_orblper,t_peri+as+pl_orbtper,"
                              "mass+as+pl_bmassj,mass_sin_i+as+pl_msinij,radius+as+pl_radj,"
@@ -8948,7 +8950,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
     if (cachefp)
     {
         setvbuf(cachefp, cache_io_buf, _IOFBF, sizeof(cache_io_buf));
-        fputs("# EXO_CHEMISTRY2\n", cachefp);
+        fputs("# EXO_TRANSIT3\n", cachefp);
     }
 
     int rows_written = 0;

@@ -38,6 +38,7 @@ namespace alienorum
         double pl_bmasseerr1=NAN, pl_bmasseerr2=NAN, pl_bmassjerr1=NAN, pl_bmassjerr2=NAN;
         double pl_radeerr1=NAN, pl_radeerr2=NAN, pl_radjerr1=NAN, pl_radjerr2=NAN;
         double pl_bmasselim=NAN, pl_radelim=NAN;
+        bool transiting = false;
         double pl_orbinclerr1=NAN, pl_orbinclerr2=NAN;
         double pl_orbincl=NAN, pl_msinij=NAN, pl_msinie=NAN, pl_bmassj=NAN, pl_bmasse=NAN;
         double pl_radj=NAN, pl_rade=NAN, pl_trueobliq=NAN;

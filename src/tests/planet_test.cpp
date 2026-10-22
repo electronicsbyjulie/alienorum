@@ -1567,6 +1567,7 @@ TEST(ExoplanetInclinationTest, TwoDegreeCutoffDoesNotDependOnReferencePlaneOrPla
             host.has_disk = true;
             host.disk_heliocen_inclination = reference * fiftyseventh;
             Planet low, boundary, polar, retrograde;
+            polar.transiting = true;
             low.type = hot ? hot_jupiter : rocky;
             std::vector<Planet*> planets = {&low, &boundary, &polar, &retrograde};
             std::vector<double> inclinations = {0.4 * fiftyseventh, 2 * fiftyseventh, half_pi, _pi};

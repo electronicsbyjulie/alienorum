@@ -2152,6 +2152,7 @@ TEST_F(CatalogParsingTest, UnknownPlanetInclinationsUseStellarCompanionPlane)
                 row.pl_msinij = i == 0 ? 1.093 : 0.02;
                 row.pl_bmassj = row.pl_msinij;
                 row.pl_orbincl = i == 0 ? (known_planet ? 90 : 0.4) : NAN;
+                row.transiting = known_planet && i == 0;
                 ASSERT_TRUE(reader.add_exoplanet_from_row(row, host, planets, count));
             }
             reader.apply_exoplanet_names(planets);
@@ -3354,33 +3355,49 @@ TEST_F(CatalogParsingTest, ReapplyingPlanetNamesPreservesOrbitFrame)
     delete_the_universe();
 }
 
-TEST_F(CatalogParsingTest, EridaniPlanetsFollowFiftyDegreeDiskAcrossCatalogPasses)
+TEST_F(CatalogParsingTest, ExactEdgeOnCatalogPlaceholdersUseDiskForAnyHost)
 {
-    Star* host = make_star("82 Eridani");
-    host->HD = 20794;
+    Star* host = make_star("Synthetic disk host");
     host->has_disk = true;
-    host->disk_heliocen_inclination = 50 * fiftyseventh;
+    host->disk_heliocen_inclination = 37 * fiftyseventh;
     TestCatalogReader reader;
     std::map<int, std::vector<int>> rows;
-    for (double catalog_inclination : {90.0, 30.0, 0.0})
+    unsigned int count = 0;
+    for (int index = 0; index < 4; ++index)
     {
-        Planet* planet = make_planet(host);
-        planet->orbit->inclination = catalog_inclination * fiftyseventh;
-        planet->msini = 2 * earth_mass;
-        rows[host->seqno].push_back(planet->seqno);
+        json source = {{"hostname", host->name}, {"pl_name", "Synthetic planet " + std::to_string(index)},
+            {"pl_orbper", 20 * pow(3, index)}, {"pl_msinie", 2},
+            {"pl_orbincl", index == 1 ? 89.92 : 90.0}, {"tran_flag", index == 2 ? 1 : 0}};
+        if (index == 3) source["pl_orbincl"] = nullptr;
+        bool valid = false;
+        ExoRow row = reader.exorow_from_json(source, &valid);
+        ASSERT_TRUE(valid);
+        FILE* cache = tmpfile();
+        ASSERT_NE(cache, nullptr);
+        reader.exorow_write_line(cache, row);
+        rewind(cache);
+        ExoRow restored;
+        ASSERT_TRUE(reader.exorow_read_line(cache, restored));
+        fclose(cache);
+        EXPECT_EQ(restored.transiting, index == 2);
+        ASSERT_TRUE(reader.add_exoplanet_from_row(restored, host, rows, count));
     }
+    const double expected[] = {37, 89.92, 90, 37};
     for (int pass = 0; pass < 3; ++pass)
     {
         reader.apply_exoplanet_names(rows);
-        for (int index : rows[host->seqno])
+        for (size_t i = 0; i < rows[host->seqno].size(); ++i)
         {
-            Planet* planet = static_cast<Planet*>(cels[index]);
+            Planet* planet = static_cast<Planet*>(cels[rows[host->seqno][i]]);
             planet->update_location(simnow);
             double inclination = 0, node = 0;
             incl_and_node_from_system_plane(planet->location.orbital_plane, inclination, node,
                 host->location.system_center);
-            EXPECT_NEAR(inclination * fiftyseven, 50, 1e-6);
-            EXPECT_NEAR(planet->mass / earth_mass, 2 / sin(50 * fiftyseventh), 1e-10);
+            EXPECT_NEAR(inclination * fiftyseven, expected[i], 1e-6);
+            if (i == 0 || i == 3)
+            {
+                EXPECT_NEAR(planet->mass / earth_mass, 2 / sin(37 * fiftyseventh), 1e-10);
+            }
         }
     }
     delete_the_universe();
