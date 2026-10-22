@@ -74,6 +74,8 @@ namespace alienorum
                                                             // set the type, e.g. for exoplanets
         LocalClimate local_climate();
         double est_local_temp(double lat, double lon);
+        void set_explicit_mass(double value);
+        void set_explicit_radius(double value);
         void estimate_radius();                             // if mass known
         void estimate_rotation();                           // if not known, e.g. exoplanets
         double viewer_reflectance_magnitude(CelestialLocation seen_from, double phase = -1, double sourceabsmagn = -1e9, double sourcedist = 0);

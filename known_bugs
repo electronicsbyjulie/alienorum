@@ -15,9 +15,14 @@ FIXED (2026-10-22): WD and Sunlike filters are mutually exclusive; white-dwarf r
 
 Original request: Add WD (for white dwarf) as an option in Stellar Neighborhood, mutually exclusive with Sunlike: selecting one deselects the other. Show each white dwarf's color in its list entry if possible.
 
-Double check Planet::classify(). A planet of 6 Earth masses becomes an ice giant even if the density runs in the thousands of g/cm^3. If this is correct, explain why here.
+FIXED (2026-10-22): Explicit mass and radius edits now update their measurement status and clear obsolete uncertainties. A supplied dense radius overrides the estimated-envelope prior, so the six-Earth-mass case remains rocky. The fault was stale estimated-radius metadata, not a valid high-density ice-giant classification.
+
+Original request: Double check Planet::classify(). A planet of 6 Earth masses becomes an ice giant even if the density runs in the thousands of g/cm^3. If this is correct, explain why here.
 
 Clicking certain lists and dropdowns reverts star labels back on. Only the star label list should do this.
 
 
 FIXED (2026-10-22): Grayscale PNG bump maps now apply the sea-level offset before scaling to meters, removing a spurious elevation increase of about 10 km.
+
+
+Zooming in on a star causes performance degradation and incorrect flare placement. Vega at magnification 2.5 million is a good example. Frame rate crawls to almost nothing (in some cases this can hang the app)

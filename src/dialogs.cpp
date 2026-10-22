@@ -1274,10 +1274,13 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::SetNextItemWidth(txtwid);
             if (ImGui::InputDouble("##edtmass", &edit_mass, 0, 0, cbo_edt_units ? "%.9f" : "%.9e"))
             {
-                cel->mass = edit_mass * mass_units_conv[cbo_edt_units];
-                if (cel->typeclass() == class_planet
-                    || cel->typeclass() == class_moon               // See Kepler-1625b.
-                    ) ((Planet*)cel)->classify(((Planet*)cel)->is_in_con_HZ(), true);
+                if (tc == class_planet || tc == class_moon)
+                {
+                    Planet* body = static_cast<Planet*>(cel);
+                    body->set_explicit_mass(edit_mass * mass_units_conv[cbo_edt_units]);
+                    body->classify(body->is_in_con_HZ(), true);
+                }
+                else cel->mass = edit_mass * mass_units_conv[cbo_edt_units];
                 cel->user_edited = true;
                 viewchanged = true;
             }
@@ -1308,11 +1311,14 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::SetNextItemWidth(txtwid);
             if (ImGui::InputDouble("##edtvmrad", &edit_radius, 0, 0, "%.6f"))
             {
-                cel->volumetric_mean_radius = edit_radius * size_units_conv[cbo_edt_units];
+                if (tc == class_planet || tc == class_moon)
+                {
+                    Planet* body = static_cast<Planet*>(cel);
+                    body->set_explicit_radius(edit_radius * size_units_conv[cbo_edt_units]);
+                    body->classify(body->is_in_con_HZ(), true);
+                }
+                else cel->volumetric_mean_radius = edit_radius * size_units_conv[cbo_edt_units];
                 assert(!isinf(cel->volumetric_mean_radius));
-                if (cel->typeclass() == class_planet
-                    || cel->typeclass() == class_moon               // See Kepler-1625b.
-                    ) ((Planet*)cel)->classify(((Planet*)cel)->is_in_con_HZ(), true);
                 cel->user_edited = true;
                 viewchanged = true;
                 if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);

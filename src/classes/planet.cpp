@@ -449,6 +449,21 @@ double alienorum::Planet::est_local_temp(double lat, double lon)
     return climate.temperature(-cos_lat * cos(lon), -cos_lat * sin(lon), sin(lat), elevation);
 }
 
+void Planet::set_explicit_mass(double value)
+{
+    mass = value;
+    mass_evidence = std::isfinite(value) && value > 0 ? PlanetMeasurement::observed : PlanetMeasurement::unknown;
+    msini = 0;
+    mass_error_upper = mass_error_lower = NAN;
+}
+
+void Planet::set_explicit_radius(double value)
+{
+    volumetric_mean_radius = value;
+    radius_evidence = std::isfinite(value) && value > 0 ? PlanetMeasurement::observed : PlanetMeasurement::unknown;
+    radius_error_upper = radius_error_lower = NAN;
+}
+
 void Planet::estimate_radius()
 {
     radius_evidence = PlanetMeasurement::estimated;

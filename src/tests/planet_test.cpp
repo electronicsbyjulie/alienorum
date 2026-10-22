@@ -1907,3 +1907,40 @@ TEST_F(PlanetClassificationEvidenceTest, GeneratedOceanUsesTheSameClimateAsTheRe
     EXPECT_GT(north.r, equator.r + 50);
     EXPECT_GT(south.r, equator.r + 50);
 }
+
+TEST_F(PlanetClassificationEvidenceTest, ExplicitRadiusEditsOverrideAnEstimatedEnvelope)
+{
+    Planet* body = make_planet(make_star());
+    body->set_explicit_mass(6 * earth_mass);
+    body->estimate_radius();
+    body->classify(false, true, true);
+    ASSERT_EQ(body->type, ice_giant);
+    ASSERT_EQ(body->radius_evidence, PlanetMeasurement::estimated);
+    body->set_explicit_radius(0.1 * earth_radius);
+    body->classify(false, true, true);
+    EXPECT_EQ(body->type, rocky);
+    EXPECT_EQ(body->radius_evidence, PlanetMeasurement::observed);
+    EXPECT_TRUE(body->classification_evidence["density_observed"].get<bool>());
+    EXPECT_GT(body->classification_evidence["density_g_cm3"].get<double>(), 1000);
+    EXPECT_DOUBLE_EQ(body->volumetric_mean_radius, 0.1 * earth_radius);
+    body->classify();
+    EXPECT_EQ(body->type, rocky);
+}
+
+TEST_F(PlanetClassificationEvidenceTest, ExplicitMassEditsClearTheOldMinimumAndErrors)
+{
+    Planet* body = make_planet(make_star());
+    body->mass_evidence = PlanetMeasurement::minimum;
+    body->msini = body->mass;
+    body->mass_error_lower = body->mass_error_upper = 0.1 * body->mass;
+    body->radius_error_lower = body->radius_error_upper = 0.1 * body->volumetric_mean_radius;
+    body->set_explicit_mass(6 * earth_mass);
+    body->set_explicit_radius(1.5 * earth_radius);
+    body->classify(false, true, true);
+    EXPECT_EQ(body->type, rocky);
+    EXPECT_EQ(body->mass_evidence, PlanetMeasurement::observed);
+    EXPECT_DOUBLE_EQ(body->msini, 0);
+    EXPECT_TRUE(std::isnan(body->mass_error_lower));
+    EXPECT_TRUE(std::isnan(body->radius_error_upper));
+    EXPECT_FALSE(body->classification_evidence["density_is_lower_bound"].get<bool>());
+}
