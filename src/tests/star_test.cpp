@@ -1246,7 +1246,7 @@ TEST(StarTest, K2151BNotCorruptedIntoGiant)
     k2_151b.distance = 69.48 * parsec;
     k2_151b.distance_known = true;
 
-    // Radius and temperature via Stefan-Boltzmann yield M_V ≈ 8.87 - 9.9, NOT -4.21
+    // Radius and temperature plus the visual correction yield M_V around 10.24.
     double r_sun = k2_151b.volumetric_mean_radius / solar_radius;
     double t_ratio = k2_151b.temperature / sun_temp;
     double lum = r_sun * r_sun * pow(t_ratio, 4.0);
@@ -1254,7 +1254,7 @@ TEST(StarTest, K2151BNotCorruptedIntoGiant)
     k2_151b.absolute_magnitude = m_bol - Star::bolometric_correction(k2_151b.temperature);
     k2_151b.apparent_magnitude = k2_151b.absolute_magnitude + 5.0 * (log10(k2_151b.distance / (parsec * 10.0)));
 
-    EXPECT_NEAR(k2_151b.absolute_magnitude, 8.87, 0.5);
+    EXPECT_NEAR(k2_151b.absolute_magnitude, 10.24, 0.1);
     EXPECT_GT(k2_151b.apparent_magnitude, 12.0);
 
     // Running correct_main_sequence_absmag should NOT corrupt it into a giant
@@ -1262,4 +1262,16 @@ TEST(StarTest, K2151BNotCorruptedIntoGiant)
     EXPECT_STREQ(k2_151b.spectral_type, "M1.5V");
     EXPECT_LT(k2_151b.volumetric_mean_radius, 1.0 * solar_radius);
     EXPECT_GT(k2_151b.absolute_magnitude, 7.0);
+}
+
+TEST(StarTest, VisualBolometricCorrectionsRemainPhysicalAcrossStellarTemperatures)
+{
+    EXPECT_NEAR(Star::bolometric_correction(5772), -0.081, 0.01);
+    EXPECT_NEAR(Star::bolometric_correction(10000), -0.249, 0.01);
+    EXPECT_NEAR(Star::bolometric_correction(26800), -2.582, 0.01);
+    EXPECT_NEAR(Star::bolometric_correction(40000), -3.802, 0.01);
+    EXPECT_NEAR(Star::bolometric_correction(2500), -4.33, 0.01);
+    EXPECT_GT(Star::bolometric_correction(225000), -11);
+    EXPECT_LT(Star::bolometric_correction(225000), -8);
+    EXPECT_NEAR(Star::bolometric_correction(50000.01), Star::bolometric_correction(50000), 0.001);
 }

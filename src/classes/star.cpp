@@ -763,6 +763,15 @@ double Star::bolometric_correction(double t_eff)
 {
     if (!(t_eff > 0)) t_eff = sun_temp;
 
+    if (t_eff > 50000.0)
+    {
+        // Beyond the empirical fit, continue with the Planck V-band/total-flux ratio.
+        // Anchoring at the boundary avoids extrapolating the polynomial into hot remnants.
+        return bolometric_correction(50000.0)
+            + 2.5 * log10(blackbody_flux(t_eff, V_band) / blackbody_flux(50000.0, V_band))
+            - 10.0 * log10(t_eff / 50000.0);
+    }
+
     if (t_eff < 3500.0)
     {
         // Linear interpolation for M dwarfs, based on BT-Settl atmosphere models
@@ -771,9 +780,23 @@ double Star::bolometric_correction(double t_eff)
         return -4.33 + t_fraction * (-1.75 - (-4.33));
     }
 
-    // Usual formula for the rest of the main sequence.
-    double t_star = t_eff - sun_temp;
-    return -0.192 - (1.41e-4 * t_star) - (1.25e-7 * t_star * t_star);
+    // Flower (1996), corrected coefficients from Torres (2010), Table 1.
+    // https://arxiv.org/abs/1008.3913
+    // Evaluate in log10(K); a quadratic in kelvins diverges for hot stars.
+    const double x = log10(t_eff);
+    if (x < 3.70)
+    {
+        return ((381.476328422343 * x - 4212.78819301717) * x
+            + 15514.4866764412) * x - 19053.7291496456;
+    }
+    if (x < 3.90)
+    {
+        return (((-170.623810323864 * x + 2617.24637119416) * x
+            - 15065.1486316025) * x + 38567.2629965804) * x - 37051.0203809015;
+    }
+    return ((((78.8731721804990 * x - 1705.87278406872) * x
+        + 14741.2923562646) * x - 63623.3812100225) * x
+        + 137145.973583929) * x - 118115.450538963;
 }
 
 // Center-edge darkening, quadratic law I(mu)/I(0) = 1 - a(1-mu) - b(1-mu)^2.
@@ -1146,7 +1169,8 @@ double Star::expected_main_sequence_absmag() const
         double lum = interpolate_mseq_lum(msqi);
         if (lum > 0)
         {
-            return 4.85 - log(lum) / log(magnbase);
+            return 4.74 - log(lum) / log(magnbase)
+                - bolometric_correction(interpolate_mseq_temp(msqi));
         }
     }
     return 1e29;

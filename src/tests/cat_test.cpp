@@ -153,6 +153,12 @@ TEST_F(CatalogParsingTest, LoadsNamedHDCompanionsAndFullJulianEpochs)
     Star *primary = make_star("Orbit Test A");
     primary->HD = 99990;
     hdcache[99990] = primary;
+    Star *massive_primary = make_star("V373 Cas");
+    massive_primary->HD = 99992;
+    hdcache[99992] = massive_primary;
+    Star *unmeasured = make_star("Unknown Test C");
+    unmeasured->absolute_magnitude = 0;
+    unmeasured->make_companion_of(massive_primary, 'C');
 
     const auto row = [](const char *center, const char *member, const char *period,
                         const char *axis, const char *epoch)
@@ -185,9 +191,33 @@ TEST_F(CatalogParsingTest, LoadsNamedHDCompanionsAndFullJulianEpochs)
     hot.replace(216, 11, 11, ' ');
     hot.replace(228, 4, "22750");
     file << hot << '\n';
+    std::string massive = hot;
+    massive.replace(0, 7, "HD99992");
+    massive.replace(24, 23, "V373 Cas B             ");
+    massive.replace(192, 11, "14.2       ");
+    massive.replace(204, 11, 11, ' ');
+    massive.replace(228, 5, "26800");
+    file << massive << '\n';
+    std::string measured = hot;
+    measured.replace(24, 23, "Measured Test E        ");
+    measured.replace(176, 15, "0              ");
+    file << measured << '\n';
+    std::string compact = hot;
+    compact.replace(24, 23, "Compact Test F         ");
+    compact.replace(160, 15, "WD             ");
+    compact.replace(192, 11, "1.22       ");
+    compact.replace(204, 11, "0.005145896");
+    compact.replace(228, 5, "225000");
+    file << compact << '\n';
+    std::string radius_only(205, ' ');
+    radius_only.replace(0, 7, "HD99992");
+    radius_only.replace(24, 14, "Unknown Test C");
+    radius_only.replace(160, 4, "B2 V");
+    radius_only[204] = '4';
+    file << radius_only << '\n';
     file.close();
     CatalogReader reader;
-    ASSERT_EQ(reader.read_star_orbits_dat(cels), 3);
+    ASSERT_EQ(reader.read_star_orbits_dat(cels), 7);
     Star *secondary = hdcache[99991];
     ASSERT_NE(secondary, nullptr);
     ASSERT_NE(secondary->orbit, nullptr);
@@ -209,16 +239,34 @@ TEST_F(CatalogParsingTest, LoadsNamedHDCompanionsAndFullJulianEpochs)
     const int hot_index = find_object("Hot Test D", true);
     ASSERT_GE(hot_index, 0);
     Star *hot_star = static_cast<Star*>(cels[hot_index]);
-    const double luminosity = Star::interpolate_mseq_lum(Star::get_mseqidx_from_BV(hot_star->BV_color));
-    const double expected_magnitude = 4.85 - log(luminosity) * invlogmagnbase;
+    const double luminosity = 5.8 * 5.8 * pow(22750.0 / sun_temp, 4);
+    const double expected_magnitude = 4.74 - log(luminosity) * invlogmagnbase
+        - Star::bolometric_correction(22750);
     EXPECT_NEAR(hot_star->absolute_magnitude, expected_magnitude, 1e-9);
+    EXPECT_DOUBLE_EQ(hot_star->temperature, 22750);
+    const int massive_index = find_object("V373 Cas B", true);
+    ASSERT_GE(massive_index, 0);
+    Star *massive_star = static_cast<Star*>(cels[massive_index]);
+    EXPECT_GT(massive_star->absolute_magnitude, -4);
+    EXPECT_LT(massive_star->absolute_magnitude, -2);
+    const int measured_index = find_object("Measured Test E", true);
+    ASSERT_GE(measured_index, 0);
+    EXPECT_DOUBLE_EQ(cels[measured_index]->absolute_magnitude, 0);
+    const int compact_index = find_object("Compact Test F", true);
+    ASSERT_GE(compact_index, 0);
+    EXPECT_GT(cels[compact_index]->absolute_magnitude, 8);
+    EXPECT_LT(cels[compact_index]->absolute_magnitude, 12);
+    EXPECT_DOUBLE_EQ(unmeasured->volumetric_mean_radius, 4 * solar_radius);
+    EXPECT_TRUE(std::isfinite(unmeasured->absolute_magnitude));
+    EXPECT_GT(unmeasured->absolute_magnitude, -3);
+    EXPECT_LT(unmeasured->absolute_magnitude, 0);
     strcpy(secondary->name, "Preferred Companion");
     secondary->has_custom_name = false;
-    ASSERT_EQ(reader.read_star_orbits_dat(cels), 3);
+    ASSERT_EQ(reader.read_star_orbits_dat(cels), 7);
     EXPECT_STREQ(secondary->name, "Preferred Companion");
     EXPECT_FALSE(secondary->has_custom_name);
     secondary->has_custom_name = true;
-    ASSERT_EQ(reader.read_star_orbits_dat(cels), 3);
+    ASSERT_EQ(reader.read_star_orbits_dat(cels), 7);
     EXPECT_STREQ(secondary->name, "Preferred Companion");
     EXPECT_TRUE(secondary->has_custom_name);
     EXPECT_NEAR(hot_star->absolute_magnitude, expected_magnitude, 1e-9);
@@ -2982,6 +3030,13 @@ TEST_F(CatalogParsingTest, ApplyGaiaAstrometryUpdatesDistancesAndLuminosityClass
     s2->distance = 10.0 * parsec;
     test_cels[1] = s2;
 
+    Star unknown;
+    unknown.absolute_magnitude = -3.5;
+    unknown.make_companion_of(s1, 'B');
+    Star measured_zero;
+    measured_zero.apparent_magnitude = 0;
+    measured_zero.make_companion_of(s1, 'C');
+
     int updated = cr.apply_gaia_astrometry(test_cels);
     EXPECT_EQ(updated, 2);
 
@@ -2989,6 +3044,9 @@ TEST_F(CatalogParsingTest, ApplyGaiaAstrometryUpdatesDistancesAndLuminosityClass
     EXPECT_NEAR(s1->distance / parsec, expected_dist_pc, 0.5);
     EXPECT_TRUE(s1->distance_known);
     EXPECT_GT(s1->absolute_magnitude, 0.0);
+    EXPECT_DOUBLE_EQ(unknown.absolute_magnitude, -3.5);
+    EXPECT_DOUBLE_EQ(unknown.distance, s1->distance);
+    EXPECT_NEAR(measured_zero.absolute_magnitude, -5 * log10(expected_dist_pc / 10), 0.001);
 
     // s2 (HIP 8) is at ~657 pc, M_V = -5.09 -> promoted to Supergiant Class I
     EXPECT_STREQ(s2->spectral_type, "G2I");
@@ -3011,6 +3069,13 @@ TEST_F(CatalogParsingTest, CondensedStarCatalogLoadsWithBlankAlienorumIds)
         if (cels[i]->type == star)
         {
             Star *s = (Star*)cels[i];
+            // Reconstructed companions and remnants can lack an observed visual magnitude.
+            if (s->apparent_magnitude >= 99)
+            {
+                EXPECT_DOUBLE_EQ(s->apparent_magnitude, 1e29);
+                EXPECT_TRUE(std::isfinite(s->absolute_magnitude));
+                continue;
+            }
             if (s->alienorumid.empty())
             {
                 blank_count++;

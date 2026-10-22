@@ -5083,60 +5083,46 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels, int first_host)
             strcpy(s->spectral_type, trim(field).c_str());
             read_field_onebased(buffer, 177, 191, field);
             f = atof(field);
-            if (f || (field[0] == '0')) s->absolute_magnitude = f;
+            const bool has_visual_magnitude = !trim(field).empty();
+            if (has_visual_magnitude) s->absolute_magnitude = f;
             double msun=0, rsun=0, lum=0, tempK=0;
-            if (bs > 193)
+            bool has_bolometric_luminosity = false;
+            if (bs >= 193)
             {
                 read_field_onebased(buffer, 193, 203, field);
                 msun = atof(field);
                 s->mass = msun * solar_mass;
             }
-            if (bs > 205)
+            if (bs >= 205)
             {
                 read_field_onebased(buffer, 205, 215, field);
                 rsun = atof(field);
                 s->volumetric_mean_radius = rsun * solar_radius;
                 assert(!isinf(s->volumetric_mean_radius));
             }
-            if (bs > 217)
+            if (bs >= 217)
             {
                 read_field_onebased(buffer, 217, 227, field);
                 lum = atof(field);
-                if (!s->absolute_magnitude)
-                {
-                    // The unconditional "= 11" used to run whether or not lum was actually given,
-                    // discarding the just-computed magnitude for every star that did carry one
-                    // (57 lines in this catalog, including Proxima Centauri: 4.5 magnitudes too
-                    // bright at a flat 11 instead of its real ~15.6). 11 is meant only as the
-                    // fallback guess for a star with no luminosity column at all.
-                    if (lum)
-                    {
-                        double magshift = log(lum)/log(magnbase);
-                        s->absolute_magnitude = 4.85 - magshift;
-                    }
-                    else s->absolute_magnitude = 11;
-                }
+                has_bolometric_luminosity = lum > 0;
             }
-            if (bs > 229)
+            if (bs >= 229)
             {
                 read_field_onebased(buffer, 229, 238, field);
                 tempK = atof(field);
                 // if (A->HD == 47152) std::cout << s->name << " tempK=" << tempK << std::endl;
                 if (tempK)
                 {
-                    // BV_color has to be set from the real temperature before estimate_luminosity()
-                    // reads it: that call looks up the main-sequence entry via
-                    // get_mseqidx_from_BV(BV_color), and a newly-made star's BV_color is still its
-                    // construction default of 0 -- the B-V of an A0V star -- until estimate_BV()
-                    // runs. Called in the old order, a cool star (e.g. an M dwarf at ~3500K) got
-                    // priced as an A0V (38 Lsun instead of ~0.03), several magnitudes too bright.
+                    s->temperature = tempK;
                     s->estimate_BV(tempK);
                     s->estimate_UB(tempK);
-                    if (s->volumetric_mean_radius && !lum) s->absolute_magnitude = 4.85 - log(s->estimate_luminosity(tempK))/log(magnbase);
                 }
             }
 
-            if (s_is_new)
+            const bool missing_visual_magnitude = !has_visual_magnitude &&
+                (!std::isfinite(s->absolute_magnitude) || fabs(s->absolute_magnitude) >= 99 ||
+                    (s->absolute_magnitude == 0 && s->apparent_magnitude >= 99));
+            if (s_is_new || missing_visual_magnitude)
             {
                 double mseqi = 0;
                 int mseqn = 0;
@@ -5176,27 +5162,29 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels, int first_host)
                     {
                         if (!msun ) s->mass = Star::interpolate_mseq_mass(mseqi) * solar_mass;
                         if (!rsun ) s->volumetric_mean_radius = Star::interpolate_mseq_rad(mseqi) * solar_radius;
-                        if (!lum  )
-                        {
-                            double llum = Star::interpolate_mseq_lum(mseqi);
-                            double magshift = log(llum)/log(magnbase);
-                            s->absolute_magnitude = 4.85 - magshift;
-                        }
+                        if (!lum) lum = Star::interpolate_mseq_lum(mseqi);
                         if (!tempK)
                         {
-                            double ltempK = Star::interpolate_mseq_temp(mseqi);
-                            s->estimate_BV(ltempK);
-                            s->estimate_UB(ltempK);
+                            tempK = Star::interpolate_mseq_temp(mseqi);
+                            s->temperature = tempK;
+                            s->estimate_BV(tempK);
+                            s->estimate_UB(tempK);
                         }
                     }
                 }
-
-#if 0
-                if (A->HD == 205877) std::cout << s->name << ": " << msun << " " << rsun << " " << lum << " " << tempK
-                                                   << " | " << mseqi
-                                                   << " | " << Star::interpolate_mseq_temp(mseqi)
-                                                   << std::endl;
-#endif
+            }
+            // Published radius and temperature override a main-sequence guess.
+            if (!has_bolometric_luminosity && rsun > 0 && tempK > 0)
+            {
+                lum = rsun * rsun * pow(tempK / sun_temp, 4);
+            }
+            // Luminosities are bolometric; the cache stores absolute visual magnitudes.
+            // Explicit visual measurements, including zero, always take priority.
+            if (!has_visual_magnitude && lum > 0)
+            {
+                const double effective_temperature = tempK > 0 ? tempK : s->estimate_temperature();
+                s->absolute_magnitude = 4.74 - log(lum) * invlogmagnbase
+                    - Star::bolometric_correction(effective_temperature);
             }
         }
         else if (!s || s == A)
@@ -6077,21 +6065,17 @@ int alienorum::CatalogReader::apply_gaia_astrometry(CelestialObject** cels)
         double intrinsic_brightness = pow(magnbase, -s->apparent_magnitude) * pow(fmax(AU, s->distance) / parsec / 10.0, 2);
         s->absolute_magnitude = -log(intrinsic_brightness) * invlogmagnbase;
 
-        if (s->is_main_sequence())
+        if (s->is_main_sequence() && !s->is_hot_ob_star())
         {
-            double exp_mag = 4.83;
-            double msqi = Star::get_mseqidx_from_sptyp(s->spectral_type);
-            if (msqi >= mseqmin && msqi <= mseqmax)
-            {
-                exp_mag = Star::interpolate_mseq_lum(msqi);
-            }
+            const double exp_mag = s->expected_main_sequence_absmag();
 
             bool is_verified_dwarf = (s->volumetric_mean_radius > 0 && s->volumetric_mean_radius < 1.2 * solar_radius)
                                   || (s->mass > 0 && s->mass < 0.6 * solar_mass)
                                   || (s->spectral_type[0] == 'M')
                                   || (s->spectral_type[0] == 'd' && s->spectral_type[1] == 'M');
 
-            if (!is_verified_dwarf && (exp_mag - s->absolute_magnitude >= 1.5))
+            if (!is_verified_dwarf && std::isfinite(exp_mag) && exp_mag < 1e28
+                && (exp_mag - s->absolute_magnitude >= 1.5))
             {
                 const char* new_class = "IV";
                 if (s->absolute_magnitude <= -5.0)
@@ -6147,7 +6131,8 @@ int alienorum::CatalogReader::apply_gaia_astrometry(CelestialObject** cels)
                     B->distance_known = true;
                     B->parallax = s->parallax;
                     B->update_location(simnow);
-                    if (B->apparent_magnitude)
+                    if (std::isfinite(B->apparent_magnitude)
+                        && B->apparent_magnitude >= -40 && B->apparent_magnitude < 99)
                     {
                         double b_intrinsic = pow(magnbase, -B->apparent_magnitude) * pow(fmax(AU, B->distance) / parsec / 10.0, 2);
                         B->absolute_magnitude = -log(b_intrinsic) * invlogmagnbase;
