@@ -167,7 +167,7 @@ namespace alienorum
     std::string wd_identifier_key(const std::string &identifier);
     std::string stellar_alias_key(const std::string &identifier);
     std::vector<Star*> stellar_alias_matches(const std::string &identifier);
-    std::string wd_color_gaia_identifier(const std::string &identifier);
+    std::string wd_color_gaia_identifier(const std::string &identifier, bool catalog_alias_only = false);
     uint64_t wd_color_data_revision();
     int associate_wd_color_identifiers(CelestialObject **objects);
 

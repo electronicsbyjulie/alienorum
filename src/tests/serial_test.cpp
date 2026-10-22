@@ -692,11 +692,55 @@ TEST_F(FindObjectTest, PublishedWdAliasesAttachToExistingCatalogStars)
         EXPECT_TRUE(copy.wd_color_valid);
     }
     EXPECT_EQ(targets[4]->orbit, orbit);
+    EXPECT_EQ(find_object("WD1330+643", true), targets[1]->seqno);
     EXPECT_EQ(targets[4]->orbit->center, sirius);
     EXPECT_FALSE(sirius->wd_color_valid);
     EXPECT_TRUE(sirius->gaia_wd_name.empty());
     EXPECT_FALSE(eri_primary->wd_color_valid);
     EXPECT_EQ(find_object("WD0039+3035", true), -1);
+    delete_the_universe();
+}
+
+TEST_F(FindObjectTest, PublishedWdAliasesResolveBeforeColorAssociation)
+{
+    Star* legacy = make_star("WD1328+648");
+    const std::string gaia = wd_color_gaia_identifier(legacy->name);
+    ASSERT_FALSE(gaia.empty());
+    ExactStarSearchIndex lookup;
+    EXPECT_EQ(find_object("WD 1328+648", true), legacy->seqno);
+    EXPECT_EQ(find_object("WD 1328+648", true, 9e29, 1, &lookup), legacy->seqno);
+    EXPECT_EQ(find_object("WD1330+643", true), legacy->seqno);
+    EXPECT_EQ(find_object("WD 1330+6435", true, 9e29, 1, &lookup), legacy->seqno);
+    EXPECT_EQ(find_object(gaia.c_str(), true, 9e29, 1, &lookup), legacy->seqno);
+    Star* explicit_record = make_star("Explicit Gaia record");
+    explicit_record->gaia_wd_name = gaia;
+    EXPECT_EQ(find_object("WD 1328+648", true), explicit_record->seqno);
+    EXPECT_EQ(find_object("WD1330+643", true), explicit_record->seqno);
+    explicit_record->gaia_wd_name = "WDJ100000.00+100000.00";
+    legacy->gaia_wd_name = "WDJ200000.00+200000.00";
+    EXPECT_EQ(find_object("WD 1328+648", true), -1);
+    legacy->gaia_wd_name.clear();
+    explicit_record->gaia_wd_name.clear();
+    legacy->WD = legacy->name;
+    explicit_record->WD = legacy->name;
+    EXPECT_EQ(find_object("WD 1328+648", true), -1);
+    delete_the_universe();
+}
+
+TEST_F(FindObjectTest, LegacyCoordinatesOutrankACollidingPublishedCoordinateLabel)
+{
+    Star* legacy = make_star("Legacy coordinate identity");
+    legacy->WD = "WD1330+643";
+    const std::string gaia = wd_color_gaia_identifier("WD1328+648");
+    ASSERT_FALSE(gaia.empty());
+    EXPECT_EQ(find_object("WD1330+643", true), legacy->seqno);
+    EXPECT_EQ(find_object(gaia.c_str(), true), -1);
+    Star* published = make_star("Published coordinate identity");
+    published->WD = "WD1328+648";
+    published->gaia_wd_name = gaia;
+    ExactStarSearchIndex lookup;
+    EXPECT_EQ(find_object("WD1330+643", true, 9e29, 1, &lookup), legacy->seqno);
+    EXPECT_EQ(find_object(gaia.c_str(), true, 9e29, 1, &lookup), published->seqno);
     delete_the_universe();
 }
 

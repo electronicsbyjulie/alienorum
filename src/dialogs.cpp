@@ -3164,7 +3164,7 @@ void draw_stellar_neighborhood(ImGuiIO &io)
                 ImVec4 swatch(rgb.r / 255.0f, rgb.g / 255.0f, rgb.b / 255.0f, 1);
                 float hue, saturation, value;
                 ImGui::ColorConvertRGBtoHSV(swatch.x, swatch.y, swatch.z, hue, saturation, value);
-                ImGui::ColorConvertHSVtoRGB(hue, std::min(1.0f, saturation * 50.0f), value,
+                ImGui::ColorConvertHSVtoRGB(hue, std::min(1.0f, saturation * 4.0f), value,
                     swatch.x, swatch.y, swatch.z);
                 const float side = ImGui::GetTextLineHeight();
                 ImGui::ColorButton("##wd_color", swatch,

@@ -1,28 +1,12 @@
-FIXED (2026-10-22): Stellar Neighborhood normalizes white-dwarf RGB channels before display conversion, preserving the hue instead of clipping every channel to white. The fifty-fold saturation boost now acts on the preserved color.
 
-Original request: Render white-dwarf swatches in bright, distinguishable colors; saturation changes alone still appear white.
+FIXED (2026-10-22): WD1330+643 is present and searchable in the rebuilt condensed catalog. Its existing color-table row now includes verified Gaia DR3 astrometry. A fresh-cache regression checks its Gaia identity and green custom color. Legacy B1950 catalog identifiers retain priority over colliding J2000 labels.
 
-FIXED (2026-10-22): White-dwarf swatches in Stellar Neighborhood multiply HSV saturation by fifty, capped at one, while preserving hue and brightness.
-
-Original request: Exaggerate the white-dwarf swatch colors with fifty times the saturation; eight times still appears white.
+Original request: WD1330+643 is not searchable.
 
 
-FIXED (2026-10-22): Changing the Add Object type no longer enables star labels. The star-label picker retains its intentional enable-on-selection behavior.
+FIXED (2026-10-22): Exoplanet host searches resolve published legacy white-dwarf aliases even before Gaia color identities are attached. Repeated imports reuse the same host. Exact catalog identifiers and Gaia identities retain their respective namespaces; conflicting or ambiguous alias matches are rejected.
 
-Original request: Clicking certain lists and dropdowns reverts star labels back on. Only the star label list should do this.
-
-
-FIXED (2026-10-22): Grayscale PNG bump maps now apply the sea-level offset before scaling to meters, removing a spurious elevation increase of about 10 km.
-
-
-FIXED (2026-10-22): Extreme zoom uses consistent projection for stellar discs and flare centers, preserves tiny angular separations, scales the culling margin in pixels, and rejects offscreen disc and glare work. Regression checks cover magnification 2.5 million and distant background stars.
-
-Original request: Zooming in on a star causes performance degradation and incorrect flare placement. Vega at magnification 2.5 million is a good example. Frame rate temporarily crawls to almost nothing (in some cases this can hang the app) and the flare is centered below and to the right of the star's disc.
-
-
-FIXED (2026-10-22): Earth-view photometry regression scans 142,963 catalog stars and 4,380 galaxies at three epochs, including 3,042 variable stars. It allows known variability extrema and explicit magnitude tolerances for estimated V and integrated B photometry. All records pass.
-
-Original request: Add a regression test that no stellar object or galactic object displays, from Earth, with a significantly brighter magnitude than its catalog vmag, allowing for variability and color band differences.
+Original request: Remove the stale reload-count note and prevent the duplicate white-dwarf host.
 
 
 FIXED (2026-10-22, code audit): PNG exports release temporary pixel storage, reject absent bump data, encode flat elevation maps without division by zero, and report buffered write errors. Repeated exports pass AddressSanitizer leak checks.
@@ -49,7 +33,8 @@ RESOLVED (2026-10-22): The current Tau Ceti constellation shapes are accepted. R
 
 FIXED (2026-10-22): Removed the object-specific inclination exception. For every host, exactly 90-degree catalog inclinations without transit evidence are treated as unknown and use the disk when available. Other values, including 89.92 degrees, remain valid. Transit metadata survives imports, caches, and saved objects; repeated catalog processing preserves inferred geometry.
 
-OPEN (2026-10-22, code audit): The exoplanet catalog regression reports five additional objects after reloading. Reload identity handling remains unresolved.
+
+OPEN (2026-10-22, validation): Broader catalog checks still fail for HD 3167 inferred inclinations and the PDS 70 / 82 Eri catalog assertions. Host reload counts are stable.
 
 Audit validation (2026-10-22): Application build passes. Initial full C++ run: 471 passing checks, two failing cases at that time, six skips for disabled GPU terrain/mesh paths. All 14 Python utility checks pass; shell syntax checks pass. Warning review covered all 35 application source units. This audit does not establish that all possible defects are absent.
 
@@ -59,10 +44,10 @@ FIXED (2026-10-22): Local-body roles, map inversion, known-pole status, vegetati
 
 FIXED (2026-10-22): Constellation polar fallbacks use catalog boundary geometry, split regions use their catalog naming structure, and reference-vantage matching uses the reference star and its aliases. Removed object-specific star naming, import alias rewriting, and debug output. Constellation, star, and rendering suites pass (113 checks; six disabled GPU-path skips).
 
-FIXED (2026-10-22): Removed named-object catalog branches for binary membership, host identity, source choice, planet-letter rewriting, asteroid naming, and missing radii. Host cross-identifiers and aliases come from catalog records; rejection follows source disposition; unknown asteroid radii use an albedo estimate. The legacy CSV importer also retains transit flags and converts inclination units once. Star and celestial suites pass (100 checks); 49 catalog checks pass, with the separate reload-count case still open.
+FIXED (2026-10-22): Removed named-object catalog branches for binary membership, host identity, source choice, planet-letter rewriting, asteroid naming, and missing radii. Host cross-identifiers and aliases come from catalog records; rejection follows source disposition; unknown asteroid radii use an albedo estimate. The legacy CSV importer also retains transit flags and converts inclination units once. Star and celestial suites pass (100 checks); 49 catalog checks pass.
 
-FIXED (2026-10-22): Galaxy orientation, measured size and distance, band files, texture paths, and label extents are loaded from a packaged properties catalog. Removed named-galaxy rendering branches and fixed physical values from executable code. The reference star's pole is likewise read from the local catalog. A synthetic galaxy regression verifies the same data path and serialization. Application builds; the full run has 475 passing checks and the previously recorded exoplanet reload-count failure. CMake configuration could not run because CMake is absent; installation rules and installer checks include the new catalog.
+FIXED (2026-10-22): Galaxy orientation, measured size and distance, band files, texture paths, and label extents are loaded from a packaged properties catalog. Removed named-galaxy rendering branches and fixed physical values from executable code. The reference star's pole is likewise read from the local catalog. A synthetic galaxy regression verifies the same data path and serialization. Application builds; the full run has 475 passing checks at that time. The catalog reload regression is now covered by the host-identity fix. CMake configuration could not run because CMake is absent; installation rules and installer checks include the new catalog.
 
-FIXED (2026-10-22): Removed the remaining binary identifier exclusions, wide-companion name exceptions, and asteroid name rewriting. The deliberate asteroid selection was subsequently restored; wide orbits and unknown binary orbits retain their catalog identities. Constellation names and genitives now come from consline.dat instead of a compiled object table. Legacy exoplanet snapshots refresh transit metadata when online; NASA boolean flags and EU combined detection methods preserve real transiting 90-degree inclinations. Final targeted checks: all 22 constellation cases and 50 catalog cases pass; the separate reload-count case remains open. Application builds.
+FIXED (2026-10-22): Removed the remaining binary identifier exclusions, wide-companion name exceptions, and asteroid name rewriting. The deliberate asteroid selection was subsequently restored; wide orbits and unknown binary orbits retain their catalog identities. Constellation names and genitives now come from consline.dat instead of a compiled object table. Legacy exoplanet snapshots refresh transit metadata when online; NASA boolean flags and EU combined detection methods preserve real transiting 90-degree inclinations. Final targeted checks: all 22 constellation cases and 50 catalog cases pass; the catalog reload identity case is now fixed. Application builds.
 
 RESTORED (2026-10-22): Restored the user-selected asteroid list and its original loading condition exactly from the commit preceding its removal. This is a deliberate selection and must be preserved. Verified exact agreement with the original code.

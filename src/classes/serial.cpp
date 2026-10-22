@@ -194,6 +194,20 @@ static int find_object_impl(const char* search_term, bool os, double ml, int lev
             }
         }
     }
+    // A catalog's B1950 identifier outranks a published J2000 label with the same printed prefix.
+    const std::string canonical_wd = gaia_term.compare(0, 3, "WDJ") == 0 ? "" : wd_identifier_key(gaia_term);
+    if (!canonical_wd.empty())
+    {
+        int matched = -1;
+        for (int cursor = 0, index; (index = object_at(cursor)) >= 0; ++cursor)
+        {
+            if (cels[index]->deleted || cels[index]->typeclass() != class_star) continue;
+            if (wd_identifier_key(static_cast<Star*>(cels[index])->WD) != canonical_wd) continue;
+            if (matched >= 0) return -1;
+            matched = index;
+        }
+        if (matched >= 0) return matched;
+    }
     const std::string color_identity = wd_color_gaia_identifier(gaia_term);
     if (!color_identity.empty()) gaia_term = color_identity;
     if (gaia_term.compare(0, 3, "WDJ") == 0 &&
@@ -212,6 +226,24 @@ static int find_object_impl(const char* search_term, bool os, double ml, int lev
             {
                 return index;
             }
+        }
+        // A host imported before the color-association pass may still have only its legacy identity.
+        // Explicit Gaia records retain priority, and conflicting or ambiguous legacy records do not match.
+        if (!color_identity.empty())
+        {
+            int matched = -1;
+            for (int cursor = 0, index; (index = object_at(cursor)) >= 0; ++cursor)
+            {
+                if (cels[index]->deleted || cels[index]->typeclass() != class_star) continue;
+                const Star* star = static_cast<Star*>(cels[index]);
+                if (!star->gaia_wd_name.empty()) continue;
+                if (wd_color_gaia_identifier(star->WD, true) != color_identity
+                    && (!star->WD.empty() || wd_color_gaia_identifier(star->name) != color_identity)
+                    && wd_color_gaia_identifier(star->Gliese, true) != color_identity) continue;
+                if (matched >= 0) return -1;
+                matched = index;
+            }
+            return matched;
         }
         return -1;
     }

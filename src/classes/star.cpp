@@ -254,9 +254,30 @@ uint64_t alienorum::wd_color_data_revision()
     return published_wd_revision;
 }
 
-std::string alienorum::wd_color_gaia_identifier(const std::string &identifier)
+std::string alienorum::wd_color_gaia_identifier(const std::string &identifier, bool catalog_alias_only)
 {
     if (identifier.empty()) return "";
+    if (catalog_alias_only)
+    {
+        static const auto aliases = []()
+        {
+            std::map<std::string, std::string> result;
+            for (const auto& entry : published_wd_colors())
+            {
+                if (!entry.selectable) continue;
+                for (const auto& alias : entry.aliases)
+                {
+                    const std::string key = wd_alias_key(alias);
+                    const auto found = result.find(key);
+                    if (found == result.end()) result[key] = entry.gaia;
+                    else if (found->second != entry.gaia) found->second.clear();
+                }
+            }
+            return result;
+        }();
+        const auto found = aliases.find(wd_alias_key(identifier));
+        return found == aliases.end() ? "" : found->second;
+    }
     const auto *entry = published_wd_color_for(identifier);
     return entry ? entry->gaia : "";
 }

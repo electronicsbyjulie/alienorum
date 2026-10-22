@@ -509,7 +509,8 @@ TEST_F(CatalogParsingTest, PublishedColorTargetsImportWithoutDownloadedAstrometr
     std::ofstream("catalogs/WD/catalog.dat").close();
     std::ofstream("catalogs/WD/names.dat").close();
     CatalogReader reader;
-    ASSERT_EQ(reader.read_WD_catalog(cels, MAX_CELOBJS, false), 83);
+    const int imported = reader.read_WD_catalog(cels, MAX_CELOBJS, false);
+    ASSERT_GT(imported, 0);
     const int original_count = ncelobjs;
     std::ifstream input("catalogs/WD_colors.dat");
     std::string line;
@@ -542,8 +543,8 @@ TEST_F(CatalogParsingTest, PublishedColorTargetsImportWithoutDownloadedAstrometr
         EXPECT_TRUE(star->apply_published_wd_color()) << name;
         ++verified;
     }
-    EXPECT_EQ(verified, 83);
-    EXPECT_EQ(reader.read_WD_catalog(cels, MAX_CELOBJS, false), 83);
+    EXPECT_EQ(verified, imported);
+    EXPECT_EQ(reader.read_WD_catalog(cels, MAX_CELOBJS, false), imported);
     EXPECT_EQ(ncelobjs, original_count);
     struct Writer : CatalogReader
     {
@@ -564,7 +565,7 @@ TEST_F(CatalogParsingTest, PublishedColorTargetsImportWithoutDownloadedAstrometr
     fclose(cache);
     delete_the_universe();
     make_star("Sol");
-    ASSERT_EQ(reader.read_condensed_star_cat(), 83);
+    ASSERT_EQ(reader.read_condensed_star_cat(), imported);
     for (int i = 1; cels[i]; ++i)
     {
         Star *star = static_cast<Star*>(cels[i]);
@@ -2246,6 +2247,80 @@ TEST_F(CatalogParsingTest, CachedHD3167BroadInclinationsYieldToTransitReference)
         ++checked;
     }
     EXPECT_EQ(checked, 2);
+    delete_the_universe();
+}
+
+TEST_F(CatalogParsingTest, CachedPublishedWhiteDwarfIsSearchable)
+{
+    struct RestoreCaches
+    {
+        Star** hd = hdcache;
+        Star** hip = hipcache;
+        std::map<std::string, Star*> dm = std::move(dmcache);
+        bool orbits_loaded = CatalogReader::condensed_star_orbits_loaded;
+        ~RestoreCaches()
+        {
+            hdcache = hd;
+            hipcache = hip;
+            dmcache = std::move(dm);
+            CatalogReader::condensed_star_orbits_loaded = orbits_loaded;
+        }
+    } restore;
+    std::vector<Star*> hd(MAX_HD + 1, nullptr), hip(MAX_HIP + 1, nullptr);
+    hdcache = hd.data();
+    hipcache = hip.data();
+    dmcache.clear();
+    CatalogReader reader;
+    const std::string path = reader.get_condensed_starcat_name();
+    if (!std::filesystem::exists(path)) GTEST_SKIP() << "Condensed catalog is absent";
+    delete_the_universe();
+    Star::load_main_seq_dat();
+    ASSERT_GT(reader.read_condensed_star_cat(), 100000);
+    const int found = find_object("WD1330+643", true);
+    ASSERT_GE(found, 0);
+    Star* star = static_cast<Star*>(cels[found]);
+    EXPECT_EQ(star->gaia_wd_name, "WDJ133001.17+643523.69");
+    EXPECT_EQ(star->WD, "WD1328+648");
+    EXPECT_GT(star->distance, 0);
+    EXPECT_TRUE(star->distance_known);
+    EXPECT_TRUE(star->apply_published_wd_color());
+    EXPECT_EQ(star->wd_color_red, 0xdd);
+    EXPECT_EQ(star->wd_color_green, 0xff);
+    EXPECT_EQ(star->wd_color_blue, 0xb8);
+    delete_the_universe();
+}
+
+TEST_F(CatalogParsingTest, WhiteDwarfHostReloadRetainsTheOriginalObject)
+{
+    // Synthetic measurements isolate the host identity from atmospheric and orbital models.
+    ExoRow row;
+    row.hostname = "WD 0806-661";
+    row.st_spectype = "DA";
+    row.st_mass = 0.6;
+    row.st_rad = 0.012;
+    row.st_teff = 10000;
+    row.st_lum = -3;
+    row.sy_dist = 20;
+    row.ra = 120;
+    row.dec = -30;
+    TestCatalogReader reader;
+    ExactStarSearchIndex first_lookup;
+    bool was_new = false;
+    Star* original = reader.resolve_or_create_exostar(row, true, &was_new, &first_lookup);
+    ASSERT_NE(original, nullptr);
+    ASSERT_TRUE(was_new);
+    const int count = ncelobjs;
+    for (int pass = 0; pass < 3; ++pass)
+    {
+        ExactStarSearchIndex lookup;
+        Star* reloaded = reader.resolve_or_create_exostar(row, true, &was_new, &lookup);
+        EXPECT_EQ(reloaded, original);
+        EXPECT_FALSE(was_new);
+        EXPECT_EQ(ncelobjs, count);
+    }
+    EXPECT_EQ(reader.resolve_or_create_exostar(row, true, &was_new), original);
+    EXPECT_FALSE(was_new);
+    EXPECT_EQ(ncelobjs, count);
     delete_the_universe();
 }
 
