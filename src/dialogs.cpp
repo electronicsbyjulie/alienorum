@@ -1090,6 +1090,7 @@ void draw_addcel_window(ImGuiIO& io)
     ImGui::SameLine();
     ImGuiComboFlags cboceltyp_flags = 0;
     const char* combo_preview_value = celtypes[cboceltyp_selected_idx];
+    if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
     if (ImGui::BeginCombo("##cboceltyp", combo_preview_value, cboceltyp_flags))
     {
         for (int n = 0; n < nceltyp; n++)
@@ -1221,6 +1222,7 @@ void draw_objedit_window(ImGuiIO& io)
     ImGui::Text("%s", "Name");
     ImGui::SameLine(col1);
     ImGui::SetNextItemWidth(txtwid*2);
+    if (ImGui::IsWindowAppearing() || last_edit_idx != editidx) ImGui::SetKeyboardFocusHere();
     if (ImGui::InputText("##edtname", edit_name, name_max_len, 0))
     {
         strcpy(cels[editidx]->name, edit_name);
@@ -2653,6 +2655,7 @@ void draw_system_explorer(ImGuiIO& io)
 
     ImGui::Text("%s", "Search:");
     ImGui::SameLine();
+    if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
     ImGui::InputText("##xplorsearch", xplorfor, name_max_len, 0);
 
     static bool list_planets = true, list_moons = true, list_asteroids = false, list_comets = false, list_kbos = true, list_sats = false;
@@ -3201,6 +3204,7 @@ void draw_loc_window(ImGuiIO & io)
 
     ImGui::Text("%s", "Search:");
     ImGui::SameLine();
+    if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
     ImGui::InputText("##lookloc", lookloc, name_max_len, 0);
 
     ImGui::Text(" Locale                                  Lat.    Lon.");
@@ -3294,6 +3298,8 @@ void draw_ast_window(ImGuiIO & io)
     static std::vector<std::string> astlistlines;
     static bool was_loading = false;
     ImGui::Begin("Add Asteroids", &astwnd, 0);
+    const bool focus_search = ImGui::IsWindowAppearing()
+        || (was_loading && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows));
 
     if (!astorb_loaded.load())
     {
@@ -3352,6 +3358,7 @@ void draw_ast_window(ImGuiIO & io)
     static std::string mesg = "";
     ImGui::Text("%s", "Search:");
     ImGui::SameLine();
+    if (focus_search) ImGui::SetKeyboardFocusHere();
     if (ImGui::InputText("##lookast", lookast, name_max_len, 0)) astlistlines.clear();
 
     int i, l, looklen = strlen(lookast);
@@ -3503,6 +3510,7 @@ void draw_sat_window(ImGuiIO& io)
     static std::string mesg = "";
     ImGui::Text("%s", "Search:");
     ImGui::SameLine();
+    if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
     ImGui::InputText("##looksat", looksat, name_max_len, 0);
 
     int nsats = sat_data.size(), i, l, looklen = strlen(looksat);
@@ -3794,6 +3802,7 @@ void draw_comet_window(ImGuiIO & io)
     static std::string mesg = "";
     ImGui::Text("%s", "Search:");
     ImGui::SameLine();
+    if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
     if (ImGui::InputText("##lookcomet", lookcomet, name_max_len, 0)) cometlistlines.clear();
 
     int i, l, looklen = strlen(lookcomet);
