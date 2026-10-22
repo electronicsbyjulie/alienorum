@@ -11,6 +11,7 @@
 #include <fstream>
 #include <algorithm>
 #include <memory>
+#include <limits>
 #include "celestial.h"
 #include "shore.h"
 #include "lavafissures.h"
@@ -1523,9 +1524,26 @@ bool Map::load_from_png(std::string filename, bool as_bump, double bump_scale)
 
 bool Map::save_to_png(std::string filename, bool as_bump)
 {
-    if (!image_width || !image_height || !green_data)
+    if (!image_width || !image_height || image_width > PNG_UINT_31_MAX || image_height > PNG_UINT_31_MAX
+        || image_width > std::numeric_limits<size_t>::max() / image_height
+        || image_width * image_height > std::numeric_limits<size_t>::max() / 3
+        || allocated < image_width * image_height
+        || (as_bump ? !bump_data : (!red_data || !green_data || !blue_data)))
     {
         std::cerr << "Error: no map data to save." << std::endl;
+        return false;
+    }
+
+    // Construct storage before setjmp so libpng errors return through normal C++ cleanup.
+    std::vector<png_byte> buffer;
+    std::vector<png_bytep> row_pointers;
+    try
+    {
+        buffer.resize(image_width * image_height * 3);
+        row_pointers.resize(image_height);
+    }
+    catch (const std::exception&)
+    {
         return false;
     }
 
@@ -1580,44 +1598,34 @@ bool Map::save_to_png(std::string filename, bool as_bump)
         PNG_FILTER_TYPE_DEFAULT
     );
 
-    // Map the 1D buffer to row pointers
-    png_bytepp row_pointers = (png_bytepp)malloc(sizeof(png_bytep) * image_height);
-    if (!row_pointers)
-    {
-        png_destroy_write_struct(&png_ptr, &info_ptr);
-        fclose(fp);
-        std::cerr << "Failed to map row pointers." << std::endl;
-        return false;
-    }
-
-    // Create a buffer to hold the data to be written
-    png_bytep buffer = (png_bytep)malloc(image_width * image_height * 3);
-
     double bump_scale = 1;
     double bump_max = -1e209, bump_min = 1e209;
     if (as_bump)
     {
         for (unsigned long i=0; i<allocated; i++)
         {
+            if (!std::isfinite(bump_data[i])) continue;
             if (bump_data[i] > bump_max) bump_max = bump_data[i];
             if (bump_data[i] < bump_min) bump_min = bump_data[i];
         }
 
-        bump_scale = 255.0 / (bump_max-bump_min);
+        bump_scale = bump_max > bump_min ? 255.0 / (bump_max - bump_min) : 0;
     }
 
     // Populate the buffer with data.
-    unsigned int row_stride = image_width * 3;               // 3 bytes per pixel for RGB3
+    size_t row_stride = image_width * 3;               // 3 bytes per pixel for RGB3
     for (unsigned int y = 0; y < image_height; y++)
     {
-        int iy = image_width*y;
-        int ry = row_stride*y;
+        size_t iy = image_width*y;
+        size_t ry = row_stride*y;
         for (unsigned int x = 0; x < image_width; x++)
         {
-            int rx = x*3;
+            size_t rx = x*3;
             if (as_bump)
             {
-                buffer[ry + rx] = buffer[ry + rx +1] = buffer[ry + rx +2] = fmax(0, fmin(255, (bump_data[iy + x]-bump_min) * bump_scale));
+                const double value = bump_scale > 0 && std::isfinite(bump_data[iy + x])
+                    ? std::clamp((bump_data[iy + x] - bump_min) * bump_scale, 0.0, 255.0) : 128;
+                buffer[ry + rx] = buffer[ry + rx + 1] = buffer[ry + rx + 2] = value;
             }
             else
             {
@@ -1636,15 +1644,12 @@ bool Map::save_to_png(std::string filename, bool as_bump)
 
     // Write data to file
     png_write_info(png_ptr, info_ptr);
-    png_write_image(png_ptr, row_pointers);
+    png_write_image(png_ptr, row_pointers.data());
     png_write_end(png_ptr, NULL);
 
     // Clean up resources
-    free(row_pointers);
     png_destroy_write_struct(&png_ptr, &info_ptr);
-    fclose(fp);
-
-    return true;
+    return fclose(fp) == 0;
 }
 
 unsigned int Map::next_gen()

@@ -36,3 +36,5 @@ FIXED (2026-10-22): Earth-view photometry regression scans 142,963 catalog stars
 
 Original request: Add a regression test that no stellar object or galactic object displays, from Earth, with a significantly brighter magnitude than its catalog vmag, allowing for variability and color band differences.
 
+
+FIXED (2026-10-22, code audit): PNG exports release temporary pixel storage, reject absent bump data, encode flat elevation maps without division by zero, and report buffered write errors. Repeated exports pass AddressSanitizer leak checks.

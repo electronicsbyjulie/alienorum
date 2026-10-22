@@ -1099,3 +1099,56 @@ TEST(MapTest, GrayscaleBumpMapsApplyTheDatumInsideTheScale)
     ASSERT_TRUE(map.load_from_png(path, true, 20000));
     EXPECT_NEAR(map.elevation_at(lat, lon), 20000 * (pixel.r / 255.0 - 0.5), 1e-8);
 }
+
+class PngExportMap : public Map
+{
+    public:
+    explicit PngExportMap(bool relief = false)
+    {
+        image_width = image_height = 2;
+        allocated = 4;
+        lat_scale = image_height / _pi;
+        lon_scale = image_width / (2 * _pi);
+        red_data = new unsigned char[4]{10, 10, 10, 10};
+        green_data = new unsigned char[4]{20, 20, 20, 20};
+        blue_data = new unsigned char[4]{30, 30, 30, 30};
+        if (relief) bump_data = new double[4]{7, 7, 7, 7};
+    }
+};
+
+TEST(MapTest, RepeatedPngExportsRetainPixelsAndReleaseTemporaryStorage)
+{
+    const auto path = std::filesystem::temp_directory_path() / "alienorum_png_export_test.png";
+    PngExportMap map;
+    for (int i = 0; i < 8; ++i) ASSERT_TRUE(map.save_to_png(path.string()));
+    Map loaded;
+    ASSERT_TRUE(loaded.load_from_png(path.string()));
+    const RGB3 pixel = loaded.color_at(0, 0);
+    EXPECT_EQ(pixel.r, 10);
+    EXPECT_EQ(pixel.g, 20);
+    EXPECT_EQ(pixel.b, 30);
+    std::filesystem::remove(path);
+}
+
+TEST(MapTest, PngBumpExportRejectsMissingReliefAndHandlesFlatMaps)
+{
+    const auto path = std::filesystem::temp_directory_path() / "alienorum_png_bump_export_test.png";
+    PngExportMap colors;
+    EXPECT_FALSE(colors.save_to_png(path.string(), true));
+    PngExportMap flat(true);
+    ASSERT_TRUE(flat.save_to_png(path.string(), true));
+    Map loaded;
+    ASSERT_TRUE(loaded.load_from_png(path.string()));
+    const RGB3 pixel = loaded.color_at(0, 0);
+    EXPECT_EQ(pixel.r, 128);
+    EXPECT_EQ(pixel.g, 128);
+    EXPECT_EQ(pixel.b, 128);
+    std::filesystem::remove(path);
+}
+
+TEST(MapTest, PngExportReportsBufferedWriteFailures)
+{
+    if (!std::filesystem::exists("/dev/full")) GTEST_SKIP() << "A failing output device is unavailable";
+    PngExportMap map;
+    EXPECT_FALSE(map.save_to_png("/dev/full"));
+}
