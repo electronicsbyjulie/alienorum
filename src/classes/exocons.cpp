@@ -471,15 +471,24 @@ namespace alienorum
         int own_count = 0;
 
         std::unordered_map<std::string, Point> resolved_vantages;
-        resolved_vantages["Sun"] = (cels && cels[0]) ? cels[0]->location : Point(0, 0, 0);
-        resolved_vantages["Sol"] = (cels && cels[0]) ? cels[0]->location : Point(0, 0, 0);
+        if (cels && cels[0])
+        {
+            resolved_vantages[cels[0]->name] = cels[0]->location;
+            if (cels[0]->typeclass() == class_star)
+            {
+                for (const auto& alias : static_cast<Star*>(cels[0])->catalog_aliases)
+                {
+                    resolved_vantages[alias] = cels[0]->location;
+                }
+            }
+        }
 
         for (auto& c : constellations)
         {
             std::string vname = c.vantage_name;
             if (!c.vantage_resolved)
             {
-                if (vname.empty() || vname == "Sun" || vname == "Sol")
+                if (is_reference_vantage(vname))
                 {
                     c.vantage = (cels && cels[0]) ? cels[0]->location : Point(0, 0, 0);
                     c.vantage_resolved = true;
@@ -517,11 +526,11 @@ namespace alienorum
 
             if (vname.empty() && vpt.distance_to(Point(0, 0, 0)) < light_year * 0.1)
             {
-                vname = "Sun";
+                vname = cels && cels[0] ? cels[0]->name : "";
             }
 
             bool is_same_vantage = (!c.vantage_name.empty() && c.vantage_name == vantage_name_out);
-            if (c.vantage_name.empty() && (vantage_name_out == "Sun" || vantage_name_out == "Sol"))
+            if (c.vantage_name.empty() && is_reference_vantage(vantage_name_out))
             {
                 is_same_vantage = true;
             }
@@ -1559,11 +1568,6 @@ namespace alienorum
             Point u_bright = candidates[ci].u;
             bool connected = false;
 
-            bool is_nu = (s_bright && s_bright->name && std::string(s_bright->name).find("Nu Hy") != std::string::npos);
-            if (is_nu)
-            {
-                printf("DEBUG: Nu Hydrae entered Step 6. candidates ci=%zu, mag=%.2f, out_cons.size()=%zu\n", ci, candidates[ci].mag, out_cons.size());
-            }
 
             // Step A: Attempt to attach to an existing constellation (direct or via bridging star)
             Star* best_existing_target = nullptr;
@@ -1721,10 +1725,6 @@ namespace alienorum
                     }
                 });
 
-                if (is_nu)
-                {
-                    printf("DEBUG: Nu Hydrae in Step B: b_stars.size()=%zu\n", b_stars.size());
-                }
 
                 if (b_stars.size() >= 4)
                 {
@@ -1951,10 +1951,6 @@ namespace alienorum
                     }
                 }
 
-                if (is_nu)
-                {
-                    printf("DEBUG: Nu Hydrae after Step B: connected=%d\n", (int)connected);
-                }
 
                 if (!connected)
                 {
@@ -1994,10 +1990,6 @@ namespace alienorum
                         }
                     }
 
-                    if (is_nu)
-                    {
-                        printf("DEBUG: Nu Hydrae fallback: near_indices.size()=%zu, dedicated_stars.size()=%zu\n", near_indices.size(), dedicated_stars.size());
-                    }
 
                     if (dedicated_stars.size() >= 3)
                     {

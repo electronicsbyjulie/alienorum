@@ -116,15 +116,24 @@ TEST_F(ConstellationTest, BuildPerimeter_OrdersVerticesAndFindsCenter)
 
 TEST_F(ConstellationTest, IdentifyCons_PolarFallback)
 {
-    // Create Ursa Minor and Octans with no bounds to force the fallback
+    // Polar catalog boundaries determine membership, independent of names.
     Constellation umi;
-    umi.name = "Ursa Minor";
-    umi.abbrev = "UMi";
-    
+    umi.name = "Synthetic northern cap";
+    umi.abbrev = "NCap";
     Constellation oct;
-    oct.name = "Octans";
-    oct.abbrev = "Oct";
-    
+    oct.name = "Synthetic southern cap";
+    oct.abbrev = "SCap";
+    for (double ra : {0.0, 2 * _pi / 3, 4 * _pi / 3, 2 * _pi})
+    {
+        ConsBoundary north;
+        north.RA = ra;
+        north.decl = 88 * fiftyseventh;
+        umi.bounds.push_back(north);
+        ConsBoundary south = north;
+        south.decl = -north.decl;
+        oct.bounds.push_back(south);
+    }
+
     constellations.push_back(umi);
     constellations.push_back(oct);
     
@@ -140,8 +149,8 @@ TEST_F(ConstellationTest, IdentifyCons_PolarFallback)
     ASSERT_NE(found_north, nullptr);
     ASSERT_NE(found_south, nullptr);
     
-    EXPECT_EQ(found_north->abbrev, "UMi");
-    EXPECT_EQ(found_south->abbrev, "Oct");
+    EXPECT_EQ(found_north->abbrev, "NCap");
+    EXPECT_EQ(found_south->abbrev, "SCap");
 }
 
 TEST_F(ConstellationTest, IdentifyCons_PointInPolygon)

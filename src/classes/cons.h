@@ -43,6 +43,7 @@ using namespace alienorum;
 
 extern int num_reg_cons;
 extern std::vector<Constellation> constellations;
+bool is_reference_vantage(const std::string& name);
 Constellation* identify_cons_from_coords(double RA, double Decl);
 Constellation* identify_cons_of_star(Star* s);
 ConsBins fill_alienorum_ids();

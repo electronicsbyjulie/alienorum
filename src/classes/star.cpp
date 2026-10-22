@@ -544,7 +544,6 @@ void Star::rename_from_Bayer_Flamsteed()
             }
             else strcpy(name, (Greek_letter[BayerGrkIdx] + std::string(" ") + constellations[j].genitive).c_str());
 
-            if (BayerGrkIdx == 5 && !strcmp(constellations[j].abbrev.c_str(), "Ret")) has_custom_name = true;
         }
     }
     else if (FlamsteedNo > 0)

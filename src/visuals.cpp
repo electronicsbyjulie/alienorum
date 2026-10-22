@@ -7938,8 +7938,8 @@ void draw_cons_lines()
                     matches_name = true;
                 }
             }
-            bool is_sun = (sys_star == (cels ? cels[0] : nullptr) || sys_name == "Sun" || sys_name == "Sol");
-            bool matches_sun = is_sun && (constellations[i].vantage_name.empty() || constellations[i].vantage_name == "Sun" || constellations[i].vantage_name == "Sol");
+            bool is_sun = (sys_star == (cels ? cels[0] : nullptr));
+            bool matches_sun = is_sun && is_reference_vantage(constellations[i].vantage_name);
             bool matches_dist = constellations[i].vantage.distance_to(sys_loc) < light_year * 0.1;
 
             if (matches_name || matches_sun || matches_dist)
@@ -8000,8 +8000,8 @@ void draw_cons_lines()
                 return true;
             }
         }
-        bool active_is_sun = (active_vantage_name.empty() || active_vantage_name == "Sun" || active_vantage_name == "Sol");
-        bool c_is_sun = (c.vantage_name.empty() || c.vantage_name == "Sun" || c.vantage_name == "Sol");
+        bool active_is_sun = is_reference_vantage(active_vantage_name);
+        bool c_is_sun = is_reference_vantage(c.vantage_name);
         if (active_is_sun && c_is_sun)
         {
             return true;

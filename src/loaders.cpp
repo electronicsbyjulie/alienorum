@@ -1112,7 +1112,7 @@ void cache_cons_lines()
     {
         if (!constellations[i].vantage_resolved)
         {
-            if (constellations[i].vantage_name.empty() || constellations[i].vantage_name == "Sun" || constellations[i].vantage_name == "Sol")
+            if (is_reference_vantage(constellations[i].vantage_name))
             {
                 constellations[i].vantage = (cels && cels[0]) ? cels[0]->location : Point(0, 0, 0);
                 constellations[i].vantage_resolved = true;

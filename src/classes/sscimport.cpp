@@ -1492,7 +1492,6 @@ CelestialObject* SSCImport::resolve_star(const std::string &ssc_name)
     if (found != star_cache.end()) return found->second;
 
     std::string want = first_alias(ssc_name);
-    if (want == "Sol") want = "Sun";                    // the one name the two programs disagree on
 
     int idx = find_object(want.c_str(), true, 9e29, 2);
     CelestialObject *star = (idx >= 0) ? cels[idx] : nullptr;

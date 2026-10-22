@@ -1,6 +1,7 @@
 #include <cmath>
 #include <vector>
 #include "cons.h"
+#include "serial.h"
 
 int num_reg_cons = 0;
 std::vector<Constellation> constellations;
@@ -182,22 +183,28 @@ Constellation *identify_cons_from_coords(double RA, double Decl)
     // The Polar Fallback: If the star didn't fit into any closed polygon,
     // assume it must be in the polar caps where the 2D projection breaks down.
 
-    // Positive declination = Northern Hemisphere -> Ursa Minor
-    if (Decl > 0) 
+    Constellation* polar = nullptr;
+    double extreme = 0;
+    for (auto& candidate : constellations)
     {
-        for (auto& cons : constellations)
+        double min_ra = 2 * _pi, max_ra = 0;
+        for (const auto& boundary : candidate.bounds)
         {
-            if (cons.name == "Ursa Minor" || cons.abbrev == "UMi") return &cons;
+            min_ra = std::min(min_ra, boundary.RA);
+            max_ra = std::max(max_ra, boundary.RA);
+        }
+        if (max_ra - min_ra < _pi) continue;
+        for (const auto& boundary : candidate.bounds)
+        {
+            const double score = boundary.decl * (Decl >= 0 ? 1 : -1);
+            if (score > extreme)
+            {
+                polar = &candidate;
+                extreme = score;
+            }
         }
     }
-    // Negative declination = Southern Hemisphere -> Octans
-    else 
-    {
-        for (auto& cons : constellations)
-        {
-            if (cons.name == "Octans" || cons.abbrev == "Oct") return &cons;
-        }
-    }
+    if (polar) return polar;
 
     return nullptr;                     // This line never executes but it prevents a compiler warning.
 }
@@ -241,22 +248,28 @@ Constellation *identify_cons_of_star(Star *s)
     // The Polar Fallback: If the star didn't fit into any closed polygon,
     // assume it must be in the polar caps where the 2D projection breaks down.
 
-    // Positive declination = Northern Hemisphere -> Ursa Minor
-    if (s->declination > 0) 
+    Constellation* polar = nullptr;
+    double extreme = 0;
+    for (auto& candidate : constellations)
     {
-        for (auto& cons : constellations)
+        double min_ra = 2 * _pi, max_ra = 0;
+        for (const auto& boundary : candidate.bounds)
         {
-            if (cons.name == "Ursa Minor" || cons.abbrev == "UMi") return &cons;
+            min_ra = std::min(min_ra, boundary.RA);
+            max_ra = std::max(max_ra, boundary.RA);
+        }
+        if (max_ra - min_ra < _pi) continue;
+        for (const auto& boundary : candidate.bounds)
+        {
+            const double score = boundary.decl * (s->declination >= 0 ? 1 : -1);
+            if (score > extreme)
+            {
+                polar = &candidate;
+                extreme = score;
+            }
         }
     }
-    // Negative declination = Southern Hemisphere -> Octans
-    else 
-    {
-        for (auto& cons : constellations)
-        {
-            if (cons.name == "Octans" || cons.abbrev == "Oct") return &cons;
-        }
-    }
+    if (polar) return polar;
 
     // If we reach this point, something is wrong.
     // assert(false);
@@ -283,16 +296,6 @@ ConsBins fill_alienorum_ids()
 
     // Serpens Caput/Cauda are two disjoint boundary regions (SER1/SER2) but one constellation:
     // unify them under plain "Ser" so alienorumids count through Serpens as a single sequence.
-    Constellation *ser = nullptr;
-    for (auto& c : constellations)
-    {
-        if (c.abbrev == "Ser")
-        {
-            ser = &c;
-            break;
-        }
-    }
-
     int i, j, n;
     for (i=0; cels[i]; i++)
     {
@@ -321,7 +324,12 @@ ConsBins fill_alienorum_ids()
         Constellation *cs = identify_cons_of_star(s);
         if (!cs) continue;
 
-        if (ser && (cs->abbrev == "Ser1" || cs->abbrev == "Ser2")) cs = ser;
+        std::string base = cs->abbrev;
+        while (!base.empty() && std::isdigit(static_cast<unsigned char>(base.back()))) base.pop_back();
+        if (base != cs->abbrev)
+        {
+            for (auto& candidate : constellations) if (candidate.abbrev == base) { cs = &candidate; break; }
+        }
 
         int m = floor(fabs(s->apparent_magnitude)) * sgn(s->apparent_magnitude);
         if (m < -30 || m > 50) m = 20;
@@ -401,4 +409,13 @@ ConsBins fill_alienorum_ids()
     }
 
     return bins;
+}
+bool is_reference_vantage(const std::string& name)
+{
+    if (name.empty()) return true;
+    if (!cels || !cels[0]) return false;
+    if (name == cels[0]->name) return true;
+    if (cels[0]->typeclass() != class_star) return false;
+    const auto& aliases = static_cast<Star*>(cels[0])->catalog_aliases;
+    return std::find(aliases.begin(), aliases.end(), name) != aliases.end();
 }
