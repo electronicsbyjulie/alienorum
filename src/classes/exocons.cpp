@@ -737,7 +737,7 @@ namespace alienorum
         const int existing_cons_count = (int)cons_stars.size();
 
         const double pool_mag = 5.5;
-        const double separation_fraction = 0.25;
+        const double separation_fraction = 0.5;
         const int cluster_size = 8;
 
         // 2. Collect candidate stars outside local system
@@ -1075,28 +1075,11 @@ namespace alienorum
             }
 
             double cos_clearance = cos(separation_fraction * len_deg * fiftyseventh);
-            const bool prominent_connection = star_mag_map[sa] <= 4.0 && star_mag_map[sb] <= 4.0;
-            const double endpoint_mag = std::max(star_mag_map[sa], star_mag_map[sb]);
-            auto obstructs_connection = [&](Star* star)
-            {
-                if (!prominent_connection)
-                {
-                    return true;
-                }
-                auto found = star_mag_map.find(star);
-                double mag = found == star_mag_map.end() ? star->viewer_magnitude(vantage_loc) : found->second;
-                return mag <= 4.0 && mag <= endpoint_mag + 1.0;
-            };
-
             // Keep endpoints clear of stars in other figures, using a fraction
             // of the proposed line length rather than a fixed angular radius.
             for (const auto& ps : placed_stars)
             {
                 if (ps.cons_idx == target_cons_idx || ps.s == sa || ps.s == sb)
-                {
-                    continue;
-                }
-                if (!obstructs_connection(ps.s))
                 {
                     continue;
                 }
@@ -1124,10 +1107,6 @@ namespace alienorum
                     {
                         continue;
                     }
-                    if (!obstructs_connection(bc.s))
-                    {
-                        continue;
-                    }
                     if (dot_product(ua, bc.u) > cos_clearance || dot_product(ub, bc.u) > cos_clearance)
                     {
                         return false;
@@ -1146,23 +1125,31 @@ namespace alienorum
                     continue;
                 }
                 double cos_separation = cos(separation_fraction * el.len_deg * fiftyseventh);
-                bool a_obstructs = obstructs_connection(el.a);
-                bool b_obstructs = obstructs_connection(el.b);
                 if (sa_new)
                 {
-                    if ((a_obstructs && dot_product(el.ua, ua) > cos_separation)
-                        || (b_obstructs && dot_product(el.ub, ua) > cos_separation))
+                    if ((dot_product(el.ua, ua) > cos_separation)
+                        || (dot_product(el.ub, ua) > cos_separation))
                     {
                         return false;
                     }
                 }
                 if (sb_new)
                 {
-                    if ((a_obstructs && dot_product(el.ua, ub) > cos_separation)
-                        || (b_obstructs && dot_product(el.ub, ub) > cos_separation))
+                    if ((dot_product(el.ua, ub) > cos_separation)
+                        || (dot_product(el.ub, ub) > cos_separation))
                     {
                         return false;
                     }
+                }
+            }
+
+            // A new endpoint must also clear the interiors of earlier arcs.
+            for (const auto& el : all_lines)
+            {
+                if ((sa != el.a && sa != el.b && point_near_arc(el.ua, el.ub, ua, 1.5, nullptr, 0.8))
+                    || (sb != el.a && sb != el.b && point_near_arc(el.ua, el.ub, ub, 1.5, nullptr, 0.8)))
+                {
+                    return false;
                 }
             }
 
@@ -1186,17 +1173,6 @@ namespace alienorum
                 }
                 const auto& cand = candidates[cand_idx];
                 if (cand.s == sa || cand.s == sb)
-                {
-                    return;
-                }
-                // Faint points do not interrupt the bright skeleton, even when
-                // selected as branches of the same figure.
-                if (prominent_connection && cand.mag > endpoint_mag + 1.0)
-                {
-                    return;
-                }
-                if (cand.mag > 4.0 && (prominent_connection || !active_cluster_stars
-                    || !active_cluster_stars->count(cand.s)))
                 {
                     return;
                 }
