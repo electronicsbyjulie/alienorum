@@ -56,3 +56,9 @@ FIXED (2026-10-22, code audit): UI texture loading rejects empty or oversized fi
 FIXED (2026-10-22, code audit): Reapplying exoplanet names retains heliocentric source elements instead of treating converted local inclinations as fresh observations. A regression reproduces the former orbit rotation and verifies stable positions across repeated passes. Planet and star suites pass; two older catalog checks remain separate.
 
 FIXED (2026-10-22, code audit): The Gaia astrometry regression uses a temporary two-star catalog and explicitly loads the stellar reference table, so its distance, companion-photometry, and luminosity-class checks work without an optional external dataset. The isolated regression passes.
+
+OPEN (2026-10-22, code audit): The Tau Ceti constellation regression still reports an unwanted Altair–Ras Algethi connection and an absent Nu Ophiuchi–Mu Ophiuchi connection. General segment-length, figure-size, connectivity, near-miss, and separation checks pass; these particular shape expectations remain unresolved.
+
+OPEN (2026-10-22, code audit): The exoplanet catalog regression reports five additional objects after reloading and expects disk-aligned inclinations for 82 Eridani b/c, while the current cached records supply 90-degree inclinations. Resolve source provenance and reload identity handling before changing orbital behavior or assertions.
+
+Audit validation (2026-10-22): Application build passes. Full C++ run: 471 passing checks, two failing cases above, six skips for disabled GPU terrain/mesh paths. All 14 Python utility checks pass; shell syntax checks pass. Warning review covered all 35 application source units. This audit does not establish that all possible defects are absent.
