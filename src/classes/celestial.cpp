@@ -371,6 +371,7 @@ bool alienorum::Orbit::read_osc_elements(std::string cel_name)
         if (!file_exists(filename.c_str())) return false;
     }
 
+    delete[] osculating;
     osculating = OsculatingElement::read_from_file(filename, &num_osc);
     #ifdef DEBUG
     std::cout << "Read " << num_osc << " osculating ephemerides for " << cel_name << std::endl << std::flush;
@@ -381,7 +382,7 @@ bool alienorum::Orbit::read_osc_elements(std::string cel_name)
 void alienorum::Orbit::interpolate_osculating_e(double for_epoch, double &n, double &i, double &w, double &a, double &e, double &m, double &p, double& precn, double& procarg, double& effe)
 {
     long int h = num_osc - 1;
-    if (!num_osc || for_epoch < osculating[0].epoch || for_epoch > osculating[h].epoch)
+    if (num_osc < 2 || for_epoch < osculating[0].epoch || for_epoch > osculating[h].epoch)
     {
         // If no osculating parameters, just use mean.
         n       = ascending_node;
@@ -397,56 +398,27 @@ void alienorum::Orbit::interpolate_osculating_e(double for_epoch, double &n, dou
         return;
     }
 
-    // A maybe faster way to search.
-    long int l = num_osc/2, j = l/2;
-    while (1)                           // DANGER!
-    {
-        if (l <= 0) break;
-        if ((unsigned)l >= num_osc) break;
-        if (!j) break;
-
-        #if 0
-        std::cout << std::fixed << l << "/" << num_osc << ": " << osculating[l].epoch << " vs. " << for_epoch << " vs. "
-            << osculating[l+1].epoch << " +/-" << j << std::endl << std::flush;
-        #endif
-        if (osculating[l].epoch > for_epoch) l -= j;
-        else if (osculating[l+1].epoch < for_epoch) l += j;
-        else if (osculating[l].epoch <= for_epoch && osculating[l+1].epoch >= for_epoch) break;
-        j /= 2;
-    }
-    long int k = l - 13;
-    if (k < 0) k = 0;
-    h = l + 13;
-    for (j = k; j <= h; j++)
-    {
-        if (osculating[j].epoch <= for_epoch && osculating[j+1].epoch >= for_epoch)
-        {
-            double coeff1 = (for_epoch - osculating[j].epoch) / (osculating[j+1].epoch - osculating[j].epoch), coeff0 = 1.0 - coeff1;
-            // n = coeff0 * osculating[j].ascending_node   + coeff1 * osculating[j+1].ascending_node;
-            n = interpolate_angles(osculating[j].ascending_node, osculating[j+1].ascending_node, coeff1);
-            i = coeff0 * osculating[j].inclination      + coeff1 * osculating[j+1].inclination;
-            // w = coeff0 * osculating[j].arg_perifocus    + coeff1 * osculating[j+1].arg_perifocus;
-            w = interpolate_angles(osculating[j].arg_perifocus, osculating[j+1].arg_perifocus, coeff1);
-            a = coeff0 * osculating[j].semimajor_axis   + coeff1 * osculating[j+1].semimajor_axis;
-            e = coeff0 * osculating[j].eccentricity     + coeff1 * osculating[j+1].eccentricity;
-            // m = coeff0 * osculating[j].mean_anomaly     + coeff1 * osculating[j+1].mean_anomaly;
-            m = 0; // interpolate_angles(osculating[j].mean_anomaly, osculating[j+1].mean_anomaly, coeff1);
-            p = coeff0 * osculating[j].period           + coeff1 * osculating[j+1].period;
-            precn = procarg = 0;
-            double pdays = p / oneday;
-            double T_peri_j1 = osculating[j+1].T_periapsis, T_peri_j1mp = T_peri_j1 - pdays, T_peri_j1pp = T_peri_j1 + pdays;
-            if (     fabs(osculating[j].T_periapsis - T_peri_j1mp) < fabs(osculating[j].T_periapsis - T_peri_j1)) T_peri_j1 = T_peri_j1mp;
-            else if (fabs(osculating[j].T_periapsis - T_peri_j1pp) < fabs(osculating[j].T_periapsis - T_peri_j1)) T_peri_j1 = T_peri_j1pp;
-            effe = coeff0 * osculating[j].T_periapsis + coeff1 * T_peri_j1;
-            return;
-        }
-    }
-
-    #if 0
-    std::cout << std::fixed << k << "-" << h << "/" << num_osc << ": " << osculating[k].epoch << " vs. " << for_epoch << " vs. "
-        << osculating[h].epoch << " +/-" << j << std::endl << std::flush;
-    #endif
-    assert(false);
+    // Find a bracketing pair without reading beyond the final sample.
+    auto upper = std::upper_bound(osculating, osculating + num_osc, for_epoch,
+        [](double epoch, const OsculatingElement& sample) { return epoch < sample.epoch; });
+    long int j = upper == osculating + num_osc ? num_osc - 2 : upper - osculating - 1;
+    double coeff1 = (for_epoch - osculating[j].epoch) / (osculating[j+1].epoch - osculating[j].epoch), coeff0 = 1.0 - coeff1;
+    // n = coeff0 * osculating[j].ascending_node   + coeff1 * osculating[j+1].ascending_node;
+    n = interpolate_angles(osculating[j].ascending_node, osculating[j+1].ascending_node, coeff1);
+    i = coeff0 * osculating[j].inclination      + coeff1 * osculating[j+1].inclination;
+    // w = coeff0 * osculating[j].arg_perifocus    + coeff1 * osculating[j+1].arg_perifocus;
+    w = interpolate_angles(osculating[j].arg_perifocus, osculating[j+1].arg_perifocus, coeff1);
+    a = coeff0 * osculating[j].semimajor_axis   + coeff1 * osculating[j+1].semimajor_axis;
+    e = coeff0 * osculating[j].eccentricity     + coeff1 * osculating[j+1].eccentricity;
+    // m = coeff0 * osculating[j].mean_anomaly     + coeff1 * osculating[j+1].mean_anomaly;
+    m = 0; // interpolate_angles(osculating[j].mean_anomaly, osculating[j+1].mean_anomaly, coeff1);
+    p = coeff0 * osculating[j].period           + coeff1 * osculating[j+1].period;
+    precn = procarg = 0;
+    double pdays = p / oneday;
+    double T_peri_j1 = osculating[j+1].T_periapsis, T_peri_j1mp = T_peri_j1 - pdays, T_peri_j1pp = T_peri_j1 + pdays;
+    if (     fabs(osculating[j].T_periapsis - T_peri_j1mp) < fabs(osculating[j].T_periapsis - T_peri_j1)) T_peri_j1 = T_peri_j1mp;
+    else if (fabs(osculating[j].T_periapsis - T_peri_j1pp) < fabs(osculating[j].T_periapsis - T_peri_j1)) T_peri_j1 = T_peri_j1pp;
+    effe = coeff0 * osculating[j].T_periapsis + coeff1 * T_peri_j1;
 }
 
 void Orbit::compute_period(double mm)
@@ -4216,49 +4188,49 @@ Point to_viewer_plane(Point pt, int sign)
 OsculatingElement *alienorum::OsculatingElement::read_from_file(std::string filename, uint64_t *elements_read)
 {
     if (elements_read) *elements_read = 0;
-    std::filesystem::path path = filename.c_str();
-    unsigned long int fs = std::filesystem::file_size(path);
-    if (!fs) return nullptr;
-
-    unsigned long int num_elements = fs/372;                    // should be plenty.
-    OsculatingElement *result = new OsculatingElement[num_elements];
-
-    FILE *fp = fopen(filename.c_str(), "r");
-    if (!fp) return nullptr;
-
+    std::ifstream input(filename);
+    if (!input) return nullptr;
+    std::vector<OsculatingElement> samples;
     long int i = -1;
-    char buffer[1024];
+    std::string line;
     bool reading = false;
     char *variable;
-    while (fgets(buffer, 1022, fp))
+    while (std::getline(input, line))
     {
+        char* buffer = line.data();
         if (strstr(buffer, "$$SOE")) reading = true;
         else if (strstr(buffer, "$$EOE")) break;
         else if (reading)
         {
             if (buffer[0] >= '0' && buffer[0] <= '9')
             {
+                samples.emplace_back();
                 i++;
-                result[i].epoch = atof(buffer);
+                samples[i].epoch = atof(buffer);
             }
-            else
+            else if (i >= 0)
             {
-                if ((variable = strstr(buffer, "EC="))) result[i].eccentricity = atof(&variable[3]);
-                if ((variable = strstr(buffer, "IN="))) result[i].inclination = atof(&variable[3]) * fiftyseventh;
-                if ((variable = strstr(buffer, "OM="))) result[i].ascending_node = atof(&variable[3]) * fiftyseventh;
-                if ((variable = strstr(buffer, "W ="))) result[i].arg_perifocus = atof(&variable[3]) * fiftyseventh;
-                if ((variable = strstr(buffer, "Tp="))) result[i].T_periapsis = atof(&variable[3]);
-                if ((variable = strstr(buffer, "MA="))) result[i].mean_anomaly = atof(&variable[3]) * fiftyseventh;
-                if ((variable = strstr(buffer, "A ="))) result[i].semimajor_axis = atof(&variable[3]) * 1000;
-                if ((variable = strstr(buffer, "PR="))) result[i].period = atof(&variable[3]);
+                if ((variable = strstr(buffer, "EC="))) samples[i].eccentricity = atof(&variable[3]);
+                if ((variable = strstr(buffer, "IN="))) samples[i].inclination = atof(&variable[3]) * fiftyseventh;
+                if ((variable = strstr(buffer, "OM="))) samples[i].ascending_node = atof(&variable[3]) * fiftyseventh;
+                if ((variable = strstr(buffer, "W ="))) samples[i].arg_perifocus = atof(&variable[3]) * fiftyseventh;
+                if ((variable = strstr(buffer, "Tp="))) samples[i].T_periapsis = atof(&variable[3]);
+                if ((variable = strstr(buffer, "MA="))) samples[i].mean_anomaly = atof(&variable[3]) * fiftyseventh;
+                if ((variable = strstr(buffer, "A ="))) samples[i].semimajor_axis = atof(&variable[3]) * 1000;
+                if ((variable = strstr(buffer, "PR="))) samples[i].period = atof(&variable[3]);
             }
         }
     }
 
-    result[i].period = 0;               // make sure; we'll depend on this later.
-
-    if (elements_read) *elements_read = i;
-    return result;
+    if (input.bad() || samples.empty()) return nullptr;
+    for (size_t j = 1; j < samples.size(); ++j)
+    {
+        if (!(samples[j].epoch > samples[j - 1].epoch)) return nullptr;
+    }
+    auto result = std::make_unique<OsculatingElement[]>(samples.size());
+    std::copy(samples.begin(), samples.end(), result.get());
+    if (elements_read) *elements_read = samples.size();
+    return result.release();
 }
 
 alienorum::Locale::Locale(json fj)

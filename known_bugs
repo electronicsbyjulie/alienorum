@@ -44,3 +44,5 @@ FIXED (2026-10-22, code audit): Generated constellation segments now respect the
 FIXED (2026-10-22, code audit): Generated constellation figures reject components with fewer than three lines and allow three-star chains to close into triangles. Existing bright-star coverage and connected-shape checks pass.
 
 FIXED (2026-10-22, code audit): Favorite-star actions are disabled for an empty list, preventing selection, navigation, alerts, and removal from accessing absent entries. The application build passes.
+
+FIXED (2026-10-22, code audit): Ephemeris parsing safely handles missing, empty, short, and unordered input, closes files automatically, and retains the final sample. Interpolation uses bounded sample pairs, including both endpoint dates, and repeated loading releases prior storage. Celestial, Moon, and planet suites pass (137 checks).

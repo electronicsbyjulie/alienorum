@@ -1152,3 +1152,49 @@ TEST(MapTest, PngExportReportsBufferedWriteFailures)
     PngExportMap map;
     EXPECT_FALSE(map.save_to_png("/dev/full"));
 }
+
+TEST(OsculatingElementTest, ShortFilesAndBoundaryEpochs)
+{
+    const auto path = std::filesystem::temp_directory_path() / "alienorum-orbit-samples.txt";
+    uint64_t count = 9;
+    std::filesystem::remove(path);
+    EXPECT_EQ(OsculatingElement::read_from_file(path.string(), &count), nullptr);
+    EXPECT_EQ(count, 0u);
+    {
+        std::ofstream out(path);
+        out << "$$SOE\n EC=0.1\n$$EOE\n";
+    }
+    EXPECT_EQ(OsculatingElement::read_from_file(path.string(), &count), nullptr);
+    EXPECT_EQ(count, 0u);
+    {
+        std::ofstream out(path);
+        out << "$$SOE\n2451545\n EC=0.1 A =100 PR=86400 Tp=2451545\n"
+            << "2451546\n EC=0.3 A =200 PR=86400 Tp=2451546\n$$EOE\n";
+    }
+    Orbit orbit;
+    orbit.osculating = OsculatingElement::read_from_file(path.string(), &orbit.num_osc);
+    ASSERT_NE(orbit.osculating, nullptr);
+    ASSERT_EQ(orbit.num_osc, 2u);
+    for (double epoch : {2451545.0, 2451545.5, 2451546.0})
+    {
+        double n, i, w, a, e, m, p, precn, procarg, effe;
+        orbit.interpolate_osculating_e(epoch, n, i, w, a, e, m, p, precn, procarg, effe);
+        EXPECT_NEAR(a, 100000 + 100000 * (epoch - 2451545), 1e-6);
+        EXPECT_NEAR(e, 0.1 + 0.2 * (epoch - 2451545), 1e-12);
+        EXPECT_DOUBLE_EQ(p, 86400);
+    }
+    std::filesystem::remove(path);
+}
+
+TEST(OsculatingElementTest, RejectsUnorderedEpochs)
+{
+    const auto path = std::filesystem::temp_directory_path() / "alienorum-orbit-order.txt";
+    {
+        std::ofstream out(path);
+        out << "$$SOE\n2451545\n2451545\n$$EOE\n";
+    }
+    uint64_t count = 9;
+    EXPECT_EQ(OsculatingElement::read_from_file(path.string(), &count), nullptr);
+    EXPECT_EQ(count, 0u);
+    std::filesystem::remove(path);
+}
