@@ -1506,6 +1506,7 @@ void reload_stuff()
             delete[] cels[i]->locales;
             cels[i]->locales = nullptr;
             cels[i]->nlocales = 0;
+            cels[i]->locales_loaded = false;
         }
 
         mtx.lock();

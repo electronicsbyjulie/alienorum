@@ -1237,3 +1237,90 @@ TEST(CelestialMetadataTest, RoleAndMapOrientationSurviveSerialization)
     EXPECT_TRUE(restored.map_inverted);
     EXPECT_EQ(restored.orbit_center_codes, source.orbit_center_codes);
 }
+
+TEST(CelestialLocaleTest, FindsClosestNamedLocaleWithinFiveKilometers)
+{
+    CelestialObject body;
+    body.volumetric_mean_radius = earth_radius;
+    Locale places[3];
+    places[0].name = "Farther town";
+    places[0].lat = 0;
+    places[0].lon = 0.035;
+    places[1].name = "Closer town";
+    places[1].lat = 0;
+    places[1].lon = 0.018;
+    places[2].name = "";
+    places[2].lat = places[2].lon = 0;
+    body.locales = places;
+    body.nlocales = 3;
+    EXPECT_EQ(body.nearest_locale(0, 0, 5000), &places[1]);
+    EXPECT_EQ(body.nearest_locale(0, 0, 1000), nullptr);
+    EXPECT_EQ(body.nearest_locale(0, 1 * fiftyseventh, 5000), nullptr);
+    body.locales = nullptr;
+}
+
+TEST(CelestialLocaleTest, HandlesLongitudeSeamPolesAndDifferentBodySizes)
+{
+    CelestialObject body;
+    body.volumetric_mean_radius = earth_radius;
+    Locale place;
+    place.name = "Surface site";
+    place.lat = 0;
+    place.lon = 179.99;
+    body.locales = &place;
+    body.nlocales = 1;
+    EXPECT_EQ(body.nearest_locale(0, -179.99 * fiftyseventh, 5000), &place);
+    place.lat = 89.99;
+    place.lon = 180;
+    EXPECT_EQ(body.nearest_locale(89.99 * fiftyseventh, 0, 5000), &place);
+    place.lat = 0;
+    place.lon = 0.1;
+    EXPECT_EQ(body.nearest_locale(0, 0, 5000), nullptr);
+    body.volumetric_mean_radius = 1e6;
+    EXPECT_EQ(body.nearest_locale(0, 0, 5000), &place);
+    body.locales = nullptr;
+}
+
+TEST(CelestialLocaleTest, RejectsInvalidPositionsAndMissingLocales)
+{
+    CelestialObject body;
+    body.volumetric_mean_radius = earth_radius;
+    EXPECT_EQ(body.nearest_locale(0, 0, 5000), nullptr);
+    Locale place;
+    place.name = "Surface site";
+    place.lat = place.lon = 0;
+    body.locales = &place;
+    body.nlocales = 1;
+    EXPECT_EQ(body.nearest_locale(std::numeric_limits<double>::quiet_NaN(), 0, 5000), nullptr);
+    EXPECT_EQ(body.nearest_locale(0, 0, -1), nullptr);
+    place.lat = std::numeric_limits<double>::quiet_NaN();
+    EXPECT_EQ(body.nearest_locale(0, 0, 5000), nullptr);
+    place.lat = 0;
+    body.volumetric_mean_radius = 0;
+    EXPECT_EQ(body.nearest_locale(0, 0, 5000), nullptr);
+    body.locales = nullptr;
+}
+
+TEST(CelestialLocaleTest, InvertedMapLocalesRetainDegreeCoordinates)
+{
+    const auto path = std::filesystem::temp_directory_path() / "alienorum-locale-inversion-test.json";
+    const json data = {{"Synthetic body", json::array({{{"name", "Surface site"},
+        {"latitude", 30}, {"longitude", 120}}})}};
+    {
+        std::ofstream output(path);
+        output << data;
+    }
+    CelestialObject body;
+    strcpy(body.name, "Synthetic body");
+    body.volumetric_mean_radius = earth_radius;
+    body.map_inverted = true;
+    EXPECT_EQ(body.read_locales(path.string()), 1);
+    std::filesystem::remove(path);
+    EXPECT_TRUE(body.locales_loaded);
+    ASSERT_EQ(body.nlocales, 1);
+    EXPECT_DOUBLE_EQ(body.locales[0].lat, -30);
+    EXPECT_DOUBLE_EQ(body.locales[0].lon, -120);
+    EXPECT_EQ(body.nearest_locale(-30 * fiftyseventh, -120 * fiftyseventh, 5000), &body.locales[0]);
+    delete[] body.locales;
+    body.locales = nullptr;
+}

@@ -292,7 +292,7 @@ namespace alienorum
     {
         public:
         std::string name;
-        double lat, lon, tz;                    // radians, radians, seconds
+        double lat, lon, tz;                    // degrees, degrees, seconds
         bool user_added = false;
         bool user_modified = false;
         DST_Rule dst_rule = dst_none;
@@ -372,6 +372,7 @@ namespace alienorum
         bool has_real_maps = false;
         Locale *locales = nullptr;
         int nlocales = 0;
+        bool locales_loaded = false;
         float drawnx=-1e9, drawny=-1e9, drawnxmin=-1e9, drawnxmax=-1e9, drawnymin=-1e9, drawnymax=-1e9;
         bool looked_for_maps = false, ignore_map_files = false;
         unsigned int fictitious_map_height = 768;            // Good enough for flying around and sun clocks but inadequate for world building.
@@ -396,6 +397,7 @@ namespace alienorum
         double timeofday();
         double local_solar_time(double lon);
         int read_locales(std::string json_fname);
+        const Locale* nearest_locale(double latitude, double longitude, double max_distance) const;
         inline bool is_tidal_locked() { return orbit ? (fabs((sidereal_rotational_period / orbit->period) - 1) < 0.01) : false; }
 
         CelestialObject* get_light_center();

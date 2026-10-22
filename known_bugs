@@ -55,3 +55,5 @@ RESTORED (2026-10-22): Restored the user-selected asteroid list and its original
 FIXED (2026-10-22): HD 3167 inferred-inclination regression accepts 85 through 90 degrees so updated transit measurements remain valid.
 
 FIXED (2026-10-22): Catalog imports retain host cross-identifiers, and shared searches resolve exact stellar aliases before approximate names. Planet searches resolve host aliases first and reject absent planets in known systems. Deleted stars release HD/HIP cache entries. Regression coverage includes GJ, HD, Bayer, Flamsteed, Gould, custom, and imported names.
+
+IMPLEMENTED (2026-10-22): The S panel identifies the closest named locale within 5 km in horizon mode on any body with locales. Surface distance uses the body radius and handles longitude wrapping and polar positions.

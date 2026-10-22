@@ -322,7 +322,15 @@ void draw_status_window(ImGuiIO& io)            // the S panel
     std::string vfstr;
     if (whereami >= 0)
     {
-        if (viewer_locale.size()) vfstr = std::string("View from ") + viewer_locale;
+        CelestialObject* body = cels[whereami];
+        const Locale* nearby = nullptr;
+        if (view_mode == vm_horizon)
+        {
+            if (!body->locales_loaded && !body->nlocales) body->read_locales("locales.json");
+            nearby = body->nearest_locale(viewer_lat, viewer_lon, 5000.0);
+        }
+        if (nearby) vfstr = std::string("View from near ") + nearby->name;
+        else if (view_mode != vm_horizon && viewer_locale.size()) vfstr = std::string("View from ") + viewer_locale;
         else if (cels[whereami]->typeclass() == class_star && ((Star*)cels[whereami])->local_name.size())
             vfstr = std::string("View from ") + ((Star*)cels[whereami])->local_name;
         else vfstr = std::string("View from ") + cels[whereami]->name;

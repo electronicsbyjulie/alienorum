@@ -223,8 +223,36 @@ double alienorum::CelestialObject::local_solar_time(double lon)
     return solar_angle;
 }
 
+const Locale* CelestialObject::nearest_locale(double latitude, double longitude, double max_distance) const
+{
+    // Viewer coordinates are radians; locale coordinates are stored in degrees.
+    if (!locales || !(volumetric_mean_radius > 0) || !std::isfinite(volumetric_mean_radius)
+        || !std::isfinite(latitude) || !std::isfinite(longitude) || fabs(latitude) > _pi / 2
+        || !std::isfinite(max_distance) || max_distance < 0) return nullptr;
+    const Locale* closest = nullptr;
+    double closest_distance = max_distance;
+    for (int i = 0; i < nlocales; ++i)
+    {
+        const Locale& locale = locales[i];
+        if (locale.name.empty() || !std::isfinite(locale.lat) || !std::isfinite(locale.lon) || fabs(locale.lat) > 90) continue;
+        const double lat = locale.lat * fiftyseventh;
+        const double dlat = (lat - latitude) / 2;
+        const double dlon = (locale.lon * fiftyseventh - longitude) / 2;
+        const double haversine = sin(dlat) * sin(dlat) + cos(latitude) * cos(lat) * sin(dlon) * sin(dlon);
+        const double angle = 2 * asin(sqrt(std::clamp(haversine, 0.0, 1.0)));
+        const double distance = volumetric_mean_radius * angle;
+        if (distance <= closest_distance)
+        {
+            closest = &locale;
+            closest_distance = distance;
+        }
+    }
+    return closest;
+}
+
 int alienorum::CelestialObject::read_locales(std::string fn)
 {
+    locales_loaded = true;
     bool upside_down = map_inverted;
     std::fstream fs(fn, std::ios::in);
     if (fs)
@@ -244,8 +272,7 @@ int alienorum::CelestialObject::read_locales(std::string fn)
                     for (int i=0; i<result; i++)
                     {
                         locales[i].lat = -locales[i].lat;
-                        if (locales[i].lon < 0) locales[i].lon += _pi*2;
-                        locales[i].lon = _pi*2 - locales[i].lon;
+                        locales[i].lon = std::remainder(-locales[i].lon, 360.0);
                     }
                 }
 
@@ -258,6 +285,7 @@ int alienorum::CelestialObject::read_locales(std::string fn)
 
 int alienorum::CelestialObject::read_locales_json(json fj)
 {
+    locales_loaded = true;
     if (locales) delete[] locales;
     int i, j=0, n = fj.size();
     locales = new Locale[n];
