@@ -181,6 +181,7 @@ These entries record the deliberate choices found during the earlier review. The
 - [ ] **E13:** Exoplanet browser loading, searching, selection, and host navigation work during and after background loading.
 - [ ] **E14:** Source data and derived caches remain distinguishable during validation. Missing objects in a NASA-only snapshot are not silently treated as proof of a successful combined-source import.
 - [ ] **E15 — Stable planetary display identity:** Apply authored host/period/display-letter/proper-name records from packaged data through the general importer. Reject ambiguous period matches rather than silently choosing a planet. Preserve source and display designations separately through universe saves; every equivalent host alias plus a displayed planet letter resolves to the same physical object in exact and fuzzy searches. The source designation remains provenance when its letter conflicts with the accepted display convention. Repeated naming passes retain object count, orbital periods, and orbital planes.
+- [ ] **E16 — Consistent planetary host names:** Planet display designations throughout a system use the host star's preferred display name from S13 followed by each planet's accepted display letter from E15. For example, when the host has a preferred Bayer designation, its planets must not mix HD, HIP, and Gliese host labels. Preserve authored planetary proper names under D02 and E15, and retain alternate source designations as searchable aliases and provenance.
 
 ## 10. Planets, atmospheres, climate, and classification
 
