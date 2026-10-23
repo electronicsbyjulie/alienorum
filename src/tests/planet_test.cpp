@@ -1941,6 +1941,9 @@ TEST_F(PlanetClassificationEvidenceTest, GeneratedOceanUsesTheSameClimateAsTheRe
     EXPECT_GT(equator.b, equator.r + 30);
     EXPECT_GT(north.r, equator.r + 50);
     EXPECT_GT(south.r, equator.r + 50);
+    EXPECT_EQ(world->surf_map->material_at(0, 0), SurfaceMaterial::water);
+    EXPECT_EQ(world->surf_map->material_at(80 * fiftyseventh, 0), SurfaceMaterial::ground);
+    EXPECT_EQ(world->surf_map->material_at(-80 * fiftyseventh, 0), SurfaceMaterial::ground);
 }
 
 TEST_F(PlanetClassificationEvidenceTest, ExplicitRadiusEditsOverrideAnEstimatedEnvelope)

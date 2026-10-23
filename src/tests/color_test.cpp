@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp>
+#include <algorithm>
 #include <random>
 #include <cstring>
 #include "../classes/color.h"
@@ -256,5 +257,67 @@ TEST(ColorProceduralTest, VegetationColorBounds)
         
         EXPECT_GE(veg.b, 0);
         EXPECT_LE(veg.b, 255);
+    }
+}
+
+TEST(ColorProceduralTest, VegetationAbsorptionRespondsToStellarSpectrum)
+{
+    std::mt19937 cool_rng(42), hot_rng(42), repeat_rng(42);
+    int cool_blue = 0, hot_blue = 0, different = 0;
+    for (int i = 0; i < 512; i++)
+    {
+        const RGB3 cool = generate_vegetation_color(&cool_rng, 3000);
+        const RGB3 hot = generate_vegetation_color(&hot_rng, 10000);
+        const RGB3 repeat = generate_vegetation_color(&repeat_rng, 3000);
+        EXPECT_EQ(cool.r, repeat.r);
+        EXPECT_EQ(cool.g, repeat.g);
+        EXPECT_EQ(cool.b, repeat.b);
+        cool_blue += cool.b;
+        hot_blue += hot.b;
+        different += cool.r != hot.r || cool.g != hot.g || cool.b != hot.b;
+    }
+    // Hotter hosts favor blue absorption, leaving less blue reflected on average.
+    EXPECT_GT(cool_blue, hot_blue);
+    EXPECT_GT(different, 256);
+}
+
+TEST(ColorProceduralTest, VegetationUsesSolarSpectrumForUnknownStellarTemperatures)
+{
+    for (double temperature : {0.0, -1.0, std::nan(""), HUGE_VAL})
+    {
+        std::mt19937 fallback_rng(17), solar_rng(17);
+        for (int i = 0; i < 16; i++)
+        {
+            const RGB3 fallback = generate_vegetation_color(&fallback_rng, temperature);
+            const RGB3 solar = generate_vegetation_color(&solar_rng);
+            EXPECT_EQ(fallback.r, solar.r);
+            EXPECT_EQ(fallback.g, solar.g);
+            EXPECT_EQ(fallback.b, solar.b);
+        }
+    }
+}
+
+TEST(ColorProceduralTest, VegetationPreservesPaletteDiversityAroundBothTestHosts)
+{
+    for (double temperature : {5100.0, 6000.0})
+    {
+        std::mt19937 rng(42);
+        int dark = 0, blue = 0, green = 0, bright = 0;
+        constexpr int count = 1024;
+        for (int i = 0; i < count; i++)
+        {
+            const RGB3 color = generate_vegetation_color(&rng, temperature);
+            const int maximum = std::max({color.r, color.g, color.b});
+            dark += maximum < 70;
+            blue += color.b > color.r && color.b > color.g;
+            green += color.g > color.r && color.g > color.b;
+            bright += maximum >= 100;
+        }
+        // Pigment mixtures retain green and blue foliage alongside dark and bright
+        // palettes, rather than prescribing one hue for either host.
+        EXPECT_GT(dark, count / 10);
+        EXPECT_GT(blue, count / 10);
+        EXPECT_GT(green, count / 50);
+        EXPECT_GT(bright, count / 10);
     }
 }

@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <setjmp.h>
 #include <map>
+#include <vector>
 #include "jpeglib.h"
 #include "png.h"
 #include "point.h"
@@ -206,6 +207,14 @@ namespace alienorum
         bool from_json(json j);
     };
 
+    enum class SurfaceMaterial : unsigned char
+    {
+        unknown,
+        ground,
+        water,
+        vegetation
+    };
+
     class Map
     {
         protected:
@@ -214,6 +223,7 @@ namespace alienorum
 
         unsigned char *red_data = nullptr, *green_data = nullptr, *blue_data = nullptr;
         double *bump_data = nullptr;
+        std::vector<SurfaceMaterial> surface_materials;
         unsigned long image_height = 0;                             // Number of rows in image
         unsigned long image_width = 0;                              // Number of columns in image
         unsigned long allocated = 0;
@@ -257,6 +267,7 @@ namespace alienorum
         void _map_resample_bump_regen_rocky(CelestialObject *cel);
 
         RGB3 color_at(double latitude, double longitude);
+        SurfaceMaterial material_at(double latitude, double longitude);
         bool color_within_cap(double latitude, double longitude, double angle, RGB3 &color,
             bool allow_equal_pixels = false);
         RGB3 color_at_bilinear(double latitude, double longitude) const;

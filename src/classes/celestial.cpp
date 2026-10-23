@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <memory>
 #include <limits>
+#include <charconv>
 #include "celestial.h"
 #include "shore.h"
 #include "lavafissures.h"
@@ -1175,6 +1176,7 @@ namespace
 
 bool Map::load_from_jpeg(std::string filename, bool as_bump, double bump_scale)
 {
+    if (!as_bump) surface_materials.clear();
     std::cout << "Loading " << filename << " as " << (as_bump ? "texture" : "bump") << "..." << std::endl;
     std::this_thread::sleep_for(std::chrono::milliseconds((int)frand(13,29)));
     mtx.lock();
@@ -1317,6 +1319,7 @@ bool Map::load_from_jpeg(std::string filename, bool as_bump, double bump_scale)
 
 bool Map::load_from_png(std::string filename, bool as_bump, double bump_scale)
 {
+    if (!as_bump) surface_materials.clear();
     std::cout << "Loading " << filename << " as " << (as_bump ? "texture" : "bump") << "..." << std::endl;
     std::this_thread::sleep_for(std::chrono::milliseconds((int)frand(13,29)));
     mtx.lock();
@@ -1414,6 +1417,45 @@ bool Map::load_from_png(std::string filename, bool as_bump, double bump_scale)
     int bytes_per_pixel = png_get_channels(png_ptr, info_ptr) * (png_get_bit_depth(png_ptr, info_ptr) / 8);
 
     png_bytepp row_pointers = png_get_rows(png_ptr, info_ptr);
+
+    // Generated maps preserve categorical biomes in compressed PNG metadata.
+    // Ordinary imported textures have no labels and retain the color fallback.
+    if (!as_bump)
+    {
+        png_textp entries = nullptr;
+        const int count = png_get_text(png_ptr, info_ptr, &entries, nullptr);
+        for (int entry = 0; entry < count; entry++)
+        {
+            const png_text &text = entries[entry];
+            if (std::strcmp(text.key, "Alienorum Surface Materials v1") != 0
+                || !text.text) continue;
+            std::vector<SurfaceMaterial> decoded(allocated);
+            bool valid = true;
+            size_t total = 0;
+            const char *cursor = text.text, *end = text.text + text.text_length;
+            while (cursor < end)
+            {
+                size_t run = 0;
+                const auto number = std::from_chars(cursor, end, run);
+                cursor = number.ptr;
+                if (number.ec != std::errc() || end - cursor < 3 || cursor[0] != ':'
+                    || cursor[1] < '0' || cursor[1] > '3' || cursor[2] != ';'
+                    || run == 0 || run > allocated - total)
+                {
+                    valid = false;
+                    break;
+                }
+                std::fill(decoded.begin() + total, decoded.begin() + total + run,
+                    static_cast<SurfaceMaterial>(cursor[1] - '0'));
+                total += run;
+                cursor += 3;
+            }
+            if (!valid || total != allocated) continue;
+            if (upside_down) std::reverse(decoded.begin(), decoded.end());
+            surface_materials = std::move(decoded);
+            break;
+        }
+    }
 
     // As with load_from_jpeg: while a bump map is being resampled, iteration runs over its own
     // (mismatched) resolution rather than the surface map's, into bump_src_data, which gets
@@ -1517,10 +1559,23 @@ bool Map::save_to_png(std::string filename, bool as_bump)
     // Construct storage before setjmp so libpng errors return through normal C++ cleanup.
     std::vector<png_byte> buffer;
     std::vector<png_bytep> row_pointers;
+    std::string material_text;
     try
     {
         buffer.resize(image_width * image_height * 3);
         row_pointers.resize(image_height);
+        if (!as_bump && surface_materials.size() == image_width * image_height)
+        {
+            // Run lengths keep high-resolution biome metadata compact before zTXt compression.
+            for (size_t index = 0; index < surface_materials.size();)
+            {
+                size_t end = index + 1;
+                while (end < surface_materials.size() && surface_materials[end] == surface_materials[index]) end++;
+                material_text += std::to_string(end - index) + ':'
+                    + static_cast<char>('0' + static_cast<unsigned char>(surface_materials[index])) + ';';
+                index = end;
+            }
+        }
     }
     catch (const std::exception&)
     {
@@ -1620,6 +1675,17 @@ bool Map::save_to_png(std::string filename, bool as_bump)
     for (unsigned int y = 0; y < image_height; y++)
     {
         row_pointers[y] = &buffer[y * row_stride];
+    }
+
+    // Preserve material identity without altering RGB or transparency in image viewers.
+    if (!material_text.empty())
+    {
+        png_text text{};
+        text.compression = PNG_TEXT_COMPRESSION_zTXt;
+        text.key = const_cast<char*>("Alienorum Surface Materials v1");
+        text.text = material_text.data();
+        text.text_length = material_text.size();
+        png_set_text(png_ptr, info_ptr, &text, 1);
     }
 
     // Write data to file
@@ -2095,10 +2161,23 @@ bool Map::color_within_cap(double lat, double lon, double angle, RGB3 &color, bo
                 {
                     return false;
                 }
+                if (surface_materials.size() == allocated && surface_materials[index] != surface_materials[first])
+                {
+                    return false;
+                }
             }
         }
     }
     return true;
+}
+
+SurfaceMaterial Map::material_at(double latitude, double longitude)
+{
+    if (generating_fic_texture || !is_complete() || surface_materials.size() != allocated
+        || !std::isfinite(latitude) || !std::isfinite(longitude)) return SurfaceMaterial::unknown;
+    const unsigned int index = idx_of(latitude, longitude);
+    if (index == idx_not_ready || index >= surface_materials.size()) return SurfaceMaterial::unknown;
+    return surface_materials[index];
 }
 
 RGB3 Map::color_at(double lat, double lon)
@@ -2325,6 +2404,9 @@ void Map::generate_rocky_map(CelestialObject *cel)
         green_data = new unsigned char[allocated];
         blue_data = new unsigned char[allocated];
 
+        // Keep generated biome identity independent of its visible pigment color.
+        surface_materials.assign(allocated, SurfaceMaterial::ground);
+
         lat_scale = (double)image_height / _pi;
         lon_scale = (double)image_width / (_pi * 2);
         inv_lat_scale = 1.0 / lat_scale;
@@ -2347,7 +2429,10 @@ void Map::generate_rocky_map(CelestialObject *cel)
         int idx, province_idx, neighbor_province_idx, mottled_idx;
         if (p->has_water && life_possible && randomize_txgen && !p->vegetation_r && !p->vegetation_g && !p->vegetation_b)
         {
-            RGB3 veg_color = generate_vegetation_color(&cel->rng);
+            CelestialObject *light_center = cel->get_light_center();
+            const double stellar_temperature = light_center && light_center->typeclass() == class_star
+                ? static_cast<Star*>(light_center)->estimate_temperature() : sun_temp;
+            RGB3 veg_color = generate_vegetation_color(&cel->rng, stellar_temperature);
             p->vegetation_r = veg_color.r;
             p->vegetation_g = veg_color.g;
             p->vegetation_b = veg_color.b;
@@ -2530,6 +2615,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
                     T_local = climate.temperature(nx, ny, nz, bump_data[idx]);
                     if (cel->type == waterworld || cel->type == hycean)
                     {
+                        surface_materials[idx] = SurfaceMaterial::water;
                         // Deep ocean
                         red_data[idx] = fmin(255, 12+16*height_value);
                         green_data[idx] = fmin(255, 24+24*height_value);
@@ -2538,6 +2624,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
                     // Biome allocation based on height thresholds
                     else if (height_value < p->has_water && T_local < Tboil)
                     {   // Ocean
+                        surface_materials[idx] = SurfaceMaterial::water;
                         sh = height_value*inv_h2o_level;
                         // sh *= (Tboil - T_base) / (Tboil - water_freezing);
                         sh = pow(sh, 3);                                                           // shallowness multiplied to show water optical density
@@ -2556,6 +2643,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
                         && (p->vegetation_r || p->vegetation_g || p->vegetation_b)
                         && (!tidal_locked_to_star || nx * climate.sun_x + ny * climate.sun_y + nz * climate.sun_z > 0))                               // vegetation only on the day side
                     {   // Forests
+                        surface_materials[idx] = SurfaceMaterial::vegetation;
                         red_data[idx] = fmin(255, p->vegetation_r * r_weight);
                         green_data[idx] = fmin(255, p->vegetation_g * r_weight);
                         blue_data[idx] = fmin(255, p->vegetation_b * r_weight);
@@ -2567,6 +2655,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
                         blue_data[idx] = fmin(255, 75 * bmult * r_weight);
                     }
                     const double frost = LocalClimate::frost_fraction(T_local);
+                    if (frost >= 0.5) surface_materials[idx] = SurfaceMaterial::ground;
                     red_data[idx] = (1 - frost) * red_data[idx] + frost * (192 + 63 * r_weight);
                     green_data[idx] = (1 - frost) * green_data[idx] + frost * (224 + 31 * r_weight);
                     blue_data[idx] = (1 - frost) * blue_data[idx] + frost * (240 + 15 * r_weight);
@@ -4059,6 +4148,7 @@ void alienorum::Map::generate_ring_map(CelestialObject *cel, int res, double rir
 
 void alienorum::Map::_map_resample_bump_regen_rocky(CelestialObject *cel)
 {
+    surface_materials.clear();
     unsigned char *lred = red_data, *lgreen = green_data, *lblue = blue_data;
     red_data = green_data = blue_data = nullptr;
     if (lred  ) delete[] lred;

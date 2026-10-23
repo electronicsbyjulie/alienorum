@@ -25,6 +25,44 @@ namespace alienorum
         return value ^ (value >> 31);
     }
 
+    inline double scenery_size(std::uint32_t identity, double minimum, double maximum)
+    {
+        const double fraction = ((identity ^ 0x9e3779b9u) & 0xffff) / 65535.0;
+        return minimum + (maximum - minimum) * fraction * fraction * fraction;
+    }
+
+    // Lower identities win conflicts, even when the winning neighbor is itself
+    // suppressed. This local rule keeps spacing stable during travel and panning.
+    // Include candidates beyond the visible range by twice the largest radius.
+    inline std::vector<bool> scenery_clearance(const std::vector<SurfaceScenery> &objects,
+        const std::vector<double> &radii, double radius, double gap = 0.1)
+    {
+        std::vector<bool> retained(objects.size(), true);
+        if (radii.size() != objects.size() || !(radius > 0)) return retained;
+        for (size_t i = 0; i < objects.size(); i++)
+        {
+            if (!(radii[i] > 0)) continue;
+            for (size_t j = 0; j < objects.size(); j++)
+            {
+                if (!(radii[j] > 0) || objects[j].id >= objects[i].id) continue;
+                const double clearance = radii[i] + radii[j] + std::max(0.0, gap);
+                const double east = objects[i].east - objects[j].east;
+                const double north = objects[i].north - objects[j].north;
+                if (east * east + north * north >= clearance * clearance) continue;
+                const double latitude = sin((objects[i].latitude - objects[j].latitude) * 0.5);
+                const double longitude = sin((objects[i].longitude - objects[j].longitude) * 0.5);
+                const double chord_squared = 4 * radius * radius * (latitude * latitude
+                    + cos(objects[i].latitude) * cos(objects[j].latitude) * longitude * longitude);
+                if (chord_squared < clearance * clearance)
+                {
+                    retained[i] = false;
+                    break;
+                }
+            }
+        }
+        return retained;
+    }
+
     // Six fixed cube faces tile the sphere without longitude seams or polar
     // singularities. Generate only cells within the observer's local range.
     inline std::vector<SurfaceScenery> surface_scenery(double radius, double latitude,

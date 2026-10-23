@@ -1,5 +1,6 @@
 #include <math.h>
 #include <algorithm>
+#include <array>
 #include <iomanip>
 #include <sstream>
 #include <string>
@@ -465,8 +466,6 @@ void apply_default_style()
     colors[ImGuiCol_ModalWindowDimBg]       = ImVec4(0.20f, 0.20f, 0.20f, 0.35f);
 }
 
-#define _dbg_veg_color 0
-
 double col_frand(std::mt19937 *rng, double min, double max)
 {
     std::uniform_real_distribution<double> dist(min, max);
@@ -479,107 +478,72 @@ int col_rand(std::mt19937 *rng)
     return dist(*rng);
 }
 
-RGB3 generate_vegetation_color(std::mt19937 *rng)
+RGB3 generate_vegetation_color(std::mt19937 *rng, double stellar_temperature)
 {
     // Don't assume alien vegetation is green!
+    if (!std::isfinite(stellar_temperature) || stellar_temperature <= 0) stellar_temperature = sun_temp;
+    stellar_temperature = std::clamp(stellar_temperature, 1000.0, 100000.0);
 
-    // Define a longpass wavelength somewhere in the UV or blue
-    double lp = col_frand(rng, 300, 490);
-
-    // Define up to 4 absorption bands (Earth vegetation has two, red and blue)
-    int nbands = 1 + (col_rand(rng)%3);
-    #if _dbg_veg_color
-    std::cout << "Generating vegetation color from longpass " << lp << " plus " << nbands << " absorption bands." << std::endl;
-    #endif
-
-    double bandl[nbands], bandi[nbands], maxband=0;
-    int i;
-    for (i=0; i<nbands; i++)
+    // Pigment diversity is procedural; stellar photon flux biases band placement.
+    // This models intrinsic reflectance, with illumination applied by the renderer.
+    constexpr int samples = 131;
+    std::array<double, samples> weights{}, visible_weights{};
+    double peak = 0;
+    for (int sample = 0; sample < samples; sample++)
     {
-        // Favor shorter wavelengths, but allow up to near infrared.
-        // Make the longest band the most intense to allow for a strong red edge.
-        bandl[i] = (i?bandl[i-1]:lp)*1.03 + col_frand(rng, 5, col_frand(rng, 50, 250));
-        bandi[i] = col_frand(rng, i?bandi[i-1]:0.1, 1);
-        if (bandi[i] > maxband) maxband = bandi[i];
+        const double wavelength = 350.0 + sample * 5.0;
+        weights[sample] = wavelength * blackbody_flux(stellar_temperature, wavelength * 1e-9);
+        peak = std::max(peak, weights[sample]);
+    }
+    for (int sample = 0; sample < samples; sample++)
+    {
+        weights[sample] = 0.20 + 0.80 * weights[sample] / peak;
+        const double wavelength = 350.0 + sample * 5.0;
+        if (wavelength >= 400 && wavelength <= 700) visible_weights[sample] = weights[sample];
+    }
+    std::discrete_distribution<int> band_distribution(weights.begin(), weights.end());
+    std::discrete_distribution<int> visible_distribution(visible_weights.begin(), visible_weights.end());
 
-        #if _dbg_veg_color
-        std::cout << "Band " << (i+1) << ": " << bandl[i] << "nm, intensity=" << bandi[i] << std::endl;
-        #endif
+    // Two primary absorption peaks plus zero to three accessory pigments.
+    // Retain a visible peak even when the other pigments favor the infrared.
+    // Widths and concentrations describe a hypothetical mixture, not measured
+    // alien chemistry or a prediction that every organism absorbs all colors.
+    const int nbands = 2 + col_rand(rng) % 4;
+    const double concentration = std::exp(col_frand(rng, std::log(0.6), std::log(5.0)));
+    std::array<double, 5> centers{}, widths{}, depths{};
+    for (int band = 0; band < nbands; band++)
+    {
+        const int sample = band == 0 ? visible_distribution(*rng) : band_distribution(*rng);
+        centers[band] = 350.0 + 5.0 * sample + col_frand(rng, -2.5, 2.5);
+        widths[band] = band < 2 ? col_frand(rng, 10.0, 25.0) : col_frand(rng, 20.0, 45.0);
+        depths[band] = concentration * col_frand(rng, 0.5, 1.5);
     }
 
-    // Make sure at least one of the bands is intense.
-    if (maxband < 0.8)
+    // Begin with a neutral scattering surface rather than a prescribed leaf hue.
+    // UV protection ends before blue; blue reflectance is controlled by pigments.
+    const double scattering = col_frand(rng, 0.15, 0.65);
+    const double uv_edge = col_frand(rng, 320.0, 380.0);
+    double rtot = 0, gtot = 0, btot = 0;
+    for (int wavelength = 400; wavelength < 710; wavelength++)
     {
-        double normalize = col_frand(rng, 0.8, 1.0);
-        double multiply = normalize / maxband;
-        for (i=0; i<nbands; i++) bandi[i] *= multiply;
-
-        #if _dbg_veg_color
-        std::cout << "Bands normalized to " << normalize << std::endl;
-        #endif
-    }
-
-    // Start with a basic straw color.
-    double r=0.89, g=0.85, b=0.44;
-    double probability_scale = 25.0 / probability_density_function(lp, lp, 29);
-
-    #if _dbg_veg_color
-    std::cout << "Reflectance spectrum of vegetation:" << std::endl;
-    #endif
-
-    // Sample the spectrum to determine total rgb absorption.
-    double spectrum[1000];
-    int l;
-    double rtot=0, gtot=0, btot=0;
-    for (l=250; l<1000; l++)
-    {
-        probability_scale = 25.0 / probability_density_function(lp, lp, 29);
-        spectrum[l] = (lp<l) ? (1.0 / (1.0 + probability_scale * probability_density_function(l, lp, 29))) : 0;
-
-        for (i=0; i<nbands; i++)
+        double optical_depth = 0;
+        for (int band = 0; band < nbands; band++)
         {
-            double halfwidth = 0.04*bandl[i];
-            probability_scale = 10.0 / probability_density_function(bandl[i], bandl[i], halfwidth);
-            spectrum[l] *= (1.0 / (1.0 + bandi[i] * probability_scale * probability_density_function(l, bandl[i], halfwidth)));
+            const double offset = (wavelength - centers[band]) / widths[band];
+            optical_depth += depths[band] * std::exp(-0.5 * offset * offset);
         }
-
-        if (l >= 400 && l < 510) btot += spectrum[l];
-        if (l >= 480 && l < 600) gtot += spectrum[l];
-        if (l >= 560 && l < 710) rtot += spectrum[l];
+        const double uv_transmission = 1.0 / (1.0 + std::exp((uv_edge - wavelength) / 10.0));
+        const double reflectance = scattering * uv_transmission * std::exp(-optical_depth);
+        if (wavelength < 510) btot += reflectance;
+        if (wavelength >= 480 && wavelength < 600) gtot += reflectance;
+        if (wavelength >= 560) rtot += reflectance;
     }
 
-    #if _dbg_veg_color
-    for (i=20; i>=0; i--)
-    {
-        for (l=250; l<1000; l+=5)
-        {
-            if (!l) std::cout << "\x1b[38;5;99m";
-            else if (l == 400) std::cout << "\x1b[38;5;21m";
-            else if (l == 480) std::cout << "\x1b[38;5;51m";
-            else if (l == 510) std::cout << "\x1b[38;5;46m";
-            else if (l == 570) std::cout << "\x1b[38;5;226m";
-            else if (l == 590) std::cout << "\x1b[38;5;208m";
-            else if (l == 610) std::cout << "\x1b[38;5;196m";
-            else if (l == 700) std::cout << "\x1b[38;5;89m";
-
-            if (spectrum[l] >= 0.05*i) std::cout << "*";
-            else std::cout << " ";
-        }
-        std::cout << "\x1b[0m" << std::endl;
-    }
-    #endif
-
-    rtot /= 150;
-    gtot /= 120;
-    btot /= 110;
-
-    #if _dbg_veg_color
-    std::cout << "Bands multiply rgb by " << std::setprecision(3) << rtot << "," << gtot << "," << btot << std::endl;
-    #endif
-
-    r *= rtot; g *= gtot; b *= btot;
-
-    return { (unsigned char)(r*255), (unsigned char)(g*255), (unsigned char)(b*255) };
+    // Average the existing RGB response windows without normalizing brightness:
+    // broad absorption must remain dark rather than becoming a saturated bright hue.
+    return { (unsigned char)(255 * rtot / 150),
+             (unsigned char)(255 * gtot / 120),
+             (unsigned char)(255 * btot / 110) };
 }
 
 bool AlienStyle::load(std::string theme)

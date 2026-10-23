@@ -75,6 +75,16 @@ class BumpySceneryTestMap : public SceneryTestMap
     }
 };
 
+class BlueBiomeTestMap : public SceneryTestMap
+{
+    public:
+    explicit BlueBiomeTestMap(SurfaceMaterial material) : SceneryTestMap(false, true)
+    {
+        // Identical RGB for sea and foliage makes color classification ambiguous.
+        surface_materials.assign(allocated, material);
+    }
+};
+
 class CoastalTestMap : public Map
 {
     public:
@@ -1823,6 +1833,30 @@ TEST_F(RenderingRegressionTest, WaterHasNoRocksOrPlants)
         }
     }
     EXPECT_EQ(scenery_vertices, 0);
+}
+
+TEST_F(RenderingRegressionTest, BlueVegetationDoesNotTurnIdenticalOceanColorsIntoPlants)
+{
+    Planet *world = surface(true);
+    world->vegetation_r = 20;
+    world->vegetation_g = 100;
+    world->vegetation_b = 160;
+    cels[0]->location.local_position = cels[0]->tmprel = Point(0, -1e11, 1e11);
+    for (SurfaceMaterial material : {SurfaceMaterial::water, SurfaceMaterial::vegetation})
+    {
+        delete world->surf_map;
+        world->surf_map = new BlueBiomeTestMap(material);
+        const auto vertices = scenery();
+        ASSERT_GT(vertices.size(), 100u);
+        int scenery_vertices = 0;
+        for (const auto &vertex : vertices)
+        {
+            const unsigned int alpha = vertex.col >> IM_COL32_A_SHIFT;
+            if (alpha == 255 && vertex.col != IM_COL32(20, 100, 160, 255)) ++scenery_vertices;
+        }
+        if (material == SurfaceMaterial::water) EXPECT_EQ(scenery_vertices, 0);
+        else EXPECT_GT(scenery_vertices, 0);
+    }
 }
 
 TEST_F(RenderingRegressionTest, ShorelineGeometryStaysFiniteAtFullResolution)

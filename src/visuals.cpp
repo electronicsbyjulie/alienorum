@@ -5273,29 +5273,36 @@ void draw_horizon()
         bool water_favorable = p && p->get_surface_pressure() >= 150
             && p->estimate_surface_temperature() < 400;
         const bool surface_biomes = p && map && uses_rocky_map(cel->type) && water_favorable
-            && (p->has_water || p->vegetation_r || p->vegetation_g);
+            && (p->has_water || p->vegetation_r || p->vegetation_g || p->vegetation_b);
         const double biome_angle = SurfaceBiomes::angular_bound(surface_radius, shore_displacement);
-        const auto surface_sample = [&](double latitude, double longitude)
+        const auto surface_info = [&](double latitude, double longitude)
         {
             if (!map)
             {
-                return RGB3(0, 8, 24);
+                return std::make_pair(RGB3(0, 8, 24), SurfaceMaterial::unknown);
             }
             if (surface_biomes)
             {
                 RGB3 uniform_color;
-                if (map->color_within_cap(latitude, longitude, biome_angle, uniform_color)) return uniform_color;
+                if (map->color_within_cap(latitude, longitude, biome_angle, uniform_color))
+                {
+                    return std::make_pair(uniform_color, map->material_at(latitude, longitude));
+                }
                 const auto coord = biome_field.coordinates(surface_radius, latitude, longitude, shore_displacement);
-                return map->color_at(coord.first, coord.second);
+                return std::make_pair(map->color_at(coord.first, coord.second), map->material_at(coord.first, coord.second));
             }
-            return map->color_at(latitude, longitude);
+            return std::make_pair(map->color_at(latitude, longitude), map->material_at(latitude, longitude));
+        };
+        const auto surface_sample = [&](double latitude, double longitude)
+        {
+            return surface_info(latitude, longitude).first;
         };
         RGB3 rgb = surface_sample(viewer_lat, viewer_lon);
 
         const auto vegetation_color = [&](const RGB3 &sample)
         {
             if (!p || !map || !uses_rocky_map(p->type) || !water_favorable
-                || !p->has_water || !(p->vegetation_r || p->vegetation_g))
+                || !p->has_water || !(p->vegetation_r || p->vegetation_g || p->vegetation_b))
             {
                 return false;
             }
@@ -5309,22 +5316,23 @@ void draw_horizon()
 
         const auto vegetation_at = [&](double latitude, double longitude)
         {
-            return vegetation_color(surface_sample(latitude, longitude));
+            const auto sample = surface_info(latitude, longitude);
+            if (sample.second != SurfaceMaterial::unknown) return sample.second == SurfaceMaterial::vegetation;
+            return vegetation_color(sample.first);
         };
 
         const bool ocean_world = p && (p->type == waterworld || p->type == hycean);
         const bool surface_water = ocean_world || (surface_biomes && p->has_water);
         const auto water_at = [&](double latitude, double longitude)
         {
-            if (ocean_world)
-            {
-                return true;
-            }
             if (!surface_water)
             {
                 return false;
             }
-            const RGB3 sample = surface_sample(latitude, longitude);
+            const auto info = surface_info(latitude, longitude);
+            if (info.second != SurfaceMaterial::unknown) return info.second == SurfaceMaterial::water;
+            if (ocean_world) return true;
+            const RGB3 sample = info.first;
             return sample.b > 0.8 * sample.r && fmax(sample.b, sample.g) > 1.333 * sample.r
                 && !vegetation_color(sample);
         };
@@ -6735,11 +6743,6 @@ void draw_horizon()
                 std::vector<RockInstance> rocks;
                 int num_rocks = 0;
 
-                const double scenery_spacing = sqrt(_pi * ROCK_MAX_DIST * ROCK_MAX_DIST / ROCK_COUNT);
-                const auto scenery = surface_scenery(R_planet, viewer_lat, viewer_lon,
-                    ROCK_MAX_DIST, scenery_spacing, static_cast<std::uint64_t>(whereami));
-                rocks.reserve(scenery.size());
-                
                 double grav = p ? p->estimate_surface_gravity() : 1;
                 double presh = p ? (log(p->get_surface_pressure()*inv_oneatm)+1) : 1;
 
@@ -6751,14 +6754,33 @@ void draw_horizon()
                     if (!p->plant_crown_oblateness) p->plant_crown_oblateness   = PLANT_CROWN_OBLATENESS * presh;
                 }
 
-                // Sedentary lifeforms when is_vegetation is true, otherwise surface rocks.
-                for (const SurfaceScenery &object : scenery)
+                const double scenery_spacing = sqrt(_pi * ROCK_MAX_DIST * ROCK_MAX_DIST / ROCK_COUNT);
+                const double crown_scale = p ? fmax(0.0, p->plant_crown_size) : 0;
+                const double canopy_margin = 2 * ROCK_MAX_SIZE * crown_scale + 0.1;
+                const auto scenery = surface_scenery(R_planet, viewer_lat, viewer_lon,
+                    ROCK_MAX_DIST + canopy_margin, scenery_spacing, static_cast<std::uint64_t>(whereami));
+                std::vector<bool> plant(scenery.size()), water(scenery.size());
+                std::vector<double> canopy_radii(scenery.size(), 0);
+                for (size_t index = 0; index < scenery.size(); index++)
                 {
-                    if (water_at(object.latitude, object.longitude))
+                    const auto &object = scenery[index];
+                    water[index] = water_at(object.latitude, object.longitude);
+                    plant[index] = !water[index] && vegetation_at(object.latitude, object.longitude);
+                    if (plant[index]) canopy_radii[index] = crown_scale
+                        * scenery_size(object.seed, ROCK_MIN_SIZE, ROCK_MAX_SIZE);
+                }
+                const auto canopy_clear = scenery_clearance(scenery, canopy_radii, R_planet);
+                rocks.reserve(scenery.size());
+
+                // Sedentary lifeforms when is_vegetation is true, otherwise surface rocks.
+                for (size_t index = 0; index < scenery.size(); index++)
+                {
+                    const SurfaceScenery &object = scenery[index];
+                    if (water[index] || !canopy_clear[index])
                     {
                         continue;
                     }
-                    const bool is_vegetation = vegetation_at(object.latitude, object.longitude);
+                    const bool is_vegetation = plant[index];
                     const double rock_aspect = (is_vegetation && p)
                         ? (p->plant_trunk_height + p->plant_crown_size * p->plant_crown_oblateness)
                         : (is_lava ? ROCK_ASPECT_LAVA : (is_venus ? ROCK_ASPECT_VENUS : (is_icy ? ROCK_ASPECT_ICY : ROCK_ASPECT_DEFAULT)));
@@ -6768,14 +6790,12 @@ void draw_horizon()
                     const double dist_m = hypot(object.east, object.north);
                     double dist_ratio = dist_m / ROCK_MAX_DIST;
                     if (is_vegetation) dist_ratio *= 0.666;
-                    if (dist_m < 0.05 || dist_ratio >= 1.0)
+                    if (dist_m < 0.05 || dist_m >= ROCK_MAX_DIST)
                     {
                         continue;
                     }
 
-                    uint32_t sz_hash = (rhash ^ 0x9e3779b9u);
-                    double u_sz = (double)(sz_hash & 0xFFFF) / 65535.0;
-                    double rock_size = ROCK_MIN_SIZE + (ROCK_MAX_SIZE - ROCK_MIN_SIZE) * (u_sz * u_sz * u_sz);
+                    double rock_size = scenery_size(rhash, ROCK_MIN_SIZE, ROCK_MAX_SIZE);
 
                     double rw = (rock_size / dist_m) * dispcx * zoom;
                     double rh = rw * rock_aspect;

@@ -336,6 +336,56 @@ TEST(SurfaceSceneryTest, RepeatableUniqueAndPeriodic)
     }
 }
 
+TEST(SurfaceSceneryTest, VariableCrownsKeepClearanceAndStablePlacementDuringTravel)
+{
+    constexpr double radius = 6371000.0;
+    constexpr double range = 100.0;
+    constexpr double crown_scale = 10.0;
+    constexpr double maximum_size = 1.85;
+    const double margin = 2 * maximum_size * crown_scale + 0.1;
+    for (double longitude : {0.0, _pi / 4, _pi})
+    {
+        std::unordered_map<std::uint64_t, bool> previous;
+        int shared = 0;
+        for (int step = 0; step < 2; step++)
+        {
+            const auto objects = surface_scenery(radius, 0, longitude + step / radius,
+                range + margin, 8, 42);
+            std::vector<double> radii;
+            for (const auto &object : objects)
+            {
+                radii.push_back(crown_scale * scenery_size(object.seed, 0.15, maximum_size));
+            }
+            const auto retained = scenery_clearance(objects, radii, radius);
+            int count = 0;
+            for (size_t i = 0; i < objects.size(); i++)
+            {
+                if (hypot(objects[i].east, objects[i].north) >= range - 1) continue;
+                if (step == 0) previous.emplace(objects[i].id, retained[i]);
+                else if (previous.count(objects[i].id))
+                {
+                    EXPECT_EQ(retained[i], previous.at(objects[i].id));
+                    shared++;
+                }
+                if (!retained[i]) continue;
+                count++;
+                for (size_t j = i + 1; j < objects.size(); j++)
+                {
+                    if (!retained[j]) continue;
+                    const double lat = sin((objects[i].latitude - objects[j].latitude) * 0.5);
+                    const double lon = sin((objects[i].longitude - objects[j].longitude) * 0.5);
+                    const double chord = 2 * radius * sqrt(lat * lat
+                        + cos(objects[i].latitude) * cos(objects[j].latitude) * lon * lon);
+                    EXPECT_GE(chord + 1e-8, radii[i] + radii[j] + 0.1);
+                }
+            }
+            EXPECT_GT(count, 5);
+            EXPECT_LT(count, static_cast<int>(objects.size()));
+        }
+        EXPECT_GT(shared, 100);
+    }
+}
+
 // Nothing in this file touches the network. download_file() is the one function in misc.h that
 // does, and it is deliberately left alone: CelesTrak's terms ask for one fetch per file per two
 // hours, and a test suite is not a reason to spend one.

@@ -70,7 +70,36 @@ class UniformBiomePixelMap : public BiomePixelMap
         red_data[idx_of(latitude, longitude)] = 200;
         touch_gen();
     }
+
+    void set_material_at(double latitude, double longitude, SurfaceMaterial material)
+    {
+        if (surface_materials.empty()) surface_materials.assign(allocated, SurfaceMaterial::water);
+        surface_materials[idx_of(latitude, longitude)] = material;
+        touch_gen();
+    }
 };
+
+TEST(MapTest, IdenticalBluePixelsRetainDistinctMaterialsAcrossPngExports)
+{
+    UniformBiomePixelMap map;
+    map.set_material_at(0.3, 0.4, SurfaceMaterial::vegetation);
+    EXPECT_EQ(map.material_at(0.3, 0.4), SurfaceMaterial::vegetation);
+    EXPECT_EQ(map.material_at(-0.3, -0.4), SurfaceMaterial::water);
+    RGB3 color;
+    EXPECT_FALSE(map.color_within_cap(0.3, 0.4, 0.1, color, true));
+    const auto path = std::filesystem::temp_directory_path() / "alienorum_biome_export_test.png";
+    ASSERT_TRUE(map.save_to_png(path.string()));
+    Map loaded;
+    ASSERT_TRUE(loaded.load_from_png(path.string()));
+    EXPECT_EQ(loaded.material_at(0.3, 0.4), SurfaceMaterial::vegetation);
+    EXPECT_EQ(loaded.material_at(-0.3, -0.4), SurfaceMaterial::water);
+    EXPECT_FALSE(loaded.color_within_cap(0.3, 0.4, 0.1, color, true));
+    std::filesystem::remove(path);
+    BiomePixelMap imported;
+    EXPECT_EQ(imported.material_at(0.3, 0.4), SurfaceMaterial::unknown);
+    Map empty;
+    EXPECT_EQ(empty.material_at(0, 0), SurfaceMaterial::unknown);
+}
 
 TEST(MapTest, BiomeCapCertifiesAllPixelsAndRejectsAnInteriorColorChange)
 {

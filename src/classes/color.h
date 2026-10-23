@@ -165,6 +165,6 @@ void rgb_apply_redlight(float *r, float *g, float *b);
 uint32_t rgba_apply_redlight(uint32_t input);
 ImVec4 rgba_apply_redlight(ImVec4 input);
 void apply_default_style();
-RGB3 generate_vegetation_color(std::mt19937 *rng);
+RGB3 generate_vegetation_color(std::mt19937 *rng, double stellar_temperature = sun_temp);
 
 #endif
