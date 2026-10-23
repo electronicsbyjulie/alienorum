@@ -4,6 +4,7 @@
 #include <gtest/gtest.h>
 #include "../classes/star.h"
 #include "../housekeeping.h"
+#include "../inputs.h"
 #include "universe_fixture.h"
 
 using namespace alienorum;
@@ -14,6 +15,46 @@ using namespace alienorum;
 // indices are this function's doing, not append_cel()'s" were taking that on trust.
 
 class HousekeepingTest : public UniverseFixture {};
+
+TEST_F(HousekeepingTest, DeleteHandlesAbsentSelectionAndClearsDescendantNavigation)
+{
+    const int previous_selected = selected, previous_tracking = trackidx, previous_editing = editidx;
+    const int previous_place = whereami;
+    const auto previous_mode = view_mode;
+    CelestialObject* previous_center = mycenobj;
+    Star* sun = make_star("Sol");
+    selected = trackidx = -1;
+    process_key_delete();
+    EXPECT_FALSE(sun->deleted);
+    Planet* parent = make_planet(sun, "Authored parent");
+    Planet* child = make_planet(sun, "Authored child");
+    parent->user_added = child->user_added = true;
+    sun->pl_indices = {parent->seqno, child->seqno};
+    sun->has_planets = 2;
+    child->orbit->center = parent;
+    selected = -1;
+    trackidx = parent->seqno;
+    editidx = whereami = child->seqno;
+    mycenobj = parent;
+    view_mode = vm_horizon;
+    process_key_delete();
+    EXPECT_TRUE(parent->deleted);
+    EXPECT_TRUE(child->deleted);
+    EXPECT_EQ(selected, -1);
+    EXPECT_EQ(trackidx, -1);
+    EXPECT_EQ(editidx, -1);
+    EXPECT_EQ(whereami, sun->seqno);
+    EXPECT_EQ(view_mode, vm_spaceship);
+    EXPECT_TRUE(sun->pl_indices.empty());
+    EXPECT_EQ(sun->has_planets, 0);
+    selected = previous_selected;
+    trackidx = previous_tracking;
+    editidx = previous_editing;
+    whereami = previous_place;
+    view_mode = previous_mode;
+    mycenobj = previous_center;
+    delete_the_universe();
+}
 
 TEST_F(HousekeepingTest, LocalCompanionBypassesTheBackgroundVisibilityCache)
 {

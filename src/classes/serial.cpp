@@ -990,6 +990,7 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
             if (object->typeclass() == class_moon && object->user_added)
                 static_cast<Moon*>(object)->enforce_orbit_clearance(true);
             if (object->typeclass() != class_planet) continue;
+            static_cast<Planet*>(object)->refresh_host_display_designation();
             CelestialObject* light = object->get_light_center();
             if (!light || light->typeclass() != class_star) continue;
             Star* host = static_cast<Star*>(light);

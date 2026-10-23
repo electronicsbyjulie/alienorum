@@ -63,6 +63,30 @@ class SerializationTest : public UniverseFixture
     }
 };
 
+TEST_F(SerializationTest, ReloadRefreshesHostDesignationsWhilePreservingProperNames)
+{
+    make_star("Sol");
+    Star* host = make_star("Preferred host");
+    host->add_catalog_alias("HD 998");
+    Planet* planet = make_planet(host, "Old host b");
+    planet->catalog_designation = "HD 998 b";
+    planet->display_designation = "Old host b";
+    Planet* named = make_planet(host, "Authored name", 2 * AU);
+    named->catalog_designation = "HD 998 c";
+    named->display_designation = "Old host c";
+    ASSERT_TRUE(save_and_reload("host_designations"));
+    Planet* restored = static_cast<Planet*>(find_loaded("Preferred host b"));
+    ASSERT_NE(restored, nullptr);
+    EXPECT_EQ(restored->catalog_designation, "HD 998 b");
+    EXPECT_EQ(restored->display_designation, "Preferred host b");
+    Planet* restored_named = static_cast<Planet*>(find_loaded("Authored name"));
+    ASSERT_NE(restored_named, nullptr);
+    EXPECT_EQ(restored_named->display_designation, "Preferred host c");
+    EXPECT_EQ(find_object("HD 998 b", false), restored->seqno);
+    delete_the_universe();
+    std::filesystem::remove(temp_universe("host_designations"));
+}
+
 TEST_F(SerializationTest, TouchingFictionalMoonIsRepairedWithoutMovingCatalogMoons)
 {
     Star* host = make_star("Primary");

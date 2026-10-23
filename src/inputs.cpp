@@ -1181,13 +1181,69 @@ void process_key_arrowright()
 
 void process_key_delete()
 {
-    // No deleting catalog objects, only objects added by the user, whether fictional objects or satellites.
-    // We use >0 rather than >=0 because you cannot delete the Sun; too many things depend on its presence.
-    if (selected > 0) cels[selected]->deleted = (cels[selected]->user_added || cels[selected]->type == artificial);
-    else if (trackidx > 0) cels[trackidx]->deleted = (cels[trackidx]->user_added || cels[trackidx]->type == artificial);
-
-    if (cels[selected]->deleted && cels[selected]->orbit && cels[selected]->orbit->center) selected = cels[selected]->orbit->center->seqno;
-    else selected = -1;
+    std::lock_guard<std::recursive_mutex> catalog_lock(catalog_mutex);
+    const int target = selected > 0 ? selected : trackidx;
+    if (!cels || target <= 0 || target >= ncelobjs || !cels[target]) return;
+    CelestialObject* object = cels[target];
+    if (object->deleted || (!object->user_added && object->type != artificial)) return;
+    std::vector<CelestialObject*> removed = {object};
+    // Remove authored descendants together; never orphan a protected catalog body.
+    for (size_t next = 0; next < removed.size(); ++next)
+    {
+        for (int i = 1; i < ncelobjs; ++i)
+        {
+            CelestialObject* child = cels[i];
+            if (!child || child->deleted || !child->orbit || child->orbit->center != removed[next] ||
+                std::find(removed.begin(), removed.end(), child) != removed.end()) continue;
+            if (!child->user_added && child->type != artificial) return;
+            removed.push_back(child);
+        }
+    }
+    CelestialObject* parent = object->orbit ? object->orbit->center : nullptr;
+    for (CelestialObject* gone : removed)
+    {
+        gone->deleted = true;
+        gone->onscreen = gone->label_shown = false;
+        if (gone->typeclass() == class_planet && num_planets > 0) --num_planets;
+        if (gone->typeclass() == class_star)
+        {
+            Star* star = static_cast<Star*>(gone);
+            if (hdcache && star->HD > 0 && star->HD <= MAX_HD && hdcache[star->HD] == star) hdcache[star->HD] = nullptr;
+            if (hipcache && star->HIP > 0 && star->HIP <= MAX_HIP && hipcache[star->HIP] == star) hipcache[star->HIP] = nullptr;
+        }
+    }
+    if (parent && parent->deleted) parent = nullptr;
+    const auto is_removed = [](int index)
+    {
+        return index >= 0 && index < ncelobjs && cels[index] && cels[index]->deleted;
+    };
+    if (is_removed(selected)) selected = parent ? parent->seqno : -1;
+    if (is_removed(trackidx)) trackidx = -1;
+    if (is_removed(editidx)) editidx = -1;
+    if (is_removed(is_an_obj_under_cursor)) is_an_obj_under_cursor = -1;
+    if (is_removed(whereami))
+    {
+        whereami = parent ? parent->seqno : -1;
+        view_mode = vm_spaceship;
+        selected_locale = is_a_locale_under_cursor = nullptr;
+    }
+    if (mycenobj && mycenobj->deleted) mycenobj = parent ? parent->cenobj : nullptr;
+    for (int i = 0; i < ncelobjs; ++i)
+    {
+        if (!cels[i] || cels[i]->deleted || cels[i]->typeclass() != class_star) continue;
+        Star* host = static_cast<Star*>(cels[i]);
+        auto& planets = host->pl_indices;
+        for (int index : planets)
+        {
+            if (!is_removed(index)) continue;
+            if (host->has_planets > 0) --host->has_planets;
+            if (host->has_hz_planets > 0 && static_cast<Planet*>(cels[index])->is_in_con_HZ()) --host->has_hz_planets;
+        }
+        planets.erase(std::remove_if(planets.begin(), planets.end(), is_removed), planets.end());
+    }
+    favestars.erase(std::remove_if(favestars.begin(), favestars.end(),
+        [](Star* star) { return !star || star->deleted; }), favestars.end());
+    viewchanged = true;
 }
 
 void process_key_home()

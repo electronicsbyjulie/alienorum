@@ -270,7 +270,7 @@ int alienorum::CelestialObject::read_locales(std::string fn)
 
                 if (upside_down)
                 {
-                    for (int i=0; i<result; i++)
+                    for (int i=0; i<nlocales; i++)
                     {
                         locales[i].lat = -locales[i].lat;
                         locales[i].lon = std::remainder(-locales[i].lon, 360.0);

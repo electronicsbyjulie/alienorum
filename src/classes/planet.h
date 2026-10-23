@@ -98,6 +98,7 @@ namespace alienorum
         bool is_in_con_HZ();                                // True if planet is within the conservative habitable zone.
         double estimate_bump_scale();
         double estimate_scale_height();                     // meters; 0 if airless
+        void refresh_host_display_designation();
         void incline_exo_orbit(double sys_solincl, double sys_solnode);
         double atmospheric_refraction(double altitiude);
         double atmospheric_horizon_lift();

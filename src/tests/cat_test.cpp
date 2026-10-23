@@ -2055,6 +2055,10 @@ TEST_F(CatalogParsingTest, ExoplanetNamesMatchPrimaryComponentsAndConstellationC
         Planet *planet = make_planet(host, example.designation);
         reader.apply_exoplanet_names({{host->seqno, {planet->seqno}}});
         EXPECT_STREQ(planet->name, example.friendly);
+        snprintf(host->name, sizeof(host->name), "Renamed host");
+        planet->refresh_host_display_designation();
+        EXPECT_STREQ(planet->name, example.friendly);
+        EXPECT_EQ(planet->display_designation, std::string("Renamed host ") + designation.back());
         if (designation == "55 Cnc e")
         {
             EXPECT_EQ(planet->type, lavaworld);
@@ -2067,7 +2071,52 @@ TEST_F(CatalogParsingTest, ExoplanetNamesMatchPrimaryComponentsAndConstellationC
     Star *secondary = make_star("55 Cnc B");
     Planet *planet = make_planet(secondary, "55 Cnc Bb");
     reader.apply_exoplanet_names({{secondary->seqno, {planet->seqno}}});
-    EXPECT_STREQ(planet->name, "55 Cnc Bb");
+    EXPECT_STREQ(planet->name, "55 Cnc B b");
+    delete_the_universe();
+}
+
+TEST_F(CatalogParsingTest, PlanetDisplayDesignationsFollowPreferredHostAcrossSourceAliasesAndReloads)
+{
+    Star* host = make_star("alf Test");
+    host->HD = 98765;
+    host->HIP = 54321;
+    snprintf(host->Gliese, sizeof(host->Gliese), "GJ 9999");
+    host->add_catalog_alias("HD 98765");
+    host->add_catalog_alias("HIP 54321");
+    host->add_catalog_alias("GJ 9999");
+    const char* sources[] = {"HD 98765 b", "HIP 54321 c", "GJ 9999 d"};
+    std::map<int, std::vector<int>> planets;
+    for (int i = 0; i < 3; ++i)
+    {
+        Planet* planet = make_planet(host, sources[i], (i + 1) * AU);
+        planets[host->seqno].push_back(planet->seqno);
+    }
+    TestCatalogReader reader;
+    for (int pass = 0; pass < 3; ++pass)
+    {
+        reader.apply_exoplanet_names(planets);
+        for (int i = 0; i < 3; ++i)
+        {
+            Planet* planet = static_cast<Planet*>(cels[planets[host->seqno][i]]);
+            const std::string display = std::string(host->name) + " " + char('b' + i);
+            EXPECT_STREQ(planet->name, display.c_str());
+            EXPECT_EQ(planet->display_designation, display);
+            EXPECT_EQ(planet->catalog_designation, sources[i]);
+            EXPECT_EQ(find_object(sources[i], false), planet->seqno);
+            EXPECT_EQ(find_object(display.c_str(), false), planet->seqno);
+            Planet restored;
+            restored.from_json(planet->to_json());
+            EXPECT_EQ(restored.catalog_designation, sources[i]);
+            EXPECT_EQ(restored.display_designation, display);
+        }
+        snprintf(host->name, sizeof(host->name), "Preferred host");
+        for (int i = 0; i < 3; ++i)
+        {
+            Planet* planet = static_cast<Planet*>(cels[planets[host->seqno][i]]);
+            planet->refresh_host_display_designation();
+            EXPECT_STREQ(planet->name, (std::string("Preferred host ") + char('b' + i)).c_str());
+        }
+    }
     delete_the_universe();
 }
 
@@ -2136,7 +2185,7 @@ TEST_F(CatalogParsingTest, UnknownPlanetInclinationsUseStellarCompanionPlane)
                 double inclination = 0, node = 0;
                 incl_and_node_from_system_plane(planet->location.orbital_plane, inclination, node,
                     host->location.system_center - cels[0]->location.system_center);
-                EXPECT_NEAR(inclination * fiftyseven, known_planet && i == 0 ? 90 : 103.82, 1e-5);
+                EXPECT_NEAR(inclination * fiftyseven, known_planet ? 90 : 103.82, 1e-5);
                 if (!known_planet || i != 0)
                 {
                     EXPECT_NEAR(node * fiftyseven, 91.51, 1e-5);
@@ -2145,6 +2194,56 @@ TEST_F(CatalogParsingTest, UnknownPlanetInclinationsUseStellarCompanionPlane)
             }
             delete_the_universe();
         }
+    }
+}
+
+TEST_F(CatalogParsingTest, UnknownPlanesFollowTransitDiskMeasurementRotationCompanionPrecedence)
+{
+    for (int scenario = 0; scenario < 4; ++scenario)
+    {
+        Star* host = make_star("Hierarchy host");
+        host->rot_heliocen_incl = 40 * fiftyseventh;
+        host->rot_heliocen_node = 20 * fiftyseventh;
+        host->obliquity = 5 * fiftyseventh;
+        host->equinox = 7 * fiftyseventh;
+        host->has_disk = scenario == 1 || scenario == 3;
+        host->disk_heliocen_inclination = 60 * fiftyseventh;
+        host->disk_heliocen_node = 30 * fiftyseventh;
+        Star* companion = make_star("Hierarchy companion");
+        companion->make_companion_of(host, 'B');
+        companion->orbit->heliocentric_inclination = 110 * fiftyseventh;
+        companion->orbit->heliocentric_node = 70 * fiftyseventh;
+        std::map<int, std::vector<int>> planets;
+        TestCatalogReader reader;
+        unsigned int count = 0;
+        for (int i = 0; i < 2; ++i)
+        {
+            ExoRow row;
+            row.hostname = host->name;
+            row.pl_name = std::string(host->name) + " " + char('b' + i);
+            row.pl_orbper = 20 * (i + 1);
+            row.pl_msinie = 2;
+            row.pl_orbincl = i == 0 && scenario > 0 ? (scenario == 3 ? 85 : 45) : NAN;
+            row.transiting = scenario == 3 && i == 0;
+            ASSERT_TRUE(reader.add_exoplanet_from_row(row, host, planets, count));
+        }
+        const double expected[] = {40, 60, 45, 85};
+        const double expected_node[] = {20, 30, 55, 80};
+        if (scenario >= 2)
+        {
+            Orbit* measured = cels[planets[host->seqno][0]]->orbit;
+            measured->heliocentric_inclination = measured->inclination;
+            measured->heliocentric_node = expected_node[scenario] * fiftyseventh;
+        }
+        for (int pass = 0; pass < 3; ++pass)
+        {
+            reader.apply_exoplanet_names(planets);
+            Planet* inferred = static_cast<Planet*>(cels[planets[host->seqno][1]]);
+            EXPECT_NEAR(inferred->orbit->heliocentric_inclination * fiftyseven, expected[scenario], 1e-6);
+            EXPECT_NEAR(inferred->orbit->heliocentric_node * fiftyseven, expected_node[scenario], 1e-6);
+            EXPECT_NEAR(inferred->mass / earth_mass, 2 / sin(expected[scenario] * fiftyseventh), 1e-5);
+        }
+        delete_the_universe();
     }
 }
 
@@ -2734,6 +2833,79 @@ TEST_F(CatalogParsingTest, ExoplanetPassesShareCatalogSnapshot)
     ASSERT_EQ(host->pl_indices.size(), 1u);
     EXPECT_STREQ(cels[host->pl_indices.front()]->name, "Snapshot host b");
     delete_the_universe();
+}
+
+TEST_F(StellarDownloadTest, ExoplanetRefreshRequiresBothSourcesAndPreservesSavedDataOnFailure)
+{
+    struct OfflineContext
+    {
+        bool original = radio_silence;
+        ~OfflineContext() { radio_silence = original; }
+    } context;
+    radio_silence = false;
+    class DownloadReader : public CatalogReader
+    {
+    public:
+        int scenario = 0, requests = 0;
+    protected:
+        bool fetch_stellar_catalog_json(const std::string& url, const std::string& form, json& result) override
+        {
+            ++requests;
+            const bool nasa = url.find("exoplanetarchive") != std::string::npos;
+            if ((scenario == 0 && nasa) || (scenario == 1 && !nasa)) return false;
+            if (scenario == 5 && form.empty()) return false;
+            if (scenario == 3)
+            {
+                abort_load = true;
+                return false;
+            }
+            if (nasa)
+            {
+                result = json::array({{{"pl_name", "NASA host b"}, {"hostname", "NASA host"},
+                    {"pl_orbper", 10}, {"sy_dist", 10}, {"ra", 10}, {"dec", 20}}});
+            }
+            else
+            {
+                result =
+                {
+                    {"metadata", json::array({{{"name", "pl_name"}}, {{"name", "hostname"}},
+                        {{"name", "pl_orbper"}}, {{"name", "sy_dist"}}, {{"name", "ra"}}, {{"name", "dec"}},
+                        {{"name", "alt_target_name"}, {"datatype", "char"}}})},
+                    {"data", json::array({json::array({"EU host b", "EU host", 30, 20, 20, 30, nullptr})})}
+                };
+                if (scenario == 2) result["data"][0].erase(result["data"][0].end() - 1);
+            }
+            return true;
+        }
+    };
+    const json saved = json::array({{{"pl_name", "Saved host b"}, {"hostname", "Saved host"},
+        {"pl_orbper", 20}, {"sy_dist", 10}, {"ra", 10}, {"dec", 20}, {"source_catalog", "NASA"}}});
+    for (int scenario = 0; scenario < 6; ++scenario)
+    {
+        SCOPED_TRACE(scenario);
+        abort_load = false;
+        std::ofstream("catalogs/exoplanets.json") << saved;
+        std::filesystem::last_write_time("catalogs/exoplanets.json",
+            std::filesystem::file_time_type::clock::now() - std::chrono::hours(24));
+        std::filesystem::remove("catalogs/exoplanets_stars.dat");
+        DownloadReader reader;
+        reader.scenario = scenario;
+        reader.load_exoplanets_from_tap(true);
+        json persisted;
+        std::ifstream("catalogs/exoplanets.json") >> persisted;
+        if (scenario < 4) EXPECT_EQ(persisted, saved);
+        else
+        {
+            ASSERT_EQ(persisted.size(), 2u);
+            std::set<std::string> sources;
+            for (const auto& row : persisted) sources.insert(row["source_catalog"]);
+            EXPECT_EQ(sources, (std::set<std::string>{"NASA", "EU"}));
+        }
+        EXPECT_FALSE(std::filesystem::exists("catalogs/exoplanets.json.tmp"));
+        abort_load = false;
+        delete_the_universe();
+        make_star("Sol");
+    }
 }
 
 TEST_F(CatalogParsingTest, TestLoadExoplanetsFromTap)
@@ -3604,7 +3776,7 @@ TEST_F(CatalogParsingTest, ExactEdgeOnCatalogPlaceholdersUseDiskForAnyHost)
     {
         json source = {{"hostname", host->name}, {"pl_name", "Synthetic planet " + std::to_string(index)},
             {"pl_orbper", 20 * pow(3, index)}, {"pl_msinie", 2},
-            {"pl_orbincl", index == 1 ? 89.92 : 90.0}, {"tran_flag", index == 2 ? 1 : 0}};
+            {"pl_orbincl", index == 1 ? 89.99 : 90.0}, {"tran_flag", index == 2 ? 1 : 0}};
         if (index == 2) source["tran_flag"] = true;
         if (index == 4)
         {
@@ -3625,7 +3797,7 @@ TEST_F(CatalogParsingTest, ExactEdgeOnCatalogPlaceholdersUseDiskForAnyHost)
         EXPECT_EQ(restored.transiting, index == 2 || index == 4);
         ASSERT_TRUE(reader.add_exoplanet_from_row(restored, host, rows, count));
     }
-    const double expected[] = {37, 89.92, 90, 37, 90};
+    const double expected[] = {90, 89.99, 90, 90, 90};
     for (int pass = 0; pass < 3; ++pass)
     {
         reader.apply_exoplanet_names(rows);
@@ -3639,7 +3811,7 @@ TEST_F(CatalogParsingTest, ExactEdgeOnCatalogPlaceholdersUseDiskForAnyHost)
             EXPECT_NEAR(inclination * fiftyseven, expected[i], 1e-6);
             if (i == 0 || i == 3)
             {
-                EXPECT_NEAR(planet->mass / earth_mass, 2 / sin(37 * fiftyseventh), 1e-10);
+                EXPECT_NEAR(planet->mass / earth_mass, 2, 1e-10);
             }
         }
     }

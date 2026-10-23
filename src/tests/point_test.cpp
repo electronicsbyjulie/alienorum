@@ -7,6 +7,18 @@
 
 using namespace alienorum;
 
+TEST(PointMathTest, InPlaceScalingMultipliesEveryCoordinate)
+{
+    Point point(2, -3, 4);
+    Point& result = (point *= 2.5);
+    EXPECT_EQ(&result, &point);
+    EXPECT_DOUBLE_EQ(point.x, 5);
+    EXPECT_DOUBLE_EQ(point.y, -7.5);
+    EXPECT_DOUBLE_EQ(point.z, 10);
+    point *= 0;
+    EXPECT_DOUBLE_EQ(point.magnitude(), 0);
+}
+
 // =====================================================================
 // Point & Vector Math Tests
 // =====================================================================

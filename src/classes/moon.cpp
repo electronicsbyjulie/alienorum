@@ -17,12 +17,22 @@ static double collision_radius(CelestialObject *object)
     return std::max(radius, object->volumetric_mean_radius);
 }
 
+static double atmospheric_clearance(CelestialObject* object)
+{
+    if (object->typeclass() != class_planet && object->typeclass() != class_moon) return 0;
+    Planet* planet = static_cast<Planet*>(object);
+    if (!(planet->get_surface_pressure() > 0)) return 0;
+    const double height = 10 * planet->estimate_scale_height();
+    return std::isfinite(height) && height > 0 ? height : 0;
+}
+
 double Moon::minimum_safe_pericenter()
 {
     if (!orbit || !orbit->center) return 0;
     CelestialObject* parent = orbit->center;
     const double own_radius = collision_radius(this);
-    double inner = collision_radius(parent) + own_radius;
+    double inner = collision_radius(parent) + own_radius +
+        atmospheric_clearance(parent) + atmospheric_clearance(this);
     inner = std::max(inner, parent->Roche_limit(this));
     if (parent->typeclass() == class_planet || parent->typeclass() == class_moon)
         inner = std::max(inner, static_cast<Planet*>(parent)->ring_radius + own_radius);

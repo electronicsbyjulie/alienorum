@@ -192,6 +192,7 @@ namespace alienorum
     {
         public:
         double surface_pressure = oneatm;
+        bool pressure_supplied = false;
         double tau = 0;
         double particulates = 0;
         CelestialObject *cel = nullptr;

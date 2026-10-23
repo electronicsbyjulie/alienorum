@@ -226,6 +226,26 @@ TEST(MoonTest, LowDensityPlanetSurfaceWinsOverASmallerRocheLimit)
     }
 }
 
+TEST(MoonTest, AtmosphericExtentsAddToSolidSurfaceClearance)
+{
+    Planet parent;
+    parent.mass = 200 * earth_mass;
+    parent.volumetric_mean_radius = 2 * earth_radius;
+    parent.temperature = 300;
+    parent.ensure_atmosphere()->surface_pressure = 10000;
+    Moon moon;
+    moon.mass = earth_mass;
+    moon.volumetric_mean_radius = earth_radius;
+    moon.temperature = 300;
+    moon.ensure_atmosphere()->surface_pressure = 10000;
+    moon.orbit = new Orbit();
+    moon.orbit->center = &parent;
+    const double contact = parent.get_equatorial_radius() + moon.get_equatorial_radius();
+    const double atmosphere_height = 10 * (parent.estimate_scale_height() + moon.estimate_scale_height());
+    ASSERT_GT(atmosphere_height, 0);
+    EXPECT_GE(moon.minimum_safe_pericenter(), 1.1 * (contact + atmosphere_height));
+}
+
 TEST(MoonTest, LegacyRepairPreservesSeparatedOrbitsAndRejectsOpenOrbits)
 {
     Planet parent;

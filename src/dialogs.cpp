@@ -574,7 +574,7 @@ void draw_status_window(ImGuiIO& io)            // the S panel
             ImGui::Text("%s", sssg.str().c_str());
 
             CelestialObject *lcen = cels[whereami]->get_light_center();
-            double lightalt = lcen->Decl_as_radians(here)*fiftyseven;
+            double lightalt = lcen ? lcen->Decl_as_radians(here)*fiftyseven : -90;
             // std::cout << "Sun at altitude " << (lightalt) << std::endl;
             if (lightalt > 0) ImGui::Text("%s", "Daytime");
             else if (whereami == iamhome && lightalt > -6) ImGui::Text("%s", "Civil Twilight");
@@ -1246,8 +1246,19 @@ void draw_objedit_window(ImGuiIO& io)
     if (ImGui::IsWindowAppearing() || last_edit_idx != editidx) ImGui::SetKeyboardFocusHere();
     if (ImGui::InputText("##edtname", edit_name, name_max_len, 0))
     {
+        if (tc == class_star) static_cast<Star*>(cel)->add_catalog_alias(cel->name);
         strcpy(cels[editidx]->name, edit_name);
         cels[editidx]->namelen = strlen(cels[editidx]->name);
+        if (tc == class_star)
+        {
+            static_cast<Star*>(cel)->has_custom_name = true;
+            for (int i = 0; i < ncelobjs; ++i)
+            {
+                if (cels[i]->typeclass() != class_planet || !cels[i]->orbit || cels[i]->orbit->center != cel) continue;
+                static_cast<Planet*>(cels[i])->refresh_host_display_designation();
+                cels[i]->user_edited = true;
+            }
+        }
         cel->user_edited = true;
     }
     ImGui::SameLine(col3);
@@ -2268,6 +2279,7 @@ void draw_objedit_window(ImGuiIO& io)
                 if (ImGui::InputDouble("##edtpresh", &edit_surf_presh, 0, 0, "%.3f"))
                 {
                     p->ensure_atmosphere()->surface_pressure = edit_surf_presh * oneatm;
+                    p->atm->pressure_supplied = true;
                     p->temperature = 0;
                     update_taucalc = true;
                     cel->user_edited = true;
@@ -2278,7 +2290,9 @@ void draw_objedit_window(ImGuiIO& io)
                 ImGui::SameLine();
                 if (ImGui::Button("Cosm.Shln.##edtpresh"))
                 {
+                    p->ensure_atmosphere()->pressure_supplied = false;
                     p->apply_cosmic_shoreline();
+                    cel->user_edited = true;
                 }
                 ImGui::SameLine(col2);
                 ImGui::Text("%s", "Total tau");
@@ -3012,6 +3026,13 @@ void draw_system_explorer(ImGuiIO& io)
                     double disc_area = pow(m->volumetric_mean_radius / earth_radius, 2);
                     m->absolute_magnitude = earth_absmag - log(disc_area * m->albedo / earth_albedo) / log(magnbase);
                     m->apply_cosmic_shoreline();
+
+                    m->enforce_orbit_clearance();
+                    if (m->orbit->semimajor_axis * (1 + m->orbit->eccentricity) > cel->Hill_sphere_radius())
+                    {
+                        delete m;
+                        break;
+                    }
 
                     if (!append_cel(m))
                     {

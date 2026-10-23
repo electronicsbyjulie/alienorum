@@ -17,6 +17,12 @@
 #include <memory>
 #include <string_view>
 #include <string.h>
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
 #include "cat.h"
 #include "serial.h"
 #include "cons.h"
@@ -24,6 +30,17 @@
 #include "../globals.h"
 
 namespace fs = std::filesystem;
+
+static bool replace_exoplanet_cache(const fs::path& temporary, const fs::path& destination)
+{
+#ifdef _WIN32
+    return MoveFileExW(temporary.c_str(), destination.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
+#else
+    std::error_code error;
+    fs::rename(temporary, destination, error);
+    return !error;
+#endif
+}
 
 // True for the GCVS eclipsing-binary codes E, EA, EB, EW and their subtypes, in any position of a
 // compound type. ELL is ellipsoidal and EP a planetary transit, so neither answers true.
@@ -3614,12 +3631,13 @@ void CatalogReader::reconcile_exoplanet_inclinations(
         if (pincls[i] == 90 * fiftyseventh && (!planets[i] || !planets[i]->transiting)) pincls[i] = 0;
     }
 
-    std::vector<double> precise, available;
+    std::vector<double> precise, available, transiting;
     for (size_t i = 0; i < n; ++i)
     {
         if (pincls[i] == 0) continue;
         available.push_back(pincls[i]);
         const Planet* planet = planets[i];
+        if (planet && planet->transiting) transiting.push_back(pincls[i]);
         if (!planet || broad_exoplanet_inclination(planet) ||
             hot_jupiter_inclination_exemption(planet)) continue;
         const bool published_errors = std::isfinite(planet->inclination_error_upper) &&
@@ -3676,9 +3694,11 @@ void CatalogReader::reconcile_exoplanet_inclinations(
         return values[values.size() / 2];
     };
     const double precise_reference = reference(precise);
-    double anchor = host_star && host_star->has_disk ? host_star->disk_heliocen_inclination : 0;
+    double anchor = reference(transiting);
+    if (!anchor && host_star && host_star->has_disk) anchor = host_star->disk_heliocen_inclination;
     if (!anchor) anchor = precise_reference;
     if (!anchor) anchor = reference(available);
+    if (!anchor && host_star) anchor = host_star->rot_heliocen_incl;
     if (!anchor) return;
     if (host_star) host_star->planets_heliocen_inclination = anchor;
 
@@ -3701,11 +3721,6 @@ void CatalogReader::reconcile_exoplanet_inclinations(
         if (planet && new_sin > 0.05 && planet->msini > 0) planet->mass = planet->msini / new_sin;
         pincls[i] = replacement;
         if (planet && planet->orbit) planet->orbit->inclination = replacement;
-        if (!pnodes[i] && host_star)
-        {
-            pnodes[i] = host_star->planets_heliocen_node ? host_star->planets_heliocen_node : host_star->disk_heliocen_node;
-            if (planet && planet->orbit && pnodes[i]) planet->orbit->ascending_node = pnodes[i];
-        }
     }
 }
 
@@ -3892,11 +3907,27 @@ void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>&
         Star *s = (Star*)cels[idx];
 
         double sysincl = 0, sysnode = 0;
-        double stincl = s->obliquity, stnode = s->equinox;
+        double stincl = s->rot_heliocen_incl ? s->rot_heliocen_incl : s->obliquity;
+        double stnode = s->rot_heliocen_node ? s->rot_heliocen_node : s->equinox;
         if (s->has_disk)
         {
             sysincl = s->disk_heliocen_inclination;
             sysnode = s->disk_heliocen_node;
+        }
+        double transit_node_sin = 0, transit_node_cos = 0;
+        bool have_transit_node = false;
+        for (const int planet_id : row)
+        {
+            const Planet* planet = static_cast<Planet*>(cels[planet_id]);
+            if (!planet->transiting || !planet->orbit || !planet->orbit->heliocentric_node) continue;
+            transit_node_sin += sin(planet->orbit->heliocentric_node);
+            transit_node_cos += cos(planet->orbit->heliocentric_node);
+            have_transit_node = true;
+        }
+        if (have_transit_node)
+        {
+            sysnode = atan2(transit_node_sin, transit_node_cos);
+            if (sysnode < 0) sysnode += 2 * _pi;
         }
         std::vector<double> pincls, pnodes;
         std::vector<double> cincls, cnodes;
@@ -3906,6 +3937,7 @@ void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>&
         {
             Planet *p = (Planet*)cels[row[i]];
             std::string designation = p->catalog_designation.empty() ? p->name : p->catalog_designation;
+            if (p->catalog_designation.empty()) p->catalog_designation = designation;
             p->origname = designation;
 
             if (planet_names.find(designation) == planet_names.end())
@@ -4022,6 +4054,17 @@ void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>&
                 snprintf(p->name, sizeof(p->name), "%s", display.c_str());
                 p->namelen = 0;
             }
+            else if (p->catalog_designation.size() > 2 && p->catalog_designation.back() >= 'b' &&
+                p->catalog_designation.back() <= 'z' &&
+                !std::islower(static_cast<unsigned char>(p->catalog_designation[p->catalog_designation.size() - 2])))
+            {
+                p->display_designation = std::string(s->name) + " " + p->catalog_designation.back();
+                if (planet_names.find(designation) == planet_names.end())
+                {
+                    snprintf(p->name, sizeof(p->name), "%s", p->display_designation.c_str());
+                    p->namelen = 0;
+                }
+            }
 
             if (planet_types.find(designation) != planet_types.end())
             {
@@ -4057,12 +4100,10 @@ void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>&
         }
 
         bool have_companion_plane = false;
-        double companion_inclination = 0, companion_node = 0;
-        std::vector<bool> unknown_inclinations;
+        double companion_node = 0;
         for (double& inclination : pincls)
         {
             inclination = accepted_exoplanet_inclination(inclination);
-            unknown_inclinations.push_back(inclination == 0);
         }
         if (s->multisys)
         {
@@ -4075,7 +4116,6 @@ void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>&
                     cnodes.push_back(comp->orbit->heliocentric_node);
                     if (!have_companion_plane && (cincls.back() || cnodes.back()))
                     {
-                        companion_inclination = cincls.back();
                         companion_node = cnodes.back();
                         have_companion_plane = true;
                     }
@@ -4098,33 +4138,15 @@ void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>&
             sys_planets.push_back((Planet*)cels[row[i]]);
         }
         reconcile_exoplanet_inclinations(s, sys_planets, pincls, pnodes);
+        if (s->planets_heliocen_inclination) sysincl = s->planets_heliocen_inclination;
 
         // A host that is itself a stellar companion can use its own binary orbit.
         if (!have_companion_plane && s->orbit && s->orbit->center &&
             s->orbit->center->typeclass() == class_star &&
             (s->orbit->heliocentric_inclination || s->orbit->heliocentric_node))
         {
-            companion_inclination = s->orbit->heliocentric_inclination;
             companion_node = s->orbit->heliocentric_node;
             have_companion_plane = true;
-        }
-        if (have_companion_plane)
-        {
-            bool all_unknown = true;
-            for (size_t k = 0; k < pincls.size(); ++k)
-            {
-                if (unknown_inclinations[k])
-                {
-                    pincls[k] = companion_inclination;
-                    pnodes[k] = companion_node;
-                }
-                else all_unknown = false;
-            }
-            if (all_unknown)
-            {
-                sysincl = companion_inclination;
-                sysnode = companion_node;
-            }
         }
 
         n = pincls.size();
@@ -4230,6 +4252,7 @@ void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>&
         if (pmeannode && !sysnode) sysnode = pmeannode;
         if (!sysnode && stnode) sysnode = stnode;
         if (cmeannode && !sysnode) sysnode = cmeannode;
+        if (have_companion_plane && !sysnode) sysnode = companion_node;
         if (!sysnode && s->orbit && s->orbit->heliocentric_node) sysnode = s->orbit->heliocentric_node;
         if (!stnode && sysnode)
         {
@@ -4238,7 +4261,7 @@ void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>&
         n = pnodes.size();
         for (i = 0; i < n; i++)
         {
-            if (!pnodes[i] && !(have_companion_plane && unknown_inclinations[i]))
+            if (!pnodes[i])
             {
                 double direct_delta = fabs(pincls[i] - sysincl);
                 double fold_delta = fabs((_pi - pincls[i]) - sysincl);
@@ -4300,6 +4323,9 @@ void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>&
             }
 
             // Preserve the source frame for subsequent catalog passes and serialization.
+            const double projected = sin(pincls[i]);
+            if (p->msini > 0 && projected > 0.05 && p->mass_evidence != PlanetMeasurement::observed)
+                p->mass = p->msini / projected;
             p->orbit->heliocentric_inclination = (fabs(sysincl) >= 1e-6) ? pincls[i] : half_pi;
             p->orbit->heliocentric_node = pnodes[i];
             elements_in_new_reference_plane(system_plane_from_incl_and_node((fabs(sysincl) >= 1e-6) ? pincls[i] : half_pi,
@@ -5464,7 +5490,11 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
                 if (has_atm)
                 {
                     Atmosphere *a = p->ensure_atmosphere();
-                    if (!isinf(a_pressure)) a->surface_pressure = a_pressure;
+                    if (std::isfinite(a_pressure) && a_pressure >= 0)
+                    {
+                        a->surface_pressure = a_pressure;
+                        a->pressure_supplied = pl.contains("SurfacePressure");
+                    }
                     a->tau = a_tau;
                     a->particulates = a_partic;
                 }
@@ -7754,7 +7784,7 @@ bool CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, s
     if (mass_untrustworthy)
     {
         double st_incl = inclination;
-        if (!st_incl && host_star->disk_heliocen_inclination)
+        if (!st_incl && host_star->has_disk && host_star->disk_heliocen_inclination)
         {
             st_incl = host_star->disk_heliocen_inclination;
         }
@@ -8471,26 +8501,62 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
     if (do_download && !radio_silence)
     {
         exoplanet_tap_attempted = true;
-        // Reusable lambda to abstract libcurl boilerplate
+        // Share cancellation, response limits, and alternate HTTP-method support.
         auto fetch_tap = [&](const std::string& url, std::string& out_buffer) -> bool
         {
-            CURL* curl = curl_easy_init();
-            if (!curl) return false;
-            curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-            curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
-            curl_easy_setopt(curl, CURLOPT_WRITEDATA, &out_buffer);
-            curl_easy_setopt(curl, CURLOPT_TIMEOUT, 90L);
-            curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 15L);
-            curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1L);
-            curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
-            curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-            CURLcode res = curl_easy_perform(curl);
-            curl_easy_cleanup(curl);
-            if (res != CURLE_OK)
+            out_buffer.clear();
+            json response;
+            const size_t separator = url.find('?');
+            if (!fetch_stellar_catalog_json(url, "", response) &&
+                (separator == std::string::npos || !fetch_stellar_catalog_json(
+                    url.substr(0, separator), url.substr(separator + 1), response))) return false;
+            if (abort_load) return false;
+            if (response.is_object() && response.contains("metadata") && !response.contains("columns"))
+                response["columns"] = response["metadata"];
+            if (response.is_array())
             {
-                out_buffer.clear();
-                return false;
+                if (response.empty() || response.size() >= 20000) return false;
+                for (const auto& row : response)
+                {
+                    if (!row.is_object() || !row.contains("pl_name") || !row["pl_name"].is_string() ||
+                        !row.contains("hostname") || (!row["hostname"].is_string() && !row["hostname"].is_null())) return false;
+                }
             }
+            else if (response.is_object() && response.contains("data") && response["data"].is_array() &&
+                response.contains("columns") && response["columns"].is_array())
+            {
+                const auto& columns = response["columns"];
+                if (columns.empty() || response["data"].empty() || response["data"].size() >= 20000) return false;
+                for (const auto& column : columns)
+                {
+                    if (!column.is_object() || !column.contains("name") || !column["name"].is_string()) return false;
+                }
+                for (const auto& row : response["data"])
+                {
+                    if (!row.is_array() || row.size() != columns.size()) return false;
+                }
+                json rows = json::array();
+                for (const auto& values : response["data"])
+                {
+                    json row = json::object();
+                    for (size_t i = 0; i < columns.size(); ++i)
+                        row[columns[i]["name"].get<std::string>()] = values[i];
+                    if (!row.contains("pl_name") || !row["pl_name"].is_string() ||
+                        !row.contains("hostname") || (!row["hostname"].is_string() && !row["hostname"].is_null())) return false;
+                    rows.push_back(std::move(row));
+                }
+                response = std::move(rows);
+            }
+            else return false;
+            for (auto& row : response)
+            {
+                for (const char* key : {"hostname", "hd_name", "hip_name", "alt_target_name", "st_spectype",
+                    "discoverymethod", "detection_type", "koi_disposition", "planet_status", "st_metratio"})
+                {
+                    if (row.contains(key) && row[key].is_null()) row[key] = "";
+                }
+            }
+            out_buffer = response.dump();
             return true;
         };
 
@@ -8523,6 +8589,14 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
         if (!fetch_tap(eu_url, readBufferEU))
         {
             std::cerr << "Exoplanet.eu TAP Query failed." << std::endl;
+        }
+
+        if (abort_load) return 0;
+        if (readBufferNASA.empty() || readBufferEU.empty())
+        {
+            // A single-source refresh cannot replace a combined-source snapshot.
+            readBufferNASA.clear();
+            readBufferEU.clear();
         }
 
         try
@@ -8777,7 +8851,11 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                 {
                     json eu_json = json::parse(readBufferEU);
 
-                    if (eu_json.contains("data") && eu_json.contains("columns"))
+                    if (eu_json.is_array())
+                    {
+                        for (const auto& item : eu_json) register_planet(item, false);
+                    }
+                    else if (eu_json.contains("data") && eu_json.contains("columns"))
                     {
                         auto& columns = eu_json["columns"];
                         for (const auto& row_array : eu_json["data"])
@@ -8806,7 +8884,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
             }
             catch (const json::exception&)
             {
-                std::cerr << "Exoplanet.eu returned invalid catalog data; continuing with NASA." << std::endl;
+                throw;
             }
 
             // Read NASA Second (fills in the gaps)
@@ -8828,7 +8906,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
             }
             catch (const json::exception&)
             {
-                std::cerr << "NASA returned invalid catalog data; continuing with available data." << std::endl;
+                throw;
             }
 
             // Repackage to array
@@ -8839,16 +8917,20 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
 
             // Deduplicate across catalogs with spatial and orbital matching
             dedup_planets(planets_array);
+            if (abort_load) return 0;
 
-            std::fstream fs;
-            if (!planets_array.empty())
+            const std::string temporary = std::string(exocache) + ".tmp";
+            if (!planets_array.empty() && !abort_load)
             {
-                fs.open(exocache, std::ios::out);
-            }
-            if (fs.is_open())
-            {
-                fs << planets_array.dump(4);
-                fs.close();
+                std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
+                output << planets_array.dump(4);
+                output.close();
+                if (output && !abort_load)
+                {
+                    replace_exoplanet_cache(temporary, exocache);
+                }
+                std::error_code error;
+                fs::remove(temporary, error);
             }
         }
         catch (const json::exception&)
@@ -9037,10 +9119,11 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
 
     if (cachefp)
     {
-        fclose(cachefp);
-        if (!abort_load && rows_written > 0)
+        const bool failed = ferror(cachefp);
+        const int closed = fclose(cachefp);
+        if (!failed && closed == 0 && !abort_load && rows_written > 0)
         {
-            std::rename(tmp_cache.c_str(), derived_cache);
+            if (!replace_exoplanet_cache(tmp_cache, derived_cache)) std::remove(tmp_cache.c_str());
         }
         else
         {

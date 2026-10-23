@@ -62,6 +62,36 @@ TEST_F(PlanetClassificationEvidenceTest, InferredAtmosphereHonorsTheShorelineCei
     EXPECT_LE(world->get_surface_pressure(), 1e8);
 }
 
+TEST_F(PlanetClassificationEvidenceTest, ShorelinePreservesSuppliedPressureIncludingVacuumAcrossSaves)
+{
+    Planet* world = make_planet(make_star(), "Supplied atmosphere", 0.2 * AU);
+    world->user_added = true;
+    for (double pressure : {0.0, 1.0 * oneatm, 2e8})
+    {
+        world->ensure_atmosphere()->from_json({{"surface_pressure", pressure}});
+        world->apply_cosmic_shoreline();
+        EXPECT_DOUBLE_EQ(world->get_surface_pressure(), pressure);
+        EXPECT_TRUE(world->atm->pressure_supplied);
+        Planet restored;
+        restored.from_json(world->to_json());
+        ASSERT_NE(restored.atm, nullptr);
+        EXPECT_TRUE(restored.atm->pressure_supplied);
+        EXPECT_DOUBLE_EQ(restored.get_surface_pressure(), pressure);
+    }
+    Planet legacy;
+    legacy.from_json({{"surface_pressure", 0}});
+    ASSERT_NE(legacy.atm, nullptr);
+    EXPECT_TRUE(legacy.atm->pressure_supplied);
+    EXPECT_DOUBLE_EQ(legacy.get_surface_pressure(), 0);
+    world->atm->pressure_supplied = false;
+    world->apply_cosmic_shoreline();
+    EXPECT_LE(world->get_surface_pressure(), 1e8);
+    Planet inferred;
+    inferred.from_json(world->to_json());
+    ASSERT_NE(inferred.atm, nullptr);
+    EXPECT_FALSE(inferred.atm->pressure_supplied);
+}
+
 TEST_F(PlanetClassificationEvidenceTest, EstimatedRadiusNeverBecomesObservedDensity)
 {
     Planet* planet = make_planet(make_star(), "Estimated radius");
@@ -1607,7 +1637,8 @@ TEST(ExoplanetInclinationTest, TwoDegreeCutoffDoesNotDependOnReferencePlaneOrPla
             std::vector<double> inclinations = {0.4 * fiftyseventh, 2 * fiftyseventh, half_pi, _pi};
             std::vector<double> nodes = {0, 0.2, 0.3, 0.4};
             CatalogReader::reconcile_exoplanet_inclinations(&host, planets, inclinations, nodes);
-            EXPECT_NEAR(inclinations[0] * fiftyseven, reference, 1e-8);
+            // A confirmed transit outranks the disk for an unknown planetary plane (E07).
+            EXPECT_NEAR(inclinations[0] * fiftyseven, 90, 1e-8);
             EXPECT_NEAR(inclinations[1] * fiftyseven, 2, 1e-8);
             EXPECT_DOUBLE_EQ(inclinations[2], half_pi);
             EXPECT_DOUBLE_EQ(inclinations[3], _pi);

@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "../classes/comet.h"
+#include "../classes/star.h"
 
 using namespace alienorum;
 
@@ -105,7 +106,7 @@ TEST(CometMathTest, ViewerMagnitude_LogarithmicScaling)
     // 1 AU exactly in meters
     const double AU_METERS = 149597870700.0; 
     
-    CelestialObject sun;
+    Star sun;
     sun.location.local_position = Point(0.0, 0.0, 0.0);
     sun.location.system_center = Point(0.0, 0.0, 0.0);
     sun.location.galactic_center = Point(0.0, 0.0, 0.0);

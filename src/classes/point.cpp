@@ -76,9 +76,9 @@ Point Point::operator*(double multiplier)
 
 Point &Point::operator*=(double multiplier)
 {
-    x -= multiplier;
-    y -= multiplier;
-    z -= multiplier;
+    x *= multiplier;
+    y *= multiplier;
+    z *= multiplier;
     return *this;
 }
 

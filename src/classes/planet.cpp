@@ -1,5 +1,6 @@
 #include <iostream>
 #include <cmath>
+#include <cctype>
 #include <iomanip>
 #include <random>
 #include <algorithm>
@@ -16,6 +17,21 @@
 using namespace alienorum;
 
 std::vector<AstorbRow> astorb;
+
+void Planet::refresh_host_display_designation()
+{
+    if (!orbit || !orbit->center || orbit->center->typeclass() != class_star) return;
+    const std::string source = display_designation.empty() ? catalog_designation : display_designation;
+    if (source.size() < 3 || source.back() < 'b' || source.back() > 'z' ||
+        std::islower(static_cast<unsigned char>(source[source.size() - 2]))) return;
+    const bool use_designation = name == display_designation || name == catalog_designation;
+    display_designation = std::string(orbit->center->name) + " " + source.back();
+    if (use_designation)
+    {
+        snprintf(name, sizeof(name), "%s", display_designation.c_str());
+        namelen = 0;
+    }
+}
 
 void alienorum::Planet::setup_atm_ring_props()
 {
@@ -35,6 +51,7 @@ void alienorum::Planet::setup_atm_ring_props()
 
 void alienorum::Planet::apply_cosmic_shoreline()
 {
+    if (atm && atm->pressure_supplied) return;
     CelestialObject *plc = get_light_center();
     if (plc
         && (user_added || plc->seqno)                                          // Real solar system objects are already known to have/not have an atmosphere.
@@ -1242,6 +1259,7 @@ json Atmosphere::to_json()
 {
     json towrite;
     towrite["surface_pressure"] = surface_pressure;
+    towrite["pressure_supplied"] = pressure_supplied;
     if (tau) towrite["tau"] = tau;
     if (particulates) towrite["particulates"] = particulates;
     if (comp) towrite["composition"] = comp->to_json();
@@ -1254,8 +1272,18 @@ json Atmosphere::to_json()
 // that have to be kept in step.
 bool Atmosphere::from_json(json j)
 {
-    try { j.at("surface_pressure").get_to(surface_pressure); } catch (...) { ; }
-    try { j.at("SurfacePressure").get_to(surface_pressure); } catch (...) { ; }
+    for (const char* key : {"surface_pressure", "SurfacePressure"})
+    {
+        if (j.contains(key) && j[key].is_number())
+        {
+            const double pressure = j[key].get<double>();
+            if (std::isfinite(pressure) && pressure >= 0)
+            {
+                surface_pressure = pressure;
+                pressure_supplied = j.value("pressure_supplied", true);
+            }
+        }
+    }
     try { j.at("tau").get_to(tau); } catch (...) { ; }
     try { j.at("AtmosphericTau").get_to(tau); } catch (...) { ; }
     try { j.at("particulates").get_to(particulates); } catch (...) { ; }
@@ -1378,9 +1406,14 @@ bool Planet::from_json(json j)
         double legacy_pressure = 0, legacy_tau = 0;
         try { j.at("surface_pressure").get_to(legacy_pressure); } catch (...) { ; }
         try { j.at("atmospheric_tau").get_to(legacy_tau); } catch (...) { ; }
-        if (legacy_pressure > 0 || legacy_tau > 0)
+        if (j.contains("surface_pressure") || legacy_tau > 0)
         {
-            if (!isinf(legacy_pressure)) ensure_atmosphere()->surface_pressure = legacy_pressure;
+            if (std::isfinite(legacy_pressure) && legacy_pressure >= 0)
+            {
+                ensure_atmosphere()->surface_pressure = legacy_pressure;
+                atm->pressure_supplied = j.contains("surface_pressure");
+            }
+            if (!atm) ensure_atmosphere();
             atm->tau = legacy_tau;
         }
     }

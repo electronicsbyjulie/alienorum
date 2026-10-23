@@ -1345,7 +1345,7 @@ TEST(CelestialLocaleTest, RejectsInvalidPositionsAndMissingLocales)
 TEST(CelestialLocaleTest, InvertedMapLocalesRetainDegreeCoordinates)
 {
     const auto path = std::filesystem::temp_directory_path() / "alienorum-locale-inversion-test.json";
-    const json data = {{"Synthetic body", json::array({{{"name", "Surface site"},
+    const json data = {{"Synthetic body", json::array({json::object(), {{"name", "Surface site"},
         {"latitude", 30}, {"longitude", 120}}})}};
     {
         std::ofstream output(path);
@@ -1358,10 +1358,10 @@ TEST(CelestialLocaleTest, InvertedMapLocalesRetainDegreeCoordinates)
     EXPECT_EQ(body.read_locales(path.string()), 1);
     std::filesystem::remove(path);
     EXPECT_TRUE(body.locales_loaded);
-    ASSERT_EQ(body.nlocales, 1);
-    EXPECT_DOUBLE_EQ(body.locales[0].lat, -30);
-    EXPECT_DOUBLE_EQ(body.locales[0].lon, -120);
-    EXPECT_EQ(body.nearest_locale(-30 * fiftyseventh, -120 * fiftyseventh, 5000), &body.locales[0]);
+    ASSERT_EQ(body.nlocales, 2);
+    EXPECT_DOUBLE_EQ(body.locales[1].lat, -30);
+    EXPECT_DOUBLE_EQ(body.locales[1].lon, -120);
+    EXPECT_EQ(body.nearest_locale(-30 * fiftyseventh, -120 * fiftyseventh, 5000), &body.locales[1]);
     delete[] body.locales;
     body.locales = nullptr;
 }

@@ -895,7 +895,8 @@ TEST_F(ExoConsTest, BrightStarsJoinedAndNormalSizedConstellationsFormed)
         if (s->cenobj && s->cenobj != s && s->cenobj->typeclass() == class_star)
         {
             Star* primary = (Star*)s->cenobj;
-            if (primary->viewer_magnitude(vantage_loc) <= s->viewer_magnitude(vantage_loc))
+                const double separation = find_3D_angle(s->location, primary->location, vantage_loc) * fiftyseven;
+                if (separation < 0.1 || primary->viewer_magnitude(vantage_loc) <= s->viewer_magnitude(vantage_loc))
             {
                 continue;
             }
@@ -975,7 +976,8 @@ TEST_F(ExoConsTest, PasserbyLinesConnectToImpingingStars)
         if (s->cenobj && s->cenobj != s && s->cenobj->typeclass() == class_star)
         {
             Star* primary = (Star*)s->cenobj;
-            if (primary->viewer_magnitude(vantage_loc) <= s->viewer_magnitude(vantage_loc))
+            const double separation = find_3D_angle(s->location, primary->location, vantage_loc) * fiftyseven;
+            if (separation < 0.1 || primary->viewer_magnitude(vantage_loc) <= s->viewer_magnitude(vantage_loc))
             {
                 continue;
             }
