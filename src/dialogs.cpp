@@ -984,6 +984,12 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
             }
         }
 
+        if (s && std::isfinite(s->metallicity) &&
+            (s->metallicity_ratio == "[Fe/H]" || s->metallicity_ratio == "[M/H]"))
+        {
+            ImGui::Text("%-9s%+.2f dex", (s->metallicity_ratio + ":").c_str(), s->metallicity);
+        }
+
         if (i >= 0 && cels[i]->mass)
         {
             if (cls == class_star)
