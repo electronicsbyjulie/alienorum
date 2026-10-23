@@ -2741,6 +2741,8 @@ TEST_F(CatalogParsingTest, TestLoadExoplanetsFromTap)
     CatalogReader cr;
     radio_silence = true;
 
+    if (!hdcache) hdcache = new Star*[MAX_HD + 1]();
+
     Star* star_82eri = make_star("82 Eri");
     star_82eri->HD = 20794;
     hdcache[20794] = star_82eri;
@@ -2816,15 +2818,31 @@ TEST_F(CatalogParsingTest, TestLoadExoplanetsFromTap)
         EXPECT_STRNE(cels[i]->name, "KOI-5 b");
     }
 
-    int idx_e = find_object("PDS 70 e", false);
-    EXPECT_GE(idx_e, 0);
-    if (idx_e >= 0)
+    // Use an imaging planet present in the source snapshot for physical checks.
+    // Inspect source designations directly, independently of display names and search filters.
+    auto imported_planet = [](const char* designation)
     {
-        Planet* pe = (Planet*)cels[idx_e];
-        ASSERT_NE(pe->orbit, nullptr);
-        double pe_incl_deg = pe->orbit->inclination * fiftyseven;
-        EXPECT_NEAR(pe_incl_deg, 180.0, 1.0);
+        for (int i = 0; i < ncelobjs; ++i)
+        {
+            if (cels[i]->typeclass() == class_planet &&
+                static_cast<Planet*>(cels[i])->catalog_designation == designation) return i;
+        }
+        return -1;
+    };
+    int idx_imaging = imported_planet("HIP 65426 b");
+    EXPECT_GE(idx_imaging, 0);
+    if (idx_imaging >= 0)
+    {
+        ASSERT_EQ(cels[idx_imaging]->typeclass(), class_planet);
+        Planet* imaging = static_cast<Planet*>(cels[idx_imaging]);
+        ASSERT_NE(imaging->cenobj, nullptr);
+        EXPECT_STREQ(imaging->cenobj->name, "HIP 65426");
+        ASSERT_NE(imaging->orbit, nullptr);
+        EXPECT_NEAR(imaging->orbit->semimajor_axis / AU, 92.0, 0.1);
+        EXPECT_GT(imaging->mass, 0);
     }
+
+    EXPECT_GE(imported_planet("WD 0806-661 b"), 0);
 
     int idx_b = find_object("PDS 70 b", false);
     EXPECT_GE(idx_b, 0);
@@ -2875,7 +2893,9 @@ TEST_F(CatalogParsingTest, TestLoadExoplanetsFromTap)
         incl_and_node_from_system_plane(p->location.orbital_plane, czincl, cznode, s->location.system_center);
         EXPECT_NEAR(czincl, s->disk_heliocen_inclination, 0.02);
         EXPECT_NEAR(p->orbit->period / oneday, 89.7, 1.0);
-        EXPECT_NEAR(p->mass / earth_mass, 3.29, 0.2);
+        // Nari et al. (2025): minimum mass 2.98 Earth masses; disk inclination 50 degrees.
+        EXPECT_NEAR(p->msini / earth_mass, 2.98, 0.01);
+        EXPECT_NEAR(p->mass / earth_mass, 3.89, 0.02);
     }
 
     int idx_82e = find_object("82 Eri e", false);
