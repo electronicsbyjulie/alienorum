@@ -1,4 +1,13 @@
 # Designation                           Name                    Type                    TempK           Incl        Node        Incl. to star   B-V color   Albedo
+# Period-based display identities: host | period in days (5% tolerance) | display letter | proper name.
+# These records identify physical planets independently of a source's letter convention.
+#@planet HD 20794 | 89.7 | c |
+#@planet HD 20794 | 648 | d |
+# Mu Arae names and orbital order: https://en.wikipedia.org/wiki/Mu_Arae (2026-10-23).
+#@planet HD 160691 | 9.64 | c | Dulcinea
+#@planet HD 160691 | 308 | d | Rocinante
+#@planet HD 160691 | 645 | b | Quijote
+#@planet HD 160691 | 4019 | e | Sancho
 55 Cnc Ae                               Janssen                 lavaworld               3771
 55 Cnc Ab                               Galileo                 hot_jupiter
 55 Cnc Ac                               Brahe                   gas_giant
@@ -17,10 +26,6 @@ gam Cep b                               Tadmor
 HD 104985 b                             Meztli
 HD 149026 b                             Smertrios               hot_jupiter             1804            084.50
 iot Dra b                               Hypatia                                                         046         087
-mu Ara c                                Dulcinea
-mu Ara d                                Rocinante
-mu Ara b                                Quijote
-mu Ara e                                Sancho
 GJ 286  b                               Thestias
 ups And Ab                              Saffar                  hot_jupiter             1650            014.27
 ups And Ac                              Samh                                                            007.868     236.853

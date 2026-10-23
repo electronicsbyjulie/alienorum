@@ -644,7 +644,8 @@ int find_object(const char *term, bool stars, double limit, int distance, const 
                     if (cels[object]->deleted || cels[object]->typeclass() != class_planet) continue;
                     const Planet* candidate = static_cast<Planet*>(cels[object]);
                     if (!candidate->orbit || candidate->orbit->center != cels[host]) continue;
-                    const std::string designation = candidate->origname.empty() ? candidate->name : candidate->origname;
+                    const std::string designation = !candidate->display_designation.empty() ? candidate->display_designation
+                        : (candidate->origname.empty() ? candidate->name : candidate->origname);
                     if (designation.size() < 2 || designation.back() != query.back()) continue;
                     if (planet >= 0) return -1;
                     planet = object;

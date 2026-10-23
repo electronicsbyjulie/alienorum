@@ -1296,6 +1296,8 @@ json Planet::to_json()
         towrite["msini"] = msini;
     }
     towrite["transiting"] = transiting;
+    if (!catalog_designation.empty()) towrite["catalog_designation"] = catalog_designation;
+    if (!display_designation.empty()) towrite["display_designation"] = display_designation;
     if (std::isfinite(inclination_error_upper)) towrite["inclination_error_upper"] = inclination_error_upper * fiftyseven;
     if (std::isfinite(inclination_error_lower)) towrite["inclination_error_lower"] = inclination_error_lower * fiftyseven;
 
@@ -1391,6 +1393,8 @@ bool Planet::from_json(json j)
     try { j.at("ring_mean_opacity").get_to(ring_mean_opacity); } catch (...) { ; }
     try { j.at("transparent_clouds").get_to(transparent_clouds); } catch (...) { ; }
     try { j.at("has_water").get_to(has_water); } catch (...) { ; }
+    try { j.at("catalog_designation").get_to(catalog_designation); } catch (...) { ; }
+    try { j.at("display_designation").get_to(display_designation); } catch (...) { ; }
     try { j.at("vegetation_r").get_to(vegetation_r); } catch (...) { ; }
     try { j.at("vegetation_g").get_to(vegetation_g); } catch (...) { ; }
     try { j.at("vegetation_b").get_to(vegetation_b); } catch (...) { ; }

@@ -3730,6 +3730,12 @@ void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>&
     std::map<std::string, double> planet_albedines;
     std::map<std::string, bool> planet_name_used;
     bool any_planet_name_used = false;
+    struct PlanetDisplayIdentity
+    {
+        double period;
+        std::string letter, name;
+    };
+    std::map<int, std::vector<PlanetDisplayIdentity>> display_identities;
 
     FILE *fp;
     char buffer[2048];
@@ -3739,6 +3745,26 @@ void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>&
         char field[256];
         while (fgets(buffer, 2046, fp))
         {
+            if (strncmp(buffer, "#@planet ", 9) == 0)
+            {
+                std::stringstream record(buffer + 9);
+                std::string fields[4];
+                for (auto &field : fields)
+                {
+                    std::getline(record, field, '|');
+                    field = trim(field.c_str());
+                }
+                try
+                {
+                    const double period = std::stod(fields[1]);
+                    if (!(period > 0) || !std::isfinite(period) || fields[2].size() != 1
+                        || fields[2][0] < 'b' || fields[2][0] > 'z') continue;
+                    const int host = find_object(fields[0].c_str(), true, 9e29, 1, lookup);
+                    if (host >= 0) display_identities[host].push_back({period, fields[2], fields[3]});
+                }
+                catch (const std::exception&) { ; }
+                continue;
+            }
             if (buffer[0] == '#') continue;
             if (strlen(buffer) < 40) continue;
 
@@ -3879,7 +3905,7 @@ void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>&
         for (i = 0; i < n; i++)
         {
             Planet *p = (Planet*)cels[row[i]];
-            std::string designation = p->name;
+            std::string designation = p->catalog_designation.empty() ? p->name : p->catalog_designation;
             p->origname = designation;
 
             if (planet_names.find(designation) == planet_names.end())
@@ -3973,8 +3999,28 @@ void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>&
             if (planet_names.find(designation) != planet_names.end())
             {
                 strcpy(p->name, planet_names[designation].c_str());
+                p->namelen = 0;
                 planet_name_used[designation] = true;
                 any_planet_name_used = true;
+            }
+
+            const PlanetDisplayIdentity *identity = nullptr;
+            for (const auto &entry : display_identities[s->seqno])
+            {
+                if (!p->orbit || fabs(p->orbit->period / oneday - entry.period) > 0.05 * entry.period) continue;
+                if (identity)
+                {
+                    identity = nullptr;
+                    break;
+                }
+                identity = &entry;
+            }
+            if (identity)
+            {
+                p->display_designation = std::string(s->name) + " " + identity->letter;
+                const std::string display = identity->name.empty() ? p->display_designation : identity->name;
+                snprintf(p->name, sizeof(p->name), "%s", display.c_str());
+                p->namelen = 0;
             }
 
             if (planet_types.find(designation) != planet_types.end())
@@ -7539,6 +7585,7 @@ bool CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, s
     std::lock_guard<std::recursive_mutex> catalog_lock(catalog_mutex);
     // 2. Instantiate and fill target Planet properties
     Planet* new_planet = new Planet();
+    new_planet->catalog_designation = row.pl_name;
     snprintf(new_planet->name, sizeof(new_planet->name), "%s", row.pl_name.c_str());
     new_planet->cenobj = (host_star && host_star->cenobj) ? host_star->cenobj : host_star;
 

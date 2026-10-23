@@ -2912,7 +2912,7 @@ TEST_F(CatalogParsingTest, TestLoadExoplanetsFromTap)
         EXPECT_NEAR(p->mass / earth_mass, 7.60, 0.2);
     }
 
-    for (const char* letter : {"b", "d", "e", "f"})
+    for (const char* letter : {"b", "c", "e", "d"})
     {
         const std::string source = std::string("GJ 139 ") + letter;
         const int planet = find_object(source.c_str(), false, 9e29, 0);
@@ -3402,6 +3402,149 @@ TEST_F(CatalogPhotometryRegressionTest, EarthViewNeverGreatlyOutshinesCatalogPho
     EXPECT_EQ(violations, 0) << examples.str();
     std::cout << "Earth photometry coverage: " << star_count << " stars, " << galaxy_count
         << " galaxies, " << variable_count << " variable stars, three epochs." << std::endl;
+}
+
+TEST_F(CatalogParsingTest, Authored82EridaniLettersSurviveCachePassesAndRetainSourceIdentity)
+{
+    for (bool cached : {false, true})
+    {
+        Star* host = make_star("82 Eridani");
+        host->HD = 20794;
+        strcpy(host->Gliese, "GJ 139");
+        strcpy(host->Flamsteed, "82 Eri");
+        host->catalog_aliases.push_back("GJ 139");
+        host->catalog_aliases.push_back("82 Eri");
+        host->catalog_aliases.push_back("HD 20794");
+        host->has_disk = true;
+        host->disk_heliocen_inclination = 50 * fiftyseventh;
+        TestCatalogReader reader;
+        std::map<int, std::vector<int>> planets;
+        unsigned int count = 0;
+        const char* source_letters[] = {"b", "d", "e", "f"};
+        const char* display_letters[] = {"b", "c", "e", "d"};
+        const double periods[] = {18.3, 89.7, 147, 648};
+        for (int i = 0; i < 4; i++)
+        {
+            ExoRow row;
+            row.hostname = "GJ 139";
+            row.hd_name = "HD 20794";
+            row.pl_name = std::string(cached ? "HD 20794 " : "GJ 139 ") + source_letters[i];
+            row.pl_orbper = periods[i];
+            row.pl_msinie = 3;
+            if (cached)
+            {
+                FILE* cache = std::tmpfile();
+                ASSERT_NE(cache, nullptr);
+                reader.exorow_write_line(cache, row);
+                rewind(cache);
+                ExoRow restored;
+                const bool valid = reader.exorow_read_line(cache, restored);
+                fclose(cache);
+                ASSERT_TRUE(valid);
+                row = restored;
+            }
+            ASSERT_TRUE(reader.add_exoplanet_from_row(row, host, planets, count));
+        }
+        ASSERT_EQ(count, 4u);
+        for (int pass = 0; pass < 3; pass++)
+        {
+            reader.apply_exoplanet_names(planets);
+            ASSERT_EQ(host->pl_indices.size(), 4u);
+            for (int i = 0; i < 4; i++)
+            {
+                const int index = host->pl_indices[i];
+                Planet* planet = static_cast<Planet*>(cels[index]);
+                for (const char* alias : {"82 Eridani", "82 Eri", "HD 20794", "GJ 139"})
+                {
+                    const std::string query = std::string(alias) + " " + display_letters[i];
+                    EXPECT_EQ(find_object(query.c_str(), false, 9e29, 0), index) << query;
+                    EXPECT_EQ(find_object(query.c_str(), false), index) << query;
+                }
+                EXPECT_NEAR(planet->orbit->period / oneday, periods[i], 1e-6);
+                EXPECT_EQ(planet->catalog_designation,
+                    std::string(cached ? "HD 20794 " : "GJ 139 ") + source_letters[i]);
+                planet->update_location(simnow);
+                double inclination = 0, node = 0;
+                incl_and_node_from_system_plane(planet->location.orbital_plane, inclination, node,
+                    host->location.system_center);
+                EXPECT_NEAR(inclination * fiftyseven, 50, 1e-5);
+                Planet restored;
+                ASSERT_TRUE(restored.from_json(planet->to_json()));
+                EXPECT_EQ(restored.catalog_designation, planet->catalog_designation);
+                EXPECT_EQ(restored.display_designation, planet->display_designation);
+                EXPECT_STREQ(restored.name, planet->name);
+            }
+        }
+        delete_the_universe();
+        make_star("Sol");
+    }
+    delete_the_universe();
+}
+
+TEST_F(CatalogParsingTest, MuAraeNamesMatchWikipediaPhysicalOrbitsAcrossSourceLetters)
+{
+    // Wikipedia's Mu Arae system table, checked 2026-10-23; periods here are the
+    // local NASA snapshot's values, including its different source letters.
+    const double periods[] = {9.6392, 307.9, 645.0, 3947.0};
+    const char* names[] = {"Dulcinea", "Rocinante", "Quijote", "Sancho"};
+    const char* canonical[] = {"c", "d", "b", "e"};
+    const char* nasa[] = {"d", "e", "b", "c"};
+    for (bool cached : {false, true})
+    {
+        Star* host = make_star("mu Ara");
+        host->HD = 160691;
+        strcpy(host->Gliese, "GJ 691");
+        strcpy(host->Bayer, "mu Ara");
+        for (const char* alias : {"Mu Arae", "HD 160691", "GJ 691"}) host->catalog_aliases.push_back(alias);
+        TestCatalogReader reader;
+        std::map<int, std::vector<int>> planets;
+        unsigned int count = 0;
+        for (int i = 0; i < 4; i++)
+        {
+            ExoRow row;
+            row.hostname = cached ? "HD 160691" : "GJ 691";
+            row.pl_name = row.hostname + " " + (cached ? canonical[i] : nasa[i]);
+            row.pl_orbper = periods[i];
+            row.pl_msinij = i == 0 ? 0.03 : 1.0;
+            if (cached)
+            {
+                FILE* cache = std::tmpfile();
+                ASSERT_NE(cache, nullptr);
+                reader.exorow_write_line(cache, row);
+                rewind(cache);
+                ExoRow restored;
+                const bool valid = reader.exorow_read_line(cache, restored);
+                fclose(cache);
+                ASSERT_TRUE(valid);
+                row = restored;
+            }
+            ASSERT_TRUE(reader.add_exoplanet_from_row(row, host, planets, count));
+        }
+        for (int pass = 0; pass < 3; pass++)
+        {
+            reader.apply_exoplanet_names(planets);
+            ASSERT_EQ(host->pl_indices.size(), 4u);
+            for (int i = 0; i < 4; i++)
+            {
+                const int index = host->pl_indices[i];
+                Planet* planet = static_cast<Planet*>(cels[index]);
+                EXPECT_STREQ(planet->name, names[i]);
+                EXPECT_EQ(find_object(names[i], false, 9e29, 0), index);
+                EXPECT_NEAR(planet->orbit->period / oneday, periods[i], 1e-6);
+                for (const char* alias : {"mu Ara", "Mu Arae", "HD 160691", "GJ 691"})
+                {
+                    const std::string query = std::string(alias) + " " + canonical[i];
+                    EXPECT_EQ(find_object(query.c_str(), false, 9e29, 0), index) << query;
+                    EXPECT_EQ(find_object(query.c_str(), false), index) << query;
+                }
+                EXPECT_EQ(planet->catalog_designation,
+                    std::string(cached ? "HD 160691 " : "GJ 691 ") + (cached ? canonical[i] : nasa[i]));
+            }
+        }
+        delete_the_universe();
+        make_star("Sol");
+    }
+    delete_the_universe();
 }
 
 TEST_F(CatalogParsingTest, ReapplyingPlanetNamesPreservesOrbitFrame)
