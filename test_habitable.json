@@ -249,9 +249,520 @@
         "type": 1283,
         "typeclass": 3,
         "user_added": true,
-        "vegetation_b": 5,
-        "vegetation_g": 146,
-        "vegetation_r": 226,
         "volumetric_mean_radius": 6498420.0
+    },
+    "Epsilon Eridani": {
+        "!name": "Epsilon Eridani",
+        "!origcenname": "",
+        "!origname": "Epsilon Eridani",
+        "BV_color": 0.88,
+        "Bayer": "Eps Eri",
+        "BayerGrkno": 4,
+        "Bonn_survey": "BD",
+        "Bonn_survey_declination": -9,
+        "Bonn_survey_sequential": 697,
+        "Bonn_survey_sign": "-",
+        "CCDM": "",
+        "Flamsteed": "18 Eri",
+        "FlamsteedNo": 18,
+        "Gliese": "GJ 144",
+        "HD": 22049,
+        "HIP": 16537,
+        "HR": 1084,
+        "RI_color": 0.0,
+        "SAO": 0,
+        "SB9": 0,
+        "UB_color": 0.59,
+        "VR_color": 0.0,
+        "WD": "",
+        "absolute_magnitude": 6.18,
+        "apparent_magnitude": 3.72,
+        "apparent_magnitude_estimated": false,
+        "catalog_aliases": [
+            "eps Eri",
+            "HD 22049",
+            "HIP 16537"
+        ],
+        "constellation": "Eri",
+        "declination": -9.429166666666665,
+        "distance": 10.496,
+        "distance_known": true,
+        "epoch": 2451544.5,
+        "equinox": 0.0,
+        "gaia_g_magnitude": 1e+29,
+        "gaia_source_id": 0,
+        "gaia_wd_name": "",
+        "has_planets": 1,
+        "home_world": false,
+        "is_orbit_multiple": false,
+        "location": {
+            "equatorial_plane": {
+                "a": 82.77374098216133,
+                "v": {
+                    "x": 4.616283807362332e+72,
+                    "y": 0.0,
+                    "z": 9.90982539386351e+73
+                }
+            },
+            "galactic_center": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "local_position": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "local_system_plane": {
+                "a": 82.77374098216133,
+                "v": {
+                    "x": 4.616283807362335e+35,
+                    "y": 0.0,
+                    "z": 9.909825393863515e+36
+                }
+            },
+            "orbital_plane": {
+                "a": 82.77374098216133,
+                "v": {
+                    "x": 4.616283807362335e+35,
+                    "y": 0.0,
+                    "z": 9.909825393863515e+36
+                }
+            },
+            "system_center": {
+                "x": -7.858483068257806e+16,
+                "y": -1.6269958178532114e+16,
+                "z": 5.8503751975607184e+16
+            }
+        },
+        "lon_J2000_offset": 0.0,
+        "map_inverted": false,
+        "mass": 1.6305494999999998e+33,
+        "oblateness": 0.0,
+        "obliquity": 0.0,
+        "orbit_center_codes": [],
+        "parallax": 310.7585570918754,
+        "precession": 0.0,
+        "proper_motion_RA": -0.0002712298733228004,
+        "proper_motion_decl": 4.991743445567544e-06,
+        "radial_velocity": 15000.0,
+        "right_ascension": 53.340833333333336,
+        "sidereal_rotational_period": 11.1,
+        "spectral_type": "K2V",
+        "stellar_metallicity": {
+            "error_lower_dex": -0.04,
+            "error_upper_dex": 0.04,
+            "ratio": "[Fe/H]",
+            "source": "NASA pscomppars",
+            "value_dex": -0.13
+        },
+        "transparent_clouds": false,
+        "type": 512,
+        "typeclass": 2,
+        "user_added": false,
+        "volumetric_mean_radius": 534868073.99999994,
+        "wd_color_revision": 0,
+        "wd_color_valid": false,
+        "wd_temperature_source": "unspecified"
+    },
+    "Epsilon Eridani.Gerðr": {
+        "!name": "Gerðr",
+        "!origcenname": "",
+        "!origname": "Gerðr",
+        "BV_color": 0.5470668613910675,
+        "RI_color": 0.0,
+        "UB_color": 0.5,
+        "VR_color": 0.0,
+        "absolute_magnitude": -3.459078813017879,
+        "albedo": 0.3,
+        "atmosphere": {
+            "composition": {
+                "Ar": 0.00010854973358955052,
+                "C2H6": 2.749094753815241e-07,
+                "CH4": 0.0002479140903533556,
+                "CO": 7.5440955403319935e-06,
+                "CO2": 0.02234037,
+                "H2": 0.004233023153871309,
+                "H2O": 0.004941063940525055,
+                "H2S": 8.517722877520204e-05,
+                "HCN": 0.0004285549952331719,
+                "He": 6.644311143033447e-06,
+                "N2": 0.7266642629960076,
+                "N2O": 1.4773823129584576e-06,
+                "NH3": 8.732196259884494e-06,
+                "O2": 0.16254236716098866,
+                "O3": 0.00013014108153999173,
+                "SO2": 0.00037290584109674415
+            },
+            "surface_pressure": 31096.738527420417,
+            "tau": 0.3769220665591129
+        },
+        "classification_evidence": {
+            "basis": "observed_mass_and_radius",
+            "bond_albedo": 0.3,
+            "class_code": 1283,
+            "density_g_cm3": 5.513415679979844,
+            "density_is_lower_bound": false,
+            "density_observed": true,
+            "equilibrium_temperature_k": 251.45870450793421,
+            "host": "Epsilon Eridani",
+            "irradiation_earth": 0.9405161581148295,
+            "mass_evidence": 1,
+            "metallicity_applied": false,
+            "metallicity_model": "direct_observations_or_no_eligible_host",
+            "radius_evidence": 1,
+            "stellar_chemistry": [],
+            "surface_temperature_k": 251.45870450793421
+        },
+        "declination": 0.0,
+        "distance": 0.0,
+        "distance_known": true,
+        "epoch": 2451544.5,
+        "equinox": 0.0,
+        "has_water": 0.3529331386089325,
+        "home_world": false,
+        "location": {
+            "equatorial_plane": {
+                "a": 82.77374098216133,
+                "v": {
+                    "x": 4.616283807362332e+72,
+                    "y": 0.0,
+                    "z": 9.909825393863511e+73
+                }
+            },
+            "galactic_center": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "local_position": {
+                "x": 926169515.9644423,
+                "y": -37262486836.13058,
+                "z": -81653398798.12416
+            },
+            "local_system_plane": {
+                "a": 82.77374098216133,
+                "v": {
+                    "x": 4.616283807362335e+35,
+                    "y": 0.0,
+                    "z": 9.909825393863515e+36
+                }
+            },
+            "orbital_plane": {
+                "a": 82.77374098216133,
+                "v": {
+                    "x": 4.616283807362332e+72,
+                    "y": 0.0,
+                    "z": 9.90982539386351e+73
+                }
+            },
+            "system_center": {
+                "x": -7.858483068257806e+16,
+                "y": -1.6269958178532114e+16,
+                "z": 5.8503751975607184e+16
+            }
+        },
+        "lon_J2000_offset": 0.0,
+        "map_inverted": false,
+        "mass": 5.97217e+27,
+        "mass_evidence": 1,
+        "oblateness": 0.0,
+        "obliquity": 0.0,
+        "opposition_surge": 0.0,
+        "orbit": {
+            "T_periapsis": 0.0,
+            "arg_periapsis": 0.0,
+            "ascending_node": 0.0,
+            "center_name": "Epsilon Eridani",
+            "eccentricity": 0.0,
+            "epoch": 2461336.580779092,
+            "inclination": 0.0,
+            "laplace": {
+                "a": 0.0,
+                "v": {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "z": 0.0
+                }
+            },
+            "mean_anomaly": 0.0,
+            "periapsis_distance": 0.0,
+            "period": 187.4607800084819,
+            "prec_node": 0.0,
+            "proc_argperi": 0.0,
+            "semimajor_axis": 89758722420.0
+        },
+        "orbit_center_codes": [],
+        "overcast": false,
+        "plant_crown_oblateness": 0.05746696579532479,
+        "plant_crown_size": 10.0,
+        "plant_trunk_height": 22.2,
+        "plant_trunk_width": 0.44,
+        "precession": 0.0,
+        "radius_evidence": 1,
+        "right_ascension": 0.0,
+        "sidereal_rotational_period": 0.43070087688094344,
+        "temperature": 291.46695529712775,
+        "transiting": false,
+        "transparent_clouds": true,
+        "type": 1283,
+        "typeclass": 3,
+        "user_added": true,
+        "volumetric_mean_radius": 6371000.0
+    },
+    "Zeta Tucanae": {
+        "!name": "Zeta Tucanae",
+        "!origcenname": "",
+        "!origname": "Zeta Tucanae",
+        "BV_color": 0.58,
+        "Bayer": "Zet Tuc",
+        "BayerGrkno": 5,
+        "Bonn_survey": "CP",
+        "Bonn_survey_declination": -65,
+        "Bonn_survey_sequential": 13,
+        "Bonn_survey_sign": "-",
+        "CCDM": "",
+        "Flamsteed": "",
+        "FlamsteedNo": 0,
+        "Gliese": "GJ 17",
+        "HD": 1581,
+        "HIP": 1599,
+        "HR": 77,
+        "RI_color": 0.0,
+        "SAO": 0,
+        "SB9": 0,
+        "UB_color": 0.02,
+        "VR_color": 0.0,
+        "WD": "",
+        "absolute_magnitude": 4.56,
+        "apparent_magnitude": 4.23,
+        "apparent_magnitude_estimated": false,
+        "constellation": "Tuc",
+        "declination": -64.82916666666667,
+        "distance": 28.025,
+        "distance_known": true,
+        "epoch": 2451544.5,
+        "equinox": 0.0,
+        "gaia_g_magnitude": 1e+29,
+        "gaia_source_id": 0,
+        "gaia_wd_name": "",
+        "home_world": false,
+        "is_orbit_multiple": false,
+        "location": {
+            "equatorial_plane": {
+                "a": 90.0,
+                "v": {
+                    "x": 8.908262406715188e+72,
+                    "y": 0.0,
+                    "z": -9.960242397097121e+73
+                }
+            },
+            "galactic_center": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "local_position": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "local_system_plane": {
+                "a": 90.0,
+                "v": {
+                    "x": 8.90826240671519e+35,
+                    "y": 0.0,
+                    "z": -9.960242397097123e+36
+                }
+            },
+            "orbital_plane": {
+                "a": 90.0,
+                "v": {
+                    "x": 8.90826240671519e+35,
+                    "y": 0.0,
+                    "z": -9.960242397097123e+36
+                }
+            },
+            "system_center": {
+                "x": -1.0074105206304588e+16,
+                "y": -2.3995034704265718e+17,
+                "z": 1.1235655185830355e+17
+            }
+        },
+        "lon_J2000_offset": 0.0,
+        "map_inverted": false,
+        "mass": 2.227092e+33,
+        "oblateness": 0.0,
+        "obliquity": 0.0,
+        "orbit_center_codes": [],
+        "parallax": 116.38079162879919,
+        "precession": 0.0,
+        "proper_motion_RA": 0.0004743132635742299,
+        "proper_motion_decl": 0.00032371839557172313,
+        "radial_velocity": 9000.0,
+        "right_ascension": 5.110833333333334,
+        "sidereal_rotational_period": 25.0,
+        "spectral_type": "F9V",
+        "stellar_metallicity": {
+            "error_lower_dex": -0.01,
+            "error_upper_dex": 0.01,
+            "ratio": "[Fe/H]",
+            "source": "XHIP V/137D A",
+            "value_dex": -0.16
+        },
+        "transparent_clouds": false,
+        "type": 512,
+        "typeclass": 2,
+        "user_added": false,
+        "volumetric_mean_radius": 699735060.0,
+        "wd_color_revision": 0,
+        "wd_color_valid": false,
+        "wd_temperature_source": "unspecified"
+    },
+    "Zeta Tucanae.Test": {
+        "!name": "Test",
+        "!origcenname": "",
+        "!origname": "Test",
+        "BV_color": 0.5048417389392853,
+        "RI_color": 0.0,
+        "UB_color": 0.5,
+        "VR_color": 0.0,
+        "absolute_magnitude": -4.056701545868358,
+        "albedo": 0.5202,
+        "atmosphere": {
+            "composition": {
+                "Ar": 0.003962435059379579,
+                "C2H6": 9.242670235195277e-07,
+                "CH4": 0.00018911888738415355,
+                "CO": 6.751418590848123e-06,
+                "CO2": 0.000698996060476607,
+                "H2": 0.004656038466854042,
+                "H2O": 0.0012554503431876929,
+                "H2S": 9.375474328187745e-05,
+                "HCN": 0.00041865486772815286,
+                "He": 2.807106950365508e-06,
+                "N2": 0.9369211808423911,
+                "N2O": 4.601860896604555e-06,
+                "NH3": 6.892227970794484e-06,
+                "O2": 0.051466445812555384,
+                "O3": 2.4857332649572082e-05,
+                "SO2": 0.0002910907026797794
+            },
+            "surface_pressure": 233282.87049185846,
+            "tau": 0.5339040677669596
+        },
+        "classification_evidence": {
+            "basis": "observed_mass_and_radius",
+            "bond_albedo": 0.5202,
+            "class_code": 1283,
+            "density_g_cm3": 5.513415679979844,
+            "density_is_lower_bound": false,
+            "density_observed": true,
+            "equilibrium_temperature_k": 199.84694869726198,
+            "host": "Zeta Tucanae",
+            "irradiation_earth": 0.5474285576135303,
+            "mass_evidence": 1,
+            "metallicity_applied": false,
+            "metallicity_model": "direct_observations_or_no_eligible_host",
+            "radius_evidence": 1,
+            "stellar_chemistry": [],
+            "surface_temperature_k": 199.84694869726198
+        },
+        "declination": 0.0,
+        "distance": 0.0,
+        "distance_known": true,
+        "epoch": 2451544.5,
+        "equinox": 0.0,
+        "has_water": 0.3951582610607147,
+        "home_world": false,
+        "location": {
+            "equatorial_plane": {
+                "a": 90.00891674500235,
+                "v": {
+                    "x": 8.910495218776707e+72,
+                    "y": 0.0,
+                    "z": -9.960222303121503e+73
+                }
+            },
+            "galactic_center": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "local_position": {
+                "x": -9451444191.711163,
+                "y": -179034122469.1278,
+                "z": 105961686258.32724
+            },
+            "local_system_plane": {
+                "a": 90.0,
+                "v": {
+                    "x": 8.90826240671519e+35,
+                    "y": 0.0,
+                    "z": -9.960242397097123e+36
+                }
+            },
+            "orbital_plane": {
+                "a": 90.00891674500235,
+                "v": {
+                    "x": 8.910495218776707e+72,
+                    "y": 0.0,
+                    "z": -9.960222303121503e+73
+                }
+            },
+            "system_center": {
+                "x": -1.0074105206304588e+16,
+                "y": -2.3995034704265718e+17,
+                "z": 1.1235655185830355e+17
+            }
+        },
+        "lon_J2000_offset": 0.0,
+        "map_inverted": false,
+        "mass": 5.97217e+27,
+        "mass_evidence": 1,
+        "oblateness": 0.0,
+        "obliquity": 0.0,
+        "opposition_surge": 0.0,
+        "orbit": {
+            "T_periapsis": 0.0,
+            "arg_periapsis": 180.69403222794367,
+            "ascending_node": 193.3080280541014,
+            "center_name": "Zeta Tucanae",
+            "eccentricity": 0.10347257673545907,
+            "epoch": 2451544.5,
+            "inclination": 0.009008785849,
+            "laplace": {
+                "a": 0.0,
+                "v": {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "z": 0.0
+                }
+            },
+            "mean_anomaly": 241.89662274061547,
+            "periapsis_distance": 0.0,
+            "period": 634.0427787775275,
+            "prec_node": 0.0,
+            "proc_argperi": 0.0,
+            "semimajor_axis": 224396806050.0
+        },
+        "orbit_center_codes": [],
+        "overcast": false,
+        "plant_crown_oblateness": 0.6548103157233208,
+        "plant_crown_size": 1.523341914517848,
+        "plant_trunk_height": 22.2,
+        "plant_trunk_width": 0.44,
+        "precession": 0.0,
+        "radius_evidence": 1,
+        "right_ascension": 0.0,
+        "sidereal_rotational_period": 0.43070087688094344,
+        "temperature": 269.3322980220639,
+        "transiting": false,
+        "transparent_clouds": true,
+        "type": 1283,
+        "typeclass": 3,
+        "user_added": true,
+        "volumetric_mean_radius": 6371000.0
     }
 }

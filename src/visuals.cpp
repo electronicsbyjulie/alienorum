@@ -6790,7 +6790,7 @@ void draw_horizon()
                     const double dist_m = hypot(object.east, object.north);
                     double dist_ratio = dist_m / ROCK_MAX_DIST;
                     if (is_vegetation) dist_ratio *= 0.666;
-                    if (dist_m < 0.05 || dist_m >= ROCK_MAX_DIST)
+                    if (dist_m < 0.05 || dist_m >= (is_vegetation ? PLANT_MAX_DIST : ROCK_MAX_DIST))
                     {
                         continue;
                     }
