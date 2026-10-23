@@ -321,3 +321,26 @@ TEST(ColorProceduralTest, VegetationPreservesPaletteDiversityAroundBothTestHosts
         EXPECT_GT(bright, count / 10);
     }
 }
+
+TEST(ColorProceduralTest, PurpleVegetationOutnumbersGreenByTwoToThreeAcrossStellarSpectra)
+{
+    for (double temperature : {3000.0, 5100.0, 6000.0, 7500.0, 10000.0})
+    {
+        std::mt19937 rng(173);
+        int green = 0, purple = 0, other = 0;
+        for (int i = 0; i < 8192; i++)
+        {
+            const RGB3 color = generate_vegetation_color(&rng, temperature);
+            const double hue = Color::hue_from_rgb(color.r, color.g, color.b) * 180 / std::acos(-1);
+            const bool saturated = Color::sat_from_rgb(color.r, color.g, color.b) >= 0.15;
+            if (saturated && hue >= 80 && hue < 160) green++;
+            else if (saturated && hue >= 260 && hue < 330) purple++;
+            else other++;
+        }
+        SCOPED_TRACE(temperature);
+        EXPECT_GT(green, 100);
+        EXPECT_GT(purple, green * 2);
+        EXPECT_LT(purple, green * 3);
+        EXPECT_GT(other, 4096);
+    }
+}

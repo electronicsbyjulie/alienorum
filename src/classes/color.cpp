@@ -478,7 +478,7 @@ int col_rand(std::mt19937 *rng)
     return dist(*rng);
 }
 
-RGB3 generate_vegetation_color(std::mt19937 *rng, double stellar_temperature)
+static RGB3 vegetation_reflectance(std::mt19937 *rng, double stellar_temperature)
 {
     // Don't assume alien vegetation is green!
     if (!std::isfinite(stellar_temperature) || stellar_temperature <= 0) stellar_temperature = sun_temp;
@@ -544,6 +544,35 @@ RGB3 generate_vegetation_color(std::mt19937 *rng, double stellar_temperature)
     return { (unsigned char)(255 * rtot / 150),
              (unsigned char)(255 * gtot / 120),
              (unsigned char)(255 * btot / 110) };
+}
+
+RGB3 generate_vegetation_color(std::mt19937 *rng, double stellar_temperature)
+{
+    const auto family = [](const RGB3 &color)
+    {
+        // Exclude nearly neutral palettes from the green/purple population balance.
+        if (Color::sat_from_rgb(color.r, color.g, color.b) < 0.15) return -1;
+        const double hue = Color::hue_from_rgb(color.r, color.g, color.b) / fiftyseventh;
+        if (hue >= 80 && hue < 160) return 0;
+        if (hue >= 260 && hue < 330) return 1;
+        return -1;
+    };
+
+    const RGB3 original = vegetation_reflectance(rng, stellar_temperature);
+    const int original_family = family(original);
+    if (original_family < 0) return original;
+
+    // Artistic population preference: five purple worlds for every two green.
+    // Resample pigment mixtures under the same host spectrum, preserving physically
+    // generated reflectance instead of tinting RGB. Other hue families pass through.
+    const int preferred_family = col_frand(rng, 0, 7) < 5 ? 1 : 0;
+    if (original_family == preferred_family) return original;
+    for (int attempt = 0; attempt < 128; attempt++)
+    {
+        const RGB3 candidate = vegetation_reflectance(rng, stellar_temperature);
+        if (family(candidate) == preferred_family) return candidate;
+    }
+    return original;
 }
 
 bool AlienStyle::load(std::string theme)
