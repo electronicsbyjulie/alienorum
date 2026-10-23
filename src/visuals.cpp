@@ -1457,7 +1457,8 @@ int draw_sphere(CelestialObject* cel, double arad)
             prev_valid = false;
             for (j=-90; j<=90; j+=nstep)
             {
-                Point cursor = Point::from_ra_dec(fiftyseventh * i, fiftyseventh * j, dwh ? 1 : equatorial_radius, 0);
+                // Match the longitude origin used by the textured mesh below.
+                Point cursor = Point::from_ra_dec(fiftyseventh * i + _pi, fiftyseventh * j, dwh ? 1 : equatorial_radius, 0);
 
                 if (dwh)
                 {
@@ -3125,6 +3126,7 @@ bool draw_single_object(int i)
     double brght = pow(magnbase, -appmag);
     bloomrad = fabs(pow(brght, 0.5)*global_brightness);
     double f_ang = angular_radius[i]*zoom*dispcx;
+    if (view_mode == vm_skymap) f_ang /= _pi;
     flare = fmin(max_flare, fmax(0, bloomrad - max_bloomrad) * 15 / fmax(1, f_ang));
     bool gasball = view_mode == vm_horizon && whereami > 0 && uses_gaseous_map(cels[whereami]->type);
     double cutoff_alt = gasball ? -25*fiftyseventh : 0;
@@ -3234,9 +3236,9 @@ bool draw_single_object(int i)
             Color col = cls == class_star
                 ? Color::color_from_star(appmag, (Star*)cels[i], cels[i]->BV_color + atm_yellowing)
                 : Color::color_from_magnitude_indices(appmag, cels[i]->BV_color + planet_bv_correction + atm_yellowing);
-            draw_flare(flare * (1.0 - obsc), col, vmag_cache[i], angular_radius[i]*zoom*dispcx);
+            draw_flare(flare * (1.0 - obsc), col, vmag_cache[i], f_ang);
         }
-        if (obsc > 0) draw_corona(xycoord, angular_radius[i]*zoom*dispcx, obsc, cels[i]->BV_color);
+        if (obsc > 0) draw_corona(xycoord, f_ang, obsc, cels[i]->BV_color);
 
         CelestialObject *cel = cels[i];
         bloomrad_cache[i] = bloomrad = draw_sphere(cel, angular_radius[i]*zoom);

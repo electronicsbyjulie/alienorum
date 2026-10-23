@@ -190,13 +190,73 @@ TEST(MoonTest, FictionalMoonsOrbitOutsidePlanetRings)
     m.mass = 0.01 * earth_mass;
     m.volumetric_mean_radius = 0.27 * earth_radius;
 
-    double inner_bound = host.Roche_limit(&m);
-    if (host.ring_radius > inner_bound)
-    {
-        inner_bound = host.ring_radius;
-    }
+    m.orbit = new Orbit();
+    m.orbit->center = &host;
+    double inner_bound = m.minimum_safe_pericenter();
     double sma = inner_bound * (1.1 + pow(frand(0, 1), 4) * 20);
 
     EXPECT_GT(sma, host.ring_radius);
     EXPECT_GT(sma, host.Roche_limit(&m));
+}
+
+TEST(MoonTest, LowDensityPlanetSurfaceWinsOverASmallerRocheLimit)
+{
+    Planet parent;
+    parent.mass = 3.833960699906274e30;
+    parent.volumetric_mean_radius = 118500600;
+    Moon moon;
+    moon.type = rocky;
+    moon.mass = 3.013387916361456e26;
+    moon.volumetric_mean_radius = 2231156.60685808;
+    moon.orbit = new Orbit();
+    moon.orbit->center = &parent;
+    const double contact = parent.get_equatorial_radius() + moon.get_equatorial_radius();
+    ASSERT_LT(parent.Roche_limit(&moon), parent.get_equatorial_radius());
+    EXPECT_GE(moon.minimum_safe_pericenter(), contact * 1.1);
+    for (double eccentricity : {0.0, 0.5, 0.9})
+    {
+        moon.orbit->eccentricity = eccentricity;
+        moon.orbit->semimajor_axis = contact;
+        moon.orbit->compute_period(moon.mass);
+        moon.sidereal_rotational_period = moon.orbit->period;
+        ASSERT_TRUE(moon.enforce_orbit_clearance());
+        EXPECT_GE(moon.orbit->semimajor_axis * (1 - eccentricity), contact * 1.1 - 1e-6);
+        EXPECT_DOUBLE_EQ(moon.sidereal_rotational_period, moon.orbit->period);
+        EXPECT_FALSE(moon.enforce_orbit_clearance());
+    }
+}
+
+TEST(MoonTest, LegacyRepairPreservesSeparatedOrbitsAndRejectsOpenOrbits)
+{
+    Planet parent;
+    parent.mass = jupiter_mass;
+    parent.volumetric_mean_radius = jupiter_radius;
+    Moon moon;
+    moon.mass = 0.01 * earth_mass;
+    moon.volumetric_mean_radius = 0.2 * earth_radius;
+    moon.orbit = new Orbit();
+    moon.orbit->center = &parent;
+    const double contact = parent.get_equatorial_radius() + moon.get_equatorial_radius();
+    moon.orbit->semimajor_axis = contact * 1.05;
+    moon.orbit->compute_period(moon.mass);
+    const double period = moon.orbit->period;
+    EXPECT_FALSE(moon.enforce_orbit_clearance(true));
+    EXPECT_DOUBLE_EQ(moon.orbit->period, period);
+    moon.orbit->eccentricity = 1.2;
+    EXPECT_FALSE(moon.enforce_orbit_clearance());
+}
+
+TEST(MoonTest, TriaxialMoonClearanceUsesItsLargestSemiaxis)
+{
+    Planet parent;
+    parent.mass = jupiter_mass;
+    parent.volumetric_mean_radius = jupiter_radius;
+    Moon moon;
+    moon.mass = 0.01 * earth_mass;
+    moon.volumetric_mean_radius = 1000;
+    moon.height = 10000000;
+    moon.width = moon.depth = 1000;
+    moon.orbit = new Orbit();
+    moon.orbit->center = &parent;
+    EXPECT_GE(moon.minimum_safe_pericenter(), 1.1 * (parent.get_equatorial_radius() + moon.height * 0.5));
 }

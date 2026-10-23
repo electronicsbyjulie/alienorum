@@ -164,7 +164,7 @@ Map* CelestialObject::get_night_map()
 double alienorum::CelestialObject::get_horizon_angle()
 {
     double d = tmprel.magnitude();
-    return acos(get_equatorial_radius() / fmax(d, 1e-29));
+    return acos(std::clamp(get_equatorial_radius() / fmax(d, 1e-29), 0.0, 1.0));
 }
 
 double alienorum::CelestialObject::get_horizon_distance()

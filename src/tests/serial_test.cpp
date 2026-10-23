@@ -63,6 +63,72 @@ class SerializationTest : public UniverseFixture
     }
 };
 
+TEST_F(SerializationTest, TouchingFictionalMoonIsRepairedWithoutMovingCatalogMoons)
+{
+    Star* host = make_star("Primary");
+    Planet* parent = make_planet(host, "Low density parent");
+    parent->mass = 3.833960699906274e30;
+    parent->volumetric_mean_radius = 118500600;
+    Moon* moon = new Moon();
+    strcpy(moon->name, "Touching moon");
+    moon->user_added = true;
+    moon->mass = 3.013387916361456e26;
+    moon->volumetric_mean_radius = 2231156.60685808;
+    moon->orbit = new Orbit();
+    moon->orbit->center = parent;
+    moon->orbit->center_name = parent->name;
+    moon->orbit->semimajor_axis = parent->get_equatorial_radius() + moon->get_equatorial_radius();
+    moon->orbit->compute_period(moon->mass);
+    moon->cenobj = host;
+    append_cel(moon);
+    const json source = moon->to_json();
+    json records = {{"host", host->to_json()}, {"parent", parent->to_json()}, {"moon", source}};
+    for (bool fictional : {true, false})
+    {
+        records["moon"]["user_added"] = fictional;
+        write_file("moon_clearance", records);
+        delete_the_universe();
+        ASSERT_TRUE(load_file("moon_clearance"));
+        Moon* loaded = static_cast<Moon*>(find_loaded("Touching moon"));
+        ASSERT_NE(loaded, nullptr);
+        const double contact = loaded->orbit->center->get_equatorial_radius() + loaded->get_equatorial_radius();
+        const double pericenter = loaded->orbit->semimajor_axis * (1 - loaded->orbit->eccentricity);
+        if (fictional) EXPECT_GT(pericenter, 1.05 * contact);
+        else EXPECT_NEAR(pericenter, contact, 1e-6);
+    }
+    delete_the_universe();
+    std::filesystem::remove(temp_universe("moon_clearance"));
+}
+
+TEST_F(SerializationTest, QuijoteBugUniverseHasPositiveClearanceAfterLoading)
+{
+    std::ifstream input("Quijote_bug.json");
+    if (!input) GTEST_SKIP() << "Local Quijote reproduction universe is absent";
+    json original;
+    input >> original;
+    json records = json::object();
+    for (const auto& entry : original.items())
+    {
+        const std::string name = entry.value().value("!name", "");
+        if (name == "Mu Arae" || name == "Quijote" || name == "Quijote I") records[entry.key()] = entry.value();
+    }
+    ASSERT_EQ(records.size(), 3u);
+    make_star("Sol");
+    write_file("quijote_clearance", records);
+    ASSERT_TRUE(load_file("quijote_clearance"));
+    Moon* moon = static_cast<Moon*>(find_loaded("Quijote I"));
+    ASSERT_NE(moon, nullptr);
+    ASSERT_NE(moon->orbit, nullptr);
+    ASSERT_STREQ(moon->orbit->center->name, "Quijote");
+    const double pericenter = moon->orbit->semimajor_axis * (1 - moon->orbit->eccentricity);
+    const double closest_surface = pericenter - moon->get_equatorial_radius();
+    EXPECT_GT(closest_surface, moon->orbit->center->get_equatorial_radius());
+    std::cout << "Quijote I repaired surface clearance: "
+        << (closest_surface - moon->orbit->center->get_equatorial_radius()) / 1000 << " km" << std::endl;
+    delete_the_universe();
+    std::filesystem::remove(temp_universe("quijote_clearance"));
+}
+
 TEST_F(SerializationTest, LinksForwardReferencesAndFindsTheIlluminationStar)
 {
     Star* host = make_star("Zulu Primary");

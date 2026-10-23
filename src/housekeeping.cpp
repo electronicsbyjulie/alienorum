@@ -450,7 +450,7 @@ void compute_object_draw_coordinates()
         if (cels[i]->orbit
             && relm > 1e4 * cels[i]->orbit->semimajor_axis * cels[i]->orbit->semimajor_axis * zoom * zoom)
         {
-            angular_radius[i] = fabs(std::atan2(cels[i]->volumetric_mean_radius, rel.magnitude()));
+            angular_radius[i] = std::asin(std::clamp(cels[i]->volumetric_mean_radius / fmax(relm, 1e-29), 0.0, 1.0));
             if (angular_radius[i] < 0.01*fiftyseventh)
             {
                 cels[i]->drawnx = cels[i]->drawny = -1e9;
@@ -515,7 +515,7 @@ void compute_object_draw_coordinates()
 
         cels[i]->viewrel = rel;
 
-        angular_radius[i] = fabs(std::atan2(cels[i]->volumetric_mean_radius, rel.magnitude()));
+        angular_radius[i] = std::asin(std::clamp(cels[i]->volumetric_mean_radius / fmax(relm, 1e-29), 0.0, 1.0));
 
         Cartesian2D cart(rel, azimuth+azimuth_correction, altitude, zoom);
         float dx = cart.x * dispcx + dispcx, dy = cart.y * dispcx + dispcy;

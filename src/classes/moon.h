@@ -31,6 +31,8 @@ namespace alienorum
         bool major_moon = false;
 
         Moon();
+        double minimum_safe_pericenter();
+        bool enforce_orbit_clearance(bool only_if_touching = false);
         Rotation get_Laplace_plane();
         void update_location(double tmnow);
         json to_json();

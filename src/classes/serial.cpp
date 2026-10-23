@@ -987,6 +987,8 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
             while (object->cenobj->orbit && object->cenobj->orbit->center
                 && object->cenobj->orbit->center->typeclass() != class_galaxy)
                 object->cenobj = object->cenobj->orbit->center;
+            if (object->typeclass() == class_moon && object->user_added)
+                static_cast<Moon*>(object)->enforce_orbit_clearance(true);
             if (object->typeclass() != class_planet) continue;
             CelestialObject* light = object->get_light_center();
             if (!light || light->typeclass() != class_star) continue;

@@ -173,6 +173,7 @@ class RenderingRegressionTest : public UniverseFixture
     unsigned int cloud_epoch = ++cloud_epoch_sequence;
     int render_width = 192, render_height = 108;
     std::vector<double> surface_magnitudes;
+    std::vector<double> surface_radii;
     std::vector<double> system_bloom;
 
     static void SetUpTestSuite()
@@ -762,6 +763,71 @@ TEST_F(RenderingRegressionTest, SystemPreviewCanStillDrawTheObservingPlanet)
     world->drawny = dispcy;
     EXPECT_GT(draw_sphere_gpu(world, 20), 0);
     EXPECT_TRUE(world->onscreen);
+}
+
+TEST_F(RenderingRegressionTest, CloseExteriorPlanetMatchesItsAngularSilhouetteInBothSkyProjections)
+{
+    Planet* world = surface();
+    set(whereami, 0);
+    set(here, CelestialLocation());
+    set(azimuth, 0.0);
+    set(azimuth_correction, 0.0);
+    set(altitude, 0.0);
+    set(myeq, 0.0);
+    system_bloom.assign(3, 0);
+    set(bloomrad_cache, system_bloom.data());
+    world->volumetric_mean_radius = 118500600;
+    world->oblateness = 0;
+    world->location.equatorial_plane = Rotation();
+    for (auto mode : {vm_spaceship, vm_skymap})
+    {
+        set(view_mode, mode);
+        set(zoom, mode == vm_spaceship ? 0.1 : 1.0);
+        for (double ratio : {1.018827, 1.12, 2.0})
+        {
+            const double distance = world->volumetric_mean_radius * ratio;
+            world->tmprel = world->location.local_position = Point(0, 0, distance);
+            const double angle = asin(1 / ratio);
+            const double half_extent = mode == vm_skymap ? angle / _pi * dispcx : tan(angle) * zoom * dispcx;
+            draw_sphere(world, angle * zoom);
+            const auto pixels = render();
+            int painted = 0, outside = 0;
+            for (int y = 0; y < render_height; y++)
+            {
+                for (int x = 0; x < render_width; x++)
+                {
+                    if (pixels[(y * render_width + x) * 4 + 3] == 0) continue;
+                    painted++;
+                    if (fabs(x + 0.5 - dispcx) > half_extent + 2
+                        || fabs(y + 0.5 - dispcy) > half_extent + 2) outside++;
+                }
+            }
+            EXPECT_GT(painted, 10) << mode << ", R/d=" << 1 / ratio;
+            EXPECT_EQ(outside, 0) << mode << ", R/d=" << 1 / ratio;
+            ImGui::NewFrame();
+        }
+    }
+}
+
+TEST_F(RenderingRegressionTest, ClosePlanetAngularRadiusMatchesTheTangentRay)
+{
+    Planet* world = surface();
+    cels[0]->deleted = cels[1]->deleted = true;
+    delete world->orbit;
+    world->orbit = nullptr;
+    world->volumetric_mean_radius = 1000;
+    world->location.system_center = world->location.galactic_center = Point();
+    set(whereami, -1);
+    set(view_mode, vm_spaceship);
+    set(here, CelestialLocation());
+    surface_radii.assign(3, 0);
+    set(angular_radius, surface_radii.data());
+    for (double distance : {1100.0, 2000.0, 10000.0})
+    {
+        world->location.local_position = Point(0, 0, distance);
+        compute_object_draw_coordinates();
+        EXPECT_NEAR(sin(surface_radii[world->seqno]) * world->tmprel.magnitude(), 1000, 1e-8);
+    }
 }
 
 TEST_F(RenderingRegressionTest, TrackingTheObserverCannotMakeItTheSkyHoverTarget)

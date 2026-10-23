@@ -202,6 +202,18 @@ TEST(CelestialHelperTest, UsesRockyMapEvaluation)
     EXPECT_FALSE(uses_rocky_map(galaxy));
 }
 
+TEST(CelestialHelperTest, LimbAngleRemainsFiniteAtAndInsideTheSurface)
+{
+    Planet planet;
+    planet.volumetric_mean_radius = 1000;
+    for (double distance : {0.0, 999.0, 1000.0, 1000.001, 1200.0})
+    {
+        planet.tmprel = Point(0, 0, distance);
+        EXPECT_TRUE(std::isfinite(planet.get_horizon_angle()));
+        EXPECT_GE(planet.get_horizon_angle(), 0);
+    }
+}
+
 // =====================================================================
 // Atmosphere & AtmosphereComposition Tests
 // =====================================================================

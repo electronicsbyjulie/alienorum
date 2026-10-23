@@ -1729,6 +1729,12 @@ void draw_objedit_window(ImGuiIO& io)
 
             double cen_radius = cel->orbit->center->get_equatorial_radius();
             double sma_limit = cen_radius + cel->get_equatorial_radius();
+            if (cel->typeclass() == class_moon && cel->user_added && orb->eccentricity >= 0 && orb->eccentricity < 1)
+            {
+                Moon* moon = static_cast<Moon*>(cel);
+                moon->enforce_orbit_clearance();
+                sma_limit = moon->minimum_safe_pericenter() / (1 - orb->eccentricity);
+            }
             if (orb->semimajor_axis < sma_limit)
             {
                 orb->semimajor_axis = sma_limit;
@@ -2144,6 +2150,7 @@ void draw_objedit_window(ImGuiIO& io)
             if (ImGui::InputDouble("##edtecc", &edit_eccn, 0, 0, "%.9f"))
             {
                 cel->orbit->eccentricity = edit_eccn;
+                if (cel->typeclass() == class_moon && cel->user_added) static_cast<Moon*>(cel)->enforce_orbit_clearance();
                 cel->user_edited = true;
                 viewchanged = true;
                 if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
@@ -2155,6 +2162,7 @@ void draw_objedit_window(ImGuiIO& io)
             if (ImGui::Button("rnd##ecce"))
             {
                 cel->orbit->eccentricity = pow(frand(0, 0.999), 10);
+                if (cel->typeclass() == class_moon && cel->user_added) static_cast<Moon*>(cel)->enforce_orbit_clearance();
                 cel->user_edited = true;
             }
             ImGui::SameLine(col2);
@@ -2952,7 +2960,7 @@ void draw_system_explorer(ImGuiIO& io)
                     if (!P)
                     {
                         // First fictional moon of the planet. Base the SMA off the Roche limit and rings.
-                        double inner_bound = cel->Roche_limit(m);
+                        double inner_bound = m->minimum_safe_pericenter();
                         if (((Planet*)cel)->ring_radius > inner_bound)
                         {
                             inner_bound = ((Planet*)cel)->ring_radius;
@@ -2995,6 +3003,12 @@ void draw_system_explorer(ImGuiIO& io)
                     m->estimate_rotation();
                     if (!m->sidereal_rotational_period) m->sidereal_rotational_period = oneday;
                     m->classify();
+                    m->enforce_orbit_clearance();
+                    if (m->orbit->semimajor_axis * (1 + m->orbit->eccentricity) > cel->Hill_sphere_radius())
+                    {
+                        delete m;
+                        break;
+                    }
                     double disc_area = pow(m->volumetric_mean_radius / earth_radius, 2);
                     m->absolute_magnitude = earth_absmag - log(disc_area * m->albedo / earth_albedo) / log(magnbase);
                     m->apply_cosmic_shoreline();

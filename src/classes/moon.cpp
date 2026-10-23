@@ -1,9 +1,53 @@
 
 #include <iostream>
+#include <algorithm>
 #include <math.h>
 #include "moon.h"
 
 using namespace alienorum;
+
+static double collision_radius(CelestialObject *object)
+{
+    double radius = object->get_equatorial_radius();
+    if (object->typeclass() == class_moon)
+    {
+        Moon* moon = static_cast<Moon*>(object);
+        radius = std::max(radius, 0.5 * std::max({moon->height, moon->width, moon->depth}));
+    }
+    return std::max(radius, object->volumetric_mean_radius);
+}
+
+double Moon::minimum_safe_pericenter()
+{
+    if (!orbit || !orbit->center) return 0;
+    CelestialObject* parent = orbit->center;
+    const double own_radius = collision_radius(this);
+    double inner = collision_radius(parent) + own_radius;
+    inner = std::max(inner, parent->Roche_limit(this));
+    if (parent->typeclass() == class_planet || parent->typeclass() == class_moon)
+        inner = std::max(inner, static_cast<Planet*>(parent)->ring_radius + own_radius);
+    return 1.1 * inner;
+}
+
+bool Moon::enforce_orbit_clearance(bool only_if_touching)
+{
+    if (!orbit || !orbit->center || !(orbit->semimajor_axis > 0)
+        || !std::isfinite(orbit->semimajor_axis) || !std::isfinite(orbit->eccentricity)
+        || orbit->eccentricity < 0 || orbit->eccentricity >= 1) return false;
+    const double pericenter = orbit->semimajor_axis * (1 - orbit->eccentricity);
+    const double contact = collision_radius(orbit->center) + collision_radius(this);
+    if (only_if_touching && pericenter > contact + std::max(1.0, contact * 1e-9)) return false;
+    const double minimum = minimum_safe_pericenter();
+    if (pericenter >= minimum * (1 - 1e-12)) return false;
+    const double previous_period = orbit->period;
+    orbit->semimajor_axis = minimum / (1 - orbit->eccentricity);
+    orbit->compute_period(mass);
+    if (previous_period > 0 && fabs(sidereal_rotational_period - previous_period) < 1e-6 * previous_period)
+        sidereal_rotational_period = orbit->period;
+    Laplace_set = false;
+    user_edited = true;
+    return true;
+}
 
 Rotation Moon::get_Laplace_plane()
 {
