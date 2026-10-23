@@ -705,6 +705,76 @@ TEST_F(RenderingRegressionTest, DistantSystemCursorSelectsPrimaryAndLocalCursorS
     EXPECT_EQ(is_an_obj_under_cursor, primary->seqno);
 }
 
+TEST_F(RenderingRegressionTest, ObservingObjectNeverEntersSkyRenderingOrRetainsPickingBounds)
+{
+    std::vector<CelestialObject*> objects =
+    {
+        new Star(), new Planet(), new Moon(), new Satellite(), new Comet(), new Galaxy()
+    };
+    for (auto *object : objects)
+    {
+        object->volumetric_mean_radius = 1000;
+        object->looked_for_maps = true;
+        append_cel(object);
+    }
+    for (auto *object : objects)
+    {
+        set(whereami, object->seqno);
+        for (auto mode : {vm_spaceship, vm_horizon, vm_skymap})
+        {
+            set(view_mode, mode);
+            object->tmprel = Point(0, 0, 10000);
+            for (int path = 0; path < 3; path++)
+            {
+                object->onscreen = object->label_shown = true;
+                object->drawnx = object->drawny = 50;
+                object->drawnxmin = object->drawnymin = 10;
+                object->drawnxmax = object->drawnymax = 90;
+                const int vertices = ImGui::GetBackgroundDrawList()->VtxBuffer.Size;
+                const int commands = ImGui::GetBackgroundDrawList()->CmdBuffer.Size;
+                if (path == 0) EXPECT_EQ(draw_sphere_gpu(object, 0.1), 0);
+                else if (path == 1) EXPECT_EQ(draw_sphere(object, 0.1), 0);
+                else EXPECT_FALSE(draw_single_object(object->seqno));
+                EXPECT_EQ(ImGui::GetBackgroundDrawList()->VtxBuffer.Size, vertices);
+                EXPECT_EQ(ImGui::GetBackgroundDrawList()->CmdBuffer.Size, commands);
+                EXPECT_FALSE(object->onscreen);
+                EXPECT_FALSE(object->label_shown);
+                EXPECT_LT(object->drawnxmax, -1e8);
+                EXPECT_LT(object->drawnymax, -1e8);
+            }
+            if (object->typeclass() == class_galaxy)
+            {
+                set(show_galaxy_band, true);
+                set(inside_galaxy_idx, object->seqno);
+                object->onscreen = true;
+                draw_galaxy_band();
+                EXPECT_FALSE(object->onscreen);
+            }
+        }
+    }
+}
+
+TEST_F(RenderingRegressionTest, SystemPreviewCanStillDrawTheObservingPlanet)
+{
+    Planet* world = surface();
+    set(view_mode, vm_system);
+    world->drawnx = dispcx;
+    world->drawny = dispcy;
+    EXPECT_GT(draw_sphere_gpu(world, 20), 0);
+    EXPECT_TRUE(world->onscreen);
+}
+
+TEST_F(RenderingRegressionTest, TrackingTheObserverCannotMakeItTheSkyHoverTarget)
+{
+    Planet* world = surface();
+    set(trackidx, world->seqno);
+    set(is_an_obj_under_cursor, -1);
+    ImGui::GetIO().MousePos = ImVec2(96, 54);
+    identify_object_under_cursor(ImGui::GetIO());
+    EXPECT_EQ(trackidx, -1);
+    EXPECT_NE(is_an_obj_under_cursor, world->seqno);
+}
+
 TEST_F(RenderingRegressionTest, RingsQueueWhenThePlanetDiscIsBehindTheCamera)
 {
     Star *sun = make_star("Sun");

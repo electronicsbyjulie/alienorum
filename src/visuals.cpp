@@ -25,6 +25,16 @@ ImVec2 xycoord;
 ImFont *global_font = nullptr, *Greek_font = nullptr;
 const char *Greek_symbol_mapping = "abgdezhuiklmnqoprstyfxjv";
 
+static bool exclude_observing_object(CelestialObject *object)
+{
+    if (view_mode == vm_system || whereami < 0 || !cels || object != cels[whereami]) return false;
+    object->onscreen = false;
+    object->label_shown = false;
+    object->drawnx = object->drawny = object->drawnxmin = object->drawnxmax
+        = object->drawnymin = object->drawnymax = -1e9;
+    return true;
+}
+
 void draw_ra_dec_lines()
 {
     ImGuiIO& io = ImGui::GetIO();
@@ -791,6 +801,7 @@ static Point ring_plane_normal(CelestialObject *cel)
 
 int draw_sphere_gpu(CelestialObject* cel, double arad)
 {
+    if (exclude_observing_object(cel)) return 0;
     Point cel_azrot = rotate3D(to_viewer_plane(cel->tmprel), center, yaxis, -(azimuth + azimuth_correction));
     Point camera_space = rotate3D(cel_azrot, center, xaxis, altitude);
     bool airy_rock = view_mode == vm_horizon && whereami > 0 && cels && cels[whereami] && uses_rocky_map(cels[whereami]->type) && ((Planet*)cels[whereami])->get_surface_pressure();
@@ -1240,7 +1251,7 @@ void reap_released_objects()
 
 int draw_sphere(CelestialObject* cel, double arad)
 {
-    if ((cel->seqno == whereami) && (view_mode != vm_system)) return 0;
+    if (exclude_observing_object(cel)) return 0;
     if (view_mode == vm_system) cel->tmprel = Point(AU, 0, 0);
     double d = cel->tmprel.magnitude(), horizon_angle, elevation = 0;
     cel_obj_class cls = cel->typeclass();
@@ -3101,10 +3112,10 @@ static double draw_comet(CelestialObject *cel, double appmag)
 
 bool draw_single_object(int i)
 {
+    if (exclude_observing_object(cels[i])) return false;
     cels[i]->label_shown = false;
     bool obj_is_localsys = (cels[i]->cenobj == mycenobj);
     if (!show_localsys && obj_is_localsys) return false;
-    if ((i == whereami) && (view_mode != vm_system)) return false;
     
     int j;
     double coma_px = 0;
@@ -3496,6 +3507,7 @@ void draw_galaxy_band()
     }
 
     CelestialObject *cel = cels[inside_galaxy_idx];
+    if (exclude_observing_object(cel)) return;
     Galaxy *g = (Galaxy*)cel;
     if (g->tmprel.magnitude() > g->volumetric_mean_radius)
     {
@@ -3913,7 +3925,7 @@ void draw_objects()
     {
         if (cels[i]->deleted) continue;
         cels[i]->drawnxmin = cels[i]->drawnxmax = cels[i]->drawnymin = cels[i]->drawnymax = -1e9;
-        if ((i == whereami) && (view_mode != vm_system)) continue;
+        if (exclude_observing_object(cels[i])) continue;
 
         if (!pass && fabs(bloomrad_cache[i]) > 3) continue;
         else if (pass && fabs(bloomrad_cache[i]) <= 3) continue;

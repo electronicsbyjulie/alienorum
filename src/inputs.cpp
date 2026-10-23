@@ -57,6 +57,7 @@ void center_tracked()
 
 void identify_object_under_cursor(ImGuiIO& io)
 {
+    if (view_mode != vm_system && trackidx >= 0 && trackidx == whereami) trackidx = -1;
     int i;
     const auto system_target = [](int index)
     {
