@@ -85,6 +85,34 @@ class BlueBiomeTestMap : public SceneryTestMap
     }
 };
 
+class DistantPlantTestMap : public Map
+{
+    public:
+    explicit DistantPlantTestMap(double radius)
+    {
+        image_width = 2;
+        image_height = 262144;
+        allocated = image_width * image_height;
+        lat_scale = image_height / _pi;
+        lon_scale = image_width / (2 * _pi);
+        red_data = new unsigned char[allocated];
+        green_data = new unsigned char[allocated];
+        blue_data = new unsigned char[allocated];
+        surface_materials.assign(allocated, SurfaceMaterial::water);
+        for (unsigned long index = 0; index < allocated; index++)
+        {
+            // Uniform colors isolate geometry from ground painting; only the
+            // distant strip is vegetated, with no plants in the old 100 m field.
+            red_data[index] = 80;
+            green_data[index] = 60;
+            blue_data[index] = 40;
+            const double north = (half_pi - (index / image_width) / lat_scale) * radius;
+            if (north >= 750 && north <= 950) surface_materials[index] = SurfaceMaterial::vegetation;
+        }
+        touch_gen();
+    }
+};
+
 class CoastalTestMap : public Map
 {
     public:
@@ -1857,6 +1885,27 @@ TEST_F(RenderingRegressionTest, BlueVegetationDoesNotTurnIdenticalOceanColorsInt
         if (material == SurfaceMaterial::water) EXPECT_EQ(scenery_vertices, 0);
         else EXPECT_GT(scenery_vertices, 0);
     }
+}
+
+TEST_F(RenderingRegressionTest, PlantsArePlacedNearTheKilometerCutoff)
+{
+    Planet* world = surface(true);
+    delete world->surf_map;
+    world->surf_map = new DistantPlantTestMap(world->get_equatorial_radius());
+    world->plant_trunk_height = 2;
+    world->plant_crown_size = 2.85;
+    set(zoom, 30.0);
+    set(altitude, 0.0);
+    const auto vertices = scenery();
+    int crowns = 0;
+    for (const auto &vertex : vertices)
+    {
+        const int red = (vertex.col >> IM_COL32_R_SHIFT) & 255;
+        const int green = (vertex.col >> IM_COL32_G_SHIFT) & 255;
+        const int blue = (vertex.col >> IM_COL32_B_SHIFT) & 255;
+        if (green > 1.2 * red && green > 2 * blue) crowns++;
+    }
+    EXPECT_GT(crowns, 0);
 }
 
 TEST_F(RenderingRegressionTest, ShorelineGeometryStaysFiniteAtFullResolution)

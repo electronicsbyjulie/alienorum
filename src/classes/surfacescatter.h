@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <map>
 #include <vector>
 
 namespace alienorum
@@ -39,24 +40,48 @@ namespace alienorum
     {
         std::vector<bool> retained(objects.size(), true);
         if (radii.size() != objects.size() || !(radius > 0)) return retained;
+        double largest = 0;
+        for (double crown : radii) largest = std::max(largest, crown);
+        if (!(largest > 0)) return retained;
+        const double cell_size = 2 * largest + std::max(0.0, gap);
+        using Cell = std::pair<long long, long long>;
+        const auto cell_at = [&](const SurfaceScenery &object)
+        {
+            return Cell(static_cast<long long>(floor(object.east / cell_size)),
+                static_cast<long long>(floor(object.north / cell_size)));
+        };
+        std::map<Cell, std::vector<size_t>> cells;
+        for (size_t i = 0; i < objects.size(); i++)
+        {
+            if (radii[i] > 0) cells[cell_at(objects[i])].push_back(i);
+        }
         for (size_t i = 0; i < objects.size(); i++)
         {
             if (!(radii[i] > 0)) continue;
-            for (size_t j = 0; j < objects.size(); j++)
+            const Cell cell = cell_at(objects[i]);
+            for (int x = -1; x <= 1 && retained[i]; x++)
             {
-                if (!(radii[j] > 0) || objects[j].id >= objects[i].id) continue;
-                const double clearance = radii[i] + radii[j] + std::max(0.0, gap);
-                const double east = objects[i].east - objects[j].east;
-                const double north = objects[i].north - objects[j].north;
-                if (east * east + north * north >= clearance * clearance) continue;
-                const double latitude = sin((objects[i].latitude - objects[j].latitude) * 0.5);
-                const double longitude = sin((objects[i].longitude - objects[j].longitude) * 0.5);
-                const double chord_squared = 4 * radius * radius * (latitude * latitude
-                    + cos(objects[i].latitude) * cos(objects[j].latitude) * longitude * longitude);
-                if (chord_squared < clearance * clearance)
+                for (int y = -1; y <= 1 && retained[i]; y++)
                 {
-                    retained[i] = false;
-                    break;
+                    const auto found = cells.find(Cell(cell.first + x, cell.second + y));
+                    if (found == cells.end()) continue;
+                    for (size_t j : found->second)
+                    {
+                        if (objects[j].id >= objects[i].id) continue;
+                        const double clearance = radii[i] + radii[j] + std::max(0.0, gap);
+                        const double east = objects[i].east - objects[j].east;
+                        const double north = objects[i].north - objects[j].north;
+                        if (east * east + north * north >= clearance * clearance) continue;
+                        const double latitude = sin((objects[i].latitude - objects[j].latitude) * 0.5);
+                        const double longitude = sin((objects[i].longitude - objects[j].longitude) * 0.5);
+                        const double chord_squared = 4 * radius * radius * (latitude * latitude
+                            + cos(objects[i].latitude) * cos(objects[j].latitude) * longitude * longitude);
+                        if (chord_squared < clearance * clearance)
+                        {
+                            retained[i] = false;
+                            break;
+                        }
+                    }
                 }
             }
         }

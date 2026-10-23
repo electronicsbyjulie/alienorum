@@ -386,6 +386,37 @@ TEST(SurfaceSceneryTest, VariableCrownsKeepClearanceAndStablePlacementDuringTrav
     }
 }
 
+TEST(SurfaceSceneryTest, KilometerPlantFieldRetainsDistantCandidatesAndLocalClearance)
+{
+    constexpr double radius = 6371000;
+    const auto objects = surface_scenery(radius, 0, 0, 1011, 11, 42);
+    std::vector<double> radii;
+    for (const auto &object : objects) radii.push_back(2.85 * scenery_size(object.seed, 0.06, 1.85));
+    const auto retained = scenery_clearance(objects, radii, radius);
+    std::vector<size_t> sorted;
+    int distant = 0;
+    for (size_t i = 0; i < objects.size(); i++)
+    {
+        if (!retained[i]) continue;
+        sorted.push_back(i);
+        const double distance = hypot(objects[i].east, objects[i].north);
+        distant += distance >= 750 && distance < 1000;
+    }
+    EXPECT_GT(distant, 1000);
+    std::sort(sorted.begin(), sorted.end(), [&](size_t a, size_t b) { return objects[a].east < objects[b].east; });
+    for (size_t a = 0; a < sorted.size(); a++)
+    {
+        const size_t i = sorted[a];
+        for (size_t b = a + 1; b < sorted.size(); b++)
+        {
+            const size_t j = sorted[b];
+            if (objects[j].east - objects[i].east >= 2 * 2.85 * 1.85 + 0.1) break;
+            EXPECT_GE(hypot(objects[i].east - objects[j].east, objects[i].north - objects[j].north) + 1e-5,
+                radii[i] + radii[j] + 0.1);
+        }
+    }
+}
+
 // Nothing in this file touches the network. download_file() is the one function in misc.h that
 // does, and it is deliberately left alone: CelesTrak's terms ask for one fetch per file per two
 // hours, and a test suite is not a reason to spend one.

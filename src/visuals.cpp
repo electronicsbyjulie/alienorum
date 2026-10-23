@@ -6757,19 +6757,36 @@ void draw_horizon()
                 const double scenery_spacing = sqrt(_pi * ROCK_MAX_DIST * ROCK_MAX_DIST / ROCK_COUNT);
                 const double crown_scale = p ? fmax(0.0, p->plant_crown_size) : 0;
                 const double canopy_margin = 2 * ROCK_MAX_SIZE * crown_scale + 0.1;
-                const auto scenery = surface_scenery(R_planet, viewer_lat, viewer_lon,
-                    ROCK_MAX_DIST + canopy_margin, scenery_spacing, static_cast<std::uint64_t>(whereami));
-                std::vector<bool> plant(scenery.size()), water(scenery.size());
-                std::vector<double> canopy_radii(scenery.size(), 0);
-                for (size_t index = 0; index < scenery.size(); index++)
+                const bool has_plants = p && (p->vegetation_r || p->vegetation_g || p->vegetation_b);
+                const double scenery_range = has_plants ? std::max(PLANT_MAX_DIST, ROCK_MAX_DIST) : ROCK_MAX_DIST;
+                auto scenery_key = std::make_tuple(whereami, viewer_lat, viewer_lon, R_planet,
+                    map ? map->gen : 0u, generating_fic_texture, water_favorable,
+                    p ? p->has_water : 0.0f, p ? p->type : cel->type,
+                    p ? p->vegetation_r : 0, p ? p->vegetation_g : 0, p ? p->vegetation_b : 0,
+                    crown_scale, scenery_range);
+                static decltype(scenery_key) saved_scenery_key;
+                static bool scenery_valid = false;
+                static std::vector<SurfaceScenery> scenery;
+                static std::vector<bool> plant, water, canopy_clear;
+                if (!scenery_valid || saved_scenery_key != scenery_key)
                 {
-                    const auto &object = scenery[index];
-                    water[index] = water_at(object.latitude, object.longitude);
-                    plant[index] = !water[index] && vegetation_at(object.latitude, object.longitude);
-                    if (plant[index]) canopy_radii[index] = crown_scale
-                        * scenery_size(object.seed, ROCK_MIN_SIZE, ROCK_MAX_SIZE);
+                    scenery = surface_scenery(R_planet, viewer_lat, viewer_lon,
+                        scenery_range + canopy_margin, scenery_spacing, static_cast<std::uint64_t>(whereami));
+                    plant.assign(scenery.size(), false);
+                    water.assign(scenery.size(), false);
+                    std::vector<double> canopy_radii(scenery.size(), 0);
+                    for (size_t index = 0; index < scenery.size(); index++)
+                    {
+                        const auto &object = scenery[index];
+                        water[index] = water_at(object.latitude, object.longitude);
+                        plant[index] = !water[index] && vegetation_at(object.latitude, object.longitude);
+                        if (plant[index]) canopy_radii[index] = crown_scale
+                            * scenery_size(object.seed, ROCK_MIN_SIZE, ROCK_MAX_SIZE);
+                    }
+                    canopy_clear = scenery_clearance(scenery, canopy_radii, R_planet);
+                    saved_scenery_key = scenery_key;
+                    scenery_valid = true;
                 }
-                const auto canopy_clear = scenery_clearance(scenery, canopy_radii, R_planet);
                 rocks.reserve(scenery.size());
 
                 // Sedentary lifeforms when is_vegetation is true, otherwise surface rocks.
