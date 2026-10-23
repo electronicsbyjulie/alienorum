@@ -478,7 +478,7 @@ int col_rand(std::mt19937 *rng)
     return dist(*rng);
 }
 
-static RGB3 vegetation_reflectance(std::mt19937 *rng, double stellar_temperature)
+VegetationSpectrum generate_vegetation_spectrum(std::mt19937 *rng, double stellar_temperature)
 {
     // Don't assume alien vegetation is green!
     if (!std::isfinite(stellar_temperature) || stellar_temperature <= 0) stellar_temperature = sun_temp;
@@ -508,32 +508,56 @@ static RGB3 vegetation_reflectance(std::mt19937 *rng, double stellar_temperature
     // Retain a visible peak even when the other pigments favor the infrared.
     // Widths and concentrations describe a hypothetical mixture, not measured
     // alien chemistry or a prediction that every organism absorbs all colors.
-    const int nbands = 2 + col_rand(rng) % 4;
+    VegetationSpectrum spectrum;
+    spectrum.red_edge_nm = 700;
+    const int nbands = spectrum.band_count = 2 + col_rand(rng) % 4;
     const double concentration = std::exp(col_frand(rng, std::log(0.6), std::log(5.0)));
-    std::array<double, 5> centers{}, widths{}, depths{};
+    auto &centers = spectrum.centers_nm;
+    auto &widths = spectrum.widths_nm;
+    auto &depths = spectrum.depths;
     for (int band = 0; band < nbands; band++)
     {
         const int sample = band == 0 ? visible_distribution(*rng) : band_distribution(*rng);
         centers[band] = 350.0 + 5.0 * sample + col_frand(rng, -2.5, 2.5);
         widths[band] = band < 2 ? col_frand(rng, 10.0, 25.0) : col_frand(rng, 20.0, 45.0);
         depths[band] = concentration * col_frand(rng, 0.5, 1.5);
+        // Place the structural edge beyond the absorption envelope. Its position
+        // follows the host-biased pigments, with 700 nm as our leaf-like lower bound.
+        spectrum.red_edge_nm = std::max(spectrum.red_edge_nm, centers[band] + 2 * widths[band]);
     }
 
     // Begin with a neutral scattering surface rather than a prescribed leaf hue.
     // UV protection ends before blue; blue reflectance is controlled by pigments.
-    const double scattering = col_frand(rng, 0.15, 0.65);
-    const double uv_edge = col_frand(rng, 320.0, 380.0);
+    spectrum.visible_scattering = col_frand(rng, 0.15, 0.65);
+    spectrum.infrared_scattering = std::min(0.90, spectrum.visible_scattering + 0.25);
+    spectrum.uv_edge_nm = col_frand(rng, 320.0, 380.0);
+    return spectrum;
+}
+
+double VegetationSpectrum::reflectance_at(double wavelength_nm) const
+{
+    if (!std::isfinite(wavelength_nm) || wavelength_nm <= 0) return 0;
+    double optical_depth = 0;
+    for (int band = 0; band < std::clamp(band_count, 0, 5); band++)
+    {
+        if (widths_nm[band] <= 0) continue;
+        const double offset = (wavelength_nm - centers_nm[band]) / widths_nm[band];
+        optical_depth += std::max(0.0, depths[band]) * std::exp(-0.5 * offset * offset);
+    }
+    // A phenomenological tissue-scattering edge and an infrared plateau, separate
+    // from pigment absorption. This is a leaf-like spectrum, not a heat-balance model.
+    const double edge = 1.0 / (1.0 + std::exp((red_edge_nm - wavelength_nm) / std::max(0.1, red_edge_width_nm)));
+    const double scattering = visible_scattering + (infrared_scattering - visible_scattering) * edge;
+    const double uv_transmission = 1.0 / (1.0 + std::exp((uv_edge_nm - wavelength_nm) / 10.0));
+    return std::clamp(scattering * uv_transmission * std::exp(-optical_depth), 0.0, 1.0);
+}
+
+RGB3 VegetationSpectrum::visible_rgb() const
+{
     double rtot = 0, gtot = 0, btot = 0;
     for (int wavelength = 400; wavelength < 710; wavelength++)
     {
-        double optical_depth = 0;
-        for (int band = 0; band < nbands; band++)
-        {
-            const double offset = (wavelength - centers[band]) / widths[band];
-            optical_depth += depths[band] * std::exp(-0.5 * offset * offset);
-        }
-        const double uv_transmission = 1.0 / (1.0 + std::exp((uv_edge - wavelength) / 10.0));
-        const double reflectance = scattering * uv_transmission * std::exp(-optical_depth);
+        const double reflectance = reflectance_at(wavelength);
         if (wavelength < 510) btot += reflectance;
         if (wavelength >= 480 && wavelength < 600) gtot += reflectance;
         if (wavelength >= 560) rtot += reflectance;
@@ -558,18 +582,18 @@ RGB3 generate_vegetation_color(std::mt19937 *rng, double stellar_temperature)
         return -1;
     };
 
-    const RGB3 original = vegetation_reflectance(rng, stellar_temperature);
+    const RGB3 original = generate_vegetation_spectrum(rng, stellar_temperature).visible_rgb();
     const int original_family = family(original);
     if (original_family < 0) return original;
 
     // Artistic population preference: five purple worlds for every two green.
-    // Resample pigment mixtures under the same host spectrum, preserving physically
+    // Resample pigment mixtures under the same host spectrum, preserving spectrally
     // generated reflectance instead of tinting RGB. Other hue families pass through.
     const int preferred_family = col_frand(rng, 0, 7) < 5 ? 1 : 0;
     if (original_family == preferred_family) return original;
     for (int attempt = 0; attempt < 128; attempt++)
     {
-        const RGB3 candidate = vegetation_reflectance(rng, stellar_temperature);
+        const RGB3 candidate = generate_vegetation_spectrum(rng, stellar_temperature).visible_rgb();
         if (family(candidate) == preferred_family) return candidate;
     }
     return original;

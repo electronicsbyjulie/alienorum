@@ -260,6 +260,65 @@ TEST(ColorProceduralTest, VegetationColorBounds)
     }
 }
 
+TEST(ColorProceduralTest, LeafSpectrumHasRedAbsorptionAndAnInfraredReflectancePlateau)
+{
+    VegetationSpectrum leaf;
+    leaf.band_count = 2;
+    leaf.centers_nm = {430, 680};
+    leaf.widths_nm = {18, 18};
+    leaf.depths = {3, 3};
+    leaf.visible_scattering = 0.20;
+    leaf.infrared_scattering = 0.60;
+    leaf.red_edge_nm = 720;
+    leaf.red_edge_width_nm = 8;
+    EXPECT_GT(leaf.reflectance_at(550), leaf.reflectance_at(430) * 5);
+    EXPECT_GT(leaf.reflectance_at(800), leaf.reflectance_at(680) * 10);
+    EXPECT_GT(leaf.reflectance_at(800), leaf.reflectance_at(550) * 2);
+    EXPECT_NEAR(leaf.reflectance_at(1000), 0.60, 1e-6);
+    const RGB3 rgb = leaf.visible_rgb();
+    EXPECT_GT(rgb.g, rgb.r);
+    EXPECT_GT(rgb.g, rgb.b);
+}
+
+TEST(ColorProceduralTest, InfraredReflectanceDoesNotBecomeVisibleRedLight)
+{
+    VegetationSpectrum leaf;
+    leaf.red_edge_nm = 1000;
+    leaf.infrared_scattering = 0.5;
+    const RGB3 before = leaf.visible_rgb();
+    const double infrared = leaf.reflectance_at(1200);
+    leaf.infrared_scattering = 0.8;
+    const RGB3 after = leaf.visible_rgb();
+    EXPECT_EQ(before.r, after.r);
+    EXPECT_EQ(before.g, after.g);
+    EXPECT_EQ(before.b, after.b);
+    EXPECT_GT(leaf.reflectance_at(1200), infrared + 0.25);
+}
+
+TEST(ColorProceduralTest, GeneratedSpectraHaveBoundedReflectanceAndHostSensitiveEdges)
+{
+    std::mt19937 cool_rng(42), hot_rng(42);
+    double cool_edges = 0, hot_edges = 0;
+    for (int i = 0; i < 256; i++)
+    {
+        const auto cool = generate_vegetation_spectrum(&cool_rng, 3000);
+        const auto hot = generate_vegetation_spectrum(&hot_rng, 10000);
+        cool_edges += cool.red_edge_nm;
+        hot_edges += hot.red_edge_nm;
+        for (const auto &leaf : {cool, hot})
+        {
+            for (double wavelength = 350; wavelength <= 1400; wavelength += 10)
+            {
+                const double reflectance = leaf.reflectance_at(wavelength);
+                EXPECT_GE(reflectance, 0);
+                EXPECT_LE(reflectance, 1);
+            }
+            EXPECT_NEAR(leaf.reflectance_at(1400), leaf.infrared_scattering, 1e-6);
+        }
+    }
+    EXPECT_GT(cool_edges, hot_edges);
+}
+
 TEST(ColorProceduralTest, VegetationAbsorptionRespondsToStellarSpectrum)
 {
     std::mt19937 cool_rng(42), hot_rng(42), repeat_rng(42);

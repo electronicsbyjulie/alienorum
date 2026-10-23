@@ -3,6 +3,7 @@
 #define _Color
 
 #include <cmath>
+#include <array>
 #include <vector>
 #include <cstdlib>
 #include "misc.h"
@@ -29,6 +30,20 @@ namespace alienorum
 
         inline double luminance() { return _lum_r_comp*r + _lum_g_comp*g + _lum_b_comp*b; }
         void invert_luminance();        // used for white background mode only.
+    };
+
+    struct VegetationSpectrum
+    {
+        int band_count = 0;
+        std::array<double, 5> centers_nm{}, widths_nm{}, depths{};
+        double visible_scattering = 0.25;
+        double infrared_scattering = 0.55;
+        double uv_edge_nm = 350;
+        double red_edge_nm = 720;
+        double red_edge_width_nm = 12;
+
+        double reflectance_at(double wavelength_nm) const;
+        RGB3 visible_rgb() const;
     };
 
     class Color
@@ -166,5 +181,6 @@ uint32_t rgba_apply_redlight(uint32_t input);
 ImVec4 rgba_apply_redlight(ImVec4 input);
 void apply_default_style();
 RGB3 generate_vegetation_color(std::mt19937 *rng, double stellar_temperature = sun_temp);
+VegetationSpectrum generate_vegetation_spectrum(std::mt19937 *rng, double stellar_temperature = sun_temp);
 
 #endif
