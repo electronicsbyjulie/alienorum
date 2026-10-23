@@ -9,12 +9,85 @@
 
 using namespace alienorum;
 
+extern double celmasslim;
+
 // set_center_objects() is the pass that runs once loading has settled: it rebuilds the name and
 // constellation indices, gives every object a system center, and repairs the handful of things a
 // catalog can state that cannot be true. Nothing tested it, and the tests elsewhere that say "the
 // indices are this function's doing, not append_cel()'s" were taking that on trust.
 
 class HousekeepingTest : public UniverseFixture {};
+
+TEST_F(HousekeepingTest, SystemViewUpdatesUnselectedMoonsBeforeSkyVisibilityChecks)
+{
+    struct RestoreFrame
+    {
+        CelestialObject* center = mycenobj;
+        CelestialLocation position = here;
+        int place = whereami, selection = selected, tracking = trackidx, editing = editidx;
+        ViewMode mode = view_mode;
+        double magnification = zoom, mass_limit = celmasslim;
+        ~RestoreFrame()
+        {
+            mycenobj = center;
+            here = position;
+            whereami = place;
+            selected = selection;
+            trackidx = tracking;
+            editidx = editing;
+            view_mode = mode;
+            zoom = magnification;
+            celmasslim = mass_limit;
+        }
+    } restore;
+    Star* sun = make_star("Sol");
+    sun->distance = 0;
+    sun->cenobj = sun;
+    sun->location = CelestialLocation();
+    Planet* parent = make_planet(sun, "Tilted parent");
+    parent->cenobj = sun;
+    parent->orbit->inclination = 0.4;
+    parent->obliquity = 0.3;
+    parent->equinox = 0.7;
+    parent->J2 = 0.01;
+    parent->update_location(simnow);
+    Moon* moon = new Moon();
+    moon->mass = lunar_mass;
+    moon->volumetric_mean_radius = 1737400;
+    moon->absolute_magnitude = 99;
+    moon->cenobj = sun;
+    moon->user_added = true;
+    moon->orbit = new Orbit();
+    moon->orbit->center = parent;
+    moon->orbit->semimajor_axis = 384400000;
+    moon->orbit->inclination = 0.1;
+    moon->orbit->compute_period(moon->mass);
+    moon->obliquity = 0.05;
+    moon->location.local_position = Point(0, 0, 20 * AU);
+    append_cel(moon);
+    mycenobj = sun;
+    here = CelestialLocation();
+    whereami = trackidx = editidx = -1;
+    selected = parent->seqno;
+    zoom = 1;
+    celmasslim = 0;
+    view_mode = vm_spaceship;
+    EXPECT_FALSE(compute_object_location(moon));
+    view_mode = vm_system;
+    ASSERT_TRUE(compute_object_location(moon));
+    EXPECT_LT(moon->location.distance_to(parent->location), 2 * moon->orbit->semimajor_axis);
+    Point pole = rotate3D(yaxis, center, moon->location.equatorial_plane.v, -moon->location.equatorial_plane.a);
+    pole.scale(1);
+    EXPECT_GT((pole - Point(0, 1, 0)).magnitude(), 0.01);
+    const Point position(moon->location);
+    selected = moon->seqno;
+    ASSERT_TRUE(compute_object_location(moon));
+    Point selected_pole = rotate3D(yaxis, center, moon->location.equatorial_plane.v, -moon->location.equatorial_plane.a);
+    selected_pole.scale(1);
+    EXPECT_LT((pole - selected_pole).magnitude(), 1e-10);
+    EXPECT_LT((Point(moon->location) - position).magnitude(), 1e-4);
+    delete_the_universe();
+}
 
 TEST_F(HousekeepingTest, DeleteHandlesAbsentSelectionAndClearsDescendantNavigation)
 {

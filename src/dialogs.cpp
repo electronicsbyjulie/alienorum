@@ -3040,6 +3040,7 @@ void draw_system_explorer(ImGuiIO& io)
                         break;
                     }
 
+                    m->update_location(simnow);
                     if (!append_cel(m))
                     {
                         delete m;               // ~Moon takes the orbit with it

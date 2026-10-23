@@ -118,6 +118,8 @@ These entries record the deliberate choices found during the earlier review. The
 - [ ] **V14:** Calendar and Julian-date input, including command-line date input, produce the intended epoch without corrupting orbital elements.
 - [ ] **V15:** Supported command-line load, import, find, track, go, altitude, azimuth, zoom, theme, fullscreen, horizon, Sun Clock, and simulated-key commands retain their behavior; missing values are handled safely.
 
+- [ ] **V16 — Generated moon orientation before selection:** Generated fictional moons have initialized positions, orbital planes, and equatorial planes before publication. System View refreshes displayed local objects at the current simulation time independently of sky-visibility or brightness filtering. A moon around a tilted parent displays its correct orientation before being selected; clicking it changes selection without correcting its pole or position as a side effect. Retain sky-view culling and observer exclusion outside System View.
+
 ## 6. Horizon locales and observing location
 
 - [ ] **P01:** In horizon mode, the S panel displays **View from near [locale]** when the nearest named locale is within 5 km along the body's surface.

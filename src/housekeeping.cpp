@@ -165,11 +165,13 @@ bool compute_object_location(CelestialObject* cel)
 {
     bool star_in_box;
     int i = cel->seqno;
+    const bool system_object = view_mode == vm_system && mycenobj &&
+        (cel == mycenobj || cel->cenobj == mycenobj);
 
     CelestialLocation tmp = cel->location - here;
     cel->tmprel = Point(tmp);
     double viewer_distance = cel->tmprel.magnitude();
-    double light_travel_time = viewer_distance / speed_of_light;
+    double light_travel_time = system_object ? 0 : viewer_distance / speed_of_light;
     double AU_zoomed_squared = AU*AU*zoom*zoom;
 
     // Nothing about this depends on cel, but the dialogs call this function on a single object
@@ -202,7 +204,7 @@ bool compute_object_location(CelestialObject* cel)
         if (i > 0)
         {
             ((Star*)cel)->tmp_vis_flag = star_in_box;
-            if (i!=selected && i!=trackidx && i!=editidx && i!=whereami && cel->cenobj!=mycenobj && !((Star*)cel)->is_faved)
+            if (!system_object && i!=selected && i!=trackidx && i!=editidx && i!=whereami && cel->cenobj!=mycenobj && !((Star*)cel)->is_faved)
             {
                 if (!star_in_box && !((Star*)cel)->is_universally_visible()
                     && (cbolbls_selected_idx != lbltype_planets  || (((Star*)cel)->has_planets < planets_lblcut) )
@@ -230,7 +232,7 @@ bool compute_object_location(CelestialObject* cel)
         ((Star*)cel)->update_location(simnow - light_travel_time);
         tmp = cel->location - here;
         cel->tmprel = Point(tmp);
-        if (i > 0 && whereami >= 0 && cel->tmprel.magnitude() < cels[whereami]->volumetric_mean_radius)
+        if (!system_object && i > 0 && whereami >= 0 && cel->tmprel.magnitude() < cels[whereami]->volumetric_mean_radius)
         {
             cel->drawnx = cel->drawny = -1e9;
             return false;
@@ -240,7 +242,7 @@ bool compute_object_location(CelestialObject* cel)
         case class_planet:
         if (i > 0)
         {
-            if (i!=selected && i!=trackidx && i!=editidx && i!=whereami)
+            if (!system_object && i!=selected && i!=trackidx && i!=editidx && i!=whereami)
             {
                 if (cel->cenobj!=mycenobj)
                 {
@@ -271,7 +273,7 @@ bool compute_object_location(CelestialObject* cel)
         case class_moon:
         if (i > 0)
         {
-            if (i!=selected && i!=trackidx && i!=editidx && i!=whereami)
+            if (!system_object && i!=selected && i!=trackidx && i!=editidx && i!=whereami)
             {
                 if (cel->cenobj!=mycenobj)
                 {
