@@ -246,6 +246,7 @@ double sigmoid(double x);
 std::string Roman(int num);
 
 bool extract_archive(const char *filename);
+bool refresh_gzip_file(const char *filename);
 
 // Takes velocity in m/s and computes the ratio of Δt(moving)/Δt(stationary). The result will always be <= 1.
 double compute_time_dilation(double velocity);

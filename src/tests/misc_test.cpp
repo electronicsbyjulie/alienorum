@@ -58,6 +58,49 @@ TEST(ArchiveTest, RawGzipUsesTheCompressedFileName)
     ASSERT_TRUE(std::getline(input, line));
     EXPECT_EQ(line, "catalog row");
     EXPECT_FALSE(std::filesystem::exists("data"));
+    input.close();
+
+    const auto stamp = std::filesystem::file_time_type::clock::now();
+    std::filesystem::last_write_time("catalog.dat.gz", stamp);
+    std::filesystem::last_write_time("catalog.dat", stamp - std::chrono::seconds(60));
+    std::ofstream("catalog.dat") << "stale row\n";
+    std::filesystem::last_write_time("catalog.dat", stamp - std::chrono::seconds(60));
+    ASSERT_TRUE(refresh_gzip_file("catalog.dat"));
+    const auto read = []()
+    {
+        std::ifstream stream("catalog.dat");
+        std::string row;
+        std::getline(stream, row);
+        return row;
+    };
+    EXPECT_EQ(read(), "catalog row");
+    EXPECT_EQ(std::filesystem::last_write_time("catalog.dat"), stamp);
+
+    std::ofstream("catalog.dat") << "local row\n";
+    std::filesystem::last_write_time("catalog.dat", stamp + std::chrono::seconds(60));
+    ASSERT_TRUE(refresh_gzip_file("catalog.dat"));
+    EXPECT_EQ(read(), "local row");
+    std::filesystem::last_write_time("catalog.dat", stamp);
+    ASSERT_TRUE(refresh_gzip_file("catalog.dat"));
+    EXPECT_EQ(read(), "local row");
+
+    std::filesystem::remove("catalog.dat");
+    ASSERT_TRUE(refresh_gzip_file("catalog.dat"));
+    EXPECT_EQ(read(), "catalog row");
+    std::ifstream packed("catalog.dat.gz", std::ios::binary);
+    const std::string bytes((std::istreambuf_iterator<char>(packed)), std::istreambuf_iterator<char>());
+    packed.close();
+    ASSERT_GT(bytes.size(), 8u);
+    std::ofstream("catalog.dat.gz", std::ios::binary | std::ios::trunc).write(bytes.data(), bytes.size() - 8);
+    std::filesystem::last_write_time("catalog.dat.gz", stamp + std::chrono::seconds(120));
+    EXPECT_FALSE(refresh_gzip_file("catalog.dat"));
+    EXPECT_EQ(read(), "catalog row");
+    EXPECT_FALSE(std::filesystem::exists("catalog.dat.refresh.tmp"));
+    std::ofstream("catalog.dat.gz", std::ios::binary | std::ios::trunc) << "invalid gzip";
+    std::filesystem::last_write_time("catalog.dat.gz", stamp + std::chrono::seconds(120));
+    EXPECT_FALSE(refresh_gzip_file("catalog.dat"));
+    EXPECT_EQ(read(), "catalog row");
+    EXPECT_FALSE(std::filesystem::exists("catalog.dat.refresh.tmp"));
 }
 
 TEST(HorizonTerrainTest, PixelDepthVariesAcrossASlopeAndOccludesFartherFaces)

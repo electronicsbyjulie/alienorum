@@ -612,15 +612,7 @@ void load_catalogs()
     bool ihsc = false;
     bool star_orbits_applied = false;
     CatalogReader::condensed_star_orbits_loaded = false;
-    if (!file_exists(ihcfn.c_str()))
-    {
-        std::string ihscgz = ihcfn + std::string(".gz");
-
-        if (file_exists(ihscgz.c_str()))
-        {
-            extract_archive(ihscgz.c_str());
-        }
-    }
+    refresh_gzip_file(ihcfn.c_str());
     if (file_exists(ihcfn.c_str()))
     {
         mtx.lock();

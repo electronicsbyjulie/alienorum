@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
+#include <memory>
 #include <math.h>
 #include <cmath>
 #include <fstream>
@@ -966,6 +967,63 @@ std::string Roman(int num)
     }
 
     return result;
+}
+
+bool refresh_gzip_file(const char *filename)
+{
+    namespace fs = std::filesystem;
+    const fs::path target(filename);
+    const fs::path compressed = target.string() + ".gz";
+    if (!fs::exists(compressed)) return fs::exists(target);
+    const auto modified = fs::last_write_time(compressed);
+    if (fs::exists(target) && fs::last_write_time(target) >= modified) return true;
+
+    const fs::path temporary = target.string() + ".refresh.tmp";
+    const auto fail = [&]()
+    {
+        std::error_code error;
+        fs::remove(temporary, error);
+        std::cerr << "Could not refresh " << target << " from " << compressed << std::endl;
+        return false;
+    };
+    std::unique_ptr<archive, decltype(&archive_read_free)> input(archive_read_new(), archive_read_free);
+    if (!input) return fail();
+    archive_read_support_filter_gzip(input.get());
+    archive_read_support_format_raw(input.get());
+    archive_entry *entry = nullptr;
+    if (archive_read_open_filename(input.get(), compressed.string().c_str(), 65536) != ARCHIVE_OK
+        || archive_read_next_header(input.get(), &entry) != ARCHIVE_OK
+        || archive_filter_code(input.get(), 0) != ARCHIVE_FILTER_GZIP) return fail();
+
+    std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
+    if (!output) return fail();
+    char buffer[65536];
+    la_ssize_t count;
+    while ((count = archive_read_data(input.get(), buffer, sizeof(buffer))) > 0)
+    {
+        output.write(buffer, count);
+        if (!output) break;
+    }
+    const bool complete = count == 0 && output.good() && archive_read_close(input.get()) == ARCHIVE_OK;
+    output.close();
+    if (!complete || !output) return fail();
+
+    // Gzip's embedded date can predate a Git pull. Use the archive's filesystem date
+    // so an unchanged archive is expanded only once.
+    std::error_code error;
+    fs::last_write_time(temporary, modified, error);
+    if (error) return fail();
+    fs::rename(temporary, target, error);
+#ifdef _WIN32
+    if (error)
+    {
+        fs::copy_file(temporary, target, fs::copy_options::overwrite_existing, error);
+        if (!error) fs::remove(temporary, error);
+    }
+#endif
+    if (error) return fail();
+    std::cout << "Refreshed " << target << " from " << compressed << std::endl;
+    return true;
 }
 
 bool extract_archive(const char* filename)

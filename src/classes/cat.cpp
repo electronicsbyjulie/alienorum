@@ -6127,17 +6127,8 @@ int alienorum::CatalogReader::read_condensed_star_cat()
     }
 
     std::string str, path = get_condensed_starcat_name();
+    refresh_gzip_file(path.c_str());
     FILE *fp = fopen(path.c_str(), "r");
-
-    if (!fp)
-    {
-        std::string gzpath = path + ".gz";
-        if (file_exists(gzpath.c_str()))
-        {
-            extract_archive(gzpath.c_str());
-            fp = fopen(path.c_str(), "rb");
-        }
-    }
 
     if (!fp) return 0;
 
