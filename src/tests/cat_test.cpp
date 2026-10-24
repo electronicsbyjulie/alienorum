@@ -170,8 +170,14 @@ TEST_F(StellarRotationTest, OrionSystemsKeepIdentityHierarchyAndPlanesAcrossRelo
     const int imported = reader.read_stellar_systems(cels);
     EXPECT_GT(imported, 25);
     const int total = ncelobjs;
+    std::map<std::string, double> initial_magnitudes;
+    for (int i = 1; cels[i]; ++i) initial_magnitudes[cels[i]->name] = static_cast<Star*>(cels[i])->apparent_magnitude;
     EXPECT_EQ(reader.read_stellar_systems(cels), imported);
     EXPECT_EQ(ncelobjs, total);
+    for (int i = 1; cels[i]; ++i)
+    {
+        EXPECT_NEAR(static_cast<Star*>(cels[i])->apparent_magnitude, initial_magnitudes.at(cels[i]->name), 1e-12);
+    }
     hd[37020]->BayerGrkno = 7;
     hd[37020]->FlamsteedNo = 41;
     strcpy(hd[37020]->constellation, "Ori");
@@ -226,8 +232,38 @@ TEST_F(StellarRotationTest, OrionSystemsKeepIdentityHierarchyAndPlanesAcrossRelo
         const double distance = c->distance;
         c->make_companion_of(a, 'Z');
         EXPECT_FALSE(c->orbit);
+        EXPECT_NEAR(a->right_ascension * fiftyseven, 83.81603095833333, 1e-12);
+        EXPECT_NEAR(a->declination * fiftyseven, -5.387317805555556, 1e-12);
         EXPECT_DOUBLE_EQ(c->distance, distance);
         EXPECT_NE(c->multisys, a->multisys);
+        for (const auto& calibration : std::vector<std::pair<std::string, double>>
+            {{"Theta1 Orionis A", 6.72}, {"Theta1 Orionis B", 7.90}, {"Theta1 Orionis C", 5.13},
+             {"Theta1 Orionis D", 6.70}, {"Theta1 Orionis E", 11.40}})
+        {
+            double flux = 0;
+            for (int i = 1; cels[i]; ++i)
+            {
+                Star* member = static_cast<Star*>(cels[i]);
+                if (member->stellar_system.value("system", "") != calibration.first) continue;
+                flux += pow(10.0, -.4 * member->apparent_magnitude);
+                EXPECT_TRUE(member->apparent_magnitude_estimated);
+                EXPECT_TRUE(member->stellar_system.at("photometry").at("v_estimated"));
+            }
+            EXPECT_NEAR(-2.5 * log10(flux), calibration.second, .006);
+        }
+        Star* b1 = named("Theta1 Orionis B1");
+        Star* b6 = named("Theta1 Orionis B6");
+        ASSERT_NE(b1, nullptr);
+        ASSERT_NE(b6, nullptr);
+        EXPECT_LT(b1->apparent_magnitude, b6->apparent_magnitude);
+        EXPECT_LT(b1->apparent_magnitude, b2->apparent_magnitude);
+        EXPECT_LT(b1->apparent_magnitude, b3->apparent_magnitude);
+        EXPECT_LT(c->apparent_magnitude, c2->apparent_magnitude);
+        EXPECT_EQ(b6->stellar_system.at("photometry").at("relative_measurement").at("band"), "K");
+        Star* a2 = named("Theta1 Orionis A2");
+        ASSERT_NE(a2, nullptr);
+        EXPECT_DOUBLE_EQ(a2->temperature, 6500);
+        EXPECT_TRUE(a2->stellar_system.at("temperature_estimated"));
         Star restored;
         restored.from_json(b3->to_json());
         EXPECT_EQ(restored.stellar_system, b3->stellar_system);
@@ -248,6 +284,69 @@ TEST_F(StellarRotationTest, OrionSystemsKeepIdentityHierarchyAndPlanesAcrossRelo
     std::fstream input("orion-universe.json", std::ios::in);
     ASSERT_TRUE(Serialization::load_all(input, cels, MAX_CELOBJS, false));
     EXPECT_EQ(ncelobjs, total);
+    check();
+}
+
+TEST_F(StellarRotationTest, TrapeziumPrimaryGeometryMatchesTheWikipediaPhotograph)
+{
+    std::filesystem::copy_file(original / "catalogs/stellar_systems.json", "catalogs/stellar_systems.json");
+    std::ofstream("catalogs/star_orbits.dat") << "# Explicit system test\n";
+    CatalogReader reader;
+    ASSERT_EQ(reader.read_stellar_systems(cels), 28);
+    const auto root = [](char letter)
+    {
+        const std::string name = std::string("The1Ori ") + letter;
+        const int index = find_object(name.c_str(), true, 9e29, 1);
+        return index >= 0 ? static_cast<Star*>(cels[index]) : nullptr;
+    };
+    const auto check = [&]()
+    {
+        Star* c = root('C');
+        ASSERT_NE(c, nullptr);
+        const CelestialLocation origin;
+        const double azimuth = -c->RA_as_radians(origin, azimuth_correction);
+        const double altitude = c->Decl_as_radians(origin);
+        struct RestoreView
+        {
+            ViewMode saved = view_mode;
+            ~RestoreView() { view_mode = saved; }
+        } restore;
+        view_mode = vm_spaceship;
+        std::map<char, Cartesian2D> projected;
+        for (char letter : {'A', 'B', 'C', 'D', 'E'})
+        {
+            Star* object = root(letter);
+            ASSERT_NE(object, nullptr);
+            EXPECT_FALSE(object->orbit);
+            projected[letter] = Cartesian2D(Point(object->location), azimuth, altitude, 1);
+        }
+        // Approximate stellar-core centers measured in the 296x326 Wikipedia photograph:
+        // https://en.wikipedia.org/wiki/File:TrapeziumStars.jpg
+        // C and D establish rotation and scale; A, B, and E independently verify the figure.
+        const std::map<char, Cartesian2D> photograph =
+        {
+            {'A', {187.35, 136.45}}, {'B', {174.95, 111.97}}, {'C', {156.51, 162.44}},
+            {'D', {120.54, 140.84}}, {'E', {191.33, 123.22}}
+        };
+        const Cartesian2D baseline(projected.at('D').x - projected.at('C').x, projected.at('D').y - projected.at('C').y);
+        const Cartesian2D image_baseline(photograph.at('D').x - photograph.at('C').x, photograph.at('D').y - photograph.at('C').y);
+        const double denominator = baseline.x * baseline.x + baseline.y * baseline.y;
+        const double a = (baseline.x * image_baseline.x + baseline.y * image_baseline.y) / denominator;
+        const double b = (baseline.x * image_baseline.y - baseline.y * image_baseline.x) / denominator;
+        for (char letter : {'A', 'B', 'E'})
+        {
+            const Cartesian2D offset(projected.at(letter).x - projected.at('C').x, projected.at(letter).y - projected.at('C').y);
+            const Cartesian2D aligned(photograph.at('C').x + a * offset.x - b * offset.y,
+                photograph.at('C').y + b * offset.x + a * offset.y);
+            EXPECT_LT(std::hypot(aligned.x - photograph.at(letter).x, aligned.y - photograph.at(letter).y), 2.0) << letter;
+        }
+    };
+    check();
+    ASSERT_TRUE(reader.bake_condensed_star_orbits());
+    delete_the_universe();
+    std::fill(hd.begin(), hd.end(), nullptr);
+    std::fill(hip.begin(), hip.end(), nullptr);
+    ASSERT_EQ(reader.read_condensed_star_cat(), 29);
     check();
 }
 

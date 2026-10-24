@@ -1,5 +1,5 @@
 {
-    "version": 1,
+    "version": 2,
     "visual_groups": [
         "05353-0524"
     ],
@@ -13,7 +13,9 @@
         "https://en.wikipedia.org/wiki/Theta2_Orionis",
         "https://arxiv.org/abs/1809.10376",
         "https://simbad.cds.unistra.fr/simbad/",
-        "https://cdsarc.cds.unistra.fr/ftp/I/274/"
+        "https://cdsarc.cds.unistra.fr/ftp/I/274/",
+        "https://arxiv.org/abs/1303.5091",
+        "https://arxiv.org/abs/1308.4155"
     ],
     "notes": [
         "System letters identify separate physical systems, never StarMulti slots.",
@@ -21,7 +23,8 @@
         "Projected separations provide circular display estimates, not measured semimajor axes. Unspecified phase uses J2000.",
         "Cluster distance 414 pc is adopted for F through I. H component suffixes A/B are display labels; Wikipedia lists the pair as H.",
         "E combined V magnitude 11.40 is divided equally between its nearly identical components.",
-        "Candidate C3 in Theta1 C and unbound or uncertain visual D2 are omitted."
+        "Candidate C3 in Theta1 C and unbound or uncertain visual D2 are omitted.",
+        "For calibrated systems, the combined V magnitude constrains total received light. Individual V values inferred from other passbands or luminosities are estimates; infrared magnitudes are never treated as V measurements."
     ],
     "systems": [
         {
@@ -45,7 +48,7 @@
                     "mass": 15.01,
                     "radius": 4.2,
                     "temperature": 30500,
-                    "apparent_magnitude": 6.72
+                    "luminosity": 15800
                 },
                 {
                     "label": "A3",
@@ -79,15 +82,28 @@
                     "orbit": {
                         "projected_au": 90
                     },
-                    "notes": "Projected separation supplies a circular display orbit; outer plane and phase unknown.",
+                    "notes": "Temperature is an F-type estimate for a young star; mass alone does not determine its temperature. The outer orbit remains an estimate.",
                     "aliases": [
                         "The1Ori A2",
                         "Theta1 Ori A2"
-                    ]
+                    ],
+                    "relative_photometry": {
+                        "delta_magnitude": 1.63,
+                        "wavelength_m": 2.2e-06,
+                        "band": "K",
+                        "source": "https://arxiv.org/abs/1809.10376#Table4"
+                    },
+                    "temperature": 6500,
+                    "temperature_estimated": true
                 }
             ],
             "hd": 37020,
-            "hip": 26220
+            "hip": 26220,
+            "photometry": {
+                "combined_v_magnitude": 6.72,
+                "source": "https://en.wikipedia.org/wiki/Theta1_Orionis_A",
+                "allocation": "estimated component V fluxes normalized to observed combined V"
+            }
         },
         {
             "name": "Theta1 Orionis B",
@@ -110,7 +126,7 @@
                     "mass": 7.2,
                     "radius": 3,
                     "temperature": 19320,
-                    "apparent_magnitude": 7.9
+                    "luminosity": 776
                 },
                 {
                     "label": "B5",
@@ -123,12 +139,20 @@
                     "luminosity": 80,
                     "orbit": {
                         "period_days": 6.471,
-                        "sma_au": 0.12
+                        "sma_au": 0.12,
+                        "inclination_deg": 89.0
                     },
                     "aliases": [
                         "The1Ori B5",
                         "Theta1 Ori B5"
-                    ]
+                    ],
+                    "relative_photometry": {
+                        "flux_ratio": 0.0827300930713547,
+                        "wavelength_m": 5.5e-07,
+                        "band": "MOST optical model, adopted as an approximate V ratio",
+                        "source": "https://arxiv.org/abs/1303.5091#Table3"
+                    },
+                    "defines_system_plane": true
                 },
                 {
                     "label": "B2",
@@ -141,7 +165,13 @@
                     "aliases": [
                         "The1Ori B2",
                         "Theta1 Ori B2"
-                    ]
+                    ],
+                    "relative_photometry": {
+                        "delta_magnitude": 1.6,
+                        "wavelength_m": 2.2e-06,
+                        "band": "K",
+                        "source": "https://arxiv.org/abs/1809.10376#Table4"
+                    }
                 },
                 {
                     "label": "B3",
@@ -154,7 +184,13 @@
                     "aliases": [
                         "The1Ori B3",
                         "Theta1 Ori B3"
-                    ]
+                    ],
+                    "relative_photometry": {
+                        "delta_magnitude": 2.6,
+                        "wavelength_m": 2.2e-06,
+                        "band": "K",
+                        "source": "https://arxiv.org/abs/1809.10376#Table4"
+                    }
                 },
                 {
                     "label": "B4",
@@ -167,7 +203,13 @@
                     "aliases": [
                         "The1Ori B4",
                         "Theta1 Ori B4"
-                    ]
+                    ],
+                    "relative_photometry": {
+                        "delta_magnitude": 5.66,
+                        "wavelength_m": 2.2e-06,
+                        "band": "K",
+                        "source": "https://arxiv.org/abs/1809.10376#Table4"
+                    }
                 },
                 {
                     "label": "B6",
@@ -182,10 +224,21 @@
                     "aliases": [
                         "The1Ori B6",
                         "Theta1 Ori B6"
-                    ]
+                    ],
+                    "relative_photometry": {
+                        "delta_magnitude": 1.3,
+                        "wavelength_m": 2.2e-06,
+                        "band": "K",
+                        "source": "https://arxiv.org/abs/1809.10376#Table4"
+                    }
                 }
             ],
-            "hd": 37021
+            "hd": 37021,
+            "photometry": {
+                "combined_v_magnitude": 7.9,
+                "source": "https://en.wikipedia.org/wiki/Theta1_Orionis_B",
+                "allocation": "estimated component V fluxes normalized to observed combined V"
+            }
         },
         {
             "name": "Theta1 Orionis C",
@@ -200,14 +253,14 @@
                     "mass": 33.5,
                     "radius": 8.91,
                     "temperature": 39000,
-                    "apparent_magnitude": 5.13,
                     "aliases": [
                         "The1Ori C",
                         "Theta1 Ori C",
                         "41 Ori C",
                         "The1Ori C1",
                         "Theta1 Ori C1"
-                    ]
+                    ],
+                    "luminosity": 162000
                 },
                 {
                     "label": "C2",
@@ -231,11 +284,22 @@
                     "aliases": [
                         "The1Ori C2",
                         "Theta1 Ori C2"
-                    ]
+                    ],
+                    "relative_photometry": {
+                        "delta_magnitude": 1.43,
+                        "wavelength_m": 2.2e-06,
+                        "band": "K",
+                        "source": "https://arxiv.org/abs/1809.10376#Table4"
+                    }
                 }
             ],
             "hd": 37022,
-            "hip": 26221
+            "hip": 26221,
+            "photometry": {
+                "combined_v_magnitude": 5.13,
+                "source": "https://en.wikipedia.org/wiki/Theta1_Orionis_C",
+                "allocation": "estimated component V fluxes normalized to observed combined V"
+            }
         },
         {
             "name": "Theta1 Orionis D",
@@ -250,14 +314,14 @@
                     "mass": 16,
                     "radius": 5.6,
                     "temperature": 32000,
-                    "apparent_magnitude": 6.7,
                     "aliases": [
                         "The1Ori D",
                         "Theta1 Ori D",
                         "41 Ori D",
                         "The1Ori D1",
                         "Theta1 Ori D1"
-                    ]
+                    ],
+                    "luminosity": 29500
                 },
                 {
                     "label": "D3",
@@ -278,11 +342,23 @@
                     "aliases": [
                         "The1Ori D3",
                         "Theta1 Ori D3"
-                    ]
+                    ],
+                    "relative_photometry": {
+                        "delta_magnitude": 1.15,
+                        "wavelength_m": 2.2e-06,
+                        "band": "K",
+                        "source": "https://arxiv.org/abs/1809.10376#Table4"
+                    },
+                    "temperature": 20000
                 }
             ],
             "hd": 37023,
-            "hip": 26224
+            "hip": 26224,
+            "photometry": {
+                "combined_v_magnitude": 6.7,
+                "source": "https://en.wikipedia.org/wiki/Theta1_Orionis_D",
+                "allocation": "estimated component V fluxes normalized to observed combined V"
+            }
         },
         {
             "name": "Theta1 Orionis E",
@@ -297,14 +373,14 @@
                     "mass": 2.755,
                     "radius": 6.26,
                     "temperature": 5150,
-                    "apparent_magnitude": 12.15,
                     "aliases": [
                         "The1Ori E",
                         "Theta1 Ori E",
                         "41 Ori E",
                         "The1Ori E A",
                         "Theta1 Ori E A"
-                    ]
+                    ],
+                    "luminosity": 24.8
                 },
                 {
                     "label": "E B",
@@ -314,7 +390,6 @@
                     "mass": 2.72,
                     "radius": 6.25,
                     "temperature": 5150,
-                    "apparent_magnitude": 12.15,
                     "defines_system_plane": true,
                     "orbit": {
                         "period_days": 9.89522,
@@ -325,9 +400,15 @@
                     "aliases": [
                         "The1Ori E B",
                         "Theta1 Ori E B"
-                    ]
+                    ],
+                    "luminosity": 24.7
                 }
-            ]
+            ],
+            "photometry": {
+                "combined_v_magnitude": 11.4,
+                "source": "https://en.wikipedia.org/wiki/Theta1_Orionis_E",
+                "allocation": "estimated component V fluxes normalized to observed combined V"
+            }
         },
         {
             "name": "Theta1 Orionis F",
@@ -449,7 +530,7 @@
                     "mass": 29,
                     "radius": 8.2,
                     "temperature": 35000,
-                    "apparent_magnitude": 5.02
+                    "luminosity": 85000
                 },
                 {
                     "label": "A2",
@@ -464,6 +545,12 @@
                     "mass": 12.6,
                     "orbit": {
                         "period_days": 20.9741
+                    },
+                    "relative_photometry": {
+                        "delta_magnitude": 0.76,
+                        "wavelength_m": 2.2e-06,
+                        "band": "K",
+                        "source": "https://arxiv.org/abs/1809.10376#Table4"
                     }
                 },
                 {
@@ -482,7 +569,12 @@
                 }
             ],
             "hd": 37041,
-            "hip": 26235
+            "hip": 26235,
+            "photometry": {
+                "combined_v_magnitude": 5.02,
+                "source": "https://en.wikipedia.org/wiki/Theta2_Orionis",
+                "allocation": "estimated component V fluxes normalized to observed combined V"
+            }
         },
         {
             "name": "Theta2 Orionis B",
@@ -497,14 +589,14 @@
                     "mass": 14.8,
                     "radius": 4.3,
                     "temperature": 29300,
-                    "apparent_magnitude": 6.38,
                     "aliases": [
                         "The2Ori B",
                         "Theta2 Ori B",
                         "43 Ori B",
                         "The2Ori B1",
                         "Theta2 Ori B1"
-                    ]
+                    ],
+                    "luminosity": 12300
                 },
                 {
                     "label": "B2",
@@ -518,10 +610,21 @@
                     "aliases": [
                         "The2Ori B2",
                         "Theta2 Ori B2"
-                    ]
+                    ],
+                    "relative_photometry": {
+                        "delta_magnitude": 4.19,
+                        "wavelength_m": 2.2e-06,
+                        "band": "K",
+                        "source": "https://arxiv.org/abs/1809.10376#Table4"
+                    }
                 }
             ],
-            "hd": 37042
+            "hd": 37042,
+            "photometry": {
+                "combined_v_magnitude": 6.38,
+                "source": "https://en.wikipedia.org/wiki/Theta2_Orionis",
+                "allocation": "estimated component V fluxes normalized to observed combined V"
+            }
         },
         {
             "name": "Theta2 Orionis C",
@@ -543,7 +646,7 @@
                     "spectral_type": "B5V",
                     "mass": 4,
                     "temperature": 13800,
-                    "apparent_magnitude": 8.18
+                    "luminosity": 616
                 },
                 {
                     "label": "C2",
@@ -570,10 +673,21 @@
                     "aliases": [
                         "The2Ori C3",
                         "Theta2 Ori C3"
-                    ]
+                    ],
+                    "relative_photometry": {
+                        "delta_magnitude": 2.35,
+                        "wavelength_m": 2.2e-06,
+                        "band": "K",
+                        "source": "https://arxiv.org/abs/1809.10376#Table4"
+                    }
                 }
             ],
-            "hd": 37062
+            "hd": 37062,
+            "photometry": {
+                "combined_v_magnitude": 8.18,
+                "source": "https://en.wikipedia.org/wiki/Theta2_Orionis",
+                "allocation": "estimated component V fluxes normalized to observed combined V"
+            }
         }
     ]
 }

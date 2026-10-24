@@ -4993,6 +4993,69 @@ int CatalogReader::read_stellar_rotation_catalog(CelestialObject** objects)
     return count;
 }
 
+static void calibrate_stellar_system_photometry(const json& system, const std::map<std::string, Star*>& members)
+{
+    if (!system.contains("photometry")) return;
+    const auto& calibration = system.at("photometry");
+    const double combined = calibration.at("combined_v_magnitude");
+    const auto& reference_record = system.at("members").at(0);
+    Star* reference = members.at(reference_record.at("label").get<std::string>());
+    const double reference_temperature = reference->temperature;
+    const auto luminosity = [](const json& record, const Star* object)
+    {
+        if (record.contains("luminosity")) return record.at("luminosity").get<double>();
+        if (record.contains("radius"))
+        {
+            return pow(object->volumetric_mean_radius / solar_radius, 2) * pow(object->temperature / sun_temp, 4);
+        }
+        return Star::interpolate_mseq_lum(Star::get_mseqidx_from_mass(object->mass / solar_mass));
+    };
+    const double reference_luminosity = luminosity(reference_record, reference);
+    std::map<Star*, double> weights;
+    double total = 0;
+    for (const auto& record : system.at("members"))
+    {
+        Star* object = members.at(record.at("label").get<std::string>());
+        double weight = 1;
+        json provenance = calibration;
+        if (object != reference)
+        {
+            if (record.contains("relative_photometry"))
+            {
+                const auto& relative = record.at("relative_photometry");
+                const double wavelength = relative.at("wavelength_m");
+                weight = relative.contains("flux_ratio") ? relative.at("flux_ratio").get<double>()
+                    : pow(10.0, -0.4 * relative.at("delta_magnitude").get<double>());
+                // Convert the measured passband ratio to an estimated V ratio using stellar colors.
+                weight *= blackbody_flux(object->temperature, V_band) / blackbody_flux(object->temperature, wavelength)
+                    * blackbody_flux(reference_temperature, wavelength) / blackbody_flux(reference_temperature, V_band);
+                provenance["relative_measurement"] = relative;
+                provenance["method"] = "passband ratio with blackbody color estimate";
+            }
+            else
+            {
+                weight = luminosity(record, object) / reference_luminosity
+                    * pow(reference_temperature / object->temperature, 4)
+                    * blackbody_flux(object->temperature, V_band) / blackbody_flux(reference_temperature, V_band);
+                provenance["method"] = "bolometric luminosity and blackbody color estimate";
+            }
+        }
+        else provenance["method"] = "reference component in combined-light allocation";
+        if (!std::isfinite(weight) || weight <= 0) throw std::runtime_error("Invalid stellar photometry weight");
+        weights[object] = weight;
+        total += weight;
+        provenance["v_estimated"] = true;
+        object->stellar_system["photometry"] = std::move(provenance);
+    }
+    for (const auto& [object, weight] : weights)
+    {
+        object->apparent_magnitude = combined - 2.5 * log10(weight / total);
+        object->absolute_magnitude = object->apparent_magnitude - 5 * log10(object->distance / (10 * parsec));
+        object->apparent_magnitude_estimated = true;
+        object->stellar_system["photometry"]["component_v_magnitude"] = object->apparent_magnitude;
+    }
+}
+
 int CatalogReader::read_stellar_systems(CelestialObject** objects)
 {
     std::lock_guard<std::recursive_mutex> catalog_lock(catalog_mutex);
@@ -5053,6 +5116,11 @@ int CatalogReader::read_stellar_systems(CelestialObject** objects)
                 root->parallax = fiftyseventh / (3600 * system.at("distance_pc").get<double>());
                 root->distance_known = true;
                 root->epoch = J2000;
+                root->stellar_system["astrometry"] =
+                {
+                    {"ra_deg", system.at("ra_deg")}, {"dec_deg", system.at("dec_deg")},
+                    {"distance_pc", system.at("distance_pc")}, {"epoch_jd", J2000}
+                };
                 root->update_location(J2000_TIME_T);
                 root->cenobj = root;
                 if (!root->multisys) root->set_component('A', root);
@@ -5076,6 +5144,16 @@ int CatalogReader::read_stellar_systems(CelestialObject** objects)
             }
             if (record.contains("mass")) object->mass = record.at("mass").get<double>() * solar_mass;
             if (record.contains("radius")) object->volumetric_mean_radius = record.at("radius").get<double>() * solar_radius;
+            if (!record.contains("temperature"))
+            {
+                const double index = record.contains("mass")
+                    ? Star::get_mseqidx_from_mass(object->mass / solar_mass)
+                    : Star::get_mseqidx_from_sptyp(object->spectral_type[0] ? object->spectral_type : "G2V");
+                object->temperature = Star::interpolate_mseq_temp(index);
+                object->estimate_BV(object->temperature);
+                object->estimate_UB(object->temperature);
+                object->stellar_system["temperature_estimated"] = true;
+            }
             if (record.contains("apparent_magnitude"))
             {
                 object->apparent_magnitude = record.at("apparent_magnitude");
@@ -5089,11 +5167,7 @@ int CatalogReader::read_stellar_systems(CelestialObject** objects)
             }
             else if (created)
             {
-                const double index = record.contains("mass")
-                    ? Star::get_mseqidx_from_mass(object->mass / solar_mass)
-                    : Star::get_mseqidx_from_sptyp(object->spectral_type[0] ? object->spectral_type : "G2V");
-                object->temperature = Star::interpolate_mseq_temp(index);
-                object->estimate_BV(object->temperature);
+                const double index = Star::get_mseqidx_from_temp(object->temperature);
                 object->absolute_magnitude = 4.74 - 2.5 * log10(Star::interpolate_mseq_lum(index))
                     - Star::bolometric_correction(object->temperature);
                 object->apparent_magnitude = object->absolute_magnitude + 5 * log10(object->distance / (10 * parsec));
@@ -5137,6 +5211,7 @@ int CatalogReader::read_stellar_systems(CelestialObject** objects)
             }
             count++;
         }
+        calibrate_stellar_system_photometry(system, members);
     }
     return count;
 }
@@ -5936,7 +6011,7 @@ static std::string star_orbits_signature()
         hash ^= static_cast<unsigned char>(c);
         hash *= 1099511628211ULL;
     }
-    return "systems1-" + std::to_string(hash);
+    return "systems2-" + std::to_string(hash);
 }
 
 static std::string baked_star_link_key(const json& key)
@@ -6920,6 +6995,15 @@ int alienorum::CatalogReader::read_condensed_star_cat()
         read_field_onebased(buffer, 454, 454, field);
         if (field[0] == 'Y') s->has_custom_name = true;
 
+        if (s->stellar_system.is_object() && s->stellar_system.contains("astrometry"))
+        {
+            const auto& exact = s->stellar_system.at("astrometry");
+            s->right_ascension = exact.at("ra_deg").get<double>() * fiftyseventh;
+            s->declination = exact.at("dec_deg").get<double>() * fiftyseventh;
+            s->distance = exact.at("distance_pc").get<double>() * parsec;
+            s->epoch = exact.at("epoch_jd");
+            s->update_location(simnow);
+        }
         catalog_stars.push_back(s);
         append_cel(s);
         num_read++;

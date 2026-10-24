@@ -818,6 +818,61 @@ TEST_F(RenderingRegressionTest, InnerPairsAndFilteredPrimariesUseTheirProjectedS
     EXPECT_EQ(stellar_display_target(secondary), secondary);
 }
 
+TEST_F(RenderingRegressionTest, CloseCompanionsFollowTheCurrentAstrometricOriginWithoutSelection)
+{
+    Star* sun = make_star("Sun");
+    Star* primary = make_star("Moving primary");
+    primary->set_component('A', primary);
+    primary->distance = 377 * parsec;
+    primary->right_ascension = 83.817225 * fiftyseventh;
+    primary->declination = -5.3852166667 * fiftyseventh;
+    primary->proper_motion_RA = 0.005 * arcsecond / oneyear;
+    primary->proper_motion_decl = 0.002 * arcsecond / oneyear;
+    primary->epoch = J2000;
+    primary->update_location(J2000_TIME_T);
+    Star* companion = make_star("Close companion");
+    companion->make_companion_of(primary, 'B');
+    companion->orbit->semimajor_axis = .12 * AU;
+    companion->orbit->period = 6.471 * oneday;
+    companion->orbit->epoch = J2000;
+    companion->apparent_magnitude = primary->apparent_magnitude = 8;
+    Star* inner = make_star("Nested companion");
+    inner->make_companion_of(companion, 'C');
+    inner->orbit->semimajor_axis = .001 * AU;
+    inner->orbit->period = .1 * oneday;
+    inner->orbit->epoch = J2000;
+    inner->apparent_magnitude = 10;
+    primary->cenobj = companion->cenobj = inner->cenobj = primary;
+    set(here, CelestialLocation());
+    set(mycenobj, static_cast<CelestialObject*>(sun));
+    set(whereami, 0);
+    set(selected, -1);
+    set(trackidx, -1);
+    set(editidx, -1);
+    set(global_brightness, 125.0);
+    set(redo_proper_motions, false);
+    set(simnow, static_cast<double>(J2000_TIME_T));
+    for (double years : {26.0, 27.0})
+    {
+        simnow = J2000_TIME_T + years * oneyear;
+        const Point expected = Point::from_ra_dec(primary->right_ascension + primary->proper_motion_RA * years * oneyear,
+            primary->declination + primary->proper_motion_decl * years * oneyear, primary->distance);
+        for (double magnification : {1.0, 9650.211296})
+        {
+            zoom = magnification;
+            // The ancestors can be outside the camera and can occur later in an update pass.
+            primary->drawnx = primary->drawny = -1e9;
+            companion->drawnx = companion->drawny = -1e9;
+            ASSERT_TRUE(compute_object_location(inner));
+            EXPECT_LT((primary->location.system_center - expected).magnitude(), 1);
+            EXPECT_LT((primary->tmprel - expected).magnitude(), 1);
+            EXPECT_LT(companion->location.distance_to(primary->location), .121 * AU);
+            EXPECT_LT(inner->location.distance_to(companion->location), .00101 * AU);
+            EXPECT_LT(find_3D_angle(Point(primary->location), Point(companion->location), Point(here)), .00033 * arcsecond);
+        }
+    }
+}
+
 TEST_F(RenderingRegressionTest, ObservingObjectNeverEntersSkyRenderingOrRetainsPickingBounds)
 {
     std::vector<CelestialObject*> objects =

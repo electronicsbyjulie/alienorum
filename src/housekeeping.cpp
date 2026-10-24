@@ -215,21 +215,35 @@ bool compute_object_location(CelestialObject* cel)
                     return false;
                 }
                 if (!redo_proper_motions && !cel->orbit && !((Star*)cel)->variability_period) return false;
-                if (cel->orbit && cel->orbit->center && (whereami < 0 || cel->orbit->center != cels[whereami])
-                    && (cel->orbit->center->drawnx < 0 || cel->orbit->center->drawny < 0
-                        || cel->orbit->center->drawnx > dispw || cel->orbit->center->drawny > disph
-                        || cel->orbit->semimajor_axis < cel->location.distance_to(here)*1e-4*zoom
-                        )
-                     && !((Star*)cel)->is_universally_visible()
-                    )
-                {
-                    cel->drawnx = cel->drawny = -1e9;
-                    return false;
-                }
             }
         }
 
-        ((Star*)cel)->update_location(simnow - light_travel_time);
+        {
+            Star* lineage[26];
+            int count = 0;
+            Star* member = static_cast<Star*>(cel);
+            // Update ancestors first, including parents omitted by the visibility pass.
+            while (member)
+            {
+                if (count == 26) return false;
+                for (int ancestor = 0; ancestor < count; ++ancestor)
+                {
+                    if (lineage[ancestor] == member) return false;
+                }
+                lineage[count++] = member;
+                if (!member->orbit || !member->orbit->center || member->orbit->center->typeclass() != class_star) break;
+                member = static_cast<Star*>(member->orbit->center);
+            }
+            while (count)
+            {
+                Star* ancestor = lineage[--count];
+                // Catalog astrometry already describes received light at its reference epoch.
+                // Apply light-travel delay to orbital phase, without shifting proper motion twice.
+                ancestor->update_location(ancestor->orbit ? simnow - light_travel_time : simnow);
+                CelestialLocation relative = ancestor->location - here;
+                ancestor->tmprel = Point(relative);
+            }
+        }
         tmp = cel->location - here;
         cel->tmprel = Point(tmp);
         if (!system_object && i > 0 && whereami >= 0 && cel->tmprel.magnitude() < cels[whereami]->volumetric_mean_radius)
