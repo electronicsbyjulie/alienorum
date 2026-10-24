@@ -733,6 +733,8 @@ json CelestialObject::to_json()
     towrite["distance_known"] = distance_known;
     towrite["home_world"] = home_world;
     towrite["map_inverted"] = map_inverted;
+    towrite["rnd_seed"] = rnd_seed;
+    towrite["fictitious_map_height"] = fictitious_map_height;
     towrite["orbit_center_codes"] = orbit_center_codes;
     towrite["epoch"] = epoch;
     towrite["equinox"] = equinox * fiftyseven;
@@ -777,6 +779,8 @@ bool CelestialObject::from_json(json j)
 {
     home_world = j.value("home_world", false);
     map_inverted = j.value("map_inverted", false);
+    rnd_seed = j.value("rnd_seed", 0);
+    fictitious_map_height = j.value("fictitious_map_height", 768u);
     orbit_center_codes = j.value("orbit_center_codes", std::vector<std::string>{});
     try
     {
@@ -2314,8 +2318,9 @@ void alienorum::Atmosphere::calculate_tau(double pressure)
 
 void Map::generate_rocky_map(CelestialObject *cel)
 {
-    bool want_overcast_sky = false;
+    if (render_saved_planet(cel, [this](CelestialObject* working) { generate_rocky_map(working); })) return;
     Planet *p = (Planet*)cel;
+    bool want_overcast_sky = p->preserve_loaded_parameters && p->overcast;
     assert(cel->typeclass() == class_planet || cel->typeclass() == class_moon);
     std::this_thread::sleep_for(std::chrono::milliseconds((int)frand(13,29)));
     bool create_bump;
@@ -2330,13 +2335,13 @@ void Map::generate_rocky_map(CelestialObject *cel)
         double BV = cel->BV_color;
         if (BV < 0.8) BV = 0.8;                 // most rocks aren't blue
         bool force_has_water = false;
-        if (cel->type == waterworld || cel->type == hycean)
+        if (!p->preserve_loaded_parameters && (cel->type == waterworld || cel->type == hycean))
         {
             p->has_water = 1;
             force_has_water = true;
         }
 
-        p->temperature = 0;
+        if (!p->preserve_loaded_parameters) p->temperature = 0;
         double T_surf = p->estimate_surface_temperature();
         const double Tboil = water_freezing+100;                                     // Reference pressure
 
@@ -2354,7 +2359,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
         bool life_possible = p->estimate_habitability();
         T_surf = p->estimate_surface_temperature();
 
-        if (!force_has_water && pressure >= 5*oneatm && T_surf >= 400)
+        if (!p->preserve_loaded_parameters && !force_has_water && pressure >= 5*oneatm && T_surf >= 400)
         {
             p->has_water = 0;
             life_possible = false;
@@ -2362,7 +2367,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
             p->transparent_clouds = false;
             p->overcast = true;
         }
-        else if (!force_has_water && pressure < 150)
+        else if (!p->preserve_loaded_parameters && !force_has_water && pressure < 150)
         {
             p->has_water = 0;
             life_possible = false;
@@ -2431,7 +2436,8 @@ void Map::generate_rocky_map(CelestialObject *cel)
         double edge_dist, mottle_strength, ms, invms, mottle_noise, hue_noise;
         unsigned int x, y;
         int idx, province_idx, neighbor_province_idx, mottled_idx;
-        if (p->has_water && life_possible && randomize_txgen && !p->vegetation_r && !p->vegetation_g && !p->vegetation_b)
+        if (!p->preserve_loaded_parameters && p->has_water && life_possible && randomize_txgen
+            && !p->vegetation_r && !p->vegetation_g && !p->vegetation_b)
         {
             CelestialObject *light_center = cel->get_light_center();
             const double stellar_temperature = light_center && light_center->typeclass() == class_star
@@ -2674,7 +2680,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
             }
         }
 
-        cel->BV_color = 0.9 - p->has_water;
+        if (!p->preserve_loaded_parameters) cel->BV_color = 0.9 - p->has_water;
 
     }
     catch (...)
@@ -2706,7 +2712,7 @@ void Map::generate_surface_rings(CelestialObject *cel)
     {
         p->generate_ring_parameters();
     }
-    else
+    else if (!p->preserve_loaded_parameters)
     {
         p->ring_radius = 0;
     }
@@ -2733,6 +2739,7 @@ void Map::generate_surface_rings(CelestialObject *cel)
 
 void alienorum::Map::generate_lava_map(CelestialObject *cel, bool is_night)
 {
+    if (render_saved_planet(cel, [this, is_night](CelestialObject* working) { generate_lava_map(working, is_night); })) return;
     std::this_thread::sleep_for(std::chrono::milliseconds((int)frand(13,29)));
     std::unique_lock<std::mutex> lock(mtx);
     try
@@ -3093,6 +3100,7 @@ void Map::stamp_craters(CelestialObject *cel, double bump_scale)
 
 void Map::generate_gas_giant_map(CelestialObject *cel)
 {
+    if (render_saved_planet(cel, [this](CelestialObject* working) { generate_gas_giant_map(working); })) return;
     int num_bands, i, lr;
     bool tidal_locked_to_star;
     bool add_storm;
@@ -3125,7 +3133,8 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
         inv_lon_scale = 1.0 / lon_scale;
         std::cout << "Allocated " << allocated << " pixels for fictitious gas giant map." << std::endl;
 
-        p->ensure_atmosphere()->ensure_composition()->generate_fictitious_for_planet(p->type);
+        if (!p->preserve_loaded_parameters)
+            p->ensure_atmosphere()->ensure_composition()->generate_fictitious_for_planet(p->type);
         tidal_locked_to_star = p->orbit && p->orbit->center && p->orbit->center->type == star 
             && (fabs((p->sidereal_rotational_period / p->orbit->period) - 1) < 0.01);
 
@@ -3440,6 +3449,7 @@ void alienorum::Map::generate_overcast_sky(CelestialObject *cel)
 
 void CelestialObject::generate_water_clouds()
 {
+    if (render_saved_planet(this, [](CelestialObject* working) { working->generate_water_clouds(); })) return;
     // Surface regeneration and the loader can both reach this fallback.
     std::lock_guard<std::mutex> lock(mtx);
     const cel_obj_class cls = typeclass();
@@ -3449,6 +3459,9 @@ void CelestialObject::generate_water_clouds()
     {
         return;
     }
+
+    const Planet* planet = static_cast<Planet*>(this);
+    if (planet->preserve_loaded_parameters && (!transparent_clouds || overcast)) return;
 
     try
     {
@@ -3469,6 +3482,11 @@ void CelestialObject::generate_water_clouds()
 
 bool Map::generate_water_cloud_map(CelestialObject *cel)
 {
+    bool generated = false;
+    if (render_saved_planet(cel, [this, &generated](CelestialObject* working)
+        {
+            generated = generate_water_cloud_map(working);
+        })) return generated;
     // It was a humid autumn evening when I had the AI write this code... Indigenous People's Day 2026 (fuck Columbus),
     // and the doors to the house were open so the warm humid Phoenix air was permeating everything. I could hear rain
     // coming and going outside. So here I am testing the new exo-clouds, viewing from the surface of HD 40307 g, this
@@ -4152,6 +4170,7 @@ void alienorum::Map::generate_ring_map(CelestialObject *cel, int res, double rir
 
 void alienorum::Map::_map_resample_bump_regen_rocky(CelestialObject *cel)
 {
+    if (render_saved_planet(cel, [this](CelestialObject* working) { _map_resample_bump_regen_rocky(working); })) return;
     surface_materials.clear();
     unsigned char *lred = red_data, *lgreen = green_data, *lblue = blue_data;
     red_data = green_data = blue_data = nullptr;

@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <fstream>
 #include <chrono>
+#include <thread>
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp>
 #include "../classes/planet.h"
@@ -763,6 +764,262 @@ TEST(PlanetTest, JsonSerializationRoundTrip)
     // Ensure the atmosphere was recreated and populated
     ASSERT_NE(restored.atm, nullptr);
     EXPECT_DOUBLE_EQ(restored.get_surface_pressure(), 100000.0);
+}
+
+class SavedPlanetMapTest : public UniverseFixture
+{
+protected:
+    bool original_randomize = false;
+
+    void SetUp() override
+    {
+        UniverseFixture::SetUp();
+        original_randomize = randomize_txgen;
+        randomize_txgen = true;
+    }
+
+    void TearDown() override
+    {
+        randomize_txgen = original_randomize;
+        delete_the_universe();
+        UniverseFixture::TearDown();
+    }
+
+    json saved_world(Star* host, cel_obj_type type)
+    {
+        Planet original;
+        strcpy(original.name, "Saved texture world");
+        original.type = type;
+        original.mass = 2 * earth_mass;
+        original.volumetric_mean_radius = 1.2 * earth_radius;
+        original.mass_evidence = PlanetMeasurement::estimated;
+        original.radius_evidence = PlanetMeasurement::observed;
+        original.albedo = .37;
+        original.temperature = type == lavaworld ? 1600 : 290;
+        original.has_water = .42f;
+        original.vegetation_r = 151;
+        original.vegetation_g = 37;
+        original.vegetation_b = 91;
+        original.plant_trunk_height = 17;
+        original.plant_trunk_width = .8;
+        original.plant_crown_size = 11;
+        original.plant_crown_oblateness = .23;
+        original.BV_color = .83;
+        original.rnd_seed = 4213;
+        original.fictitious_map_height = 32;
+        original.sidereal_rotational_period = .8 * oneday;
+        original.obliquity = .35;
+        original.equinox = .71;
+        original.orbit = new Orbit;
+        original.orbit->center = host;
+        original.orbit->semimajor_axis = AU;
+        original.orbit->compute_period(original.mass);
+        Atmosphere* air = original.ensure_atmosphere();
+        air->surface_pressure = .93 * oneatm;
+        air->pressure_supplied = true;
+        air->tau = .19;
+        air->particulates = .21;
+        AtmosphereComposition* composition = air->ensure_composition();
+        composition->N2_portion = .78;
+        composition->O2_portion = .2;
+        composition->Ar_portion = .01;
+        composition->H2O_portion = .01;
+        return original.to_json();
+    }
+
+    void verify_maps(Planet* world)
+    {
+        world->fictitious_map_height = 32;
+        world->ignore_map_files = true;
+        json before = world->to_json();
+        load_textures(world);
+        Map* map = uses_gaseous_map(world->type) ? world->cloud_map : world->surf_map;
+        ASSERT_NE(map, nullptr);
+        ASSERT_TRUE(map->is_complete());
+        EXPECT_EQ(world->to_json(), before);
+        if (uses_rocky_map(world->type))
+        {
+            world->fictitious_map_height = 48;
+            world->surf_map->_map_resample_bump_regen_rocky(world);
+            EXPECT_EQ(world->surf_map->get_height(), 48u);
+            before["fictitious_map_height"] = 48;
+            EXPECT_EQ(world->to_json(), before);
+        }
+        // Rendering caches must retain the surviving body's owner after the working copy dies.
+        EXPECT_TRUE(std::isfinite(map->elevation_at(0, 0)));
+    }
+};
+
+TEST_F(SavedPlanetMapTest, LoadedParametersSurviveEverySurfaceGeneratorAndUpdates)
+{
+    Star* host = make_star();
+    for (cel_obj_type type : {rocky, icy, waterworld, hycean, lavaworld, gas_giant, ice_giant, hot_jupiter, clearskies})
+    {
+        SCOPED_TRACE(type);
+        Planet* world = new Planet;
+        ASSERT_TRUE(world->from_json(saved_world(host, type)));
+        world->orbit->center = host;
+        ASSERT_TRUE(append_cel(world));
+        verify_maps(world);
+        EXPECT_EQ(world->ring_map, nullptr);
+    }
+}
+
+TEST_F(SavedPlanetMapTest, SavedZerosAirlessWorldsAndMoonPropertiesSurviveGeneration)
+{
+    Star* host = make_star();
+    json data = saved_world(host, rocky);
+    data["has_water"] = 0;
+    data["vegetation_r"] = data["vegetation_g"] = data["vegetation_b"] = 0;
+    data.erase("atmosphere");
+    Planet* world = new Planet;
+    ASSERT_TRUE(world->from_json(data));
+    world->orbit->center = host;
+    ASSERT_TRUE(append_cel(world));
+    verify_maps(world);
+    EXPECT_EQ(world->atm, nullptr);
+    EXPECT_EQ(world->has_water, 0);
+    EXPECT_EQ(world->vegetation_r + world->vegetation_g + world->vegetation_b, 0);
+
+    data["typeclass"] = class_moon;
+    data["!name"] = "Saved texture moon";
+    data["depth"] = 1100;
+    data["width"] = 1200;
+    data["height"] = 1300;
+    Moon* moon = new Moon;
+    ASSERT_TRUE(moon->from_json(data));
+    moon->orbit->center = world;
+    moon->orbit->semimajor_axis = 4e8;
+    moon->orbit->compute_period(moon->mass);
+    ASSERT_TRUE(append_cel(moon));
+    json before = moon->to_json();
+    verify_maps(moon);
+    before["fictitious_map_height"] = 48;
+    EXPECT_EQ(moon->to_json(), before);
+}
+
+TEST_F(SavedPlanetMapTest, ReloadRestoresSavedDefaultsOverExistingAtmosphereAndRings)
+{
+    Star* host = make_star();
+    json data = saved_world(host, rocky);
+    data.erase("atmosphere");
+    data.erase("albedo");
+    data.erase("temperature");
+    data["ring_status_known"] = true;
+    Planet* world = new Planet;
+    ASSERT_TRUE(world->from_json(data));
+    world->orbit->center = host;
+    ASSERT_TRUE(append_cel(world));
+    const json saved = world->to_json();
+    world->ensure_atmosphere()->ensure_composition()->generate_fictitious_for_planet(gas_giant);
+    world->albedo = .6;
+    world->temperature = 500;
+    world->J2 = .01;
+    world->msini = earth_mass;
+    world->ring_radius = 2e7;
+    world->ring_inner_radius = 1e7;
+    world->ring_mean_opacity = .9;
+    world->vegetation_r = 0;
+    world->has_water = 0;
+    world->rnd_seed = 123;
+    world->fictitious_map_height = 768;
+    ASSERT_TRUE(world->from_json(saved));
+    world->orbit->center = host;
+    EXPECT_EQ(world->to_json(), saved);
+    verify_maps(world);
+}
+
+TEST_F(SavedPlanetMapTest, UniverseImportAndRenderingPreserveAtmosphereAndRingGeometry)
+{
+    Star* host = make_star();
+    json world = saved_world(host, gas_giant);
+    world["ring_radius"] = 10000;
+    world["ring_inner_radius"] = 8500;
+    world["ring_mean_opacity"] = .47;
+    const auto path = std::filesystem::temp_directory_path() / "alienorum_saved_texture_parameters.json";
+    {
+        std::ofstream out(path);
+        out << json({{"star", host->to_json()}, {"planet", world}}).dump();
+    }
+    delete_the_universe();
+    std::fstream in(path, std::ios::in);
+    ASSERT_TRUE(Serialization::load_all(in, cels, MAX_CELOBJS));
+    in.close();
+    std::filesystem::remove(path);
+    Planet* restored = nullptr;
+    for (int i = 0; cels[i]; ++i)
+        if (cels[i]->typeclass() == class_planet) restored = static_cast<Planet*>(cels[i]);
+    ASSERT_NE(restored, nullptr);
+    EXPECT_EQ(restored->atm->to_json(), world.at("atmosphere"));
+    EXPECT_EQ(restored->has_water, .42f);
+    verify_maps(restored);
+    EXPECT_DOUBLE_EQ(restored->ring_radius, 1e7);
+    EXPECT_DOUBLE_EQ(restored->ring_inner_radius, 8.5e6);
+    EXPECT_DOUBLE_EQ(restored->ring_mean_opacity, .47);
+    ASSERT_NE(restored->ring_map, nullptr);
+    EXPECT_TRUE(restored->ring_map->is_complete());
+}
+
+TEST_F(SavedPlanetMapTest, SavedCloudModesRemainConsistentWithGeneratedTextures)
+{
+    Star* host = make_star();
+    for (bool overcast : {false, true})
+    {
+        SCOPED_TRACE(overcast);
+        json data = saved_world(host, rocky);
+        data["transparent_clouds"] = !overcast;
+        data["overcast"] = overcast;
+        Planet* world = new Planet;
+        ASSERT_TRUE(world->from_json(data));
+        world->orbit->center = host;
+        ASSERT_TRUE(append_cel(world));
+        verify_maps(world);
+        ASSERT_NE(world->cloud_map, nullptr);
+        EXPECT_TRUE(world->cloud_map->is_complete());
+        EXPECT_EQ(world->overcast, overcast);
+        EXPECT_EQ(world->transparent_clouds, !overcast);
+    }
+}
+
+TEST_F(SavedPlanetMapTest, UnknownSurfaceClassificationRetainsSavedAppearance)
+{
+    Star* host = make_star();
+    json data = saved_world(host, static_cast<cel_obj_type>(0x777));
+    Planet* world = new Planet;
+    ASSERT_TRUE(world->from_json(data));
+    world->orbit->center = host;
+    ASSERT_TRUE(append_cel(world));
+    world->fictitious_map_height = 32;
+    world->ignore_map_files = true;
+    json before = world->to_json();
+    load_textures(world);
+    EXPECT_EQ(world->type, rocky);
+    ASSERT_NE(world->surf_map, nullptr);
+    EXPECT_TRUE(world->surf_map->is_complete());
+    json after = world->to_json();
+    before["type"] = after["type"];
+    after.erase("classification_evidence");
+    before.erase("classification_evidence");
+    EXPECT_EQ(after, before);
+}
+
+TEST_F(SavedPlanetMapTest, ConcurrentTextureRequestsPublishOneConsistentSetOfMaps)
+{
+    Star* host = make_star();
+    Planet* world = new Planet;
+    ASSERT_TRUE(world->from_json(saved_world(host, rocky)));
+    world->orbit->center = host;
+    world->ignore_map_files = true;
+    ASSERT_TRUE(append_cel(world));
+    const json before = world->to_json();
+    std::thread first([&]() { load_textures(world); });
+    std::thread second([&]() { load_textures(world); });
+    first.join();
+    second.join();
+    ASSERT_NE(world->surf_map, nullptr);
+    EXPECT_TRUE(world->surf_map->is_complete());
+    EXPECT_EQ(world->to_json(), before);
+    EXPECT_TRUE(std::isfinite(world->surf_map->elevation_at(0, 0)));
 }
 
 // =====================================================================

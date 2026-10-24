@@ -7,6 +7,7 @@
 #include <set>
 
 #include "planet.h"
+#include "moon.h"
 #include "chemistry.h"
 #include "star.h"
 #include "point.h"
@@ -18,6 +19,78 @@
 using namespace alienorum;
 
 std::vector<AstorbRow> astorb;
+
+bool alienorum::render_saved_planet(CelestialObject* object,
+    const std::function<void(CelestialObject*)>& render)
+{
+    if (!object || (object->typeclass() != class_planet && object->typeclass() != class_moon)) return false;
+    Planet* source = static_cast<Planet*>(object);
+    if (!source->preserve_loaded_parameters || source->rendering_saved_parameters) return false;
+    std::lock_guard<std::mutex> lock(source->saved_render_mutex);
+
+    // Generate on an independent physical model; publish textures and rendering caches only.
+    // Parsing the snapshot gives the copy its own orbit and atmosphere ownership.
+    std::unique_ptr<Planet> copy;
+    if (object->typeclass() == class_moon)
+    {
+        Moon* moon = new Moon;
+        copy.reset(moon);
+        moon->from_json(static_cast<Moon*>(source)->to_json());
+        moon->orbit_type = static_cast<Moon*>(source)->orbit_type;
+    }
+    else
+    {
+        copy.reset(new Planet);
+        copy->from_json(source->to_json());
+    }
+    copy->rendering_saved_parameters = true;
+    copy->cenobj = source->cenobj;
+    if (copy->orbit && source->orbit) copy->orbit->center = source->orbit->center;
+    copy->fictitious_map_height = source->fictitious_map_height;
+    copy->rnd_seed = source->rnd_seed;
+    copy->rng = source->rng;
+    copy->m_bump_scale = source->m_bump_scale;
+    copy->looked_for_maps = source->looked_for_maps;
+    copy->ignore_map_files = source->ignore_map_files;
+    copy->has_real_maps = source->has_real_maps;
+    copy->cloud_map_url = source->cloud_map_url;
+    copy->static_clouds = source->static_clouds;
+
+    struct TextureTransfer
+    {
+        Planet* source;
+        Planet* copy;
+        void transfer(Planet* from, Planet* to)
+        {
+            Map* CelestialObject::*const maps[] =
+            {
+                &CelestialObject::surf_map, &CelestialObject::cloud_map,
+                &CelestialObject::night_map, &CelestialObject::ring_map,
+                &CelestialObject::ringx_map
+            };
+            for (auto member : maps)
+            {
+                to->*member = from->*member;
+                from->*member = nullptr;
+                if (to->*member) (to->*member)->set_owner(to);
+            }
+        }
+        TextureTransfer(Planet* original, Planet* working) : source(original), copy(working)
+        {
+            transfer(source, copy);
+        }
+        ~TextureTransfer()
+        {
+            transfer(copy, source);
+            source->m_bump_scale = copy->m_bump_scale;
+            source->looked_for_maps = copy->looked_for_maps;
+            source->ignore_map_files = copy->ignore_map_files;
+            source->has_real_maps = copy->has_real_maps;
+        }
+    } textures(source, copy.get());
+    render(copy.get());
+    return true;
+}
 
 void Planet::refresh_host_display_designation()
 {
@@ -71,6 +144,14 @@ void alienorum::Planet::apply_cosmic_shoreline()
 
 bool alienorum::Planet::estimate_habitability()
 {
+    if (preserve_loaded_parameters)
+    {
+        const double press = get_surface_pressure();
+        const double surface = estimate_surface_temperature();
+        return has_water >= 0.05 && is_in_con_HZ() && mass > 0.02 * earth_mass
+            && press >= 600 && press < oneatm * 2000
+            && surface > 0.9 * water_freezing && surface < 320;
+    }
     if (type == waterworld || type == hycean)
     {
         has_water = 1;
@@ -276,6 +357,7 @@ void Planet::set_color_from_type(bool HZ)
 double alienorum::Planet::get_atmospheric_tau()
 {
     if (!atm) return 0;
+    if (rendering_saved_parameters && !atm->comp) return atm->tau;
 
     // A real, explicitly-set composition can legitimately compute to zero tau -- Earth's N2/O2/Ar
     // air isn't in the tracked greenhouse-gas list at all -- so a zero result is not itself a sign
@@ -295,7 +377,7 @@ double alienorum::Planet::get_atmospheric_tau()
 void Planet::classify()
 {
     if (lock_type && (uses_rocky_map(type) || uses_gaseous_map(type))) return;
-    classify(is_in_con_HZ());
+    classify(is_in_con_HZ(), false, preserve_loaded_parameters);
 }
 
 void Planet::classify(bool HZ, bool mnrk, bool ck)
@@ -843,6 +925,8 @@ double Planet::equilibrium_temperature()
 
 double Planet::estimate_surface_temperature()
 {
+    if (rendering_saved_parameters)
+        return temperature ? temperature : temperature_at_pressure(get_surface_pressure());
     if (temperature)
     {
         // Catalog and editor temperatures still constrain which gases can remain aloft.
@@ -1397,6 +1481,9 @@ json Planet::to_json()
     if (J2) towrite["J2"] = J2;
     towrite["overcast"] = overcast;
     towrite["has_water"] = has_water;
+    towrite["ring_status_known"] = ring_status_known;
+    towrite["cloud_map_url"] = cloud_map_url;
+    towrite["static_clouds"] = static_clouds;
 
     // Both of these come from a catalog originally -- the astorb row number, and the flag that
     // says the catalog stated a type we are not to second-guess in classify(). They used not to
@@ -1442,7 +1529,22 @@ json Planet::to_json()
 
 bool Planet::from_json(json j)
 {
+    temperature = 0;
     CelestialObject::from_json(j);
+    preserve_loaded_parameters = true;
+    // Optional zero-valued fields are omitted by older saves; a reload must clear stale values.
+    albedo = msini = J2 = ring_radius = ring_inner_radius = ring_mean_opacity = 0;
+    asteroid_no = 0;
+    lock_type = false;
+    inclination_error_upper = inclination_error_lower = NAN;
+    ring_status_known = j.value("ring_status_known", false);
+    cloud_map_url = j.value("cloud_map_url", std::string());
+    static_clouds = j.value("static_clouds", true);
+    catalog_designation.clear();
+    display_designation.clear();
+    delete atm;
+    atm = nullptr;
+    refr_cache.valid = false;
     // Older saves used these retired codes for solid surfaces. Translate before map dispatch.
     switch (static_cast<int>(type))
     {
@@ -1491,7 +1593,12 @@ bool Planet::from_json(json j)
     // builds an Atmosphere before j.at() ever gets the chance to throw -- which handed an airless
     // body a default one-atmosphere sky just for being loaded, and suppressed the legacy branch
     // below by leaving atm non-null.
-    try { json ja = j.at("atmosphere"); ensure_atmosphere()->from_json(ja); } catch (...) { ; }
+    try
+    {
+        json ja = j.at("atmosphere");
+        if (ja.is_object()) ensure_atmosphere()->from_json(ja);
+    }
+    catch (...) { ; }
 
     // Universe files written before the atmosphere became its own object carry these two at the
     // top level instead. Read them only when there was no "atmosphere" block, so a current file
@@ -1632,6 +1739,7 @@ bool Planet::guess_has_rings()
  */
 void Planet::generate_ring_parameters(bool gr)
 {
+    if (rendering_saved_parameters) return;
     if (!gr && !guess_has_rings())
     {
         ring_radius = 0;

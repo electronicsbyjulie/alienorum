@@ -2596,6 +2596,7 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::SameLine();
             if (!generating_fic_texture && ImGui::Button("Regenerate"))
             {
+                ((Planet*)cel)->preserve_loaded_parameters = false;
                 cel->rnd_seed = rand();
                 if (randomize_txgen) ((Planet*)cel)->vegetation_r = ((Planet*)cel)->vegetation_g = ((Planet*)cel)->vegetation_b = 0;     // force regenerate
                 cel->mark_all_maps_for_regen();

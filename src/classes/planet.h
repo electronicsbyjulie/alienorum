@@ -4,6 +4,8 @@
 
 #include "celestial.h"
 #include "climate.h"
+#include <functional>
+#include <mutex>
 
 // Not sure about this number at all.
 #define phase_exponent 1.319507911
@@ -21,6 +23,10 @@ namespace alienorum
     {
         public:
         double albedo = 0;
+        // Saved worlds retain authored parameters during procedural rendering.
+        bool preserve_loaded_parameters = false;
+        bool rendering_saved_parameters = false;
+        std::mutex saved_render_mutex;
         PlanetMeasurement mass_evidence = PlanetMeasurement::unknown;
         PlanetMeasurement radius_evidence = PlanetMeasurement::unknown;
         double mass_error_upper = NAN, mass_error_lower = NAN;
@@ -145,6 +151,9 @@ namespace alienorum
 
         const RefractionConstants& refraction_constants();
     };
+
+    bool render_saved_planet(CelestialObject* object,
+        const std::function<void(CelestialObject*)>& render);
 
     struct AstorbRow
     {

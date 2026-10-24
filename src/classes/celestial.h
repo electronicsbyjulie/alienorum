@@ -245,6 +245,7 @@ namespace alienorum
         unsigned int gen = 0;
         Map() { ; }
         Map(CelestialObject* joined_cel) { mcel = joined_cel; }
+        void set_owner(CelestialObject* owner) { mcel = owner; }
 
         void touch_gen() { gen = next_gen(); }
 

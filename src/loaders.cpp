@@ -84,6 +84,7 @@ void load_textures(CelestialObject* cel)
     {
         static_cast<Planet*>(cel)->classify();
     }
+    if (render_saved_planet(cel, [](CelestialObject* working) { load_textures(working); })) return;
     std::string filename;
 
     if (!cel->ignore_map_files)                 // For regenerating exoplanet textures.
