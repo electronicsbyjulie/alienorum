@@ -96,6 +96,161 @@ class StellarRotationTest : public CatalogParsingTest
     }
 };
 
+TEST_F(StellarRotationTest, VisualCatalogLettersDoNotJoinExplicitSystems)
+{
+    std::filesystem::copy_file(original / "catalogs/stellar_systems.json", "catalogs/stellar_systems.json");
+    std::filesystem::create_directories("catalogs/BSC");
+    std::ofstream catalog("catalogs/BSC/catalog");
+    for (const auto& entry : std::vector<std::pair<int, char>>{{37020, 'A'}, {37022, 'C'}})
+    {
+        std::string line(197, ' ');
+        line.replace(4, 10, " 41The1Ori");
+        line.replace(25, 5, std::to_string(entry.first));
+        line[49] = entry.second;
+        line.replace(75, 2, "05");
+        line.replace(77, 2, "35");
+        line.replace(79, 4, "16.0");
+        line[83] = '-';
+        line.replace(84, 2, "05");
+        line.replace(86, 2, "23");
+        line.replace(88, 2, "20");
+        line.replace(102, 5, " 6.00");
+        line.replace(127, 3, "B1V");
+        catalog << line << '\n';
+    }
+    catalog.close();
+    CatalogReader reader;
+    EXPECT_EQ(reader.read_BrightStars_catalog(cels, MAX_CELOBJS), 2);
+    ASSERT_NE(hd[37020], nullptr);
+    ASSERT_NE(hd[37022], nullptr);
+    EXPECT_FALSE(hd[37020]->orbit);
+    EXPECT_FALSE(hd[37022]->orbit);
+    EXPECT_FALSE(hd[37020]->multisys);
+    EXPECT_FALSE(hd[37022]->multisys);
+    std::filesystem::create_directories("catalogs/Hipparcos");
+    std::ofstream("catalogs/Hipparcos/hip_main.dat").close();
+    hip[26220] = hd[37020];
+    hd[37020]->HIP = 26220;
+    std::ofstream hip_components("catalogs/Hipparcos/h_dm_com.dat");
+    for (char component : {'A', 'D'})
+    {
+        std::string line(250, ' ');
+        line.replace(0, 10, "05353-0524");
+        line.replace(37, 2, " 2");
+        line[40] = component;
+        line.replace(42, 5, "26220");
+        hip_components << line << '\n';
+    }
+    hip_components.close();
+    const int objects_before = ncelobjs;
+    reader.read_Hipparcos_catalog(cels, MAX_CELOBJS);
+    EXPECT_EQ(ncelobjs, objects_before);
+    EXPECT_FALSE(hd[37020]->multisys);
+    std::filesystem::create_directories("catalogs/CCDM");
+    std::ofstream ccdm("catalogs/CCDM/ccdm.dat");
+    for (const auto& entry : std::vector<std::pair<int, char>>{{37020, 'A'}, {37022, 'B'}})
+    {
+        std::string line(140, ' ');
+        line.replace(1, 10, "05353-0524");
+        line[12] = entry.second;
+        line.replace(98, 5, std::to_string(entry.first));
+        ccdm << line << '\n';
+    }
+    ccdm.close();
+    EXPECT_EQ(reader.read_CCDM_catalog(cels, MAX_CELOBJS), 0);
+    EXPECT_FALSE(hd[37020]->orbit);
+    EXPECT_FALSE(hd[37022]->orbit);
+}
+
+TEST_F(StellarRotationTest, OrionSystemsKeepIdentityHierarchyAndPlanesAcrossReload)
+{
+    std::filesystem::copy_file(original / "catalogs/stellar_systems.json", "catalogs/stellar_systems.json");
+    std::ofstream("catalogs/star_orbits.dat") << "# Explicit system test\n";
+    CatalogReader reader;
+    const int imported = reader.read_stellar_systems(cels);
+    EXPECT_GT(imported, 25);
+    const int total = ncelobjs;
+    EXPECT_EQ(reader.read_stellar_systems(cels), imported);
+    EXPECT_EQ(ncelobjs, total);
+    hd[37020]->BayerGrkno = 7;
+    hd[37020]->FlamsteedNo = 41;
+    strcpy(hd[37020]->constellation, "Ori");
+    strcpy(hd[37020]->Bayer, "The1Ori");
+    const auto check = [&]()
+    {
+        std::set<StarMulti*> groups;
+        for (int group = 1; group <= 2; ++group)
+        {
+            for (char letter = 'A'; letter <= (group == 1 ? 'I' : 'C'); ++letter)
+            {
+                const std::string alias = "The" + std::to_string(group) + "Ori " + letter;
+                const int index = find_object(alias.c_str(), true, 9e29, 1);
+                ASSERT_GE(index, 0) << alias;
+                Star* root = static_cast<Star*>(cels[index]);
+                EXPECT_FALSE(root->orbit) << root->name;
+                EXPECT_TRUE(groups.insert(root->multisys).second) << root->name;
+                root->rename_from_Bayer_Flamsteed();
+                EXPECT_EQ(root->name, root->stellar_system.at("name").get<std::string>());
+            }
+        }
+        const auto named = [](const char* name) -> Star*
+        {
+            const int index = find_object(name, true, 9e29, 1);
+            return index >= 0 ? static_cast<Star*>(cels[index]) : nullptr;
+        };
+        Star* a3 = named("Theta1 Orionis A3");
+        Star* b2 = named("Theta1 Orionis B2");
+        Star* b3 = named("Theta1 Orionis B3");
+        Star* c2 = named("Theta1 Orionis C2");
+        Star* d3 = named("Theta1 Orionis D3");
+        ASSERT_NE(a3, nullptr);
+        ASSERT_NE(b2, nullptr);
+        ASSERT_NE(b3, nullptr);
+        ASSERT_NE(c2, nullptr);
+        ASSERT_NE(d3, nullptr);
+        ASSERT_NE(a3->orbit, nullptr);
+        ASSERT_NE(b3->orbit, nullptr);
+        EXPECT_EQ(b3->orbit->center, b2);
+        EXPECT_EQ(b3->multisys, b2->multisys);
+        EXPECT_NEAR(a3->orbit->period / oneday, 65.4333, 1e-8);
+        EXPECT_NEAR(a3->orbit->heliocentric_inclination * fiftyseven, 87.090, 1e-8);
+        EXPECT_TRUE(a3->stellar_system.at("orbit").at("node_assumed"));
+        EXPECT_FALSE(a3->known_poles);
+        EXPECT_NEAR(c2->orbit->heliocentric_node * fiftyseven, 27.9, 1e-8);
+        EXPECT_NEAR(d3->orbit->heliocentric_inclination * fiftyseven, 160, 1e-8);
+        EXPECT_TRUE(c2->known_poles);
+        EXPECT_FALSE(b3->known_poles);
+        EXPECT_TRUE(b3->stellar_system.at("orbit").at("sma_estimated"));
+        Star* a = named("The1Ori A");
+        Star* c = named("The1Ori C");
+        const double distance = c->distance;
+        c->make_companion_of(a, 'Z');
+        EXPECT_FALSE(c->orbit);
+        EXPECT_DOUBLE_EQ(c->distance, distance);
+        EXPECT_NE(c->multisys, a->multisys);
+        Star restored;
+        restored.from_json(b3->to_json());
+        EXPECT_EQ(restored.stellar_system, b3->stellar_system);
+    };
+    check();
+    ASSERT_TRUE(reader.bake_condensed_star_orbits());
+    delete_the_universe();
+    std::fill(hd.begin(), hd.end(), nullptr);
+    std::fill(hip.begin(), hip.end(), nullptr);
+    EXPECT_EQ(reader.read_condensed_star_cat(), total);
+    check();
+    std::fstream output("orion-universe.json", std::ios::out | std::ios::trunc);
+    ASSERT_TRUE(Serialization::save_all(output, cels, false));
+    output.close();
+    delete_the_universe();
+    std::fill(hd.begin(), hd.end(), nullptr);
+    std::fill(hip.begin(), hip.end(), nullptr);
+    std::fstream input("orion-universe.json", std::ios::in);
+    ASSERT_TRUE(Serialization::load_all(input, cels, MAX_CELOBJS, false));
+    EXPECT_EQ(ncelobjs, total);
+    check();
+}
+
 TEST_F(StellarRotationTest, PeriodOnlyRowsAndExplicitZeroPolesSurviveBothSaveFormats)
 {
     Star* unknown = target(99990);
@@ -2532,7 +2687,9 @@ TEST_F(CatalogParsingTest, CachedPublishedWhiteDwarfIsSearchable)
     delete_the_universe();
     Star::load_main_seq_dat();
     ASSERT_GT(reader.read_condensed_star_cat(), 100000);
-    const int found = find_object("WD1330+643", true);
+    // The complete rebuild also contains the distinct B1950 WD1330+643.
+    // Address the color publication's target by its unambiguous J2000 identity.
+    const int found = find_object("WDJ133001.17+643523.69", true);
     ASSERT_GE(found, 0);
     Star* star = static_cast<Star*>(cels[found]);
     EXPECT_EQ(star->gaia_wd_name, "WDJ133001.17+643523.69");
@@ -2543,6 +2700,11 @@ TEST_F(CatalogParsingTest, CachedPublishedWhiteDwarfIsSearchable)
     EXPECT_EQ(star->wd_color_red, 0xdd);
     EXPECT_EQ(star->wd_color_green, 0xff);
     EXPECT_EQ(star->wd_color_blue, 0xb8);
+    const int canonical = find_object("WD1330+643", true);
+    ASSERT_GE(canonical, 0);
+    EXPECT_NE(canonical, found);
+    EXPECT_EQ(static_cast<Star*>(cels[canonical])->WD, "WD1330+643");
+    EXPECT_EQ(static_cast<Star*>(cels[canonical])->gaia_wd_name, "WDJ133215.94+640656.24");
     delete_the_universe();
 }
 

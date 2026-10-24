@@ -158,6 +158,7 @@ if(WIN32)
 	install(FILES
 		catalogs/exoplanet_host_positions.dat
 		catalogs/star_orbits.dat
+		catalogs/stellar_systems.json
 		catalogs/planets.json
 		catalogs/galaxy_properties.json
 		catalogs/asteroids.json

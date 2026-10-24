@@ -60,6 +60,8 @@ char Star::get_component()
 void Star::set_component(char comp, Star* compA)
 {
     if (!compA) compA = this;
+    if (stellar_system.is_object() && compA->stellar_system.is_object() &&
+        stellar_system.at("system") != compA->stellar_system.at("system")) return;
 
     // assert(!multisys || (compA->multisys == multisys));
     if (multisys && compA->multisys && compA->multisys != multisys)
@@ -1230,6 +1232,8 @@ bool Star::is_mseq_absmag_outlier(double threshold, double* diff) const
 
 bool Star::correct_main_sequence_absmag(double threshold)
 {
+    // The explicit system supplement includes young stars outside the dwarf sequence.
+    if (stellar_system.is_object()) return false;
     if (!is_main_sequence() || is_hot_ob_star())
     {
         return false;
@@ -1596,6 +1600,7 @@ json Star::to_json()
     towrite["parallax"] = parallax*fiftyseven*3600*1000;
     if (stellar_abundances.is_object() && !stellar_abundances.empty()) towrite["stellar_abundances"] = stellar_abundances;
     if (stellar_rotation.is_object()) towrite["stellar_rotation"] = stellar_rotation;
+    if (stellar_system.is_object()) towrite["stellar_system"] = stellar_system;
     towrite["known_poles"] = known_poles;
     towrite["lock_equatorial_plane"] = lock_equatorial_plane;
     towrite["lock_system_plane"] = lock_system_plane;
@@ -1661,6 +1666,8 @@ bool Star::from_json(json j)
         ? j["stellar_abundances"] : json(nullptr);
     stellar_rotation = j.contains("stellar_rotation") && j["stellar_rotation"].is_object()
         ? j["stellar_rotation"] : json(nullptr);
+    stellar_system = j.value("stellar_system", json(nullptr));
+    if (stellar_system.is_object()) has_custom_name = true;
     // Explicit flags keep a saved display fallback from becoming a measured pole.
     try { j.at("known_poles").get_to(known_poles); } catch (...) { ; }
     try { j.at("lock_equatorial_plane").get_to(lock_equatorial_plane); } catch (...) { ; }
@@ -1814,6 +1821,8 @@ bool Star::from_json(json j)
 
 void Star::make_companion_of(Star *A, char comp)
 {
+    if (stellar_system.is_object() && A->stellar_system.is_object() &&
+        stellar_system.at("system") != A->stellar_system.at("system")) return;
     cenobj = A->cenobj ? A->cenobj : A;
     right_ascension = A->right_ascension;
     declination = A->declination;

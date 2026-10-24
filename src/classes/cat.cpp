@@ -32,6 +32,31 @@
 
 namespace fs = std::filesystem;
 
+static json stellar_system_catalog()
+{
+    std::ifstream input("catalogs/stellar_systems.json");
+    if (!input) return json::object();
+    json records;
+    input >> records;
+    return records;
+}
+
+static bool has_explicit_system(const json& catalog, uint32_t hd)
+{
+    if (!hd || !catalog.contains("systems")) return false;
+    for (const auto& system : catalog.at("systems"))
+        if (system.value("hd", 0u) == hd) return true;
+    return false;
+}
+
+static bool is_visual_group(const json& catalog, const std::string& identifier)
+{
+    if (!catalog.contains("visual_groups")) return false;
+    for (const auto& group : catalog.at("visual_groups"))
+        if (group == identifier) return true;
+    return false;
+}
+
 static bool replace_exoplanet_cache(const fs::path& temporary, const fs::path& destination)
 {
 #ifdef _WIN32
@@ -578,6 +603,7 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
 
 int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
 {
+    const json systems = stellar_system_catalog();
     std::string path = "catalogs" _FILESLASH "BSC" _FILESLASH "catalog";
     char buffer[65536];
     char field[32];
@@ -780,7 +806,7 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
         }
         s->epoch = J2000;
 
-        if (!s->get_component() && buffer[49] > ' ')
+        if (!s->get_component() && buffer[49] > ' ' && !has_explicit_system(systems, HD))
         {
             if (fabs(current_multi_ra - s->right_ascension) > ra_dec_multi_limit
                     && fabs(current_multi_decl - s->declination) > ra_dec_multi_limit
@@ -1002,6 +1028,7 @@ bool CatalogReader::load_Hipparcos_orbit_line(const char* buffer, CelestialObjec
 
 int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
 {
+    const json systems = stellar_system_catalog();
     std::string path = "catalogs" _FILESLASH "Hipparcos" _FILESLASH "hip_main.dat";
     char buffer[1024];
     char field[32];
@@ -1319,6 +1346,8 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         //   1- 10  A10    ---     CCDM     CCDM number                              (DC1)
         read_field_onebased(buffer, 1, 10, field);
         s->CCDM = trim(field);
+
+        if (is_visual_group(systems, s->CCDM)) continue;
 
         if (s->ccdm_compseq)
         {
@@ -2690,6 +2719,7 @@ int alienorum::CatalogReader::read_cons_boundaries()
 
 int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
 {
+    const json systems = stellar_system_catalog();
     std::string path = "catalogs" _FILESLASH "CCDM" _FILESLASH "ccdm.dat";
     char buffer[1024];
     char field[32];
@@ -2723,6 +2753,7 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
         //   2- 11  A10    ---     CCDM     (Catalogue of the Components of the Double and Multiple stars) identifier (1)
         read_field_onebased(buffer, 2, 11, field);
         CCDM = trim(field);
+        if (is_visual_group(systems, CCDM)) continue;
         if (CCDM != CCDM_A) A = nullptr;
 
         //  99-104  A6     ---     HD       HD identifier
@@ -2861,6 +2892,7 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
 
 int CatalogReader::read_SB9_catalog(CelestialObject **cels, int max)
 {
+    const json systems = stellar_system_catalog();
     std::string path = "catalogs" _FILESLASH "SB9" _FILESLASH "main.dat";
     char buffer[1024];
     char field[32], Bonn, Bonn_sign, cen[5], comp[5];
@@ -2996,7 +3028,7 @@ int CatalogReader::read_SB9_catalog(CelestialObject **cels, int max)
             if (!A->distance_known) continue;
         }
 
-        if (!A) continue;
+        if (!A || has_explicit_system(systems, A->HD)) continue;
         if (!A->multisys) A->set_component('A', A);
         A = A->multisys->get_member(cen[0]);
         if (!A) continue;
@@ -4961,9 +4993,158 @@ int CatalogReader::read_stellar_rotation_catalog(CelestialObject** objects)
     return count;
 }
 
+int CatalogReader::read_stellar_systems(CelestialObject** objects)
+{
+    std::lock_guard<std::recursive_mutex> catalog_lock(catalog_mutex);
+    const json catalog = stellar_system_catalog();
+    if (!catalog.contains("systems")) return 0;
+    int count = 0;
+    for (const auto& system : catalog.at("systems"))
+    {
+        const std::string identity = system.at("name");
+        std::map<std::string, Star*> members;
+        Star* root = nullptr;
+        for (const auto& record : system.at("members"))
+        {
+            const std::string label = record.at("label");
+            const std::string name = record.at("name");
+            Star* object = nullptr;
+            const unsigned hd = root ? 0 : system.value("hd", 0u);
+            for (int i = 0; objects[i]; ++i)
+            {
+                if (objects[i]->typeclass() != class_star) continue;
+                Star* candidate = static_cast<Star*>(objects[i]);
+                if ((hd && candidate->HD == hd) || name == candidate->name ||
+                    (candidate->stellar_system.is_object() &&
+                     candidate->stellar_system.value("system", "") == identity &&
+                     candidate->stellar_system.value("label", "") == label))
+                {
+                    object = candidate;
+                    break;
+                }
+            }
+            const bool created = !object;
+            if (created)
+            {
+                object = new Star();
+                append_cel(object);
+            }
+            object->stellar_system = record;
+            object->stellar_system["system"] = identity;
+            object->has_custom_name = true;
+            snprintf(object->name, sizeof(object->name), "%s", name.c_str());
+            object->namelen = name.size();
+            object->origname = name;
+            object->add_catalog_alias(name);
+            for (const auto& alias : record.value("aliases", json::array()))
+                object->add_catalog_alias(alias.get<std::string>());
+            members[label] = object;
+            if (!root)
+            {
+                root = object;
+                root->HD = hd;
+                root->HIP = system.value("hip", root->HIP);
+                if (hd && hdcache) hdcache[hd] = root;
+                if (root->HIP && hipcache) hipcache[root->HIP] = root;
+                root->add_catalog_alias(identity);
+                root->right_ascension = system.at("ra_deg").get<double>() * fiftyseventh;
+                root->declination = system.at("dec_deg").get<double>() * fiftyseventh;
+                root->distance = system.at("distance_pc").get<double>() * parsec;
+                root->parallax = fiftyseventh / (3600 * system.at("distance_pc").get<double>());
+                root->distance_known = true;
+                root->epoch = J2000;
+                root->update_location(J2000_TIME_T);
+                root->cenobj = root;
+                if (!root->multisys) root->set_component('A', root);
+            }
+            else
+            {
+                Star* parent = members.at(record.at("parent").get<std::string>());
+                char slot = object->get_component();
+                if (!slot) slot = root->multisys->next_available();
+                object->make_companion_of(parent, slot);
+            }
+            object->stellar_system["slot"] = static_cast<int>(object->get_component());
+            if (record.contains("spectral_type"))
+                snprintf(object->spectral_type, sizeof(object->spectral_type), "%s",
+                    record.at("spectral_type").get<std::string>().c_str());
+            if (record.contains("temperature"))
+            {
+                object->temperature = record.at("temperature");
+                object->estimate_BV(object->temperature);
+                object->estimate_UB(object->temperature);
+            }
+            if (record.contains("mass")) object->mass = record.at("mass").get<double>() * solar_mass;
+            if (record.contains("radius")) object->volumetric_mean_radius = record.at("radius").get<double>() * solar_radius;
+            if (record.contains("apparent_magnitude"))
+            {
+                object->apparent_magnitude = record.at("apparent_magnitude");
+                object->absolute_magnitude = object->apparent_magnitude - 5 * log10(object->distance / (10 * parsec));
+            }
+            else if (record.contains("luminosity"))
+            {
+                object->absolute_magnitude = 4.74 - 2.5 * log10(record.at("luminosity").get<double>())
+                    - Star::bolometric_correction(object->estimate_temperature());
+                object->apparent_magnitude = object->absolute_magnitude + 5 * log10(object->distance / (10 * parsec));
+            }
+            else if (created)
+            {
+                const double index = record.contains("mass")
+                    ? Star::get_mseqidx_from_mass(object->mass / solar_mass)
+                    : Star::get_mseqidx_from_sptyp(object->spectral_type[0] ? object->spectral_type : "G2V");
+                object->temperature = Star::interpolate_mseq_temp(index);
+                object->estimate_BV(object->temperature);
+                object->absolute_magnitude = 4.74 - 2.5 * log10(Star::interpolate_mseq_lum(index))
+                    - Star::bolometric_correction(object->temperature);
+                object->apparent_magnitude = object->absolute_magnitude + 5 * log10(object->distance / (10 * parsec));
+                object->apparent_magnitude_estimated = true;
+            }
+            if (!(object->mass > 0)) object->estimate_mass();
+            if (!(object->volumetric_mean_radius > 0)) object->estimate_radius();
+            if (record.contains("orbit"))
+            {
+                const auto& elements = record.at("orbit");
+                Orbit* orbit = object->orbit;
+                orbit->period = elements.value("period_days", 0.0) * oneday;
+                orbit->semimajor_axis = elements.value("sma_au", elements.value("projected_au", 0.0)) * AU;
+                orbit->eccentricity = elements.value("eccentricity", 0.0);
+                orbit->epoch = elements.value("epoch_jd", J2000);
+                orbit->arg_periapsis = elements.value("omega_deg", 0.0) * fiftyseventh;
+                orbit->mean_anomaly = elements.value("anomaly_deg", 0.0) * fiftyseventh;
+                const double total_mass = (object->mass + orbit->center->mass) / solar_mass;
+                if (!orbit->semimajor_axis && orbit->period)
+                    orbit->semimajor_axis = cbrt(total_mass * pow(orbit->period / oneyear, 2)) * AU;
+                if (!orbit->period && orbit->semimajor_axis)
+                    orbit->period = sqrt(pow(orbit->semimajor_axis / AU, 3) / total_mass) * oneyear;
+                orbit->heliocentric_inclination = elements.value("inclination_deg", 90.0) * fiftyseventh;
+                orbit->heliocentric_node = elements.value("node_deg", 0.0) * fiftyseventh;
+                const Rotation plane = system_plane_from_incl_and_node(orbit->heliocentric_inclination,
+                    orbit->heliocentric_node, root->location.system_center - objects[0]->location.system_center);
+                object->location.orbital_plane = object->location.local_system_plane = plane;
+                object->location.equatorial_plane = plane;
+                object->known_poles = elements.contains("inclination_deg") && elements.contains("node_deg");
+                object->lock_system_plane = true;
+                object->stellar_system["orbit"]["period_estimated"] = !elements.contains("period_days");
+                object->stellar_system["orbit"]["sma_estimated"] = !elements.contains("sma_au");
+                object->stellar_system["orbit"]["node_assumed"] = !elements.contains("node_deg");
+                if (record.value("defines_system_plane", false))
+                {
+                    root->location.local_system_plane = root->location.orbital_plane = plane;
+                    if (!root->lock_equatorial_plane) root->location.equatorial_plane = plane;
+                    root->lock_system_plane = true;
+                    root->known_poles = object->known_poles;
+                }
+            }
+            count++;
+        }
+    }
+    return count;
+}
+
 int CatalogReader::read_star_orbits_dat(CelestialObject **cels, int first_host)
 {
     std::lock_guard<std::recursive_mutex> catalog_lock(catalog_mutex);
+    if (!first_host) read_stellar_systems(cels);
     std::string path = "catalogs" _FILESLASH "star_orbits.dat";
     char buffer[1024];
     char field[32];
@@ -5749,7 +5930,13 @@ static std::string star_orbits_signature()
         hash ^= static_cast<unsigned char>(c);
         hash *= 1099511628211ULL;
     }
-    return "rotation1-" + std::to_string(hash);
+    std::ifstream systems("catalogs/stellar_systems.json", std::ios::binary);
+    while (systems.get(c))
+    {
+        hash ^= static_cast<unsigned char>(c);
+        hash *= 1099511628211ULL;
+    }
+    return "systems1-" + std::to_string(hash);
 }
 
 static std::string baked_star_link_key(const json& key)
@@ -5895,6 +6082,12 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
     {
         std::ostringstream extra;
         extra << " ROT1 " << std::quoted(s->stellar_rotation.dump());
+        line += extra.str();
+    }
+    if (s->stellar_system.is_object())
+    {
+        std::ostringstream extra;
+        extra << " SYS1 " << std::quoted(s->stellar_system.dump());
         line += extra.str();
     }
     if (s->orbit || s->multisys || s->known_poles || s->has_disk || s->rot_axis_known || s->stellar_rotation.is_object() ||
@@ -6190,7 +6383,7 @@ int alienorum::CatalogReader::apply_gaia_astrometry(CelestialObject** cels)
         }
 
         Star* s = (Star*)cels[i];
-        if (s->HIP <= 0 || s->HIP > MAX_HIP || !gaia_table[s->HIP].valid)
+        if (s->stellar_system.is_object() || s->HIP <= 0 || s->HIP > MAX_HIP || !gaia_table[s->HIP].valid)
         {
             continue;
         }
@@ -6421,6 +6614,11 @@ int alienorum::CatalogReader::read_condensed_star_cat()
                 {
                     json chemistry = json::parse(value, nullptr, false);
                     if (chemistry.is_object()) s->stellar_abundances = std::move(chemistry);
+                }
+                else if (version == "SYS1" && extras >> std::quoted(value))
+                {
+                    json system = json::parse(value, nullptr, false);
+                    if (system.is_object()) s->stellar_system = std::move(system);
                 }
                 else if (version == "ROT1" && extras >> std::quoted(value))
                 {
@@ -6835,6 +7033,18 @@ int alienorum::CatalogReader::read_condensed_star_cat()
         {
             loading_msg = std::string("Verifying ") + s->alienorumid + std::string("...");
         }
+    }
+
+    // Establish explicit physical groups before restoring nested orbit centers.
+    std::map<std::string, StarMulti*> physical_groups;
+    for (const auto& [object, state] : orbit_states)
+    {
+        if (!object->stellar_system.is_object()) continue;
+        const std::string identity = object->stellar_system.at("system");
+        StarMulti*& group = physical_groups[identity];
+        if (!group) group = new StarMulti();
+        const char component = state.at(2).get<int>();
+        if (component >= 'A' && component <= 'Z') group->add_member(object, component);
     }
 
     // Restore baked states last: the legacy reconstruction above infers planes and

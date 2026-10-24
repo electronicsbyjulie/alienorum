@@ -31,6 +31,10 @@ if [ ! -s catalogs/NASA/classification_model.json ]; then
 fi
 
 # The fixed host supplement is installed by CMake and must ship with every release.
+if [ ! -s catalogs/stellar_systems.json ]; then
+    echo "Missing catalog: catalogs/stellar_systems.json" >&2
+    exit 1
+fi
 if [ ! -s catalogs/exoplanet_host_positions.dat ]; then
     echo "Missing catalog: catalogs/exoplanet_host_positions.dat" >&2
     exit 1

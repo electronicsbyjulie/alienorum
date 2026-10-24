@@ -1095,6 +1095,8 @@ json Orbit::to_json()
         {"center_name", cenname},
         {"ascending_node", ascending_node*fiftyseven},
         {"inclination", inclination*fiftyseven},
+        {"heliocentric_inclination", heliocentric_inclination*fiftyseven},
+        {"heliocentric_node", heliocentric_node*fiftyseven},
         {"semimajor_axis", semimajor_axis},
         {"eccentricity", eccentricity},
         {"arg_periapsis", arg_periapsis*fiftyseven},
@@ -1114,6 +1116,8 @@ bool Orbit::from_json(json j)
     try { j.at("center_name").get_to(center_name); } catch (...) { ; }
     try { j.at("ascending_node").get_to(ascending_node); ascending_node *= fiftyseventh; } catch (...) { ; }
     try { j.at("inclination").get_to(inclination); inclination *= fiftyseventh; } catch (...) { ; }
+    heliocentric_inclination = j.value("heliocentric_inclination", 0.0) * fiftyseventh;
+    heliocentric_node = j.value("heliocentric_node", 0.0) * fiftyseventh;
     try { j.at("semimajor_axis").get_to(semimajor_axis); } catch (...) { ; }
     try { j.at("eccentricity").get_to(eccentricity); } catch (...) { ; }
     try { j.at("arg_periapsis").get_to(arg_periapsis); arg_periapsis *= fiftyseventh; } catch (...) { ; }

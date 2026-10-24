@@ -1,0 +1,579 @@
+{
+    "version": 1,
+    "visual_groups": [
+        "05353-0524"
+    ],
+    "sources": [
+        "https://en.wikipedia.org/wiki/Trapezium_Cluster",
+        "https://en.wikipedia.org/wiki/Theta1_Orionis_A",
+        "https://en.wikipedia.org/wiki/Theta1_Orionis_B",
+        "https://en.wikipedia.org/wiki/Theta1_Orionis_C",
+        "https://en.wikipedia.org/wiki/Theta1_Orionis_D",
+        "https://en.wikipedia.org/wiki/Theta1_Orionis_E",
+        "https://en.wikipedia.org/wiki/Theta2_Orionis",
+        "https://arxiv.org/abs/1809.10376",
+        "https://simbad.cds.unistra.fr/simbad/",
+        "https://cdsarc.cds.unistra.fr/ftp/I/274/"
+    ],
+    "notes": [
+        "System letters identify separate physical systems, never StarMulti slots.",
+        "Unspecified orientation uses inclination 90 degrees and node zero without marking the pole measured.",
+        "Projected separations provide circular display estimates, not measured semimajor axes. Unspecified phase uses J2000.",
+        "Cluster distance 414 pc is adopted for F through I. H component suffixes A/B are display labels; Wikipedia lists the pair as H.",
+        "E combined V magnitude 11.40 is divided equally between its nearly identical components.",
+        "Candidate C3 in Theta1 C and unbound or uncertain visual D2 are omitted."
+    ],
+    "systems": [
+        {
+            "name": "Theta1 Orionis A",
+            "ra_deg": 83.81603095833333,
+            "dec_deg": -5.387317805555556,
+            "distance_pc": 390,
+            "members": [
+                {
+                    "label": "A1",
+                    "name": "Theta1 Orionis A1",
+                    "aliases": [
+                        "V1016 Ori",
+                        "The1Ori A",
+                        "Theta1 Ori A",
+                        "41 Ori A",
+                        "The1Ori A1",
+                        "Theta1 Ori A1"
+                    ],
+                    "spectral_type": "B0.5V",
+                    "mass": 15.01,
+                    "radius": 4.2,
+                    "temperature": 30500,
+                    "apparent_magnitude": 6.72
+                },
+                {
+                    "label": "A3",
+                    "name": "Theta1 Orionis A3",
+                    "parent": "A1",
+                    "spectral_type": "G",
+                    "mass": 2.825,
+                    "radius": 6.415,
+                    "temperature": 5550,
+                    "luminosity": 54,
+                    "defines_system_plane": true,
+                    "orbit": {
+                        "period_days": 65.4333,
+                        "sma_au": 0.8304,
+                        "eccentricity": 0.64383,
+                        "inclination_deg": 87.09,
+                        "epoch_jd": 2459441.257,
+                        "omega_deg": 177.88
+                    },
+                    "aliases": [
+                        "The1Ori A3",
+                        "Theta1 Ori A3"
+                    ]
+                },
+                {
+                    "label": "A2",
+                    "name": "Theta1 Orionis A2",
+                    "parent": "A1",
+                    "spectral_type": "F",
+                    "mass": 4,
+                    "orbit": {
+                        "projected_au": 90
+                    },
+                    "notes": "Projected separation supplies a circular display orbit; outer plane and phase unknown.",
+                    "aliases": [
+                        "The1Ori A2",
+                        "Theta1 Ori A2"
+                    ]
+                }
+            ],
+            "hd": 37020,
+            "hip": 26220
+        },
+        {
+            "name": "Theta1 Orionis B",
+            "ra_deg": 83.817225,
+            "dec_deg": -5.385216666666667,
+            "distance_pc": 377,
+            "members": [
+                {
+                    "label": "B1",
+                    "name": "Theta1 Orionis B1",
+                    "aliases": [
+                        "BM Ori",
+                        "The1Ori B",
+                        "Theta1 Ori B",
+                        "41 Ori B",
+                        "The1Ori B1",
+                        "Theta1 Ori B1"
+                    ],
+                    "spectral_type": "B1V",
+                    "mass": 7.2,
+                    "radius": 3,
+                    "temperature": 19320,
+                    "apparent_magnitude": 7.9
+                },
+                {
+                    "label": "B5",
+                    "name": "Theta1 Orionis B5",
+                    "parent": "B1",
+                    "spectral_type": "G",
+                    "mass": 2,
+                    "radius": 8.4,
+                    "temperature": 5740,
+                    "luminosity": 80,
+                    "orbit": {
+                        "period_days": 6.471,
+                        "sma_au": 0.12
+                    },
+                    "aliases": [
+                        "The1Ori B5",
+                        "Theta1 Ori B5"
+                    ]
+                },
+                {
+                    "label": "B2",
+                    "name": "Theta1 Orionis B2",
+                    "parent": "B1",
+                    "mass": 3,
+                    "orbit": {
+                        "projected_au": 382
+                    },
+                    "aliases": [
+                        "The1Ori B2",
+                        "Theta1 Ori B2"
+                    ]
+                },
+                {
+                    "label": "B3",
+                    "name": "Theta1 Orionis B3",
+                    "parent": "B2",
+                    "mass": 2.5,
+                    "orbit": {
+                        "projected_au": 49
+                    },
+                    "aliases": [
+                        "The1Ori B3",
+                        "Theta1 Ori B3"
+                    ]
+                },
+                {
+                    "label": "B4",
+                    "name": "Theta1 Orionis B4",
+                    "parent": "B1",
+                    "mass": 1,
+                    "orbit": {
+                        "projected_au": 248
+                    },
+                    "aliases": [
+                        "The1Ori B4",
+                        "Theta1 Ori B4"
+                    ]
+                },
+                {
+                    "label": "B6",
+                    "name": "Theta1 Orionis B6",
+                    "parent": "B1",
+                    "spectral_type": "B",
+                    "mass": 5,
+                    "orbit": {
+                        "projected_au": 5.32
+                    },
+                    "notes": "Mass and projected separation use midpoints of the published ranges.",
+                    "aliases": [
+                        "The1Ori B6",
+                        "Theta1 Ori B6"
+                    ]
+                }
+            ],
+            "hd": 37021
+        },
+        {
+            "name": "Theta1 Orionis C",
+            "ra_deg": 83.81859895833333,
+            "dec_deg": -5.389680166666667,
+            "distance_pc": 410,
+            "members": [
+                {
+                    "label": "C1",
+                    "name": "Theta1 Orionis C1",
+                    "spectral_type": "O6Vp",
+                    "mass": 33.5,
+                    "radius": 8.91,
+                    "temperature": 39000,
+                    "apparent_magnitude": 5.13,
+                    "aliases": [
+                        "The1Ori C",
+                        "Theta1 Ori C",
+                        "41 Ori C",
+                        "The1Ori C1",
+                        "Theta1 Ori C1"
+                    ]
+                },
+                {
+                    "label": "C2",
+                    "name": "Theta1 Orionis C2",
+                    "parent": "C1",
+                    "spectral_type": "B0V",
+                    "mass": 12,
+                    "radius": 8.24,
+                    "temperature": 30000,
+                    "luminosity": 50000,
+                    "defines_system_plane": true,
+                    "orbit": {
+                        "period_days": 4163.85,
+                        "sma_au": 18.2,
+                        "eccentricity": 0.59,
+                        "inclination_deg": 98.6,
+                        "node_deg": 27.9,
+                        "omega_deg": 283,
+                        "epoch_jd": 2452348.55
+                    },
+                    "aliases": [
+                        "The1Ori C2",
+                        "Theta1 Ori C2"
+                    ]
+                }
+            ],
+            "hd": 37022,
+            "hip": 26221
+        },
+        {
+            "name": "Theta1 Orionis D",
+            "ra_deg": 83.82186020833333,
+            "dec_deg": -5.387936305555556,
+            "distance_pc": 438,
+            "members": [
+                {
+                    "label": "D1",
+                    "name": "Theta1 Orionis D1",
+                    "spectral_type": "B1.5V",
+                    "mass": 16,
+                    "radius": 5.6,
+                    "temperature": 32000,
+                    "apparent_magnitude": 6.7,
+                    "aliases": [
+                        "The1Ori D",
+                        "Theta1 Ori D",
+                        "41 Ori D",
+                        "The1Ori D1",
+                        "Theta1 Ori D1"
+                    ]
+                },
+                {
+                    "label": "D3",
+                    "name": "Theta1 Orionis D3",
+                    "parent": "D1",
+                    "spectral_type": "B",
+                    "mass": 6,
+                    "defines_system_plane": true,
+                    "orbit": {
+                        "period_days": 53.034,
+                        "sma_au": 0.77,
+                        "eccentricity": 0.43,
+                        "inclination_deg": 160,
+                        "node_deg": 346,
+                        "omega_deg": 166,
+                        "epoch_jd": 2457791.14025
+                    },
+                    "aliases": [
+                        "The1Ori D3",
+                        "Theta1 Ori D3"
+                    ]
+                }
+            ],
+            "hd": 37023,
+            "hip": 26224
+        },
+        {
+            "name": "Theta1 Orionis E",
+            "ra_deg": 83.81572083333333,
+            "dec_deg": -5.386116666666667,
+            "distance_pc": 391,
+            "members": [
+                {
+                    "label": "E A",
+                    "name": "Theta1 Orionis E A",
+                    "spectral_type": "G2IV",
+                    "mass": 2.755,
+                    "radius": 6.26,
+                    "temperature": 5150,
+                    "apparent_magnitude": 12.15,
+                    "aliases": [
+                        "The1Ori E",
+                        "Theta1 Ori E",
+                        "41 Ori E",
+                        "The1Ori E A",
+                        "Theta1 Ori E A"
+                    ]
+                },
+                {
+                    "label": "E B",
+                    "name": "Theta1 Orionis E B",
+                    "parent": "E A",
+                    "spectral_type": "G2IV",
+                    "mass": 2.72,
+                    "radius": 6.25,
+                    "temperature": 5150,
+                    "apparent_magnitude": 12.15,
+                    "defines_system_plane": true,
+                    "orbit": {
+                        "period_days": 9.89522,
+                        "sma_au": 0.1589,
+                        "eccentricity": 0,
+                        "inclination_deg": 73.7
+                    },
+                    "aliases": [
+                        "The1Ori E B",
+                        "Theta1 Ori E B"
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "Theta1 Orionis F",
+            "ra_deg": 83.81969609357,
+            "dec_deg": -5.39033271044,
+            "distance_pc": 414,
+            "members": [
+                {
+                    "label": "F",
+                    "name": "Theta1 Orionis F",
+                    "spectral_type": "B7.5p",
+                    "apparent_magnitude": 11.5,
+                    "notes": "Binary reported by ESO in 2016; no usable companion parameters in the cited sources. Only the primary is rendered.",
+                    "aliases": [
+                        "The1Ori F",
+                        "Theta1 Ori F",
+                        "41 Ori F"
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "Theta1 Orionis G",
+            "ra_deg": 83.81967916666666,
+            "dec_deg": -5.387933333333333,
+            "distance_pc": 414,
+            "members": [
+                {
+                    "label": "G",
+                    "name": "Theta1 Orionis G",
+                    "aliases": [
+                        "LV 2",
+                        "COUP 826",
+                        "The1Ori G",
+                        "Theta1 Ori G",
+                        "41 Ori G"
+                    ],
+                    "spectral_type": "K8.5",
+                    "apparent_magnitude": 16.5
+                }
+            ]
+        },
+        {
+            "name": "Theta1 Orionis H",
+            "ra_deg": 83.81580416666667,
+            "dec_deg": -5.389586111111111,
+            "distance_pc": 414,
+            "members": [
+                {
+                    "label": "H A",
+                    "name": "Theta1 Orionis H A",
+                    "spectral_type": "K5.5",
+                    "apparent_magnitude": 16.55,
+                    "aliases": [
+                        "The1Ori H",
+                        "Theta1 Ori H",
+                        "41 Ori H",
+                        "The1Ori H A",
+                        "Theta1 Ori H A"
+                    ]
+                },
+                {
+                    "label": "H B",
+                    "name": "Theta1 Orionis H B",
+                    "parent": "H A",
+                    "aliases": [
+                        "Parenago 1867",
+                        "COUP 746",
+                        "LV 5",
+                        "The1Ori H B",
+                        "Theta1 Ori H B"
+                    ],
+                    "spectral_type": "K6.5",
+                    "apparent_magnitude": 16.55,
+                    "orbit": {
+                        "projected_au": 287.72999999999996
+                    },
+                    "notes": "Separation from SIMBAD component positions; A/B are display suffixes for the two stars listed together as H."
+                }
+            ]
+        },
+        {
+            "name": "Theta1 Orionis I",
+            "ra_deg": 83.81544233556795,
+            "dec_deg": -5.38956092127337,
+            "distance_pc": 414,
+            "members": [
+                {
+                    "label": "I",
+                    "name": "Theta1 Orionis I",
+                    "apparent_magnitude": 16.3,
+                    "notes": "Position reconstructed from CCDM 05353-0524 KL (PA 274 deg, 1.3 arcsec); distance adopts the cluster value. Stellar properties are app estimates.",
+                    "aliases": [
+                        "The1Ori I",
+                        "Theta1 Ori I",
+                        "41 Ori I"
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "Theta2 Orionis A",
+            "ra_deg": 83.84542183333332,
+            "dec_deg": -5.4160646111111115,
+            "distance_pc": 340,
+            "members": [
+                {
+                    "label": "A1",
+                    "name": "Theta2 Orionis A1",
+                    "aliases": [
+                        "Theta2 Orionis Aa1",
+                        "The2Ori A",
+                        "Theta2 Ori A",
+                        "43 Ori A",
+                        "The2Ori A1",
+                        "Theta2 Ori A1"
+                    ],
+                    "spectral_type": "O9.5IVp",
+                    "mass": 29,
+                    "radius": 8.2,
+                    "temperature": 35000,
+                    "apparent_magnitude": 5.02
+                },
+                {
+                    "label": "A2",
+                    "name": "Theta2 Orionis A2",
+                    "parent": "A1",
+                    "aliases": [
+                        "Theta2 Orionis Aa2",
+                        "The2Ori A2",
+                        "Theta2 Ori A2"
+                    ],
+                    "spectral_type": "B",
+                    "mass": 12.6,
+                    "orbit": {
+                        "period_days": 20.9741
+                    }
+                },
+                {
+                    "label": "A3",
+                    "name": "Theta2 Orionis A3",
+                    "parent": "A1",
+                    "aliases": [
+                        "Theta2 Orionis Ab",
+                        "The2Ori A3",
+                        "Theta2 Ori A3"
+                    ],
+                    "mass": 5,
+                    "orbit": {
+                        "projected_au": 157
+                    }
+                }
+            ],
+            "hd": 37041,
+            "hip": 26235
+        },
+        {
+            "name": "Theta2 Orionis B",
+            "ra_deg": 83.860003125,
+            "dec_deg": -5.416887166666667,
+            "distance_pc": 419,
+            "members": [
+                {
+                    "label": "B1",
+                    "name": "Theta2 Orionis B1",
+                    "spectral_type": "B0.7V",
+                    "mass": 14.8,
+                    "radius": 4.3,
+                    "temperature": 29300,
+                    "apparent_magnitude": 6.38,
+                    "aliases": [
+                        "The2Ori B",
+                        "Theta2 Ori B",
+                        "43 Ori B",
+                        "The2Ori B1",
+                        "Theta2 Ori B1"
+                    ]
+                },
+                {
+                    "label": "B2",
+                    "name": "Theta2 Orionis B2",
+                    "parent": "B1",
+                    "spectral_type": "F",
+                    "mass": 1.6,
+                    "orbit": {
+                        "projected_au": 40
+                    },
+                    "aliases": [
+                        "The2Ori B2",
+                        "Theta2 Ori B2"
+                    ]
+                }
+            ],
+            "hd": 37042
+        },
+        {
+            "name": "Theta2 Orionis C",
+            "ra_deg": 83.88096295833333,
+            "dec_deg": -5.421214361111112,
+            "distance_pc": 408,
+            "members": [
+                {
+                    "label": "C1",
+                    "name": "Theta2 Orionis C1",
+                    "aliases": [
+                        "V361 Ori",
+                        "The2Ori C",
+                        "Theta2 Ori C",
+                        "43 Ori C",
+                        "The2Ori C1",
+                        "Theta2 Ori C1"
+                    ],
+                    "spectral_type": "B5V",
+                    "mass": 4,
+                    "temperature": 13800,
+                    "apparent_magnitude": 8.18
+                },
+                {
+                    "label": "C2",
+                    "name": "Theta2 Orionis C2",
+                    "parent": "C1",
+                    "orbit": {
+                        "period_days": 13
+                    },
+                    "notes": "Companion mass is unknown; the app supplies a display estimate.",
+                    "aliases": [
+                        "The2Ori C2",
+                        "Theta2 Ori C2"
+                    ]
+                },
+                {
+                    "label": "C3",
+                    "name": "Theta2 Orionis C3",
+                    "parent": "C1",
+                    "spectral_type": "A",
+                    "mass": 1.7,
+                    "orbit": {
+                        "projected_au": 15.7
+                    },
+                    "aliases": [
+                        "The2Ori C3",
+                        "Theta2 Ori C3"
+                    ]
+                }
+            ],
+            "hd": 37062
+        }
+    ]
+}

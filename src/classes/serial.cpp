@@ -626,6 +626,13 @@ static int find_object_impl(const char* search_term, bool os, double ml, int lev
 int find_object(const char *term, bool stars, double limit, int distance, const ExactStarSearchIndex *index)
 {
     const auto aliases = stellar_alias_matches(term);
+    // Published system letters are not internal companion slots.
+    if (aliases.size() == 1 && aliases.front()->stellar_system.is_object())
+    {
+        Star* match = aliases.front();
+        const int object = match->seqno;
+        if (object >= 0 && object < ncelobjs && cels[object] == match && !match->deleted) return object;
+    }
     // Resolve exact identities before considering any approximate display-name match.
     const int exact = find_object_impl(term, stars, limit, distance > 0 ? 1 : 0, index);
     if (exact >= 0) return exact;
@@ -987,6 +994,23 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
             while (object->cenobj->orbit && object->cenobj->orbit->center
                 && object->cenobj->orbit->center->typeclass() != class_galaxy)
                 object->cenobj = object->cenobj->orbit->center;
+            if (object->typeclass() == class_star && object->cenobj->typeclass() == class_star)
+            {
+                Star* member = static_cast<Star*>(object);
+                Star* root = static_cast<Star*>(object->cenobj);
+                if (member->stellar_system.is_object() && root->stellar_system.is_object() &&
+                    member->stellar_system.at("system") == root->stellar_system.at("system"))
+                {
+                    if (!root->multisys)
+                    {
+                        root->multisys = new StarMulti();
+                        root->multisys->add_member(root, 'A');
+                    }
+                    const char slot = member->stellar_system.value("slot", static_cast<int>(
+                        member == root ? 'A' : root->multisys->next_available()));
+                    if (slot >= 'A' && slot <= 'Z') root->multisys->add_member(member, slot);
+                }
+            }
             if (object->typeclass() == class_moon && object->user_added)
                 static_cast<Moon*>(object)->enforce_orbit_clearance(true);
             if (object->typeclass() != class_planet) continue;

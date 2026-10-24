@@ -1,3 +1,4 @@
+# Theta Orionis physical systems, published component labels, and orbits: stellar_systems.json.
 
 #Center Name            Member Name             Period_s        Node_deg    Incl_deg    Omega_deg   SMA_m       Eccn        Anomaly_deg         Epoch           SpType          AbsMagn         Msun        Rsun        Lum         TempK
 Sun                     (system inclination)                    000         023.45
@@ -373,8 +374,6 @@ HD1280                  The And B               1033d           263         069 
 HD84367                 The Ant B               18.423y         175.66      126.19      138.04      0.10904s    .4956       0                   2020.913                                        2.1
 HD16895                 GJ 107 B                2720y           128         075.44      100.64      22.289s     .13         0                   1613                                            0.521       0.498                    3685
 HD207155                The PsA B               19.957y         029.1       103         199         0.137s      .256        0                   2006.00                                         2.32
-HD37022                 HD37022 B               11.4y           027.9       098.6       283         18.2AU      .59         0                   2002.2                                          12          8.24        50000       30000
-HD37023                 HD37023 B               53.034d         346         160         166         0.77AU      .43         0                   2017.101                                        6
 HD93033                 TX UMa B                3.063d                                  324.7       2.3062e+9   .0134                                                                           1.18        4.24        13.5         5500
 HD183344                U Aql B                 1831.4d         133.8       115.4       167.1       5.94AU      .193        0                   JD2457575.3                                     2.2         2.1                      9300
 WASP-8                  (companion orbit)                       173         094         172
