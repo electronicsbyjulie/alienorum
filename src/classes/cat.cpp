@@ -8,6 +8,7 @@
 #include <cstring>
 #include <cstdlib>
 #include <cctype>
+#include <chrono>
 #include <stdio.h>
 #include <math.h>
 #include <time.h>
@@ -8786,10 +8787,15 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
     loading_msg = lmss.str();
     mtx.unlock();
 
-    const int cache_max_age_seconds = 12 * 3600; // 12 hours
-    if (file_exists(exocache) && file_age(exocache) < cache_max_age_seconds)
+    // Any recent source or derived cache suppresses network refresh for both passes.
+    // Cache schema and host-position changes can still trigger local reconstruction.
+    const auto cache_now = fs::file_time_type::clock::now();
+    for (const char* path : {exocache, "catalogs/exoplanets_stars.dat", "catalogs/exoplanets_planets.dat"})
     {
-        do_download = false;
+        std::error_code error;
+        if (!fs::is_regular_file(path, error)) continue;
+        const auto modified = fs::last_write_time(path, error);
+        if (!error && cache_now - modified < std::chrono::hours(24)) do_download = false;
     }
     if (radio_silence)
     {
@@ -8798,8 +8804,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
 
     // Derived caches also expire when the fixed host supplement changes.
     bool derived_cache_valid = file_exists(derived_cache) &&
-                               file_exists(exocache) &&
-                               (file_age(derived_cache) <= file_age(exocache) + 60) &&
+                               (!file_exists(exocache) || file_age(derived_cache) <= file_age(exocache) + 60) &&
                                (!file_exists(position_catalog) ||
                                 fs::last_write_time(derived_cache) >= fs::last_write_time(position_catalog));
 
@@ -8810,15 +8815,6 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
         std::getline(cache_header, version);
         derived_cache_valid = version == "# EXO_TRANSIT3";
 
-    }
-
-    // Refresh legacy source snapshots that predate explicit transit metadata.
-    if (!do_download && !radio_silence && !exoplanet_tap_attempted && exoplanet_tap_catalog.empty())
-    {
-        std::ifstream source(exocache);
-        const std::string snapshot((std::istreambuf_iterator<char>(source)), std::istreambuf_iterator<char>());
-        if (snapshot.find("\"tran_flag\"") == std::string::npos
-            && snapshot.find("\"detection_type\"") == std::string::npos) do_download = true;
     }
 
     if (exoplanet_tap_attempted || !exoplanet_tap_catalog.empty())

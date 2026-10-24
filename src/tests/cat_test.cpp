@@ -3252,6 +3252,158 @@ TEST_F(CatalogParsingTest, ExoplanetPassesShareCatalogSnapshot)
     delete_the_universe();
 }
 
+TEST_F(StellarDownloadTest, RecentExoplanetFilesSuppressRefreshAcrossBothPasses)
+{
+    struct RestoreNetwork
+    {
+        bool saved = radio_silence;
+        ~RestoreNetwork() { radio_silence = saved; }
+    } restore;
+    radio_silence = false;
+    class DownloadReader : public CatalogReader
+    {
+    public:
+        int requests = 0;
+    protected:
+        bool fetch_stellar_catalog_json(const std::string&, const std::string&, json&) override
+        {
+            ++requests;
+            return false;
+        }
+    };
+    const char* paths[] =
+    {
+        "catalogs/exoplanets.json", "catalogs/exoplanets_stars.dat", "catalogs/exoplanets_planets.dat"
+    };
+    // The legacy JSON omits transit metadata; both derived files require local reconstruction.
+    const json saved = json::array({{{"pl_name", "Snapshot host b"}, {"hostname", "Snapshot host"},
+        {"pl_orbper", 20}, {"pl_orbsmax", 0.2}, {"pl_bmasse", 1}, {"pl_rade", 1},
+        {"sy_dist", 10}, {"ra", 10}, {"dec", 20}, {"source_catalog", "NASA"}}});
+    for (const char* fresh : paths)
+    {
+        for (int age_minutes : {13 * 60, 24 * 60 - 1, -60})
+        {
+            for (bool stars_first : {false, true})
+            {
+                SCOPED_TRACE(std::string(fresh) + " age=" + std::to_string(age_minutes) +
+                    " stars_first=" + std::to_string(stars_first));
+                delete_the_universe();
+                make_star("Sol");
+                Star* host = make_star("Snapshot host");
+                std::ofstream(paths[0]) << saved;
+                for (int i : {1, 2}) std::ofstream(paths[i]) << "# EXO_TRANSIT2\n";
+                const auto now = std::filesystem::file_time_type::clock::now();
+                for (const char* path : paths)
+                {
+                    std::filesystem::last_write_time(path, now - std::chrono::hours(48));
+                }
+                std::filesystem::last_write_time(fresh, now - std::chrono::minutes(age_minutes));
+                // A newer supplement invalidates derived data without allowing a TAP refresh.
+                std::ofstream("catalogs/exoplanet_host_positions.dat").close();
+                DownloadReader reader;
+                reader.load_exoplanets_from_tap(stars_first);
+                EXPECT_EQ(reader.requests, 0);
+                reader.load_exoplanets_from_tap(!stars_first);
+                EXPECT_EQ(reader.requests, 0);
+                EXPECT_EQ(host->pl_indices.size(), 1u);
+            }
+        }
+    }
+}
+
+TEST_F(StellarDownloadTest, RecentDerivedExoplanetCachesWorkWithoutTheJsonSource)
+{
+    struct RestoreNetwork
+    {
+        bool saved = radio_silence;
+        ~RestoreNetwork() { radio_silence = saved; }
+    } restore;
+    radio_silence = false;
+    class DownloadReader : public TestCatalogReader
+    {
+    public:
+        int requests = 0;
+    protected:
+        bool fetch_stellar_catalog_json(const std::string&, const std::string&, json&) override
+        {
+            ++requests;
+            return false;
+        }
+    };
+    for (bool stars_only : {false, true})
+    {
+        SCOPED_TRACE(stars_only);
+        delete_the_universe();
+        make_star("Sol");
+        Star* host = make_star("Snapshot host");
+        ExoRow row;
+        row.hostname = "Snapshot host";
+        row.pl_name = "Snapshot host b";
+        row.pl_orbper = 20;
+        row.pl_orbsmax = .2;
+        row.pl_bmasse = row.pl_rade = 1;
+        row.sy_dist = 10;
+        row.ra = 10;
+        row.dec = 20;
+        const char* path = stars_only ? "catalogs/exoplanets_stars.dat" : "catalogs/exoplanets_planets.dat";
+        FILE* cache = fopen(path, "wb");
+        ASSERT_NE(cache, nullptr);
+        fputs("# EXO_TRANSIT3\n", cache);
+        TestCatalogReader::exorow_write_line(cache, row);
+        fclose(cache);
+        DownloadReader reader;
+        reader.load_exoplanets_from_tap(stars_only);
+        EXPECT_EQ(reader.requests, 0);
+        EXPECT_EQ(host->pl_indices.size(), stars_only ? 0u : 1u);
+        EXPECT_FALSE(std::filesystem::exists("catalogs/exoplanets.json"));
+        std::filesystem::remove(path);
+    }
+}
+
+TEST_F(StellarDownloadTest, ExoplanetRefreshStartsOnlyAfterAllFilesExpire)
+{
+    struct RestoreNetwork
+    {
+        bool saved = radio_silence;
+        ~RestoreNetwork() { radio_silence = saved; }
+    } restore;
+    radio_silence = false;
+    class DownloadReader : public CatalogReader
+    {
+    public:
+        int requests = 0;
+    protected:
+        bool fetch_stellar_catalog_json(const std::string&, const std::string&, json&) override
+        {
+            ++requests;
+            return false;
+        }
+    };
+    const char* paths[] =
+    {
+        "catalogs/exoplanets.json", "catalogs/exoplanets_stars.dat", "catalogs/exoplanets_planets.dat"
+    };
+    for (int age_hours : {24, 25, 0})
+    {
+        SCOPED_TRACE(age_hours);
+        const auto now = std::filesystem::file_time_type::clock::now();
+        for (const char* path : paths)
+        {
+            if (age_hours)
+            {
+                std::ofstream(path) << "[]";
+                std::filesystem::last_write_time(path, now - std::chrono::hours(age_hours));
+            }
+            else std::filesystem::remove(path);
+        }
+        DownloadReader reader;
+        reader.load_exoplanets_from_tap(true);
+        EXPECT_EQ(reader.requests, 4);
+        reader.load_exoplanets_from_tap(false);
+        EXPECT_EQ(reader.requests, 4);
+    }
+}
+
 TEST_F(StellarDownloadTest, ExoplanetRefreshRequiresBothSourcesAndPreservesSavedDataOnFailure)
 {
     struct OfflineContext
