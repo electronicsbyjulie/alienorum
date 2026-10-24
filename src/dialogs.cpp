@@ -1865,12 +1865,13 @@ void draw_objedit_window(ImGuiIO& io)
                     ImGui::TableSetupColumn("HZ?", ImGuiTableColumnFlags_None, 0.45f);
                     ImGui::TableSetupScrollFreeze(0, 1);
                     ImGui::TableHeadersRow();
-                    int i, j, m, n;
-                    std::vector<CelestialObject*> siblings;
-                    for (i=0; cels[i]; i++) if (cels[i]->orbit && cels[i]->orbit->center == cel->orbit->center && cels[i] != cel)
+                    int i, n;
+                    std::vector<CelestialObject*> siblings, neighbors;
+                    for (i=0; cels[i]; i++)
                     {
-                        if (cels[i]->mass < 0.01 * cel->mass) continue;
-                        siblings.push_back(cels[i]);
+                        if (cels[i]->deleted || !cels[i]->orbit || cels[i]->orbit->center != orb->center || cels[i] == cel) continue;
+                        neighbors.push_back(cels[i]);
+                        if (cels[i]->mass >= 0.01 * cel->mass) siblings.push_back(cels[i]);
                     }
 
                     struct CandidatePeriod
@@ -1890,64 +1891,36 @@ void draw_objedit_window(ImGuiIO& io)
                     preview.orbit->center = orb->center;
                     const bool stellar_parent = orb->center->typeclass() == class_star;
 
-                    std::vector<CandidatePeriod> candidates;
-                    int nsibs = siblings.size();
-                    for (i=0; i<nsibs; i++)
-                    {
-                        for (n=1; n<10; n++)
+                    auto candidates = simplest_resonance_candidates<CandidatePeriod>(siblings,
+                        [&](CelestialObject* partner, int m, int n, CandidatePeriod& cand)
                         {
-                            for (m=1; m<10+n*2; m++)
+                            cand.m = m;
+                            cand.n = n;
+                            cand.sibling = partner;
+                            cand.period = partner->orbit->period * n / m;
+                            if (!std::isfinite(cand.period) || cand.period <= 0) return false;
+                            const double period_min = fmin(cand.period, partner->orbit->period);
+                            const double period_max = fmax(cand.period, partner->orbit->period);
+                            for (CelestialObject* other : siblings)
                             {
-                                if (m == n) continue;
-                                if (m == 2*n || n == 2*m) continue;
-                                if (m == 3*n || n == 3*m) continue;
-                                if (m == 4*n || n == 4*m) continue;
-                                if (!(m%2) && !(n%2)) continue;
-                                if (!(m%3) && !(n%3)) continue;
-                                if (!(m%5) && !(n%5)) continue;
-                                if (!(m%7) && !(n%7)) continue;
-                                if (m > 0.75*n && n > 0.75*m) continue;
-
-                                CandidatePeriod cand;
-                                cand.m = m;
-                                cand.n = n;
-                                cand.sibling = siblings[i];
-                                cand.period = cand.sibling->orbit->period * n / m;
-                                if (!std::isfinite(cand.period) || cand.period <= 0) continue;
-
-                                const double partner_period = cand.sibling->orbit->period;
-                                const double period_min = fmin(cand.period, partner_period);
-                                const double period_max = fmax(cand.period, partner_period);
-
-                                bool blocked = false;
-                                for (j=0; !blocked && (j<nsibs); j++)
-                                {
-                                    if (j==i) continue;
-                                    const double other_period = siblings[j]->orbit->period;
-                                    double lratio = other_period / cand.period;
-                                    if (lratio > 0.53 && lratio < 1.96) blocked = true;
-                                    // Only a body between the proposed orbit and its
-                                    // resonance partner intervenes, on either side.
-                                    if (other_period > period_min && other_period < period_max) blocked = true;
-                                }
-
-                                if (!blocked)
-                                {
-                                    preview.orbit->period = cand.period;
-                                    preview.orbit->semimajor_axis = 0;
-                                    preview.orbit->compute_semimajor_axis(cel->mass);
-                                    cand.semimajor_axis = preview.orbit->semimajor_axis;
-                                    if (!std::isfinite(cand.semimajor_axis) || cand.semimajor_axis <= 0) continue;
-                                    bool unsafe = cand.semimajor_axis < sma_limit;
-                                    for (int k = 0; !unsafe && cels[k]; k++)
-                                        unsafe = orbit_conflict(cel, cand.semimajor_axis, cels[k]);
-                                    if (unsafe) continue;
-                                    cand.in_hz = stellar_parent && preview.is_in_con_HZ();
-                                    candidates.push_back(cand);
-                                }
+                                if (other == partner) continue;
+                                const double other_period = other->orbit->period;
+                                const double ratio = other_period / cand.period;
+                                if (ratio > .53 && ratio < 1.96) return false;
+                                if (other_period > period_min && other_period < period_max) return false;
                             }
-                        }
-                    }
+                            preview.orbit->period = cand.period;
+                            preview.orbit->semimajor_axis = 0;
+                            preview.orbit->compute_semimajor_axis(cel->mass);
+                            cand.semimajor_axis = preview.orbit->semimajor_axis;
+                            if (!std::isfinite(cand.semimajor_axis) || cand.semimajor_axis < sma_limit) return false;
+                            for (CelestialObject* other : neighbors)
+                            {
+                                if (orbit_conflict(cel, cand.semimajor_axis, other)) return false;
+                            }
+                            cand.in_hz = stellar_parent && preview.is_in_con_HZ();
+                            return true;
+                        });
 
                     std::stable_sort(candidates.begin(), candidates.end(),
                         [](const CandidatePeriod &a, const CandidatePeriod &b)

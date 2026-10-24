@@ -1915,6 +1915,52 @@ TEST(OrbitalSpacingTest, ScreensCloseCrossingAndMassiveOrbits)
     EXPECT_FALSE(orbital_spacing_warning(0, 0, earth_mass, AU, 0, earth_mass, solar_mass));
 }
 
+TEST(OrbitalSpacingTest, ResonanceCandidatesKeepTheSimplestRatiosAndStopAtTheCap)
+{
+    struct Candidate { int m, n, sibling; };
+    std::vector<int> siblings(1000);
+    int calls = 0;
+    const auto build = [&](int sibling, int m, int n, Candidate& candidate)
+    {
+        ++calls;
+        candidate = {m, n, sibling};
+        return true;
+    };
+    const auto capped = simplest_resonance_candidates<Candidate>(siblings, build);
+    ASSERT_EQ(capped.size(), resonance_candidate_limit);
+    EXPECT_EQ(calls, resonance_candidate_limit);
+    for (const auto& candidate : capped) EXPECT_EQ(candidate.m + candidate.n, 5);
+    siblings = {1, 2};
+    const auto all = simplest_resonance_candidates<Candidate>(siblings, build, 1000);
+    const auto limited = simplest_resonance_candidates<Candidate>(siblings, build, 12);
+    ASSERT_GT(all.size(), limited.size());
+    ASSERT_EQ(limited.size(), 12u);
+    for (size_t i = 1; i < limited.size(); ++i)
+    {
+        EXPECT_LE(limited[i-1].m + limited[i-1].n, limited[i].m + limited[i].n);
+    }
+    for (size_t i = limited.size(); i < all.size(); ++i)
+    {
+        EXPECT_LE(limited.back().m + limited.back().n, all[i].m + all[i].n);
+    }
+    EXPECT_TRUE(simplest_resonance_candidates<Candidate>(siblings, build, 0).empty());
+}
+
+TEST(OrbitalSpacingTest, RejectedResonancesDoNotConsumeTheCandidateLimit)
+{
+    struct Candidate { int m, n, sibling; };
+    const std::vector<int> siblings = {0, 1, 2, 3};
+    const auto candidates = simplest_resonance_candidates<Candidate>(siblings,
+        [](int sibling, int m, int n, Candidate& candidate)
+        {
+            if (sibling % 2 == 0) return false;
+            candidate = {m, n, sibling};
+            return true;
+        }, 10);
+    ASSERT_EQ(candidates.size(), 10u);
+    for (const auto& candidate : candidates) EXPECT_EQ(candidate.sibling % 2, 1);
+}
+
 TEST_F(PlanetClassificationEvidenceTest, ColdAtmospheresCondenseAndConverge)
 {
     Planet* world = make_planet(make_star());

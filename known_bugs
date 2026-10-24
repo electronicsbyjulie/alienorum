@@ -2,7 +2,8 @@
 [COMPLETE] DO NOT IGNORE METALLICITY OR DENSITY for purposes of Planet::classify() JUST BECAUSE THE MASS IS INFERRED FROM AN ASSUMED INCLINATION! JFC.
 Verified: RV-inferred adopted masses enter the metallicity model and supplied-radius density path without being promoted to observed masses. The RV minimum remains diagnostic; independent model calibration/domain checks still apply. Application build and all 89 planet tests passed.
 
-Resonances list sometimes gets so full that it slows the frame rate way down. Cap it at a reasonable limit, keeping only so many entries with the lowest m+n.
+[COMPLETE] Resonances list sometimes gets so full that it slows the frame rate way down. Cap it at a reasonable limit, keeping only so many entries with the lowest m+n.
+Verified: suggestions stop at 64 accepted entries in increasing m+n order; collision checks use local orbital neighbors. Application build and all 91 planet tests passed.
 
 When loading a universe .json file, all planetary parameters MUST survive the load. Do not overwrite has_water, vegetation colors, atmosphere, etc with randomized values.
 
