@@ -319,15 +319,13 @@ void Planet::classify(bool HZ, bool mnrk, bool ck)
     const bool measured_density = valid_mass && measured_radius && mass_evidence == PlanetMeasurement::observed;
     const bool lower_density_bound = valid_mass && measured_radius && mass_evidence == PlanetMeasurement::minimum;
     const double density = valid_mass && valid_radius ? mass / sphere_volume(volumetric_mean_radius) * 1e-6 : NAN;
-    // An inclination-corrected mass retains its RV lower bound. Use that bound conservatively
-    // when a radius is supplied, rather than discarding the density because the mass is estimated.
+    // Preserve the RV lower bound separately from the density of the adopted physical model.
     const double minimum_mass = lower_density_bound ? mass
         : measured_radius && valid_mass && !measured_density && std::isfinite(msini) && msini > 0 && msini <= mass
             ? msini : NAN;
     const double minimum_density = std::isfinite(minimum_mass)
         ? minimum_mass / sphere_volume(volumetric_mean_radius) * 1e-6 : NAN;
-    const double density_constraint = measured_radius && valid_mass
-        ? (std::isfinite(minimum_density) ? minimum_density : density) : NAN;
+    const double density_constraint = measured_radius && valid_mass ? density : NAN;
     classification_evidence =
     {
         {"mass_evidence", static_cast<int>(mass_evidence)}, {"radius_evidence", static_cast<int>(radius_evidence)},
@@ -338,7 +336,7 @@ void Planet::classify(bool HZ, bool mnrk, bool ck)
         {"density_constraint_g_cm3", std::isfinite(density_constraint) ? json(density_constraint) : json(nullptr)},
         {"density_constraint_basis", !std::isfinite(density_constraint) ? "radius_unmeasured_or_mass_absent"
             : measured_density ? "observed_mass_and_radius"
-            : std::isfinite(minimum_density) ? "minimum_mass_and_observed_radius" : "adopted_mass_and_observed_radius"},
+            : lower_density_bound ? "minimum_mass_and_observed_radius" : "adopted_mass_and_observed_radius"},
         {"metallicity_applied", false}
     };
 
@@ -391,10 +389,15 @@ void Planet::classify(bool HZ, bool mnrk, bool ck)
         ? classification_evidence["density_constraint_basis"].get<std::string>()
         : measured_radius ? "observed_radius" : "mass_with_radius_unavailable_or_estimated";
 
-    if (host && valid_mass && mass_evidence == PlanetMeasurement::observed && !measured_radius && typeclass() == class_planet)
+    const bool inclination_mass = mass_evidence == PlanetMeasurement::estimated
+        && std::isfinite(msini) && msini > 0 && msini <= mass;
+    classification_evidence["mass_from_rv_inclination"] = inclination_mass;
+    if (host && valid_mass && (mass_evidence == PlanetMeasurement::observed || inclination_mass)
+        && !measured_radius && typeclass() == class_planet)
     {
+        const double error_mass = inclination_mass ? msini : mass;
         const double relative_error = std::isfinite(mass_error_upper) && std::isfinite(mass_error_lower)
-            ? fmax(fabs(mass_error_upper), fabs(mass_error_lower)) / mass : NAN;
+            ? fmax(fabs(mass_error_upper), fabs(mass_error_lower)) / error_mass : NAN;
         const MetallicityPrior prior = planet_envelope_prior(*host, mass / earth_mass, irradiation, relative_error);
         classification_evidence["metallicity_model"] = prior.reason;
         if (prior.applicable)

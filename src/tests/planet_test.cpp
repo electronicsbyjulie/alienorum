@@ -352,6 +352,20 @@ TEST_F(PlanetClassificationEvidenceTest, SyntheticModelExercisesValidationAndApp
     const json first = planet->classification_evidence;
     planet->classify(false, false, true);
     EXPECT_EQ(planet->classification_evidence, first);
+    planet->mass_evidence = PlanetMeasurement::estimated;
+    planet->msini = 1.5 * earth_mass;
+    for (double metal : {-0.5, 0.5})
+    {
+        host->metallicity = metal;
+        planet->type = rocky;
+        planet->classify(false, false, true);
+        EXPECT_EQ(planet->mass_evidence, PlanetMeasurement::estimated);
+        EXPECT_TRUE(planet->classification_evidence["mass_from_rv_inclination"].get<bool>());
+        EXPECT_EQ(planet->classification_evidence["metallicity_model"], "validated_large_radius_prior");
+        EXPECT_EQ(planet->type, metal < 0 ? rocky : ice_giant);
+        EXPECT_EQ(planet->classification_evidence["metallicity_applied"].get<bool>(), metal > 0);
+    }
+    host->metallicity = .5;
     EXPECT_FALSE(planet_envelope_prior(*host, 3, 1, 0.5).applicable);
     EXPECT_FALSE(planet_envelope_prior(*host, 100, 1, 0.1).applicable);
     host->metallicity_ratio = "[M/H]";
@@ -2118,7 +2132,7 @@ TEST_F(PlanetClassificationEvidenceTest, SuppliedRadiiConstrainAdoptedMassesWith
     }
 }
 
-TEST_F(PlanetClassificationEvidenceTest, SuppliedRadiusUsesTheRvMinimumWhenTheTrueMassWasEstimated)
+TEST_F(PlanetClassificationEvidenceTest, SuppliedRadiusUsesTheAdoptedRvMassAndRetainsTheMinimum)
 {
     Planet* body = make_planet(make_star(), "Inclination-derived mass");
     body->mass = 8 * earth_mass;
@@ -2133,20 +2147,23 @@ TEST_F(PlanetClassificationEvidenceTest, SuppliedRadiusUsesTheRvMinimumWhenTheTr
         EXPECT_EQ(body->mass_evidence, PlanetMeasurement::estimated);
         EXPECT_FALSE(body->classification_evidence["density_observed"].get<bool>());
         EXPECT_FALSE(body->classification_evidence["density_is_lower_bound"].get<bool>());
-        EXPECT_EQ(body->classification_evidence["density_constraint_basis"], "minimum_mass_and_observed_radius");
-        EXPECT_NEAR(body->classification_evidence["density_constraint_g_cm3"].get<double>(),
+        EXPECT_EQ(body->classification_evidence["density_constraint_basis"], "adopted_mass_and_observed_radius");
+        EXPECT_DOUBLE_EQ(body->classification_evidence["density_constraint_g_cm3"].get<double>(),
+            body->classification_evidence["density_g_cm3"].get<double>());
+        EXPECT_NEAR(body->classification_evidence["minimum_density_g_cm3"].get<double>(),
             .75 * body->classification_evidence["density_g_cm3"].get<double>(),
             body->classification_evidence["density_g_cm3"].get<double>() * 1e-12);
         Planet restored;
         ASSERT_TRUE(restored.from_json(body->to_json()));
         EXPECT_EQ(restored.classification_evidence, body->classification_evidence);
     }
-    // A speculative high true mass must not overrule a weak RV density bound.
+    // A weak RV lower bound does not replace the adopted mass used by the physical model.
     body->msini = earth_mass;
     body->set_explicit_radius(2 * earth_radius);
     body->classify(false, true, true);
-    EXPECT_EQ(body->type, ice_giant);
-    EXPECT_LT(body->classification_evidence["density_constraint_g_cm3"].get<double>(), 1);
+    EXPECT_EQ(body->type, rocky);
+    EXPECT_LT(body->classification_evidence["minimum_density_g_cm3"].get<double>(), 1);
+    EXPECT_GT(body->classification_evidence["density_constraint_g_cm3"].get<double>(), 5);
 }
 
 TEST_F(PlanetClassificationEvidenceTest, ExplicitMassEditsClearTheOldMinimumAndErrors)
