@@ -48,16 +48,15 @@ class ConstellationTest : public ::testing::Test
         constellations.clear();
         num_reg_cons = 0;
         
-        // Setup a safe, small cels array for fill_alienorum_ids to iterate over
-        // Assuming cels is a global CelestialObject** null-terminated array
-        cels = new CelestialObject*[10];
-        for (int i = 0; i < 10; i++) cels[i] = nullptr;
+        // Reload imports explicit stellar systems, so it requires the application-sized array.
+        cels = new CelestialObject*[MAX_CELOBJS]();
+        ncelobjs = 0;
     }
 
     void TearDown() override
     {
         // Clean up any stars we allocated into cels
-        for (int i = 0; i < 10; i++)
+        for (int i = 0; cels[i]; i++)
         {
             if (cels[i])
             {
@@ -67,6 +66,7 @@ class ConstellationTest : public ::testing::Test
         }
         delete[] cels;
         cels = nullptr;
+        ncelobjs = 0;
         
         constellations.clear();
         num_reg_cons = 0;

@@ -1,59 +1,7 @@
 
-FIXED (2026-10-22): WD1330+643 is present and searchable in the rebuilt condensed catalog. Its existing color-table row now includes verified Gaia DR3 astrometry. A fresh-cache regression checks its Gaia identity and green custom color. Legacy B1950 catalog identifiers retain priority over colliding J2000 labels.
+DO NOT IGNORE METALLICITY for purposes of Planet::classify() JUST BECAUSE THE MASS IS INFERRED FROM AN ASSUMED INCLINATION! JFC.
 
-Original request: WD1330+643 is not searchable.
+Resonances list sometimes gets so full that it slows the frame rate way down. Cap it at a reasonable limit, keeping only so many entries with the lowest m+n.
 
+When loading a universe .json file, all planetary parameters MUST survive the load. Do not overwrite has_water, vegetation colors, atmosphere, etc with randomized values.
 
-FIXED (2026-10-22): Exoplanet host searches resolve published legacy white-dwarf aliases even before Gaia color identities are attached. Repeated imports reuse the same host. Exact catalog identifiers and Gaia identities retain their respective namespaces; conflicting or ambiguous alias matches are rejected.
-
-Original request: Remove the stale reload-count note and prevent the duplicate white-dwarf host.
-
-
-FIXED (2026-10-22, code audit): PNG exports release temporary pixel storage, reject absent bump data, encode flat elevation maps without division by zero, and report buffered write errors. Repeated exports pass AddressSanitizer leak checks.
-
-FIXED (2026-10-22, code audit): Generated constellation segments now respect the documented 15-degree limit. The existing 47 Ursae Majoris and GJ 86 acceptance checks pass.
-
-FIXED (2026-10-22, code audit): Generated constellation figures reject components with fewer than three lines and allow three-star chains to close into triangles. Existing bright-star coverage and connected-shape checks pass.
-
-FIXED (2026-10-22, code audit): Favorite-star actions are disabled for an empty list, preventing selection, navigation, alerts, and removal from accessing absent entries. The application build passes.
-
-FIXED (2026-10-22, code audit): Ephemeris parsing safely handles missing, empty, short, and unordered input, closes files automatically, and retains the final sample. Interpolation uses bounded sample pairs, including both endpoint dates, and repeated loading releases prior storage. Celestial, Moon, and planet suites pass (137 checks).
-
-FIXED (2026-10-22, code audit): Procedural randomization handles absent, negative, nonfinite, and extreme physical inputs without undefined floating-to-integer conversions or union aliasing. Explicit random seeds remain unchanged; all 49 celestial checks pass.
-
-FIXED (2026-10-22, code audit): Generated constellation lines enforce half-length separation from other figures and symmetric near-miss checks, including fainter stars. The existing passerby and separation tests pass; a separate Tau Ceti shape expectation remains unresolved.
-
-FIXED (2026-10-22, code audit): UI texture loading rejects empty or oversized files, failed seeks, allocation failures, and short reads before decoding, preventing uninitialized input from reaching the image decoder. The application build passes.
-
-FIXED (2026-10-22, code audit): Reapplying exoplanet names retains heliocentric source elements instead of treating converted local inclinations as fresh observations. A regression reproduces the former orbit rotation and verifies stable positions across repeated passes. Planet and star suites pass; two older catalog checks remain separate.
-
-FIXED (2026-10-22, code audit): The Gaia astrometry regression uses a temporary two-star catalog and explicitly loads the stellar reference table, so its distance, companion-photometry, and luminosity-class checks work without an optional external dataset. The isolated regression passes.
-
-RESOLVED (2026-10-22): The current Tau Ceti constellation shapes are accepted. Replaced obsolete individual-line assertions with a regression checking that the Sun and Arcturus share a constellation when viewed from Tau Ceti.
-
-FIXED (2026-10-22): Removed the object-specific inclination exception. For every host, exactly 90-degree catalog inclinations without transit evidence are treated as unknown and use the disk when available. Other values, including 89.92 degrees, remain valid. Transit metadata survives imports, caches, and saved objects; repeated catalog processing preserves inferred geometry.
-
-
-OPEN (2026-10-22, validation): Broader catalog checks still fail for the PDS 70 / 82 Eri catalog assertions. Host reload counts are stable.
-
-Audit validation (2026-10-22): Application build passes. Initial full C++ run: 471 passing checks, two failing cases at that time, six skips for disabled GPU terrain/mesh paths. All 14 Python utility checks pass; shell syntax checks pass. Warning review covered all 35 application source units. This audit does not establish that all possible defects are absent.
-
-Tau Ceti validation (2026-10-22): All 22 constellation checks pass, including the Sun–Arcturus shared-constellation regression.
-
-FIXED (2026-10-22): Local-body roles, map inversion, known-pole status, vegetation color, and satellite center codes come from the packaged planet catalog rather than object-name conditions. Saved objects retain role metadata, older universe files import it from the catalog, and a renamed satellite host resolves by its catalog code. Celestial, satellite, and housekeeping checks pass (72 checks); application builds.
-
-FIXED (2026-10-22): Constellation polar fallbacks use catalog boundary geometry, split regions use their catalog naming structure, and reference-vantage matching uses the reference star and its aliases. Removed object-specific star naming, import alias rewriting, and debug output. Constellation, star, and rendering suites pass (113 checks; six disabled GPU-path skips).
-
-FIXED (2026-10-22): Removed named-object catalog branches for binary membership, host identity, source choice, planet-letter rewriting, asteroid naming, and missing radii. Host cross-identifiers and aliases come from catalog records; rejection follows source disposition; unknown asteroid radii use an albedo estimate. The legacy CSV importer also retains transit flags and converts inclination units once. Star and celestial suites pass (100 checks); 49 catalog checks pass.
-
-FIXED (2026-10-22): Galaxy orientation, measured size and distance, band files, texture paths, and label extents are loaded from a packaged properties catalog. Removed named-galaxy rendering branches and fixed physical values from executable code. The reference star's pole is likewise read from the local catalog. A synthetic galaxy regression verifies the same data path and serialization. Application builds; the full run has 475 passing checks at that time. The catalog reload regression is now covered by the host-identity fix. CMake configuration could not run because CMake is absent; installation rules and installer checks include the new catalog.
-
-FIXED (2026-10-22): Removed the remaining binary identifier exclusions, wide-companion name exceptions, and asteroid name rewriting. The deliberate asteroid selection was subsequently restored; wide orbits and unknown binary orbits retain their catalog identities. Constellation names and genitives now come from consline.dat instead of a compiled object table. Legacy exoplanet snapshots refresh transit metadata when online; NASA boolean flags and EU combined detection methods preserve real transiting 90-degree inclinations. Final targeted checks: all 22 constellation cases and 50 catalog cases pass; the catalog reload identity case is now fixed. Application builds.
-
-RESTORED (2026-10-22): Restored the user-selected asteroid list and its original loading condition exactly from the commit preceding its removal. This is a deliberate selection and must be preserved. Verified exact agreement with the original code.
-
-FIXED (2026-10-22): HD 3167 inferred-inclination regression accepts 85 through 90 degrees so updated transit measurements remain valid.
-
-FIXED (2026-10-22): Catalog imports retain host cross-identifiers, and shared searches resolve exact stellar aliases before approximate names. Planet searches resolve host aliases first and reject absent planets in known systems. Deleted stars release HD/HIP cache entries. Regression coverage includes GJ, HD, Bayer, Flamsteed, Gould, custom, and imported names.
-
-IMPLEMENTED (2026-10-22): The S panel identifies the closest named locale within 5 km in horizon mode on any body with locales. Surface distance uses the body radius and handles longitude wrapping and polar positions.

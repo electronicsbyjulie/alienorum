@@ -11,6 +11,7 @@
 #include "cons.h"
 #include "planet.h"
 #include "wdcolor.h"
+#include "../globals.h"
 
 using namespace alienorum;
 
@@ -19,6 +20,24 @@ Star **hdcache = nullptr, **hipcache = nullptr;
 std::map<std::string, Star*> dmcache;
 std::vector<Star*> favestars;
 bool show_favestars = false, label_favestars = true;
+
+void Star::refresh_planet_statistics()
+{
+    std::lock_guard<std::recursive_mutex> lock(catalog_mutex);
+    std::vector<int> valid;
+    has_hz_planets = 0;
+    for (int index : pl_indices)
+    {
+        if (!cels || index < 0 || index >= ncelobjs || !cels[index] || cels[index]->deleted
+            || cels[index]->typeclass() != class_planet || std::find(valid.begin(), valid.end(), index) != valid.end()) continue;
+        Planet* planet = static_cast<Planet*>(cels[index]);
+        if (!planet->counts_for_host_statistics() || planet->get_light_center() != this) continue;
+        valid.push_back(index);
+        if (planet->is_in_con_HZ()) ++has_hz_planets;
+    }
+    pl_indices.swap(valid);
+    has_planets = static_cast<int>(pl_indices.size());
+}
 static std::map<std::string, std::set<Star*>> catalog_alias_index;
 static std::mutex catalog_alias_mutex;
 
@@ -1649,6 +1668,8 @@ json Star::to_json()
     towrite["Bonn_survey_sequential"] = Bonn_survey_sequential;
     towrite["is_orbit_multiple"] = is_orbit_multiple;
 
+    if (local_name.size()) towrite["local_name"] = local_name;
+
     // The planet tallies. has_hz_planets goes with has_planets whether or not anything asks for
     // it: the two are counted in the same breath everywhere they are counted, and a file that
     // stated one and left the other to be worked out would come back internally inconsistent --
@@ -1705,6 +1726,7 @@ bool Star::from_json(json j)
     try { j.at("apparent_magnitude").get_to(apparent_magnitude); } catch (...) { ; }
     try { j.at("has_planets").get_to(has_planets); } catch (...) { ; }
     try { j.at("has_hz_planets").get_to(has_hz_planets); } catch (...) { ; }
+    try { j.at("local_name").get_to(local_name); } catch (...) { ; }
     try { j.at("parallax").get_to(parallax); parallax *= fiftyseventh / 3600000; } catch (...) { ; }
     try
     {

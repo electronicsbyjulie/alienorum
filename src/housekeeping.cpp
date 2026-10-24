@@ -254,6 +254,7 @@ bool compute_object_location(CelestialObject* cel)
         break;
 
         case class_planet:
+        static_cast<Planet*>(cel)->sync_host_statistics();
         if (i > 0)
         {
             if (!system_object && i!=selected && i!=trackidx && i!=editidx && i!=whereami)
@@ -721,6 +722,7 @@ void set_center_objects()
         if (cels[i]->orbit && cels[i]->orbit->center) cels[i]->origcenname = cels[i]->orbit->center->name;
     }
 
+    Planet::rebuild_host_statistics();
     ((Star*)cels[0])->make_universally_visible();
 
     if (showfails)

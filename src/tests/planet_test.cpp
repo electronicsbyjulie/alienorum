@@ -49,6 +49,98 @@ protected:
     }
 };
 
+TEST_F(PlanetClassificationEvidenceTest, PlutoSizedAsteroidLeavesTheSunWithEightPlanets)
+{
+    Star* sun = make_star("Sun");
+    CatalogReader reader;
+    ASSERT_EQ(reader.read_local_planets(cels, MAX_CELOBJS, sun), 8);
+    EXPECT_EQ(sun->has_planets, 8);
+    EXPECT_EQ(sun->pl_indices.size(), 8u);
+    Planet* asteroid = new Planet();
+    strcpy(asteroid->name, "Fictional Pluto-sized asteroid");
+    asteroid->mass = .0022 * earth_mass;
+    asteroid->volumetric_mean_radius = 1188300;
+    asteroid->asteroid_no = 999999;
+    asteroid->orbit = new Orbit();
+    asteroid->orbit->center = sun;
+    asteroid->orbit->semimajor_axis = 40 * AU;
+    ASSERT_TRUE(append_cel(asteroid));
+    asteroid->update_location(J2000_TIME_T);
+    EXPECT_LT(asteroid->mass, planet_count_mass_cutoff);
+    EXPECT_EQ(sun->has_planets, 8);
+    EXPECT_EQ(sun->pl_indices.size(), 8u);
+    // The mass cutoff also excludes a small unnamed body without an asteroid number.
+    asteroid->asteroid_no = 0;
+    asteroid->sync_host_statistics();
+    EXPECT_EQ(sun->has_planets, 8);
+    EXPECT_EQ(std::count(sun->pl_indices.begin(), sun->pl_indices.end(), asteroid->seqno), 0);
+}
+
+TEST_F(PlanetClassificationEvidenceTest, DelayedOrbitSetupRegistersOnePlanetAndTracksItsHost)
+{
+    Star* first = make_star("First host");
+    Star* second = make_star("Second host");
+    Planet* planet = new Planet();
+    ASSERT_TRUE(append_cel(planet));
+    EXPECT_EQ(first->has_planets, 0);
+    planet->orbit = new Orbit();
+    planet->orbit->center = first;
+    planet->mass = earth_mass;
+    ASSERT_TRUE(planet->set_habitable_orbit());
+    EXPECT_EQ(first->has_planets, 1);
+    EXPECT_EQ(first->has_hz_planets, 1);
+    EXPECT_EQ(first->pl_indices, std::vector<int>{planet->seqno});
+    planet->sync_host_statistics();
+    planet->update_location(J2000_TIME_T);
+    EXPECT_EQ(first->pl_indices.size(), 1u);
+    planet->orbit->center = second;
+    planet->update_location(J2000_TIME_T);
+    EXPECT_EQ(first->has_planets, 0);
+    EXPECT_EQ(first->has_hz_planets, 0);
+    EXPECT_TRUE(first->pl_indices.empty());
+    EXPECT_EQ(second->has_planets, 1);
+    EXPECT_EQ(second->has_hz_planets, 1);
+    planet->set_explicit_mass(planet_count_mass_cutoff * .5);
+    EXPECT_EQ(second->has_planets, 0);
+    planet->set_explicit_mass(planet_count_mass_cutoff);
+    EXPECT_EQ(second->has_planets, 1);
+    planet->deleted = true;
+    planet->sync_host_statistics();
+    EXPECT_EQ(second->has_planets, 0);
+    EXPECT_EQ(second->has_hz_planets, 0);
+}
+
+TEST_F(PlanetClassificationEvidenceTest, OrbitEditsUpdateHzCountsWithoutFollowingOrbitalPhase)
+{
+    Star* host = make_star("Orbit-edit host");
+    Planet* planet = make_planet(host, "Orbit-edit planet", AU);
+    EXPECT_EQ(host->has_hz_planets, 1);
+    planet->orbit->eccentricity = .7;
+    planet->orbit->compute_period(planet->mass);
+    for (double phase : {0.0, .25, .5, .75})
+    {
+        planet->update_location(J2000_TIME_T + phase * planet->orbit->period);
+        EXPECT_EQ(host->has_hz_planets, 1);
+    }
+    planet->orbit->semimajor_axis = 4 * AU;
+    planet->update_location(J2000_TIME_T);
+    EXPECT_EQ(host->has_hz_planets, 0);
+    planet->orbit->period = oneyear;
+    planet->orbit->compute_semimajor_axis(planet->mass);
+    planet->update_location(J2000_TIME_T);
+    EXPECT_EQ(host->has_hz_planets, 1);
+    planet->orbit->period *= 8; // A resonance selection also changes period before deriving SMA.
+    planet->orbit->compute_semimajor_axis(planet->mass);
+    planet->sync_host_statistics();
+    EXPECT_EQ(host->has_hz_planets, 0);
+    ASSERT_TRUE(planet->set_habitable_orbit());
+    EXPECT_EQ(host->has_hz_planets, 1);
+    host->absolute_magnitude = 0;
+    planet->sync_host_statistics();
+    EXPECT_EQ(host->has_hz_planets, 0);
+    EXPECT_EQ(host->has_planets, 1);
+}
+
 TEST_F(PlanetClassificationEvidenceTest, InferredAtmosphereHonorsTheShorelineCeiling)
 {
     Planet* world = make_planet(make_star(), "High retention", 0.2 * AU);
@@ -101,6 +193,7 @@ TEST_F(PlanetClassificationEvidenceTest, EstimatedRadiusNeverBecomesObservedDens
     planet->classify(false, false, true);
     EXPECT_EQ(planet->radius_evidence, PlanetMeasurement::estimated);
     EXPECT_FALSE(planet->classification_evidence["density_observed"].get<bool>());
+    EXPECT_TRUE(planet->classification_evidence["density_estimated"].get<bool>());
     planet->mass = 20 * earth_mass;
     planet->classify(false, true, true);
     EXPECT_EQ(planet->type, ice_giant);
@@ -1994,6 +2087,66 @@ TEST_F(PlanetClassificationEvidenceTest, ExplicitRadiusEditsOverrideAnEstimatedE
     EXPECT_DOUBLE_EQ(body->volumetric_mean_radius, 0.1 * earth_radius);
     body->classify();
     EXPECT_EQ(body->type, rocky);
+}
+
+TEST_F(PlanetClassificationEvidenceTest, SuppliedRadiiConstrainAdoptedMassesWithoutChangingTheirProvenance)
+{
+    Star* host = make_star("Synthetic host");
+    Planet* body = make_planet(host, "Synthetic planet");
+    body->mass = 8 * earth_mass;
+    body->temperature = 280;
+    for (PlanetMeasurement evidence : {PlanetMeasurement::estimated, PlanetMeasurement::unknown})
+    {
+        body->mass_evidence = evidence;
+        for (double metal : {-.5, .5})
+        {
+            host->metallicity = metal;
+            host->metallicity_ratio = "[Fe/H]";
+            for (double radius : {3.0, 1.79, .00001})
+            {
+                SCOPED_TRACE(radius);
+                body->set_explicit_radius(radius * earth_radius);
+                body->classify(false, false, true);
+                EXPECT_EQ(body->type, radius == 3.0 ? ice_giant : rocky);
+                EXPECT_EQ(body->mass_evidence, evidence);
+                EXPECT_FALSE(body->classification_evidence["density_observed"].get<bool>());
+                EXPECT_TRUE(body->classification_evidence["density_estimated"].get<bool>());
+                EXPECT_FALSE(body->classification_evidence["metallicity_applied"].get<bool>());
+                EXPECT_DOUBLE_EQ(body->volumetric_mean_radius, radius * earth_radius);
+            }
+        }
+    }
+}
+
+TEST_F(PlanetClassificationEvidenceTest, SuppliedRadiusUsesTheRvMinimumWhenTheTrueMassWasEstimated)
+{
+    Planet* body = make_planet(make_star(), "Inclination-derived mass");
+    body->mass = 8 * earth_mass;
+    body->msini = 6 * earth_mass;
+    body->mass_evidence = PlanetMeasurement::estimated;
+    body->temperature = 280;
+    for (double radius : {1.79, .00001})
+    {
+        body->set_explicit_radius(radius * earth_radius);
+        body->classify(false, true, true);
+        EXPECT_EQ(body->type, rocky);
+        EXPECT_EQ(body->mass_evidence, PlanetMeasurement::estimated);
+        EXPECT_FALSE(body->classification_evidence["density_observed"].get<bool>());
+        EXPECT_FALSE(body->classification_evidence["density_is_lower_bound"].get<bool>());
+        EXPECT_EQ(body->classification_evidence["density_constraint_basis"], "minimum_mass_and_observed_radius");
+        EXPECT_NEAR(body->classification_evidence["density_constraint_g_cm3"].get<double>(),
+            .75 * body->classification_evidence["density_g_cm3"].get<double>(),
+            body->classification_evidence["density_g_cm3"].get<double>() * 1e-12);
+        Planet restored;
+        ASSERT_TRUE(restored.from_json(body->to_json()));
+        EXPECT_EQ(restored.classification_evidence, body->classification_evidence);
+    }
+    // A speculative high true mass must not overrule a weak RV density bound.
+    body->msini = earth_mass;
+    body->set_explicit_radius(2 * earth_radius);
+    body->classify(false, true, true);
+    EXPECT_EQ(body->type, ice_giant);
+    EXPECT_LT(body->classification_evidence["density_constraint_g_cm3"].get<double>(), 1);
 }
 
 TEST_F(PlanetClassificationEvidenceTest, ExplicitMassEditsClearTheOldMinimumAndErrors)

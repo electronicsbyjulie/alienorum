@@ -10,6 +10,7 @@
 
 namespace alienorum
 {
+    class Star;
     enum class PlanetMeasurement
     {
         unknown, observed, minimum, estimated
@@ -88,6 +89,9 @@ namespace alienorum
         void estimate_albedo();                             // if radius and abs mag known
         void estimate_albedo_and_absmagn();                 // if not known, e.g. exoplanets
         void update_location(double tmnow);                 // Only applicable if we have an orbit; otherwise just return.
+        void sync_host_statistics();
+        static void rebuild_host_statistics();
+        bool counts_for_host_statistics() const;
         double est_bolometric_flux(double t_eff = 0);
         double estimate_bond_albedo();                      // for want of an actual parameter.
         double equilibrium_temperature();
@@ -114,8 +118,13 @@ namespace alienorum
         void generate_ring_parameters(bool guarantee_rings = false);        // e.g. if we have a map file
 
     protected:
-        bool cache_in_cons_hz;
+        bool cache_in_cons_hz = false;
         double cached_in_cons_hz = -1;
+        Star* cached_hz_host = nullptr;
+        double cached_hz_mass = -1, cached_hz_temperature = -1, cached_hz_magnitude = -1, cached_hz_stellar_sma = -1;
+        Star* statistics_host = nullptr;
+        int statistics_host_index = -1;
+        bool statistics_hz = false;
 
         // Everything atmospheric_refraction() computes that does not depend on the altitude it is
         // asked about -- which is all of it bar the final curve evaluation. Reaching those values

@@ -4278,6 +4278,7 @@ bool append_cel(CelestialObject *cel)
     cel->seqno = ncelobjs;
     ncelobjs++;
     cels[ncelobjs] = 0;
+    if (cel->typeclass() == class_planet) static_cast<Planet*>(cel)->sync_host_statistics();
     return true;
 }
 

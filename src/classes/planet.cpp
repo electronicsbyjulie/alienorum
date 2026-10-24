@@ -13,6 +13,7 @@
 #include "patch.h"
 #include "shore.h"
 #include "celestial.h"
+#include "../globals.h"
 
 using namespace alienorum;
 
@@ -293,13 +294,13 @@ double alienorum::Planet::get_atmospheric_tau()
 
 void Planet::classify()
 {
-    if (lock_type) return;
+    if (lock_type && (uses_rocky_map(type) || uses_gaseous_map(type))) return;
     classify(is_in_con_HZ());
 }
 
 void Planet::classify(bool HZ, bool mnrk, bool ck)
 {
-    if (lock_type)
+    if (lock_type && (uses_rocky_map(type) || uses_gaseous_map(type)))
     {
         classification_evidence = {{"basis", "explicit_type_lock"}, {"class_code", static_cast<int>(type)}};
         return;
@@ -318,11 +319,26 @@ void Planet::classify(bool HZ, bool mnrk, bool ck)
     const bool measured_density = valid_mass && measured_radius && mass_evidence == PlanetMeasurement::observed;
     const bool lower_density_bound = valid_mass && measured_radius && mass_evidence == PlanetMeasurement::minimum;
     const double density = valid_mass && valid_radius ? mass / sphere_volume(volumetric_mean_radius) * 1e-6 : NAN;
+    // An inclination-corrected mass retains its RV lower bound. Use that bound conservatively
+    // when a radius is supplied, rather than discarding the density because the mass is estimated.
+    const double minimum_mass = lower_density_bound ? mass
+        : measured_radius && valid_mass && !measured_density && std::isfinite(msini) && msini > 0 && msini <= mass
+            ? msini : NAN;
+    const double minimum_density = std::isfinite(minimum_mass)
+        ? minimum_mass / sphere_volume(volumetric_mean_radius) * 1e-6 : NAN;
+    const double density_constraint = measured_radius && valid_mass
+        ? (std::isfinite(minimum_density) ? minimum_density : density) : NAN;
     classification_evidence =
     {
         {"mass_evidence", static_cast<int>(mass_evidence)}, {"radius_evidence", static_cast<int>(radius_evidence)},
         {"density_g_cm3", std::isfinite(density) ? json(density) : json(nullptr)},
         {"density_observed", measured_density}, {"density_is_lower_bound", lower_density_bound},
+        {"density_estimated", std::isfinite(density) && !measured_density && !lower_density_bound},
+        {"minimum_density_g_cm3", std::isfinite(minimum_density) ? json(minimum_density) : json(nullptr)},
+        {"density_constraint_g_cm3", std::isfinite(density_constraint) ? json(density_constraint) : json(nullptr)},
+        {"density_constraint_basis", !std::isfinite(density_constraint) ? "radius_unmeasured_or_mass_absent"
+            : measured_density ? "observed_mass_and_radius"
+            : std::isfinite(minimum_density) ? "minimum_mass_and_observed_radius" : "adopted_mass_and_observed_radius"},
         {"metallicity_applied", false}
     };
 
@@ -361,17 +377,19 @@ void Planet::classify(bool HZ, bool mnrk, bool ck)
     classification_evidence["surface_temperature_k"] = std::isfinite(surface_temperature) ? json(surface_temperature) : json(nullptr);
     if (!valid_mass && !measured_radius)
     {
+        if (!uses_rocky_map(type) && !uses_gaseous_map(type)) type = rocky;
         classification_evidence["basis"] = "insufficient_planetary_properties";
         classification_evidence["class_code"] = static_cast<int>(type);
         return;
     }
 
     const double radius_earth = volumetric_mean_radius / earth_radius;
-    const bool dense_solid = (measured_density || lower_density_bound) && density >= 3.2 && mass < jupiter_mass;
+    const bool dense_solid = std::isfinite(density_constraint) && density_constraint >= 3.2 && mass < jupiter_mass;
     bool solid = dense_solid || (valid_mass && mass < rocky_mass_cutoff && (!measured_radius || radius_earth <= 1.8)) ||
         (!valid_mass && measured_radius && radius_earth <= 1.8);
-    classification_evidence["basis"] = measured_density ? "observed_mass_and_radius" : lower_density_bound
-        ? "minimum_mass_and_observed_radius" : measured_radius ? "observed_radius" : "mass_with_radius_unavailable_or_estimated";
+    classification_evidence["basis"] = measured_radius && valid_mass
+        ? classification_evidence["density_constraint_basis"].get<std::string>()
+        : measured_radius ? "observed_radius" : "mass_with_radius_unavailable_or_estimated";
 
     if (host && valid_mass && mass_evidence == PlanetMeasurement::observed && !measured_radius && typeclass() == class_planet)
     {
@@ -418,7 +436,10 @@ void Planet::classify(bool HZ, bool mnrk, bool ck)
         estimate_radius();
         classification_evidence["radius_evidence"] = static_cast<int>(radius_evidence);
         if (std::isfinite(volumetric_mean_radius) && volumetric_mean_radius > 0)
+        {
             classification_evidence["density_g_cm3"] = mass / sphere_volume(volumetric_mean_radius) * 1e-6;
+            classification_evidence["density_estimated"] = true;
+        }
     }
     if (!ck) set_color_from_type(HZ);
 }
@@ -471,6 +492,7 @@ void Planet::set_explicit_mass(double value)
     mass_evidence = std::isfinite(value) && value > 0 ? PlanetMeasurement::observed : PlanetMeasurement::unknown;
     msini = 0;
     mass_error_upper = mass_error_lower = NAN;
+    sync_host_statistics();
 }
 
 void Planet::set_explicit_radius(double value)
@@ -711,6 +733,58 @@ void Planet::estimate_albedo_and_absmagn()
 void Planet::update_location(double tmnow)
 {
     if (orbit) update_orbit_location(tmnow);
+    sync_host_statistics();
+}
+
+bool Planet::counts_for_host_statistics() const
+{
+    // An absent mass is not evidence that an identified planet falls below the cutoff.
+    return typeclass() == class_planet && !asteroid_no
+        && (!std::isfinite(mass) || mass <= 0 || mass >= planet_count_mass_cutoff);
+}
+
+void Planet::sync_host_statistics()
+{
+    if (typeclass() != class_planet || !cels || seqno < 0 || seqno >= ncelobjs || cels[seqno] != this) return;
+    std::lock_guard<std::recursive_mutex> lock(catalog_mutex);
+    CelestialObject* light = !deleted && counts_for_host_statistics() ? get_light_center() : nullptr;
+    Star* host = light && !light->deleted && light->typeclass() == class_star ? static_cast<Star*>(light) : nullptr;
+    if (statistics_host != host && statistics_host_index >= 0 && statistics_host_index < ncelobjs
+        && cels[statistics_host_index] == statistics_host)
+    {
+        auto& indices = statistics_host->pl_indices;
+        indices.erase(std::remove(indices.begin(), indices.end(), seqno), indices.end());
+        statistics_host->refresh_planet_statistics();
+    }
+    const bool hz = host && is_in_con_HZ();
+    const bool changed = statistics_host != host || statistics_hz != hz;
+    statistics_host = host;
+    statistics_host_index = host ? host->seqno : -1;
+    statistics_hz = hz;
+    if (!host) return;
+    const bool missing = std::find(host->pl_indices.begin(), host->pl_indices.end(), seqno) == host->pl_indices.end();
+    if (missing) host->pl_indices.push_back(seqno);
+    if (missing || changed || host->has_planets != static_cast<int>(host->pl_indices.size())) host->refresh_planet_statistics();
+}
+
+void Planet::rebuild_host_statistics()
+{
+    std::lock_guard<std::recursive_mutex> lock(catalog_mutex);
+    if (!cels) return;
+    int count = 0;
+    while (count < MAX_CELOBJS && cels[count]) ++count;
+    ncelobjs = count;
+    for (int i = 0; i < ncelobjs; ++i)
+    {
+        if (!cels[i] || cels[i]->typeclass() != class_star) continue;
+        Star* host = static_cast<Star*>(cels[i]);
+        host->pl_indices.clear();
+        host->has_planets = host->has_hz_planets = 0;
+    }
+    for (int i = 0; i < ncelobjs; ++i)
+    {
+        if (cels[i] && cels[i]->typeclass() == class_planet) static_cast<Planet*>(cels[i])->sync_host_statistics();
+    }
 }
 
 double Planet::est_bolometric_flux(double t_eff)
@@ -1141,19 +1215,24 @@ bool Planet::set_habitable_orbit()
     cached_in_cons_hz = -1;
     if (!inner) return false;
     orbit->compute_period(mass);
+    sync_host_statistics();
     return true;
 }
 
 bool Planet::is_in_con_HZ()
 {
-    if (orbit && fabs(cached_in_cons_hz - orbit->semimajor_axis) < 0.001) return cache_in_cons_hz;
-
     if (!orbit || !orbit->center) return false;
     // See est_bolometric_flux(): the light center is not guaranteed to be a star, and nothing
     // without one has a habitable zone to be in.
     CelestialObject *lc = get_light_center();
     if (!lc || lc->typeclass() != class_star) return false;
     Star *s = (Star*)lc;
+    const CelestialObject* outer = this;
+    while (outer->orbit && outer->orbit->center && outer->orbit->center != s) outer = outer->orbit->center;
+    const double stellar_sma = outer->orbit ? outer->orbit->semimajor_axis : 0;
+    if (cached_in_cons_hz == orbit->semimajor_axis && cached_hz_host == s && cached_hz_mass == mass
+        && cached_hz_temperature == s->temperature && cached_hz_magnitude == s->absolute_magnitude
+        && cached_hz_stellar_sma == stellar_sma) return cache_in_cons_hz;
 
     // Mathematical model to approximate this chart: https://personal.ems.psu.edu/~jfk4/ruk15/planets/T_Seff_HZ_plusTRAPPIST_ALL__MM_10202020v2.jpg
     double t_eff = s->estimate_temperature();
@@ -1198,6 +1277,11 @@ bool Planet::is_in_con_HZ()
     // Check habitability bounds
     cache_in_cons_hz = (planet_illumination >= outer_limit && planet_illumination <= inner_limit);
     cached_in_cons_hz = orbit->semimajor_axis;
+    cached_hz_host = s;
+    cached_hz_mass = mass;
+    cached_hz_temperature = s->temperature;
+    cached_hz_magnitude = s->absolute_magnitude;
+    cached_hz_stellar_sma = stellar_sma;
 
     return cache_in_cons_hz;
 }
@@ -1356,6 +1440,14 @@ json Planet::to_json()
 bool Planet::from_json(json j)
 {
     CelestialObject::from_json(j);
+    // Older saves used these retired codes for solid surfaces. Translate before map dispatch.
+    switch (static_cast<int>(type))
+    {
+        case 0x402: type = icy; break;
+        case 0x403: type = rocky; break;
+        case 0x404: type = lavaworld; break;
+        default: break;
+    }
     const auto evidence = [&](const char* key)
     {
         auto it = j.find(key);

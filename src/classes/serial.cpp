@@ -869,7 +869,8 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
             const cel_obj_class cls = entry.parsed->typeclass();
             const cel_obj_type type = entry.parsed->type;
             if ((cls == class_star && type != star) || (cls == class_galaxy && type != galaxy)
-                || ((cls == class_planet || cls == class_moon) && (type < least_planet || type > most_planet)))
+                || ((cls == class_planet || cls == class_moon)
+                    && (type == star || type == galaxy || type == icy_tailed || type == artificial)))
                 throw std::runtime_error("Object type conflicts with its class");
             if (entry.parsed->orbit && entry.parsed->orbit->center_name.empty())
                 throw std::runtime_error("Orbit requires a parent name");
@@ -891,10 +892,14 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
         }
         if (additions >= max - count) throw std::runtime_error("Universe object limit exceeded");
 
-        std::map<std::string, std::vector<CelestialObject*>> names;
+        std::map<std::string, std::vector<CelestialObject*>> names, exact_names;
         const auto add_name = [&](const std::string& name, CelestialObject* object)
         {
-            if (!name.empty()) names[stellar_alias_key(name)].push_back(object);
+            if (!name.empty())
+            {
+                exact_names[name].push_back(object);
+                names[stellar_alias_key(name)].push_back(object);
+            }
         };
         for (unsigned int i = 0; i < count; ++i)
         {
@@ -919,17 +924,26 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
         ExactStarSearchIndex lookup;
         CatalogReader catalogs;
         std::map<CelestialObject*, CelestialObject*> parents;
+        const auto hierarchy_type = [](const CelestialObject* object)
+        {
+            // Unknown planetary surface codes do not change the body's place in the hierarchy.
+            return object->typeclass() == class_planet || object->typeclass() == class_moon ? rocky : object->type;
+        };
         for (auto& entry : pending)
         {
             Orbit* orbit = entry.parsed->orbit ? entry.parsed->orbit : entry.target->orbit;
             if (!orbit) continue;
             const std::string& name = orbit->center_name;
+            // Stellar component B and planet b can share a folded key. Preserve an exact spelling.
+            const auto exact = exact_names.find(name);
             const auto found = names.find(stellar_alias_key(name));
-            if (found != names.end())
+            const auto* candidates = exact != exact_names.end() ? &exact->second
+                : (found != names.end() ? &found->second : nullptr);
+            if (candidates)
             {
-                for (CelestialObject* candidate : found->second)
+                for (CelestialObject* candidate : *candidates)
                 {
-                    if (candidate == entry.target || !compare_types(candidate->type, entry.parsed->type)) continue;
+                    if (candidate == entry.target || !compare_types(hierarchy_type(candidate), hierarchy_type(entry.parsed.get()))) continue;
                     if (entry.parent && entry.parent != candidate)
                         throw std::runtime_error("Ambiguous orbit parent: " + name);
                     entry.parent = candidate;
@@ -960,7 +974,6 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
             checked.insert(path.begin(), path.end());
         }
 
-        std::set<Star*> tally_stated;
         std::vector<int> loaded;
         for (auto& entry : pending)
         {
@@ -981,8 +994,6 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
             if (object->orbit) object->orbit->center = entry.parent;
             object->cenobj = nullptr;
             if (object->typeclass() == class_moon) static_cast<Moon*>(object)->orbit_type = ot_equatorial;
-            if (object->typeclass() == class_star && entry.data.contains("has_planets"))
-                tally_stated.insert(static_cast<Star*>(object));
             loaded.push_back(entry.index);
         }
 
@@ -1011,24 +1022,17 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
                     if (slot >= 'A' && slot <= 'Z') root->multisys->add_member(member, slot);
                 }
             }
+            if ((object->typeclass() == class_planet || object->typeclass() == class_moon)
+                && !uses_rocky_map(object->type) && !uses_gaseous_map(object->type))
+            {
+                static_cast<Planet*>(object)->classify();
+            }
             if (object->typeclass() == class_moon && object->user_added)
                 static_cast<Moon*>(object)->enforce_orbit_clearance(true);
             if (object->typeclass() != class_planet) continue;
             static_cast<Planet*>(object)->refresh_host_display_designation();
-            CelestialObject* light = object->get_light_center();
-            if (!light || light->typeclass() != class_star) continue;
-            Star* host = static_cast<Star*>(light);
-            if (!tally_stated.count(host) && object->mass >= 0.01 * earth_mass
-                && std::find(host->pl_indices.begin(), host->pl_indices.end(), index) == host->pl_indices.end())
-            {
-                ++host->has_planets;
-                if (static_cast<Planet*>(object)->is_in_con_HZ()) ++host->has_hz_planets;
-                host->pl_indices.push_back(index);
-            }
         }
         std::set<CelestialObject*> updated;
-        Planet* p;
-        Star* s;
         for (int index : loaded)
         {
             std::vector<CelestialObject*> path;
@@ -1045,25 +1049,14 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
                 {
                     case class_star: static_cast<Star*>(object)->update_location(J2000_TIME_T); break;
 
-                    case class_planet:
-                    p = static_cast<Planet*>(object);
-                    p->update_location(J2000_TIME_T);
-
-                    if (p->orbit && p->orbit->center && p->orbit->center->typeclass() == class_star)
-                    {
-                        s = ((Star*)p->orbit->center);
-                        s->has_planets++;
-                        s->pl_indices.push_back(p->seqno);
-                        if (p->is_in_con_HZ()) s->has_hz_planets++;
-                    }
-
-                    break;
+                    case class_planet: static_cast<Planet*>(object)->update_location(J2000_TIME_T); break;
 
                     case class_moon: static_cast<Moon*>(object)->update_location(J2000_TIME_T); break;
                     default: break;
                 }
             }
         }
+        Planet::rebuild_host_statistics();
         std::lock_guard<std::mutex> lock(mtx);
         loading_msg = "Loaded " + std::to_string(loaded.size()) + " universe objects.";
         return true;

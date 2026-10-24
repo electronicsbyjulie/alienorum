@@ -61,6 +61,7 @@ using json = nlohmann::json;
 // https://doi.org/10.1051/0004-6361/202348690
 #define rocky_mass_cutoff (4.37 * earth_mass)
 #define giant_mass_cutoff (127.0 * earth_mass)
+#define planet_count_mass_cutoff (0.01 * earth_mass)
 #define rocky_density_cutoff 3.0
 #define giant_density_cutoff 1.8
 #define waterworld_min_density 1.0

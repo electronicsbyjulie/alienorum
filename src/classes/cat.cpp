@@ -4766,11 +4766,6 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
                 p->cenobj = s;
                 bool HZ = p->is_in_con_HZ();
 
-                // Star's planet-hosting metrics.
-                s->has_planets++;
-                if (HZ) s->has_hz_planets++;
-                s->pl_indices.push_back(p->seqno);
-
                 // Show distance to planet on mouse hover.
                 p->distance_known = true;
 
@@ -5960,17 +5955,6 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
                 p->location.equatorial_plane.v = Point(std::sin(p->equinox), 0, -std::cos(p->equinox));
                 p->classify(p->is_in_con_HZ(), true, true);
 
-                // Checked before the cast: has_planets and has_hz_planets live past the end of
-                // any class smaller than Star, and get_light_center() does not promise a star.
-                CelestialObject* lc = p->get_light_center();
-                Star* s = (lc && lc->typeclass() == class_star) ? (Star*)lc : nullptr;
-                // std::cout << p->name << " cosmic shoreline = " << CosmicShore::calculate_unified_metric(*s, *p) << std::endl;
-                if (s && p->orbit->center == s)
-                {
-                    s->has_planets++;
-                    if (p->is_in_con_HZ()) s->has_hz_planets++;
-                    s->pl_indices.push_back(p->seqno);
-                }
             }
 
             if (p->orbit && p->orbit->center)
@@ -5978,6 +5962,7 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
                 std::string oscname = std::string(p->orbit->center->name) + std::string(".") + std::string(p->name);
                 if (p->orbit && p->orbit->center) p->orbit->read_osc_elements(oscname);
             }
+            p->sync_host_statistics();
         }
         catch (...)
         {
@@ -7683,8 +7668,20 @@ static FixedStellarIdentifiers catalog_identifiers(const std::string& name)
 
 Star* CatalogReader::resolve_saved_host(const std::string& name, unsigned int max, ExactStarSearchIndex* lookup)
 {
-    const int existing = find_object(name.c_str(), true, 9e29, 0, lookup);
+    const int existing = find_object(name.c_str(), true, 9e29, 1, lookup);
     if (existing >= 0) return static_cast<Star*>(cels[existing]);
+    // A primary can be stored without its component suffix while a save explicitly names A.
+    const std::string query = trim(name);
+    if (query.size() > 2 && query.compare(query.size() - 2, 2, " A") == 0)
+    {
+        const std::string base = query.substr(0, query.size() - 2);
+        const int primary = find_object(base.c_str(), true, 9e29, 1, lookup);
+        if (primary >= 0)
+        {
+            Star* star = static_cast<Star*>(cels[primary]);
+            if (star->multisys && star->multisys->get_member('A') == star) return star;
+        }
+    }
     const std::string key = stellar_alias_key(name);
     if (key.empty()) return nullptr;
     for (const char* path : {"catalogs" _FILESLASH "exoplanets_stars.dat", "catalogs" _FILESLASH "exoplanets_planets.dat"})
@@ -8255,9 +8252,6 @@ bool CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, s
     // Append planet object to global array
     append_cel(new_planet);
     result++;
-    host_star->has_planets++;
-    if (new_planet->is_in_con_HZ()) host_star->has_hz_planets++;
-    host_star->pl_indices.push_back(new_planet->seqno);
 
     planet_celids[host_star->seqno].push_back(new_planet->seqno);
     return true;

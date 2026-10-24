@@ -1217,11 +1217,7 @@ void process_key_delete()
         if (gone->typeclass() == class_planet && num_planets > 0)
         {
             --num_planets;
-            if (parent && parent->typeclass() == class_star)
-            {
-                ((Star*)parent)->has_planets--;
-                if (((Planet*)gone)->is_in_con_HZ()) ((Star*)parent)->has_hz_planets--;
-            }
+            static_cast<Planet*>(gone)->sync_host_statistics();
 
         }
         if (gone->typeclass() == class_star)
@@ -1251,14 +1247,7 @@ void process_key_delete()
     {
         if (!cels[i] || cels[i]->deleted || cels[i]->typeclass() != class_star) continue;
         Star* host = static_cast<Star*>(cels[i]);
-        auto& planets = host->pl_indices;
-        for (int index : planets)
-        {
-            if (!is_removed(index)) continue;
-            if (host->has_planets > 0) --host->has_planets;
-            if (host->has_hz_planets > 0 && static_cast<Planet*>(cels[index])->is_in_con_HZ()) --host->has_hz_planets;
-        }
-        planets.erase(std::remove_if(planets.begin(), planets.end(), is_removed), planets.end());
+        host->refresh_planet_statistics();
     }
     favestars.erase(std::remove_if(favestars.begin(), favestars.end(),
         [](Star* star) { return !star || star->deleted; }), favestars.end());

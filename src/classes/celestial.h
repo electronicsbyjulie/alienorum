@@ -16,6 +16,7 @@ namespace alienorum
     enum cel_obj_type
     {
         // The types are numbered by hierarchy in case of name conflicts, so that e.g. stars cannot orbit moons etc.
+        // WARNING: Changing these constants BREAKS COMPATIBILITY.
         galaxy = 0x100,
         star = 0x200,
         least_planet = 0x300,

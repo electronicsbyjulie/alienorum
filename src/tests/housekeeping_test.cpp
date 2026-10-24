@@ -18,6 +18,41 @@ extern double celmasslim;
 
 class HousekeepingTest : public UniverseFixture {};
 
+TEST_F(HousekeepingTest, CulledPlanetsRefreshHzCountsAfterDirectOrbitChanges)
+{
+    struct RestoreFrame
+    {
+        CelestialObject* center = mycenobj;
+        int place = whereami, selection = selected, tracking = trackidx, editing = editidx;
+        ViewMode mode = view_mode;
+        ~RestoreFrame()
+        {
+            mycenobj = center;
+            whereami = place;
+            selected = selection;
+            trackidx = tracking;
+            editidx = editing;
+            view_mode = mode;
+        }
+    } restore;
+    Star* observer = make_star("Observer");
+    Star* host = make_star("Distant planet host");
+    Planet* planet = make_planet(host, "Distant planet", AU);
+    planet->cenobj = host;
+    mycenobj = observer;
+    whereami = selected = trackidx = editidx = -1;
+    view_mode = vm_spaceship;
+    EXPECT_EQ(host->has_hz_planets, 1);
+    planet->orbit->semimajor_axis = 4 * AU;
+    EXPECT_FALSE(compute_object_location(planet));
+    EXPECT_EQ(host->has_hz_planets, 0);
+    planet->orbit->semimajor_axis = AU;
+    EXPECT_FALSE(compute_object_location(planet));
+    EXPECT_EQ(host->has_hz_planets, 1);
+    EXPECT_EQ(host->has_planets, 1);
+    delete_the_universe();
+}
+
 TEST_F(HousekeepingTest, SystemViewUpdatesUnselectedMoonsBeforeSkyVisibilityChecks)
 {
     struct RestoreFrame

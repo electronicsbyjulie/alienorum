@@ -79,6 +79,11 @@ void spawn_texture_load(CelestialObject *cel)
 
 void load_textures(CelestialObject* cel)
 {
+    if ((cel->typeclass() == class_planet || cel->typeclass() == class_moon)
+        && !uses_rocky_map(cel->type) && !uses_gaseous_map(cel->type))
+    {
+        static_cast<Planet*>(cel)->classify();
+    }
     std::string filename;
 
     if (!cel->ignore_map_files)                 // For regenerating exoplanet textures.

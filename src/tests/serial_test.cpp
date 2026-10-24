@@ -190,6 +190,186 @@ TEST_F(SerializationTest, ResolvesAParentThroughItsCatalogAlias)
     delete_the_universe();
 }
 
+TEST_F(SerializationTest, SavedPlanetAndMoonDistinguishStellarBFromPlanetb)
+{
+    for (const char* parent_name : {"Alpha Mensae", "Alpha Mensae A"})
+    {
+        SCOPED_TRACE(parent_name);
+        Star* host = make_star("Alpha Mensae");
+        host->set_component('A', host);
+        Star* companion = make_star("Alp Men B");
+        companion->make_companion_of(host, 'B');
+        Planet* source = make_planet(host, "Alp Men b");
+        json planet = source->to_json();
+        planet["orbit"]["center_name"] = parent_name;
+        planet["!origcenname"] = parent_name;
+        Moon moon;
+        strcpy(moon.name, "Alp Men b I");
+        moon.orbit = new Orbit();
+        moon.orbit->center_name = "Alp Men b";
+        moon.orbit->semimajor_axis = 1e9;
+        moon.orbit->period = 4 * oneday;
+        json satellite = moon.to_json();
+        satellite["orbit"]["center_name"] = "Alp Men b";
+        write_file("component_case", {{"planet", planet}, {"moon", satellite}});
+        cels[--ncelobjs] = nullptr;
+        delete source;
+        ASSERT_TRUE(load_file("component_case"));
+        CelestialObject* loaded = find_loaded("Alp Men b");
+        CelestialObject* loaded_moon = find_loaded("Alp Men b I");
+        ASSERT_NE(loaded, nullptr);
+        ASSERT_NE(loaded_moon, nullptr);
+        EXPECT_EQ(loaded->orbit->center, host);
+        EXPECT_EQ(loaded_moon->orbit->center, loaded);
+        EXPECT_EQ(loaded_moon->get_light_center(), host);
+        EXPECT_EQ(companion->orbit->center, host);
+        EXPECT_EQ(host->has_planets, 1);
+        EXPECT_EQ(host->pl_indices.size(), 1u);
+        ASSERT_TRUE(load_file("component_case"));
+        EXPECT_EQ(ncelobjs, 4);
+        EXPECT_EQ(find_loaded("Alp Men b"), loaded);
+        EXPECT_EQ(find_loaded("Alp Men b I"), loaded_moon);
+        EXPECT_EQ(host->has_planets, 1);
+        EXPECT_EQ(host->pl_indices.size(), 1u);
+        delete_the_universe();
+    }
+    std::filesystem::remove(temp_universe("component_case"));
+}
+
+TEST_F(SerializationTest, AmbiguousFoldedOrbitParentsStillRejectTheSave)
+{
+    Star* first = make_star("Alias Host");
+    Star* second = make_star("ALIAS HOST");
+    Planet* planet = make_planet(first, "World");
+    json record = planet->to_json();
+    record["orbit"]["center_name"] = "alias host";
+    write_file("ambiguous_case", {{"planet", record}});
+    EXPECT_FALSE(load_file("ambiguous_case"));
+    EXPECT_EQ(planet->orbit->center, first);
+    EXPECT_STREQ(second->name, "ALIAS HOST");
+    delete_the_universe();
+    std::filesystem::remove(temp_universe("ambiguous_case"));
+}
+
+TEST_F(SerializationTest, LegacyMoonSurfaceTypesProduceCompleteMaps)
+{
+    struct RestoreRandomization
+    {
+        bool saved = randomize_txgen;
+        ~RestoreRandomization() { randomize_txgen = saved; }
+    } restore;
+    randomize_txgen = false;
+    for (const auto& [legacy, current] : std::vector<std::pair<int, cel_obj_type>>
+        {{0x402, icy}, {0x403, rocky}, {0x404, lavaworld}})
+    {
+        SCOPED_TRACE(legacy);
+        Star* host = make_star("Map primary");
+        Planet* parent = make_planet(host, "Map parent");
+        Moon source;
+        strcpy(source.name, "Legacy moon");
+        source.mass = .01 * earth_mass;
+        source.volumetric_mean_radius = .27 * earth_radius;
+        source.orbit = new Orbit();
+        source.orbit->center = parent;
+        source.orbit->semimajor_axis = 1e9;
+        source.orbit->period = 5 * oneday;
+        json record = source.to_json();
+        record["type"] = legacy;
+        record["temperature"] = current == lavaworld ? 1600 : 250;
+        write_file("legacy_moon_map", {{"host", host->to_json()}, {"parent", parent->to_json()}, {"moon", record}});
+        delete_the_universe();
+        ASSERT_TRUE(load_file("legacy_moon_map"));
+        Moon* moon = static_cast<Moon*>(find_loaded("Legacy moon"));
+        ASSERT_NE(moon, nullptr);
+        EXPECT_EQ(moon->type, current);
+        EXPECT_TRUE(uses_rocky_map(moon->type));
+        moon->fictitious_map_height = 32;
+        moon->rnd_seed = 173;
+        load_textures(moon);
+        ASSERT_NE(moon->surf_map, nullptr);
+        EXPECT_TRUE(moon->surf_map->is_complete());
+        EXPECT_FALSE(generating_fic_texture);
+        EXPECT_EQ(moon->to_json().at("type"), current);
+        delete_the_universe();
+    }
+    std::filesystem::remove(temp_universe("legacy_moon_map"));
+}
+
+TEST_F(SerializationTest, UnknownLockedTypesClassifyWithTheirResolvedStellarHost)
+{
+    for (int unknown : {0x405, 0x777, -1})
+    {
+        SCOPED_TRACE(unknown);
+        Star* host = make_star("Classification host");
+        Planet* parent = make_planet(host, "Classification parent");
+        Moon source;
+        strcpy(source.name, "Classification moon");
+        source.mass = .01 * earth_mass;
+        source.volumetric_mean_radius = .27 * earth_radius;
+        source.orbit = new Orbit();
+        source.orbit->center = parent;
+        source.orbit->semimajor_axis = 1e9;
+        source.orbit->period = 5 * oneday;
+        json moon_record = source.to_json(), parent_record = parent->to_json();
+        for (json* record : {&moon_record, &parent_record})
+        {
+            (*record)["type"] = unknown;
+            (*record)["lock_type"] = true;
+            (*record)["temperature"] = 280;
+        }
+        write_file("unknown_body_type", {{"host", host->to_json()}, {"parent", parent_record}, {"moon", moon_record}});
+        delete_the_universe();
+        ASSERT_TRUE(load_file("unknown_body_type"));
+        for (const char* name : {"Classification parent", "Classification moon"})
+        {
+            Planet* body = static_cast<Planet*>(find_loaded(name));
+            ASSERT_NE(body, nullptr);
+            EXPECT_EQ(body->type, rocky);
+            EXPECT_TRUE(body->lock_type);
+            EXPECT_EQ(body->classification_evidence.at("host"), "Classification host");
+        }
+        ASSERT_TRUE(load_file("unknown_body_type"));
+        EXPECT_EQ(ncelobjs, 3);
+        delete_the_universe();
+    }
+    std::filesystem::remove(temp_universe("unknown_body_type"));
+}
+
+TEST_F(SerializationTest, TextureDispatchClassifiesUnknownTypesOutsideJsonLoading)
+{
+    Planet* body = make_planet(make_star(), "Unknown texture type");
+    body->type = static_cast<cel_obj_type>(0x777);
+    body->lock_type = true;
+    body->temperature = 280;
+    body->fictitious_map_height = 32;
+    body->rnd_seed = 173;
+    load_textures(body);
+    EXPECT_EQ(body->type, rocky);
+    ASSERT_NE(body->surf_map, nullptr);
+    EXPECT_TRUE(body->surf_map->is_complete());
+    delete_the_universe();
+    Planet without_measurements;
+    without_measurements.type = static_cast<cel_obj_type>(0x777);
+    without_measurements.lock_type = true;
+    without_measurements.mass = without_measurements.volumetric_mean_radius = 0;
+    without_measurements.classify();
+    EXPECT_EQ(without_measurements.type, rocky);
+    EXPECT_EQ(without_measurements.classification_evidence.at("basis"), "insufficient_planetary_properties");
+}
+
+TEST_F(SerializationTest, CurrentPlanetSurfaceTypesKeepTheirMeaning)
+{
+    for (cel_obj_type current : {gas_giant, ice_giant, hot_jupiter, clearskies, waterworld, hycean, icy, rocky, lavaworld})
+    {
+        SCOPED_TRACE(current);
+        Planet original;
+        original.type = current;
+        Planet restored;
+        ASSERT_TRUE(restored.from_json(original.to_json()));
+        EXPECT_EQ(restored.type, current);
+    }
+}
+
 TEST_F(SerializationTest, ResolvesAliasesDefinedLaterInTheSameSave)
 {
     Star* host = make_star("Zulu Primary");
@@ -453,8 +633,9 @@ TEST_F(SerializationTest, RoundTripPreservesHierarchyAndFields)
     EXPECT_EQ(rsun->HD, 12345);
     EXPECT_DOUBLE_EQ(rsun->mass, solar_mass);
     EXPECT_DOUBLE_EQ(rsun->temperature, sun_temp);
-    EXPECT_EQ(rsun->has_planets, 2);
-    EXPECT_EQ(rsun->has_hz_planets, 1);
+    EXPECT_EQ(rsun->has_planets, 0); // This round-trip fixture marks its only body as an asteroid.
+    EXPECT_EQ(rsun->has_hz_planets, 0);
+    EXPECT_TRUE(rsun->pl_indices.empty());
 
     Planet* rworld = (Planet*)find_loaded("Test World");
     ASSERT_NE(rworld, nullptr);
@@ -599,8 +780,31 @@ TEST_F(SerializationTest, LoadDoesNotDoubleAStatedPlanetTally)
     ASSERT_NE(rsun, nullptr);
     EXPECT_EQ(rsun->has_planets, 3) << "the file's tally plus a recount would be six";
     EXPECT_EQ(rsun->has_hz_planets, 1);
+    EXPECT_EQ(rsun->pl_indices.size(), 3u);
 
     delete_the_universe();
+}
+
+TEST_F(SerializationTest, StaleSavedTalliesAndOrbitChangesRebuildFromTheLoadedPlanets)
+{
+    Star* sun = make_star("Saved tally host");
+    Planet* planet = make_planet(sun, "Saved tally planet", AU);
+    json host = sun->to_json(), body = planet->to_json();
+    host["has_planets"] = 42;
+    host["has_hz_planets"] = 37;
+    write_file("stale_tally", {{"host", host}, {"planet", body}});
+    ASSERT_TRUE(load_file("stale_tally"));
+    EXPECT_EQ(sun->has_planets, 1);
+    EXPECT_EQ(sun->has_hz_planets, 1);
+    EXPECT_EQ(sun->pl_indices, std::vector<int>{planet->seqno});
+    body["orbit"]["semimajor_axis"] = 4 * AU;
+    write_file("stale_tally", {{"host", host}, {"planet", body}});
+    ASSERT_TRUE(load_file("stale_tally"));
+    EXPECT_EQ(sun->has_planets, 1);
+    EXPECT_EQ(sun->has_hz_planets, 0);
+    EXPECT_EQ(sun->pl_indices.size(), 1u);
+    delete_the_universe();
+    std::filesystem::remove(temp_universe("stale_tally"));
 }
 
 TEST_F(SerializationTest, LoadCountsTheTallyWhenTheFileStatesNone)

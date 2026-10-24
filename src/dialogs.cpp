@@ -1146,12 +1146,18 @@ void draw_addcel_window(ImGuiIO& io)
             {
                 case 0: cel = new Galaxy();     cel->type = galaxy;        break;
                 case 1: cel = new Star();       cel->type = star;          break;
-                case 2: cel = new Planet();     cel->type = rocky;         break;
+
+                case 2:
+                    cel = new Planet();
+                    cel->type = rocky;
+                    break;
+
                 case 3:
                     cel = new Moon();
                     cel->type = rocky;
                     ((Moon*)cel)->orbit_type = ot_equatorial;
                     break;
+
                 case 4: cel = new Satellite();  cel->type = artificial;    break;
 
                 default:
@@ -1192,6 +1198,7 @@ void draw_addcel_window(ImGuiIO& io)
                     pl->estimate_albedo_and_absmagn();
                     pl->estimate_rotation();
                     pl->apply_cosmic_shoreline();
+                    pl->sync_host_statistics();
                 }
                 editidx = ncelobjs-1;
                 objedtwnd = true;
@@ -1994,6 +2001,7 @@ void draw_objedit_window(ImGuiIO& io)
                         {
                             cel->orbit->period = cand.period;
                             cel->orbit->compute_semimajor_axis(cel->mass);
+                            if (cel->typeclass() == class_planet) static_cast<Planet*>(cel)->sync_host_statistics();
                             cel->temperature = 0;
                             cel->user_edited = true;
                             viewchanged = true;

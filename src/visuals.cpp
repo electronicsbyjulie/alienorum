@@ -4169,7 +4169,7 @@ void draw_system_view()
             if (cls != class_planet) continue;
 
             Planet *p = (Planet*)lsyscache[j];
-            if (p->mass < 0.01 * earth_mass) continue;
+            if (!p->counts_for_host_statistics()) continue;
             if (!p->orbit || p->orbit->center != s) continue;
             p->drawny = s->drawny;
             double pdrad = display_radius(p, earth_radius, dispcx/10, 20.0);
@@ -4261,7 +4261,7 @@ void draw_system_view()
 
             Planet *p = (Planet*)lsyscache[j];
             if (!p->orbit || p->orbit->center != s) continue;
-            if (p->mass < 0.01 * earth_mass) continue;
+            if (!p->counts_for_host_statistics()) continue;
             p->drawny = s->drawny;
             double pdrad = (display_radius(p, earth_radius, dispcx/10, 10.0)) * curscale;
             double pdradr = (p->ring_radius) ? (pdrad*2) : pdrad;
