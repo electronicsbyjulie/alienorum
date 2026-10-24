@@ -1149,7 +1149,7 @@ int main (int argc, char** argv)
                 ;
 
             std::string subject = (biggest_cel && biggest_cel->onscreen && (bigcel_sz >= 4) && (view_mode != vm_skymap && view_mode != vm_sunclock && view_mode != vm_system))
-                ? (std::string(biggest_cel->name) + std::string("."))
+                ? std::string(biggest_cel->name) // + std::string(".")
                 : std::string("")
                 ;
             
@@ -1158,6 +1158,7 @@ int main (int argc, char** argv)
 
             shnapsot_fname << snapdir << _FILESLASH
                 << subject
+                << (snapname.size() ? " from " : "")
                 << snapname << "." 
                 << std::put_time(std::localtime(&time_t_now), "%Y%m%d.%H%M%S") 
                 << ".png";

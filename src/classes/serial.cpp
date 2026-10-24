@@ -1027,6 +1027,8 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
             }
         }
         std::set<CelestialObject*> updated;
+        Planet* p;
+        Star* s;
         for (int index : loaded)
         {
             std::vector<CelestialObject*> path;
@@ -1042,7 +1044,21 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
                 switch (object->typeclass())
                 {
                     case class_star: static_cast<Star*>(object)->update_location(J2000_TIME_T); break;
-                    case class_planet: static_cast<Planet*>(object)->update_location(J2000_TIME_T); break;
+
+                    case class_planet:
+                    p = static_cast<Planet*>(object);
+                    p->update_location(J2000_TIME_T);
+
+                    if (p->orbit && p->orbit->center && p->orbit->center->typeclass() == class_star)
+                    {
+                        s = ((Star*)p->orbit->center);
+                        s->has_planets++;
+                        s->pl_indices.push_back(p->seqno);
+                        if (p->is_in_con_HZ()) s->has_hz_planets++;
+                    }
+
+                    break;
+
                     case class_moon: static_cast<Moon*>(object)->update_location(J2000_TIME_T); break;
                     default: break;
                 }

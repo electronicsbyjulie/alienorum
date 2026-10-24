@@ -1435,6 +1435,7 @@ bool Planet::from_json(json j)
     try { j.at("plant_trunk_width").get_to(plant_trunk_width); } catch (...) { ; }
     try { j.at("plant_crown_size").get_to(plant_crown_size); } catch (...) { ; }
     try { j.at("plant_crown_oblateness").get_to(plant_crown_oblateness); } catch (...) { ; }
+
     return true;
 }
 

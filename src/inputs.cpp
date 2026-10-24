@@ -1214,7 +1214,16 @@ void process_key_delete()
     {
         gone->deleted = true;
         gone->onscreen = gone->label_shown = false;
-        if (gone->typeclass() == class_planet && num_planets > 0) --num_planets;
+        if (gone->typeclass() == class_planet && num_planets > 0)
+        {
+            --num_planets;
+            if (parent && parent->typeclass() == class_star)
+            {
+                ((Star*)parent)->has_planets--;
+                if (((Planet*)gone)->is_in_con_HZ()) ((Star*)parent)->has_hz_planets--;
+            }
+
+        }
         if (gone->typeclass() == class_star)
         {
             Star* star = static_cast<Star*>(gone);
