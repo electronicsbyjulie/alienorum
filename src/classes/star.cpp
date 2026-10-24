@@ -1595,6 +1595,13 @@ json Star::to_json()
     towrite["apparent_magnitude"] = apparent_magnitude;
     towrite["parallax"] = parallax*fiftyseven*3600*1000;
     if (stellar_abundances.is_object() && !stellar_abundances.empty()) towrite["stellar_abundances"] = stellar_abundances;
+    if (stellar_rotation.is_object()) towrite["stellar_rotation"] = stellar_rotation;
+    towrite["known_poles"] = known_poles;
+    towrite["lock_equatorial_plane"] = lock_equatorial_plane;
+    towrite["lock_system_plane"] = lock_system_plane;
+    towrite["rot_axis_known"] = rot_axis_known;
+    towrite["rot_heliocen_incl"] = rot_heliocen_incl * fiftyseven;
+    towrite["rot_heliocen_node"] = rot_heliocen_node * fiftyseven;
     if (std::isfinite(metallicity))
     {
         towrite["stellar_metallicity"] =
@@ -1652,6 +1659,15 @@ bool Star::from_json(json j)
     CelestialObject::from_json(j);
     stellar_abundances = j.contains("stellar_abundances") && j["stellar_abundances"].is_object()
         ? j["stellar_abundances"] : json(nullptr);
+    stellar_rotation = j.contains("stellar_rotation") && j["stellar_rotation"].is_object()
+        ? j["stellar_rotation"] : json(nullptr);
+    // Explicit flags keep a saved display fallback from becoming a measured pole.
+    try { j.at("known_poles").get_to(known_poles); } catch (...) { ; }
+    try { j.at("lock_equatorial_plane").get_to(lock_equatorial_plane); } catch (...) { ; }
+    try { j.at("lock_system_plane").get_to(lock_system_plane); } catch (...) { ; }
+    try { j.at("rot_axis_known").get_to(rot_axis_known); } catch (...) { ; }
+    try { rot_heliocen_incl = j.at("rot_heliocen_incl").get<double>() * fiftyseventh; } catch (...) { ; }
+    try { rot_heliocen_node = j.at("rot_heliocen_node").get<double>() * fiftyseventh; } catch (...) { ; }
     metallicity = metallicity_error_upper = metallicity_error_lower = NAN;
     metallicity_ratio.clear();
     metallicity_source.clear();

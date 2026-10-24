@@ -23,6 +23,7 @@ namespace alienorum
         double metallicity_error_upper = NAN, metallicity_error_lower = NAN;
         std::string metallicity_ratio, metallicity_source;
         json stellar_abundances = nullptr;
+        json stellar_rotation = nullptr;             // Period provenance and supplied/assumed pole fields.
         json chemistry_diagnostics() const;
         bool calibrated_iron_abundance(double& value, double& uncertainty) const;
 

@@ -4,6 +4,9 @@ Sun                     (system inclination)                    000         023.
 
 # https://en.wikipedia.org/wiki/Alpha_Centauri and https://www.drewexmachina.com/2016/11/29/the-orbit-of-proxima-centauri/
 HD128620                HD128621                2.5170e+9       205.073     079.243     231.519     3.4855e+12  .519        000.0000000         1875.66
+# B rotation: Dumusque 2014, https://arxiv.org/abs/1409.3593; inclination 45 (+9/-19) deg to the line of sight, period 36.66 (+0.28/-0.30) d.
+# Rotation node is assumed equal to the A/B orbital node; it is not a measured stellar position angle.
+HD128621                (stellar rotation)      36.66d          205.073?    045
 HD128620                Proxima Cen             1.73e+13        126         107.6       072.3       1.3e+15     .50         0                   300000                                          0.1221      0.1542      0.00005      2992
 
 # https://doi.org/10.48550/arXiv.2501.09058
@@ -107,10 +110,11 @@ HD216956                (debris disks)                          202         066.
 
 #Center Name            Member Name             Period_s        Node_deg    Incl_deg    Omega_deg   SMA_m       Eccn        Anomaly_deg         Epoch           SpType          AbsMagn         Msun        Rsun        Lum         TempK       Rotation
 
-# https://en.wikipedia.org
-HD3651                  (stellar rotation)                                  083
+# Period 40.2 +/- 4.0 d: Simpson et al. 2010, https://arxiv.org/abs/1006.4121
+HD3651                  (stellar rotation)      40.2d                       083
+# Estimated period ~30 d: Chontos et al. 2021, https://arxiv.org/abs/2012.10797
 #                                                                           Based on 0.6 km/s rot v:
-HD43834                 (stellar rotation)                      250.87?     021
+HD43834                 (stellar rotation)      30d?            250.87?     021
 
 # https://doi.org/10.3847/1538-4357/ac1269
 HD43834                 Alp Men B               5.9e+9?         250.87?     021?                    4.5e+12                                                     M3.5-6.5V       +12.415         0.169       0.19                     3054
@@ -127,7 +131,8 @@ HD239960                Kruger 60 B             45.13y          152.6       165.
 Gliese 234 A            (companion orbit)                       210.385     052.918
 Gliese 473 A            (companion orbit)                       143.2       102.8
 HD8890                  (companion orbit)                       201.28      127.57
-HD39801                 (stellar rotation)                      145         020
+# Estimated 17 y consistent with the adopted HST orientation: Uitenbroek et al. 1998, doi:10.1086/300596.
+HD39801                 (stellar rotation)      17y?            145         020
 HD10307                 GJ 67 B                 6.1669e+8       032.25      100.36      027.15      1.496e+12   .4367       0                   2016.702        M V                             0.254       0.25?       0.0013       3000?
 HD12447                 HD12446                 89050000        003.09      113.01      150         5.37e+13    .4650       0                   2188.6          kA2hF2mF2 (IV)                  1.668       1.76                     8000
 HD12446                 HD12446 B               2159950.5792    073.08      065.2       140.14      3.729e+10   .6004                                                                           1.646       1.55                     8000
@@ -219,7 +224,9 @@ HD4614                  Achird B                1.490e+10       098.31      034.
 HD10830                 Eps Scl B               6.9372e+10                  105.3                   6.817e+13                                                                                   0.84        0.74        0.30         4973
 HIP116132               EQ Peg B                7.228624e+9     255.0919    130.065     307.1416    4.7325e+12  .108047     0                   1864.05415                                      0.16527     0.303       0.008        3072
 HD200499                Eta Cap B               8.789e+8        171.1       162.6       238.2       2.27e+12    .410        0                   2002.46                         +3.72           1.21
-HD93308                 (stellar rotation)                      049         049
+# No secure period adopted: retain Alienorum's 25 d stellar fallback as an explicit estimate.
+# This is a display assumption, not Eta Carinae's orbital or photometric variability period.
+HD93308                 (stellar rotation)      25d?            049         049
 HD155125                Eta Oph B               2.770e+9        039.241     096.305     275.90      4.645e+12   .93077      0                   2024.526                                        2.03        2.0         21           8700
 HD9270                  (companion orbit)                       032.8       058.5
 HD110304                Gam Cen B               2.637e+9        002.6       113.7       187.9       4.95e+12    .793        0                   1931.25                                         2.8         3.8         95           9300
@@ -232,6 +239,7 @@ HD110379                HD110380                5.3457e+9       214.76      150.
 HD94878                 (companion orbit)                                   060
 HIP1242                 (companion orbit)                       062.8       143.93
 HIP2552                 GJ 22 B                 7.047e+9        174.9       047.3       146.3       4.772e+12   .293        0                   2000.8622                                       0.382       0.394       0.011        3339
+HIP2552                 GJ 22 C                 5694.2d         178.3       043.7       284.5       0.5106s     .163        0                   JD2451817.2     M                               0.136
 GJ 65 A                 GJ 65 B                 8.325e+8        325.9       128.0       103.2       7.9068e+11  .6172       0                   1972.0466                                       0.116       0.159       0.00125      2728
 # Infer luminosity from radius and temperature; the old luminosity entries omitted their micro-solar scale.
 HD42581                 GJ 229 B                1.10e+10        168.3       047.7       358.285     6.42e+12    .736        0                   2042.075                                        0.0360      0.081                     900
@@ -250,8 +258,10 @@ HD31093                 (companion orbit)                       020         107
 HD32450                 (companion orbit)                       246.5       060.7
 HD33636                 (companion orbit)                       109.9       007.07
 HD36584                 24 Dor B                2.51e+10        074.8       129.5       112.8       1.961e+13   .887        0                   1869.63027471                                   1.57        2.2         8.3          6604
-Vega                    (stellar rotation)                      057         006.2
-Altair                  (stellar rotation)                      301.1       050.7
+# Vega: measured 0.676 d signal, Hurt et al. 2021, https://arxiv.org/abs/2101.08801
+Vega                    (stellar rotation)      0.676d          057         006.2
+# Altair: model-derived 7 h 46 min, Bouchaud et al. 2020, https://arxiv.org/abs/1912.03138
+Altair                  (stellar rotation)      27960?          301.1       050.7
 HD86320                 HD86320 B               2.004e+9        142.3       034.5       135.2       5.685e+12   .50         0                   2015.2326                                       1.6
 HD88522                 (companion orbit)                       198.3       076.0
 HD100453                (companion orbit)                       047         049

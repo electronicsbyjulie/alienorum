@@ -10,6 +10,9 @@ Hipparcos       hip_va_1.dat.gz             ftp://cdsarc.cds.unistra.fr/cats/I/2
 GAIA            catalog.dat.gz              https://cdsarc.cds.unistra.fr/ftp/J/ApJS/254/42/catalog.dat.gz
 GCVS            gcvs_cat.dat.gz             ftp://cdsarc.cds.unistra.fr/cats/B/gcvs/gcvs_cat.dat.gz
 GCVS            crossid.dat.gz              ftp://cdsarc.cds.unistra.fr/cats/B/gcvs/crossid.dat
+# Wright et al. (2011), J/ApJ/743/48: rotation periods, with exact HD/HIP/GJ identities.
+StellarRotation catalog.dat                 https://cdsarc.cds.unistra.fr/ftp/J/ApJ/743/48/catalog.dat
+StellarRotation refs.dat                    https://cdsarc.cds.unistra.fr/ftp/J/ApJ/743/48/refs.dat
 GOSSS           main.dat                    ftp://cdsarc.cds.unistra.fr/cats/III/274/main.dat
 WD              catalog.dat.gz              https://cdsarc.cds.unistra.fr/ftp/B/wd/catalog.dat.gz
 WD              names.dat.gz                https://cdsarc.cds.unistra.fr/ftp/B/wd/names.dat.gz

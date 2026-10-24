@@ -16,6 +16,7 @@
 #include <unordered_map>
 #include <memory>
 #include <string_view>
+#include <set>
 #include <string.h>
 #ifdef _WIN32
 #ifndef NOMINMAX
@@ -76,6 +77,7 @@ std::vector<std::string> known_catalog_names =
 #endif
     "SB9",
     "GCVS",
+    "StellarRotation",
     "2MASS",
     "REGALADE",
     "GALEX",
@@ -4876,6 +4878,89 @@ int CatalogReader::read_starname_dat(CelestialObject **cels)
     return num_read;
 }
 
+// Rotation periods are independent of pole measurements. Preserve an existing pole;
+// otherwise the display fallback is edge-on, without a measured-pole flag.
+static void apply_rotation_fallback(Star* object, CelestialObject* observer)
+{
+    if (object->lock_equatorial_plane || object->rot_axis_known || object->known_poles) return;
+    object->location.equatorial_plane = system_plane_from_incl_and_node(_pi / 2, 0,
+        object->location.system_center - observer->location.system_center);
+}
+
+int CatalogReader::read_stellar_rotation_catalog(CelestialObject** objects)
+{
+    std::lock_guard<std::recursive_mutex> catalog_lock(catalog_mutex);
+    std::ifstream input("catalogs/StellarRotation/catalog.dat");
+    if (!input || !objects || !objects[0]) return 0;
+    // Wright et al. 2011, CDS J/ApJ/743/48: enrich exact, unambiguous identities only.
+    std::unordered_map<std::string, std::set<Star*>> identities;
+    for (int i = 0; objects[i]; ++i)
+    {
+        if (objects[i]->typeclass() != class_star) continue;
+        Star* object = static_cast<Star*>(objects[i]);
+        const auto add = [&](const std::string& key)
+        {
+            if (!key.empty()) identities[key].insert(object);
+        };
+        if (object->HD) add("HD " + std::to_string(object->HD));
+        if (object->HIP) add("HIP " + std::to_string(object->HIP));
+        add(trim(object->Gliese));
+        add(trim(object->name));
+        for (const auto& alias : object->catalog_aliases) add(alias);
+    }
+    struct Measurement
+    {
+        double days;
+        std::string reference;
+        bool conflict = false;
+    };
+    std::map<Star*, Measurement> measurements;
+    std::string line;
+    while (std::getline(input, line))
+    {
+        if (line.size() < 153 || line[0] == '#') continue;
+        const std::string field = trim(line.substr(143, 5));
+        char* end = nullptr;
+        const double days = strtod(field.c_str(), &end);
+        if (end == field.c_str() || *end || !std::isfinite(days) || days <= 0) continue;
+        std::set<Star*> matches;
+        const auto match = [&](const std::string& key)
+        {
+            const auto found = identities.find(key);
+            if (found != identities.end()) matches.insert(found->second.begin(), found->second.end());
+        };
+        const std::string hd = trim(line.substr(24, 6)), hip = trim(line.substr(31, 6));
+        if (!hd.empty()) match("HD " + hd);
+        if (!hip.empty()) match("HIP " + hip);
+        const std::string gj = trim(line.substr(38, 7));
+        if (!gj.empty()) match("GJ " + gj);
+        match(trim(line.substr(0, 23)));
+        if (matches.size() != 1) continue;
+        Star* object = *matches.begin();
+        const auto inserted = measurements.emplace(object, Measurement{days, trim(line.substr(149, 4))});
+        if (!inserted.second && inserted.first->second.days != days) inserted.first->second.conflict = true;
+    }
+    int count = 0;
+    for (const auto& entry : measurements)
+    {
+        Star* object = entry.first;
+        const Measurement& measurement = entry.second;
+        if (measurement.conflict) continue;
+        if (object->stellar_rotation.is_object() && object->stellar_rotation.contains("period_seconds") &&
+            object->stellar_rotation.value("source", std::string()) != "J/ApJ/743/48") continue;
+        // Legacy caches have no provenance for their 25-day fallback. Preserve every
+        // other existing positive period instead of replacing an authored value.
+        if (!object->stellar_rotation.is_object() && object->sidereal_rotational_period > 0 &&
+            object->sidereal_rotational_period != 25 * oneday) continue;
+        object->sidereal_rotational_period = measurement.days * oneday;
+        object->stellar_rotation = {{"period_seconds", object->sidereal_rotational_period},
+            {"estimated", false}, {"source", "J/ApJ/743/48"}, {"reference", measurement.reference}};
+        apply_rotation_fallback(object, objects[0]);
+        ++count;
+    }
+    return count;
+}
+
 int CatalogReader::read_star_orbits_dat(CelestialObject **cels, int first_host)
 {
     std::lock_guard<std::recursive_mutex> catalog_lock(catalog_mutex);
@@ -4932,30 +5017,81 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels, int first_host)
         std::string bdyname = trim(field);
         const char* bdystr = bdyname.c_str();
 
+        if (bdyname == "(stellar rotation)")
+        {
+            const auto angle = [&](int first, int last, double& result)
+            {
+                read_field_onebased(buffer, first, last, field);
+                const std::string text = trim(field);
+                char* end = nullptr;
+                const double degrees = strtod(text.c_str(), &end);
+                const bool supplied = end != text.c_str() && std::isfinite(degrees) &&
+                    (!*end || !strcmp(end, "?"));
+                if (supplied) result = degrees * fiftyseventh;
+                return supplied;
+            };
+            double spin_inclination = _pi / 2, spin_node = 0;
+            const bool has_inclination = angle(77, 87, spin_inclination);
+            const bool has_node = angle(65, 75, spin_node);
+            // An omitted inclination retains an existing pole, or uses the edge-on fallback.
+            // Never promote the fallback into the measured rotation-inclination fields.
+            if (has_inclination || (!A->lock_equatorial_plane && !A->rot_axis_known && !A->known_poles))
+            {
+                A->location.equatorial_plane = system_plane_from_incl_and_node(spin_inclination, spin_node,
+                    A->location.system_center - cels[0]->location.system_center);
+                if (has_inclination)
+                {
+                    A->lock_equatorial_plane = true;
+                    A->known_poles = true;
+                    A->obliquity = spin_inclination;
+                    A->equinox = spin_node;
+                    A->rot_heliocen_incl = spin_inclination;
+                }
+            }
+            if (has_node) A->rot_heliocen_node = spin_node;
+            if (!A->stellar_rotation.is_object()) A->stellar_rotation = json::object();
+            if (has_inclination || !A->stellar_rotation.contains("inclination_supplied"))
+                A->stellar_rotation["inclination_supplied"] = has_inclination;
+            if (has_node || !A->stellar_rotation.contains("node_supplied"))
+            {
+                A->stellar_rotation["node_supplied"] = has_node;
+                A->stellar_rotation["node_assumed"] = !has_node || std::string(field).find('?') != std::string::npos;
+            }
+            read_field_onebased(buffer, 49, 63, field);
+            std::string period_text = trim(field);
+            const bool estimated = !period_text.empty() && period_text.back() == '?';
+            if (estimated) period_text.pop_back();
+            char* end = nullptr;
+            double period = strtod(period_text.c_str(), &end);
+            const std::string unit = end;
+            if (unit == "d") period *= oneday;
+            else if (unit == "y") period *= oneyear;
+            if (end != period_text.c_str() && (unit.empty() || unit == "d" || unit == "y") &&
+                std::isfinite(period) && period > 0)
+            {
+                A->sidereal_rotational_period = period;
+                A->stellar_rotation["period_seconds"] = period;
+                A->stellar_rotation["source"] = "star_orbits.dat";
+                A->stellar_rotation["estimated"] = estimated;
+                A->stellar_rotation.erase("reference");
+            }
+            continue;
+        }
+
         Rotation new_orbital_plane = system_plane_from_incl_and_node(inclination, ascending_node,
                                      A->location.system_center - cels[0]->location.system_center);
         if (inclination || ascending_node)
         {
-            if (!strcmp(bdystr, "(stellar rotation)"))
+            if (!A->lock_system_plane)
             {
-                A->location.equatorial_plane = new_orbital_plane;
-                A->lock_equatorial_plane = true;
-                A->obliquity = inclination;
-                A->equinox = ascending_node;
+                A->location.local_system_plane = new_orbital_plane;
+                A->location.orbital_plane = A->location.local_system_plane;
+                A->lock_system_plane = true;
             }
-            else
+            if (!A->lock_equatorial_plane && !A->rot_axis_known)
             {
-                if (!A->lock_system_plane)
-                {
-                    A->location.local_system_plane = new_orbital_plane;
-                    A->location.orbital_plane = A->location.local_system_plane;
-                    A->lock_system_plane = true;
-                }
-                if (!A->lock_equatorial_plane && !A->rot_axis_known)
-                {
-                    A->location.equatorial_plane = A->location.local_system_plane;
-                    A->obliquity = 0;
-                }
+                A->location.equatorial_plane = A->location.local_system_plane;
+                A->obliquity = 0;
             }
             A->known_poles = true;
         }
@@ -4986,21 +5122,6 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels, int first_host)
             else if (last == 's') disk_sma = atof(field) * (AU / parsec) * A->distance;
             else disk_sma = atof(field);
             if (disk_sma) A->disk_inner_edge_sma = disk_sma;
-            s = A;
-        }
-
-        if (!strcmp(bdystr, "(stellar rotation)"))
-        {
-            read_field_onebased(buffer, 49, 63, field);
-            str = trim(field);
-            last = '\0';
-            l = str.size();
-            if (l) last = str.c_str()[l-1];
-            if (last == 'y') A->sidereal_rotational_period = atof(field) * oneyear;
-            else if (last == 'd') A->sidereal_rotational_period = atof(field) * oneday;
-            else A->sidereal_rotational_period = atof(field);
-            A->rot_heliocen_incl = inclination;
-            A->rot_heliocen_node = ascending_node;
             s = A;
         }
 
@@ -5621,7 +5742,14 @@ static std::string star_orbits_signature()
         hash ^= static_cast<unsigned char>(c);
         hash *= 1099511628211ULL;
     }
-    return std::to_string(hash);
+    // Version the parser behavior as well as its inputs, so old assumed poles are rebuilt.
+    std::ifstream rotations("catalogs/StellarRotation/catalog.dat", std::ios::binary);
+    while (rotations.get(c))
+    {
+        hash ^= static_cast<unsigned char>(c);
+        hash *= 1099511628211ULL;
+    }
+    return "rotation1-" + std::to_string(hash);
 }
 
 static std::string baked_star_link_key(const json& key)
@@ -5763,7 +5891,13 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
         extra << " MET1 " << std::quoted(measurement.dump());
         line += extra.str();
     }
-    if (s->orbit || s->multisys || s->known_poles || s->has_disk || s->rot_axis_known ||
+    if (s->stellar_rotation.is_object())
+    {
+        std::ostringstream extra;
+        extra << " ROT1 " << std::quoted(s->stellar_rotation.dump());
+        line += extra.str();
+    }
+    if (s->orbit || s->multisys || s->known_poles || s->has_disk || s->rot_axis_known || s->stellar_rotation.is_object() ||
         s->lock_system_plane || s->lock_equatorial_plane)
     {
         const auto rotation = [](const Rotation& plane)
@@ -6287,6 +6421,11 @@ int alienorum::CatalogReader::read_condensed_star_cat()
                 {
                     json chemistry = json::parse(value, nullptr, false);
                     if (chemistry.is_object()) s->stellar_abundances = std::move(chemistry);
+                }
+                else if (version == "ROT1" && extras >> std::quoted(value))
+                {
+                    json rotation = json::parse(value, nullptr, false);
+                    if (rotation.is_object()) s->stellar_rotation = std::move(rotation);
                 }
                 else if (version == "MET1" && extras >> std::quoted(value))
                 {

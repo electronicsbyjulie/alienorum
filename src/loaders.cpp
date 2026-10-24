@@ -626,6 +626,7 @@ void load_catalogs()
             loading_msg = "Baking star orbits into the star catalog...";
             mtx.unlock();
             cr.read_star_orbits_dat(cels);
+            cr.read_stellar_rotation_catalog(cels);
             if (load_aborted()) return;
             star_orbits_applied = true;
             if (!cr.bake_condensed_star_orbits())
@@ -885,6 +886,11 @@ void load_catalogs()
         else cr.read_star_orbits_dat(cels);
     }
     else splash = false;
+
+    if (!ihsc && !magnitude_test)
+    {
+        cout << "Applied " << cr.read_stellar_rotation_catalog(cels) << " stellar rotation periods." << endl;
+    }
 
     if (load_aborted()) return;
     if (!noexo)

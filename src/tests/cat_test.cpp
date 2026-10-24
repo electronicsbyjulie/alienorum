@@ -36,6 +36,162 @@ class CatalogParsingTest : public UniverseFixture
     }
 };
 
+class StellarRotationTest : public CatalogParsingTest
+{
+    protected:
+    std::filesystem::path original, temporary;
+    Star **saved_hd = nullptr, **saved_hip = nullptr;
+    bool saved_baked = false;
+    std::vector<Star*> hd, hip;
+
+    void SetUp() override
+    {
+        CatalogParsingTest::SetUp();
+        Star::load_main_seq_dat();
+        original = std::filesystem::current_path();
+        temporary = std::filesystem::temp_directory_path() / ("alienorum_rotation_" +
+            std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+        std::filesystem::create_directories(temporary / "catalogs/StellarRotation");
+        std::filesystem::current_path(temporary);
+        saved_hd = hdcache;
+        saved_hip = hipcache;
+        saved_baked = CatalogReader::condensed_star_orbits_loaded;
+        hd.resize(MAX_HD + 1, nullptr);
+        hip.resize(MAX_HIP + 1, nullptr);
+        hdcache = hd.data();
+        hipcache = hip.data();
+    }
+
+    void TearDown() override
+    {
+        delete_the_universe();
+        hdcache = saved_hd;
+        hipcache = saved_hip;
+        CatalogReader::condensed_star_orbits_loaded = saved_baked;
+        std::filesystem::current_path(original);
+        std::filesystem::remove_all(temporary);
+        CatalogParsingTest::TearDown();
+    }
+
+    Star* target(int identifier)
+    {
+        Star* object = make_star(("HD " + std::to_string(identifier)).c_str());
+        object->HD = identifier;
+        hd[identifier] = object;
+        object->right_ascension = 1.2;
+        object->declination = -0.4;
+        object->update_location(simnow);
+        return object;
+    }
+
+    std::string row(const char* host, const char* period, const char* inclination = "", const char* node = "")
+    {
+        std::string value(100, ' ');
+        value.replace(0, strlen(host), host);
+        value.replace(24, 18, "(stellar rotation)");
+        value.replace(48, strlen(period), period);
+        value.replace(64, strlen(node), node);
+        value.replace(76, strlen(inclination), inclination);
+        return value;
+    }
+};
+
+TEST_F(StellarRotationTest, PeriodOnlyRowsAndExplicitZeroPolesSurviveBothSaveFormats)
+{
+    Star* unknown = target(99990);
+    Star* pole_on = target(99991);
+    Star* preserved = target(99992);
+    preserved->known_poles = preserved->lock_equatorial_plane = true;
+    preserved->location.equatorial_plane = system_plane_from_incl_and_node(0.7, 0.2,
+        preserved->location.system_center - cels[0]->location.system_center);
+    const Rotation original_plane = preserved->location.equatorial_plane;
+    std::ofstream file("catalogs/star_orbits.dat");
+    file << row("HD99990", "0.123456d?") << '\n'
+         << row("HD99991", "2y", "0", "0") << '\n'
+         << row("HD99992", "8d") << '\n'
+         << row("HD99992", "", "40", "23") << '\n';
+    file.close();
+    CatalogReader reader;
+    reader.read_star_orbits_dat(cels);
+    EXPECT_DOUBLE_EQ(unknown->sidereal_rotational_period, 0.123456 * oneday);
+    EXPECT_FALSE(unknown->known_poles);
+    EXPECT_FALSE(unknown->lock_equatorial_plane);
+    EXPECT_EQ(unknown->rot_heliocen_incl, 0);
+    const Rotation fallback = system_plane_from_incl_and_node(_pi / 2, 0,
+        unknown->location.system_center - cels[0]->location.system_center);
+    EXPECT_NEAR(unknown->location.equatorial_plane.a, fallback.a, 1e-12);
+    EXPECT_NEAR((unknown->location.equatorial_plane.v - fallback.v).magnitude(), 0, 1e-12);
+    EXPECT_TRUE(pole_on->known_poles);
+    EXPECT_TRUE(pole_on->lock_equatorial_plane);
+    EXPECT_DOUBLE_EQ(pole_on->rot_heliocen_incl, 0);
+    EXPECT_DOUBLE_EQ(pole_on->sidereal_rotational_period, 2 * oneyear);
+    EXPECT_DOUBLE_EQ(preserved->sidereal_rotational_period, 8 * oneday);
+    EXPECT_NE(preserved->location.equatorial_plane.a, original_plane.a);
+    std::ofstream("catalogs/star_orbits.dat") << row("HD99992", "9d") << '\n';
+    const Rotation measured = preserved->location.equatorial_plane;
+    reader.read_star_orbits_dat(cels);
+    EXPECT_DOUBLE_EQ(preserved->location.equatorial_plane.a, measured.a);
+    EXPECT_DOUBLE_EQ(preserved->sidereal_rotational_period, 9 * oneday);
+    Star restored;
+    restored.from_json(unknown->to_json());
+    EXPECT_EQ(restored.stellar_rotation, unknown->stellar_rotation);
+    EXPECT_DOUBLE_EQ(restored.sidereal_rotational_period, unknown->sidereal_rotational_period);
+    EXPECT_FALSE(restored.known_poles);
+    ASSERT_TRUE(reader.bake_condensed_star_orbits());
+    delete_the_universe();
+    std::fill(hd.begin(), hd.end(), nullptr);
+    std::fill(hip.begin(), hip.end(), nullptr);
+    ASSERT_EQ(reader.read_condensed_star_cat(), 4);
+    ASSERT_NE(hd[99990], nullptr);
+    EXPECT_DOUBLE_EQ(hd[99990]->sidereal_rotational_period, 0.123456 * oneday);
+    EXPECT_TRUE(hd[99990]->stellar_rotation.at("estimated"));
+    EXPECT_FALSE(hd[99990]->known_poles);
+    EXPECT_FALSE(hd[99990]->lock_equatorial_plane);
+    EXPECT_NEAR(hd[99990]->location.equatorial_plane.a, fallback.a, 1e-12);
+}
+
+TEST_F(StellarRotationTest, CatalogRejectsConflictingIdentitiesAndAuthoredValuesWin)
+{
+    Star* first = target(1835);
+    first->HIP = 1803;
+    Star* second = target(99990);
+    second->HIP = 99991;
+    // Actual CDS row: HD at 25, HIP at 32, period at 144, reference at 150.
+    const std::string actual = "HD 1835                   1835   1803    17.3 BE Cet    00225174-1212340 00 22 51.79 -12 12 34.0    Field  20.   6.39 1.54 G2    B95 29.15 V99  7.78 D96  1.10 1.03  1.11 5687 0.76 -4.43";
+    std::ofstream("catalogs/StellarRotation/catalog.dat") << actual << '\n';
+    CatalogReader reader;
+    first->sidereal_rotational_period = 11 * oneday;
+    EXPECT_EQ(reader.read_stellar_rotation_catalog(cels), 0);
+    EXPECT_DOUBLE_EQ(first->sidereal_rotational_period, 11 * oneday);
+    first->sidereal_rotational_period = 25 * oneday;
+    EXPECT_EQ(reader.read_stellar_rotation_catalog(cels), 1);
+    EXPECT_DOUBLE_EQ(first->sidereal_rotational_period, 7.78 * oneday);
+    EXPECT_FALSE(first->known_poles);
+    EXPECT_EQ(first->stellar_rotation.at("reference"), "D96");
+    EXPECT_EQ(reader.read_stellar_rotation_catalog(cels), 1);
+    EXPECT_EQ(ncelobjs, 3);
+    std::string alternate_period = actual;
+    alternate_period.replace(143, 5, " 8.00");
+    std::ofstream("catalogs/StellarRotation/catalog.dat") << actual << '\n' << alternate_period << '\n';
+    EXPECT_EQ(reader.read_stellar_rotation_catalog(cels), 0);
+    EXPECT_DOUBLE_EQ(first->sidereal_rotational_period, 7.78 * oneday);
+    alternate_period.replace(143, 5, "  nan");
+    std::ofstream("catalogs/StellarRotation/catalog.dat") << alternate_period << '\n';
+    EXPECT_EQ(reader.read_stellar_rotation_catalog(cels), 0);
+    std::string conflict = actual;
+    conflict.replace(31, 6, " 99991");
+    std::ofstream("catalogs/StellarRotation/catalog.dat") << conflict << '\n';
+    EXPECT_EQ(reader.read_stellar_rotation_catalog(cels), 0);
+    EXPECT_EQ(ncelobjs, 3);
+    EXPECT_DOUBLE_EQ(second->sidereal_rotational_period, 0);
+    std::ofstream("catalogs/StellarRotation/catalog.dat") << actual << '\n';
+    std::ofstream("catalogs/star_orbits.dat") << row("HD1835", "6d?") << '\n';
+    reader.read_star_orbits_dat(cels);
+    EXPECT_EQ(reader.read_stellar_rotation_catalog(cels), 0);
+    EXPECT_DOUBLE_EQ(first->sidereal_rotational_period, 6 * oneday);
+    EXPECT_TRUE(first->stellar_rotation.at("estimated"));
+}
+
 TEST_F(CatalogParsingTest, DISABLED_StarOrbitCatalogTiming)
 {
     Star::load_main_seq_dat();
