@@ -1,6 +1,6 @@
 # Alienorum acceptance criteria
 
-Baseline updated: 2026-10-23, including the session deliveries listed in section 18.
+Baseline updated: 2026-10-24, including the session deliveries listed in section 18.
 
 Acceptance scope includes everything the application does or should do, subject to explicit project-scope decisions. Missing implementation, current approximations, and deferred work remain within scope unless explicitly excluded; documenting a limitation alone does not remove the associated obligation. Detailed pigment/tissue optics and leaf heat-balance modeling are explicitly out of scope per the user's decision on 2026-10-23. Scope, implementation status, and verification status are separate.
 
@@ -18,7 +18,7 @@ Named examples below are regression fixtures and catalog requirements. Runtime a
 - **D04 — Accepted Tau Ceti sky:** Preserve the following accepted figure: from Tau Ceti, the Sun and Arcturus belong to the same constellation.
 - **D05 — Custom vantage figures:** Preserve the custom Alpha Mensae figures (see appendix B) while generating additional figures only from unused eligible stars. Preserve all other authored vantage figures and their naming data.
 - **D06 — Body roles:** Preserve catalog-defined home-world roles, map inversion, known poles, vegetation colors, and artificial-satellite center codes, including after renaming and saving an object.
-- **D07 — Measured properties:** Preserve measured galaxy orientation, distance, dimensions, band files, texture paths, and label extents. Preserve catalog-defined reference-star poles, including the Kappa Fornacis reference record. General rendering must consume these records without object-name conditions.
+- **D07 — Measured properties:** Preserve measured galaxy orientation, distance, dimensions, band files, texture paths, and label extents. Preserve catalog-defined stellar poles and orbital planes. Kappa Fornacis (HD 14802) is a regression example: preserve its companion relationships and orbital elements from [star_orbits.dat](catalogs/star_orbits.dat), including the supplied outer-orbit inclination of 50.4° and ascending node of 139.8°. The inner orbit's unspecified orientation remains unknown. An orbital plane adopted as an equatorial fallback must remain distinguishable from a measured stellar rotation pole. General loading and rendering must consume these records without object-name conditions.
 - **D08 — Source identity:** Preserve canonical source names, provenance, component letters, and periods. Source-letter translations must be explicit data with provenance; an alternate host designation alone must never change which physical planet a letter denotes.
 - **D09 — Source disposition:** Reject false-positive or rejected records using source metadata. Do not revive a rejected planet merely because another source uses an alternate host name.
 - **D10 — Wide and imaged objects:** Preserve valid wide companions and directly imaged objects when the source supplies sufficient placement information. Missing period alone is not a reason to discard a valid semimajor axis. Unknown orbits must remain explicitly unknown rather than fabricated.
@@ -82,10 +82,11 @@ These entries record the deliberate choices found during the earlier review. The
 - **I08:** WD 0806-661 imports reuse the original host before and after color association. Repeated host passes preserve object count and pointer identity.
 - **I09:** Deleted stars release their HD/HIP lookup entries and registered aliases; later searches cannot access the deleted star.
 - **I10:** Mouse hover displays the correct object's information; clicking selects it; clearing selection and clearing tracking work independently.
-- **I11:** Distant unresolved systems display and select the primary even when a companion is brighter. Local resolved components remain individually visible and selectable.
+- **I11:** When a stellar system is rendered as a single unresolved dot, its star label and N-panel hover name identify the system's primary, even when a companion is brighter; selection also resolves to the primary. Resolved components remain individually visible and selectable, with their own display names according to I15. Observer membership in the system alone does not determine whether components are resolved.
 - **I12:** Tracking keeps the selected object centered and retains its information until tracking is cleared.
 - **I13:** The main search field, object dialogs, system explorer, stellar neighborhood, and catalog browsers retain consistent selection and navigation behavior.
 - **I14:** Primary search and edit fields receive focus when their dialogs open; typed input does not accidentally activate global shortcuts.
+- **I15 — Five-pixel companion naming threshold (2026-10-24):** Once a companion achieves at least **5 pixels of projected on-screen separation**, hovering that companion shows its own display name in the N panel, and any star label rendered for it uses its own display name. Exactly 5 pixels qualifies. Apply this rule regardless of whether separation results from observer proximity, zoom, orbital motion, projection, or any other cause, in every view supporting those labels or the N panel. Reevaluate resolution as the displayed separation changes; an unresolved single dot follows I11. Ordinary label visibility settings still determine whether a label is rendered. Preserve each component's underlying identity and aliases throughout these display changes. **COMPLETE — user verified (2026-10-24):** Labels, hover, click selection, and tracking share the current projected-separation rule. Automated checks cover separations below, exactly at, and above 5 pixels, transitions in both directions, diagonal separation, label visibility settings, overlapping mouse hit areas, nested companions, and local/distant systems across all five views. The user confirmed the displayed separation, labels, and N-panel behavior in `snapshots/Theta1 Orionis C2.Earth.20261024.055906.png`.
 
 ## 4. Universe JSON and add-on import
 
@@ -327,6 +328,7 @@ The following records connect this checklist to the completed work. They are his
 
 | Delivered work | Criterion groups | Evidence anchor |
 | --- | --- | --- |
+| Companion names follow current screen separation at the inclusive five-pixel threshold | I11, I15 | Linux application build passed; seven focused rendering/input checks passed, including boundary transitions, label/hover identity, nested companions, observer exclusion, and System View previews. User verified the separation, labels, and N panel in `snapshots/Theta1 Orionis C2.Earth.20261024.055906.png` on 2026-10-24. |
 | Stellar rotation catalog integration, authored periods, estimate provenance, and unknown-pole preservation | S17–S18 | Linux application build passed; all 61 catalog and 60 serialization checks passed. The focused condensed-archive update retains all 133,644 original stars and unrelated fixed fields, adding rotation metadata for 197 Wright et al. catalog matches and eight authored rows. Full archive reload preserves their exact periods and flags. The broader orbit rebuild remains separate. |
 | Local climate, condensation, stored temperatures, explicit bulk edits, conservative-zone defaults, spacing warnings | C01–C16 | Planet and rendering regressions; session history before the code audit |
 | Label-category visibility and extreme-zoom/glare corrections | G02, G05 | `3d6db9e`, `22ca9c2` |

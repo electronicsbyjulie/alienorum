@@ -606,7 +606,7 @@ TEST_F(RenderingRegressionTest, LavaSunclockDayStaysBrighterThanNightUnderStella
     }
 }
 
-TEST_F(RenderingRegressionTest, DistantSystemLabelsUseThePrimaryEvenForABrighterCompanion)
+TEST_F(RenderingRegressionTest, UnresolvedLabelsUsePrimaryAndResolvedCompanionsKeepTheirNames)
 {
     Star *sun = make_star("Sun");
     Star *primary = make_star("Xi Ursae Majoris");
@@ -616,8 +616,8 @@ TEST_F(RenderingRegressionTest, DistantSystemLabelsUseThePrimaryEvenForABrighter
     companion->make_companion_of(primary, 'B');
     companion->absolute_magnitude = 4.47;
     primary->cenobj = companion->cenobj = primary;
-    companion->drawnx = 96;
-    companion->drawny = 54;
+    primary->drawnx = companion->drawnx = 96;
+    primary->drawny = companion->drawny = 54;
     double magnitudes[3] = {5, 5, 5};
     double angular_sizes[3] = {0, 0, 0};
     double bloom[3] = {0, 0, 0};
@@ -640,7 +640,13 @@ TEST_F(RenderingRegressionTest, DistantSystemLabelsUseThePrimaryEvenForABrighter
     labels2draw.clear();
     ASSERT_TRUE(draw_single_object(companion->seqno));
     ASSERT_EQ(labels2draw.size(), 1u);
+    EXPECT_EQ(labels2draw.back().text, "Xi Ursae Majoris");
+    companion->drawnx = 101;
+    labels2draw.clear();
+    ASSERT_TRUE(draw_single_object(companion->seqno));
+    ASSERT_EQ(labels2draw.size(), 1u);
     EXPECT_EQ(labels2draw.back().text, "Xi Ursae Majoris B");
+    companion->drawnx = 96;
     set(mycenobj, static_cast<CelestialObject*>(sun));
     set(shortnames, true);
     strcpy(primary->Gouldcons, "UMa");
@@ -666,9 +672,18 @@ TEST_F(RenderingRegressionTest, DistantSystemLabelsUseThePrimaryEvenForABrighter
         ASSERT_EQ(labels2draw.size(), 1u);
         EXPECT_EQ(labels2draw.back().text, format.text);
     }
+    companion->drawnx = 101;
+    for (int category : {lbltype_brightest, lbltype_Bayer, lbltype_Flamsteed, lbltype_Gould})
+    {
+        cbolbls_selected_idx = category;
+        labels2draw.clear();
+        ASSERT_TRUE(draw_single_object(companion->seqno));
+        ASSERT_EQ(labels2draw.size(), 1u);
+        EXPECT_EQ(labels2draw.back().text, "Xi Ursae Majoris B");
+    }
 }
 
-TEST_F(RenderingRegressionTest, DistantSystemCursorSelectsPrimaryAndLocalCursorSelectsCompanion)
+TEST_F(RenderingRegressionTest, CompanionHoverAndSelectionFollowFivePixelSeparationInEveryView)
 {
     Star *sun = make_star("Sun");
     Star *primary = make_star("Xi Ursae Majoris");
@@ -690,20 +705,117 @@ TEST_F(RenderingRegressionTest, DistantSystemCursorSelectsPrimaryAndLocalCursorS
     set(is_an_obj_under_cursor, -1);
     set(is_a_locale_under_cursor, static_cast<Locale*>(nullptr));
     set(obj_magn_under_cursor, 1e9);
+    set(circle_size, 8);
     ImGuiIO &io = ImGui::GetIO();
-    io.MousePos = ImVec2(96, 54);
-    identify_object_under_cursor(io);
-    EXPECT_EQ(is_an_obj_under_cursor, primary->seqno);
-    EXPECT_EQ(selected, primary->seqno);
-    mycenobj = primary;
-    selected = -1;
-    identify_object_under_cursor(io);
-    EXPECT_EQ(is_an_obj_under_cursor, companion->seqno);
-    EXPECT_EQ(selected, companion->seqno);
-    mycenobj = sun;
-    trackidx = companion->seqno;
-    identify_object_under_cursor(io);
-    EXPECT_EQ(is_an_obj_under_cursor, primary->seqno);
+    for (auto mode : {vm_spaceship, vm_horizon, vm_skymap, vm_sunclock, vm_system})
+    {
+        view_mode = mode;
+        for (Star* observer_system : {sun, primary})
+        {
+            mycenobj = observer_system;
+            if (mode == vm_system && observer_system != primary) continue;
+            for (double separation : {0.0, 4.99, 5.0, 5.01, 4.99, 0.0})
+            {
+                companion->drawnx = 96 + separation;
+                io.MousePos = ImVec2(companion->drawnx, companion->drawny);
+                const int expected = separation >= 5 ? companion->seqno : primary->seqno;
+                for (double primary_magnitude : {3.0, 5.0})
+                {
+                    magnitudes[1] = primary_magnitude;
+                    selected = primary->seqno;
+                    trackidx = -1;
+                    identify_object_under_cursor(io);
+                    EXPECT_EQ(is_an_obj_under_cursor, expected) << separation;
+                    EXPECT_EQ(selected, expected) << separation;
+                }
+                trackidx = companion->seqno;
+                identify_object_under_cursor(io);
+                EXPECT_EQ(is_an_obj_under_cursor, expected) << separation;
+            }
+        }
+    }
+    companion->drawnx = 99;
+    companion->drawny = 58;
+    EXPECT_EQ(stellar_display_target(companion), companion);
+    companion->drawny = 57.99;
+    EXPECT_EQ(stellar_display_target(companion), primary);
+}
+
+TEST_F(RenderingRegressionTest, ResolvedCompanionLabelsRespectVisibilityAndRetainPrimarySuffix)
+{
+    Star* sun = make_star("Sun");
+    Star* primary = make_star("System A");
+    primary->set_component('A', primary);
+    Star* companion = make_star("System B");
+    companion->make_companion_of(primary, 'B');
+    primary->cenobj = companion->cenobj = primary;
+    primary->drawnx = 96;
+    primary->drawny = companion->drawny = 54;
+    companion->drawnx = 101;
+    double magnitudes[3] = {5, 5, 5}, sizes[3] = {}, bloom[3] = {};
+    bool discs[3] = {};
+    set(vmag_cache, static_cast<double*>(magnitudes));
+    set(angular_radius, static_cast<double*>(sizes));
+    set(bloomrad_cache, static_cast<double*>(bloom));
+    set(discinstead, static_cast<bool*>(discs));
+    set(labels2draw, std::vector<DrawLabel>{});
+    set(selected, -1);
+    set(shortnames, false);
+    set(cbolbls_selected_idx, lbltype_brightest);
+    set(show_localsys, true);
+    set(show_labels, true);
+    set(lbl_localsys, false);
+    set(label_favestars, false);
+    set(appmagn_lblcut, 6.0);
+    set(global_brightness, 1.0);
+    set(mycenobj, static_cast<CelestialObject*>(sun));
+    for (double separation : {4.99, 5.0, 5.01, 4.99})
+    {
+        companion->drawnx = 96 + separation;
+        labels2draw.clear();
+        ASSERT_TRUE(draw_single_object(companion->seqno));
+        if (separation >= 5)
+        {
+            ASSERT_EQ(labels2draw.size(), 1u);
+            EXPECT_EQ(labels2draw.back().text, "System B");
+        }
+        else EXPECT_TRUE(labels2draw.empty());
+        labels2draw.clear();
+        ASSERT_TRUE(draw_single_object(primary->seqno));
+        ASSERT_EQ(labels2draw.size(), 1u);
+        EXPECT_EQ(labels2draw.back().text, separation >= 5 ? "System A" : "System");
+    }
+    companion->drawnx = 101;
+    show_labels = false;
+    labels2draw.clear();
+    ASSERT_TRUE(draw_single_object(companion->seqno));
+    EXPECT_TRUE(labels2draw.empty());
+}
+
+TEST_F(RenderingRegressionTest, InnerPairsAndFilteredPrimariesUseTheirProjectedSeparation)
+{
+    make_star("Sun");
+    Star* primary = make_star("System A");
+    primary->set_component('A', primary);
+    Star* secondary = make_star("System B");
+    secondary->make_companion_of(primary, 'B');
+    Star* tertiary = make_star("System C");
+    tertiary->make_companion_of(secondary, 'C');
+    primary->drawnx = 96;
+    secondary->drawnx = 106;
+    tertiary->drawnx = 110;
+    primary->drawny = secondary->drawny = tertiary->drawny = 54;
+    EXPECT_EQ(stellar_display_target(tertiary), secondary);
+    tertiary->drawnx = 111;
+    EXPECT_EQ(stellar_display_target(tertiary), tertiary);
+    primary->drawnx = -1e9;
+    primary->tmprel = Point(0, 0, 1000);
+    set(here.equatorial_plane, Rotation());
+    set(view_mode, vm_spaceship);
+    secondary->drawnx = 100;
+    EXPECT_EQ(stellar_display_target(secondary), primary);
+    secondary->drawnx = 101;
+    EXPECT_EQ(stellar_display_target(secondary), secondary);
 }
 
 TEST_F(RenderingRegressionTest, ObservingObjectNeverEntersSkyRenderingOrRetainsPickingBounds)

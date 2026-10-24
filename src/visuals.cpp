@@ -35,6 +35,48 @@ static bool exclude_observing_object(CelestialObject *object)
     return true;
 }
 
+Star* stellar_display_target(Star* component)
+{
+    if (!component || !component->multisys) return component;
+    Star* primary = component->multisys->get_member('A');
+    if (!primary || primary->deleted) return component;
+    const auto position = [](const Star* object, double& x, double& y)
+    {
+        x = object->drawnx;
+        y = object->drawny;
+        if (std::isfinite(x) && std::isfinite(y) && x > -1e8 && y > -1e8) return true;
+        // A magnitude-filtered primary can still represent an unresolved brighter companion.
+        if (view_mode == vm_system || !object->tmprel.squared_magnitude()) return false;
+        Point rel = to_viewer_plane(object->tmprel);
+        if (view_mode == vm_horizon && whereami > 0 && uses_rocky_map(cels[whereami]->type) &&
+            static_cast<Planet*>(cels[whereami])->get_surface_pressure()) rel = refract_true_point(rel);
+        Cartesian2D projected(rel, azimuth + azimuth_correction, altitude, zoom);
+        if (projected.x < -1e4 || projected.y < -1e4) return false;
+        x = dispcx + projected.x * dispcx;
+        y = dispcy + projected.y * dispcx;
+        return std::isfinite(x) && std::isfinite(y);
+    };
+    Star* target = component;
+    // Follow physical parents so an unresolved inner pair can retain its resolved outer identity.
+    for (int depth = 0; target != primary && depth < 26; ++depth)
+    {
+        Star* parent = primary;
+        if (target->orbit && target->orbit->center && target->orbit->center->typeclass() == class_star)
+        {
+            Star* center_star = static_cast<Star*>(target->orbit->center);
+            if (center_star->multisys == component->multisys) parent = center_star;
+        }
+        if (parent == target || parent->deleted ||
+            (view_mode != vm_system && whereami >= 0 && parent == cels[whereami])) return target;
+        double x, y, parent_x, parent_y;
+        if (!position(target, x, y) || !position(parent, parent_x, parent_y)) return target;
+        const double dx = x - parent_x, dy = y - parent_y;
+        if (dx * dx + dy * dy >= 25.0) return target;
+        target = parent;
+    }
+    return target;
+}
+
 void draw_ra_dec_lines()
 {
     ImGuiIO& io = ImGui::GetIO();
@@ -3359,14 +3401,10 @@ bool draw_single_object(int i)
 
     labels_step:
     Star *s = cls == class_star ? static_cast<Star*>(cels[i]) : nullptr;
-    Star *label_star = s;
-    if (s && !obj_is_localsys && s->multisys)
-    {
-        Star *primary = s->multisys->get_member('A');
-        if (primary && !primary->deleted) label_star = primary;
-    }
+    Star *label_star = stellar_display_target(s);
+    const bool resolved_companion = s && label_star == s && s->get_component() > 'A';
     bool add_label = false;
-    if ( (show_labels && s && !cels[i]->orbit &&
+    if ( (show_labels && s && (!cels[i]->orbit || resolved_companion) &&
             ((!cbolbls_selected_idx && appmag <= appmagn_lblcut)
             || (cbolbls_selected_idx == lbltype_intrinsic && cels[i]->absolute_magnitude <= absmagn_lblcut)
             || (cbolbls_selected_idx == lbltype_nearby && here.distance_to(cels[i]->location) <= distance_lblcut)
@@ -3399,7 +3437,16 @@ bool draw_single_object(int i)
         if (!l) return true;
         int disph = dispcy * 2;
         std::string lopped;
-        if (dispname[l-1] == 'A' && cels[i] != mycenobj)
+        bool resolved_system = resolved_companion;
+        if (label_star && label_star->multisys)
+        {
+            for (char slot = 'A'; slot <= 'Z' && !resolved_system; ++slot)
+            {
+                Star* member = label_star->multisys->get_member(slot);
+                if (member && !member->deleted && stellar_display_target(member) != label_star) resolved_system = true;
+            }
+        }
+        if (dispname[l-1] == 'A' && cels[i] != mycenobj && !resolved_system)
         {
             lopped = lop_component(dispname);
             dispname = lopped.c_str();
@@ -3425,7 +3472,12 @@ bool draw_single_object(int i)
         }
         else if (cls == class_star)
         {
-            if (cbolbls_selected_idx == lbltype_Bayer && label_star->BayerGrkno >= 0)
+            if (resolved_companion)
+            {
+                // Shared catalog identifiers must not erase a resolved component's published label.
+                if (obj_is_localsys && label_star->local_name.size()) dispname = label_star->local_name.c_str();
+            }
+            else if (cbolbls_selected_idx == lbltype_Bayer && label_star->BayerGrkno >= 0)
             {
                 // str = trim(std::string(((Star*)cels[i])->Bayer).substr(0, strlen(((Star*)cels[i])->Bayer)-3));
                 // dispname = str.c_str();

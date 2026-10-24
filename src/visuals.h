@@ -114,6 +114,7 @@ int draw_sphere_gpu(CelestialObject *cel, double arad);
 void draw_ring_gpu(CelestialObject *cel, double arad = 0.0);
 int draw_satellite_icon(ImVec2 xycoord, ImU32 satcol);
 bool draw_single_object(int i); // return false if not drawn for any reason
+alienorum::Star* stellar_display_target(alienorum::Star* component);
 void draw_galaxy_band();     // the disc the viewer is standing inside, wrapped across the sky
 void draw_objects();
 void draw_system_view();

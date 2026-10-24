@@ -4,6 +4,7 @@
 #include "loaders.h"
 #include "housekeeping.h"
 #include "inputs.h"
+#include "visuals.h"
 #include "classes/sscimport.h"
 #include "classes/exocons.h"
 
@@ -61,10 +62,8 @@ void identify_object_under_cursor(ImGuiIO& io)
     int i;
     const auto system_target = [](int index)
     {
-        if (index < 0 || cels[index]->type != star || cels[index]->cenobj == mycenobj) return index;
-        Star *component = static_cast<Star*>(cels[index]);
-        Star *primary = component->multisys ? component->multisys->get_member('A') : nullptr;
-        return primary && !primary->deleted ? primary->seqno : index;
+        if (index < 0 || cels[index]->type != star) return index;
+        return stellar_display_target(static_cast<Star*>(cels[index]))->seqno;
     };
 
     is_an_obj_under_cursor = -1;
@@ -73,6 +72,8 @@ void identify_object_under_cursor(ImGuiIO& io)
     int threshold = circle_size*1.3;
     bool selected_this_turn = false;
     bool lsysonly = (view_mode == vm_system);
+    int cursor_source = -1;
+    double cursor_distance_squared = 0;
 
     if (trackidx >= 0)
     {
@@ -99,12 +100,21 @@ void identify_object_under_cursor(ImGuiIO& io)
             if (cels[i]->type == galaxy) lmag += 6;
             else if (cels[i]->label_shown) lmag -= 5;               // Prioritize labeled objects.
 
-            if (lmag < obj_magn_under_cursor)
+            const double dx = io.MousePos.x - cels[i]->drawnx, dy = io.MousePos.y - cels[i]->drawny;
+            const double distance_squared = dx * dx + dy * dy;
+            const int target = system_target(i);
+            const bool resolved_siblings = cursor_source >= 0 && target != is_an_obj_under_cursor &&
+                cels[i]->type == star && cels[cursor_source]->type == star &&
+                static_cast<Star*>(cels[i])->multisys &&
+                static_cast<Star*>(cels[i])->multisys == static_cast<Star*>(cels[cursor_source])->multisys;
+            if (resolved_siblings ? distance_squared < cursor_distance_squared : lmag < obj_magn_under_cursor)
             {
-                is_an_obj_under_cursor = system_target(i);
+                is_an_obj_under_cursor = target;
                 obj_magn_under_cursor = lmag;
+                cursor_source = i;
+                cursor_distance_squared = distance_squared;
 
-                if (is_an_obj_under_cursor == selected) break;
+                if (is_an_obj_under_cursor == selected && distance_squared == 0) break;
                 if (is_click && !dragged)
                 {
                     selected = is_an_obj_under_cursor;
