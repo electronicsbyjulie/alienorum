@@ -147,65 +147,21 @@ endif()
 if(WIN32)
 	install(TARGETS alienorum RUNTIME DESTINATION .)
 
-	if(EXISTS "${CMAKE_SOURCE_DIR}/package/release-assets")
-		install(DIRECTORY package/release-assets/ DESTINATION assets)
-	endif()
-
-	# NOTE FOR FUTURE SESSIONS / DEVELOPERS:
-	# Any time new runtime files (catalogs, data files, fonts, images, etc.) are added to the
-	# repository that are NOT auto-generated or auto-downloaded by the application at runtime,
-	# they MUST also be added to the CMake/vcpkg installation rules here so they are bundled
-	# in the release installer.
-	install(FILES
-		catalogs/exoplanet_host_positions.dat
-		catalogs/star_orbits.dat
-		catalogs/stellar_systems.json
-		catalogs/planets.json
-		catalogs/galaxy_properties.json
-		catalogs/asteroids.json
-		catalogs/soles_alienorum.dat # Expanded from the tracked archive by the installer script.
-		catalogs/mainseq.dat
-		catalogs/urls.dat
-		catalogs/Milky_Way.dat
-		catalogs/WD_colors.dat
-		catalogs/WD_hydrogen_grid.dat
-		catalogs/WD_limb_profiles.dat
-		DESTINATION catalogs)
-	install(FILES catalogs/sat/sources.json DESTINATION catalogs/sat)
-	# Source snapshots are downloaded only while rebuilding the condensed catalog.
-	install(FILES catalogs/NASA/classification_model.json DESTINATION catalogs/NASA)
-
-	# Opened by bare relative name, so they resolve against the working directory rather
-	# than catalogs/ -- consline.dat in read_cons_lines() (loaders.cpp), starname.dat in
-	# CatalogReader::read_starname_dat() and exoname.dat in cat.cpp, locales.json in
-	# CelestialObject::read_locales() as called from visuals.cpp and dialogs.cpp. Every one
-	# of those call sites treats a missing file as "nothing to load" and returns without
-	# complaining, so leaving them out costs constellation lines, star and exoplanet proper
-	# names, and place names, with no error to explain why.
-	install(FILES
-		consline.dat
-		starname.dat
-		exoname.dat
-		locales.json
-		DESTINATION .)
-
-	# Osculating elements for the local solar system (Sun<->planets, Earth-Moon, the
-	# Galilean moons). Only ever read locally (see Orbit::read_osc_elements in
-	# celestial.cpp) -- there's no download fallback -- so these have to ship. Only the
-	# tracked .gz files are installed; the app decompresses them to .txt itself
-	# on first use.
-	install(DIRECTORY ephemerides/ DESTINATION ephemerides FILES_MATCHING PATTERN "*.gz")
-
-	if(EXISTS "${CMAKE_SOURCE_DIR}/package/release-maps")
-		install(DIRECTORY package/release-maps/ DESTINATION maps)
-	endif()
-
-	if(EXISTS "${CMAKE_SOURCE_DIR}/package/release-galaxies")
-		install(DIRECTORY package/release-galaxies/ DESTINATION galaxies)
-	elseif(EXISTS "${CMAKE_SOURCE_DIR}/galaxies/faceon" AND EXISTS "${CMAKE_SOURCE_DIR}/galaxies/internal")
-		install(DIRECTORY galaxies/faceon/ DESTINATION galaxies/faceon)
-		install(DIRECTORY galaxies/internal/ DESTINATION galaxies/internal)
-	endif()
+    # One explicit payload for both installer preflight and CMake installation.
+    # Do not install whole source directories: they contain development artifacts.
+    set(runtime_manifest "${CMAKE_SOURCE_DIR}/package/runtime_files.txt")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${runtime_manifest}")
+    file(STRINGS "${runtime_manifest}" runtime_files)
+    foreach(runtime_file IN LISTS runtime_files)
+        if(runtime_file MATCHES "^#" OR runtime_file STREQUAL "")
+            continue()
+        endif()
+        get_filename_component(runtime_directory "${runtime_file}" DIRECTORY)
+        if(runtime_directory STREQUAL "")
+            set(runtime_directory ".")
+        endif()
+        install(FILES "${CMAKE_SOURCE_DIR}/${runtime_file}" DESTINATION "${runtime_directory}")
+    endforeach()
 
 	set(CPACK_GENERATOR "NSIS")
 	set(CPACK_PACKAGE_NAME "Alienorum")

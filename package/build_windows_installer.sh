@@ -33,70 +33,31 @@ VCPKG_TRIPLET=x64-mingw-static
 gzip -dc catalogs/soles_alienorum.dat.gz > catalogs/soles_alienorum.dat.tmp
 mv catalogs/soles_alienorum.dat.tmp catalogs/soles_alienorum.dat
 
-# Only the generated model ships; source catalogs are runtime downloads.
-if [ ! -s catalogs/NASA/classification_model.json ]; then
-    echo "Missing classification model." >&2
-    exit 1
-fi
-
-# The fixed host supplement is installed by CMake and must ship with every release.
-if [ ! -s catalogs/stellar_systems.json ]; then
-    echo "Missing catalog: catalogs/stellar_systems.json" >&2
-    exit 1
-fi
-if [ ! -s catalogs/exoplanet_host_positions.dat ]; then
-    echo "Missing catalog: catalogs/exoplanet_host_positions.dat" >&2
-    exit 1
-fi
-if [ ! -s catalogs/galaxy_properties.json ]; then
-    echo "Missing catalog: catalogs/galaxy_properties.json" >&2
-    exit 1
-fi
-if [ ! -s catalogs/WD_colors.dat ]; then
-    echo "Missing catalog: catalogs/WD_colors.dat" >&2
-    exit 1
-fi
-if [ ! -s catalogs/WD_hydrogen_grid.dat ]; then
-    echo "Missing catalog: catalogs/WD_hydrogen_grid.dat" >&2
-    exit 1
-fi
-if [ ! -s catalogs/WD_limb_profiles.dat ]; then
-    echo "Missing catalog: catalogs/WD_limb_profiles.dat" >&2
-    exit 1
-fi
-
-# Starter texture set for the installer: exactly the files git already tracks under
-# maps/ (i.e. the bodies whose planets.json entry has no live download URL, or has one
-# commented out with '#'). Regenerated every run so it can never silently go stale or
-# missing -- see the discussion of this in the project's chat history for why these
-# specific files and not others.
-rm -rf package/release-maps
-mkdir -p package/release-maps
-git ls-files maps/ | while read -r f; do cp "$f" package/release-maps/; done
-
-# Same idea for assets/: only ship what's git-tracked, not whatever else happens to be
-# sitting in the working directory locally (draft mascot images, .xcf source files,
-# one-off renders, unused fonts, orphaned theme presets, etc).
-rm -rf package/release-assets
-mkdir -p package/release-assets
-git ls-files assets/ | while read -r f; do
-    mkdir -p "package/release-assets/$(dirname "${f#assets/}")"
-    cp "$f" "package/release-assets/${f#assets/}"
-done
-
-# Same idea for galaxies/: ship what's git-tracked under galaxies/ (face-on and internal
-# maps for galaxy rendering), omitting uncommitted scans and raw images.
-rm -rf package/release-galaxies
-mkdir -p package/release-galaxies
-git ls-files galaxies/ | while read -r f; do
-    mkdir -p "package/release-galaxies/$(dirname "${f#galaxies/}")"
-    cp "$f" "package/release-galaxies/${f#galaxies/}"
-done
+# Every payload entry must exist and come from Git; generated caches and local
+# working files cannot enter the installer through directory-wide copies.
+while IFS= read -r runtime_file || [ -n "$runtime_file" ]; do
+    case "$runtime_file" in
+        ''|\#*) continue ;;
+    esac
+    tracked_source="$runtime_file"
+    if [ "$runtime_file" = catalogs/soles_alienorum.dat ]; then
+        tracked_source="$runtime_file.gz"
+    fi
+    if ! git ls-files --error-unmatch -- "$tracked_source" >/dev/null 2>&1; then
+        echo "Installer payload is not tracked: $tracked_source" >&2
+        exit 1
+    fi
+    if [ ! -s "$runtime_file" ]; then
+        echo "Missing runtime file: $runtime_file" >&2
+        exit 1
+    fi
+done < package/runtime_files.txt
 
 cmake -B build-win \
     -DCMAKE_TOOLCHAIN_FILE=vcpkg/scripts/buildsystems/vcpkg.cmake \
     -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="$(pwd)/cmake/toolchain-mingw64.cmake" \
     -DVCPKG_TARGET_TRIPLET="$VCPKG_TRIPLET" \
+    -DVCPKG_MANIFEST_INSTALL=ON \
     -DVCPKG_HOST_TRIPLET=x64-linux \
     -DCMAKE_BUILD_TYPE=Release
 
