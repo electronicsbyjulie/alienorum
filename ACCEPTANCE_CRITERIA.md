@@ -224,7 +224,7 @@ These entries record the deliberate choices found during the earlier review. The
 - **C07:** Shoreline inference works for supported real and fictional bodies using the actual illumination context, including fictional objects in the local system.
 - **C08:** Atmosphere accessors tolerate absent atmospheres without creating one accidentally. Composition normalization supports partial gas lists and sensible molar mass.
 - **C09:** Pressure, opacity, particulates, greenhouse temperature, and scale height remain physical for supported rocky, giant, cold, and dense-atmosphere cases; extreme inputs do not overflow.
-- **C10:** Cold atmospheres condense by gas partial pressure, recalculate greenhouse cooling to convergence, and do not restore frozen gases during later temperature queries.
+- **C10:** [REMOVED] Cold atmospheres condense by gas partial pressure, recalculate greenhouse cooling to convergence, and do not restore frozen gases during later temperature queries. Removed on 2026-10-25 because it makes it impossible for a world-building user to create their desired atmosphere.
 - **C11:** Stored cold temperatures and incomplete gas lists also undergo phase checks; a valid warm observed temperature is preserved.
 - **C12:** Local climate calculations are shared by the temperature readout, surface/ocean generation, frost, and vegetation decisions rather than contradicting one another.
 - **C13:** Local temperature reflects the supported effects of latitude, illumination, elevation, water/land, and tidal locking; vacuum and extreme cases remain finite.

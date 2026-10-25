@@ -3450,7 +3450,11 @@ bool draw_single_object(int i)
                 || (cels[i]->tmprel.magnitude() < AU)
                 )
             )
-        || (cels[i]->type == galaxy && label_galaxies && (vmag_cache[i] < (mag_limit_adjusted) || angular_radius[i] >= 0.1 * fiftyseventh ))
+        || (cels[i]->type == galaxy && label_galaxies
+            && ((vmag_cache[i] < mag_limit_adjusted)
+                || ((vmag_cache[i] < (mag_limit_adjusted + 1.3)) && angular_radius[i] >= 0.1 * fiftyseventh)
+               )
+           )
         || i == selected)
         add_label = true;
 
@@ -3909,7 +3913,7 @@ void draw_objects()
     }
     if (whereami >= 0 && trackidx == whereami) trackidx = -1;
 
-    mag_limit_adjusted = log(pow(magnbase, normal_best_mag_limit)*zoom) * invlogmagnbase;
+    mag_limit_adjusted = log(pow(magnbase, normal_best_mag_limit)*global_brightness*zoom) * invlogmagnbase;
 
     Point viewer_pole = to_viewer_plane(yaxis);
     Rotation viewer_plane = align_points_3d(viewer_pole, yaxis, center);

@@ -942,6 +942,10 @@ double Planet::estimate_surface_temperature()
 
 double Planet::condense_atmosphere(double equilibrium_k, double surface_k)
 {
+    return surface_k;
+
+    // Leave the rest of this. If we ever revisit this feature later, we're going to want the original code.
+    #if 0
     if (!atm || !atm->comp || uses_gaseous_map(type) || !(atm->surface_pressure > 0)
         || !std::isfinite(atm->surface_pressure) || !std::isfinite(surface_k) || surface_k <= 0)
         return surface_k;
@@ -1033,6 +1037,7 @@ double Planet::condense_atmosphere(double equilibrium_k, double surface_k)
         if (converged || pressure == 0) break;
     }
     return surface_k;
+    #endif
 }
 
 double Planet::temperature_at_pressure(double pressure_pa)
