@@ -11,6 +11,7 @@
 #include "../housekeeping.h"
 #include "../classes/clouds_gpu.h"
 #include "../classes/surfacebiomes.h"
+#include "../classes/scenerydraw.h"
 #include "../horizon_ground_gpu.h"
 #include "../horizon_terrain_gpu.h"
 #include "../horizon_mesh_gpu.h"
@@ -2188,6 +2189,110 @@ TEST_F(RenderingRegressionTest, BlueVegetationDoesNotTurnIdenticalOceanColorsInt
         if (material == SurfaceMaterial::water) EXPECT_EQ(scenery_vertices, 0);
         else EXPECT_GT(scenery_vertices, 0);
     }
+}
+
+TEST_F(RenderingRegressionTest, CachedCrownContoursMatchNativeEllipseVertices)
+{
+    for (bool antialias : {false, true})
+    {
+        for (float scale : {.5f, 2.0f, 15.0f, 150.0f, 1000.0f})
+        {
+            ImDrawList expected(ImGui::GetDrawListSharedData());
+            ImDrawList actual(ImGui::GetDrawListSharedData());
+            for (ImDrawList *draw : {&expected, &actual})
+            {
+                draw->_ResetForNewFrame();
+                draw->PushClipRectFullScreen();
+                if (antialias) draw->Flags |= ImDrawListFlags_AntiAliasedFill;
+                else draw->Flags &= ~ImDrawListFlags_AntiAliasedFill;
+            }
+            const ImVec2 center(120.125f, 85.75f), radius(scale, scale * .35f);
+            const ImU32 color = IM_COL32(25, 130, 80, 255);
+            expected.AddEllipseFilled(center, radius, color);
+            draw_scenery_crown(&actual, center, radius, color);
+            ASSERT_EQ(actual.VtxBuffer.Size, expected.VtxBuffer.Size);
+            ASSERT_EQ(actual.IdxBuffer.Size, expected.IdxBuffer.Size);
+            for (int i = 0; i < actual.VtxBuffer.Size; ++i)
+            {
+                EXPECT_EQ(actual.VtxBuffer[i].pos.x, expected.VtxBuffer[i].pos.x);
+                EXPECT_EQ(actual.VtxBuffer[i].pos.y, expected.VtxBuffer[i].pos.y);
+                EXPECT_EQ(actual.VtxBuffer[i].col, expected.VtxBuffer[i].col);
+            }
+            for (int i = 0; i < actual.IdxBuffer.Size; ++i)
+            {
+                EXPECT_EQ(actual.IdxBuffer[i], expected.IdxBuffer[i]);
+            }
+        }
+    }
+}
+
+TEST_F(RenderingRegressionTest, CrownOcclusionPreservesPixelsAtGapsAndViewportEdges)
+{
+    SceneryCrownOcclusion coverage;
+    coverage.reset(1027, 131);
+    coverage.cover(500, 65, 1000, 120);
+    EXPECT_TRUE(coverage.covered(16, 16, 992, 112));
+    EXPECT_FALSE(coverage.covered(0, 16, 992, 112));
+    EXPECT_FALSE(coverage.covered(16, 16, 1027, 112));
+    coverage.reset(render_width, render_height);
+    EXPECT_FALSE(coverage.covered(80, 45, 110, 65));
+    coverage.cover(96, 54, 80, 40);
+    EXPECT_TRUE(coverage.covered(80, 45, 110, 65));
+    EXPECT_FALSE(coverage.covered(50, 45, 110, 65));
+    coverage.reset(render_width, render_height);
+    coverage.cover(56, 54, 80, 40);
+    coverage.cover(136, 54, 80, 40);
+    EXPECT_FALSE(coverage.covered(90, 45, 102, 65));
+    for (float x : {0.0f, 96.0f, 190.0f})
+    {
+        for (float far_radius : {10.0f, 45.0f})
+        {
+            const ImVec2 center(x, 54), near_radius(80, 40), radius(far_radius, far_radius * .5f);
+            coverage.reset(render_width, render_height);
+            coverage.cover(center.x, center.y, near_radius.x, near_radius.y);
+            const bool hidden = coverage.covered(x - radius.x - 2, 54 - radius.y - 2,
+                x + radius.x + 2, 54 + radius.y + 2);
+            auto *draw = ImGui::GetBackgroundDrawList();
+            draw_scenery_crown(draw, center, radius, IM_COL32(30, 60, 220, 255));
+            draw_scenery_crown(draw, center, near_radius, IM_COL32(30, 180, 60, 255));
+            const auto expected = render();
+            ImGui::NewFrame();
+            draw = ImGui::GetBackgroundDrawList();
+            if (!hidden) draw_scenery_crown(draw, center, radius, IM_COL32(30, 60, 220, 255));
+            draw_scenery_crown(draw, center, near_radius, IM_COL32(30, 180, 60, 255));
+            EXPECT_EQ(render(), expected);
+            ImGui::NewFrame();
+        }
+    }
+}
+
+TEST_F(RenderingRegressionTest, DenseForestWalkingProducesFiniteGeometry)
+{
+    Planet *world = surface(true);
+    delete world->surf_map;
+    world->surf_map = new BlueBiomeTestMap(SurfaceMaterial::vegetation);
+    world->vegetation_r = 20;
+    world->vegetation_g = 100;
+    world->vegetation_b = 160;
+    cels[0]->location.local_position = cels[0]->tmprel = Point(0, -1e11, 1e11);
+    scenery();
+    const auto start = std::chrono::steady_clock::now();
+    size_t vertex_count = 0;
+    for (int frame = 0; frame < 40; ++frame)
+    {
+        set(viewer_lat, frame * .25 / world->get_equatorial_radius());
+        const auto vertices = scenery();
+        ASSERT_GT(vertices.size(), 100u);
+        vertex_count += vertices.size();
+        for (const auto &vertex : vertices)
+        {
+            ASSERT_TRUE(std::isfinite(vertex.pos.x));
+            ASSERT_TRUE(std::isfinite(vertex.pos.y));
+        }
+    }
+    std::cout << "Dense forest CPU ms/frame: "
+        << std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count() / 40
+        << "; vertices/frame: " << vertex_count / 40 << '\n';
 }
 
 TEST_F(RenderingRegressionTest, PlantsArePlacedNearTheKilometerCutoff)

@@ -12,6 +12,7 @@
 #include "classes/clouds_gpu.h"
 #include "classes/exocons.h"
 #include "classes/surfacescatter.h"
+#include "classes/scenerydraw.h"
 #include "classes/surfacecache.h"
 #include "classes/surfacebiomes.h"
 #include "classes/horizonterrain.h"
@@ -6826,7 +6827,8 @@ void draw_horizon()
                 }
                 #endif
 
-                std::vector<RockInstance> rocks;
+                static std::vector<RockInstance> rocks;
+                rocks.clear();
                 int num_rocks = 0;
 
                 double grav = p ? p->estimate_surface_gravity() : 1;
@@ -6856,16 +6858,19 @@ void draw_horizon()
                 static decltype(scenery_key) saved_scenery_key;
                 static bool scenery_valid = false;
                 static std::vector<bool> plant, water, canopy_clear;
+                static std::vector<RGB3> scenery_colors;
                 if (!scenery_valid || saved_scenery_key != scenery_key)
                 {
                     plant.assign(scenery.size(), false);
                     water.assign(scenery.size(), false);
+                    scenery_colors.resize(scenery.size());
                     std::vector<double> canopy_radii(scenery.size(), 0);
                     for (size_t index = 0; index < scenery.size(); index++)
                     {
                         const auto &object = scenery[index];
                         water[index] = water_at(object.latitude, object.longitude);
                         plant[index] = !water[index] && vegetation_at(object.latitude, object.longitude);
+                        scenery_colors[index] = surface_sample(object.latitude, object.longitude);
                         if (plant[index]) canopy_radii[index] = crown_scale
                             * scenery_size(object.seed, ROCK_MIN_SIZE, ROCK_MAX_SIZE);
                     }
@@ -7073,6 +7078,7 @@ void draw_horizon()
                     }
 
                     rocks.emplace_back();
+                    rocks[num_rocks].crown_hidden = false;
                     rocks[num_rocks].dist = sort_dist;
                     rocks[num_rocks].ground_dist = dist_m;
                     rocks[num_rocks].theta = theta_world;
@@ -7098,7 +7104,7 @@ void draw_horizon()
                     rocks[num_rocks].vegetation = is_vegetation;
                     rocks[num_rocks].crown_above_eye = crown_above_eye;
                     rocks[num_rocks].aspect = rock_aspect;
-                    rocks[num_rocks].surface_color = surface_sample(object.latitude, object.longitude);
+                    rocks[num_rocks].surface_color = scenery_colors[index];
                     num_rocks++;
                 }
 
@@ -7106,6 +7112,21 @@ void draw_horizon()
                 {
                     return a.dist > b.dist;
                 });
+
+                static SceneryCrownOcclusion crown_occlusion;
+                crown_occlusion.reset(screen_w, static_cast<int>(dispcy * 2));
+                for (int ri = num_rocks - 1; ri >= 0; --ri)
+                {
+                    RockInstance &object = rocks[ri];
+                    if (!object.vegetation) continue;
+                    object.crown_hidden = crown_occlusion.covered(object.crown_x - object.crown_rx - 2,
+                        object.crown_y - object.crown_ry - 2, object.crown_x + object.crown_rx + 2,
+                        object.crown_y + object.crown_ry + 2);
+                    if (!object.crown_hidden && object.width >= ROCK_PEBBLE_THRESH && object.opacity >= 1)
+                    {
+                        crown_occlusion.cover(object.crown_x, object.crown_y, object.crown_rx, object.crown_ry);
+                    }
+                }
 
                 int shadow_base_alpha = is_moon ? ROCK_SHADOW_ALPHA_MOON : (is_mars ? ROCK_SHADOW_ALPHA_MARS : (is_venus ? ROCK_SHADOW_ALPHA_VENUS : (is_lava ? 70 : ROCK_SHADOW_ALPHA_DEF)));
                 int shadow_alpha = (int)(fmin(1.0, fmax(0.0, sun_elev * 2.5)) * is_day * shadow_base_alpha);
@@ -7218,6 +7239,7 @@ void draw_horizon()
                 ImDrawList *scenery_draw_list = ImGui::GetBackgroundDrawList();
                 auto fade_scenery = [&](int first_vertex, double opacity)
                 {
+                    if (opacity >= 1.0) return;
                     for (int vertex = first_vertex; vertex < scenery_draw_list->VtxBuffer.Size; ++vertex)
                     {
                         ImU32 &color = scenery_draw_list->VtxBuffer[vertex].col;
@@ -7240,6 +7262,7 @@ void draw_horizon()
 
                     if (rw < ROCK_PEBBLE_THRESH)
                     {
+                        if (is_vegetation && rk.crown_hidden) continue;
                         int pr, pg, pb;
                         if (is_vegetation)
                         {
@@ -7332,7 +7355,8 @@ void draw_horizon()
                         ImU32 crown_col = rgba_apply_redlight(IM_COL32(cr, cg, cb, 255));
                         const auto draw_crown = [&]()
                         {
-                            ImGui::GetBackgroundDrawList()->AddEllipseFilled(
+                            if (rk.crown_hidden) return;
+                            draw_scenery_crown(scenery_draw_list,
                                 ImVec2(cx, cy),
                                 ImVec2((float)crown_rx, (float)crown_ry),
                                 crown_col);

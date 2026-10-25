@@ -81,6 +81,7 @@
 
 struct RockInstance
 {
+    bool crown_hidden;
     double dist;
     double ground_dist;
     double theta;
