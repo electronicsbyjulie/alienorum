@@ -271,6 +271,10 @@ resample the `maps/Moon_bump.jpg` map up to 2048x1024 resolution.
 
 Unit tests are in place; to run them, run `make tests`. The "all" target deliberately does not make `tests` but does build the unit tests' binary executables.
 
+The offline planet-classifier tools in `tools/` require Python 3, NumPy, and SciPy. Run their checks with `python3 -m unittest discover -s tools -p 'test_planet*.py'`. The calibration script downloads its benchmark when absent; the fitted model used by the app is tracked in `catalogs/NASA/classification_model.json`. These Python packages are development dependencies and are not required to run Alienorum.
+
+To benchmark the surface caches separately, compile `tools/benchmark_surface_cache.cpp` with `src/classes/noise.cpp` using C++17 and optimization enabled.
+
 Every new PR will have to pass all unit tests before merge. Recommended but not required: when adding a feature, it is a good idea to also add unit tests for it. The repo owner will check for testing gaps from time to time and fix any gaps found.
 
 ### Version Numbering
