@@ -6,6 +6,8 @@
 #include <setjmp.h>
 #include <map>
 #include <vector>
+#include <unordered_map>
+#include <cstdint>
 #include "jpeglib.h"
 #include "png.h"
 #include "point.h"
@@ -226,6 +228,8 @@ namespace alienorum
         unsigned char *red_data = nullptr, *green_data = nullptr, *blue_data = nullptr;
         double *bump_data = nullptr;
         std::vector<SurfaceMaterial> surface_materials;
+        std::unordered_map<std::uint64_t, std::uint32_t> uniform_regions;
+        unsigned int uniform_region_generation = 0;
         unsigned long image_height = 0;                             // Number of rows in image
         unsigned long image_width = 0;                              // Number of columns in image
         unsigned long allocated = 0;
@@ -236,6 +240,9 @@ namespace alienorum
         static constexpr unsigned int idx_not_ready = 0xFFFFFFFFu;
 
         unsigned int idx_of(double latitude, double longitude);
+        std::uint32_t uniform_region(unsigned long left, unsigned long top, int level);
+        bool region_matches(unsigned long left, unsigned long top, unsigned long right, unsigned long bottom,
+            unsigned long tile_left, unsigned long tile_top, int level, std::uint32_t target);
         void stamp_craters(CelestialObject *cel, double bump_scale);
         void generate_surface_rings(CelestialObject *cel);
 

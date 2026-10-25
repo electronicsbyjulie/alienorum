@@ -2,6 +2,7 @@
 #define ALIENORUM_SURFACE_SCATTER_H
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <map>
@@ -17,6 +18,7 @@ namespace alienorum
         double longitude;
         std::uint64_t id;
         std::uint32_t seed;
+        std::array<double, 3> position = {};
     };
 
     inline std::uint64_t scenery_hash(std::uint64_t value)
@@ -174,13 +176,80 @@ namespace alienorum
                     }
                     result.push_back(
                     {
-                        offset_east, offset_north, asin(position[2] / length), atan2(position[1], position[0]), id, static_cast<std::uint32_t>(scenery_hash(id + 3))
+                        offset_east, offset_north, asin(position[2] / length), atan2(position[1], position[0]), id,
+                        static_cast<std::uint32_t>(scenery_hash(id + 3)),
+                        {position[0] / length, position[1] / length, position[2] / length}
                     });
                 }
             }
         }
         return result;
     }
+    // Keep a padded geographic patch across small steps; only its local projection changes.
+    class SurfaceSceneryCache
+    {
+        std::vector<SurfaceScenery> scenery;
+        std::array<double, 3> anchor = {};
+        double saved_radius = 0, saved_range = 0, saved_spacing = 0;
+        double saved_latitude = NAN, saved_longitude = NAN;
+        std::uint64_t saved_world = 0;
+        size_t revision = 0;
+
+        public:
+        const std::vector<SurfaceScenery> &update(double radius, double latitude, double longitude,
+            double range, double spacing, std::uint64_t world)
+        {
+            if (!(radius > 0) || !(range > 0) || !(spacing > 0) || !std::isfinite(radius)
+                || !std::isfinite(range) || !std::isfinite(spacing)
+                || !std::isfinite(latitude) || !std::isfinite(longitude))
+            {
+                scenery.clear();
+                saved_radius = 0;
+                ++revision;
+                return scenery;
+            }
+            const double observer[] = {cos(latitude) * cos(longitude), cos(latitude) * sin(longitude), sin(latitude)};
+            const double padding = std::clamp(range * .125, 16.0, 128.0);
+            double offset_squared = 0;
+            for (int axis = 0; axis < 3; ++axis)
+            {
+                const double offset = radius * (observer[axis] - anchor[axis]);
+                offset_squared += offset * offset;
+            }
+            if (!revision || radius != saved_radius || range != saved_range || spacing != saved_spacing
+                || world != saved_world || offset_squared > padding * padding * .5625)
+            {
+                scenery = surface_scenery(radius, latitude, longitude, range + padding, spacing, world);
+                std::copy(observer, observer + 3, anchor.begin());
+                saved_radius = radius;
+                saved_range = range;
+                saved_spacing = spacing;
+                saved_world = world;
+                saved_latitude = saved_longitude = NAN;
+                ++revision;
+            }
+            if (latitude != saved_latitude || longitude != saved_longitude)
+            {
+                const double east[] = {-sin(longitude), cos(longitude), 0};
+                const double north[] = {-sin(latitude) * cos(longitude), -sin(latitude) * sin(longitude), cos(latitude)};
+                for (size_t i = 0; i < scenery.size(); ++i)
+                {
+                    scenery[i].east = scenery[i].north = 0;
+                    for (int axis = 0; axis < 3; ++axis)
+                    {
+                        const double offset = radius * (scenery[i].position[axis] - observer[axis]);
+                        scenery[i].east += offset * east[axis];
+                        scenery[i].north += offset * north[axis];
+                    }
+                }
+                saved_latitude = latitude;
+                saved_longitude = longitude;
+            }
+            return scenery;
+        }
+
+        size_t generation() const { return revision; }
+    };
 }
 
 #endif

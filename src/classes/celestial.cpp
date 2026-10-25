@@ -2137,6 +2137,60 @@ bool Map::create_merged_night(Map *night, Map *clouds)
     return true;
 }
 
+std::uint32_t Map::uniform_region(unsigned long left, unsigned long top, int level)
+{
+    const unsigned long first = top * image_width + left;
+    const std::uint32_t material = surface_materials.size() == allocated
+        ? static_cast<std::uint32_t>(surface_materials[first]) : 0;
+    const std::uint32_t target = red_data[first] | (std::uint32_t(green_data[first]) << 8)
+        | (std::uint32_t(blue_data[first]) << 16) | (material << 24);
+    if (!level) return target;
+    const std::uint64_t key = (std::uint64_t(first) << 6) | level;
+    const auto found = uniform_regions.find(key);
+    if (found != uniform_regions.end()) return found->second;
+    const unsigned long size = 1ul << level;
+    const unsigned long step = level == 6 ? 8 : 1;
+    std::uint32_t result = target;
+    for (unsigned long row = top; row < std::min(image_height, top + size); row += step)
+    {
+        for (unsigned long col = left; col < std::min(image_width, left + size); col += step)
+        {
+            if (uniform_region(col, row, level == 6 ? 3 : 0) != target)
+            {
+                result = UINT32_MAX;
+                break;
+            }
+        }
+        if (result == UINT32_MAX) break;
+    }
+    // Bound memory even after a long journey over a high-resolution world.
+    if (uniform_regions.size() >= 16384) uniform_regions.clear();
+    uniform_regions.emplace(key, result);
+    return result;
+}
+
+bool Map::region_matches(unsigned long left, unsigned long top, unsigned long right, unsigned long bottom,
+    unsigned long tile_left, unsigned long tile_top, int level, std::uint32_t target)
+{
+    const unsigned long size = 1ul << level;
+    if (tile_left > right || tile_top > bottom || tile_left + size <= left || tile_top + size <= top) return true;
+    const std::uint32_t signature = uniform_region(tile_left, tile_top, level);
+    if (signature == target) return true;
+    if (!level || (tile_left >= left && tile_top >= top
+        && std::min(image_width, tile_left + size) <= right + 1
+        && std::min(image_height, tile_top + size) <= bottom + 1)) return false;
+    const int child = level == 6 ? 3 : 0;
+    const unsigned long step = 1ul << child;
+    for (unsigned long row = tile_top; row < std::min(image_height, tile_top + size); row += step)
+    {
+        for (unsigned long col = tile_left; col < std::min(image_width, tile_left + size); col += step)
+        {
+            if (!region_matches(left, top, right, bottom, col, row, child, target)) return false;
+        }
+    }
+    return true;
+}
+
 bool Map::color_within_cap(double lat, double lon, double angle, RGB3 &color, bool allow_equal_pixels)
 {
     if (generating_fic_texture || !is_complete() || !allocated
@@ -2159,20 +2213,18 @@ bool Map::color_within_cap(double lat, double lon, double angle, RGB3 &color, bo
         if (!allow_equal_pixels) return false;
         const unsigned long left = first % image_width, right = last % image_width;
         const unsigned long top = first / image_width, bottom = last / image_width;
-        if (left > right || top > bottom || (right - left + 1) * (bottom - top + 1) > 4096) return false;
-        for (unsigned long row = top; row <= bottom; ++row)
+        if (left > right || top > bottom) return false;
+        if (uniform_region_generation != gen)
         {
-            for (unsigned long column = left; column <= right; ++column)
+            uniform_regions.clear();
+            uniform_region_generation = gen;
+        }
+        const std::uint32_t target = uniform_region(left, top, 0);
+        for (unsigned long row = top / 64 * 64; row <= bottom; row += 64)
+        {
+            for (unsigned long column = left / 64 * 64; column <= right; column += 64)
             {
-                const unsigned long index = row * image_width + column;
-                if (red_data[index] != color.r || green_data[index] != color.g || blue_data[index] != color.b)
-                {
-                    return false;
-                }
-                if (surface_materials.size() == allocated && surface_materials[index] != surface_materials[first])
-                {
-                    return false;
-                }
+                if (!region_matches(left, top, right, bottom, column, row, 6, target)) return false;
             }
         }
     }

@@ -77,7 +77,25 @@ class UniformBiomePixelMap : public BiomePixelMap
         surface_materials[idx_of(latitude, longitude)] = material;
         touch_gen();
     }
+
+    size_t cached_regions() const { return uniform_regions.size(); }
 };
+
+TEST(MapTest, UniformRegionCacheReusesTilesAndClipsMixedNeighbors)
+{
+    UniformBiomePixelMap map;
+    RGB3 color;
+    ASSERT_TRUE(map.color_within_cap(.3, .4, .1, color, true));
+    const size_t count = map.cached_regions();
+    EXPECT_GT(count, 0u);
+    EXPECT_TRUE(map.color_within_cap(.3, .4, .1, color, true));
+    EXPECT_EQ(map.cached_regions(), count);
+    // A changed pixel in the same coarse tile but outside the cap is harmless.
+    map.change_color_at(.9, 1.2);
+    EXPECT_TRUE(map.color_within_cap(.3, .4, .1, color, true));
+    map.set_material_at(.3, .4, SurfaceMaterial::vegetation);
+    EXPECT_FALSE(map.color_within_cap(.3, .4, .1, color, true));
+}
 
 TEST(MapTest, IdenticalBluePixelsRetainDistinctMaterialsAcrossPngExports)
 {

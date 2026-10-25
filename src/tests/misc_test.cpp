@@ -5,6 +5,7 @@
 #include "../classes/surfacescatter.h"
 #include "../classes/surfacebiomes.h"
 #include "../classes/horizonterrain.h"
+#include "../classes/surfacecache.h"
 #include <unordered_map>
 #include <unordered_set>
 #include <archive.h>
@@ -14,6 +15,146 @@
 #include <fstream>
 
 using namespace alienorum;
+
+TEST(SurfaceFieldCacheTest, WalkingReusesSamplesAndEditsInvalidateThem)
+{
+    SurfaceFieldCache field;
+    field.configure(42, 6371000, 8);
+    const auto sample = [](double x, double y, double z) { return x + 2 * y + 3 * z; };
+    field.value(1, 0, 0, sample);
+    const size_t count = field.sample_count();
+    EXPECT_EQ(count, 4u);
+    field.value(1, 1.0 / 6371000, 0, sample);
+    EXPECT_EQ(field.sample_count(), count);
+    field.configure(42, 6371000, 8);
+    EXPECT_EQ(field.sample_count(), count);
+    field.configure(43, 6371000, 8);
+    EXPECT_EQ(field.sample_count(), 0u);
+    EXPECT_EQ(field.tile_count(), 0u);
+    field.value(1, 0, 0, sample);
+    field.configure(43, 6000000, 8);
+    EXPECT_EQ(field.sample_count(), 0u);
+}
+
+TEST(SurfaceFieldCacheTest, CubeEdgesPolesAndEvictionRemainContinuous)
+{
+    SurfaceFieldCache field(2);
+    field.configure(42, 6371000, 8);
+    const auto sample = [](double x, double y, double z) { return x + 2 * y + 3 * z; };
+    for (double sign : {-1.0, 1.0})
+    {
+        EXPECT_NEAR(field.value(sign, 1 - 1e-10, .3, sample),
+            field.value(sign, 1 + 1e-10, .3, sample), 1e-8);
+        EXPECT_NEAR(field.value(1e-10, 0, sign, sample),
+            field.value(-1e-10, 0, sign, sample), 1e-8);
+    }
+    const double before = field.value(1, .2, .3, sample);
+    for (int i = 0; i < 50; ++i) field.value(cos(i), sin(i), .5, sample);
+    EXPECT_LE(field.tile_count(), 2u);
+    EXPECT_DOUBLE_EQ(field.value(1, .2, .3, sample), before);
+}
+
+TEST(SurfaceFieldCacheTest, ReliefAndSkylineInterpolationStayCloseToOriginalNoise)
+{
+    PerlinNoise noise(42);
+    for (int octaves : {12, 29})
+    {
+        SurfaceFieldCache field;
+        field.configure(42, 6371000, octaves == 12 ? 128 : 8);
+        const auto sample = [&](double x, double y, double z)
+        {
+            double value = 0, weight = 0, frequency = 6371000.0 / 50000, amplitude = 1;
+            for (int octave = 0; octave < octaves; ++octave)
+            {
+                value += noise.noise(x * frequency, y * frequency, z * frequency) * amplitude;
+                weight += amplitude;
+                frequency *= 1.29;
+                amplitude *= .8559;
+            }
+            return value / weight;
+        };
+        for (int i = 0; i < 200; ++i)
+        {
+            const double lat = .7 * sin(i * .7), lon = i * .37;
+            const double x = cos(lat) * cos(lon), y = cos(lat) * sin(lon), z = sin(lat);
+            EXPECT_NEAR(field.value(x, y, z, sample), sample(x, y, z), .001);
+        }
+    }
+}
+
+TEST(SurfaceSceneryCacheTest, WalkingMatchesUncachedWorldPositionsAcrossSeams)
+{
+    const double radius = 6371000, range = 100, spacing = 12;
+    for (double lat : {0.0, half_pi - 1e-7})
+    {
+        for (double lon : {0.0, _pi, _pi / 4})
+        {
+            SurfaceSceneryCache cache;
+            cache.update(radius, lat, lon, range, spacing, 42);
+            const size_t generation = cache.generation();
+            for (double walk : {1.0, 2.0, 80.0})
+            {
+                const double latitude = lat - walk / radius;
+                const auto &cached = cache.update(radius, latitude, lon, range, spacing, 42);
+                std::unordered_map<std::uint64_t, SurfaceScenery> by_id;
+                for (const auto &object : cached) by_id.emplace(object.id, object);
+                const auto direct = surface_scenery(radius, latitude, lon, range, spacing, 42);
+                for (const auto &object : direct)
+                {
+                    ASSERT_EQ(by_id.count(object.id), 1u);
+                    const auto &actual = by_id.at(object.id);
+                    EXPECT_EQ(actual.seed, object.seed);
+                    EXPECT_DOUBLE_EQ(actual.latitude, object.latitude);
+                    EXPECT_DOUBLE_EQ(actual.longitude, object.longitude);
+                    EXPECT_NEAR(actual.east, object.east, 1e-6);
+                    EXPECT_NEAR(actual.north, object.north, 1e-6);
+                }
+                if (walk < 3) EXPECT_EQ(cache.generation(), generation);
+                else EXPECT_GT(cache.generation(), generation);
+            }
+        }
+    }
+}
+
+TEST(SurfaceSceneryCacheTest, InvalidLocationsDoNotPoisonTheNextWorld)
+{
+    SurfaceSceneryCache cache;
+    EXPECT_TRUE(cache.update(6371000, NAN, 0, 100, 12, 42).empty());
+    EXPECT_FALSE(cache.update(6371000, 0, 0, 100, 12, 42).empty());
+    const auto first = cache.update(6371000, 0, 0, 100, 12, 42).front().id;
+    EXPECT_NE(cache.update(6371000, 0, 0, 100, 12, 43).front().id, first);
+}
+
+TEST(SurfaceSceneryCacheTest, RetainedCrownsMatchAfterWalkingAndRefreshingThePatch)
+{
+    const double radius = 6371000, visible_range = 100, halo = 12, spacing = 10;
+    SurfaceSceneryCache cache;
+    std::unordered_map<std::uint64_t, bool> retained;
+    size_t generation = 0;
+    for (double walk : {0.0, 1.0, 2.0, 80.0, 81.0})
+    {
+        const auto &objects = cache.update(radius, walk / radius, _pi / 4, visible_range + halo, spacing, 42);
+        if (cache.generation() != generation)
+        {
+            std::vector<double> radii;
+            for (const auto &object : objects) radii.push_back(scenery_size(object.seed, 1, 5));
+            const auto flags = scenery_clearance(objects, radii, radius);
+            retained.clear();
+            for (size_t i = 0; i < objects.size(); ++i) retained[objects[i].id] = flags[i];
+            generation = cache.generation();
+        }
+        const auto direct = surface_scenery(radius, walk / radius, _pi / 4, visible_range + halo, spacing, 42);
+        std::vector<double> radii;
+        for (const auto &object : direct) radii.push_back(scenery_size(object.seed, 1, 5));
+        const auto flags = scenery_clearance(direct, radii, radius);
+        for (size_t i = 0; i < direct.size(); ++i)
+        {
+            if (hypot(direct[i].east, direct[i].north) >= visible_range) continue;
+            ASSERT_EQ(retained.count(direct[i].id), 1u);
+            EXPECT_EQ(retained.at(direct[i].id), flags[i]);
+        }
+    }
+}
 
 TEST(ArchiveTest, RawGzipUsesTheCompressedFileName)
 {

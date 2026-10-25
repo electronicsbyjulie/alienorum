@@ -12,6 +12,7 @@
 #include "classes/clouds_gpu.h"
 #include "classes/exocons.h"
 #include "classes/surfacescatter.h"
+#include "classes/surfacecache.h"
 #include "classes/surfacebiomes.h"
 #include "classes/horizonterrain.h"
 #include "classes/wdcolor.h"
@@ -4934,6 +4935,19 @@ void draw_sunclock()
 #define hznodes 8192
 bool draw_marker[hznodes];
 double hz_dx[hznodes], hz_dy[hznodes];
+static double horizon_noise_value(PerlinNoise &noise, double x, double y, double z, int octaves)
+{
+    double total = 0, amplitude = 1, frequency = 1, weight = 0;
+    for (int octave = 0; octave < octaves; ++octave)
+    {
+        total += noise.noise(x * frequency, y * frequency, z * frequency) * amplitude;
+        weight += amplitude;
+        amplitude *= .8559;
+        frequency *= 1.29;
+    }
+    return total / weight;
+}
+
 void find_horizon()
 {
     hz_y = dispcy*29;
@@ -5350,7 +5364,7 @@ void draw_horizon()
             if (surface_biomes)
             {
                 RGB3 uniform_color;
-                if (map->color_within_cap(latitude, longitude, biome_angle, uniform_color))
+                if (map->color_within_cap(latitude, longitude, biome_angle, uniform_color, true))
                 {
                     return std::make_pair(uniform_color, map->material_at(latitude, longitude));
                 }
@@ -5480,8 +5494,14 @@ void draw_horizon()
             static int cached_whereami = -2;
             static double cached_eye_height = -1.0;
             static PerlinNoise skyline_noise;
+            static SurfaceFieldCache skyline_field;
+            static Map *cached_bump_map = nullptr;
+            static unsigned int cached_bump_generation = 0;
+            static double cached_radius = 0;
 
-            if (cached_whereami != whereami || cached_lat != viewer_lat || cached_lon != viewer_lon || cached_eye_height != viewer_eye_height)
+            if (cached_whereami != whereami || cached_lat != viewer_lat || cached_lon != viewer_lon
+                || cached_eye_height != viewer_eye_height || cached_bump_map != cel->surf_map
+                || cached_bump_generation != (cel->surf_map ? cel->surf_map->gen : 0) || cached_radius != surface_radius)
             {
                 if (cached_whereami != whereami)
                 {
@@ -5499,6 +5519,12 @@ void draw_horizon()
                 // A continuous field around a distant ring on the planet. The
                 // same location gives the same skyline, independent of travel history.
                 const double spatial_scale = 50000.0;
+                skyline_field.configure(static_cast<std::uint64_t>(whereami), R_planet, 8.0);
+                const auto sample_skyline = [&](double x, double y, double z)
+                {
+                    const double scale = R_planet / spatial_scale;
+                    return horizon_noise_value(skyline_noise, x * scale, y * scale, z * scale, 29);
+                };
                 const double ring_angle = std::min(0.19, 9500.0 / R_planet);
                 const double sin_lat = sin(viewer_lat), cos_lat = cos(viewer_lat);
                 const double sin_lon = sin(viewer_lon), cos_lon = cos(viewer_lon);
@@ -5513,15 +5539,7 @@ void draw_horizon()
                     const double nx = equatorial * cos_lon - east * sin_lon;
                     const double ny = equatorial * sin_lon + east * cos_lon;
                     const double nz = radial * sin_lat + north * cos_lat;
-                    double total = 0.0, amplitude = 1.0, frequency = 1.0, weight = 0.0;
-                    for (int octave = 0; octave < 29; ++octave)
-                    {
-                        total += skyline_noise.noise(nx * frequency, ny * frequency, nz * frequency) * amplitude;
-                        weight += amplitude;
-                        amplitude *= 0.8559;
-                        frequency *= 1.29;
-                    }
-                    cached_raw_noise[j] = 0.5 + 0.5 * total / weight;
+                    cached_raw_noise[j] = .5 + .5 * skyline_field.value(nx, ny, nz, sample_skyline);
                     if (cached_raw_noise[j] < cached_raw_min)
                     {
                         cached_raw_min = cached_raw_noise[j];
@@ -5571,6 +5589,9 @@ void draw_horizon()
                 cached_lon = viewer_lon;
                 cached_whereami = whereami;
                 cached_eye_height = viewer_eye_height;
+                cached_bump_map = cel->surf_map;
+                cached_bump_generation = cel->surf_map ? cel->surf_map->gen : 0;
+                cached_radius = surface_radius;
             }
 
             double terrain_height = dispcx * 0.08 * zoom;
@@ -5798,6 +5819,13 @@ void draw_horizon()
             if (!mesh_valid || saved_mesh_key != mesh_key)
             {
                 PerlinNoise relief_noise(static_cast<uint32_t>(whereami) * 2654435761u + 0xb0ad1ceau);
+                static SurfaceFieldCache relief_field;
+                relief_field.configure(static_cast<std::uint64_t>(whereami), surface_radius, 128.0);
+                const auto sample_relief = [&](double x, double y, double z)
+                {
+                    const double scale = surface_radius / 50000.0;
+                    return horizon_noise_value(relief_noise, x * scale, y * scale, z * scale, 12);
+                };
                 const double near_range = fmin(fmax(150.0, surface_range * 0.15), surface_radius * 0.01);
                 const double far_range = fmin(fmax(60000.0, surface_range * 8.0), surface_radius * 0.15);
                 const double base_elevation = map->has_bump_data()
@@ -5855,17 +5883,9 @@ void draw_horizon()
                         }
                         else
                         {
-                            const double nx = surface_radius * cos(coord.first) * cos(coord.second) / 50000.0;
-                            const double ny = surface_radius * cos(coord.first) * sin(coord.second) / 50000.0;
-                            const double nz = surface_radius * sin(coord.first) / 50000.0;
-                            double amplitude = 1, frequency = 1;
-                            for (int octave = 0; octave < 12; ++octave)
-                            {
-                                total += relief_noise.noise(nx * frequency, ny * frequency, nz * frequency) * amplitude;
-                                weight += amplitude;
-                                amplitude *= 0.8559;
-                                frequency *= 1.29;
-                            }
+                            total = relief_field.value(cos(coord.first) * cos(coord.second),
+                                cos(coord.first) * sin(coord.second), sin(coord.first), sample_relief);
+                            weight = 1;
                         }
                         const double procedural = surface_range * 0.2 * fmax(0.0, 0.15 + 0.5 * total / weight);
                         const double bump = map->has_bump_data()
@@ -6825,19 +6845,19 @@ void draw_horizon()
                 const double canopy_margin = 2 * ROCK_MAX_SIZE * crown_scale + 0.1;
                 const bool has_plants = p && (p->vegetation_r || p->vegetation_g || p->vegetation_b);
                 const double scenery_range = has_plants ? std::max(PLANT_MAX_DIST, ROCK_MAX_DIST) : ROCK_MAX_DIST;
-                auto scenery_key = std::make_tuple(whereami, viewer_lat, viewer_lon, R_planet,
+                static SurfaceSceneryCache scenery_cache;
+                const auto &scenery = scenery_cache.update(R_planet, viewer_lat, viewer_lon,
+                    scenery_range + canopy_margin, scenery_spacing, static_cast<std::uint64_t>(whereami));
+                auto scenery_key = std::make_tuple(whereami, scenery_cache.generation(), R_planet,
                     map ? map->gen : 0u, generating_fic_texture, water_favorable,
                     p ? p->has_water : 0.0f, p ? p->type : cel->type,
                     p ? p->vegetation_r : 0, p ? p->vegetation_g : 0, p ? p->vegetation_b : 0,
                     crown_scale, scenery_range);
                 static decltype(scenery_key) saved_scenery_key;
                 static bool scenery_valid = false;
-                static std::vector<SurfaceScenery> scenery;
                 static std::vector<bool> plant, water, canopy_clear;
                 if (!scenery_valid || saved_scenery_key != scenery_key)
                 {
-                    scenery = surface_scenery(R_planet, viewer_lat, viewer_lon,
-                        scenery_range + canopy_margin, scenery_spacing, static_cast<std::uint64_t>(whereami));
                     plant.assign(scenery.size(), false);
                     water.assign(scenery.size(), false);
                     std::vector<double> canopy_radii(scenery.size(), 0);
