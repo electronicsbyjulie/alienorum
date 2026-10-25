@@ -1148,10 +1148,15 @@ int main (int argc, char** argv)
                 : "snapshot"
                 ;
 
-            std::string subject = (biggest_cel && biggest_cel->onscreen && (bigcel_sz >= 4) && (view_mode != vm_skymap && view_mode != vm_sunclock && view_mode != vm_system))
-                ? std::string(biggest_cel->name) // + std::string(".")
-                : std::string("")
-                ;
+            std::string subject
+                = (trackidx >= 0)
+                ? cels[trackidx]->name
+                : ( (selected >= 0)
+                    ? cels[selected]->name
+                    : ((biggest_cel && biggest_cel->onscreen && (bigcel_sz >= 4) && (view_mode != vm_skymap && view_mode != vm_sunclock && view_mode != vm_system))
+                        ? std::string(biggest_cel->name) // + std::string(".")
+                        : std::string("")
+                        ));
             
             if (view_mode == vm_skymap) snapname += ".skymap";
             if (view_mode == vm_sunclock) snapname += ".sunclock";
