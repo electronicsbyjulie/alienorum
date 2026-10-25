@@ -2,6 +2,10 @@ import copy
 import json
 import shlex
 import unittest
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
 
 from import_stellar_abundances import bake_catalog, catalog_index, galah_measurements, match_record
 from calibrate_planet_classifier import calibrate, fold, sample
@@ -66,6 +70,36 @@ class CalibrationSelectionTest(unittest.TestCase):
         self.assertEqual(sample(self.row)["flux"], 0.25)
         self.row["pl_orbsmax"] = None
         self.assertIsNone(sample(self.row))
+
+    def test_rebuilding_shipped_model_preserves_balanced_specification(self):
+        path = Path("catalogs/NASA/classification_benchmark.json")
+        if not path.exists():
+            self.skipTest("Local calibration snapshot is absent")
+        rows = [selected for row in json.loads(path.read_text())["rows"]
+            if (selected := sample(row)) is not None]
+        rebuilt = calibrate(rows)
+        shipped = json.loads(Path("catalogs/NASA/classification_model.json").read_text())
+        self.assertTrue(rebuilt["enabled"])
+        self.assertEqual(rebuilt["schema"], 2)
+        self.assertEqual(rebuilt["training"], "class_balanced_logistic")
+        self.assertEqual(rebuilt["regularization"], [0, 1.5, 1.5, 7.5])
+        self.assertNotIn("improvement_95_percent_host_bootstrap", rebuilt)
+        for key in ("metallicity_coefficients", "baseline_coefficients", "validation_results"):
+            self.assertEqual(rebuilt[key], shipped[key])
+
+    def test_invalid_refresh_preserves_installed_model(self):
+        script = Path(__file__).with_name("calibrate_planet_classifier.py").resolve()
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary) / "catalogs/NASA"
+            folder.mkdir(parents=True)
+            (folder / "classification_benchmark.json").write_text(json.dumps(dict(rows=[])))
+            model = folder / "classification_model.json"
+            original = "retained model\n"
+            model.write_text(original)
+            result = subprocess.run([sys.executable, str(script)], cwd=temporary, capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("preserving the installed model", result.stderr)
+            self.assertEqual(model.read_text(), original)
 
 
 if __name__ == "__main__":

@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Validate a host-metallicity contribution to a compact versus large-radius prior."""
+"""Build the selected class-balanced metallicity prior with host validation.
+
+Development dependencies: NumPy and SciPy; the application reads the fitted JSON.
+"""
 
 import argparse
-from collections import defaultdict
 import hashlib
 import json
 import math
 from pathlib import Path
-import random
-import statistics
 
 from import_stellar_abundances import write_json
 from update_stellar_metallicity import NASA_URL, fetch, finite
@@ -58,81 +58,52 @@ def sample(row):
                 mass=mass, flux=flux, metal=metal, temperature=temperature)
 
 
-def probability(coefficients, features):
-    score = sum(weight * value for weight, value in zip(coefficients, features))
-    return 1.0 / (1.0 + math.exp(-max(-40, min(40, score))))
-
-
-def fit(rows, dimensions):
-    means = [0.0] + [statistics.mean(row["features"][i] for row in rows) for i in range(1, dimensions)]
-    scales = [1.0] + [max(1e-6, statistics.pstdev(row["features"][i] for row in rows)) for i in range(1, dimensions)]
-    matrix = [[1.0] + [(row["features"][i] - means[i]) / scales[i] for i in range(1, dimensions)] for row in rows]
-    mean_label = max(0.001, min(0.999, statistics.mean(row["label"] for row in rows)))
-    weights = [math.log(mean_label / (1 - mean_label))] + [0.0] * (dimensions - 1)
-    for iteration in range(5000):
-        gradient = [0.0] * dimensions
-        for row, features in zip(rows, matrix):
-            residual = probability(weights, features) - row["label"]
-            for i in range(dimensions):
-                gradient[i] += residual * features[i]
-        for i in range(dimensions):
-            gradient[i] = (gradient[i] + (weights[i] if i else 0.0)) / len(rows)
-            weights[i] -= 0.15 * gradient[i]
-        if max(abs(value) for value in gradient) < 1e-7:
-            break
-    coefficients = [weights[i] / scales[i] for i in range(dimensions)]
-    coefficients[0] -= sum(weights[i] * means[i] / scales[i] for i in range(1, dimensions))
-    return coefficients
-
-
-def loss(label, prediction):
-    prediction = max(1e-12, min(1 - 1e-12, prediction))
-    return -math.log(prediction if label else 1 - prediction)
+# Fixed settings selected in the compact-preserving benchmark experiments.
+REGULARIZATION = [0, 1.5, 1.5, 7.5]
 
 
 def calibrate(rows):
-    if len(set(row["host"] for row in rows)) < 30 or len(set(row["label"] for row in rows)) < 2:
-        return dict(schema=1, enabled=False, reason="insufficient_independent_hosts")
-    predictions = []
+    # Local import shares the experiment's solver without a module import cycle.
+    from experiment_planet_class_weights import evaluate, fit
+
+    hosts = {row["host"] for row in rows}
+    if len(hosts) < 30 or {row["label"] for row in rows} != {0, 1}:
+        return dict(schema=2, enabled=False, reason="insufficient_independent_hosts")
     for held_out in range(5):
         training = [row for row in rows if row["fold"] != held_out]
         testing = [row for row in rows if row["fold"] == held_out]
-        if not training or not testing:
-            return dict(schema=1, enabled=False, reason="insufficient_host_folds")
-        baseline, metal = fit(training, 3), fit(training, 4)
-        for row in testing:
-            predictions.append(dict(host=row["host"], planet=row["planet"], fold=held_out, label=row["label"],
-                baseline=probability(baseline, row["features"]), metallicity=probability(metal, row["features"])))
-    clusters = defaultdict(list)
-    for row in predictions:
-        clusters[row["host"]].append(loss(row["label"], row["baseline"]) - loss(row["label"], row["metallicity"]))
-    generator = random.Random(8403)
-    hosts = sorted(clusters)
-    resampled = []
-    for iteration in range(2000):
-        differences = [value for host in generator.choices(hosts, k=len(hosts)) for value in clusters[host]]
-        resampled.append(statistics.mean(differences))
-    resampled.sort()
-    interval = [resampled[49], resampled[1949]]
-    improvement = statistics.mean(value for cluster in clusters.values() for value in cluster)
-    metrics = {}
-    for key in ("baseline", "metallicity"):
-        metrics[key] = dict(log_loss=statistics.mean(loss(row["label"], row[key]) for row in predictions),
-                            brier=statistics.mean((row[key] - row["label"]) ** 2 for row in predictions),
-                            accuracy=statistics.mean((row[key] >= 0.5) == bool(row["label"]) for row in predictions))
-    return dict(schema=1, enabled=interval[0] > 0, reason="host_cluster_bootstrap_gate",
+        if not testing or {row["label"] for row in training} != {0, 1}:
+            return dict(schema=2, enabled=False, reason="insufficient_host_folds")
+    validation = {}
+    for name, individual in (("five_fold", False), ("individual_host", True)):
+        validation[name] = dict(
+            baseline=evaluate(rows, 3, True, REGULARIZATION[:3], individual),
+            metallicity=evaluate(rows, 4, True, REGULARIZATION, individual))
+    baseline = {row["planet"]: row["bulky_score"]
+        for row in validation["five_fold"]["baseline"]["predictions"]}
+    predictions = [dict(host=row["host"], planet=row["planet"], fold=row["fold"], label=row["label"],
+        baseline=baseline[row["planet"]], metallicity=row["bulky_score"])
+        for row in validation["five_fold"]["metallicity"]["predictions"]]
+    return dict(schema=2, enabled=True, reason="selected_class_balanced_model",
+        training="class_balanced_logistic", decision_threshold=0.5,
+        regularization=REGULARIZATION,
+        class_weights="Equal total compact and bulky weight in every training partition",
+        score_interpretation="Class-balanced scores are not calibrated population probabilities",
         target="Large-radius proxy: R >= 2 Earth radii versus compact R <= 1.4 Earth radii; not a measured composition",
         feature_order=["intercept", "log10_mass_earth", "log10_irradiation_earth", "stellar_Fe_H_dex"],
-        baseline_coefficients=fit(rows, 3), metallicity_coefficients=fit(rows, 4),
+        baseline_coefficients=fit(rows, 3, True, REGULARIZATION[:3]),
+        metallicity_coefficients=fit(rows, 4, True, REGULARIZATION),
         maximum_metallicity_error=0.2, maximum_mass_relative_error=0.35,
         domain=dict(mass_earth=[min(row["mass"] for row in rows), max(row["mass"] for row in rows)],
-                    irradiation_earth=[min(row["flux"] for row in rows), max(row["flux"] for row in rows)],
-                    metallicity_dex=[min(row["metal"] for row in rows), max(row["metal"] for row in rows)],
-                    temperature_k=[4900, 6300]),
-        sample_count=len(rows), host_count=len(hosts), metrics=metrics,
-        mean_log_loss_improvement=improvement, improvement_95_percent_host_bootstrap=interval,
-        validation="Five folds grouped by SHA256(hostname); coefficients refit within every training fold",
-        solar_system_in_training=False, held_out_predictions=predictions)
+            irradiation_earth=[min(row["flux"] for row in rows), max(row["flux"] for row in rows)],
+            metallicity_dex=[min(row["metal"] for row in rows), max(row["metal"] for row in rows)],
+            temperature_k=[4900, 6300]),
+        sample_count=len(rows), host_count=len(hosts),
+        class_counts=dict(compact=sum(row["label"] == 0 for row in rows),
+            bulky=sum(row["label"] == 1 for row in rows)),
+        validation="Five host-grouped folds and individual-host exclusion; weights and scaling refit in each training partition",
+        validation_scope="Settings selected on this benchmark; independent external validation remains outstanding",
+        validation_results=validation, held_out_predictions=predictions, solar_system_in_training=False)
 
 
 def main():
@@ -147,11 +118,17 @@ def main():
         write_json(path, snapshot)
     rows = [selected for row in snapshot["rows"] if (selected := sample(row)) is not None]
     model = calibrate(rows)
+    if not model["enabled"]:
+        raise ValueError("Calibration input lacks sufficient host/class coverage; preserving the installed model")
     model["benchmark_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
     model["selection"] = "Measured mass and radius with finite errors; mass error <=35%; radius error <=15%; Fe/H error <=0.2 dex; dwarf logg 4.0-4.7; compact or extended radius labels"
-    write_json(Path("catalogs/NASA/classification_model.json"), model)
+    output_path = Path("catalogs/NASA/classification_model.json")
+    temporary = output_path.with_suffix(".json.tmp")
+    temporary.write_text(json.dumps(model, indent=4, allow_nan=False) + "\n")
+    temporary.replace(output_path)
     print("Calibration:", model.get("sample_count", len(rows)), "planets;", model.get("host_count", 0), "hosts; enabled:", model["enabled"], flush=True)
-    print("Validation:", model.get("metrics"), "; improvement interval:", model.get("improvement_95_percent_host_bootstrap"), flush=True)
+    for name, result in model.get("validation_results", {}).items():
+        print(name, result["metallicity"]["metrics"], flush=True)
 
 
 if __name__ == "__main__":

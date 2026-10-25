@@ -10,6 +10,7 @@ namespace alienorum
     struct MetallicityPrior
     {
         bool applicable = false;
+        bool class_balanced = false;
         double baseline = NAN, probability = NAN;
         std::string reason = "unavailable";
     };

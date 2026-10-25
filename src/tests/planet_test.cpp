@@ -376,6 +376,66 @@ TEST_F(PlanetClassificationEvidenceTest, SyntheticModelExercisesValidationAndApp
     EXPECT_FALSE(planet_envelope_prior(*host, 3, 1, 0.1).applicable);
 }
 
+TEST_F(PlanetClassificationEvidenceTest, ShippedBalancedModelDrivesUnmeasuredRadiusClassification)
+{
+    Star* host = make_star("Balanced model host");
+    host->metallicity_ratio = "[Fe/H]";
+    host->metallicity_source = "NASA pscomppars";
+    host->metallicity_error_upper = .05;
+    host->metallicity_error_lower = -.05;
+    Planet* planet = make_planet(host, "Balanced model planet");
+    planet->mass = 6 * earth_mass;
+    planet->mass_evidence = PlanetMeasurement::observed;
+    planet->mass_error_upper = .2 * earth_mass;
+    planet->mass_error_lower = -.2 * earth_mass;
+    planet->radius_evidence = PlanetMeasurement::estimated;
+    const double luminosity = pow(magnbase, 4.74 - host->absolute_magnitude - Star::bolometric_correction(host->temperature));
+    planet->orbit->semimajor_axis = AU * sqrt(luminosity / 350);
+    double previous_score = 0;
+    for (double metal : {-.3, .3})
+    {
+        host->metallicity = metal;
+        const MetallicityPrior prior = planet_envelope_prior(*host, 6, 350, .2 / 6);
+        ASSERT_TRUE(prior.applicable);
+        EXPECT_TRUE(prior.class_balanced);
+        EXPECT_EQ(prior.reason, "balanced_large_radius_prior");
+        EXPECT_GT(prior.probability, previous_score);
+        previous_score = prior.probability;
+        planet->classify(false, false, true);
+        EXPECT_EQ(uses_rocky_map(planet->type), metal < 0);
+        EXPECT_TRUE(planet->classification_evidence["metallicity_applied"].get<bool>());
+        EXPECT_NEAR(planet->classification_evidence["large_radius_score"].get<double>(), prior.probability, 1e-10);
+        EXPECT_FALSE(planet->classification_evidence.contains("large_radius_probability"));
+        const json first = planet->classification_evidence;
+        planet->classify(false, false, true);
+        EXPECT_EQ(planet->classification_evidence, first);
+    }
+    // Direct radius constraints and type locks outrank the population fit.
+    host->metallicity = -.3;
+    planet->radius_evidence = PlanetMeasurement::observed;
+    planet->volumetric_mean_radius = 4 * earth_radius;
+    planet->classify(false, false, true);
+    EXPECT_TRUE(uses_gaseous_map(planet->type));
+    EXPECT_FALSE(planet->classification_evidence["metallicity_applied"].get<bool>());
+    planet->volumetric_mean_radius = earth_radius;
+    host->metallicity = .3;
+    planet->classify(false, false, true);
+    EXPECT_TRUE(uses_rocky_map(planet->type));
+    EXPECT_FALSE(planet->classification_evidence["metallicity_applied"].get<bool>());
+    planet->radius_evidence = PlanetMeasurement::estimated;
+    planet->type = waterworld;
+    planet->lock_type = true;
+    planet->classify(false, false, true);
+    EXPECT_EQ(planet->type, waterworld);
+    host->metallicity_ratio = "[M/H]";
+    EXPECT_FALSE(planet_envelope_prior(*host, 6, 350, .05).applicable);
+    host->metallicity_ratio = "[Fe/H]";
+    EXPECT_FALSE(planet_envelope_prior(*host, 6, 350, .5).applicable);
+    EXPECT_FALSE(planet_envelope_prior(*host, 100, 350, .05).applicable);
+    host->metallicity_error_upper = NAN;
+    EXPECT_FALSE(planet_envelope_prior(*host, 6, 350, .05).applicable);
+}
+
 struct SolarPrediction
 {
     const char* name;

@@ -484,10 +484,11 @@ void Planet::classify(bool HZ, bool mnrk, bool ck)
         classification_evidence["metallicity_model"] = prior.reason;
         if (prior.applicable)
         {
-            classification_evidence["baseline_large_radius_probability"] = prior.baseline;
-            classification_evidence["large_radius_probability"] = prior.probability;
-            // Change a marginal classification only when the validated baseline agrees with it.
-            if (solid == (prior.baseline < 0.5) && (prior.baseline < 0.5) != (prior.probability < 0.5))
+            classification_evidence[prior.class_balanced ? "baseline_large_radius_score" : "baseline_large_radius_probability"] = prior.baseline;
+            classification_evidence[prior.class_balanced ? "large_radius_score" : "large_radius_probability"] = prior.probability;
+            // The balanced fit supplies the decision; the mass-only fit is a diagnostic.
+            if (prior.class_balanced ||
+                (solid == (prior.baseline < 0.5) && (prior.baseline < 0.5) != (prior.probability < 0.5)))
             {
                 solid = prior.probability < 0.5;
                 classification_evidence["metallicity_applied"] = true;

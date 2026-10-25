@@ -280,18 +280,26 @@ MetallicityPrior alienorum::planet_envelope_prior(const Star& host, double earth
     if (!host.is_main_sequence() || !((spectrum[0] == 'F' && subtype >= 8) || spectrum[0] == 'G' ||
         (spectrum[0] == 'K' && subtype <= 2))) { result.reason = "outside_stellar_domain"; return result; }
     const json model = classification_model();
-    if (!model.contains("schema") || !model["schema"].is_number_integer() || model["schema"] != 1 ||
+    if (!model.contains("schema") || !model["schema"].is_number_integer() ||
+        (model["schema"] != 1 && model["schema"] != 2) ||
         !model.contains("enabled") || !model["enabled"].is_boolean() || !model["enabled"].get<bool>())
     {
         result.reason = "metallicity_not_validated";
         return result;
     }
-    if (!model.contains("improvement_95_percent_host_bootstrap") ||
+    result.class_balanced = model["schema"] == 2;
+    if (result.class_balanced && (text_field(model, "training") != "class_balanced_logistic" ||
+        numeric(model, "decision_threshold") != 0.5))
+    {
+        result.reason = "invalid_model";
+        return result;
+    }
+    if (!result.class_balanced && (!model.contains("improvement_95_percent_host_bootstrap") ||
         !model["improvement_95_percent_host_bootstrap"].is_array() ||
         model["improvement_95_percent_host_bootstrap"].size() != 2 ||
         !model["improvement_95_percent_host_bootstrap"][0].is_number() ||
         !std::isfinite(model["improvement_95_percent_host_bootstrap"][0].get<double>()) ||
-        !(model["improvement_95_percent_host_bootstrap"][0].get<double>() > 0))
+        !(model["improvement_95_percent_host_bootstrap"][0].get<double>() > 0)))
     {
         result.reason = "metallicity_not_validated";
         return result;
@@ -328,6 +336,8 @@ MetallicityPrior alienorum::planet_envelope_prior(const Star& host, double earth
     result.baseline = evaluate("baseline_coefficients", false);
     result.probability = evaluate("metallicity_coefficients", true);
     result.applicable = std::isfinite(result.baseline) && std::isfinite(result.probability);
-    result.reason = result.applicable ? "validated_large_radius_prior" : "invalid_model";
+    result.reason = result.applicable
+        ? result.class_balanced ? "balanced_large_radius_prior" : "validated_large_radius_prior"
+        : "invalid_model";
     return result;
 }
