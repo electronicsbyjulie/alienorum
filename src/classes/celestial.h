@@ -8,6 +8,7 @@
 #include <vector>
 #include <unordered_map>
 #include <cstdint>
+#include <array>
 #include "jpeglib.h"
 #include "png.h"
 #include "point.h"
@@ -277,6 +278,8 @@ namespace alienorum
         void _map_resample_bump_regen_rocky(CelestialObject *cel);
 
         RGB3 color_at(double latitude, double longitude);
+        std::pair<RGB3, SurfaceMaterial> surface_pixel(unsigned long column, unsigned long row) const;
+        std::array<double, 4> surface_pixel_bounds(unsigned long column, unsigned long row) const;
         SurfaceMaterial material_at(double latitude, double longitude);
         bool color_within_cap(double latitude, double longitude, double angle, RGB3 &color,
             bool allow_equal_pixels = false);

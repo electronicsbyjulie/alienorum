@@ -11,6 +11,7 @@
 #include "../housekeeping.h"
 #include "../classes/clouds_gpu.h"
 #include "../classes/surfacebiomes.h"
+#include "../classes/surfacenavigation.h"
 #include "../classes/scenerydraw.h"
 #include "../horizon_ground_gpu.h"
 #include "../horizon_terrain_gpu.h"
@@ -22,6 +23,7 @@
 #include "universe_fixture.h"
 
 using namespace alienorum;
+
 
 struct CloudTestView
 {
@@ -3113,4 +3115,63 @@ TEST_F(RenderingRegressionTest, ExtremeZoomCullsBackgroundDiscsBeforeDrawingGlar
     draw_objects();
     for (int i = 2; i < 5; ++i) EXPECT_DOUBLE_EQ(blooms[i], 0);
     EXPECT_LT(ImGui::GetBackgroundDrawList()->VtxBuffer.Size, 10000);
+}
+
+TEST_F(RenderingRegressionTest, FindShoreShortcutMovesToDetailedEdgeAndPreservesView)
+{
+    Planet *world = surface(true);
+    delete world->surf_map;
+    world->surf_map = new CoastalTestMap();
+    world->sidereal_rotational_period = oneday;
+    set(viewer_lat, -.002);
+    set(viewer_lon, .2);
+    set(viewer_locale, std::string("Old locale"));
+    set(selected_locale, selected_locale);
+    set(is_a_locale_under_cursor, is_a_locale_under_cursor);
+    set(velocity, Point(1, 2, 3));
+    set(save_viewer_latlon, true);
+    set(viewchanged, false);
+    set(here, here);
+    set(npdummy.location, npdummy.location);
+    set(npaz, npaz);
+    const double heading = azimuth, tilt = altitude, magnification = zoom;
+    const double eye = viewer_eye_height, epoch = simnow;
+    ASSERT_TRUE(can_find_shore());
+    process_key_cmd_ctrl_char('f');
+    EXPECT_GT(viewer_lat, -.0002);
+    EXPECT_EQ(view_mode, vm_horizon);
+    EXPECT_EQ(whereami, world->seqno);
+    EXPECT_DOUBLE_EQ(azimuth, heading);
+    EXPECT_DOUBLE_EQ(altitude, tilt);
+    EXPECT_DOUBLE_EQ(zoom, magnification);
+    EXPECT_DOUBLE_EQ(viewer_eye_height, eye);
+    EXPECT_DOUBLE_EQ(simnow, epoch);
+    EXPECT_TRUE(viewer_locale.empty());
+    EXPECT_EQ(selected_locale, nullptr);
+    EXPECT_EQ(is_a_locale_under_cursor, nullptr);
+    EXPECT_DOUBLE_EQ(velocity.magnitude(), 0);
+    EXPECT_FALSE(save_viewer_latlon);
+    EXPECT_TRUE(viewchanged);
+    SurfaceBiomes field(static_cast<uint32_t>(whereami));
+    const double radius = world->get_equatorial_radius();
+    SurfaceSampler surface_sample(world, world->surf_map, field, radius, shore_displacement);
+    EXPECT_FALSE(surface_sample.water_at(viewer_lat, viewer_lon));
+    bool water_adjacent = false;
+    for (int i = 0; i < 32; ++i)
+    {
+        const double bearing = 2 * _pi * i / 32;
+        water_adjacent |= surface_sample.water_at(viewer_lat + .2 * cos(bearing) / radius,
+            viewer_lon + .2 * sin(bearing) / radius);
+    }
+    EXPECT_TRUE(water_adjacent);
+    world->has_water = 0;
+    EXPECT_FALSE(can_find_shore());
+    const double latitude = viewer_lat, longitude = viewer_lon;
+    EXPECT_FALSE(process_find_shore());
+    EXPECT_DOUBLE_EQ(viewer_lat, latitude);
+    EXPECT_DOUBLE_EQ(viewer_lon, longitude);
+    world->has_water = 1;
+    view_mode = vm_spaceship;
+    EXPECT_FALSE(can_find_shore());
+    EXPECT_FALSE(process_find_shore());
 }

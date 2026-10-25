@@ -15,6 +15,7 @@
 #include "classes/scenerydraw.h"
 #include "classes/surfacecache.h"
 #include "classes/surfacebiomes.h"
+#include "classes/surfacenavigation.h"
 #include "classes/horizonterrain.h"
 #include "classes/wdcolor.h"
 #include "classes/wdlimb.h"
@@ -3449,7 +3450,7 @@ bool draw_single_object(int i)
                 || (cels[i]->tmprel.magnitude() < AU)
                 )
             )
-        || (cels[i]->type == galaxy && label_galaxies && vmag_cache[i] < (mag_limit_adjusted))
+        || (cels[i]->type == galaxy && label_galaxies && (vmag_cache[i] < (mag_limit_adjusted) || angular_radius[i] >= 0.1 * fiftyseventh ))
         || i == selected)
         add_label = true;
 
@@ -5375,71 +5376,24 @@ void draw_horizon()
         }
         static SurfaceBiomes biome_field;
         biome_field.set_world(static_cast<uint32_t>(whereami));
-        bool water_favorable = p && p->get_surface_pressure() >= 150
-            && p->estimate_surface_temperature() < 400;
-        const bool surface_biomes = p && map && uses_rocky_map(cel->type) && water_favorable
-            && (p->has_water || p->vegetation_r || p->vegetation_g || p->vegetation_b);
+        SurfaceSampler surface(p, map, biome_field, surface_radius, shore_displacement);
+        const bool water_favorable = surface.water_favorable();
+        const bool surface_biomes = surface.has_biomes();
         const double biome_angle = SurfaceBiomes::angular_bound(surface_radius, shore_displacement);
-        const auto surface_info = [&](double latitude, double longitude)
-        {
-            if (!map)
-            {
-                return std::make_pair(RGB3(0, 8, 24), SurfaceMaterial::unknown);
-            }
-            if (surface_biomes)
-            {
-                RGB3 uniform_color;
-                if (map->color_within_cap(latitude, longitude, biome_angle, uniform_color, true))
-                {
-                    return std::make_pair(uniform_color, map->material_at(latitude, longitude));
-                }
-                const auto coord = biome_field.coordinates(surface_radius, latitude, longitude, shore_displacement);
-                return std::make_pair(map->color_at(coord.first, coord.second), map->material_at(coord.first, coord.second));
-            }
-            return std::make_pair(map->color_at(latitude, longitude), map->material_at(latitude, longitude));
-        };
         const auto surface_sample = [&](double latitude, double longitude)
         {
-            return surface_info(latitude, longitude).first;
+            return surface.color_at(latitude, longitude);
         };
         RGB3 rgb = surface_sample(viewer_lat, viewer_lon);
-
-        const auto vegetation_color = [&](const RGB3 &sample)
-        {
-            if (!p || !map || !uses_rocky_map(p->type) || !water_favorable
-                || !p->has_water || !(p->vegetation_r || p->vegetation_g || p->vegetation_b))
-            {
-                return false;
-            }
-            const double local_hue = Color::hue_from_rgb(sample.r, sample.g, sample.b);
-            const double veg_hue = Color::hue_from_rgb(p->vegetation_r, p->vegetation_g, p->vegetation_b);
-            const double hue_delta = fabs(local_hue - veg_hue);
-            return fmin(hue_delta, 2.0 * _pi - hue_delta) < 0.35
-                && fabs(Color::sat_from_rgb(sample.r, sample.g, sample.b)
-                    - Color::sat_from_rgb(p->vegetation_r, p->vegetation_g, p->vegetation_b)) < 0.35;
-        };
-
         const auto vegetation_at = [&](double latitude, double longitude)
         {
-            const auto sample = surface_info(latitude, longitude);
-            if (sample.second != SurfaceMaterial::unknown) return sample.second == SurfaceMaterial::vegetation;
-            return vegetation_color(sample.first);
+            return surface.vegetation_at(latitude, longitude);
         };
-
-        const bool ocean_world = p && (p->type == waterworld || p->type == hycean);
-        const bool surface_water = ocean_world || (surface_biomes && p->has_water);
+        const bool ocean_world = surface.ocean_world();
+        const bool surface_water = surface.has_surface_water();
         const auto water_at = [&](double latitude, double longitude)
         {
-            if (!surface_water)
-            {
-                return false;
-            }
-            const auto info = surface_info(latitude, longitude);
-            if (info.second != SurfaceMaterial::unknown) return info.second == SurfaceMaterial::water;
-            if (ocean_world) return true;
-            const RGB3 sample = info.first;
-            return sample.b > 0.8 * sample.r && fmax(sample.b, sample.g) > 1.333 * sample.r
-                && !vegetation_color(sample);
+            return surface.water_at(latitude, longitude);
         };
 
         const double surface_eye = fmax(0.01, viewer_eye_height);

@@ -120,6 +120,9 @@ You can also navigate the surface by holding down `End` (to go forward) or `Home
 a total of one million times the default walking speed.
 
 
+In planetfall mode on a world with surface water, press `Ctrl+F` or choose **Spacetime → Find Shore** to move to a nearby shoreline. The search favors the direction you are facing and follows the detailed terrain boundary. You arrive just on the land side, with your viewing direction unchanged.
+
+
 ### Sun Clock
 
 Sun clock mode shows the entire surface of the planet or moon as a cylindrical projection lit up in areas that are in daylight. It is pannable and zoomable. Resolution is limited for performance reasons, but you can zoom in much closer than the resolution of most texture maps.

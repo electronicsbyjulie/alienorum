@@ -9,9 +9,143 @@
 #include "../classes/planet.h"
 #include "../classes/cat.h"
 #include "../classes/surfacebiomes.h"
+#include "../classes/surfacenavigation.h"
+#include "universe_fixture.h"
+#include <functional>
 
 using namespace alienorum;
 using json = nlohmann::json;
+
+class ShoreTestMap : public Map
+{
+    public:
+    explicit ShoreTestMap(const std::function<bool(double, double)> &water, bool materials = true)
+    {
+        image_width = 256;
+        image_height = 129;
+        allocated = image_width * image_height;
+        lon_scale = image_width / (2 * _pi);
+        lat_scale = (image_height - 1) / _pi;
+        red_data = new unsigned char[allocated];
+        green_data = new unsigned char[allocated];
+        blue_data = new unsigned char[allocated];
+        if (materials) surface_materials.resize(allocated);
+        for (unsigned long y = 0; y < image_height; ++y)
+        {
+            for (unsigned long x = 0; x < image_width; ++x)
+            {
+                const auto bounds = surface_pixel_bounds(x, y);
+                const bool wet = water((bounds[0] + bounds[1]) * .5, (bounds[2] + bounds[3]) * .5);
+                const unsigned long index = y * image_width + x;
+                red_data[index] = wet || materials ? 20 : 160;
+                green_data[index] = wet || materials ? 100 : 120;
+                blue_data[index] = wet || materials ? 160 : 80;
+                if (materials) surface_materials[index] = wet ? SurfaceMaterial::water : SurfaceMaterial::ground;
+            }
+        }
+        touch_gen();
+    }
+};
+
+class ShoreNavigationTest : public UniverseFixture
+{
+    protected:
+    Planet *world(const std::function<bool(double, double)> &water, bool materials = true)
+    {
+        Planet *planet = make_planet(make_star(), "Shore world");
+        planet->volumetric_mean_radius = 1e6;
+        planet->temperature = 280;
+        planet->has_water = 1;
+        planet->ensure_atmosphere()->surface_pressure = oneatm;
+        planet->surf_map = new ShoreTestMap(water, materials);
+        return planet;
+    }
+
+    void check_boundary(SurfaceSampler &surface, const ShoreLocation &shore)
+    {
+        ASSERT_TRUE(shore.found);
+        EXPECT_FALSE(surface.water_at(shore.latitude, shore.longitude));
+        EXPECT_TRUE(surface.water_at(shore.water_latitude, shore.water_longitude));
+        const double lat = sin((shore.latitude - shore.water_latitude) * .5);
+        const double lon = sin((shore.longitude - shore.water_longitude) * .5);
+        const double haversine = lat * lat + cos(shore.latitude) * cos(shore.water_latitude) * lon * lon;
+        EXPECT_LT(2 * surface.world_radius() * asin(sqrt(haversine)), .06);
+    }
+
+    void TearDown() override
+    {
+        delete_the_universe();
+        UniverseFixture::TearDown();
+    }
+};
+
+TEST_F(ShoreNavigationTest, DetailedCoastMatchesRenderedMaterialsFromEitherSide)
+{
+    Planet *planet = world([](double lat, double) { return lat < 0; });
+    SurfaceBiomes field(42);
+    SurfaceSampler surface(planet, planet->surf_map, field, 1e6, 8);
+    for (double latitude : {-.004, .004})
+    {
+        const auto shore = find_nearest_shore(surface, latitude, .2, latitude < 0 ? 0 : _pi);
+        check_boundary(surface, shore);
+        EXPECT_LT(shore.distance, 5500);
+        EXPECT_GT(shore.distance, 2500);
+        EXPECT_GT(fabs(shore.latitude) * 1e6, .5);
+    }
+}
+
+TEST_F(ShoreNavigationTest, FacingBiasCanPreferASlightlyFartherShoreAhead)
+{
+    Planet *planet = world([](double lat, double) { return fabs(lat) > .03; });
+    SurfaceBiomes field(42);
+    SurfaceSampler surface(planet, planet->surf_map, field, 1e6, 0);
+    const auto north = find_nearest_shore(surface, .006, .2, 0);
+    const auto south = find_nearest_shore(surface, .006, .2, _pi);
+    check_boundary(surface, north);
+    check_boundary(surface, south);
+    EXPECT_GT(north.latitude, .006);
+    EXPECT_LT(south.latitude, .006);
+    EXPECT_GT(south.distance, north.distance);
+    EXPECT_LT(south.distance, 2 * north.distance);
+}
+
+TEST_F(ShoreNavigationTest, DateLineAndPolarCoastsStayFinite)
+{
+    Planet *planet = world([](double, double lon) { return lon > 0; });
+    SurfaceBiomes field(42);
+    SurfaceSampler surface(planet, planet->surf_map, field, 1e6, 8);
+    const auto seam = find_nearest_shore(surface, .3, _pi - .004, half_pi);
+    check_boundary(surface, seam);
+    EXPECT_LT(seam.distance, 5500);
+    delete planet->surf_map;
+    planet->surf_map = new ShoreTestMap([](double lat, double) { return lat > 1.50; });
+    SurfaceSampler polar(planet, planet->surf_map, field, 1e6, 8);
+    const auto pole = find_nearest_shore(polar, half_pi, 0, 0);
+    check_boundary(polar, pole);
+    EXPECT_TRUE(std::isfinite(pole.longitude));
+    EXPECT_LE(fabs(pole.latitude), half_pi);
+    EXPECT_LT(pole.distance, 1e5);
+}
+
+TEST_F(ShoreNavigationTest, UniformWaterOrLandHasNoShore)
+{
+    Planet *planet = world([](double, double) { return true; });
+    SurfaceBiomes field(42);
+    SurfaceSampler surface(planet, planet->surf_map, field, 1e6, 8);
+    EXPECT_FALSE(find_nearest_shore(surface, 0, 0, 0).found);
+    delete planet->surf_map;
+    planet->surf_map = new ShoreTestMap([](double, double) { return false; });
+    SurfaceSampler land(planet, planet->surf_map, field, 1e6, 8);
+    EXPECT_FALSE(find_nearest_shore(land, 0, 0, 0).found);
+}
+
+TEST_F(ShoreNavigationTest, ImportedColorsUseTheSameWaterRule)
+{
+    Planet *planet = world([](double lat, double) { return lat < 0; }, false);
+    SurfaceBiomes field(42);
+    SurfaceSampler surface(planet, planet->surf_map, field, 1e6, 8);
+    check_boundary(surface, find_nearest_shore(surface, .004, .2, _pi));
+}
 
 class BiomePixelMap : public Map
 {

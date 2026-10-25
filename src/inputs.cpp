@@ -9,6 +9,7 @@
 #include "classes/exocons.h"
 #include "classes/timesteps.h"
 #include "classes/satellite.h"
+#include "classes/surfacenavigation.h"
 
 using namespace alienorum;
 
@@ -251,6 +252,47 @@ void thread_check_sats()
     check_sats_thread = std::thread(SatSource::check_satcat_and_latest);
 }
 
+bool can_find_shore()
+{
+    if (view_mode != vm_horizon || whereami < 0 || whereami >= ncelobjs || !cels[whereami]
+        || cels[whereami]->deleted || generating_fic_texture) return false;
+    CelestialObject *object = cels[whereami];
+    if (object->typeclass() != class_planet && object->typeclass() != class_moon) return false;
+    Planet *planet = static_cast<Planet*>(object);
+    return uses_rocky_map(planet->type) && planet->has_water > 0 && planet->surf_map && planet->surf_map->is_complete();
+}
+
+bool process_find_shore()
+{
+    if (!can_find_shore()) return false;
+    Planet *planet = static_cast<Planet*>(cels[whereami]);
+    double radius = planet->get_equatorial_radius();
+    if (!(radius > 0)) radius = planet->volumetric_mean_radius;
+    if (!(radius > 0)) radius = earth_radius;
+    SurfaceBiomes field(static_cast<uint32_t>(whereami));
+    SurfaceSampler surface(planet, planet->surf_map, field, radius, shore_displacement);
+    const auto shore = find_nearest_shore(surface, viewer_lat, viewer_lon, azimuth);
+    if (!shore.found) return false;
+    viewer_lat = shore.latitude;
+    viewer_lon = shore.longitude;
+    viewer_locale.clear();
+    selected_locale = is_a_locale_under_cursor = nullptr;
+    velocity = center;
+    save_viewer_latlon = false;
+    viewchanged = true;
+    set_viewer_location_and_plane();
+    refresh_star_visibilities();
+    return true;
+}
+
+static void activate_find_shore()
+{
+    if (can_find_shore() && !process_find_shore())
+    {
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION, "Find Shore", "No shoreline was found on this world.", window);
+    }
+}
+
 void show_menu()
 {
     menu_clicked = false;
@@ -356,6 +398,11 @@ void show_menu()
             if (ImGui::MenuItem("Go to Object", "O")) { process_key_cmd_char('o'); menu_clicked = true; }
             if (ImGui::MenuItem("Go and Use Local Timesteps", "Ctrl+O")) { process_key_cmd_ctrl_char('o'); menu_clicked = true; }
             if (ImGui::MenuItem("Return Home", "R")) { process_key_cmd_char('r'); menu_clicked = true; }
+            if (ImGui::MenuItem("Find Shore", "Ctrl+F", false, can_find_shore()))
+            {
+                activate_find_shore();
+                menu_clicked = true;
+            }
             ImGui::Separator();
             if (ImGui::MenuItem("Spaceflight/Speed Up", "+")) { process_key_cmd_char('+'); menu_clicked = true; }
             if (ImGui::MenuItem("Slow Down", "-")) { process_key_cmd_char('-'); menu_clicked = true; }
@@ -1077,6 +1124,7 @@ void process_key_cmd_ctrl_char(char c)
         case 'D': label_favestars = !label_favestars; break;
 
         case 'e': vplane_mode = vplane_ecliptic; break;
+        case 'f': activate_find_shore(); break;
         case 'g': vplane_mode = vplane_galactic; break;
         case 'i': vplane_mode = vplane_ICRF; break;
         case 'l': vplane_mode = vplane_local; break;

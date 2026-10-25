@@ -2786,5 +2786,578 @@
         "vegetation_g": 32,
         "vegetation_r": 161,
         "volumetric_mean_radius": 6498420.0
+    },
+    "53 Aquarii": {
+        "!name": "53 Aquarii",
+        "!origcenname": "",
+        "!origname": "53 Aquarii",
+        "BV_color": 0.61,
+        "Bayer": "",
+        "BayerGrkno": -1,
+        "Bonn_survey": "BD",
+        "Bonn_survey_declination": -17,
+        "Bonn_survey_sequential": 6521,
+        "Bonn_survey_sign": "-",
+        "CCDM": "",
+        "Flamsteed": "53 Aqr",
+        "FlamsteedNo": 53,
+        "Gliese": "GJ 859 A",
+        "HD": 212698,
+        "HIP": 0,
+        "HR": 8545,
+        "RI_color": 0.0,
+        "SAO": 0,
+        "SB9": 0,
+        "UB_color": 0.09,
+        "VR_color": 0.0,
+        "WD": "",
+        "absolute_magnitude": 5.13,
+        "apparent_magnitude": 6.35,
+        "apparent_magnitude_estimated": false,
+        "constellation": "Aqr",
+        "declination": -16.7425,
+        "distance": 57.22,
+        "distance_known": true,
+        "epoch": 2451544.5,
+        "equinox": 0.0,
+        "fictitious_map_height": 768,
+        "gaia_g_magnitude": 1e+29,
+        "gaia_source_id": 0,
+        "gaia_wd_name": "",
+        "has_hz_planets": 1,
+        "has_planets": 1,
+        "home_world": false,
+        "is_orbit_multiple": false,
+        "known_poles": true,
+        "location": {
+            "equatorial_plane": {
+                "a": 35.58414348307332,
+                "v": {
+                    "x": 3.4882058310628464e+73,
+                    "y": 0.0,
+                    "z": -4.657567972524758e+73
+                }
+            },
+            "galactic_center": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "local_position": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "local_system_plane": {
+                "a": 35.58414348307332,
+                "v": {
+                    "x": 3.488205831062847e+36,
+                    "y": 0.0,
+                    "z": -4.6575679725247587e+36
+                }
+            },
+            "orbital_plane": {
+                "a": 35.58414348307332,
+                "v": {
+                    "x": 3.488205831062847e+36,
+                    "y": 0.0,
+                    "z": -4.6575679725247587e+36
+                }
+            },
+            "system_center": {
+                "x": 2.0550386210505376e+17,
+                "y": -1.5594391669402736e+17,
+                "z": 4.759163892379267e+17
+            }
+        },
+        "lock_equatorial_plane": false,
+        "lock_system_plane": true,
+        "lon_J2000_offset": 0.0,
+        "map_inverted": false,
+        "mass": 2.0680140000000001e+33,
+        "oblateness": 0.0,
+        "obliquity": 0.0,
+        "orbit_center_codes": [],
+        "parallax": 56.99921655832261,
+        "precession": 0.0,
+        "proper_motion_RA": 6.19447734153666e-05,
+        "proper_motion_decl": -8.333253537480533e-07,
+        "radial_velocity": -6000.0,
+        "right_ascension": 336.6433333333333,
+        "rnd_seed": 3618854,
+        "rot_axis_known": false,
+        "rot_heliocen_incl": 0.0,
+        "rot_heliocen_node": 0.0,
+        "sidereal_rotational_period": 0.0,
+        "spectral_type": "G1V",
+        "transparent_clouds": false,
+        "type": 512,
+        "typeclass": 2,
+        "user_added": false,
+        "volumetric_mean_radius": 571496679.0,
+        "wd_color_revision": 0,
+        "wd_color_valid": false,
+        "wd_temperature_source": "unspecified"
+    },
+    "53 Aquarii.53 Aquarii B": {
+        "!name": "53 Aquarii B",
+        "!origcenname": "53 Aquarii",
+        "!origname": "53 Aquarii B",
+        "BV_color": 0.64,
+        "Bayer": "",
+        "BayerGrkno": -1,
+        "Bonn_survey": "BD",
+        "Bonn_survey_declination": -17,
+        "Bonn_survey_sequential": 6520,
+        "Bonn_survey_sign": "-",
+        "CCDM": "",
+        "Flamsteed": "53 Aqr",
+        "FlamsteedNo": 53,
+        "Gliese": "GJ 859 B",
+        "HD": 212697,
+        "HIP": 110778,
+        "HR": 8544,
+        "RI_color": 0.0,
+        "SAO": 0,
+        "SB9": 0,
+        "UB_color": 0.27,
+        "VR_color": 0.0,
+        "WD": "",
+        "absolute_magnitude": 5.349390108549952,
+        "apparent_magnitude": 6.57,
+        "apparent_magnitude_estimated": false,
+        "constellation": "Aqr",
+        "declination": -16.741511201451317,
+        "distance": 57.22,
+        "distance_known": true,
+        "epoch": 2451544.5,
+        "equinox": 0.0,
+        "fictitious_map_height": 768,
+        "gaia_g_magnitude": 1e+29,
+        "gaia_source_id": 0,
+        "gaia_wd_name": "",
+        "has_hz_planets": 1,
+        "has_planets": 1,
+        "home_world": false,
+        "is_orbit_multiple": false,
+        "known_poles": true,
+        "location": {
+            "equatorial_plane": {
+                "a": 35.58414348307332,
+                "v": {
+                    "x": 3.488205831062847e+36,
+                    "y": 0.0,
+                    "z": -4.6575679725247587e+36
+                }
+            },
+            "galactic_center": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "local_position": {
+                "x": -141969152169.38165,
+                "y": -526927592109.03125,
+                "z": -1038949587748.0247
+            },
+            "local_system_plane": {
+                "a": 35.58414348307332,
+                "v": {
+                    "x": 3.488205831062847e+36,
+                    "y": 0.0,
+                    "z": -4.6575679725247587e+36
+                }
+            },
+            "orbital_plane": {
+                "a": 35.58414348307332,
+                "v": {
+                    "x": 3.488205831062847e+36,
+                    "y": 0.0,
+                    "z": -4.6575679725247587e+36
+                }
+            },
+            "system_center": {
+                "x": 2.0550386210505376e+17,
+                "y": -1.5594391669402736e+17,
+                "z": 4.759163892379267e+17
+            }
+        },
+        "lock_equatorial_plane": true,
+        "lock_system_plane": true,
+        "lon_J2000_offset": 0.0,
+        "map_inverted": false,
+        "mass": 1.96859025e+33,
+        "oblateness": 0.0,
+        "obliquity": 0.0,
+        "orbit": {
+            "T_periapsis": 0.0,
+            "arg_periapsis": 151.4,
+            "ascending_node": 0.0,
+            "center_name": "53 Aquarii",
+            "eccentricity": 0.9,
+            "epoch": 2460099.7354222387,
+            "heliocentric_inclination": 44.13,
+            "heliocentric_node": 294.55,
+            "inclination": 0.0,
+            "laplace": {
+                "a": 0.0,
+                "v": {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "z": 0.0
+                }
+            },
+            "mean_anomaly": 0.0,
+            "periapsis_distance": 0.0,
+            "period": 1273148.148148148,
+            "prec_node": 0.0,
+            "proc_argperi": 0.0,
+            "semimajor_axis": 11547821636720.336
+        },
+        "orbit_center_codes": [],
+        "parallax": 56.99921655832261,
+        "precession": 0.0,
+        "proper_motion_RA": 6.19447734153666e-05,
+        "proper_motion_decl": -8.333253537480533e-07,
+        "radial_velocity": -6000.0,
+        "right_ascension": 336.64408353946044,
+        "rnd_seed": 860691246,
+        "rot_axis_known": false,
+        "rot_heliocen_incl": 0.0,
+        "rot_heliocen_node": 0.0,
+        "sidereal_rotational_period": 0.0,
+        "spectral_type": "",
+        "stellar_metallicity": {
+            "error_lower_dex": -0.02,
+            "error_upper_dex": 0.02,
+            "ratio": "[Fe/H]",
+            "source": "XHIP V/137D A",
+            "value_dex": 0.0
+        },
+        "temperature": 5811.0,
+        "transparent_clouds": false,
+        "type": 512,
+        "typeclass": 2,
+        "user_added": false,
+        "volumetric_mean_radius": 543471492.6614839,
+        "wd_color_revision": 0,
+        "wd_color_valid": false,
+        "wd_temperature_source": "unspecified"
+    },
+    "53 Aquarii.53 Aquarii B.Rebus": {
+        "!name": "Rebus",
+        "!origcenname": "",
+        "!origname": "Rebus",
+        "BV_color": 0.43499999642372134,
+        "RI_color": 0.0,
+        "UB_color": 0.5,
+        "VR_color": 0.0,
+        "absolute_magnitude": -4.056701545868358,
+        "albedo": 0.28970817554020933,
+        "atmosphere": {
+            "composition": {
+                "Ar": 0.0014632754199450356,
+                "C2H6": 8.86383456378184e-06,
+                "CH4": 0.00026281661650511803,
+                "CO": 9.268328334478688e-06,
+                "CO2": 0.0037037857185515987,
+                "H2": 0.0031955684402357417,
+                "H2O": 0.006510000050067901,
+                "H2S": 0.0003306865371924222,
+                "HCN": 0.00017735771161673868,
+                "He": 1.1847603174016019e-05,
+                "N2": 0.9771447131862986,
+                "NH3": 7.062276214533341e-06,
+                "SO2": 0.0007810813344953181
+            },
+            "pressure_supplied": false,
+            "surface_pressure": 207070.68441062648,
+            "tau": 1.0975550736168436
+        },
+        "classification_evidence": {
+            "basis": "observed_mass_and_radius",
+            "bond_albedo": 0.3078106508875739,
+            "class_code": 1283,
+            "density_constraint_basis": "observed_mass_and_radius",
+            "density_constraint_g_cm3": 4.03291445289336,
+            "density_estimated": false,
+            "density_g_cm3": 4.03291445289336,
+            "density_is_lower_bound": false,
+            "density_observed": true,
+            "equilibrium_temperature_k": 226.81133449626387,
+            "host": "53 Aquarii B",
+            "irradiation_earth": 0.6295521465994554,
+            "mass_evidence": 1,
+            "mass_from_rv_inclination": false,
+            "metallicity_applied": false,
+            "metallicity_model": "direct_observations_or_no_eligible_host",
+            "minimum_density_g_cm3": null,
+            "radius_evidence": 1,
+            "stellar_chemistry": [],
+            "surface_temperature_k": 339.38047785480927
+        },
+        "cloud_map_url": "",
+        "declination": 0.0,
+        "distance": 0.0,
+        "distance_known": true,
+        "epoch": 2451544.5,
+        "equinox": 230.19147600521868,
+        "fictitious_map_height": 768,
+        "has_water": 0.4650000035762787,
+        "home_world": false,
+        "location": {
+            "equatorial_plane": {
+                "a": 17.207092225074874,
+                "v": {
+                    "x": -2.791593431056872e+73,
+                    "y": 0.0,
+                    "z": 9.789411518880261e+72
+                }
+            },
+            "galactic_center": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "local_position": {
+                "x": -167416873697.37106,
+                "y": -595604115473.6235,
+                "z": -1166808300316.0825
+            },
+            "local_system_plane": {
+                "a": 35.58414348307332,
+                "v": {
+                    "x": 3.488205831062847e+36,
+                    "y": 0.0,
+                    "z": -4.6575679725247587e+36
+                }
+            },
+            "orbital_plane": {
+                "a": 34.71797028040919,
+                "v": {
+                    "x": 3.524596586708898e+73,
+                    "y": 0.0,
+                    "z": -4.4737566500245256e+73
+                }
+            },
+            "system_center": {
+                "x": 2.0550386210505376e+17,
+                "y": -1.5594391669402736e+17,
+                "z": 4.759163892379267e+17
+            }
+        },
+        "lon_J2000_offset": 0.0,
+        "map_inverted": false,
+        "mass": 1.0511019200000001e+28,
+        "mass_evidence": 1,
+        "oblateness": 0.0,
+        "obliquity": 49.98502034606693,
+        "opposition_surge": 0.0,
+        "orbit": {
+            "T_periapsis": 0.0,
+            "arg_periapsis": 255.41161716702004,
+            "ascending_node": 354.4284654755278,
+            "center_name": "53 Aquarii B",
+            "eccentricity": 5.669770855463952e-06,
+            "epoch": 2451544.5,
+            "heliocentric_inclination": 0.0,
+            "heliocentric_node": 0.0,
+            "inclination": 1.1837883191017278,
+            "laplace": {
+                "a": 0.0,
+                "v": {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "z": 0.0
+                }
+            },
+            "mean_anomaly": 181.97311216125874,
+            "periapsis_distance": 0.0,
+            "period": 358.8463209471427,
+            "prec_node": 0.0,
+            "proc_argperi": 0.0,
+            "semimajor_axis": 147349637225.17273
+        },
+        "orbit_center_codes": [],
+        "overcast": false,
+        "plant_crown_oblateness": 0.0,
+        "plant_crown_size": 0.0,
+        "plant_trunk_height": 0.0,
+        "plant_trunk_width": 0.0,
+        "precession": 0.0,
+        "radius_evidence": 1,
+        "right_ascension": 0.0,
+        "ring_status_known": false,
+        "rnd_seed": 2044967236,
+        "sidereal_rotational_period": 0.42692727536837216,
+        "static_clouds": true,
+        "temperature": 304.2470042456437,
+        "transiting": false,
+        "transparent_clouds": true,
+        "type": 1283,
+        "typeclass": 3,
+        "user_added": true,
+        "vegetation_b": 50,
+        "vegetation_g": 30,
+        "vegetation_r": 155,
+        "volumetric_mean_radius": 8537140.0
+    },
+    "53 Aquarii.Paradeisos": {
+        "!name": "Paradeisos",
+        "!origcenname": "",
+        "!origname": "Paradeisos",
+        "BV_color": 0.5961341202259064,
+        "RI_color": 0.0,
+        "UB_color": 0.5,
+        "VR_color": 0.0,
+        "absolute_magnitude": -4.056701545868358,
+        "albedo": 0.42991735537190073,
+        "atmosphere": {
+            "composition": {
+                "Ar": 0.0010725809243807038,
+                "C2H6": 5.106588076888761e-07,
+                "CH4": 0.00021364397197173277,
+                "CO": 1.627852629479562e-06,
+                "CO2": 0.1992483388923933,
+                "H2": 0.0034929101295187105,
+                "H2O": 0.00425405458881309,
+                "H2S": 6.54048409036763e-05,
+                "HCN": 0.00011696713372328526,
+                "He": 9.567318202664269e-06,
+                "N2": 0.7913156980574717,
+                "NH3": 3.289812590706087e-06,
+                "SO2": 0.00020540581859306245
+            },
+            "pressure_supplied": false,
+            "surface_pressure": 184861.39093090402,
+            "tau": 2.3426204855264285
+        },
+        "classification_evidence": {
+            "basis": "observed_mass_and_radius",
+            "bond_albedo": 0.5202,
+            "class_code": 1283,
+            "density_constraint_basis": "observed_mass_and_radius",
+            "density_constraint_g_cm3": 5.3850040450592,
+            "density_estimated": false,
+            "density_g_cm3": 5.3850040450592,
+            "density_is_lower_bound": false,
+            "density_observed": true,
+            "equilibrium_temperature_k": 207.98608186407287,
+            "host": "53 Aquarii",
+            "irradiation_earth": 0.6422061447461046,
+            "mass_evidence": 1,
+            "mass_from_rv_inclination": false,
+            "metallicity_applied": false,
+            "metallicity_model": "direct_observations_or_no_eligible_host",
+            "minimum_density_g_cm3": null,
+            "radius_evidence": 1,
+            "stellar_chemistry": [],
+            "surface_temperature_k": 217.91032691142465
+        },
+        "cloud_map_url": "",
+        "declination": 0.0,
+        "distance": 0.0,
+        "distance_known": true,
+        "epoch": 2451544.5,
+        "equinox": 137.68091290149883,
+        "fictitious_map_height": 768,
+        "has_water": 0.30386587977409363,
+        "home_world": false,
+        "location": {
+            "equatorial_plane": {
+                "a": 38.41897675113004,
+                "v": {
+                    "x": 6.110646467836506e+73,
+                    "y": 0.0,
+                    "z": -1.1290280494169458e+73
+                }
+            },
+            "galactic_center": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "local_position": {
+                "x": -106578183099.3167,
+                "y": -92727856736.02237,
+                "z": -75730239657.4916
+            },
+            "local_system_plane": {
+                "a": 35.58414348307332,
+                "v": {
+                    "x": 3.488205831062847e+36,
+                    "y": 0.0,
+                    "z": -4.6575679725247587e+36
+                }
+            },
+            "orbital_plane": {
+                "a": 35.35358379915253,
+                "v": {
+                    "x": 3.465797210782362e+73,
+                    "y": 0.0,
+                    "z": -4.633404102482258e+73
+                }
+            },
+            "system_center": {
+                "x": 2.0550386210505376e+17,
+                "y": -1.5594391669402736e+17,
+                "z": 4.759163892379267e+17
+            }
+        },
+        "lon_J2000_offset": 0.0,
+        "map_inverted": false,
+        "mass": 7.763821000000001e+27,
+        "mass_evidence": 1,
+        "oblateness": 0.0,
+        "obliquity": 25.43073021343854,
+        "opposition_surge": 0.0,
+        "orbit": {
+            "T_periapsis": 0.0,
+            "arg_periapsis": 35.48270502848677,
+            "ascending_node": 41.732302327515704,
+            "center_name": "53 Aquarii",
+            "eccentricity": 0.0008580168540926791,
+            "epoch": 2451544.5,
+            "heliocentric_inclination": 0.0,
+            "heliocentric_node": 0.0,
+            "inclination": 0.2314107581057545,
+            "laplace": {
+                "a": 0.0,
+                "v": {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "z": 0.0
+                }
+            },
+            "mean_anomaly": 192.65481946647856,
+            "periapsis_distance": 0.0,
+            "period": 397.56754692910715,
+            "prec_node": 0.0,
+            "proc_argperi": 0.0,
+            "semimajor_axis": 160379941284.53976
+        },
+        "orbit_center_codes": [],
+        "overcast": false,
+        "plant_crown_oblateness": 0.5604455967366895,
+        "plant_crown_size": 1.7798337712137455,
+        "plant_trunk_height": 20.663076923076922,
+        "plant_trunk_width": 0.4727272727272727,
+        "precession": 0.0,
+        "radius_evidence": 1,
+        "right_ascension": 0.0,
+        "ring_status_known": false,
+        "rnd_seed": 2065848127,
+        "sidereal_rotational_period": 0.4322088393286261,
+        "static_clouds": true,
+        "temperature": 301.95554680596814,
+        "transiting": false,
+        "transparent_clouds": true,
+        "type": 1283,
+        "typeclass": 3,
+        "user_added": true,
+        "vegetation_b": 71,
+        "vegetation_g": 81,
+        "vegetation_r": 44,
+        "volumetric_mean_radius": 7008100.000000001
     }
 }

@@ -2231,6 +2231,26 @@ bool Map::color_within_cap(double lat, double lon, double angle, RGB3 &color, bo
     return true;
 }
 
+std::pair<RGB3, SurfaceMaterial> Map::surface_pixel(unsigned long column, unsigned long row) const
+{
+    const auto index = row * image_width + column;
+    if (!is_complete() || column >= image_width || row >= image_height || index >= allocated)
+        return {RGB3(0, 8, 24), SurfaceMaterial::unknown};
+    return {RGB3(red_data[index], green_data[index], blue_data[index]),
+        surface_materials.size() == allocated ? surface_materials[index] : SurfaceMaterial::unknown};
+}
+
+std::array<double, 4> Map::surface_pixel_bounds(unsigned long column, unsigned long row) const
+{
+    if (!(lat_scale > 0) || !(lon_scale > 0)) return {0, 0, 0, 0};
+    // idx_of uses floor for longitude and ceil for latitude; the polar rows are clipped.
+    const double north = row == 0 ? half_pi : std::clamp(half_pi - (row - 1) / lat_scale, -half_pi, half_pi);
+    const double south = row + 1 >= image_height ? -half_pi : std::clamp(half_pi - row / lat_scale, -half_pi, half_pi);
+    const double west = column == 0 ? -_pi : std::clamp(column / lon_scale - _pi, -_pi, _pi);
+    const double east = column + 1 >= image_width ? _pi : std::clamp((column + 1) / lon_scale - _pi, -_pi, _pi);
+    return {south, north, west, east};
+}
+
 SurfaceMaterial Map::material_at(double latitude, double longitude)
 {
     if (generating_fic_texture || !is_complete() || surface_materials.size() != allocated
