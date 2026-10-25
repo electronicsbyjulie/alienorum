@@ -8,6 +8,8 @@ void identify_object_under_cursor(ImGuiIO &io);
 void pan_with_crosshairs(ImGuiIO &io);
 void steer(Point axis, double rate);
 void show_menu();
+void find_time_steps();
+void step_simulation_time(double days, bool preserve_solar_time = true);
 void process_key_cmd_char(char c);
 void process_key_cmd_ctrl_char(char c);
 void process_keyboard_commands(ImGuiIO &io);

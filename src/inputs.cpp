@@ -7,6 +7,8 @@
 #include "visuals.h"
 #include "classes/sscimport.h"
 #include "classes/exocons.h"
+#include "classes/timesteps.h"
+#include "classes/satellite.h"
 
 using namespace alienorum;
 
@@ -503,22 +505,84 @@ void show_menu()
 }
 
 double daystep = 1, hourstep = 1.0/24, monthstep = 30, yearstep = oneyear/oneday;
+void step_simulation_time(double days, bool preserve_solar_time)
+{
+    if (!std::isfinite(days) || !std::isfinite(JDnow)) return;
+    const double original = JDnow;
+    CelestialObject *reference = nullptr;
+    if (local_tmstep && whereami >= 0 && whereami < ncelobjs) reference = cels[whereami];
+    else
+    {
+        for (int i = 0; i < ncelobjs; ++i)
+        {
+            if (cels[i] && !cels[i]->deleted && cels[i]->typeclass() == class_planet && !strcmp(cels[i]->name, "Earth"))
+            {
+                reference = cels[i];
+                break;
+            }
+        }
+    }
+    std::vector<CelestialObject*> ancestors;
+    for (CelestialObject *object = reference; object; object = object->orbit ? object->orbit->center : nullptr)
+    {
+        if (std::find(ancestors.begin(), ancestors.end(), object) != ancestors.end())
+        {
+            ancestors.clear();
+            reference = nullptr;
+            break;
+        }
+        ancestors.push_back(object);
+    }
+    const auto set_epoch = [&](double epoch)
+    {
+        simnow = (epoch - J2000) * oneday + J2000_TIME_T;
+        for (auto it = ancestors.rbegin(); it != ancestors.rend(); ++it)
+        {
+            switch ((*it)->typeclass())
+            {
+                case class_star: static_cast<Star*>(*it)->update_location(simnow); break;
+                case class_planet: static_cast<Planet*>(*it)->update_location(simnow); break;
+                case class_moon: static_cast<Moon*>(*it)->update_location(simnow); break;
+                case class_comet: static_cast<Comet*>(*it)->update_location(simnow); break;
+                case class_satellite: static_cast<Satellite*>(*it)->update_location(simnow); break;
+                default: break;
+            }
+        }
+    };
+    double target = original + days;
+    if (preserve_solar_time && reference && reference->get_light_center() != reference)
+    {
+        const double period = fabs(reference->stellar_day()) / oneday;
+        const auto phase = [&](double epoch)
+        {
+            set_epoch(epoch);
+            return reference->local_solar_time(0);
+        };
+        target = solar_time_preserving_step(original, days, period, phase);
+    }
+    JDnow = target;
+    set_epoch(target);
+    viewchanged = true;
+    if (fabs(days) >= 365) redo_proper_motions = true;
+    compute_object_draw_coordinates();
+}
+
 void find_time_steps()
 {
     daystep = 1;
     hourstep = 1.0/24;
     monthstep = 30;
     yearstep = oneyear/oneday;
-    if (local_tmstep && (whereami >= 0))
+    if (local_tmstep && whereami >= 0 && whereami < ncelobjs && cels[whereami])
     {
         CelestialObject *cel = cels[whereami];
         daystep = cel->stellar_day() / oneday;
-        if (daystep <= 0) daystep = 1;
+        if (!std::isfinite(daystep) || daystep <= 0) daystep = 1;
         hourstep = daystep / 24;
-        if (cel->orbit && cel->orbit->period) yearstep = cel->orbit->period / oneday;
+        if (cel->orbit && std::isfinite(cel->orbit->period) && cel->orbit->period > 0) yearstep = cel->orbit->period / oneday;
         monthstep = yearstep / 12;
-        if (monthstep >= daystep*2) monthstep = daystep * (int)(monthstep / daystep);
-        if (yearstep >= daystep*2) yearstep = daystep * (int)(yearstep / daystep);
+        if (monthstep >= daystep*2) monthstep = daystep * floor(monthstep / daystep);
+        if (yearstep >= daystep*2) yearstep = daystep * floor(yearstep / daystep);
     }
 }
 
@@ -562,8 +626,8 @@ void process_key_cmd_char(char c)
         case 'B': global_brightness *= 0.9; viewchanged = true; break;
         case 'c': show_consln = !show_consln; break;
         case 'C': cbolbls_selected_idx = lbltype_sunlike; show_labels = true; break;
-        case 'd': JDnow += daystep; viewchanged = true; compute_object_draw_coordinates(); break;
-        case 'D': JDnow -= daystep; viewchanged = true; compute_object_draw_coordinates(); break;
+        case 'd': step_simulation_time(daystep); break;
+        case 'D': step_simulation_time(-daystep); break;
 
         case 'e':
         explorer = !explorer;
@@ -588,18 +652,18 @@ void process_key_cmd_char(char c)
 
         case 'g': show_grid = !show_grid; break;
         case 'G': cbolbls_selected_idx = lbltype_Gould; show_labels = true; break;
-        case 'h': JDnow += hourstep; viewchanged = true; compute_object_draw_coordinates(); break;
-        case 'H': JDnow -= hourstep; viewchanged = true; compute_object_draw_coordinates(); break;
-        case 'i': JDnow += 1.0/1440; viewchanged = true; compute_object_draw_coordinates(); break;
-        case 'I': JDnow -= 1.0/1440; viewchanged = true; compute_object_draw_coordinates(); break;
+        case 'h': step_simulation_time(hourstep, false); break;
+        case 'H': step_simulation_time(-hourstep, false); break;
+        case 'i': step_simulation_time(1.0/1440, false); break;
+        case 'I': step_simulation_time(-1.0/1440, false); break;
         case 'j': show_sats = !show_sats; break;
         case 'J': satview_upsidedown = !satview_upsidedown; break;
         case 'k': label_galaxies = !label_galaxies; break;
         case 'K': show_galaxy_band = !show_galaxy_band; break;
         case 'l': show_labels = !show_labels; break;
         case 'L': cbolbls_selected_idx = lbltype_planethz; show_labels = true; break;
-        case 'm': JDnow += monthstep; viewchanged = true; compute_object_draw_coordinates(); break;
-        case 'M': JDnow -= monthstep; viewchanged = true; compute_object_draw_coordinates(); break;
+        case 'm': step_simulation_time(monthstep); break;
+        case 'M': step_simulation_time(-monthstep); break;
         case 'n': objinfwnd = !objinfwnd; break;
         case 'N': cbolbls_selected_idx = lbltype_nearby; show_labels = true; break;
 
@@ -735,10 +799,10 @@ void process_key_cmd_char(char c)
         break;
         case 'X': cbolbls_selected_idx = lbltype_knpole; show_labels = true; break;
 
-        case 'y': JDnow += yearstep; redo_proper_motions = viewchanged = true; compute_object_draw_coordinates(); break;
-        case 'Y': JDnow -= yearstep; redo_proper_motions = viewchanged = true; compute_object_draw_coordinates(); break;
-        case 'z': JDnow += yearstep*100; redo_proper_motions = viewchanged = true; compute_object_draw_coordinates(); break;
-        case 'Z': JDnow -= yearstep*100; redo_proper_motions = viewchanged = true; compute_object_draw_coordinates(); break;
+        case 'y': redo_proper_motions = true; step_simulation_time(yearstep); break;
+        case 'Y': redo_proper_motions = true; step_simulation_time(-yearstep); break;
+        case 'z': redo_proper_motions = true; step_simulation_time(yearstep*100); break;
+        case 'Z': redo_proper_motions = true; step_simulation_time(-yearstep*100); break;
 
         case '0': neighborhood = !neighborhood; break;
 
@@ -1058,10 +1122,10 @@ void process_key_cmd_ctrl_char(char c)
 
         case 'w': done = true; break;
 
-        case 'y': JDnow += yearstep * 10; redo_proper_motions = viewchanged = true; compute_object_draw_coordinates(); break;
-        case 'Y': JDnow -= yearstep * 10; redo_proper_motions = viewchanged = true; compute_object_draw_coordinates(); break;
-        case 'z': JDnow += yearstep * 1000; redo_proper_motions = viewchanged = true; compute_object_draw_coordinates(); break;
-        case 'Z': JDnow -= yearstep * 1000; redo_proper_motions = viewchanged = true; compute_object_draw_coordinates(); break;
+        case 'y': redo_proper_motions = true; step_simulation_time(yearstep * 10); break;
+        case 'Y': redo_proper_motions = true; step_simulation_time(-yearstep * 10); break;
+        case 'z': redo_proper_motions = true; step_simulation_time(yearstep * 1000); break;
+        case 'Z': redo_proper_motions = true; step_simulation_time(-yearstep * 1000); break;
 
         default:
         ;

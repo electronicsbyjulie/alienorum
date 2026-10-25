@@ -6,6 +6,7 @@
 #include "../classes/surfacebiomes.h"
 #include "../classes/horizonterrain.h"
 #include "../classes/surfacecache.h"
+#include "../classes/timesteps.h"
 #include <unordered_map>
 #include <unordered_set>
 #include <archive.h>
@@ -15,6 +16,44 @@
 #include <fstream>
 
 using namespace alienorum;
+
+TEST(SolarTimeStepTest, PreservesPhaseForAllLargeIntervalsAndBothRotationDirections)
+{
+    const double original = 2460000.12345;
+    for (double period : {1.0, 1.0275, 30.0, 116.0})
+    {
+        for (double rotation : {-1.0, 1.0})
+        {
+            const auto phase = [&](double epoch)
+            {
+                const double elapsed = epoch - original;
+                double angle = fmod(.02 + rotation * 2 * _pi * elapsed / period
+                    + .1 * sin(2 * _pi * elapsed / 365.25), 2 * _pi);
+                if (angle < 0) angle += 2 * _pi;
+                return angle;
+            };
+            for (double days : {1.0, 30.0, 365.2421875, 3652.421875, 36524.21875, 365242.1875})
+            {
+                for (double direction : {-1.0, 1.0})
+                {
+                    const double result = solar_time_preserving_step(original, direction * days, period, phase);
+                    EXPECT_GT((result - original) * direction, std::min(days * .001, period * .01));
+                    EXPECT_NEAR(std::remainder(phase(result) - phase(original), 2 * _pi), 0, 1e-6);
+                }
+            }
+        }
+    }
+}
+
+TEST(SolarTimeStepTest, UndefinedOrConstantSolarTimesRetainTheRequestedDuration)
+{
+    const auto unavailable = [](double) { return -1.0; };
+    const auto constant = [](double) { return 1.25; };
+    EXPECT_DOUBLE_EQ(solar_time_preserving_step(2460000, 30, 1, unavailable), 2460030);
+    EXPECT_DOUBLE_EQ(solar_time_preserving_step(2460000, 30, 1, constant), 2460030);
+    EXPECT_DOUBLE_EQ(solar_time_preserving_step(2460000, 30, NAN, constant), 2460030);
+    EXPECT_DOUBLE_EQ(solar_time_preserving_step(2460000, 0, 1, constant), 2460000);
+}
 
 TEST(SurfaceFieldCacheTest, WalkingReusesSamplesAndEditsInvalidateThem)
 {

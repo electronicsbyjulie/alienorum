@@ -2191,6 +2191,100 @@ TEST_F(RenderingRegressionTest, BlueVegetationDoesNotTurnIdenticalOceanColorsInt
     }
 }
 
+TEST_F(RenderingRegressionTest, LargeTimeKeysRetainEarthOrLocalSolarTime)
+{
+    double magnitudes[4] = {}, radii[4] = {}, bloom[4] = {};
+    set(vmag_cache, static_cast<double*>(magnitudes));
+    set(angular_radius, static_cast<double*>(radii));
+    set(bloomrad_cache, static_cast<double*>(bloom));
+    set(here, here);
+    set(luminous_flux, luminous_flux);
+    set(inside_galaxy_idx, inside_galaxy_idx);
+    set(lsyscache, std::vector<CelestialObject*>());
+    Star *sun = make_star("Reference star");
+    Planet *earth = make_planet(sun, "Earth");
+    Planet *local = make_planet(sun, "Time-step world", 1.5 * AU);
+    Moon *moon = new Moon();
+    strcpy(moon->name, "Time-step moon");
+    moon->orbit = new Orbit();
+    moon->orbit->center = local;
+    moon->orbit->semimajor_axis = 3e8;
+    moon->orbit->period = 20 * oneday;
+    moon->orbit->eccentricity = .05;
+    moon->sidereal_rotational_period = moon->orbit->period;
+    moon->cenobj = sun;
+    append_cel(moon);
+    earth->sidereal_rotational_period = 86164.1;
+    earth->obliquity = 23.44 * fiftyseventh;
+    earth->orbit->eccentricity = .0167;
+    local->sidereal_rotational_period = .83 * oneday;
+    local->obliquity = .8;
+    local->orbit->eccentricity = .25;
+    for (Planet *world : {earth, local}) world->cenobj = sun;
+    set(whereami, local->seqno);
+    set(mycenobj, static_cast<CelestialObject*>(sun));
+    set(view_mode, vm_system);
+    set(JDnow, J2000 + 1234.12345);
+    set(simnow, (JDnow - J2000) * oneday + J2000_TIME_T);
+    set(local_tmstep, false);
+    set(redo_proper_motions, false);
+    ImGui::GetIO().KeyCtrl = false;
+    const auto update = [&]()
+    {
+        simnow = (JDnow - J2000) * oneday + J2000_TIME_T;
+        sun->update_location(simnow);
+        earth->update_location(simnow);
+        local->update_location(simnow);
+        moon->update_location(simnow);
+    };
+    const char keys[] = {'d', 'm', 'y', 'z', 'D', 'M', 'Y', 'Z'};
+    for (bool local_mode : {false, true})
+    {
+        local_tmstep = local_mode;
+        Planet *reference = local_mode ? local : earth;
+        for (char key : keys)
+        {
+            update();
+            const double before = reference->local_solar_time(.4);
+            const double start = JDnow;
+            process_key_cmd_char(key);
+            EXPECT_EQ(JDnow > start, key >= 'a');
+            EXPECT_NEAR(simnow, (JDnow - J2000) * oneday + J2000_TIME_T, 1e-6);
+            update();
+            EXPECT_NEAR(std::remainder(reference->local_solar_time(.4) - before, 2 * _pi), 0, 1e-6);
+        }
+        for (char key : {'y', 'Y', 'z', 'Z'})
+        {
+            update();
+            const double before = reference->local_solar_time(.4);
+            process_key_cmd_ctrl_char(key);
+            update();
+            EXPECT_NEAR(std::remainder(reference->local_solar_time(.4) - before, 2 * _pi), 0, 1e-6);
+        }
+    }
+    const double start = JDnow;
+    process_key_cmd_char('i');
+    EXPECT_NEAR(JDnow - start, 1.0 / 1440, 1e-9);
+    EXPECT_NEAR(simnow, (JDnow - J2000) * oneday + J2000_TIME_T, 1e-6);
+    local_tmstep = true;
+    local->obliquity = 2.5;
+    local->sidereal_rotational_period = 300 * oneday;
+    for (Planet *reference : {local, static_cast<Planet*>(moon)})
+    {
+        whereami = reference->seqno;
+        for (char key : {'d', 'D', 'm', 'M', 'y', 'Y'})
+        {
+            update();
+            const double before = reference->local_solar_time(.4);
+            const double previous = JDnow;
+            process_key_cmd_char(key);
+            EXPECT_EQ(JDnow > previous, key >= 'a');
+            update();
+            EXPECT_NEAR(std::remainder(reference->local_solar_time(.4) - before, 2 * _pi), 0, 1e-6);
+        }
+    }
+}
+
 TEST_F(RenderingRegressionTest, CachedCrownContoursMatchNativeEllipseVertices)
 {
     for (bool antialias : {false, true})
