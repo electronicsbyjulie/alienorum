@@ -684,6 +684,45 @@ TEST_F(RenderingRegressionTest, UnresolvedLabelsUsePrimaryAndResolvedCompanionsK
         ASSERT_EQ(labels2draw.size(), 1u);
         EXPECT_EQ(labels2draw.back().text, "Xi Ursae Majoris B");
     }
+    // Separately numbered catalog designations remain useful for resolved companions.
+    strcpy(primary->Bayer, "Zet2Ret");
+    strcpy(companion->Bayer, "Zet1Ret");
+    primary->BayerGrkno = 152;
+    companion->BayerGrkno = 151;
+    strcpy(primary->Flamsteed, "53  UMa");
+    strcpy(companion->Flamsteed, "54  UMa");
+    strcpy(companion->Gouldcons, "UMa");
+    primary->GouldNo = 82;
+    companion->GouldNo = 83;
+    const std::pair<int, std::string> distinct_labels[] =
+    {
+        {lbltype_Bayer, std::string(1, Greek_symbol_mapping[5]) + "1"},
+        {lbltype_Flamsteed, "54"},
+        {lbltype_Gould, "83"}
+    };
+    for (const auto &format : distinct_labels)
+    {
+        cbolbls_selected_idx = format.first;
+        labels2draw.clear();
+        ASSERT_TRUE(draw_single_object(companion->seqno));
+        ASSERT_EQ(labels2draw.size(), 1u);
+        EXPECT_EQ(labels2draw.back().text, format.second);
+    }
+    cbolbls_selected_idx = lbltype_Bayer;
+    selected = primary->seqno;
+    labels2draw.clear();
+    ASSERT_TRUE(draw_single_object(primary->seqno));
+    ASSERT_EQ(labels2draw.size(), 1u);
+    EXPECT_EQ(labels2draw.back().text, std::string(1, Greek_symbol_mapping[5]) + "2");
+    selected = companion->seqno;
+    // An actually shared Bayer designation still preserves the component name.
+    strcpy(companion->Bayer, primary->Bayer);
+    companion->BayerGrkno = primary->BayerGrkno;
+    cbolbls_selected_idx = lbltype_Bayer;
+    labels2draw.clear();
+    ASSERT_TRUE(draw_single_object(companion->seqno));
+    ASSERT_EQ(labels2draw.size(), 1u);
+    EXPECT_EQ(labels2draw.back().text, "Xi Ursae Majoris B");
 }
 
 TEST_F(RenderingRegressionTest, CompanionHoverAndSelectionFollowFivePixelSeparationInEveryView)

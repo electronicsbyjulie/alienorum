@@ -3503,7 +3503,29 @@ bool draw_single_object(int i)
         }
         else if (cls == class_star)
         {
-            if (resolved_companion)
+            bool distinct_designation = false;
+            if (resolved_companion && label_star->multisys)
+            {
+                const auto designation = [&](Star *member)
+                {
+                    if (cbolbls_selected_idx == lbltype_Bayer && member->BayerGrkno >= 0)
+                        return squeeze_spaces(member->Bayer);
+                    if (cbolbls_selected_idx == lbltype_Flamsteed)
+                        return squeeze_spaces(member->Flamsteed);
+                    if (cbolbls_selected_idx == lbltype_Gould && member->GouldNo > 0)
+                        return std::to_string(member->GouldNo) + ":" + member->Gouldcons;
+                    return std::string();
+                };
+                const std::string own = designation(label_star);
+                distinct_designation = !own.empty();
+                for (char slot = 'A'; slot <= 'Z' && distinct_designation; ++slot)
+                {
+                    Star *member = label_star->multisys->get_member(slot);
+                    if (member && member != label_star && !member->deleted && designation(member) == own)
+                        distinct_designation = false;
+                }
+            }
+            if (resolved_companion && !distinct_designation)
             {
                 // Shared catalog identifiers must not erase a resolved component's published label.
                 if (obj_is_localsys && label_star->local_name.size()) dispname = label_star->local_name.c_str();
