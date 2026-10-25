@@ -13,6 +13,15 @@
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
+repository_status=$(git status --porcelain=v1 --untracked-files=no --ignore-submodules=untracked)
+if [ -n "$repository_status" ]; then
+    echo "Installer build stopped: tracked files have uncommitted changes." >&2
+    echo "It is important to commit and push all release changes before building an installer." >&2
+    echo "Commit the tracked changes and push, then rerun this script." >&2
+    printf '%s\n' "$repository_status" >&2
+    exit 1
+fi
+
 if [ ! -x vcpkg/vcpkg ]; then
     echo "vcpkg is not bootstrapped -- see the setup notes at the top of this script." >&2
     exit 1
