@@ -732,10 +732,9 @@ void process_key_cmd_char(char c)
         planets_lblcut = 1;
         [[fallthrough]];
         case '@':
-        viewchanged = true;
+        redo_proper_motions = viewchanged = true;
         simnow = std::time(nullptr);
         JDnow = ((double)simnow - J2000_TIME_T)/oneday + J2000;
-        refresh_star_visibilities();
         compute_object_draw_coordinates();
         break;
 

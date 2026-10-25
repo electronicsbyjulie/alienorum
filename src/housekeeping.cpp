@@ -161,6 +161,32 @@ void set_viewer_location_and_plane()
 }
 
 double dispw, disph, celmasslim;
+static bool update_stellar_lineage(Star *member, double epoch, double orbital_epoch)
+{
+    Star *lineage[26];
+    int count = 0;
+    while (member)
+    {
+        if (count == 26) return false;
+        for (int ancestor = 0; ancestor < count; ++ancestor)
+        {
+            if (lineage[ancestor] == member) return false;
+        }
+        lineage[count++] = member;
+        if (!member->orbit || !member->orbit->center || member->orbit->center->typeclass() != class_star) break;
+        member = static_cast<Star*>(member->orbit->center);
+    }
+    while (count)
+    {
+        Star *ancestor = lineage[--count];
+        // Catalog astrometry already represents received light at its reference epoch.
+        ancestor->update_location(ancestor->orbit ? orbital_epoch : epoch);
+        CelestialLocation relative = ancestor->location - here;
+        ancestor->tmprel = Point(relative);
+    }
+    return true;
+}
+
 bool compute_object_location(CelestialObject* cel)
 {
     bool star_in_box;
@@ -218,32 +244,7 @@ bool compute_object_location(CelestialObject* cel)
             }
         }
 
-        {
-            Star* lineage[26];
-            int count = 0;
-            Star* member = static_cast<Star*>(cel);
-            // Update ancestors first, including parents omitted by the visibility pass.
-            while (member)
-            {
-                if (count == 26) return false;
-                for (int ancestor = 0; ancestor < count; ++ancestor)
-                {
-                    if (lineage[ancestor] == member) return false;
-                }
-                lineage[count++] = member;
-                if (!member->orbit || !member->orbit->center || member->orbit->center->typeclass() != class_star) break;
-                member = static_cast<Star*>(member->orbit->center);
-            }
-            while (count)
-            {
-                Star* ancestor = lineage[--count];
-                // Catalog astrometry already describes received light at its reference epoch.
-                // Apply light-travel delay to orbital phase, without shifting proper motion twice.
-                ancestor->update_location(ancestor->orbit ? simnow - light_travel_time : simnow);
-                CelestialLocation relative = ancestor->location - here;
-                ancestor->tmprel = Point(relative);
-            }
-        }
+        if (!update_stellar_lineage(static_cast<Star*>(cel), simnow, simnow - light_travel_time)) return false;
         tmp = cel->location - here;
         cel->tmprel = Point(tmp);
         if (!system_object && i > 0 && whereami >= 0 && cel->tmprel.magnitude() < cels[whereami]->volumetric_mean_radius)
@@ -331,6 +332,17 @@ void compute_object_draw_coordinates()
     num_stars_in_box = 0;
     if (!ncelobjs) return;
 
+    if (redo_proper_motions)
+    {
+        // A time jump must move stars before old visibility boxes can reject them.
+        for (int index = 0; index < ncelobjs; ++index)
+        {
+            if (!cels[index] || cels[index]->deleted || cels[index]->typeclass() != class_star) continue;
+            Star *star = static_cast<Star*>(cels[index]);
+            update_stellar_lineage(star, simnow, simnow);
+        }
+    }
+
     int i, j, n;
     dispw = dispcx*2;
     disph = dispcy*2;
@@ -364,6 +376,8 @@ void compute_object_draw_coordinates()
             set_viewer_location_and_plane();
         }
     }
+
+    if (redo_proper_motions) refresh_star_visibilities();
 
     for (i=0; cels[i] && i<MAX_CELOBJS; i++)
     {

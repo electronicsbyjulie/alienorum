@@ -2191,6 +2191,82 @@ TEST_F(RenderingRegressionTest, BlueVegetationDoesNotTurnIdenticalOceanColorsInt
     }
 }
 
+TEST_F(RenderingRegressionTest, ReturnToPresentRefreshesMovingAndCulledStars)
+{
+    double magnitudes[4] = {}, radii[4] = {}, bloom[4] = {};
+    set(vmag_cache, static_cast<double*>(magnitudes));
+    set(angular_radius, static_cast<double*>(radii));
+    set(bloomrad_cache, static_cast<double*>(bloom));
+    set(here, here);
+    set(luminous_flux, luminous_flux);
+    set(lsyscache, std::vector<CelestialObject*>());
+    set(inside_galaxy_idx, inside_galaxy_idx);
+    Star *observer = make_star("Observer");
+    Star *moving = make_star("Moving field star");
+    Star *faint = make_star("Culled moving primary");
+    Star *companion = make_star("Culled companion");
+    observer->cenobj = observer;
+    for (Star *star : {moving, faint})
+    {
+        star->cenobj = star;
+        star->right_ascension = .2;
+        star->declination = .3;
+        star->distance = (star == moving ? 20 : 100) * parsec;
+        star->proper_motion_RA = .5 * arcsecond / oneyear;
+        star->proper_motion_decl = .2 * arcsecond / oneyear;
+        star->radial_velocity = 40000;
+        star->apparent_magnitude = star == moving ? 6 : 30;
+    }
+    companion->make_companion_of(faint, 'B');
+    companion->cenobj = faint;
+    companion->orbit->semimajor_axis = .2 * AU;
+    companion->orbit->period = 5 * oneday;
+    companion->apparent_magnitude = 30;
+    set(whereami, observer->seqno);
+    set(mycenobj, static_cast<CelestialObject*>(observer));
+    set(view_mode, vm_spaceship);
+    set(explorer, false);
+    set(selected, -1);
+    set(trackidx, -1);
+    set(editidx, -1);
+    set(local_tmstep, false);
+    set(redo_proper_motions, false);
+    set(global_brightness, 1.0);
+    set(JDnow, JDnow);
+    set(simnow, simnow);
+    ImGui::GetIO().KeyCtrl = false;
+    for (double years : {-10000000.0, 10000000.0})
+    {
+        simnow = J2000_TIME_T + years * oneyear;
+        JDnow = J2000 + years * oneyear / oneday;
+        observer->update_location(simnow);
+        here = observer->location;
+        moving->update_location(simnow);
+        faint->update_location(simnow);
+        companion->update_location(simnow);
+        ASSERT_FALSE(moving->is_really_truly_in_visible_box(Point(here)));
+        faint->is_really_truly_in_visible_box(Point(here));
+        companion->is_really_truly_in_visible_box(Point(here));
+        redo_proper_motions = false;
+        const double before = std::time(nullptr);
+        process_key_cmd_char('@');
+        EXPECT_GE(simnow, before);
+        EXPECT_LE(simnow, std::time(nullptr));
+        for (Star *star : {moving, faint})
+        {
+            const double elapsed = simnow - J2000_TIME_T + (J2000 - star->epoch) * oneday;
+            const Point expected = Point::from_ra_dec(star->right_ascension + star->proper_motion_RA * elapsed,
+                star->declination + star->proper_motion_decl * elapsed, star->distance + star->radial_velocity * elapsed);
+            EXPECT_LT((star->location.system_center - expected).magnitude(), 1);
+        }
+        EXPECT_TRUE(moving->is_in_visible_box(Point(here)));
+        EXPECT_FALSE(faint->is_in_visible_box(Point(here)));
+        EXPECT_LT((companion->location.system_center - faint->location.system_center).magnitude(), 1);
+        EXPECT_LT(companion->location.distance_to(faint->location), .201 * AU);
+        EXPECT_FALSE(redo_proper_motions);
+    }
+}
+
 TEST_F(RenderingRegressionTest, LargeTimeKeysRetainEarthOrLocalSolarTime)
 {
     double magnitudes[4] = {}, radii[4] = {}, bloom[4] = {};
