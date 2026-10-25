@@ -2191,6 +2191,177 @@ TEST_F(RenderingRegressionTest, BlueVegetationDoesNotTurnIdenticalOceanColorsInt
     }
 }
 
+TEST_F(RenderingRegressionTest, ConstellationLabelsIgnoreOffscreenPerimeterVertices)
+{
+    Star *observer = make_star("Observer");
+    make_star("Second star");
+    set(mycenobj, static_cast<CelestialObject*>(observer));
+    set(here, CelestialLocation());
+    set(whereami, -1);
+    set(show_labels, true);
+    set(show_consln, false);
+    set(show_axes, false);
+    set(shortnames, false);
+    set(labels2draw, std::vector<DrawLabel>());
+    set(constellations, std::vector<Constellation>(1));
+    Constellation &group = constellations[0];
+    group.name = "Test Region";
+    group.abbrev = "Tst";
+    group.vantage_resolved = true;
+    group.lines.emplace_back();
+    for (const Point &point : {Point(-2, -.1, 1), Point(2, .1, 1), Point(-.1, -2, 1), Point(.1, 2, 1)})
+    {
+        ConsBoundary boundary;
+        boundary.RA = atan2(-point.x, point.z);
+        boundary.decl = atan2(point.y, hypot(point.x, point.z));
+        group.bounds.push_back(boundary);
+    }
+    for (int order = 0; order < 4; ++order)
+    {
+        for (double yaw : {-.1, 0.0, .1})
+        {
+            azimuth = yaw;
+            labels2draw.clear();
+            draw_cons_lines();
+            ASSERT_EQ(labels2draw.size(), 1u);
+            EXPECT_EQ(labels2draw[0].text, group.name);
+            EXPECT_GT(labels2draw[0].pos.x, 0);
+            EXPECT_GT(labels2draw[0].pos.y, 0);
+        }
+        std::rotate(group.bounds.begin(), group.bounds.begin() + 1, group.bounds.end());
+    }
+    group.lines.clear();
+    labels2draw.clear();
+    draw_cons_lines();
+    EXPECT_EQ(labels2draw.size(), 1u);
+}
+
+TEST_F(RenderingRegressionTest, ConstellationLabelRectanglesRetainPartialEdgesAndRejectDistantAnchors)
+{
+    Star *observer = make_star("Observer");
+    make_star("Second star");
+    set(mycenobj, static_cast<CelestialObject*>(observer));
+    set(here, CelestialLocation());
+    set(whereami, -1);
+    set(show_labels, true);
+    set(show_consln, false);
+    set(show_axes, false);
+    set(shortnames, false);
+    set(labels2draw, std::vector<DrawLabel>());
+    set(constellations, std::vector<Constellation>(1));
+    auto &group = constellations[0];
+    group.name = "Test Region";
+    group.vantage_resolved = true;
+    for (const ImVec2 center : {ImVec2(1, 54), ImVec2(96, 1), ImVec2(191, 54), ImVec2(96, 107),
+        ImVec2(-10000, 54), ImVec2(10000, 54), ImVec2(96, -10000), ImVec2(96, 10000)})
+    {
+        const Point point((center.x - dispcx) / dispcx, (dispcy - center.y) / dispcx, 1);
+        ConsBoundary boundary;
+        boundary.RA = atan2(-point.x, point.z);
+        boundary.decl = atan2(point.y, hypot(point.x, point.z));
+        group.bounds = {boundary};
+        labels2draw.clear();
+        draw_cons_lines();
+        const bool visible = center.x > 0 && center.x < 192 && center.y > 0 && center.y < 108;
+        EXPECT_EQ(labels2draw.size(), visible ? 1u : 0u);
+    }
+    group.bounds[0].RA = _pi;
+    group.bounds[0].decl = 0;
+    labels2draw.clear();
+    draw_cons_lines();
+    EXPECT_TRUE(labels2draw.empty());
+}
+
+TEST_F(RenderingRegressionTest, CachedLabelsClipTheirFullTextBounds)
+{
+    set(labels2draw, std::vector<DrawLabel>());
+    for (const ImVec2 position : {ImVec2(-10, 40), ImVec2(80, -3), ImVec2(80, 40),
+        ImVec2(-1e20f, 40), ImVec2(1e20f, 40), ImVec2(80, -1e20f), ImVec2(80, 1e20f), ImVec2(NAN, 40)})
+    {
+        DrawLabel label;
+        label.font = nullptr;
+        label.fontsz = ImGui::GetFontSize();
+        label.pos = position;
+        label.color = IM_COL32_WHITE;
+        label.text = "Example label";
+        labels2draw.push_back(label);
+        const int before = ImGui::GetBackgroundDrawList()->VtxBuffer.Size;
+        draw_cached_labels();
+        const bool visible = std::isfinite(position.x) && position.x > -100 && position.x < 192
+            && position.y > -10 && position.y < 108;
+        EXPECT_EQ(ImGui::GetBackgroundDrawList()->VtxBuffer.Size > before, visible);
+        EXPECT_TRUE(labels2draw.empty());
+    }
+}
+
+TEST_F(RenderingRegressionTest, ConstellationLinesRetainCrossingsWithFarOffscreenEndpoints)
+{
+    Star *observer = make_star("Observer");
+    Star *first = make_star("First endpoint");
+    Star *second = make_star("Second endpoint");
+    set(mycenobj, static_cast<CelestialObject*>(observer));
+    set(here, CelestialLocation());
+    set(whereami, -1);
+    set(show_labels, false);
+    set(show_consln, true);
+    set(show_axes, false);
+    set(constellations, std::vector<Constellation>(1));
+    auto &group = constellations[0];
+    group.vantage_resolved = true;
+    ConsLine line;
+    line.a = first;
+    line.b = second;
+    group.lines.push_back(line);
+    first->drawnx = -1e12;
+    second->drawnx = 1e12;
+    first->drawny = second->drawny = 54;
+    auto *draw = ImGui::GetBackgroundDrawList();
+    draw_cons_lines();
+    ASSERT_GT(draw->VtxBuffer.Size, 0);
+    const int count = draw->VtxBuffer.Size;
+    first->drawny = second->drawny = -1e12;
+    draw_cons_lines();
+    EXPECT_EQ(draw->VtxBuffer.Size, count);
+    first->drawnx = first->drawny = -1e9;
+    second->drawnx = 100;
+    second->drawny = 54;
+    draw_cons_lines();
+    EXPECT_EQ(draw->VtxBuffer.Size, count);
+}
+
+TEST_F(RenderingRegressionTest, SupportingLinesClipCrossingsAndRejectOffscreenGeometry)
+{
+    ImGuiIO &io = ImGui::GetIO();
+    for (const auto &pair : {std::pair<ImVec2, ImVec2>{{-1000, 54}, {1000, 54}},
+        {{-1e29f, 54}, {1e29f, 54}}, {{96, -1e29f}, {96, 1e29f}}})
+    {
+        auto *draw = ImGui::GetBackgroundDrawList();
+        const int before = draw->VtxBuffer.Size;
+        wrapped_line(pair.first, pair.second, IM_COL32_WHITE, io);
+        ASSERT_GT(draw->VtxBuffer.Size, before);
+        for (int i = before; i < draw->VtxBuffer.Size; ++i)
+        {
+            EXPECT_GE(draw->VtxBuffer[i].pos.x, -4);
+            EXPECT_LE(draw->VtxBuffer[i].pos.x, 196);
+            EXPECT_GE(draw->VtxBuffer[i].pos.y, -4);
+            EXPECT_LE(draw->VtxBuffer[i].pos.y, 112);
+        }
+    }
+    const int before = ImGui::GetBackgroundDrawList()->VtxBuffer.Size;
+    wrapped_line(ImVec2(-1000, -1000), ImVec2(1000, -900), IM_COL32_WHITE, io);
+    wrapped_line(ImVec2(1000, -1000), ImVec2(1000, 1000), IM_COL32_WHITE, io);
+    wrapped_line(ImVec2(NAN, 40), ImVec2(50, 40), IM_COL32_WHITE, io);
+    EXPECT_EQ(ImGui::GetBackgroundDrawList()->VtxBuffer.Size, before);
+    set(view_mode, vm_skymap);
+    wrapped_line(ImVec2(190, 54), ImVec2(2, 54), IM_COL32_WHITE, io);
+    const auto &vertices = ImGui::GetBackgroundDrawList()->VtxBuffer;
+    EXPECT_GT(vertices.Size, before);
+    for (int i = before; i < vertices.Size; ++i)
+    {
+        EXPECT_TRUE(vertices[i].pos.x < 8 || vertices[i].pos.x > 184);
+    }
+}
+
 TEST_F(RenderingRegressionTest, ReturnToPresentRefreshesMovingAndCulledStars)
 {
     double magnitudes[4] = {}, radii[4] = {}, bloom[4] = {};

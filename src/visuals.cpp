@@ -27,6 +27,30 @@ ImVec2 xycoord;
 ImFont *global_font = nullptr, *Greek_font = nullptr;
 const char *Greek_symbol_mapping = "abgdezhuiklmnqoprstyfxjv";
 
+static bool label_on_screen(const ImVec2 &position, const ImVec2 &size)
+{
+    return std::isfinite(position.x) && std::isfinite(position.y)
+        && std::isfinite(size.x) && std::isfinite(size.y) && size.x > 0 && size.y > 0
+        && position.x < dispcx * 2 && position.y < dispcy * 2
+        && position.x + size.x > 0 && position.y + size.y > 0;
+}
+
+static ImVec2 label_size(const DrawLabel &label)
+{
+    ImFont *font = label.font ? label.font : ImGui::GetFont();
+    const float size = label.fontsz == 0 ? ImGui::GetFontSize() : static_cast<float>(label.fontsz);
+    if (!std::isfinite(size) || size <= 0) return ImVec2(0, 0);
+    return font->CalcTextSizeA(size, std::numeric_limits<float>::max(), 0, label.text.c_str());
+}
+
+static bool projected_position_available(float x, float y)
+{
+    // Offscreen endpoints can still form a visible line; only reject missing
+    // coordinates and the projection's behind-camera sentinel.
+    return std::isfinite(x) && std::isfinite(y)
+        && !(x == -1e9f && y == -1e9f) && !(x < -1e28f && y < -1e28f);
+}
+
 static bool exclude_observing_object(CelestialObject *object)
 {
     if (view_mode == vm_system || whereami < 0 || !cels || object != cels[whereami]) return false;
@@ -7985,7 +8009,6 @@ void draw_cons_lines()
     if (view_mode == vm_system) return;
 
     int i, l, m, n;
-    double dispw = dispcx*2, disph = dispcy*2;
     ImGuiIO& io = ImGui::GetIO();
 
     draw_actual_conslines = true;  // here.distance_to(cels[0]->location) < light_year*10;
@@ -8179,18 +8202,18 @@ void draw_cons_lines()
                 continue;
             }
 
-            int dx1, dx2, dy1, dy2;
+            float dx1, dx2, dy1, dy2;
 
             dx1 = constellations[i].lines[l].a->drawnx;
             dy1 = constellations[i].lines[l].a->drawny;
-            if (dx1 < -1e8 || dy1 < -1e8)
+            if (!projected_position_available(dx1, dy1))
             {
                 continue;
             }
 
             dx2 = constellations[i].lines[l].b->drawnx;
             dy2 = constellations[i].lines[l].b->drawny;
-            if (dx2 < -1e8 || dy2 < -1e8)
+            if (!projected_position_available(dx2, dy2))
             {
                 continue;
             }
@@ -8201,126 +8224,87 @@ void draw_cons_lines()
         }
     }
 
-    // Constellation labels
+    // A label depends on the group's direction, not on any perimeter point's projection.
     n = constellations.size();
     if (show_labels || (show_consln && !draw_actual_conslines))
     {
-        for (l = 0; l < n; l++)
+        for (l = 0; l < n; ++l)
         {
-            // if (!belongs_to_active_vantage(constellations[l]))
-            if (constellations[l].vantage.squared_magnitude())
+            if (constellations[l].vantage.squared_magnitude()) continue;
+            Point direction;
+            bool have_direction = false;
+            if (!constellations[l].bounds.empty())
             {
-                continue;
+                for (const auto &boundary : constellations[l].bounds)
+                {
+                    if (!std::isfinite(boundary.RA) || !std::isfinite(boundary.decl)) continue;
+                    Point point = to_viewer_plane(Point::from_ra_dec(boundary.RA, boundary.decl, light_year));
+                    if (airy_rock) point = refract_true_point(point);
+                    direction += point;
+                    have_direction = true;
+                }
             }
-            Point lconsdir;
-
-        // Constellation boundaries, drawn as a dashed line: connect every other
-        // pair of adjacent perimeter points, leaving the pairs in between as gaps.
-        m = constellations[l].bounds.size();
-        float pdx = 0, pdy = 0;
-        bool pvalid = false;
-        if (m) for (i=0; i<m; i++)
-        {
-            Point cbd = Point::from_ra_dec(constellations[l].bounds[i].RA, constellations[l].bounds[i].decl, light_year);
-            cbd = to_viewer_plane(cbd);
-            if (airy_rock) cbd = refract_true_point(cbd);
-            lconsdir += cbd;
-            Cartesian2D cart(cbd, azimuth+azimuth_correction, altitude, zoom);
-            float dx = (int)(dispcx + cart.x * dispcx), dy = (int)(dispcy + cart.y * dispcx);
-
-            bool valid = !(dx < 0 || dy < 0);
-            // TODO: Drawing boundaries kills performance.
-            // if (draw_actual_conslines && (i % 2) == 1 && pvalid && valid) wrapped_line(ImVec2(pdx, pdy), ImVec2(dx, dy), cbcol, io);
-
-            pdx = dx; pdy = dy; pvalid = valid;
-        }
-        else
-        {
-            m = constellations[l].lines.size();
-            if (m) for (i=0; i<m; i++)
+            else
             {
-                Star *s1 = constellations[l].lines[i].a, *s2 = constellations[l].lines[i].b;
-                if (s1) { lconsdir += (Point(s1->location) - Point(here)); pvalid = true; }
-                if (s2) { lconsdir += (Point(s2->location) - Point(here)); pvalid = true; }
+                for (const auto &line : constellations[l].lines)
+                {
+                    for (Star *star : {line.a, line.b})
+                    {
+                        if (!star || star->deleted) continue;
+                        direction += Point(star->location) - Point(here);
+                        have_direction = true;
+                    }
+                }
+                direction = to_viewer_plane(direction, 1);
             }
-            else continue;
-
-            lconsdir = to_viewer_plane(lconsdir, 1);
-        }
-
-        if (!pvalid) continue;
-        if (!constellations[l].lines.size()) continue;
-        Cartesian2D cart(lconsdir, azimuth+azimuth_correction, altitude, zoom);
-        float dx = (int)(dispcx + cart.x * dispcx), dy = (int)(dispcy + cart.y * dispcx);
-        // std::cout << constellations[l].vantage << ":" << constellations[l].name << " @ " << cart.x << "," << cart.y << std::endl;
-
-        if (dx < 0 || dy < 0) continue;
-        std::string dispname = (shortnames ? constellations[l].abbrev : constellations[l].name);
-        ImVec2 sz = ImGui::CalcTextSize(dispname.c_str());
-        dx -= sz.x/2;
-        dy -= sz.y/2;
-        if (dx >= 0 && dx < dispw && dy >= 0 && dy < disph)
-        {
+            if (!have_direction || !(direction.squared_magnitude() > 0)) continue;
+            if (view_mode == vm_horizon && direction.y < 0) continue;
+            const Cartesian2D cart(direction, azimuth + azimuth_correction, altitude, zoom);
+            DrawLabel label;
+            label.font = global_font;
+            label.text = shortnames ? constellations[l].abbrev : constellations[l].name;
+            const ImVec2 size = label_size(label);
+            label.pos = ImVec2(dispcx + cart.x * dispcx - size.x * .5f,
+                dispcy + cart.y * dispcx - size.y * .5f);
+            if (!label_on_screen(label.pos, size)) continue;
+            label.color = Color::ensure_wcag_contrast(global_style.conslbl_color, whtbkgd, 2.9, 3.5, true);
             #if cache_labels
-            if (view_mode != vm_horizon || lconsdir.y >= 0)
-            {
-                DrawLabel llbl;
-                llbl.font = global_font;
-                llbl.pos = ImVec2(dx, dy);
-                llbl.color = Color::ensure_wcag_contrast(global_style.conslbl_color, whtbkgd, 2.9, 3.5, true);
-                llbl.text = dispname;
-                labels2draw.push_back(llbl);
-            }
+            labels2draw.push_back(label);
             #else
-            ImGui::GetBackgroundDrawList()->AddText(ImVec2(dx, dy),
-                rgba_apply_redlight(Color::ensure_wcag_contrast(global_style.conslbl_color, whtbkgd, 2.9, 3.5, true)),
-                dispname.c_str() );
+            ImGui::GetBackgroundDrawList()->AddText(label.font, label.fontsz, label.pos,
+                rgba_apply_redlight(label.color), label.text.c_str());
             #endif
         }
     }
-}
 
     if (show_axes)
     {
         Point axisdir[6] = {xaxis, yaxis, zaxis, center-xaxis, center-yaxis, center-zaxis};
-        for (i=0; i<6; i++)
+        for (i = 0; i < 6; ++i)
         {
-            Point laxdir = to_viewer_plane(axisdir[i]);
-            if (airy_rock) laxdir = refract_true_point(laxdir);
-            Cartesian2D cart(laxdir, azimuth+azimuth_correction, altitude, zoom);
-            float dx = (int)(dispcx + cart.x * dispcx), dy = (int)(dispcy + cart.y * dispcx);
-
-            if (dx < 0 || dy < 0) continue;
-            ImVec2 sz(64,64);
-            dx -= sz.x/2;
-            dy -= sz.y/2;
-            if (dx >= 0 && dx < dispw && dy >= 0 && dy < disph)
+            Point direction = to_viewer_plane(axisdir[i]);
+            if (airy_rock) direction = refract_true_point(direction);
+            const Cartesian2D cart(direction, azimuth + azimuth_correction, altitude, zoom);
+            DrawLabel label;
+            label.font = global_font;
+            label.fontsz = 64;
+            label.text = (i < 3 ? "+" : "-");
+            switch (i % 3)
             {
-                std::string axname = (i<3) ? "+" : "-";
-                ImU32 axcolor;
-
-                switch (i % 3)
-                {
-                    case 0: axname += std::string("X"); axcolor = IM_COL32(255, 0, 0, 255); break;
-                    case 1: axname += std::string("Y"); axcolor = IM_COL32(0, 255, 0, 255); break;
-                    case 2: axname += std::string("Z"); axcolor = IM_COL32(0, 0, 255, 255); break;
-                }
-
-                #if cache_labels
-                DrawLabel llbl;
-                llbl.font = global_font;
-                llbl.fontsz = 64;
-                llbl.pos = ImVec2(dx, dy);
-                llbl.color = rgba_apply_redlight(axcolor);
-                llbl.text = axname;
-                labels2draw.push_back(llbl);
-                #else
-                ImGui::GetBackgroundDrawList()->AddText(global_font, 64,
-                    ImVec2(dx, dy),
-                    axcolor,
-                    axname.c_str());
-                #endif
+                case 0: label.text += "X"; label.color = IM_COL32(255, 0, 0, 255); break;
+                case 1: label.text += "Y"; label.color = IM_COL32(0, 255, 0, 255); break;
+                case 2: label.text += "Z"; label.color = IM_COL32(0, 0, 255, 255); break;
             }
+            const ImVec2 size = label_size(label);
+            label.pos = ImVec2(dispcx + cart.x * dispcx - size.x * .5f,
+                dispcy + cart.y * dispcx - size.y * .5f);
+            if (!label_on_screen(label.pos, size)) continue;
+            #if cache_labels
+            labels2draw.push_back(label);
+            #else
+            ImGui::GetBackgroundDrawList()->AddText(label.font, label.fontsz, label.pos,
+                rgba_apply_redlight(label.color), label.text.c_str());
+            #endif
         }
     }
 }
@@ -8329,6 +8313,7 @@ void draw_cached_labels()
 {
     for (const DrawLabel& llbl : labels2draw)
     {
+        if (!label_on_screen(llbl.pos, label_size(llbl))) continue;
         ImGui::GetBackgroundDrawList()->AddText(llbl.font, llbl.fontsz, llbl.pos, rgba_apply_redlight(llbl.color), llbl.text.c_str());
     }
     labels2draw.clear();

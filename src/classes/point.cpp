@@ -473,30 +473,69 @@ void wrapped_line(ImVec2 term1, ImVec2 term2, ImU32 color, ImGuiIO& io)
 
 void wrapped_line(ImVec2 term1, ImVec2 term2, ImU32 color, float thickness, ImGuiIO& io)
 {
-    int dcx = (int)io.DisplaySize.x / 2;
-    double wrap_w = 2.0 * dcx * zoom;
+    if (!(io.DisplaySize.x > 0) || !(io.DisplaySize.y > 0) || !(thickness > 0) || !std::isfinite(thickness)) return;
+    const auto draw_segment = [&](ImVec2 first, ImVec2 second)
+    {
+        if (!std::isfinite(first.x) || !std::isfinite(first.y)
+            || !std::isfinite(second.x) || !std::isfinite(second.y)) return;
+        // Clip the centerline outside the viewport far enough to retain its stroke fringe.
+        const double margin = std::max(1.0f, thickness) * .5 + 1;
+        const double left = -margin, top = -margin;
+        const double right = io.DisplaySize.x + margin, bottom = io.DisplaySize.y + margin;
+        double x1 = first.x, y1 = first.y, x2 = second.x, y2 = second.y;
+        const auto outside = [&](double x, double y)
+        {
+            return (x < left ? 1 : x > right ? 2 : 0) | (y < top ? 4 : y > bottom ? 8 : 0);
+        };
+        for (int iteration = 0; iteration < 8; ++iteration)
+        {
+            const int a = outside(x1, y1), b = outside(x2, y2);
+            if (!(a | b))
+            {
+                ImGui::GetBackgroundDrawList()->AddLine(ImVec2(x1, y1), ImVec2(x2, y2), rgba_apply_redlight(color), thickness);
+                return;
+            }
+            if (a & b) return;
+            const int code = a ? a : b;
+            double x, y;
+            if (code & 12)
+            {
+                y = code & 4 ? top : bottom;
+                x = x1 + (x2 - x1) * ((y - y1) / (y2 - y1));
+            }
+            else
+            {
+                x = code & 1 ? left : right;
+                y = y1 + (y2 - y1) * ((x - x1) / (x2 - x1));
+            }
+            if (!std::isfinite(x) || !std::isfinite(y)) return;
+            if (a) { x1 = x; y1 = y; }
+            else { x2 = x; y2 = y; }
+        }
+    };
+    double wrap_w = io.DisplaySize.x * zoom;
     if ((view_mode == vm_skymap || view_mode == vm_sunclock) && wrap_w > 0)
     {
-        double dx = term2.x - term1.x;
+        double dx = double(term2.x) - term1.x;
         if (dx > wrap_w * 0.5)
         {
             ImVec2 term2_wrapped(term2.x - wrap_w, term2.y);
             ImVec2 term1_wrapped(term1.x + wrap_w, term1.y);
-            ImGui::GetBackgroundDrawList()->AddLine(term1, term2_wrapped, rgba_apply_redlight(color), thickness);
-            ImGui::GetBackgroundDrawList()->AddLine(term1_wrapped, term2, rgba_apply_redlight(color), thickness);
+            draw_segment(term1, term2_wrapped);
+            draw_segment(term1_wrapped, term2);
             return;
         }
         else if (dx < -wrap_w * 0.5)
         {
             ImVec2 term2_wrapped(term2.x + wrap_w, term2.y);
             ImVec2 term1_wrapped(term1.x - wrap_w, term1.y);
-            ImGui::GetBackgroundDrawList()->AddLine(term1, term2_wrapped, rgba_apply_redlight(color), thickness);
-            ImGui::GetBackgroundDrawList()->AddLine(term1_wrapped, term2, rgba_apply_redlight(color), thickness);
+            draw_segment(term1, term2_wrapped);
+            draw_segment(term1_wrapped, term2);
             return;
         }
     }
 
-    ImGui::GetBackgroundDrawList()->AddLine(term1, term2, rgba_apply_redlight(color), thickness);
+    draw_segment(term1, term2);
 }
 
 Rotation align_points_3d(Point point, Point align, Point center)
