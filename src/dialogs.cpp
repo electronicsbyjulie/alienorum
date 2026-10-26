@@ -19,11 +19,29 @@
 #include "housekeeping.h"
 #include "classes/clouds_gpu.h"
 #include "classes/orbit_spacing.h"
+#include "classes/watercoverage.h"
+#include "visuals.h"
 #include <cstdint>
 #include <algorithm>
 #include <cctype>
+#include <unordered_map>
 
 using namespace alienorum;
+
+namespace
+{
+    std::unordered_map<int, WaterCoverageEditor> surface_editors;
+}
+
+void update_surface_edit_targets()
+{
+    for (auto it = surface_editors.begin(); it != surface_editors.end();)
+    {
+        it->second.poll(shore_displacement);
+        if (!it->second.has_target() && (!objedtwnd || it->first != editidx)) it = surface_editors.erase(it);
+        else ++it;
+    }
+}
 
 // DST transition windows below are evaluated against local *standard* time
 // (viewer_tz with no DST added), except EU/UK where the legal definition is
@@ -1245,6 +1263,7 @@ void draw_objedit_window(ImGuiIO& io)
     }
 
     CelestialObject *cel = cels[editidx];
+    WaterCoverageEditor &water_editor = surface_editors[cel->seqno];
     Orbit *orb = cel->orbit;
 
     ImGui::Begin("Edit Object", &objedtwnd, 0);
@@ -2377,10 +2396,27 @@ void draw_objedit_window(ImGuiIO& io)
                     if ((uses_rocky_map(p->type) || p->has_water) && !randomize_txgen)
                     {
                         ImGui::SameLine();
-                        ImGui::Text("%s", "Water up to:    ");
+                        ImGui::Text("%s", "Water cover %:");
                         ImGui::SameLine();
                         ImGui::SetNextItemWidth(txtwid*.6);
-                        ImGui::InputFloat("##edth2olvl", &p->has_water);
+                        water_editor.refresh(p, shore_displacement);
+                        double coverage_percent = water_editor.percent();
+                        ImGui::BeginDisabled(!water_editor.editable());
+                        if (ImGui::InputDouble("##edth2olvl", &coverage_percent, 0, 0, "%.1f")
+                            && std::isfinite(coverage_percent))
+                        {
+                            water_editor.edit(coverage_percent);
+                        }
+                        ImGui::EndDisabled();
+                        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                        {
+                            if (generating_fic_texture)
+                                ImGui::SetTooltip("Surface generation is in progress.");
+                            else if (!water_editor.editable())
+                                ImGui::SetTooltip("This planet type forces an ocean surface. Choose a rocky type to vary its coverage.");
+                            else
+                                ImGui::SetTooltip("Estimated surface area below the waterline, including frozen water.\nEnter a target percentage, then press Update to generate the surface.\nImported maps keep their original colors until Update.\nIf elevations are absent, the target is applied after they are generated.");
+                        }
                     }
 
                     ImGui::Text("%s", "Water vapor %");
@@ -2591,11 +2627,13 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::SameLine();
             if (!generating_fic_texture && ImGui::Button("Update"))
             {
+                water_editor.prepare_generation(cel);
                 cel->mark_all_maps_for_regen();
             }
             ImGui::SameLine();
             if (!generating_fic_texture && ImGui::Button("Regenerate"))
             {
+                water_editor.prepare_generation(cel, true);
                 ((Planet*)cel)->preserve_loaded_parameters = false;
                 cel->rnd_seed = rand();
                 if (randomize_txgen) ((Planet*)cel)->vegetation_r = ((Planet*)cel)->vegetation_g = ((Planet*)cel)->vegetation_b = 0;     // force regenerate
@@ -2604,6 +2642,7 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::SameLine();
             if (!generating_fic_texture && ImGui::Button("Reseed"))
             {
+                water_editor.prepare_generation(cel, true);
                 cel->rnd_seed = 0;
                 cel->randomize();
             }

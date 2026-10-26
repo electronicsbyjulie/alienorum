@@ -785,6 +785,7 @@ int main (int argc, char** argv)
 
             // Dialogs
             editing = false;
+            update_surface_edit_targets();
             if (objedtwnd) draw_objedit_window(io);
             if (explorer) draw_system_explorer(io);
             if (addcelwnd) draw_addcel_window(io);

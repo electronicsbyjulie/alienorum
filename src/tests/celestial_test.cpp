@@ -10,7 +10,9 @@
 #include "../classes/cat.h"
 #include "../classes/surfacebiomes.h"
 #include "../classes/surfacenavigation.h"
+#include "../classes/watercoverage.h"
 #include "universe_fixture.h"
+#include "../loaders.h"
 #include <functional>
 
 using namespace alienorum;
@@ -1516,4 +1518,115 @@ TEST(CelestialLocaleTest, InvertedMapLocalesRetainDegreeCoordinates)
     EXPECT_EQ(body.nearest_locale(-30 * fiftyseventh, -120 * fiftyseventh, 5000), &body.locales[1]);
     delete[] body.locales;
     body.locales = nullptr;
+}
+
+class CoverageTestMap : public ShoreTestMap
+{
+    public:
+    double scale;
+    CoverageTestMap(double bump_scale = 1000) : ShoreTestMap([](double, double) { return false; }), scale(bump_scale)
+    {
+        bump_data = new double[allocated];
+        profile([](double latitude) { return pow((sin(latitude) + 1) * .5, 2); });
+    }
+    void profile(const std::function<double(double)> &height)
+    {
+        for (unsigned long row = 0; row < image_height; ++row)
+        {
+            const auto bounds = surface_pixel_bounds(0, row);
+            const double elevation = scale * (height((bounds[0] + bounds[1]) * .5) - .5);
+            for (unsigned long col = 0; col < image_width; ++col) bump_data[row * image_width + col] = elevation;
+        }
+        touch_gen();
+    }
+};
+
+TEST_F(ShoreNavigationTest, WaterCoverageConvertsSurfaceAreaInsteadOfScalingWaterLevel)
+{
+    Planet *planet = world([](double, double) { return false; });
+    delete planet->surf_map;
+    planet->surf_map = new CoverageTestMap();
+    planet->m_bump_scale = 1000;
+    planet->temperature = 320;
+    planet->sidereal_rotational_period = oneday;
+    planet->has_water = .25;
+    WaterCoverage coverage;
+    coverage.refresh(planet, 0);
+    ASSERT_TRUE(coverage.editable());
+    EXPECT_NEAR(coverage.percent(.25), 50, 1.6);
+    EXPECT_NEAR(coverage.level(50), .25, .02);
+    EXPECT_NEAR(coverage.percent(coverage.level(71)), 71, 1.6);
+    EXPECT_FLOAT_EQ(planet->has_water, .25);
+    EXPECT_FLOAT_EQ(coverage.level(-10), 0);
+    EXPECT_FLOAT_EQ(coverage.level(0), 0);
+    EXPECT_FLOAT_EQ(coverage.level(100), 1);
+    EXPECT_FLOAT_EQ(coverage.level(200), 1);
+    EXPECT_FLOAT_EQ(coverage.level(std::numeric_limits<double>::quiet_NaN()), 0);
+    EXPECT_DOUBLE_EQ(coverage.percent(0), 0);
+    EXPECT_DOUBLE_EQ(coverage.percent(1), 100);
+    static_cast<CoverageTestMap*>(planet->surf_map)->profile([](double) { return .9; });
+    coverage.refresh(planet, 0);
+    EXPECT_DOUBLE_EQ(coverage.percent(.25), 0);
+    EXPECT_NEAR(coverage.level(50), .9, .00001);
+    planet->temperature = 200;
+    coverage.refresh(planet, 0);
+    EXPECT_DOUBLE_EQ(coverage.percent(1), 100); // Submerged frozen regions still count toward geographic water coverage.
+}
+
+TEST_F(ShoreNavigationTest, ImportedWaterCoverageUsesEqualAreaAndAcceptsGenerationTarget)
+{
+    Planet *planet = world([](double lat, double) { return lat > _pi / 3; }, false);
+    WaterCoverage coverage;
+    coverage.refresh(planet, 0);
+    ASSERT_TRUE(coverage.ready());
+    EXPECT_FALSE(coverage.editable());
+    EXPECT_NEAR(coverage.percent(planet->has_water), 100 * (1 - sin(_pi / 3)) / 2, 1);
+    EXPECT_DOUBLE_EQ(coverage.percent(.1), coverage.percent(.9));
+    EXPECT_FLOAT_EQ(planet->has_water, 1);
+    WaterCoverageEditor editor;
+    editor.refresh(planet, 0);
+    ASSERT_TRUE(editor.editable());
+    editor.edit(90);
+    EXPECT_DOUBLE_EQ(editor.percent(), 90);
+    EXPECT_TRUE(editor.has_target());
+    EXPECT_FLOAT_EQ(planet->has_water, 1); // No arbitrary level is guessed without elevations.
+    editor.edit(20);
+    EXPECT_DOUBLE_EQ(editor.percent(), 20);
+    editor.edit(-10);
+    EXPECT_DOUBLE_EQ(editor.percent(), 0);
+    editor.edit(120);
+    EXPECT_DOUBLE_EQ(editor.percent(), 100);
+
+}
+
+TEST_F(ShoreNavigationTest, WaterCoverageTargetAppliesAfterFirstElevationGeneration)
+{
+    Planet *planet = world([](double, double) { return false; }, false);
+    planet->temperature = 320;
+    planet->sidereal_rotational_period = oneday;
+    planet->fictitious_map_height = 129;
+    planet->preserve_loaded_parameters = true;
+    WaterCoverageEditor editor;
+    editor.refresh(planet, 0);
+    editor.edit(90);
+    editor.prepare_generation(planet);
+    delete planet->surf_map;
+    planet->m_bump_scale = planet->estimate_bump_scale();
+    planet->surf_map = new CoverageTestMap(planet->m_bump_scale);
+    const bool old_randomize = randomize_txgen;
+    randomize_txgen = false;
+    editor.refresh(planet, 0);
+    EXPECT_NEAR(planet->has_water, .81, .03);
+    wait_for_texture_tasks();
+    editor.poll(0);
+    EXPECT_FALSE(editor.has_target());
+    EXPECT_NEAR(editor.percent(), 90, 2);
+    editor.edit(20);
+    editor.prepare_generation(planet);
+    planet->mark_all_maps_for_regen();
+    wait_for_texture_tasks();
+    editor.poll(0);
+    EXPECT_FALSE(editor.has_target());
+    EXPECT_NEAR(editor.percent(), 20, 2);
+    randomize_txgen = old_randomize;
 }

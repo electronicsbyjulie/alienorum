@@ -8,6 +8,7 @@ void draw_status_window(ImGuiIO &io);
 void draw_objinf_window(ImGuiIO &io);
 void draw_addcel_window(ImGuiIO &io);
 void draw_objedit_window(ImGuiIO &io);
+void update_surface_edit_targets();
 void draw_system_explorer(ImGuiIO &io);
 void draw_stellar_neighborhood(ImGuiIO &io);
 void draw_loc_window(ImGuiIO &io);
