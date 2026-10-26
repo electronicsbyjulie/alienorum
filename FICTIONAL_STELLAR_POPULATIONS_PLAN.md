@@ -1,6 +1,6 @@
 # Fictional stellar populations from galaxy imagery
 
-Status: proposal for discussion; no generator implementation yet. Written 2026-10-25 on the existing `fakestars` branch.
+Status: initial version implemented on the existing `fakestars` branch on 2026-10-26; user visual review and performance testing remain. The original plan was written 2026-10-25.
 
 ## Intended experience
 
@@ -21,11 +21,11 @@ Every generated component is a real application object with `user_added=true`. E
 | Constellations | `ExoConsGenerator::check_should_generate_for` and the existing generation entry points. | Verify new stars pass the existing eligibility checks and invalidate the relevant cached results when a batch changes. |
 | Object capacity | `MAX_CELOBJS` is currently 524,288, shared by all objects. | Apply a batch budget and check remaining capacity, including companions, before insertion. |
 
-The edited-only serialization path currently filters on `user_edited`. Setting only `user_added` does not by itself demonstrate inclusion in that path. Initialization must set the applicable dirty/edited state or adjust the save predicate generally, with round-trip tests for both flags.
+Implemented: edited-only serialization includes `user_edited` or `user_added` objects. Generated stars set both flags initially; tests also verify a generated star remains saved when its edited flag is cleared.
 
 ## Choosing the center
 
-Recommended first UI: **Populate Region…** in the galaxy context/menu flow, opening one dialog with a location preview and generation controls. It must also be reachable for the Milky Way without selecting its center in the sky.
+Implemented UI: **Object > Populate Region…** in the galaxy context/menu flow, opening one dialog with a location preview and generation controls. It must also be reachable for the Milky Way without selecting its center in the sky.
 
 1. **Remote galaxy image picker:** display its face-on image in a zoomable panel. Clicking places a crosshair. Show galactocentric radius, physical scale, height above the disk, and the outline of the proposed population sphere. Start at the midplane; a height field and side-view inset resolve the third coordinate.
 2. **Milky Way band picker:** display the existing panoramic band. Clicking supplies galactic longitude and latitude, but not distance. A distance slider/numeric field and a top-down/side-view diagram locate the point along that ray. Show all permitted disk intersections rather than silently choosing the nearer one.
@@ -33,7 +33,7 @@ Recommended first UI: **Populate Region…** in the galaxy context/menu flow, op
 4. **Suggest Location:** propose a point under the selected density model, preferring the advisory habitable region. Users can adjust it before generation. If a galaxy has no suitable image, offer an explicitly identified analytic model or explain that image-guided placement is unavailable.
 5. **Later convenience:** picking directly on the rendered galaxy can open the same dialog. That click defines a ray, so the depth choice still belongs in the preview. It must not pretend to identify a unique 3-D point.
 
-Display the radius, a live object-count estimate, density/detail setting, central Sunlike-star checkbox, population identifier, and Generate Preview / Add Stars / Cancel controls. Preview does not alter the universe. After insertion offer Visit Center, keep the destination bookmarked, and retain the existing individual-object editing and deletion controls. Remove Region is deferred to a future version. Alienorum has no undo feature.
+Display the radius, adjustable Star count, randomized F8V–K2V center-star slider, population identifier, random seed, cluster toggle, and Generate Preview / Add Stars / Cancel Preview controls. The initial version always creates a new single center star. Preview does not alter the universe. After insertion offer Visit Center, keep the destination bookmarked, and retain the existing individual-object editing and deletion controls. Remove Region is deferred to a future version. Alienorum has no undo feature.
 
 ## What pixels can and cannot determine
 
@@ -68,7 +68,7 @@ The panoramic image alone cannot locate a spiral arm or dark cloud in depth. The
 ## Generating the population
 
 1. Establish a stable galaxy identity, region center, radius, model version, and deterministic random seed. Use independent random streams for positions, stellar properties, multiplicity, and orientations so a UI detail change cannot silently scramble unrelated results.
-2. Construct density and population-mixture fields from the source image and selected depth model. Use a Poisson process for counts and density-weighted volume sampling for locations; uniform spherical proposals use radius proportional to the cube root of a uniform random variable.
+2. Construct density and population-mixture fields from the source image and selected depth model. Condition the population on the requested Star count, including companions, and use density-weighted volume sampling for locations; uniform spherical proposals use radius proportional to the cube root of a uniform random variable.
 3. Sample an evolved, present-day population consistent with a mass distribution and broad age/metallicity assumptions. Blue areas increase the young, hot component; red areas can contain cool dwarfs and evolved giants. Do not equate redness exclusively with old age, or sample an initial mass function without stellar lifetimes.
 4. Derive internally consistent spectral type, mass, radius, temperature, luminosity, colors, age/metallicity estimates, and rotation. Retain the app's metallicity functionality; synthetic metallicities have explicit fictional provenance.
 5. Offer a central single star with a spectral-type slider from F8V through K2V and a randomized default. Give it the normal generated designation; do not add a default proper name. Users can rename it with Shift+E. Reusing an existing center star would mean selecting an already present star as the location and destination for a new surrounding population, without creating a second star at the same position or changing that existing star. This alternative is deferred to future work: the initial version always creates a new center star. Supporting an existing center also requires making room for existing objects throughout the 1,000-light-year region. Keep a newly generated anchor outside statistical population-validation totals.
@@ -109,7 +109,7 @@ Show a translucent advisory region and prefer it for Suggest Location; allow unr
 
 One historical Milky Way model proposed a 7–9 kpc annulus, while other work questions a narrow fixed boundary: [Lineweaver, Fenner & Gibson (2004)](https://arxiv.org/abs/astro-ph/0401024), [Prantzos (2006 preprint)](https://arxiv.org/abs/astro-ph/0612316). Use this as an explicitly selectable model, not a universal measured ring. Do not copy those physical radii to every remote galaxy. Where the available morphology, scale, and population information cannot support a habitable-zone model, display a heuristic preference with its assumptions or mark the advice unavailable.
 
-## Decisions to settle before coding
+## Historical proposals and developer decisions
 
 | Question | Recommended starting point | Remaining uncertainty | Developer notes |
 | --- | --- | --- | --- |
@@ -128,7 +128,7 @@ One historical Milky Way model proposed a 7–9 kpc annulus, while other work qu
 
 The developer notes above are accepted direction. Plausible calibration, depth, habitability, and orientation parameters are delegated implementation choices, rather than additional approval questions. Preserve both aligned and misaligned companion configurations; use nearby-star and bright-star catalog populations as complementary guides. All galaxies are supported, overlapping regions are allowed, and background subtraction and galactic motion are deferred.
 
-### Remaining discussion, one decision at a time
+### Settled discussion items
 
 1. **Existing center star — settled, deferred:** The initial version creates a new center star. Future work may allow populating around an existing star, accounting for existing objects throughout the 1,000-light-year radius rather than generating a competing population over them. This added complexity is excluded from the initial version.
 2. **Generated designations — settled:** Use `FIC <galaxy-code> <region-code> <system-number>`, for example `FIC M31 R7K2 000042`, with existing companion suffix conventions. Region codes distinguish generation batches, including overlapping regions. Keep fictional identities separate from real catalog identifiers and allow user renaming with Shift+E. Accepted on 2026-10-26.
@@ -148,9 +148,42 @@ Menu placement can be proposed in the UI prototype under the instruction to try 
 7. Benchmark construction time, frame time near and far from the region, constellation generation, memory, and JSON save/reload at several budgets. Existing draw culling remains enabled throughout.
 8. Add acceptance criteria for the approved design and implementation results. If new non-generated runtime model tables or image metadata are added, synchronize CMake and Windows packaging; developer-only tools and this plan do not belong in the installer.
 
-Only this plan is committed at this stage. Implementation follows after the outstanding choices are settled.
+Implementation is committed in the same branch. The following handoff records the shipped initial behavior and its verification limits.
 
 ## Future work
 
 - Remove Region, including a policy for edited systems and later-added descendants. Deferred on 2026-10-26.
 - Populate around an existing star, preserving its properties and accounting for existing objects throughout the 1,000-light-year generation radius. Deferred by decision on 2026-10-26; the initial version creates a new center star.
+
+## Initial-version handoff — 2026-10-26
+
+### How to try it
+
+1. Restart the built application and open **Object > Populate Region…**. The Milky Way is selected by default; selecting a galaxy in the application before opening the dialog selects that galaxy instead. The searchable galaxy list includes every loaded galaxy.
+2. For a remote galaxy, click its image or enter galactocentric radius, azimuth, and height. For the Milky Way, choose a direction on the band and adjust distance from the Sun; the coordinate fields remain synchronized. Image zoom and top/side diagrams assist placement. Galaxies without an image use an explicitly described analytic model.
+3. Use **Suggest Location** for an advisory habitable location. Default advice uses a broad morphology-scaled region, following Prantzos's caution about a uniquely bounded annulus. The Milky Way also offers the historical 7–9 kpc annulus. These are fictional placement guides, not measured habitability maps.
+4. Start with **10,000 stars**, a **1,000-light-year radius**, the randomized **F8V–K2V center slider**, and open clusters enabled. The count includes the center and all companion stars. Change the seed for a different reproducible draw.
+5. Choose **Generate Preview**. It reports stars, systems, clusters, local and naked-eye counts, elapsed time, and approximate storage, with a population diagram. It does not alter the universe. **Cancel Preview** stops generation without inserting partial objects.
+6. Choose **Add Stars**, then **Visit Center**. The center is bookmarked in Favorite Stars. Save the universe through the existing interface; normal automatic universe saving also includes the generated stars. Rename or edit them with the existing controls.
+7. Visit a generated companion, check its orbit and N-panel fictional pole coordinates, switch label modes, and inspect the new sky and automatically generated exo-constellations. Shift+X continues to exclude synthetic poles. Save, reload, and revisit the bookmarked center.
+
+### Implementation choices
+
+- `src/classes/fictionalstars.cpp` provides deterministic image sampling, galaxy frames, morphology/depth priors, field and cluster populations, companion generation, staging, validation, and insertion. `src/fictionalstars_ui.cpp` supplies the dialog and preview workflow. No new runtime data assets were added.
+- CPU source fields average linearized original pixels at bounded resolution while preserving aspect ratio. External galaxies use the renderer's original solar-view UV conventions. The Milky Way uses the existing band rotation, its actual ±30-degree latitude span, a fixed original solar observer, and numerical line-of-sight normalization of an analytic disk prior. Cartesian sampling avoids applying a distance-squared volume weight twice.
+- Relative image brightness controls placement density; image color guides population age and young/old placement. Existing main-sequence tables support a nearby-dwarf population with a bright-star tail, plus evolved giants and white dwarfs. Multiplicity varies with primary population. Clusters have shared ages and compact spatial distributions. This is a plausible fictional mixture inspired by nearby-star and bright-star catalogs, not a fit that reconstructs individual real stars.
+- Most represented stars are local to the center. Distant represented stars satisfy the center's magnitude-6.5 selection; faint stars are retained locally within about 25 light years. Only luminous stars reach the outer region. The explicit count is a representative population, not a claim of physical completeness.
+- Galaxy coordinates and local offsets remain separate. Random system planes are isotropic, with both correlated and misaligned spin/companion orientations. `known_poles` remains false. Synthetic iron abundances and model uncertainties remain available to existing metallicity-informed planet classification.
+- Stable fictional IDs and original galaxy identities are independent of visible star names. Bounded galaxy codes and compact region IDs keep the complete designation and component suffix within existing 40-byte storage. Regions may overlap; generation does not reconcile their objects or existing catalog stars.
+- Universe JSON contains explicit properties, positions, planes, orbits, stable identities, generation controls, image hashes, and favorite state. Reload does not require images or regeneration. Fictional stars are excluded from condensed catalog writers. Import rejects duplicate fictional identities and restores companion memberships and favorites without duplication.
+- Preview memory and JSON estimates are approximate; actual saved size is recorded in the benchmark below. Existing magnitude and label filters remain active. Synthetic visibility bounds use intrinsic luminosity so a galaxy-relative coordinate distance cannot incorrectly hide locally visible stars.
+
+### Verification and remaining review
+
+Acceptance criteria **F01–F15** document the implementation. Dedicated checks cover deterministic output, counts, falloff, clusters, companions, isotropic planes, source colors, frame transforms, long names, cancellation, capacity, invalid staged physics, overlapping regions, archive isolation, stable imports, fresh reloads, bookmarks, visibility, and existing constellation generation. UI tests exercise image and analytic pickers, Generate Preview, Add Stars at the default budget, and Visit Center in an isolated OpenGL context.
+
+User review still determines the preferred appearance, population density, cluster prominence, center-placement interface, and interactive frame rate. Windows installer execution is outside this session's verification; the CMake sources include the generator and dialog, and the runtime payload has no added assets.
+
+The broad regression run also exposes existing test debt: five cold-atmosphere expectations conflict with condensation code already disabled before this feature; the Alpha Mensae constellation test reports reused Ori/Tau abbreviations; and catalog photometry reports 48 pre-existing discrepancies. A separately built pre-feature revision, `78aa3e9`, reproduces those results with the same catalogs. Its isolated photometry test additionally crashes during teardown after reporting the matching discrepancies. These unrelated behaviors were left unchanged.
+
+Final verification: Linux Make and CMake builds pass; all 17 dedicated fictional-region tests and 68 enabled rendering tests pass, with six optional GPU checks skipped. In the synthetic default-budget fixture, generation of 10,000 stars in 6,840 systems took 0.324 seconds; the actual JSON was 62.51 MiB, saving took 1.58 seconds, and reload took 5.09 seconds. These are fixture measurements on this computer rather than full-universe interactive FPS. Acceptance criteria F01–F15 and their verification entry record the completed initial-version handoff.
