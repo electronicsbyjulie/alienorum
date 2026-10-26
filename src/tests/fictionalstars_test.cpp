@@ -5,6 +5,7 @@
 #include <fstream>
 #include <set>
 #include "../classes/fictionalstars.h"
+#include "../classes/cat.h"
 #include "../classes/exocons.h"
 #include "../housekeeping.h"
 #include "universe_fixture.h"
@@ -22,6 +23,7 @@ class FictionalStarsTest : public UniverseFixture
         UniverseFixture::SetUp();
         Star::load_main_seq_dat();
         make_star("Sun");
+        favestars.clear();
         model.key = "TEST";
         model.code = "TEST";
         model.name = "Test galaxy";
@@ -47,6 +49,7 @@ class FictionalStarsTest : public UniverseFixture
                 system->unlink();
                 delete system;
             }
+        favestars.clear();
         delete_the_universe();
         std::filesystem::remove_all(temporary);
         UniverseFixture::TearDown();
@@ -92,7 +95,9 @@ TEST_F(FictionalStarsTest, FalloffPreservesNearbyDwarfsAndBrightDistantStars)
         const double distance = delta.magnitude();
         EXPECT_LE(distance, region.radius_ly + 1e-5);
         if (distance > 25.001)
+        {
             EXPECT_LE(star->absolute_magnitude + 5*log10(distance*light_year/(10*parsec)), 6.501) << star->name;
+        }
         if (distance > 100) ++far;
         if (star->spectral_type[0] == 'M' && star->is_main_sequence()) ++dwarfs;
         if (strstr(star->spectral_type, "III")) ++giants;
@@ -271,6 +276,8 @@ TEST_F(FictionalStarsTest, FramesSupportMilkyWaySpheroidsIrregularsAndMissingIma
     galaxy.reference_galaxy = true;
     auto milky = FictionalGalaxy::from_galaxy(galaxy);
     EXPECT_EQ(milky.key, "MW");
+    const Point disk(1234, 567, 890);
+    EXPECT_NEAR(milky.disk_offset(milky.world_offset(disk)).distance_to(disk), 0, 1e-8);
     EXPECT_NEAR(milky.from_milky_ray(0, 0, 8200*parsec/light_year).magnitude(), 0, 1e-8);
 }
 
@@ -284,4 +291,182 @@ TEST_F(FictionalStarsTest, DefaultBudgetBenchmark)
     std::cout << "Fictional benchmark: " << batch.stars.size() << " stars, " << batch.systems
         << " systems, " << batch.elapsed_seconds << " seconds, estimated JSON "
         << batch.estimated_save_bytes/(1024.0*1024) << " MiB" << std::endl;
+}
+
+TEST_F(FictionalStarsTest, BluePixelsFavorYoungHotPopulationsAndBrightnessWeightsDensity)
+{
+    region.star_count = 1500;
+    region.clusters = false;
+    model.image.width = model.image.height = 1;
+    model.image.rgb = {1, 0.1, 0.01};
+    auto red = generate_fictional_stars(model, region);
+    model.image.rgb = {0.01, 0.1, 1};
+    auto blue = generate_fictional_stars(model, region);
+    int red_hot = 0, blue_hot = 0;
+    double red_age = 0, blue_age = 0;
+    for (const auto& star : red.stars)
+    {
+        if (star->temperature > 10000) ++red_hot;
+        red_age += star->fictional_origin.at("age_gyr").get<double>();
+    }
+    for (const auto& star : blue.stars)
+    {
+        if (star->temperature > 10000) ++blue_hot;
+        blue_age += star->fictional_origin.at("age_gyr").get<double>();
+        double metal, uncertainty;
+        EXPECT_TRUE(star->calibrated_iron_abundance(metal, uncertainty));
+    }
+    EXPECT_GT(blue_hot, red_hot + 20);
+    EXPECT_LT(blue_age, red_age*0.7);
+    model.image.rgb = {0.01, 0.01, 0.01};
+    const double dim = model.density(region.center_ly);
+    model.image.rgb = {0.8, 0.8, 0.8};
+    EXPECT_GT(model.density(region.center_ly), dim*10);
+}
+
+TEST_F(FictionalStarsTest, LongGalaxyNamesKeepDistinctCountersAndRejectOversizedIdentifiers)
+{
+    Galaxy galaxy;
+    strcpy(galaxy.name, "A long fictional galaxy designation");
+    galaxy.volumetric_mean_radius = 50000*light_year;
+    auto frame = FictionalGalaxy::from_galaxy(galaxy);
+    region.region_id = fictional_region_id();
+    auto batch = generate_fictional_stars(frame, region);
+    ASSERT_TRUE(batch.error.empty()) << batch.error;
+    std::set<std::string> names;
+    for (const auto& star : batch.stars)
+    {
+        EXPECT_LT(strlen(star->name), size_t(name_max_len));
+        EXPECT_TRUE(names.insert(star->name).second);
+        EXPECT_EQ(star->namelen, strlen(star->name));
+    }
+    region.region_id = std::string(80, 'X');
+    auto invalid = generate_fictional_stars(frame, region);
+    EXPECT_FALSE(invalid.error.empty());
+    EXPECT_TRUE(invalid.stars.empty());
+}
+
+TEST_F(FictionalStarsTest, FreshUniverseReloadRetainsSyntheticPhysicsWithoutSourceFiles)
+{
+    region.star_count = 80;
+    auto batch = generate_fictional_stars(model, region);
+    std::string message;
+    ASSERT_TRUE(batch.install(message));
+    static_cast<Star*>(cels[1])->is_faved = true;
+    std::vector<json> expected;
+    for (int i = 1; cels[i]; ++i) expected.push_back(static_cast<Star*>(cels[i])->to_json());
+    const auto file = temporary / "fresh.json";
+    {
+        std::fstream output(file, std::ios::out);
+        ASSERT_TRUE(Serialization::save_all(output, cels, true));
+    }
+    for (int i = 1; cels[i]; ++i)
+        if (static_cast<Star*>(cels[i])->multisys)
+        {
+            auto* system = static_cast<Star*>(cels[i])->multisys;
+            system->unlink();
+            delete system;
+        }
+    delete_the_universe();
+    make_star("Sun");
+    std::fstream input(file, std::ios::in);
+    ASSERT_TRUE(Serialization::load_all(input, cels, MAX_CELOBJS));
+    EXPECT_EQ(ncelobjs, 81);
+    ASSERT_EQ(favestars.size(), 1u);
+    EXPECT_TRUE(favestars.front()->fictional_origin.at("anchor"));
+    for (const auto& record : expected)
+    {
+        Star* restored = nullptr;
+        for (int i = 1; cels[i]; ++i)
+        {
+            Star* candidate = static_cast<Star*>(cels[i]);
+            if (candidate->fictional_origin.at("id") == record.at("fictional_origin").at("id")) restored = candidate;
+        }
+        ASSERT_NE(restored, nullptr);
+        EXPECT_EQ(restored->location.galactic_center.to_json(), record.at("location").at("galactic_center"));
+        EXPECT_NEAR(restored->location.equatorial_plane.a*fiftyseven,
+            record.at("location").at("equatorial_plane").at("a").get<double>(), 1e-10);
+        EXPECT_DOUBLE_EQ(restored->absolute_magnitude, record.at("absolute_magnitude"));
+        EXPECT_DOUBLE_EQ(restored->mass, record.at("mass"));
+        const auto system_id = record.at("stellar_system").at("system");
+        int members = 0;
+        for (const auto& other : expected) if (other.at("stellar_system").at("system") == system_id) ++members;
+        if (members == 1)
+        {
+            EXPECT_EQ(restored->multisys, nullptr);
+        }
+        EXPECT_FALSE(restored->known_poles);
+        EXPECT_TRUE(restored->user_added);
+    }
+}
+
+TEST_F(FictionalStarsTest, CatalogWriterExcludesSyntheticStarsAndImportsRejectDuplicateIdentity)
+{
+    region.star_count = 1;
+    auto batch = generate_fictional_stars(model, region);
+    struct Writer : CatalogReader
+    {
+        using CatalogReader::write_condensed_star_cat_line;
+    } catalog;
+    FILE* output = tmpfile();
+    ASSERT_NE(output, nullptr);
+    catalog.write_condensed_star_cat_line(output, batch.stars.front().get());
+    EXPECT_EQ(ftell(output), 0);
+    fclose(output);
+    json a = batch.stars.front()->to_json();
+    json b = a;
+    b["!name"] = "Different display name";
+    json all = {{"first", a}, {"second", b}};
+    const auto file = temporary / "duplicates.json";
+    std::ofstream(file) << all;
+    std::fstream input(file, std::ios::in);
+    EXPECT_FALSE(Serialization::load_all(input, cels, MAX_CELOBJS));
+    EXPECT_EQ(ncelobjs, 1);
+}
+
+TEST_F(FictionalStarsTest, ExistingConstellationGeneratorAcceptsGeneratedVantageAndProducesLines)
+{
+    region.star_count = 150;
+    auto batch = generate_fictional_stars(model, region);
+    std::string message;
+    ASSERT_TRUE(batch.install(message));
+    std::string vantage;
+    EXPECT_TRUE(ExoConsGenerator::check_should_generate_for(static_cast<Star*>(cels[1]), vantage));
+    std::vector<Constellation> generated;
+    const auto start = std::chrono::steady_clock::now();
+    ExoConsGenerator::generate_constellations(static_cast<Star*>(cels[1]), generated);
+    int lines = 0;
+    for (const auto& constellation : generated)
+    {
+        lines += constellation.lines.size();
+    }
+    EXPECT_GT(lines, 0);
+    std::cout << "Fictional constellation benchmark: " << lines << " lines in "
+        << std::chrono::duration<double>(std::chrono::steady_clock::now()-start).count() << " seconds" << std::endl;
+}
+
+TEST_F(FictionalStarsTest, VisibleRemoteStarsSurviveCullingAtTheGeneratedCenter)
+{
+    const double old_zoom = zoom, old_brightness = global_brightness;
+    zoom = global_brightness = 1;
+    auto batch = generate_fictional_stars(model, region);
+    const CelestialLocation vantage = batch.stars.front()->location;
+    int visible = 0;
+    for (const auto& star : batch.stars)
+    {
+        if (star.get() == batch.stars.front().get()) continue;
+        const double magnitude = star->viewer_magnitude(vantage);
+        if (magnitude < normal_best_mag_limit-0.01)
+        {
+            ++visible;
+            EXPECT_TRUE(star->is_really_truly_in_visible_box(Point(const_cast<CelestialLocation&>(vantage))))
+                << star->name << " magnitude " << magnitude;
+        }
+        CelestialLocation far = star->location;
+        far.system_center += Point(1000000*light_year, 0, 0);
+        EXPECT_FALSE(star->is_really_truly_in_visible_box(Point(far)));
+    }
+    EXPECT_GT(visible, 30);
+    zoom = old_zoom;
+    global_brightness = old_brightness;
 }

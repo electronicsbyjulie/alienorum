@@ -853,6 +853,7 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
         }
         std::map<CelestialObject*, int> existing_indices;
         for (unsigned int i = 0; i < count; ++i) existing_indices[cels[i]] = i;
+        std::set<std::string> imported_fictional_ids;
         std::set<CelestialObject*> replacements;
         unsigned int additions = 0;
 
@@ -893,6 +894,8 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
                 const auto& origin = static_cast<Star*>(entry.parsed.get())->fictional_origin;
                 if (origin.is_object() && origin.contains("id"))
                 {
+                    if (!imported_fictional_ids.insert(origin.at("id")).second)
+                        throw std::runtime_error("Duplicate fictional identity in universe file");
                     const auto fictional = fictional_ids.find(origin.at("id"));
                     entry.target = fictional == fictional_ids.end() ? entry.parsed.get() : fictional->second;
                 }
@@ -1026,7 +1029,8 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
                 Star* member = static_cast<Star*>(object);
                 Star* root = static_cast<Star*>(object->cenobj);
                 if (member->stellar_system.is_object() && root->stellar_system.is_object() &&
-                    member->stellar_system.at("system") == root->stellar_system.at("system"))
+                    member->stellar_system.at("system") == root->stellar_system.at("system") &&
+                    (!member->fictional_origin.is_object() || member != root || root->multisys))
                 {
                     if (!root->multisys)
                     {
@@ -1071,6 +1075,14 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
                     default: break;
                 }
             }
+        }
+        for (int index : loaded)
+        {
+            if (cels[index]->typeclass() != class_star) continue;
+            Star* star = static_cast<Star*>(cels[index]);
+            if (!star->fictional_origin.is_object()) continue;
+            favestars.erase(std::remove(favestars.begin(), favestars.end(), star), favestars.end());
+            if (star->is_faved) favestars.push_back(star);
         }
         Planet::rebuild_host_statistics();
         std::lock_guard<std::mutex> lock(mtx);

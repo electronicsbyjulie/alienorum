@@ -6,6 +6,7 @@
 #include <chrono>
 #include <gtest/gtest.h>
 #include "../globals.h"
+#include "../fictionalstars_ui.h"
 #include "../visuals.h"
 #include "../inputs.h"
 #include "../sphere_impostor.h"
@@ -782,6 +783,62 @@ TEST_F(RenderingRegressionTest, CompanionHoverAndSelectionFollowFivePixelSeparat
     EXPECT_EQ(stellar_display_target(companion), companion);
     companion->drawny = 57.99;
     EXPECT_EQ(stellar_display_target(companion), primary);
+}
+
+TEST_F(RenderingRegressionTest, FictionalRegionDialogRendersWithImageAndAnalyticFallback)
+{
+    make_star("Sun");
+    Galaxy* galaxy = new Galaxy();
+    strcpy(galaxy->name, "M31");
+    galaxy->PGC = 2557;
+    galaxy->right_ascension = 0.186;
+    galaxy->declination = 0.720;
+    galaxy->distance = 780000*parsec;
+    galaxy->volumetric_mean_radius = 70000*light_year;
+    galaxy->location.galactic_center = Point(0, 0, 2.54);
+    append_cel(galaxy);
+    set(selected, galaxy->seqno);
+    ImGui::EndFrame();
+    SDL_SetWindowSize(window, 1024, 960);
+    ImGui::GetIO().DisplaySize = ImVec2(1024, 960);
+    render_width = 1024;
+    render_height = 960;
+    for (bool fallback : {false, true})
+    {
+        if (fallback) strcpy(galaxy->name, "No image fictional test galaxy");
+        open_fictional_region();
+        for (int frame = 0; frame < 2; ++frame)
+        {
+            ImGui::NewFrame();
+            ImGui::SetNextWindowPos(ImVec2(20, 20));
+            draw_fictional_region();
+            ImGuiWindow* panel = ImGui::FindWindowByName("Populate Region");
+            ASSERT_NE(panel, nullptr);
+            EXPECT_GT(panel->DrawList->VtxBuffer.Size, 100);
+            EXPECT_EQ(ncelobjs, 2);
+            if (frame == 1)
+            {
+                const auto pixels = render();
+                if (!fallback)
+                {
+                    std::vector<unsigned char> flipped(pixels.size());
+                    for (int y = 0; y < render_height; ++y)
+                        std::copy_n(pixels.data()+(render_height-1-y)*render_width*4, render_width*4,
+                            flipped.data()+y*render_width*4);
+                    SDL_Surface* surface = SDL_CreateRGBSurfaceWithFormatFrom(flipped.data(), render_width,
+                        render_height, 32, render_width*4, SDL_PIXELFORMAT_RGBA32);
+                    ASSERT_NE(surface, nullptr);
+                    EXPECT_EQ(IMG_SavePNG(surface, "/tmp/alienorum-fictional-region-ui.png"), 0);
+                    SDL_FreeSurface(surface);
+                }
+            }
+            else ImGui::EndFrame();
+        }
+        close_fictional_region();
+    }
+    SDL_SetWindowSize(window, 192, 108);
+    ImGui::GetIO().DisplaySize = ImVec2(192, 108);
+    ImGui::NewFrame();
 }
 
 TEST_F(RenderingRegressionTest, MoonLabelsRequireSeparationAndExistingVisibilityFilters)

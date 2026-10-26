@@ -105,7 +105,7 @@ namespace
         {
             const double hot = uniform(random);
             star.temperature = 3400 + hot*1900;
-            star.mass = (1.1 + uniform(random)*2.0) * solar_mass;
+            star.mass = std::clamp(pow(10/std::max(0.03, age), 0.4)*(0.95+0.1*uniform(random)), 0.85, 15.0)*solar_mass;
             star.volumetric_mean_radius = (12 + pow(uniform(random), 2)*110) * solar_radius;
             star.estimate_BV(star.temperature);
             const double luminosity = pow(star.volumetric_mean_radius / solar_radius, 2)
@@ -153,8 +153,9 @@ bool FictionalImage::load(const std::string& filename, bool panorama)
     path = filename;
     panoramic = panorama;
     // A bounded CPU field, independent of GPU texture limits. Each cell averages original pixels.
-    width = std::min(rgba->w, 1024);
-    height = std::min(rgba->h, 512);
+    const double scale = std::min({1.0, 1024.0/rgba->w, 512.0/rgba->h});
+    width = std::max(1, int(rgba->w*scale));
+    height = std::max(1, int(rgba->h*scale));
     rgb.assign(size_t(width)*height*3, 0);
     for (int y = 0; y < height; ++y)
         for (int x = 0; x < width; ++x)
@@ -215,8 +216,12 @@ FictionalGalaxy FictionalGalaxy::from_galaxy(const Galaxy& galaxy)
     for (char c : result.milky_way ? std::string("MW") : result.name)
         if (isalnum(static_cast<unsigned char>(c))) result.code += c;
     if (result.code.empty()) result.code = result.key;
-    result.code = result.code.substr(0, 24);
-    result.origin_mly = galaxy.location.galactic_center;
+    result.code = result.code.substr(0, 10);
+    result.origin_mly = galaxy.location.galactic_center +
+        (galaxy.location.system_center + galaxy.location.local_position)*(1/(1e6*light_year));
+    if (!result.origin_mly.squared_magnitude() && galaxy.distance > 0)
+        result.origin_mly = Point::from_ra_dec(galaxy.right_ascension, galaxy.declination,
+            galaxy.distance/(1e6*light_year));
     result.radius_ly = galaxy.volumetric_mean_radius / light_year;
     if (!(result.radius_ly > 10)) result.radius_ly = galaxy.angular_diameter > 0 && galaxy.distance > 0
         ? galaxy.angular_diameter*galaxy.distance*0.5/light_year : 50000;
@@ -227,6 +232,7 @@ FictionalGalaxy FictionalGalaxy::from_galaxy(const Galaxy& galaxy)
         result.radius_ly = 15000*parsec/light_year;
         result.east = unit(Point::from_ra_dec(galactic_center_RA_J2000, galactic_center_Decl_J2000, 1));
         result.height_axis = unit(Point::from_ra_dec(galactic_north_RA_J2000, galactic_north_Decl_J2000, 1));
+        result.east = unit(result.east - result.height_axis*dot(result.east, result.height_axis));
         result.south = unit(compute_normal(center, result.east, result.height_axis));
         result.origin_mly = result.east * (8200*parsec/light_year/1e6);
     }
@@ -342,11 +348,18 @@ std::string alienorum::fictional_region_id()
 {
     static std::atomic<uint64_t> counter{0};
     std::random_device device;
-    const uint64_t value = (uint64_t(device()) << 32) ^ device()
+    uint64_t value = (uint64_t(device()) << 32) ^ device()
         ^ std::chrono::high_resolution_clock::now().time_since_epoch().count() ^ ++counter;
-    std::ostringstream out;
-    out << 'R' << std::uppercase << std::hex << value;
-    return out.str();
+    const char* digits = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    std::string id;
+    do
+    {
+        id += digits[value % 36];
+        value /= 36;
+    }
+    while (value);
+    std::reverse(id.begin(), id.end());
+    return "R" + id;
 }
 
 const char* alienorum::fictional_center_type(int index)
@@ -363,9 +376,10 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
     const auto start = std::chrono::steady_clock::now();
     if (region.star_count < 1 || region.star_count >= MAX_CELOBJS || !(region.radius_ly > 0)
         || !std::isfinite(region.radius_ly) || region.radius_ly > 1000 || !galaxy.inside(region.center_ly)
+        || 4 + galaxy.code.size() + 1 + region.region_id.size() + 1 + 6 + 2 >= name_max_len
         || region.region_id.empty() || region.region_id.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-") != std::string::npos)
     {
-        result.error = "Choose a center inside the galaxy, a radius up to 1,000 light years, and an available star count.";
+        result.error = "Choose a center inside the galaxy, a radius up to 1,000 light years, an available star count, and a compact region designation.";
         return result;
     }
     std::mt19937_64 positions(region.seed), properties(region.seed ^ 0x853c49e6748fea9bULL),
@@ -404,7 +418,9 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
         Point color = galaxy.population_color(region.center_ly);
         const double blue = std::clamp((color.z - color.x)/(color.x + color.z + 1e-6)*0.5 + 0.5, 0.0, 1.0);
         const double age = cluster_index >= 0 ? clusters[cluster_index].age
-            : (galaxy.spheroid ? 5 + 6*uniform(properties) : 0.03 + pow(uniform(properties), 0.5)*9);
+            : galaxy.spheroid ? 5 + 6*uniform(properties)
+            : uniform(properties) < blue*0.65 ? 0.03 + uniform(properties)*0.3
+            : 0.5 + pow(uniform(properties), 0.5)*9;
         auto primary = std::make_unique<Star>();
         if (anchor) main_sequence(*primary, Star::get_mseqidx_from_sptyp(fictional_center_type(region.center_subtype)));
         else stellar_properties(*primary, blue, age, properties);
@@ -461,7 +477,7 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
         const std::string system_id = galaxy.key + ":" + region.region_id + ":" + std::to_string(system_number);
         Star* root = primary.get();
         Rotation system_plane = isotropic(planes);
-        double inner_sma = (0.2 + pow(uniform(multiples), 2)*60)*AU;
+        double inner_sma = std::max((0.2 + pow(uniform(multiples), 2)*60)*AU, root->volumetric_mean_radius*20);
         for (int member = 0; member < member_count; ++member)
         {
             std::unique_ptr<Star> star = member == 0 ? std::move(primary) : std::make_unique<Star>();
@@ -496,6 +512,7 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
                 {"cluster", cluster_index}, {"anchor", anchor}, {"disk_position_ly", (region.center_ly + offset).to_json()}};
             star->metallicity = metallicity;
             star->metallicity_ratio = "[Fe/H]";
+            star->metallicity_error_upper = star->metallicity_error_lower = 0.15;
             star->metallicity_source = "fictional population model v1";
             star->sidereal_rotational_period = std::clamp(25*sqrt(age/4.6)*pow(sun_temp/star->temperature, 2), 0.25, 150.0)*oneday;
             star->stellar_rotation = {{"estimated", true}, {"source", "fictional population model v1"},
@@ -535,6 +552,11 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
             }
             star->apparent_magnitude = star->absolute_magnitude + 5*log10(std::max(1.0, star->location.distance_to(CelestialLocation()))/(10*parsec));
             star->update_location(J2000_TIME_T);
+            const Point spin_pole = rotate3D(yaxis, center, star->location.equatorial_plane.v,
+                -star->location.equatorial_plane.a);
+            const Point orbit_pole = rotate3D(yaxis, center, star->location.orbital_plane.v,
+                -star->location.orbital_plane.a);
+            star->obliquity = find_3D_angle(spin_pole, orbit_pole, center);
             const double radial = offset.magnitude();
             if (radial <= 100) ++result.nearby;
             if (!anchor && star->absolute_magnitude + 5*log10(std::max(1e-6, radial)*light_year/(10*parsec)) <= 6.5) ++result.naked_eye;
@@ -559,6 +581,8 @@ bool FictionalBatch::install(std::string& message)
         message = "The population exceeds available object capacity. Reduce Star count and preview again.";
         return false;
     }
+    ExoConsGenerator::reset();
+    std::lock_guard<std::recursive_mutex> lock(catalog_mutex);
     std::set<std::string> names, identities;
     for (int i = 0; cels[i]; ++i)
     {
@@ -575,8 +599,6 @@ bool FictionalBatch::install(std::string& message)
             message = "This region identity or designation already exists. Start a new region preview.";
             return false;
         }
-    ExoConsGenerator::reset();
-    std::lock_guard<std::recursive_mutex> lock(catalog_mutex);
     if (stars.size() >= size_t(MAX_CELOBJS - ncelobjs))
     {
         message = "Object capacity changed. Reduce Star count and preview again.";

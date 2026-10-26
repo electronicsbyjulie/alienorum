@@ -1495,7 +1495,7 @@ void draw_objedit_window(ImGuiIO& io)
             {
                 cel->obliquity = edit_eqincl * fiftyseventh;
                 cel->lock_equatorial_plane = false;
-                cel->known_poles = true;
+                cel->known_poles = !(tc == class_star && static_cast<Star*>(cel)->fictional_origin.is_object());
                 cel->user_edited = true;
                 viewchanged = true;
                 if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
@@ -1519,7 +1519,7 @@ void draw_objedit_window(ImGuiIO& io)
             {
                 cel->equinox = edit_equinox * fiftyseventh;
                 cel->lock_equatorial_plane = false;
-                cel->known_poles = true;
+                cel->known_poles = !(tc == class_star && static_cast<Star*>(cel)->fictional_origin.is_object());
                 cel->user_edited = true;
                 viewchanged = true;
                 if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);

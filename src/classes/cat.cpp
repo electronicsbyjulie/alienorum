@@ -6035,6 +6035,7 @@ static std::string baked_star_link_key(const json& key)
 
 void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
 {
+    if (s->fictional_origin.is_object()) return;
     // These one-based ranges match read_condensed_star_cat(); SC2 fixes the metadata tail too.
     std::string line(655, ' ');
     const auto put = [&](size_t first, size_t last, const std::string &value)

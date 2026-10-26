@@ -679,6 +679,13 @@ bool Star::is_really_truly_in_visible_box(Point seen_from)
     if (_is_always_visible || is_faved) return true;
     double effmag = variability_period ? minmag : apparent_magnitude;
     double cutoff_dist = (pow(100.0, 0.2*(normal_best_mag_limit-effmag)) * distance) * global_brightness;
+    if (fictional_origin.is_object())
+    {
+        // A galaxy-relative reference distance is not a solar catalog distance.
+        // Use intrinsic light for a conservative visibility bound in any galaxy.
+        cutoff_dist = distance_from_magnitudes(normal_best_mag_limit, absolute_magnitude)
+            * sqrt(std::max(1.0, global_brightness)*std::max(1.0, zoom));
+    }
     visible_area.corner1 = Point(-cutoff_dist, -cutoff_dist, -cutoff_dist) + (Point)location;
     visible_area.corner2 = Point( cutoff_dist,  cutoff_dist,  cutoff_dist) + (Point)location;
     visible_area_set = true;
@@ -1620,7 +1627,11 @@ json Star::to_json()
     if (stellar_abundances.is_object() && !stellar_abundances.empty()) towrite["stellar_abundances"] = stellar_abundances;
     if (stellar_rotation.is_object()) towrite["stellar_rotation"] = stellar_rotation;
     if (stellar_system.is_object()) towrite["stellar_system"] = stellar_system;
-    if (fictional_origin.is_object()) towrite["fictional_origin"] = fictional_origin;
+    if (fictional_origin.is_object())
+    {
+        towrite["fictional_origin"] = fictional_origin;
+        towrite["is_faved"] = is_faved;
+    }
     towrite["known_poles"] = known_poles;
     towrite["lock_equatorial_plane"] = lock_equatorial_plane;
     towrite["lock_system_plane"] = lock_system_plane;
@@ -1689,6 +1700,7 @@ bool Star::from_json(json j)
     stellar_rotation = j.contains("stellar_rotation") && j["stellar_rotation"].is_object()
         ? j["stellar_rotation"] : json(nullptr);
     fictional_origin = j.value("fictional_origin", json(nullptr));
+    if (fictional_origin.is_object()) is_faved = j.value("is_faved", false);
     stellar_system = j.value("stellar_system", json(nullptr));
     if (stellar_system.is_object()) has_custom_name = true;
     // Explicit flags keep a saved display fallback from becoming a measured pole.
@@ -1698,6 +1710,7 @@ bool Star::from_json(json j)
     try { j.at("rot_axis_known").get_to(rot_axis_known); } catch (...) { ; }
     try { rot_heliocen_incl = j.at("rot_heliocen_incl").get<double>() * fiftyseventh; } catch (...) { ; }
     try { rot_heliocen_node = j.at("rot_heliocen_node").get<double>() * fiftyseventh; } catch (...) { ; }
+    if (fictional_origin.is_object()) known_poles = rot_axis_known = false;
     metallicity = metallicity_error_upper = metallicity_error_lower = NAN;
     metallicity_ratio.clear();
     metallicity_source.clear();

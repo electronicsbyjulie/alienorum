@@ -30,6 +30,7 @@ namespace
         char filter[100] = {};
         std::string message;
         int last_center = -1;
+        std::string last_center_id;
         GLuint image_texture = 0;
 
         void clear_preview()
@@ -42,6 +43,7 @@ namespace
         {
             const double angle = azimuth_degrees*fiftyseventh;
             region.center_ly = Point(radial*cos(angle), height, radial*sin(angle));
+            coordinate_fields();
             clear_preview();
         }
         void coordinate_fields()
@@ -49,6 +51,16 @@ namespace
             radial = hypot(region.center_ly.x, region.center_ly.z);
             azimuth_degrees = atan2(region.center_ly.z, region.center_ly.x)*fiftyseven;
             height = region.center_ly.y;
+            if (galaxy.milky_way)
+            {
+                Point ray = galaxy.world_offset(region.center_ly) + galaxy.origin_mly*(1e6*light_year);
+                distance = ray.magnitude()/light_year;
+                const double along = ray.x*galaxy.east.x + ray.y*galaxy.east.y + ray.z*galaxy.east.z;
+                const double across = ray.x*galaxy.south.x + ray.y*galaxy.south.y + ray.z*galaxy.south.z;
+                const double up = ray.x*galaxy.height_axis.x + ray.y*galaxy.height_axis.y + ray.z*galaxy.height_axis.z;
+                longitude = atan2(across, along)*fiftyseven;
+                latitude = atan2(up, hypot(along, across))*fiftyseven;
+            }
         }
         void suggest()
         {
@@ -98,7 +110,8 @@ namespace
     void visit_center()
     {
         if (dialog.last_center < 0 || dialog.last_center >= ncelobjs || !cels[dialog.last_center]
-            || cels[dialog.last_center]->deleted) return;
+            || cels[dialog.last_center]->deleted || cels[dialog.last_center]->typeclass() != class_star) return;
+        if (static_cast<Star*>(cels[dialog.last_center])->fictional_origin.value("id", "") != dialog.last_center_id) return;
         whereami = dialog.last_center;
         viewer_locale.clear();
         set_viewer_location_and_plane();
@@ -116,10 +129,14 @@ namespace
         const float available = ImGui::GetContentRegionAvail().x;
         const float width = std::max(220.0f, available - 16);
         const float height = panorama ? 180 : 260;
-        ImGui::BeginChild("Region image", ImVec2(0, height + 12), true,
+        ImGui::BeginChild("Region image", ImVec2(0, height + 24), true,
             ImGuiWindowFlags_HorizontalScrollbar);
+        const float inner_width = std::max(100.0f, ImGui::GetContentRegionAvail().x);
+        const float aspect = galaxy.image.available() ? float(galaxy.image.width)/galaxy.image.height : 1;
+        const float base_width = panorama ? inner_width : std::min(inner_width, height*aspect);
+        const ImVec2 size(base_width*dialog.image_zoom, base_width/aspect*dialog.image_zoom);
+        if (size.x < inner_width) ImGui::SetCursorPosX(ImGui::GetCursorPosX()+(inner_width-size.x)/2);
         const ImVec2 top = ImGui::GetCursorScreenPos();
-        const ImVec2 size(width*dialog.image_zoom, height*dialog.image_zoom);
         ImGui::InvisibleButton("Galaxy position", size);
         ImDrawList* draw = ImGui::GetWindowDrawList();
         const ImVec2 end(top.x+size.x, top.y+size.y);
@@ -195,6 +212,12 @@ namespace
             draw->AddCircleFilled(observer, 3, IM_COL32_WHITE);
             draw->AddLine(observer, chosen, IM_COL32(230, 200, 120, 220));
         }
+        const bool historical = galaxy.milky_way && dialog.region.historical_annulus;
+        const double advisory_inner = historical ? 7000*parsec/light_year : galaxy.advisory_inner();
+        const double advisory_outer = historical ? 9000*parsec/light_year : galaxy.advisory_outer();
+        for (double radius : {advisory_inner, advisory_outer})
+            draw->AddEllipse(center_top, ImVec2(rx*radius/galaxy.radius_ly, ry*radius/galaxy.radius_ly),
+                IM_COL32(90, 210, 140, 140), 0, 48);
         draw->AddText(ImVec2(top2.x+4, top2.y+2), IM_COL32_WHITE, "Top view");
         draw->AddText(ImVec2(top2.x+half+4, top2.y+2), IM_COL32_WHITE, "Side view");
     }
@@ -220,10 +243,14 @@ void open_fictional_region()
 
 void close_fictional_region()
 {
+    dialog.open = false;
     dialog.cancel.store(true);
     if (dialog.worker.valid()) dialog.worker.wait();
     dialog.batch = FictionalBatch();
     dialog.running = false;
+    dialog.preview_valid = false;
+    dialog.galaxy_index = -1;
+    dialog.last_center = -1;
     if (dialog.image_texture) glDeleteTextures(1, &dialog.image_texture);
     dialog.image_texture = 0;
 }
@@ -274,7 +301,9 @@ void draw_fictional_region()
         ImGui::End();
         return;
     }
-    ImGui::TextWrapped("%s", dialog.galaxy.image.available() ? "Click the image to choose a location. Green boundaries suggest a habitable region."
+    ImGui::TextWrapped("%s", dialog.galaxy.image.available() ? (dialog.galaxy.milky_way
+        ? "Click the Milky Way band to choose a direction, then adjust distance. Top and side views show the location."
+        : "Click the image to choose a location. Green boundaries suggest a habitable region.")
         : "No image is available for this galaxy. Using a fictional model based on galaxy shape.");
     draw_location_preview();
     if (dialog.galaxy.milky_way)
@@ -344,6 +373,24 @@ void draw_fictional_region()
             dialog.batch.systems, dialog.batch.clusters, dialog.batch.elapsed_seconds);
         ImGui::Text("Within 100 ly: %d  |  Magnitude 6.5 or brighter from center: %d", dialog.batch.nearby, dialog.batch.naked_eye);
         ImGui::Text("Estimated JSON size: %.1f MiB", dialog.batch.estimated_save_bytes/(1024.0*1024));
+        const ImVec2 preview_top = ImGui::GetCursorScreenPos();
+        const float preview_width = std::min(320.0f, ImGui::GetContentRegionAvail().x);
+        ImGui::InvisibleButton("Population preview", ImVec2(preview_width, 180));
+        ImDrawList* preview_draw = ImGui::GetWindowDrawList();
+        preview_draw->AddRectFilled(preview_top, ImVec2(preview_top.x+preview_width, preview_top.y+180),
+            IM_COL32(5, 8, 16, 255));
+        const Point center_offset = dialog.galaxy.world_offset(dialog.region.center_ly);
+        for (size_t i = 0; i < dialog.batch.stars.size(); i += std::max(size_t(1), dialog.batch.stars.size()/2500))
+        {
+            const Star& star = *dialog.batch.stars[i];
+            const Point offset = dialog.galaxy.disk_offset(star.location.system_center-center_offset);
+            const ImVec2 point(preview_top.x+preview_width*(0.5+offset.x/(2*dialog.region.radius_ly)),
+                preview_top.y+180*(0.5+offset.z/(2*dialog.region.radius_ly)));
+            const ImU32 color = star.temperature > 7500 ? IM_COL32(160, 190, 255, 190)
+                : star.temperature < 4500 ? IM_COL32(255, 175, 120, 190) : IM_COL32(255, 245, 215, 190);
+            preview_draw->AddCircleFilled(point, 1.1f, color, 5);
+        }
+        preview_draw->AddText(ImVec2(preview_top.x+6, preview_top.y+6), IM_COL32_WHITE, "Population preview (top view)");
         if (ImGui::Button("Add Stars"))
         {
             const int center_index = ncelobjs;
@@ -351,6 +398,7 @@ void draw_fictional_region()
             {
                 dialog.last_center = center_index;
                 Star* anchor = static_cast<Star*>(cels[center_index]);
+                dialog.last_center_id = anchor->fictional_origin.at("id");
                 anchor->is_faved = true;
                 favestars.push_back(anchor);
                 set_center_objects();
