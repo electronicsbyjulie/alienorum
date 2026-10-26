@@ -2,9 +2,11 @@
 #include <cmath>
 #include <algorithm>
 #include <deque>
+#include <vector>
 #include <iostream>
 #include "sphere_impostor.h"
 #include "classes/misc.h"
+#include "classes/color.h"
 // Declarations only (does not define IMGL3W_IMPL), so this resolves against the same
 // function-pointer table imgui_impl_opengl3.cpp (which does define IMGL3W_IMPL) fills in via
 // ImGui_ImplOpenGL3_Init() at startup -- no separate loader init necessary here. See that
@@ -122,6 +124,9 @@ namespace alienorum
     static std::deque<SphereImpostorParams> s_sphere_pool;
     static size_t s_sphere_used = 0;
 
+    static GLuint s_sky_rows_texture = 0;
+    static bool s_sky_rows_uploaded = false;
+    static GLint s_uSkyRowsLoc = -1, s_uSkyRowsActiveLoc = -1;
     static GLuint s_program = 0;
     static GLuint s_vao = 0, s_vbo = 0, s_ebo = 0;
     static GLint s_aPosLoc = -1, s_aRayXYLoc = -1, s_aScreenYLoc = -1, s_aCenterLoc = -1, s_aRadiiLoc = -1;
@@ -223,6 +228,8 @@ namespace alienorum
         "in vec3 vLightDir;\n"
         "in vec3 vTint;\n"
         "in vec4 vFlags;\n"   // x=self_luminous, y=night_illum, z=has_night_tex, w=redlight_mode
+        "uniform sampler2D uSkyRows;\n"
+        "uniform int uSkyRowsActive;\n"
         "in vec4 vSky;\n"     // rgb=premultiplied sky color at sky_y, a=sky_y (screen pixels)
         "in float vApplySky;\n"
         "in float vHasBumpTex;\n"
@@ -306,12 +313,22 @@ namespace alienorum
         "{\n"
         "    if (vApplySky > 0.5 && vFlags.x < 0.5)\n"     // sky glow blend -- matches the CPU path's sky_grad lookup
         "    {\n"
-        "        float dy = vSky.a - vScreenY;\n"
-        "        if (dy >= 0.0)\n"
+        "        if (uSkyRowsActive != 0)\n"
         "        {\n"
-        "            vec3 skyAtY = vec3(vSky.r*pow(0.999, dy), vSky.g*pow(0.9995, dy), vSky.b*pow(0.9999, dy));\n"
-        "            float lum = 0.29*skyAtY.r + 0.56*skyAtY.g + 0.15*skyAtY.b;\n"
-        "            c = min(vec3(1.0), (1.0 - lum)*c + skyAtY);\n"
+        "            int row = clamp(int(floor(vScreenY)), 0, textureSize(uSkyRows, 0).y - 1);\n"
+        "            vec4 sky = texelFetch(uSkyRows, ivec2(0, row), 0);\n"
+        "            float lum = dot(sky.rgb, vec3(0.29, 0.53, 0.18));\n"
+        "            if (sky.a > 0.0) c = min(vec3(1.0), (1.0 - lum)*c + sky.rgb);\n"
+        "        }\n"
+        "        else\n"
+        "        {\n"
+        "            float dy = vSky.a - vScreenY;\n"
+        "            if (dy >= 0.0)\n"
+        "            {\n"
+        "                vec3 skyAtY = vec3(vSky.r*pow(0.999, dy), vSky.g*pow(0.9995, dy), vSky.b*pow(0.9999, dy));\n"
+        "                float lum = 0.29*skyAtY.r + 0.56*skyAtY.g + 0.15*skyAtY.b;\n"
+        "                c = min(vec3(1.0), (1.0 - lum)*c + skyAtY);\n"
+        "            }\n"
         "        }\n"
         "    }\n"
         "    if (vFlags.w > 0.5)\n"          // redlight_mode -- see rgba_apply_redlight() in color.cpp
@@ -847,6 +864,9 @@ namespace alienorum
         // re-establishes ImGui's own state (including its own texture bindings) before anything
         // else draws.
         glUseProgram(s_program);
+        s_uSkyRowsLoc = glGetUniformLocation(s_program, "uSkyRows");
+        s_uSkyRowsActiveLoc = glGetUniformLocation(s_program, "uSkyRowsActive");
+        glUniform1i(s_uSkyRowsLoc, 4);
         glUniform1i(s_uDayMapLoc, 0);
         glUniform1i(s_uNightMapLoc, 1);
         glUniform1i(s_uBumpMapLoc, 2);
@@ -990,6 +1010,31 @@ namespace alienorum
         glBindTexture(GL_TEXTURE_2D, p->bump_tex);
         glActiveTexture(GL_TEXTURE0 + 3);
         glBindTexture(GL_TEXTURE_2D, p->ringx_tex);
+        glActiveTexture(GL_TEXTURE0 + 4);
+        if (!sky_grad.empty() && !s_sky_rows_uploaded)
+        {
+            if (!s_sky_rows_texture) glGenTextures(1, &s_sky_rows_texture);
+            glBindTexture(GL_TEXTURE_2D, s_sky_rows_texture);
+            const int height = std::max(1, int(ceil(ImGui::GetIO().DisplaySize.y)));
+            std::vector<unsigned char> rows(height * 4, 0);
+            for (const auto &entry : sky_grad)
+            {
+                if (entry.first < 0 || entry.first >= height) continue;
+                const size_t index = size_t(entry.first) * 4;
+                rows[index] = entry.second.r;
+                rows[index + 1] = entry.second.g;
+                rows[index + 2] = entry.second.b;
+                rows[index + 3] = 255;
+            }
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, rows.data());
+            s_sky_rows_uploaded = true;
+        }
+        glBindTexture(GL_TEXTURE_2D, s_sky_rows_texture);
+        glUniform1i(s_uSkyRowsActiveLoc, !sky_grad.empty() ? 1 : 0);
         glBindVertexArray(s_vao);
         glBindBuffer(GL_ARRAY_BUFFER, s_vbo);
         glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(verts), verts);
@@ -1908,6 +1953,7 @@ namespace alienorum
 
     void impostor_begin_frame()
     {
+        s_sky_rows_uploaded = false;
         // Only the high-water marks are reset; the storage stays for the next frame to reuse.
         s_sphere_used = 0;
         s_ring_used = 0;

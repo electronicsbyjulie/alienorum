@@ -1089,14 +1089,8 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
         in.ringx_map_texture = gputex_for(cel->ringx_map);
     }
 
-    // Matches the CPU path's sky_grad blend (see the "if (view_mode == vm_horizon)" block
-    // further down in this file): in horizon mode, standing on a body with an atmosphere, the
-    // sky glows near the horizon and fades with altitude above it -- read the reference
-    // ("at horizon", undecayed) entry straight out of the same sky_grad map draw_sky_gradient()
-    // already populates once per frame (rbegin() is the highest key, i.e. the first-computed,
-    // least-decayed row -- see that function), and let the shader reproduce the same per-row
-    // exponential falloff (its fixed 0.999/0.9995/0.9999 factors) analytically from there,
-    // rather than re-deriving the underlying atmosphere-color computation here.
+    // The GPU samples the same projected sky rows as CPU objects and the background.
+    // These reference fields remain available for standalone impostor callers.
     in.apply_sky_blend = false;
     if (!self_luminous && view_mode == vm_horizon && !sky_grad.empty())
     {
@@ -7961,33 +7955,32 @@ void draw_sky_gradient()
                 sunset_g = fmin(1, atm_low[1] * skylight);
                 sunset_b = fmin(1, atm_low[2] * skylight);
             }
-            const double kSkyReddenVerticalFalloff = 0.99;
-
-            unsigned char r255, g255, b255;
-            for (int y = fmin(hz_y, dispcy*2-1); y>=0; y--)
+            if (!(zoom > 0) || !std::isfinite(zoom) || !(dispcx > 0) || !std::isfinite(altitude)) return;
+            const double radius = p->get_equatorial_radius();
+            const double dip = radius > 0 ? acos(radius / (radius + fmax(.01, viewer_eye_height))) : 0;
+            const double horizon_angle = p->atmospheric_horizon_lift() - dip;
+            const bool mineral = show_terrain && lavaworld_mineral_sky && p->type == lavaworld;
+            const double falloff_r = mineral ? .9985 : .999;
+            const double falloff_g = mineral ? .9978 : .9995;
+            const double falloff_b = mineral ? .9992 : .9999;
+            for (int y = 0; y < dispcy * 2; ++y)
             {
-                double rr = r * (1 - redden) + sunset_r * redden;
-                double gg = g * (1 - redden) + sunset_g * redden;
-                double bb = b * (1 - redden) + sunset_b * redden;
-                r255 = rr*255; g255 = gg*255; b255 = bb*255;
-                ImGui::GetBackgroundDrawList()->AddLine(ImVec2(0, y), ImVec2(x_extent, y),
-                    rgba_apply_redlight(IM_COL32( (int)(r255), (int)(g255), (int)(b255), (int)(a*255) ) ));
-
-                if (show_terrain && lavaworld_mineral_sky && p->type == lavaworld)
-                {
-                    r *= 0.9985;
-                    g *= 0.9978;
-                    b *= 0.9992;
-                }
-                else
-                {
-                    r *= 0.999;
-                    g *= 0.9995;
-                    b *= 0.9999;
-                }
-                redden *= kSkyReddenVerticalFalloff;
-
-                sky_grad[y] = RGB3(r255*a, g255*a, b255*a);
+                const double vertical = (dispcy - (y + .5)) / (zoom * dispcx);
+                const double up = sin(altitude) + vertical * cos(altitude);
+                const double forward = cos(altitude) - vertical * sin(altitude);
+                const double elevation = atan2(up, fabs(forward));
+                if (elevation < horizon_angle) continue;
+                // Fixed angular falloff: zoom selects a smaller region of this same sky.
+                const double height = (elevation - horizon_angle) * dispcx;
+                const double row_redden = redden * pow(.99, height);
+                const double rr = r * pow(falloff_r, height) * (1 - row_redden) + sunset_r * row_redden;
+                const double gg = g * pow(falloff_g, height) * (1 - row_redden) + sunset_g * row_redden;
+                const double bb = b * pow(falloff_b, height) * (1 - row_redden) + sunset_b * row_redden;
+                const RGB3 color(std::clamp(rr * 255, 0.0, 255.0), std::clamp(gg * 255, 0.0, 255.0),
+                    std::clamp(bb * 255, 0.0, 255.0));
+                ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, y), ImVec2(x_extent + 1, y + 1),
+                    rgba_apply_redlight(IM_COL32(color.r, color.g, color.b, int(a * 255))));
+                sky_grad[y] = RGB3(color.r * a, color.g * a, color.b * a);
             }
         }
     }

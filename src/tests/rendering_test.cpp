@@ -8,6 +8,7 @@
 #include "../globals.h"
 #include "../visuals.h"
 #include "../inputs.h"
+#include "../sphere_impostor.h"
 #include "../housekeeping.h"
 #include "../classes/clouds_gpu.h"
 #include "../classes/surfacebiomes.h"
@@ -3242,4 +3243,56 @@ TEST_F(RenderingRegressionTest, NadirSurfaceCoversTheViewportOnLandAndWater)
             }
         }
     }
+}
+
+TEST_F(RenderingRegressionTest, SkyGradientFollowsZoomAndViewingAltitude)
+{
+    surface(true);
+    set(mycenobj, static_cast<CelestialObject*>(nullptr));
+    set(whtbkgd, false);
+    set(sky_grad, std::map<int, RGB3>{});
+    set(sky_mag_shift, sky_mag_shift);
+    altitude = .5;
+    zoom = 1;
+    draw_sky_gradient();
+    ASSERT_FALSE(sky_grad.empty());
+    const RGB3 center = sky_grad.at(int(dispcy));
+    const int broad_range = abs(int(sky_grad.begin()->second.g) - int(sky_grad.rbegin()->second.g));
+    zoom = 100;
+    draw_sky_gradient();
+    ASSERT_EQ(sky_grad.size(), size_t(dispcy * 2));
+    const int narrow_range = abs(int(sky_grad.begin()->second.g) - int(sky_grad.rbegin()->second.g));
+    EXPECT_GT(broad_range, 5);
+    EXPECT_LE(narrow_range, 2);
+    EXPECT_NEAR(sky_grad.at(int(dispcy)).g, center.g, 2);
+    const RGB3 lower_sky = sky_grad.at(int(dispcy));
+    altitude = 1.2;
+    draw_sky_gradient();
+    EXPECT_LT(sky_grad.at(int(dispcy)).g, lower_sky.g);
+    altitude = -half_pi;
+    draw_sky_gradient();
+    EXPECT_TRUE(sky_grad.empty());
+}
+
+TEST_F(RenderingRegressionTest, GpuSphereUsesProjectedSkyRows)
+{
+    set(sky_grad, std::map<int, RGB3>{});
+    for (int y = 0; y < render_height; ++y) sky_grad[y] = RGB3(32, 64, 96);
+    SphereImpostorInput input{};
+    input.cz = 5;
+    input.r = input.axis_x = input.axis_y = input.axis_z = 1;
+    input.basisX[0] = input.basisY[1] = 1;
+    input.fallback_color = IM_COL32(0, 0, 0, 255);
+    input.light_dir[2] = -1;
+    input.daylight_tint[0] = input.daylight_tint[1] = input.daylight_tint[2] = 1;
+    input.apply_sky_blend = true;
+    double xmin, ymin, xmax, ymax;
+    impostor_begin_frame();
+    ASSERT_TRUE(queue_sphere_impostor(input, 1, dispcx, dispcy, dispcx, &xmin, &ymin, &xmax, &ymax));
+    const auto pixels = render();
+    const size_t center = (render_height / 2 * render_width + render_width / 2) * 4;
+    EXPECT_NEAR(pixels[center], 32, 1);
+    EXPECT_NEAR(pixels[center + 1], 64, 1);
+    EXPECT_NEAR(pixels[center + 2], 96, 1);
+    ImGui::NewFrame();
 }

@@ -291,6 +291,8 @@ These entries record the deliberate choices found during the earlier review. The
 
 - **G12 — Nadir ground coverage:** In horizon mode on a solid body, looking straight down or slightly past the nadir paints the entire visible surface when all viewport rays intersect the ground. A horizon outside the viewport must not expose sky through the surface. Preserve land/water coverage at normal and enlarged zoom.
 
+- **G13 — Projected atmospheric sky gradient:** In horizon mode, atmospheric color falloff follows viewing elevation and the apparent horizon. Zoom narrows the sampled angular region; pitch changes select the corresponding sky colors, and a view below the horizon does not paint sky through the surface. GPU sphere sky blending consumes the same projected row colors as the CPU/background rather than stretching a separate full gradient over zoomed objects.
+
 ## 13. Constellations from every vantage
 
 - **K01:** Heliocentric boundaries, labels, genitives, and figures load correctly; catalog geometry handles polar fallbacks and split regions.
