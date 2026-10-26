@@ -236,6 +236,7 @@ TEST(MapTest, UniformRegionCacheReusesTilesAndClipsMixedNeighbors)
 TEST(MapTest, IdenticalBluePixelsRetainDistinctMaterialsAcrossPngExports)
 {
     UniformBiomePixelMap map;
+    map.procedurally_generated = true;
     map.set_material_at(0.3, 0.4, SurfaceMaterial::vegetation);
     EXPECT_EQ(map.material_at(0.3, 0.4), SurfaceMaterial::vegetation);
     EXPECT_EQ(map.material_at(-0.3, -0.4), SurfaceMaterial::water);
@@ -245,6 +246,7 @@ TEST(MapTest, IdenticalBluePixelsRetainDistinctMaterialsAcrossPngExports)
     ASSERT_TRUE(map.save_to_png(path.string()));
     Map loaded;
     ASSERT_TRUE(loaded.load_from_png(path.string()));
+    EXPECT_TRUE(loaded.procedurally_generated);
     EXPECT_EQ(loaded.material_at(0.3, 0.4), SurfaceMaterial::vegetation);
     EXPECT_EQ(loaded.material_at(-0.3, -0.4), SurfaceMaterial::water);
     EXPECT_FALSE(loaded.color_within_cap(0.3, 0.4, 0.1, color, true));
@@ -1703,4 +1705,35 @@ TEST_F(ShoreNavigationTest, ImportedEarthMapsMeetInitialCoverageTargets)
         EXPECT_DOUBLE_EQ(round(editor.percent() * 10) / 10, target);
         EXPECT_EQ(planet->surf_map->get_height(), 768u);
     }
+}
+
+TEST_F(ShoreNavigationTest, GeneratedCloudAttributionTracksProvenanceAcrossPngReloads)
+{
+    Planet *planet = world([](double, double) { return true; });
+    planet->home_world = true;
+    planet->fictitious_map_height = 32;
+    EXPECT_FALSE(planet->has_eumetsat_clouds());
+    planet->generate_water_clouds();
+    ASSERT_NE(planet->cloud_map, nullptr);
+    EXPECT_TRUE(planet->cloud_map->procedurally_generated);
+    EXPECT_FALSE(planet->has_eumetsat_clouds());
+    const auto path = std::filesystem::temp_directory_path() / "alienorum_cloud_provenance_test.png";
+    ASSERT_TRUE(planet->cloud_map->save_to_png(path.string()));
+    delete planet->cloud_map;
+    planet->cloud_map = new Map(planet);
+    ASSERT_TRUE(planet->cloud_map->load_from_png(path.string()));
+    EXPECT_TRUE(planet->cloud_map->procedurally_generated);
+    EXPECT_FALSE(planet->has_eumetsat_clouds());
+    PngExportMap relief(true);
+    ASSERT_TRUE(relief.save_to_png(path.string(), true));
+    ASSERT_TRUE(planet->cloud_map->load_from_png(path.string(), true));
+    EXPECT_TRUE(planet->cloud_map->procedurally_generated);
+    PngExportMap imported;
+    ASSERT_TRUE(imported.save_to_png(path.string()));
+    ASSERT_TRUE(planet->cloud_map->load_from_png(path.string()));
+    EXPECT_FALSE(planet->cloud_map->procedurally_generated);
+    EXPECT_TRUE(planet->has_eumetsat_clouds());
+    planet->home_world = false;
+    EXPECT_FALSE(planet->has_eumetsat_clouds());
+    std::filesystem::remove(path);
 }

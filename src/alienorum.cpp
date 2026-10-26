@@ -737,7 +737,8 @@ int main (int argc, char** argv)
             if (view_mode == vm_sunclock)
             {
                 draw_sunclock();
-                if (whereami == iamhome) earth_clouds_shown = true;
+                if (show_clouds && whereami == iamhome && iamhome >= 0 && cels[iamhome]
+                    && cels[iamhome]->has_eumetsat_clouds()) earth_clouds_shown = true;
             }
             else
             {
@@ -758,7 +759,7 @@ int main (int argc, char** argv)
                     if (c)
                     {
                         if (c->onscreen && fabs(c->drawnxmax - c->drawnxmin) > 3
-                            && c->cloud_map && c->cloud_map->is_complete())
+                            && c->has_eumetsat_clouds())
                         {
                             earth_clouds_shown = true;
                         }

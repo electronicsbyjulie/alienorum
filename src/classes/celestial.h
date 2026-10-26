@@ -251,6 +251,7 @@ namespace alienorum
 
         public:
         unsigned int gen = 0;
+        bool procedurally_generated = false;
         Map() { ; }
         Map(CelestialObject* joined_cel) { mcel = joined_cel; }
         void set_owner(CelestialObject* owner) { mcel = owner; }
@@ -360,6 +361,10 @@ namespace alienorum
         bool distance_known = false;
         bool known_poles = false;
         bool home_world = false;
+        bool has_eumetsat_clouds() const
+        {
+            return home_world && cloud_map && cloud_map->is_complete() && !cloud_map->procedurally_generated;
+        }
         bool map_inverted = false;
         std::vector<std::string> orbit_center_codes;
         bool estimated_poles = false;

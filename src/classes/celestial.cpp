@@ -1184,7 +1184,11 @@ namespace
 
 bool Map::load_from_jpeg(std::string filename, bool as_bump, double bump_scale)
 {
-    if (!as_bump) surface_materials.clear();
+    if (!as_bump)
+    {
+        surface_materials.clear();
+        procedurally_generated = false;
+    }
     std::cout << "Loading " << filename << " as " << (as_bump ? "texture" : "bump") << "..." << std::endl;
     std::this_thread::sleep_for(std::chrono::milliseconds((int)frand(13,29)));
     mtx.lock();
@@ -1327,7 +1331,11 @@ bool Map::load_from_jpeg(std::string filename, bool as_bump, double bump_scale)
 
 bool Map::load_from_png(std::string filename, bool as_bump, double bump_scale)
 {
-    if (!as_bump) surface_materials.clear();
+    if (!as_bump)
+    {
+        surface_materials.clear();
+        procedurally_generated = false;
+    }
     std::cout << "Loading " << filename << " as " << (as_bump ? "texture" : "bump") << "..." << std::endl;
     std::this_thread::sleep_for(std::chrono::milliseconds((int)frand(13,29)));
     mtx.lock();
@@ -1435,6 +1443,11 @@ bool Map::load_from_png(std::string filename, bool as_bump, double bump_scale)
         for (int entry = 0; entry < count; entry++)
         {
             const png_text &text = entries[entry];
+            if (text.key && text.text && std::strcmp(text.key, "Alienorum Procedural Texture v1") == 0)
+            {
+                procedurally_generated = std::strcmp(text.text, "1") == 0;
+                continue;
+            }
             if (std::strcmp(text.key, "Alienorum Surface Materials v1") != 0
                 || !text.text) continue;
             std::vector<SurfaceMaterial> decoded(allocated);
@@ -1461,7 +1474,7 @@ bool Map::load_from_png(std::string filename, bool as_bump, double bump_scale)
             if (!valid || total != allocated) continue;
             if (upside_down) std::reverse(decoded.begin(), decoded.end());
             surface_materials = std::move(decoded);
-            break;
+            // Continue so independent provenance metadata is read as well.
         }
     }
 
@@ -1694,6 +1707,16 @@ bool Map::save_to_png(std::string filename, bool as_bump)
         text.text = material_text.data();
         text.text_length = material_text.size();
         png_set_text(png_ptr, info_ptr, &text, 1);
+    }
+
+    if (!as_bump && procedurally_generated)
+    {
+        png_text provenance{};
+        provenance.compression = PNG_TEXT_COMPRESSION_NONE;
+        provenance.key = const_cast<char*>("Alienorum Procedural Texture v1");
+        provenance.text = const_cast<char*>("1");
+        provenance.text_length = 1;
+        png_set_text(png_ptr, info_ptr, &provenance, 1);
     }
 
     // Write data to file
@@ -2765,6 +2788,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
     mtx.unlock();
     generating_fic_texture = false;
     if (create_bump) stamp_craters(cel, bump_scale);
+    procedurally_generated = true;
     touch_gen();
 
     // Deferred to the end so as to avoid the mutex lock.
@@ -3004,6 +3028,7 @@ void alienorum::Map::generate_lava_map(CelestialObject *cel, bool is_night)
     }
 
     generating_fic_texture = false;
+    procedurally_generated = true;
     touch_gen();
     if (!is_night) generate_surface_rings(cel);
 }
@@ -3379,6 +3404,7 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
     }
 
     generating_fic_texture = false;
+    procedurally_generated = true;
     touch_gen();
     p->generate_ring_parameters();
 
@@ -3516,6 +3542,7 @@ void alienorum::Map::generate_overcast_sky(CelestialObject *cel)
     }
 
     generating_fic_texture = false;
+    procedurally_generated = true;
     touch_gen();
 }
 
@@ -3864,6 +3891,7 @@ bool Map::generate_water_cloud_map(CelestialObject *cel)
         }
     }
 
+    procedurally_generated = true;
     touch_gen();
     return true;
 }
@@ -4136,6 +4164,7 @@ void Map::generate_stellar_map(CelestialObject *cel)
 
     generating_fic_texture = false;
     if (fac) fac->touch_gen();
+    procedurally_generated = true;
     touch_gen();
 }
 
@@ -4236,6 +4265,7 @@ void alienorum::Map::generate_ring_map(CelestialObject *cel, int res, double rir
     }
 
     generating_fic_texture = false;
+    procedurally_generated = true;
     touch_gen();
     xmap->touch_gen();
 }
