@@ -350,6 +350,56 @@ TEST_F(StellarRotationTest, TrapeziumPrimaryGeometryMatchesTheWikipediaPhotograp
     check();
 }
 
+TEST_F(StellarRotationTest, SystemPolesRequireBothAnglesIncludingExplicitZeros)
+{
+    std::ofstream file("catalogs/star_orbits.dat");
+    for (int index = 0; index < 5; ++index)
+    {
+        target(99980 + index)->known_poles = true;
+        const char* inclinations[] = {"", "90", "", "0", "90"};
+        const char* nodes[] = {"", "", "0", "0", "25"};
+        std::string line = row(("HD" + std::to_string(99980 + index)).c_str(), "",
+            inclinations[index], nodes[index]);
+        line.replace(24, 23, "(system inclination)   ");
+        file << line << '\n';
+    }
+    file.close();
+    CatalogReader reader;
+    reader.read_star_orbits_dat(cels);
+    for (int index = 0; index < 5; ++index)
+        EXPECT_EQ(hd[99980 + index]->known_poles, index >= 3) << index;
+    ASSERT_TRUE(reader.bake_condensed_star_orbits());
+    delete_the_universe();
+    std::fill(hd.begin(), hd.end(), nullptr);
+    std::fill(hip.begin(), hip.end(), nullptr);
+    ASSERT_EQ(reader.read_condensed_star_cat(), 6);
+    for (int index = 0; index < 5; ++index)
+        EXPECT_EQ(hd[99980 + index]->known_poles, index >= 3) << index;
+}
+
+TEST_F(StellarRotationTest, PartialRotationPolesAndCompanionOrbitsAreNotKnown)
+{
+    Star* primary = target(99970);
+    Star* companion = target(99971);
+    companion->make_companion_of(primary, 'B');
+    CatalogReader reader;
+    for (const auto& angles : std::vector<std::pair<std::string, std::string>>
+        {{"", ""}, {"90", ""}, {"", "0"}, {"0", "0"}})
+    {
+        std::string orbit_row = row("HD99970", "2d", angles.first.c_str(), angles.second.c_str());
+        orbit_row.replace(24, 23, "HD99971                ");
+        std::ofstream("catalogs/star_orbits.dat") << orbit_row << '\n';
+        reader.read_star_orbits_dat(cels);
+        const bool complete = !angles.first.empty() && !angles.second.empty();
+        EXPECT_EQ(primary->known_poles, complete);
+        EXPECT_EQ(companion->known_poles, complete);
+        std::ofstream("catalogs/star_orbits.dat") <<
+            row("HD99970", "3d", angles.first.c_str(), angles.second.c_str()) << '\n';
+        reader.read_star_orbits_dat(cels);
+        EXPECT_EQ(primary->known_poles, complete);
+    }
+}
+
 TEST_F(StellarRotationTest, PeriodOnlyRowsAndExplicitZeroPolesSurviveBothSaveFormats)
 {
     Star* unknown = target(99990);

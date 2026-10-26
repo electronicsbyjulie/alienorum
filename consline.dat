@@ -133,7 +133,7 @@ Lam Eri, Bet Eri, Ome Eri, Mu  Eri, Nu  Eri, Omi1Eri, Gam Eri, Pi  Eri, Del Eri,
 Del For, Alp For, Ome For, Nu  For, Phi For, Chi2For, Del For, Bet For, Nu  For
 ~Gru, Grus, Gruis
 Eps Gru, Eta Gru, Zet Gru, Eps Gru, Bet Gru, Del2Gru
-Del1Gru, Mu 1Gru, Gam Gru, Xi Gru
+Del1Gru, Mu 1Gru, Lam Gru, Gam Gru, Xi Gru
 Iot Gru, The Gru, Bet Gru, Alp Gru
 ~Gem, Gemini, Geminorum 
 Bet Gem, Del Gem, Zet Gem, Gam Gem
@@ -259,7 +259,8 @@ Tau Pup, Alp Car
 ~Pyx, Pyxis, Pyxidis
 Bet Pyx, Alp Pyx, Gam Pyx
 ~Ret, Reticulum, Reticuli
-Bet Ret, Del Ret, Eps Ret, Alp Ret, Bet Ret, Kap Ret, Zet2Ret
+Bet Ret, Del Ret, Iot Ret, Eps Ret, Alp Ret, Bet Ret, Kap Ret, Zet2Ret
+Del Ret, Gam Ret, Alp Ret
 ~Sge, Sagitta, Sagittae
 Alp Sge, Del Sge, Bet Sge
 Gam Sge, Del Sge

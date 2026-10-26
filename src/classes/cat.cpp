@@ -985,17 +985,19 @@ bool CatalogReader::load_Hipparcos_orbit_line(const char* buffer, CelestialObjec
 
     //  54- 59  F6.2  deg      i       *[0,180] Inclination                      (DO7)
     read_field_onebased(buffer, 54, 59, field);
-    double inclination = atof(field) * fiftyseventh;
+    const bool inclination_supplied = !trim(field).empty();
+    double inclination = inclination_supplied ? atof(field) * fiftyseventh : _pi / 2;
     s->orbit->inclination = A->obliquity = 0;
     s->orbit->heliocentric_inclination = inclination;
 
     //  61- 66  F6.2  deg      Omega   *[0,360] Position angle of the node       (DO8)
     read_field_onebased(buffer, 61, 66, field);
+    const bool node_supplied = !trim(field).empty();
     double node = atof(field) * fiftyseventh;
     s->orbit->ascending_node = A->obliquity = 0;
     s->orbit->heliocentric_node = node;
 
-    A->known_poles = true;
+    A->known_poles = inclination_supplied && node_supplied;
     A->obliquity = 0;
     A->equinox = 0;
     if (!A->location.system_center.magnitude())
@@ -1014,7 +1016,7 @@ bool CatalogReader::load_Hipparcos_orbit_line(const char* buffer, CelestialObjec
     s->location.equatorial_plane = A->location.equatorial_plane;
     s->lock_system_plane = true;
     s->lock_equatorial_plane = true;
-    s->known_poles = true;
+    s->known_poles = A->known_poles;
     s->obliquity = 0;
     s->equinox = 0;
 
@@ -5276,11 +5278,19 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels, int first_host)
         if (A->seqno < first_host) continue;
 
         read_field_onebased(buffer, 65, 75, field);
+        const auto supplied_angle = [](const std::string& value)
+        {
+            char* end = nullptr;
+            const double angle = strtod(value.c_str(), &end);
+            return end != value.c_str() && !*end && std::isfinite(angle);
+        };
+        const bool node_supplied = supplied_angle(trim(field));
         double ascending_node = atof(field) * fiftyseventh;
 
         read_field_onebased(buffer, 77, 87, field);
-        double inclination = atof(field) * fiftyseventh;
-        if (!inclination) inclination = _pi/2;
+        const bool inclination_supplied = supplied_angle(trim(field));
+        double inclination = inclination_supplied ? atof(field) * fiftyseventh : _pi / 2;
+        const bool complete_pole = inclination_supplied && node_supplied;
 
         read_field_onebased(buffer, 25, 47, field);
         std::string bdyname = trim(field);
@@ -5311,12 +5321,13 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels, int first_host)
                 if (has_inclination)
                 {
                     A->lock_equatorial_plane = true;
-                    A->known_poles = true;
+                    A->known_poles = complete_pole;
                     A->obliquity = spin_inclination;
                     A->equinox = spin_node;
                     A->rot_heliocen_incl = spin_inclination;
                 }
             }
+            if (has_inclination || has_node) A->known_poles = complete_pole;
             if (has_node) A->rot_heliocen_node = spin_node;
             if (!A->stellar_rotation.is_object()) A->stellar_rotation = json::object();
             if (has_inclination || !A->stellar_rotation.contains("inclination_supplied"))
@@ -5349,7 +5360,6 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels, int first_host)
 
         Rotation new_orbital_plane = system_plane_from_incl_and_node(inclination, ascending_node,
                                      A->location.system_center - cels[0]->location.system_center);
-        if (inclination || ascending_node)
         {
             if (!A->lock_system_plane)
             {
@@ -5362,7 +5372,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels, int first_host)
                 A->location.equatorial_plane = A->location.local_system_plane;
                 A->obliquity = 0;
             }
-            A->known_poles = true;
+            A->known_poles = complete_pole;
         }
 
         s = nullptr;
@@ -5372,7 +5382,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels, int first_host)
                 || !strcmp(bdystr, "(companion orbit)")
            )
         {
-            A->has_disk = A->known_poles;
+            A->has_disk = true;
             s = A;
         }
         if (s == A && A->has_disk)
@@ -5661,7 +5671,6 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels, int first_host)
             if (f && s->orbit) s->orbit->epoch = f;
         }
 
-        if (inclination || ascending_node)
         {
             s->location.equatorial_plane = s->location.orbital_plane = s->location.local_system_plane = new_orbital_plane;
             // std::cout << "Set " << s->name << " incl=" << (inclination * fiftyseven) << " node=" << (ascending_node * fiftyseven) << std::endl;
@@ -5676,7 +5685,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels, int first_host)
             s->lock_equatorial_plane = true;
             s->obliquity = 0;
             s->equinox = 0;
-            A->known_poles = s->known_poles = true;
+            A->known_poles = s->known_poles = complete_pole;
         }
 
         // Later rows can refer to a companion just created or renamed above.
@@ -6014,7 +6023,7 @@ static std::string star_orbits_signature()
         hash ^= static_cast<unsigned char>(c);
         hash *= 1099511628211ULL;
     }
-    return "systems2-" + std::to_string(hash);
+    return "systems3-" + std::to_string(hash);
 }
 
 static std::string baked_star_link_key(const json& key)

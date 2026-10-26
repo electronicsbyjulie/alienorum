@@ -187,6 +187,9 @@ These entries record the deliberate choices found during the earlier review. The
 
 - **S21 — Current IAU proper names:** `starname.dat` contains the 2026-10-25 official WGSN snapshot (505 non-campaign names), including Blaze Star and October 2026 additions. Exclude NameExoWorlds/NEWC entries, which remain the responsibility of `exoname.dat`. Preserve legacy/project records and old names as searchable aliases. Refresh official names on condensed-catalog loads without changing stellar properties or overriding authored user names. Fixed columns count UTF-8 bytes; explicit component selectors resolve the intended member without copying a primary's numeric identifiers onto its companion. The developer updater records source URL, date, and hash and can refresh the official section without altering legacy records.
 
+- **S22 — Complete pole coordinates:** A system or stellar-rotation record with a blank inclination or blank ascending node must not set `known_poles`. Explicit numeric zero is a valid supplied angle. Assumed planes remain usable for rendering, but are excluded from Shift+X known-pole labels and omit PoleRA, PoleDecl, and pole constellation from the N panel. Preserve this distinction through condensed-catalog reloads and invalidate older baked pole flags when the parser changes. Regression coverage includes blank, partially supplied, and complete zero-degree orientations. Implemented and verified with catalog regression tests.
+
+
 ## 8. White dwarf colors and neighborhood swatches
 
 - **W01:** Recognize supported white dwarf spectra and identifiers; missing or invalid radii receive the compact-star fallback rather than a normal-star radius.
