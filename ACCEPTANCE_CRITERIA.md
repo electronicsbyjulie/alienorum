@@ -236,7 +236,7 @@ These entries record the deliberate choices found during the earlier review. The
 - **C08:** Atmosphere accessors tolerate absent atmospheres without creating one accidentally. Composition normalization supports partial gas lists and sensible molar mass.
 - **C09:** Pressure, opacity, particulates, greenhouse temperature, and scale height remain physical for supported rocky, giant, cold, and dense-atmosphere cases; extreme inputs do not overflow.
 - **C10:** [REMOVED] Cold atmospheres condense by gas partial pressure, recalculate greenhouse cooling to convergence, and do not restore frozen gases during later temperature queries. Removed on 2026-10-25 because it makes it impossible for a world-building user to create their desired atmosphere.
-- **C11:** Stored cold temperatures and incomplete gas lists also undergo phase checks; a valid warm observed temperature is preserved.
+- **C11:** Temperature queries preserve authored atmospheric pressure and gas composition, including cold worlds and incomplete gas lists. Automatic condensation remains disabled per C10; world-building inputs must not be removed by phase checks. Preserve valid supplied temperatures.
 - **C12:** Local climate calculations are shared by the temperature readout, surface/ocean generation, frost, and vegetation decisions rather than contradicting one another.
 - **C13:** Local temperature reflects the supported effects of latitude, illumination, elevation, water/land, and tidal locking; vacuum and extreme cases remain finite.
 - **C14:** Elevation maps use correct meter scaling. Cold poles, warm dry terrain, locked daysides, and gradual frost boundaries appear consistently.
@@ -287,6 +287,8 @@ These entries record the deliberate choices found during the earlier review. The
 - **G09:** Fullscreen, window resizing, and supported display scaling preserve panel usability, selection positions, and rendering bounds.
 - **G10 — Close exterior body projection:** A spherical body viewed from outside has angular radius `asin(R/d)`, including at distances only slightly larger than its radius. CPU visibility sampling uses the same longitude origin as the rendered mesh. Perspective GPU and Sky Map CPU views paint the correct exterior silhouette and leave background outside it; use close distances representative of Quijote I. Sky Map glare and corona sizes use that projection's radians-to-pixels scale. Limb-angle calculations remain finite at contact and inside the reference surface rather than poisoning sorting or visibility with NaN.
 
+- **G11 — Galaxy label visibility:** The magnitude cutoff responds to both zoom and display brightness. With galaxy labels enabled, an unselected galaxy qualifies below the normal adjusted cutoff, or within 1.3 magnitudes beyond it when its angular radius is at least 0.1 degrees. Ordinary selection behavior remains available.
+
 ## 13. Constellations from every vantage
 
 - **K01:** Heliocentric boundaries, labels, genitives, and figures load correctly; catalog geometry handles polar fallbacks and split regions.
@@ -325,6 +327,8 @@ These entries record the deliberate choices found during the earlier review. The
 - **U11:** Developer-dial display, value/step controls, timing switches, magnitude diagnostics, and other enabled diagnostic modes function without changing normal-mode behavior.
 - **U12:** Delete Object removes the intended object safely and leaves selection, tracking, system navigation, and lookup tables in a valid state.
 
+- **U13 — View-independent procedural textures:** For fixed physical inputs, seed, map resolution, and physical color calibration, stellar photosphere/facula maps and rocky/gaseous planet textures are independent of zoom, observer brightness, gamma, and red-light mode. Use explicit neutral color settings during generation; do not temporarily change live display settings. Changing view controls while a background stellar texture is being generated must leave both photosphere and facula pixels identical to a neutral-view reference, without latitude bands baked into the map. Display controls continue to affect rendering normally. Existing textures containing the old artifact can be regenerated.
+
 ## 16. Browsers, favorites, information, and alerts
 
 - **B01:** S and N panels reflect the current observing context and selected/hovered/tracked object, with correct units and supported physical/orbital information.
@@ -345,10 +349,10 @@ These entries record the deliberate choices found during the earlier review. The
 - **Q02:** Interpolation uses bounded sample pairs and handles both endpoint dates. Eccentricity remains dimensionless and is not interpreted as a time quantity.
 - **Q03:** Core coordinate, orbit, color, chemistry, and projection calculations remain finite for supported inputs and handle invalid data through defined fallbacks.
 - **Q04:** Build and run the applicable automated suites with documented data prerequisites. Record failures individually; do not hide later suite results after an earlier failure.
-- **Q05:** Python data utilities and packaging shell scripts retain their applicable validation and syntax checks.
-- **Q06:** The Windows installer includes every tracked runtime catalog, static map, font, shader, audio file, galaxy asset, and ephemeris without a runtime download/generation path. New runtime assets update both installation rules and packaging guards.
-- **Q07:** Packaging uses the intended tracked assets and excludes local scratch files. The installed application can expand its compressed catalogs and use its bundled ephemerides.
-- **Q08:** Catalog-driven galaxy properties and white dwarf color/gravity/limb data ship in the installer; no runtime calculation silently depends on an unbundled development-only file.
+- **Q05:** Python data utilities and packaging shell scripts retain their applicable validation and syntax checks. Track all local modules required by developer utilities, including the classifier fitting/exploration tools and their tests, plus the standalone surface-cache benchmark. Document Python 3/NumPy/SciPy development dependencies; application users do not require Python.
+- **Q06:** The Windows installer uses the shared explicit manifest `package/runtime_files.txt` for CMake installation and packaging checks. Include all required tracked static runtime files and font license/attribution texts, plus the executable. Exclude developer tools, Python scripts, acceptance criteria, benchmark/intermediate catalog data, unused font variants, font editor source, changelogs, and galaxy-preparation images. No whole-directory copies may pull additional files into the payload. New runtime assets update this manifest and remain tracked.
+- **Q07:** Packaging rejects missing or untracked manifest entries and stops for uncommitted tracked changes with a commit-and-push reminder; unrelated untracked files do not block the build. Expand the tracked `soles_alienorum.dat.gz` into the installed `.dat`; only developers rebuild the catalog. Keep bundled ephemerides usable. vcpkg and NSIS are external build tools installed by developers and are not installer payload files.
+- **Q08:** Catalog-driven galaxy properties, white dwarf color/gravity/limb data, and the fitted planetary classification model ship in the installer; no runtime calculation silently depends on an unbundled development-only file. Keep runtime JSON definitions such as planets, stellar systems, satellite sources, themes, and locales; omit the source snapshots used to rebuild the condensed catalog or fit the model.
 - **Q09:** Version changes follow the repository's documented compatibility policy. Release validation records platforms, data snapshots, unsupported GPU paths, and any remaining failures.
 
 ## 18. Session delivery record and unresolved checks
@@ -395,6 +399,21 @@ The following records connect this checklist to the completed work. They are his
 | Observer excluded at every sky renderer, stale picking-state cleanup, self-tracking rejection, and preserved System View previews | V01, R24 | `ObservingObjectNeverEntersSkyRenderingOrRetainsPickingBounds`, `TrackingTheObserverCannotMakeItTheSkyHoverTarget`, and `SystemPreviewCanStillDrawTheObservingPlanet`; application rebuilt; 46 rendering checks passed, six GPU configuration skips, and five disabled checks were not executed. |
 | Quijote I contact-orbit repair and close exterior body projection | C17, J14, G10; retain V01/R24 | `Quijote_bug` stores a 120,731.757 km orbital radius, equal to the parent and moon radii combined. Loading the reproduction now gives approximately 12,073.2 km of minimum surface clearance. CPU visibility longitudes match the mesh; apparent radii use tangent geometry and Sky Map glare uses its own pixel scale. Application rebuilt; all 11 moon, 59 serialization/search, 56 celestial, and 48 enabled rendering checks passed. Six GPU configuration skips and five disabled rendering checks remain unexecuted. The original reproduction file is unchanged. |
 
+### Session additions, 2026-10-25
+
+| Delivered behavior | Acceptance coverage | Evidence |
+|---|---|---|
+| Find Shore menu/shortcut with directional preference and detailed coast sampling | P11 | `bb07dfa`; material boundaries, facing, poles, longitude wrapping, and keyboard regressions |
+| Complete tracked developer toolchain and clean-checkout build | Q04–Q05 | `2cdef30`; isolated checkout builds and loads, classifier checks and surface-cache benchmark pass |
+| Explicit runtime-only Windows installer contents | Q06–Q08 | `44a2930`; installation tree matches 460 data/license files plus the executable; a fresh complete Windows installer build remains unverified |
+| Distinct component catalog labels | S20 | `c2b026c`; resolved companions keep distinct Bayer/Flamsteed/Gould labels while shared designations preserve component names |
+| Surface-water percentage editing, including imported maps and initial resampling | P12 | `c9003c3`, `3e8d151`; actual Earth maps preserve initial 17% and 85% targets after the 640-to-768 conversion |
+| Generated-cloud attribution and PNG provenance | P13, U05 | `a658ddd`; generated/imported transitions and coexistence with saved biome metadata are covered |
+| Galaxy label thresholds and authored cold atmospheres | G11, C10–C11 | `74d2fd8`; preserve the developer's removal of automatic condensation |
+| View-independent procedural texture colors | U13 | Explicit neutral color conversions; concurrent brightness/gamma/red-light changes reproduce pixel-identical reference photosphere and facula maps; rocky and gaseous maps also match across view settings |
+
+Validation for the current changes: the Linux application rebuilt; all 70 celestial, 19 color, and 62 enabled rendering checks pass. Six optional GPU configurations remain skipped, and five disabled rendering checks were not executed. The installer shell script passes syntax validation. These checks do not replace Windows installation or macOS acceptance.
+
 ### Code audit of the acceptance checklist, 2026-10-23
 
 The review covered every criterion group against its implementation and available regressions. The following map records the inspected paths and validation scope. Individual release checkboxes still require their stated platform, data, and visual evidence; historical source audits remain open where the checklist explicitly records them.
@@ -408,16 +427,16 @@ Validation: the Linux application builds; all 16 C++ test binaries pass, totalin
 | I01–I16 | Shared exact/fuzzy search, host aliases, source/display letters, deleted numeric lookups, selection and tracking; serialization, catalog, housekeeping, and rendering suites. |
 | J01–J15 | Shared universe loader, parent validation, forward references, cycles, saved properties, SSC imports, and legacy moon repair; serialization, planet, and moon suites. Saved planet designations now follow the restored host name while retaining authored proper names. |
 | V01–V18 | Input/menu handlers, view transitions, observer exclusion, flight/time controls, and projections; rendering, point, and celestial suites. Interactive platform acceptance remains distinct from these regressions. |
-| P01–P13 | Nearby-locale selection, lazy loading, coordinates, climate readouts, and day/night status; celestial and rendering suites. Find Shore has material, displacement, facing, date-line, pole, uniform-map, and keyboard checks; all 62 celestial and 62 enabled rendering checks pass, with six optional GPU checks skipped. Inverted-map conversion now covers valid locales after malformed entries; an absent illumination star no longer causes a status-panel dereference. |
-| S01–S19 | Condensed/source readers, identifier hierarchy, photometry, multiplicity, Gaia, chemistry, and catalog limits; star, catalog, housekeeping, and Python suites. |
+| P01–P13 | Nearby-locale selection, lazy loading, coordinates, climate readouts, and day/night status; celestial and rendering suites. Find Shore has material, displacement, facing, date-line, pole, uniform-map, and keyboard checks; all 70 celestial and 62 enabled rendering checks pass, with six optional GPU checks skipped. Inverted-map conversion now covers valid locales after malformed entries; an absent illumination star no longer causes a status-panel dereference. |
+| S01–S20 | Condensed/source readers, identifier hierarchy, photometry, multiplicity, Gaia, chemistry, and catalog limits; star, catalog, housekeeping, and Python suites. |
 | W01–W11 | Published white dwarf identities/colors, atmosphere and limb tables, 4× neighborhood swatches, and offline spectrum tools; star, color, catalog, serialization, and Python suites. |
 | E01–E19 | Exoplanet source/cache import, transit metadata, orbital inference, minimum masses, and naming. Unknown inclinations now follow transit > disk > measured planet > stellar rotation > companion precedence; node selection is independent. Generic display designations follow the preferred host name during import, editor renaming, and universe reloads. |
 | C01–C18 | Classification, physical edits, conservative-zone defaults, orbital spacing, shoreline pressure, atmospheric phases, local climate, and moon clearance; planet, moon, celestial, and rendering suites. Supplied pressure, including explicit vacuum, survives inference and saves. Moon clearance includes ten atmospheric scale heights for each body and is rechecked after atmosphere generation. |
 | R01–R24 | Map/material persistence, cloud/ground/scenery paths, climate, pigment spectra, projection, and observer exclusion; color, celestial, utility, and rendering suites. Unsupported GPU configurations remain recorded as skips. |
-| G01–G10 | Sky/object rendering, label filters, galaxy properties, display scaling, and close-body projection; rendering, galaxy, celestial, and serialization suites. |
+| G01–G11 | Sky/object rendering, label filters, galaxy properties, display scaling, and close-body projection; rendering, galaxy, celestial, and serialization suites. |
 | K01–K09 | Authored/generated figures, vantage reuse, coverage, connectivity, length, and separation; constellation suite. Unresolved companions below the generator's 0.1° minimum segment scale use the primary representation, including in bright-star and passerby eligibility checks. |
 | A01–A08 | Asteroid selection/browser data, comet photometry and imports, satellite CSV/source/precession behavior; catalog, comet, and satellite suites. The comet photometry fixture now uses a stellar illumination object. |
-| U01–U12 | Editors, maps/textures, exports, settings, menus, and deletion; planet, utility, rendering, serialization, and housekeeping suites. Deletion now handles absent selection, preserves protected catalog descendants, removes authored descendants together, and clears affected navigation and lookup state. |
+| U01–U13 | Editors, maps/textures, exports, settings, menus, and deletion; planet, utility, rendering, serialization, and housekeeping suites. Deletion now handles absent selection, preserves protected catalog descendants, removes authored descendants together, and clears affected navigation and lookup state. |
 | B01–B09 | Status/browser panels, favorites, filters, sound settings and horizon alerts; housekeeping, rendering, serialization, and sound suites. |
 | Q01–Q09 | Ephemerides, numeric safety, build/test execution, Python tools, and installer source lists. In-place point scaling now multiplies coordinates correctly. Linux builds and shell syntax are checked; Windows installer execution and macOS acceptance remain unexecuted here. |
 

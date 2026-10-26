@@ -2413,6 +2413,8 @@ void alienorum::Atmosphere::calculate_tau(double pressure)
 
 void Map::generate_rocky_map(CelestialObject *cel)
 {
+    // Physical color calibration is fixed for this texture, independent of the view.
+    const double color_correction = bv_correction;
     if (render_saved_planet(cel, [this](CelestialObject* working) { generate_rocky_map(working); })) return;
     Planet *p = (Planet*)cel;
     bool want_overcast_sky = p->preserve_loaded_parameters && p->overcast;
@@ -2474,8 +2476,8 @@ void Map::generate_rocky_map(CelestialObject *cel)
         double gain = p->has_water ? 0.5 : 2.5;
         double scale = p->cel_frand(p->has_water ? 1.5 : 0.2, p->has_water ? 2.9 : 0.8);             // Controls feature sizes (smaller scale = larger continents)
 
-        Color col = Color::color_from_magnitude_indices(BV+bv_correction*2, BV);
-        RGB3 rgb = Color::rgb_from_color(col, -1);
+        Color col = Color::color_from_magnitude_indices(0, BV, BV, default_brightness, color_correction);
+        RGB3 rgb = Color::rgb_from_color(col, -1, 1.0 / default_gamma, false);
 
         // Tholins only survive on cold, distant bodies (Pluto, Triton, the icy moons), staining an
         // otherwise pale crust. Elsewhere provinces stay a neutral tint of the base rock color.
@@ -3197,6 +3199,8 @@ void Map::stamp_craters(CelestialObject *cel, double bump_scale)
 
 void Map::generate_gas_giant_map(CelestialObject *cel)
 {
+    // Physical color calibration is fixed for this texture, independent of the view.
+    const double color_correction = bv_correction;
     if (render_saved_planet(cel, [this](CelestialObject* working) { generate_gas_giant_map(working); })) return;
     int num_bands, i, lr;
     bool tidal_locked_to_star;
@@ -3251,12 +3255,9 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
         }
         bands = std::make_unique<RGB3[]>(num_bands);
 
-        col = Color::color_from_magnitude_indices(BV+bv_correction, BV);
+        col = Color::color_from_magnitude_indices(0, BV, BV, default_brightness, color_correction);
         col.normalize(1);
-        bool rlm = redlight_mode;
-        redlight_mode = false;
-        rgb = Color::rgb_from_color(col, pow(p->albedo, 0.25));
-        redlight_mode = rlm;
+        rgb = Color::rgb_from_color(col, pow(p->albedo, 0.25), 1.0 / default_gamma, false);
         /* std::cout << cel->name << " BV=" << BV
             << " color=" << col.red << "," << col.green << "," << col.blue << " albedo=" << p->albedo << " rgb=" << rgb << std::endl; */
 
@@ -3898,6 +3899,8 @@ bool Map::generate_water_cloud_map(CelestialObject *cel)
 
 void Map::generate_stellar_map(CelestialObject *cel)
 {
+    // Physical color calibration is fixed for this texture, independent of the view.
+    const double color_correction = bv_correction;
     assert(cel->typeclass() == class_star);
     double T_eff, mass_solar, f_obl, radius_m, mass_g, surface_g, logg_cgs, p_rot_days, tau_conv_days, rossby, activity, spot_dT, gd_beta, gd_mean,
         scale_height, d_granule, granule_correction, cells_across, gran_scale, gran_nyquist, gran_amp, gran_dT, spot_base_deg, net_scale, plage_gain,
@@ -3914,9 +3917,9 @@ void Map::generate_stellar_map(CelestialObject *cel)
     Map *fac = nullptr;
 
     // Blackbody B-V, to vary the hue according to local temperature.
-    auto bv_of = [](double T) -> double
+    auto bv_of = [color_correction](double T) -> double
     {
-        return log(blackbody_flux(T, V_band) / blackbody_flux(T, B_band)) * invlogmagnbase - bv_correction;
+        return log(blackbody_flux(T, V_band) / blackbody_flux(T, B_band)) * invlogmagnbase - color_correction;
     };
     
     try
@@ -4045,16 +4048,10 @@ void Map::generate_stellar_map(CelestialObject *cel)
         edge_amount = cel->cel_frand(0.45, 0.7);
         fil_scale = edge_scale * 3.5;                         // penumbral filaments
 
-        // Blackbody B-V, to vary the hue according to local temperature.
-        auto bv_of = [](double T) -> double
-        {
-            return log(blackbody_flux(T, V_band) / blackbody_flux(T, B_band)) * invlogmagnbase - bv_correction;
-        };
-
         bv_at_teff = bv_of(T_eff);
         ref_col = has_wd_color
             ? wd_linear
-            : Color::color_from_magnitude_indices(0, cel->BV_color);
+            : Color::color_from_magnitude_indices(0, cel->BV_color, cel->BV_color, default_brightness, color_correction);
         ref_max = fmax(ref_col.red, fmax(ref_col.green, ref_col.blue));
         inv_ref_max = (ref_max > 0) ? (1.0 / ref_max) : 1.0;
     }
@@ -4141,7 +4138,8 @@ void Map::generate_stellar_map(CelestialObject *cel)
             {
                 double bv_local = cel->BV_color + (bv_of(T_local) - bv_at_teff);
                 rgb = Color::rgb_from_color(
-                    Color::color_from_magnitude_indices(0, bv_local), lum * inv_ref_max);
+                    Color::color_from_magnitude_indices(0, bv_local, bv_local, default_brightness, color_correction),
+                    lum * inv_ref_max, 1.0 / default_gamma, false);
             }
 
             red_data[idx]   = rgb.r;

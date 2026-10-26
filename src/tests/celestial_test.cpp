@@ -1737,3 +1737,123 @@ TEST_F(ShoreNavigationTest, GeneratedCloudAttributionTracksProvenanceAcrossPngRe
     EXPECT_FALSE(planet->has_eumetsat_clouds());
     std::filesystem::remove(path);
 }
+
+TEST_F(ShoreNavigationTest, StellarTexturesIgnoreViewChangesDuringGeneration)
+{
+    struct RestoreView
+    {
+        double brightness = global_brightness, gamma = global_inverse_gamma;
+        bool redlight = redlight_mode;
+        ~RestoreView()
+        {
+            global_brightness = brightness;
+            global_inverse_gamma = gamma;
+            redlight_mode = redlight;
+        }
+    } restore;
+    Star *star = make_star("Texture test", .0975 * solar_mass);
+    star->temperature = 1364;
+    star->volumetric_mean_radius = 23 * solar_radius;
+    star->absolute_magnitude = .34;
+    star->BV_color = 1.5;
+    star->sidereal_rotational_period = 500 * oneday;
+    star->rnd_seed = 123456;
+    star->fictitious_map_height = 96;
+    global_brightness = default_brightness;
+    global_inverse_gamma = 1.0 / default_gamma;
+    redlight_mode = false;
+    Map reference(star);
+    reference.generate_stellar_map(star);
+    ASSERT_TRUE(reference.is_complete());
+    std::vector<unsigned char> expected(reference.get_width() * reference.get_height() * 4);
+    reference.export_rgba(expected.data());
+    ASSERT_NE(star->night_map, nullptr);
+    std::vector<unsigned char> expected_faculae(expected.size());
+    star->night_map->export_rgba(expected_faculae.data());
+    delete star->night_map;
+    star->night_map = nullptr;
+    Map actual(star);
+    std::atomic<bool> entered{false}, finished{false};
+    std::exception_ptr error;
+    std::thread generation([&]()
+    {
+        entered.store(true);
+        try { actual.generate_stellar_map(star); }
+        catch (...) { error = std::current_exception(); }
+        finished.store(true);
+    });
+    while (!entered.load()) std::this_thread::yield();
+    size_t changes = 0;
+    while (!finished.load())
+    {
+        const bool alternate = (++changes % 2) != 0;
+        global_brightness = alternate ? .001 : 1000000;
+        global_inverse_gamma = alternate ? .25 : 4;
+        redlight_mode = alternate;
+        std::this_thread::yield();
+    }
+    generation.join();
+    ASSERT_FALSE(bool(error));
+    EXPECT_GT(changes, 0u);
+    ASSERT_TRUE(actual.is_complete());
+    std::vector<unsigned char> pixels(expected.size());
+    actual.export_rgba(pixels.data());
+    EXPECT_TRUE(pixels == expected);
+    ASSERT_NE(star->night_map, nullptr);
+    star->night_map->export_rgba(pixels.data());
+    EXPECT_TRUE(pixels == expected_faculae);
+}
+
+TEST_F(ShoreNavigationTest, PlanetTexturesIgnoreBrightnessGammaAndRedlight)
+{
+    struct RestoreView
+    {
+        double brightness = global_brightness, gamma = global_inverse_gamma;
+        bool redlight = redlight_mode, randomize = randomize_txgen;
+        ~RestoreView()
+        {
+            global_brightness = brightness;
+            global_inverse_gamma = gamma;
+            redlight_mode = redlight;
+            randomize_txgen = randomize;
+        }
+    } restore;
+    randomize_txgen = false;
+    for (bool gaseous : {false, true})
+    {
+        std::vector<unsigned char> expected;
+        for (bool altered_view : {false, true})
+        {
+            global_brightness = altered_view ? 1000000 : default_brightness;
+            global_inverse_gamma = altered_view ? .25 : 1.0 / default_gamma;
+            redlight_mode = altered_view;
+            Planet *planet = world([](double, double) { return false; });
+            planet->type = gaseous ? gas_giant : rocky;
+            planet->temperature = 320;
+            planet->BV_color = .8;
+            planet->albedo = .3;
+            planet->rnd_seed = 123456;
+            planet->sidereal_rotational_period = oneday;
+            planet->fictitious_map_height = 32;
+            planet->preserve_loaded_parameters = true;
+            Map *texture;
+            if (gaseous)
+            {
+                texture = planet->cloud_map = new Map(planet);
+                texture->generate_gas_giant_map(planet);
+            }
+            else
+            {
+                delete planet->surf_map;
+                texture = planet->surf_map = new Map(planet);
+                texture->generate_rocky_map(planet);
+            }
+            ASSERT_TRUE(texture->is_complete());
+            std::vector<unsigned char> pixels(texture->get_width() * texture->get_height() * 4);
+            texture->export_rgba(pixels.data());
+            if (!altered_view) expected = pixels;
+            else EXPECT_TRUE(pixels == expected) << (gaseous ? "gaseous" : "rocky");
+            EXPECT_EQ(redlight_mode, altered_view);
+        }
+    }
+}

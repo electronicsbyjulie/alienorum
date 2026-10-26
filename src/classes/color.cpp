@@ -35,9 +35,15 @@ Color Color::color_from_magnitude_indices(double Vmag, double BV)
 
 Color Color::color_from_magnitude_indices(double Vmag, double BV, double VR)
 {
+    return color_from_magnitude_indices(Vmag, BV, VR, global_brightness, bv_correction);
+}
+
+Color Color::color_from_magnitude_indices(double Vmag, double BV, double VR,
+    double brightness_scale, double color_correction)
+{
     Color c;
-    double BV_literal = BV+bv_correction, VR_literal = VR+bv_correction,            // TODO:
-        brightness = global_brightness * pow(magnbase, -Vmag) * 128;
+    double BV_literal = BV+color_correction, VR_literal = VR+color_correction,            // TODO:
+        brightness = brightness_scale * pow(magnbase, -Vmag) * 128;
 
     c.green = 1;
     c.blue = pow(magnbase, -BV_literal);
@@ -76,6 +82,11 @@ Color Color::color_from_star(double Vmag, Star *star, double fallback_BV)
 
 RGB3 Color::rgb_from_color(Color c, double mult)
 {
+    return rgb_from_color(c, mult, global_inverse_gamma, redlight_mode);
+}
+
+RGB3 Color::rgb_from_color(Color c, double mult, double inverse_gamma, bool apply_redlight)
+{
     RGB3 result;
     int red, green, blue;
 
@@ -85,11 +96,11 @@ RGB3 Color::rgb_from_color(Color c, double mult)
         mult = 1.0 / fmax(c.red, fmax(c.green, c.blue));
     }
 
-    red   = 255 * fmin(1.0, pow(c.red   * mult, global_inverse_gamma));
-    green = 255 * fmin(1.0, pow(c.green * mult, global_inverse_gamma));
-    blue  = 255 * fmin(1.0, pow(c.blue  * mult, global_inverse_gamma));
+    red   = 255 * fmin(1.0, pow(c.red   * mult, inverse_gamma));
+    green = 255 * fmin(1.0, pow(c.green * mult, inverse_gamma));
+    blue  = 255 * fmin(1.0, pow(c.blue  * mult, inverse_gamma));
 
-    if (redlight_mode)
+    if (apply_redlight)
     {
         red = min(255, (int)(red + 0.5 * green + 0.3 * blue));
         green *= 0.333;

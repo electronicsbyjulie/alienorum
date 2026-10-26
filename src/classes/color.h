@@ -56,9 +56,12 @@ namespace alienorum
         double luminance();
         static Color color_from_magnitude_indices(double Vmag, double BV);
         static Color color_from_magnitude_indices(double Vmag, double BV, double VR);
+        static Color color_from_magnitude_indices(double Vmag, double BV, double VR,
+            double brightness_scale, double color_correction);
         static Color color_from_star(double Vmag, Star *star, double fallback_BV);
 
         static RGB3 rgb_from_color(Color c, double multiplier = 1);
+        static RGB3 rgb_from_color(Color c, double multiplier, double inverse_gamma, bool apply_redlight);
         static RGB3 disc_rgb_from_color(Color c, double disc_radius = 1);                // Disc radius = size in pixels of disc drawn on screen.
         static double hue_from_rgb(double r, double g, double b);
         static double sat_from_rgb(double r, double g, double b);

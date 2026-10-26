@@ -403,3 +403,36 @@ TEST(ColorProceduralTest, PurpleVegetationOutnumbersGreenByTwoToThreeAcrossStell
         EXPECT_GT(other, 4096);
     }
 }
+
+TEST(ColorTest, ExplicitTextureColorsIgnoreLiveDisplaySettings)
+{
+    struct RestoreView
+    {
+        double brightness = global_brightness, gamma = global_inverse_gamma;
+        bool redlight = redlight_mode;
+        ~RestoreView()
+        {
+            global_brightness = brightness;
+            global_inverse_gamma = gamma;
+            redlight_mode = redlight;
+        }
+    } restore;
+    const Color expected = Color::color_from_magnitude_indices(0, 1.5, 1.5, 1, -.6);
+    const RGB3 rgb = Color::rgb_from_color(expected, -1, 1, false);
+    for (double brightness : {.001, 1.0, 1000000.0})
+    {
+        global_brightness = brightness;
+        global_inverse_gamma = .2;
+        redlight_mode = true;
+        const Color actual = Color::color_from_magnitude_indices(0, 1.5, 1.5, 1, -.6);
+        EXPECT_DOUBLE_EQ(actual.red, expected.red);
+        EXPECT_DOUBLE_EQ(actual.green, expected.green);
+        EXPECT_DOUBLE_EQ(actual.blue, expected.blue);
+        const RGB3 pixel = Color::rgb_from_color(actual, -1, 1, false);
+        EXPECT_EQ(pixel.r, rgb.r);
+        EXPECT_EQ(pixel.g, rgb.g);
+        EXPECT_EQ(pixel.b, rgb.b);
+        Color displayed = Color::color_from_magnitude_indices(0, 1.5, 1.5);
+        EXPECT_NEAR(displayed.luminance(), brightness * 128, brightness * 1e-10);
+    }
+}
