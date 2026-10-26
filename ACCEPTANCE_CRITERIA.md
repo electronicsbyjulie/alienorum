@@ -289,6 +289,8 @@ These entries record the deliberate choices found during the earlier review. The
 
 - **G11 — Galaxy label visibility:** The magnitude cutoff responds to both zoom and display brightness. With galaxy labels enabled, an unselected galaxy qualifies below the normal adjusted cutoff, or within 1.3 magnitudes beyond it when its angular radius is at least 0.1 degrees. Ordinary selection behavior remains available.
 
+- **G12 — Nadir ground coverage:** In horizon mode on a solid body, looking straight down or slightly past the nadir paints the entire visible surface when all viewport rays intersect the ground. A horizon outside the viewport must not expose sky through the surface. Preserve land/water coverage at normal and enlarged zoom.
+
 ## 13. Constellations from every vantage
 
 - **K01:** Heliocentric boundaries, labels, genitives, and figures load correctly; catalog geometry handles polar fallbacks and split regions.

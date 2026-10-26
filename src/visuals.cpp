@@ -5460,6 +5460,12 @@ void draw_horizon()
             }
             return std::numeric_limits<double>::infinity();
         };
+        // The projected horizon can disappear when every view ray faces the ground.
+        const bool full_ground_view = !gaseous
+            && std::isfinite(base_distance(0, 0))
+            && std::isfinite(base_distance(dispcx * 2, 0))
+            && std::isfinite(base_distance(0, dispcy * 2))
+            && std::isfinite(base_distance(dispcx * 2, dispcy * 2));
         const auto visible_distance = [&](double screen_x, double screen_y)
         {
             return std::min(base_distance(screen_x, screen_y), terrain_raster.distance_at(screen_x, screen_y));
@@ -5719,6 +5725,10 @@ void draw_horizon()
 
             hz_fy = hz_y;
         }
+        else if (full_ground_view)
+        {
+            ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, 0), ImVec2(dispcx * 2, dispcy * 2), terraincol);
+        }
         else
         {
             for (j = 0; j <= hznodes; j++)
@@ -5751,9 +5761,9 @@ void draw_horizon()
         }
 
         // Measure visible horizon line screen bounds and per-column horizon heights
-        double min_hz_y = 1e9;
+        double min_hz_y = full_ground_view ? 0 : 1e9;
         int screen_w = (int)(dispcx * 2.0);
-        std::vector<double> min_hz_y_at_x(screen_w > 0 ? screen_w : 1, 1e9);
+        std::vector<double> min_hz_y_at_x(screen_w > 0 ? screen_w : 1, min_hz_y);
 
         for (j = 0; j < hznodes; j++)
         {

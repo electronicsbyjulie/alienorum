@@ -1,0 +1,6 @@
+
+[COMPLETE] Looking at the nadir in vm_horizon mode fails to draw the surface, producing instead clear sky. Fixed full-viewport ground coverage when the horizon projects outside the view; regressions cover land, water, zoom, and pitches around the nadir.
+
+Zooming in on an object in vm_horizon mode, on a body that has an atmosphere, shows a full sky gradient as if not zoomed; the gradient does not zoom with the view or reposition with the view altitude.
+
+starname.dat is out of date and does not include some objects, such as Blaze Star, that have names. It should be updated with the latest IAU official names, excluding NameExoWorlds since those belong in exoname.dat instead.

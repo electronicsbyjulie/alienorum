@@ -3214,3 +3214,32 @@ TEST_F(RenderingRegressionTest, FindShoreShortcutMovesToDetailedEdgeAndPreserves
     EXPECT_FALSE(can_find_shore());
     EXPECT_FALSE(process_find_shore());
 }
+
+TEST_F(RenderingRegressionTest, NadirSurfaceCoversTheViewportOnLandAndWater)
+{
+    Planet *world = surface(true);
+    set(show_terrain, false);
+    for (bool water : {false, true})
+    {
+        world->has_water = water ? 1 : 0;
+        world->vegetation_r = world->vegetation_g = world->vegetation_b = 0;
+        for (double pitch : {-half_pi - .01, -half_pi, -half_pi + .01})
+        {
+            for (double magnification : {1.0, 4.0})
+            {
+                altitude = pitch;
+                zoom = magnification;
+                find_horizon();
+                draw_horizon();
+                const auto pixels = render();
+                for (int y : {2, render_height / 2, render_height - 3})
+                {
+                    for (int x : {2, render_width / 2, render_width - 3})
+                        EXPECT_EQ(pixels[(y * render_width + x) * 4 + 3], 255)
+                            << "water=" << water << " pitch=" << pitch << " zoom=" << zoom;
+                }
+                ImGui::NewFrame();
+            }
+        }
+    }
+}

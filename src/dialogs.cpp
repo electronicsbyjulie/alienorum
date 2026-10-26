@@ -1918,7 +1918,7 @@ void draw_objedit_window(ImGuiIO& io)
                             cand.sibling = partner;
                             cand.period = partner->orbit->period * n / m;
                             if (!std::isfinite(cand.period) || cand.period <= 0) return false;
-                            const double period_min = fmin(cand.period, partner->orbit->period);
+                            /*const double period_min = fmin(cand.period, partner->orbit->period);
                             const double period_max = fmax(cand.period, partner->orbit->period);
                             for (CelestialObject* other : siblings)
                             {
@@ -1927,7 +1927,7 @@ void draw_objedit_window(ImGuiIO& io)
                                 const double ratio = other_period / cand.period;
                                 if (ratio > .53 && ratio < 1.96) return false;
                                 if (other_period > period_min && other_period < period_max) return false;
-                            }
+                            }*/
                             preview.orbit->period = cand.period;
                             preview.orbit->semimajor_axis = 0;
                             preview.orbit->compute_semimajor_axis(cel->mass);
@@ -2396,7 +2396,7 @@ void draw_objedit_window(ImGuiIO& io)
                     if ((uses_rocky_map(p->type) || p->has_water) && !randomize_txgen)
                     {
                         ImGui::SameLine();
-                        ImGui::Text("%s", "Water cover %:");
+                        ImGui::Text("%s", "Water cover %:  ");
                         ImGui::SameLine();
                         ImGui::SetNextItemWidth(txtwid*.6);
                         water_editor.refresh(p, shore_displacement);
@@ -2431,7 +2431,7 @@ void draw_objedit_window(ImGuiIO& io)
                     if ((uses_rocky_map(p->type) || p->has_water) && !randomize_txgen)
                     {
                         ImGui::SameLine();
-                        ImGui::Text("%s", "Coldest vegetation:");
+                        ImGui::Text("%s", "Coldest veg.:   ");
                         ImGui::SameLine();
                         ImGui::SetNextItemWidth(txtwid*.6);
                         ImGui::InputFloat("##edtvegcold", &veg_min_temp);
@@ -2451,7 +2451,7 @@ void draw_objedit_window(ImGuiIO& io)
                     if ((uses_rocky_map(p->type) || p->has_water) && !randomize_txgen)
                     {
                         ImGui::SameLine();
-                        ImGui::Text("%s", "Hottest vegetation:");
+                        ImGui::Text("%s", "Hottest veg.:   ");
                         ImGui::SameLine();
                         ImGui::SetNextItemWidth(txtwid*.6);
                         ImGui::InputFloat("##edtveghot", &veg_max_temp);
