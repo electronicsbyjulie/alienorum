@@ -1529,6 +1529,7 @@ class CoverageTestMap : public ShoreTestMap
         bump_data = new double[allocated];
         profile([](double latitude) { return pow((sin(latitude) + 1) * .5, 2); });
     }
+    void imported() { surface_materials.clear(); touch_gen(); }
     void profile(const std::function<double(double)> &height)
     {
         for (unsigned long row = 0; row < image_height; ++row)
@@ -1629,4 +1630,77 @@ TEST_F(ShoreNavigationTest, WaterCoverageTargetAppliesAfterFirstElevationGenerat
     EXPECT_FALSE(editor.has_target());
     EXPECT_NEAR(editor.percent(), 20, 2);
     randomize_txgen = old_randomize;
+}
+
+TEST_F(ShoreNavigationTest, InitialImportedWaterCoverageSurvivesElevationResampling)
+{
+    const bool old_randomize = randomize_txgen;
+    randomize_txgen = false;
+    for (double target : {17.0, 85.0})
+    {
+        SCOPED_TRACE(target);
+        Planet *planet = world([](double, double) { return false; }, false);
+        planet->temperature = 320;
+        planet->sidereal_rotational_period = oneday;
+        planet->fictitious_map_height = 64;
+        planet->preserve_loaded_parameters = true;
+        planet->has_real_maps = true;
+        auto *surface = new CoverageTestMap(planet->estimate_bump_scale());
+        surface->profile([](double lat) { return .35 + .3 * (sin(lat) + 1) * .5; });
+        surface->imported();
+        delete planet->surf_map;
+        planet->surf_map = surface;
+        planet->m_bump_scale = 0;
+        WaterCoverageEditor editor;
+        editor.refresh(planet, 0);
+        editor.edit(target);
+        editor.prepare_generation(planet);
+        planet->mark_all_maps_for_regen();
+        for (int pass = 0; pass < 3 && editor.has_target(); ++pass)
+        {
+            wait_for_texture_tasks();
+            editor.poll(0);
+        }
+        EXPECT_FALSE(editor.has_target());
+        EXPECT_NEAR(editor.percent(), target, 1.5);
+        EXPECT_EQ(planet->surf_map->get_height(), 64u);
+    }
+    randomize_txgen = old_randomize;
+}
+
+TEST_F(ShoreNavigationTest, ImportedEarthMapsMeetInitialCoverageTargets)
+{
+    for (double target : {17.0, 85.0})
+    {
+        SCOPED_TRACE(target);
+        Planet *planet = make_planet(make_star(), "Earth");
+        planet->temperature = 288;
+        planet->sidereal_rotational_period = oneday;
+        planet->fictitious_map_height = 768;
+        planet->preserve_loaded_parameters = true;
+        planet->has_real_maps = true;
+        planet->has_water = .71;
+        planet->ensure_atmosphere()->surface_pressure = oneatm;
+        planet->surf_map = new Map(planet);
+        ASSERT_TRUE(planet->surf_map->load_from_jpeg("maps/Earth_surf.jpg"));
+        ASSERT_TRUE(planet->surf_map->load_from_png("maps/Earth_bump.png", true, planet->estimate_bump_scale()));
+        ASSERT_EQ(planet->surf_map->get_height(), 640u);
+        planet->m_bump_scale = 0;
+        WaterCoverageEditor editor;
+        editor.refresh(planet, 8);
+        editor.edit(target);
+        editor.prepare_generation(planet);
+        const bool old_randomize = randomize_txgen;
+        randomize_txgen = false;
+        planet->mark_all_maps_for_regen();
+        for (int pass = 0; pass < 3 && editor.has_target(); ++pass)
+        {
+            wait_for_texture_tasks();
+            editor.poll(8);
+        }
+        randomize_txgen = old_randomize;
+        EXPECT_FALSE(editor.has_target());
+        EXPECT_DOUBLE_EQ(round(editor.percent() * 10) / 10, target);
+        EXPECT_EQ(planet->surf_map->get_height(), 768u);
+    }
 }

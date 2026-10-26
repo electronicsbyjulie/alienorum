@@ -2633,7 +2633,7 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::SameLine();
             if (!generating_fic_texture && ImGui::Button("Regenerate"))
             {
-                water_editor.prepare_generation(cel, true);
+                water_editor.prepare_generation(cel);
                 ((Planet*)cel)->preserve_loaded_parameters = false;
                 cel->rnd_seed = rand();
                 if (randomize_txgen) ((Planet*)cel)->vegetation_r = ((Planet*)cel)->vegetation_g = ((Planet*)cel)->vegetation_b = 0;     // force regenerate
@@ -2642,7 +2642,7 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::SameLine();
             if (!generating_fic_texture && ImGui::Button("Reseed"))
             {
-                water_editor.prepare_generation(cel, true);
+                water_editor.prepare_generation(cel);
                 cel->rnd_seed = 0;
                 cel->randomize();
             }

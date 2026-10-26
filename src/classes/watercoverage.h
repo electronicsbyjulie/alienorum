@@ -97,14 +97,14 @@ namespace alienorum
         }
     };
 
-    // A percentage entered before elevations exist survives the first generation pass.
+    // Keep the requested percentage until generated elevations have been calibrated.
     class WaterCoverageEditor
     {
         WaterCoverage coverage;
         Planet *body = nullptr;
         int body_index = -1;
         double requested = 0;
-        bool pending = false, awaiting_elevations = false;
+        bool pending = false, awaiting_calibration = false;
         unsigned int starting_generation = 0;
 
         unsigned int map_generation() const { return body && body->surf_map ? body->surf_map->gen : 0; }
@@ -116,15 +116,21 @@ namespace alienorum
             {
                 body = planet;
                 body_index = planet ? planet->seqno : -1;
-                pending = awaiting_elevations = false;
+                pending = awaiting_calibration = false;
             }
             coverage.refresh(planet, displacement);
             if (!coverage.ready() || !pending || map_generation() == starting_generation) return;
-            if (awaiting_elevations)
+            if (awaiting_calibration)
             {
                 if (!coverage.editable()) return;
-                body->has_water = coverage.level(requested);
-                awaiting_elevations = false;
+                const float calibrated = coverage.level(requested);
+                if (fabs(coverage.percent(body->has_water) - requested) <= .1 || calibrated == body->has_water)
+                {
+                    pending = awaiting_calibration = false;
+                    return;
+                }
+                body->has_water = calibrated;
+                awaiting_calibration = false;
                 starting_generation = map_generation();
                 body->mark_all_maps_for_regen();
             }
@@ -135,7 +141,7 @@ namespace alienorum
             if (!pending || generating_fic_texture) return;
             if (body_index < 0 || body_index >= ncelobjs || !cels || cels[body_index] != body || body->deleted)
             {
-                pending = awaiting_elevations = false;
+                pending = awaiting_calibration = false;
                 body = nullptr;
                 return;
             }
@@ -150,20 +156,22 @@ namespace alienorum
             if (!editable() || !std::isfinite(percentage)) return;
             requested = std::clamp(percentage, 0.0, 100.0);
             pending = true;
-            awaiting_elevations = !coverage.editable();
+            awaiting_calibration = !coverage.editable();
             starting_generation = map_generation();
             if (coverage.editable()) body->has_water = coverage.level(requested);
             body->user_edited = true;
         }
-        void prepare_generation(CelestialObject *object, bool new_terrain = false)
+        void prepare_generation(CelestialObject *object)
         {
             if (object != body || !editable()) return;
             if (!pending) return;
             requested = percent();
             pending = true;
-            awaiting_elevations = new_terrain || !coverage.editable();
+            // Update can resample imported elevations or change their normalization.
+            // Verify the result even when the original map already had bump data.
+            awaiting_calibration = true;
             starting_generation = map_generation();
-            if (!awaiting_elevations) body->has_water = coverage.level(requested);
+            if (coverage.editable()) body->has_water = coverage.level(requested);
         }
     };
 
