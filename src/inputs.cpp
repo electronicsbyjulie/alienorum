@@ -385,7 +385,7 @@ void show_menu()
                 menu_clicked = true;
             }
             ImGui::Separator();
-            if (ImGui::MenuItem("Populate Region...")) { open_fictional_region(); menu_clicked = true; }
+            if (ImGui::MenuItem("Populate Region...", "Ctrl+P")) { open_fictional_region(); menu_clicked = true; }
             if (ImGui::MenuItem("Add Object...", "Shift+A")) { process_key_cmd_char('A'); menu_clicked = true; }
             if (ImGui::MenuItem("Add Satellite...", "^")) { process_key_cmd_char('^'); menu_clicked = true; }
             if (ImGui::MenuItem("Add Asteroid...", ".")) { process_key_cmd_char('.'); menu_clicked = true; }
@@ -1125,6 +1125,7 @@ void process_key_cmd_ctrl_char(char c)
         break;
         case 'D': label_favestars = !label_favestars; break;
 
+        case 'p': open_fictional_region(); break;
         case 'e': vplane_mode = vplane_ecliptic; break;
         case 'f': activate_find_shore(); break;
         case 'g': vplane_mode = vplane_galactic; break;

@@ -653,6 +653,14 @@ double CelestialLocation::squared_distance_to(CelestialLocation other)
     return relloc.squared_magnitude();
 }
 
+void CelestialLocation::rebase_system(const CelestialLocation& frame)
+{
+    local_position += (galactic_center-frame.galactic_center)*(1e6*light_year)
+        + (system_center-frame.system_center);
+    galactic_center = frame.galactic_center;
+    system_center = frame.system_center;
+}
+
 CelestialLocation CelestialLocation::operator-(CelestialLocation other)             // it sure is nice that this fuction does its job!
 {
     CelestialLocation result = *this;

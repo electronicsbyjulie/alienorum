@@ -145,6 +145,8 @@ Alienorum auto-downloads satellite data from CelesTrak (https://celestrak.org/).
 
 To edit a celestial object, select it and press Shift+E. An edit window will appear at lower right, offering several object properties that can be set in-program. All changes will take effect right away.
 
+Use **Ctrl+P** or **Object > Populate Region…** to generate a fictional stellar neighborhood in the current galaxy. The dialog offers four-character sector codes and a minimum system spacing of 1–5 light years (default 2). Close companions within a system retain their orbital separation.
+
 To add a new object, first select its center of orbit and then press Shift+A. A dialog will ask what kind of object to create. Currently, only Star, Planet, and Moon will work. After clicking Go, the new object will be added with a few default parameters and you will see an edit window to fill in all its other properties.
 
 Alienorum generates fictitious texture maps of objects that don't have a map file in the `maps/` folder. While editing, you can save, refresh, and regenerate these fictitious maps. Save creates file with the object's name in `maps/`, and refresh reloads the existing file or creates a new texture if the file is absent. The regenerate button creates a high resolution texture, never the same as the existing texture, but suitable for world building (10000 x 5000 pixels). This will take a moment to complete so be sure to let it finish before saving or retrying.

@@ -382,7 +382,10 @@ void compute_object_draw_coordinates()
     for (i=0; cels[i] && i<MAX_CELOBJS; i++)
     {
         if (cels[i]->deleted) continue;
-        if (!compute_object_location(cels[i])) continue;
+        const bool updated = compute_object_location(cels[i]);
+        const bool cached_visible_star = cels[i]->typeclass() == class_star &&
+            static_cast<Star*>(cels[i])->tmp_vis_flag;
+        if (!updated && !cached_visible_star) continue;
 
         CelestialLocation tmp = cels[i]->location - here;
         cels[i]->tmprel = Point(tmp);                           // fix race condition: tmprel must come AFTER tmp, not before.
@@ -395,17 +398,20 @@ void compute_object_draw_coordinates()
             && cels[i]->tmprel.squared_magnitude() < mycenobj_distsq)
         {
             mycenobj = cels[i]->cenobj;
-            CelestialLocation was_here = here;
-            here.galactic_center = cels[i]->location.galactic_center;           // TODO:
-            here.system_center = cels[i]->location.system_center;
-            here.local_position = Point(was_here) - here.system_center;
+            mycenobj_distsq = cels[i]->tmprel.squared_magnitude();
+            mycenobj_dist = sqrt(mycenobj_distsq);
+            here.rebase_system(mycenobj->location);
         }
     }
 
     if (mycenobj)
     {
-        here.system_center = mycenobj->location.system_center;
-        here.galactic_center = mycenobj->location.galactic_center;
+        if (whereami < 0) here.rebase_system(mycenobj->location);
+        else
+        {
+            here.system_center = mycenobj->location.system_center;
+            here.galactic_center = mycenobj->location.galactic_center;
+        }
 
         static CelestialObject *llmycen = nullptr;
         if (llmycen != mycenobj)

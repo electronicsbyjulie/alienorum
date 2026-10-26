@@ -1361,17 +1361,15 @@ int draw_sphere(CelestialObject* cel, double arad)
             {
                 if (cls == class_star)
                 {
-                    whereami = selected = trackidx = -1;
-                    viewer_locale = "";
-                    here = cels[0]->location;
-                    here.local_position.y -= AU;
-                    velocity = Point(0,0,0);
-                    // Take ownership of everything about to be unlinked, and drop every cached
-                    // pointer into it, before the wipe below makes it unreachable. The wipe
-                    // itself, and everything else this branch does, is unchanged -- see
-                    // release_universe_objects() for why the actual freeing happens later.
-                    release_universe_objects();
-                    memset( &cels[1], 0, (MAX_CELOBJS-2) * sizeof(CelestialObject*) );
+                    // Arriving inside a star must not erase the saved universe.
+                    whereami = cel->seqno;
+                    selected = trackidx = -1;
+                    mycenobj = cel->cenobj ? cel->cenobj : cel;
+                    viewer_locale.clear();
+                    velocity = center;
+                    here = cel->location;
+                    set_viewer_location_and_plane();
+                    viewchanged = true;
                     return 0;
                 }
                 else if (cls == class_satellite)

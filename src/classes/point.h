@@ -109,6 +109,7 @@ namespace alienorum
         Rotation equatorial_plane;                          // Also used for viewer plane in space and horizon plane in horizon mode.
         double distance_to(CelestialLocation other);
         double squared_distance_to(CelestialLocation other);
+        void rebase_system(const CelestialLocation& frame);
         CelestialLocation operator-(CelestialLocation other);
         CelestialLocation& operator-=(CelestialLocation other);
         json to_json();

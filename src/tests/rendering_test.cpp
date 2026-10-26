@@ -895,7 +895,7 @@ TEST_F(RenderingRegressionTest, FictionalRegionPreviewAddsStarsAndVisitsItsBookm
     std::ofstream("user.json") << "{}";
     ImGui::EndFrame();
     ImGui::GetIO().DisplaySize = ImVec2(1024, 1100);
-    open_fictional_region();
+    process_key_cmd_ctrl_char('p');
     ImGui::NewFrame();
     ImGui::SetNextWindowPos(ImVec2(20, 20));
     draw_fictional_region();
@@ -941,6 +941,93 @@ TEST_F(RenderingRegressionTest, FictionalRegionPreviewAddsStarsAndVisitsItsBookm
     std::filesystem::remove_all(temporary);
     ImGui::GetIO().DisplaySize = ImVec2(192, 108);
     ImGui::NewFrame();
+}
+
+TEST_F(RenderingRegressionTest, RegionDefaultsToVisitedGalaxyBeforeAnUnrelatedSelection)
+{
+    make_star("Sun");
+    Galaxy* local = new Galaxy();
+    strcpy(local->name, "Milky Way");
+    local->reference_galaxy = true;
+    local->volumetric_mean_radius = 50000*light_year;
+    append_cel(local);
+    Galaxy* remote = new Galaxy();
+    strcpy(remote->name, "M31");
+    remote->location.galactic_center = Point(0, 0, 2.5);
+    remote->volumetric_mean_radius = 70000*light_year;
+    append_cel(remote);
+    Star* host = make_star("Remote host");
+    host->location = remote->location;
+    host->location.system_center = Point(100*light_year, 0, 0);
+    set(selected, local->seqno);
+    set(whereami, remote->seqno);
+    set(inside_galaxy_idx, local->seqno);
+    EXPECT_EQ(fictional_default_galaxy(), remote->seqno);
+    whereami = host->seqno;
+    EXPECT_EQ(fictional_default_galaxy(), remote->seqno);
+    whereami = -1;
+    set(here, host->location);
+    EXPECT_EQ(fictional_default_galaxy(), remote->seqno);
+}
+
+TEST_F(RenderingRegressionTest, WarpRebasingKeepsRemoteSystemsAndObserverPosition)
+{
+    Star* sun = make_star("Sun");
+    sun->distance = 0;
+    sun->cenobj = sun;
+    Star* old_host = make_star("Old remote host");
+    Star* new_host = make_star("New remote host");
+    for (Star* star : {old_host, new_host})
+    {
+        star->cenobj = star;
+        star->fictional_origin = {{"id", star->name}};
+        star->location.galactic_center = Point(0, 0, 2.5);
+        star->distance = (star == old_host ? 10 : 12)*light_year;
+        star->right_ascension = star->declination = 0;
+        star->update_location(simnow);
+    }
+    CelestialLocation observer = new_host->location;
+    observer.local_position = Point(AU, 0, 0);
+    set(here, observer);
+    set(mycenobj, static_cast<CelestialObject*>(old_host));
+    set(whereami, -1);
+    set(selected, -1);
+    set(trackidx, -1);
+    set(editidx, -1);
+    set(redo_proper_motions, false);
+    double magnitudes[3] = {}, sizes[3] = {}, bloom[3] = {};
+    bool discs[3] = {};
+    set(vmag_cache, static_cast<double*>(magnitudes));
+    set(angular_radius, static_cast<double*>(sizes));
+    set(bloomrad_cache, static_cast<double*>(bloom));
+    set(discinstead, static_cast<bool*>(discs));
+    compute_object_draw_coordinates();
+    EXPECT_EQ(mycenobj, new_host);
+    EXPECT_NEAR(here.distance_to(observer), 0, 1);
+    EXPECT_EQ(here.galactic_center.to_json(), observer.galactic_center.to_json());
+    EXPECT_EQ(ncelobjs, 3);
+}
+
+TEST_F(RenderingRegressionTest, MovingInsideAStarDoesNotEraseTheUniverse)
+{
+    Star* sun = make_star("Sun");
+    Star* destination = make_star("Remote destination");
+    destination->cenobj = destination;
+    destination->location.galactic_center = Point(0, 0, 2.5);
+    destination->tmprel = Point(0, 0, solar_radius*0.5);
+    set(mycenobj, static_cast<CelestialObject*>(sun));
+    set(here, destination->location);
+    set(whereami, -1);
+    set(selected, -1);
+    set(trackidx, -1);
+    set(velocity, Point(0, 0, solar_radius));
+    set(took_off_from, -1);
+    EXPECT_EQ(draw_sphere(destination, 1), 0);
+    EXPECT_EQ(ncelobjs, 2);
+    EXPECT_EQ(cels[1], destination);
+    EXPECT_EQ(whereami, destination->seqno);
+    EXPECT_EQ(mycenobj, destination);
+    EXPECT_DOUBLE_EQ(velocity.magnitude(), 0);
 }
 
 TEST_F(RenderingRegressionTest, MoonLabelsRequireSeparationAndExistingVisibilityFilters)

@@ -520,3 +520,63 @@ TEST_F(FictionalStarsTest, MidGenerationCancellationLeavesNoLiveObjects)
     EXPECT_FALSE(batch.error.empty());
     EXPECT_EQ(ncelobjs, 1);
 }
+
+TEST_F(FictionalStarsTest, SystemsRespectMinimumSpacingIncludingTheCenterAndClusters)
+{
+    for (double spacing : {1.0, 2.0, 5.0})
+    {
+        region.minimum_spacing_ly = spacing;
+        auto batch = generate_fictional_stars(model, region);
+        ASSERT_TRUE(batch.error.empty()) << spacing << ": " << batch.error;
+        std::vector<Point> systems;
+        for (const auto& star : batch.stars)
+        {
+            if (star->orbit) continue;
+            Point p = star->location.system_center*(1/light_year);
+            for (Point other : systems) EXPECT_GE(p.distance_to(other), spacing-1e-7);
+            systems.push_back(p);
+        }
+        EXPECT_GT(systems.size(), 100u);
+    }
+}
+
+TEST_F(FictionalStarsTest, ImpossibleSpacingReturnsAnErrorInsteadOfOverlappingSystems)
+{
+    region.star_count = 2;
+    region.radius_ly = 1;
+    region.minimum_spacing_ly = 5;
+    auto batch = generate_fictional_stars(model, region);
+    EXPECT_FALSE(batch.error.empty());
+    EXPECT_TRUE(batch.stars.empty());
+    EXPECT_EQ(ncelobjs, 1);
+}
+
+TEST_F(FictionalStarsTest, SectorCodesAreShortRestrictedAndSeparateFromPersistentIdentity)
+{
+    for (int i = 0; i < 1000; ++i)
+    {
+        const std::string code = fictional_region_id();
+        ASSERT_EQ(code.size(), 4u);
+        for (int digit = 0; digit < 3; ++digit)
+            EXPECT_NE(std::string("2357").find(code[digit]), std::string::npos);
+        EXPECT_NE(std::string("BCDJLMNPQRVW").find(code[3]), std::string::npos);
+    }
+    region.star_count = 1;
+    region.region_id = fictional_region_id();
+    region.identity = fictional_population_id();
+    auto a = generate_fictional_stars(model, region);
+    const std::string identity = a.stars.front()->fictional_origin.at("id");
+    region.identity = fictional_population_id();
+    auto b = generate_fictional_stars(model, region);
+    EXPECT_NE(identity, b.stars.front()->fictional_origin.at("id"));
+    std::string message;
+    ASSERT_TRUE(a.install(message));
+    EXPECT_NE(fictional_region_id(), region.region_id);
+    const auto collision_file = temporary / "sector_collision.json";
+    json collision = {{b.stars.front()->name, b.stars.front()->to_json()}};
+    std::ofstream(collision_file) << collision;
+    std::fstream input(collision_file, std::ios::in);
+    EXPECT_FALSE(Serialization::load_all(input, cels, MAX_CELOBJS));
+    EXPECT_EQ(ncelobjs, 2);
+    EXPECT_EQ(static_cast<Star*>(cels[1])->fictional_origin.at("id"), identity);
+}

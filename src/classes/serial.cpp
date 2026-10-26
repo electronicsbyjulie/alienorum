@@ -897,6 +897,8 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
                     if (!imported_fictional_ids.insert(origin.at("id")).second)
                         throw std::runtime_error("Duplicate fictional identity in universe file");
                     const auto fictional = fictional_ids.find(origin.at("id"));
+                    if (fictional == fictional_ids.end() && match != identities.end())
+                        throw std::runtime_error("Fictional designation is already in use by a different object");
                     entry.target = fictional == fictional_ids.end() ? entry.parsed.get() : fictional->second;
                 }
             }

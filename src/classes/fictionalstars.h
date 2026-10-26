@@ -48,9 +48,11 @@ namespace alienorum
         Point center_ly;
         double radius_ly = 1000;
         int star_count = 10000;
+        double minimum_spacing_ly = 2;
         int center_subtype = 6;
         uint64_t seed = 1;
         std::string region_id;
+        std::string identity;
         bool clusters = true;
         bool historical_annulus = false;
     };
@@ -68,6 +70,7 @@ namespace alienorum
     };
 
     std::string fictional_region_id();
+    std::string fictional_population_id();
     const char* fictional_center_type(int index);
     FictionalBatch generate_fictional_stars(const FictionalGalaxy& galaxy, const FictionalRegion& region,
         const std::atomic<bool>* cancel = nullptr, std::atomic<int>* progress = nullptr);

@@ -223,6 +223,39 @@ namespace
     }
 }
 
+int fictional_default_galaxy()
+{
+    const auto valid = [](int index)
+    {
+        return cels && index >= 0 && index < ncelobjs && cels[index] && !cels[index]->deleted
+            && cels[index]->typeclass() == class_galaxy;
+    };
+    if (valid(whereami)) return whereami;
+    CelestialLocation vantage = whereami >= 0 && whereami < ncelobjs && cels[whereami]
+        ? cels[whereami]->location : here;
+    int nearest = -1, reference = -1;
+    double nearest_distance = 1e300;
+    for (int i = 0; cels && cels[i]; ++i)
+    {
+        if (!valid(i)) continue;
+        Galaxy* galaxy = static_cast<Galaxy*>(cels[i]);
+        if (galaxy->reference_galaxy) reference = i;
+        if (!galaxy->reference_galaxy && !galaxy->distance_known &&
+            !galaxy->location.galactic_center.squared_magnitude() && !galaxy->location.system_center.squared_magnitude()) continue;
+        const double radius = galaxy->volumetric_mean_radius > 0 ? galaxy->volumetric_mean_radius : 50000*light_year;
+        const double distance = vantage.distance_to(galaxy->location);
+        if (distance <= radius && distance < nearest_distance)
+        {
+            nearest = i;
+            nearest_distance = distance;
+        }
+    }
+    if (nearest >= 0) return nearest;
+    if (valid(inside_galaxy_idx)) return inside_galaxy_idx;
+    if (valid(selected)) return selected;
+    return reference;
+}
+
 void open_fictional_region()
 {
     if (dialog.running)
@@ -232,12 +265,11 @@ void open_fictional_region()
     }
     dialog.open = true;
     dialog.region.region_id = fictional_region_id();
+    dialog.region.identity = fictional_population_id();
     std::random_device random;
     dialog.region.seed = (uint64_t(random()) << 32) ^ random();
     dialog.region.center_subtype = random()%15;
-    int target = selected >= 0 && cels[selected] && cels[selected]->typeclass() == class_galaxy ? selected : -1;
-    for (int i = 0; target < 0 && cels[i]; ++i)
-        if (cels[i]->typeclass() == class_galaxy && static_cast<Galaxy*>(cels[i])->reference_galaxy) target = i;
+    const int target = fictional_default_galaxy();
     if (target >= 0) dialog.choose(target);
 }
 
@@ -322,6 +354,7 @@ void draw_fictional_region()
         }
         if (ImGui::Checkbox("Historical 7-9 kpc annulus", &dialog.region.historical_annulus)) dialog.clear_preview();
     }
+    static const double minimum_spacing = 1, maximum_spacing = 5;
     bool changed = ImGui::InputDouble("Galactocentric radius (ly)", &dialog.radial, 100, 1000, "%.1f");
     changed |= ImGui::InputDouble("Galactocentric azimuth (deg)", &dialog.azimuth_degrees, 1, 10, "%.2f");
     changed |= ImGui::InputDouble("Height above galaxy plane (ly)", &dialog.height, 10, 100, "%.1f");
@@ -334,6 +367,8 @@ void draw_fictional_region()
     }
     changed = ImGui::InputDouble("Region radius (ly)", &dialog.region.radius_ly, 10, 100, "%.0f");
     changed |= ImGui::InputInt("Star count (including companions)", &dialog.region.star_count, 100, 1000);
+    changed |= ImGui::SliderScalar("Minimum system spacing (ly)", ImGuiDataType_Double, &dialog.region.minimum_spacing_ly,
+        &minimum_spacing, &maximum_spacing, "%.1f");
     const int available = std::max(0, MAX_CELOBJS-ncelobjs-1);
     dialog.region.star_count = std::clamp(dialog.region.star_count, 1, std::max(1, available));
     dialog.region.radius_ly = std::clamp(dialog.region.radius_ly, 1.0, 1000.0);
@@ -346,7 +381,8 @@ void draw_fictional_region()
     ImGui::Text("Star storage estimate: %.1f MiB plus metadata and indices", sizeof(Star)*dialog.region.star_count/(1024.0*1024));
     const bool inside = dialog.galaxy.inside(dialog.region.center_ly);
     if (!inside) ImGui::TextWrapped("The center is outside the modeled galaxy. Move the crosshair or choose Suggest Location.");
-    ImGui::BeginDisabled(!inside || available < 1);
+    if (dialog.region.region_id.empty()) ImGui::TextUnformatted("No unused sector codes remain in this universe.");
+    ImGui::BeginDisabled(!inside || available < 1 || dialog.region.region_id.empty());
     if (ImGui::Button("Generate Preview"))
     {
         dialog.clear_preview();
@@ -406,6 +442,7 @@ void draw_fictional_region()
                 save_user_json();
                 dialog.preview_valid = false;
                 dialog.region.region_id = fictional_region_id();
+                dialog.region.identity = fictional_population_id();
             }
         }
     }
