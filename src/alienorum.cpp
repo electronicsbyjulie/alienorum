@@ -1,3 +1,4 @@
+#include "fictionalstars_ui.h"
 
 #define _CRT_SECURE_NO_WARNINGS
 #define STB_IMAGE_IMPLEMENTATION
@@ -790,6 +791,7 @@ int main (int argc, char** argv)
             if (objedtwnd) draw_objedit_window(io);
             if (explorer) draw_system_explorer(io);
             if (addcelwnd) draw_addcel_window(io);
+            draw_fictional_region();
             if (astwnd) draw_ast_window(io);
             if (cometwnd) draw_comet_window(io);
             if (satwnd) draw_sat_window(io);
@@ -1271,6 +1273,7 @@ int main (int argc, char** argv)
     {
         exoplanet_load_thread.join();
     }
+    close_fictional_region();
     alienorum::ExoConsGenerator::reset();
 
     wait_for_texture_tasks();

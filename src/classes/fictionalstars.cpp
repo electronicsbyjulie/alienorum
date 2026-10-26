@@ -1,0 +1,596 @@
+#include "fictionalstars.h"
+#include "exocons.h"
+#include "../globals.h"
+#include <SDL_image.h>
+#include <algorithm>
+#include <chrono>
+#include <filesystem>
+#include <fstream>
+#include <iomanip>
+#include <random>
+#include <set>
+#include <sstream>
+
+using namespace alienorum;
+
+namespace
+{
+    double dot(Point a, Point b) { return a.x*b.x + a.y*b.y + a.z*b.z; }
+    Point unit(Point a)
+    {
+        const double length = a.magnitude();
+        return length > 1e-20 ? a * (1 / length) : Point(0, 1, 0);
+    }
+    double uniform(std::mt19937_64& random)
+    {
+        return (random() >> 11) * 0x1.0p-53;
+    }
+    Point direction(std::mt19937_64& random)
+    {
+        const double y = 2 * uniform(random) - 1, angle = 2 * _pi * uniform(random);
+        const double radial = sqrt(std::max(0.0, 1 - y*y));
+        return Point(radial*cos(angle), y, radial*sin(angle));
+    }
+    double normal(std::mt19937_64& random)
+    {
+        return sqrt(-2 * log(std::max(1e-15, uniform(random)))) * cos(2 * _pi * uniform(random));
+    }
+    Rotation isotropic(std::mt19937_64& random)
+    {
+        return align_points_3d(direction(random), yaxis, center);
+    }
+    Rotation tilted(Rotation plane, double spread, std::mt19937_64& random)
+    {
+        Point pole = rotate3D(yaxis, center, plane.v, -plane.a);
+        pole = unit(pole + direction(random) * (spread * uniform(random)));
+        return align_points_3d(pole, yaxis, center);
+    }
+    double luminance(Point color) { return 0.2126*color.x + 0.7152*color.y + 0.0722*color.z; }
+    float linear_channel(unsigned char value)
+    {
+        const double channel = value / 255.0;
+        return channel <= 0.04045 ? channel / 12.92 : pow((channel + 0.055) / 1.055, 2.4);
+    }
+    std::string image_path(const Galaxy& galaxy)
+    {
+        if (galaxy.reference_galaxy) return galaxy.internal_texture;
+        std::vector<std::string> names{galaxy.name};
+        std::string underscored = galaxy.name, compact;
+        for (char& c : underscored) if (c == ' ') c = '_';
+        for (char c : std::string(galaxy.name)) if (c != ' ') compact += c;
+        names.push_back(underscored);
+        names.push_back(compact);
+        if (compact.size() > 1 && compact[0] == 'M' && isdigit(static_cast<unsigned char>(compact[1])))
+        {
+            names.push_back("M " + compact.substr(1));
+            names.push_back("M_" + compact.substr(1));
+        }
+        for (const auto& name : names)
+            for (const auto& extension : {".jpg", ".png"})
+            {
+                const std::string path = "galaxies/faceon/" + name + extension;
+                if (std::filesystem::is_regular_file(path)) return path;
+            }
+        return {};
+    }
+    double analytic_density(const FictionalGalaxy& galaxy, Point p)
+    {
+        const double radius = sqrt(p.x*p.x + p.z*p.z) / galaxy.radius_ly;
+        if (galaxy.spheroid)
+        {
+            const double r = sqrt(p.x*p.x + p.z*p.z + p.y*p.y) / galaxy.radius_ly;
+            return exp(-5 * r);
+        }
+        const double thin = std::max(80.0, galaxy.radius_ly * (galaxy.morphology >= 9 ? 0.10 : 0.006));
+        const double vertical = 0.85*exp(-fabs(p.y)/thin) + 0.15*exp(-fabs(p.y)/(thin*3));
+        return exp(-3*radius) * vertical;
+    }
+    void main_sequence(Star& star, double index)
+    {
+        const char* letters = "OBAFGKM";
+        index = std::clamp(index, 3.0, 68.0);
+        snprintf(star.spectral_type, sizeof(star.spectral_type), "%c%dV", letters[int(index)/10], int(index)%10);
+        star.mass = Star::interpolate_mseq_mass(index) * solar_mass;
+        star.volumetric_mean_radius = Star::interpolate_mseq_rad(index) * solar_radius;
+        star.temperature = Star::interpolate_mseq_temp(index);
+        star.BV_color = Star::interpolate_mseq_BV(index);
+        const double luminosity = Star::interpolate_mseq_lum(index);
+        star.absolute_magnitude = 4.74 - 2.5*log10(std::max(1e-9, luminosity))
+            - Star::bolometric_correction(star.temperature);
+    }
+    void stellar_properties(Star& star, double blue, double age, std::mt19937_64& random)
+    {
+        const double draw = uniform(random);
+        if (draw < 0.04)
+        {
+            const double hot = uniform(random);
+            star.temperature = 3400 + hot*1900;
+            star.mass = (1.1 + uniform(random)*2.0) * solar_mass;
+            star.volumetric_mean_radius = (12 + pow(uniform(random), 2)*110) * solar_radius;
+            star.estimate_BV(star.temperature);
+            const double luminosity = pow(star.volumetric_mean_radius / solar_radius, 2)
+                * pow(star.temperature / sun_temp, 4);
+            star.absolute_magnitude = 4.74 - 2.5*log10(luminosity) - Star::bolometric_correction(star.temperature);
+            snprintf(star.spectral_type, sizeof(star.spectral_type), "%c%dIII", hot < 0.35 ? 'M' : 'K', int(uniform(random)*5));
+        }
+        else if (draw < 0.07 && age > 1)
+        {
+            star.mass = (0.52 + uniform(random)*0.22)*solar_mass;
+            star.volumetric_mean_radius = Star::degenerate_radius(star.mass);
+            star.temperature = 6000 + uniform(random)*18000;
+            star.estimate_BV(star.temperature);
+            const double luminosity = pow(star.volumetric_mean_radius/solar_radius, 2)*pow(star.temperature/sun_temp, 4);
+            star.absolute_magnitude = 4.74 - 2.5*log10(luminosity) - Star::bolometric_correction(star.temperature);
+            strcpy(star.spectral_type, "DA");
+        }
+        else
+        {
+            // Nearby dwarfs plus a bright-catalog tail, limited by a main-sequence lifetime prior.
+            const double mix = uniform(random);
+            double index = mix < 0.48 ? 60 + uniform(random)*8 : mix < 0.69 ? 50 + uniform(random)*9
+                : mix < 0.81 ? 40 + uniform(random)*9 : mix < 0.89 ? 30 + uniform(random)*9
+                : mix < 0.95 ? 20 + uniform(random)*9 : 7 + uniform(random)*12;
+            if (uniform(random) < blue*0.20) index = 8 + uniform(random)*22;
+            main_sequence(star, index);
+            for (int attempt = 0; attempt < 32 && 10*pow(star.mass/solar_mass, -2.5) < age; ++attempt)
+                main_sequence(star, index = std::min(68.0, index + 2));
+        }
+        star.estimate_UB(star.temperature);
+        star.sidereal_rotational_period = std::clamp(25.0 * sqrt(std::max(0.02, age)/4.6)
+            * pow(sun_temp/star.temperature, 2), 0.25, 150.0) * oneday;
+    }
+}
+
+bool FictionalImage::load(const std::string& filename, bool panorama)
+{
+    *this = FictionalImage();
+    if (filename.empty()) return false;
+    SDL_Surface* source = IMG_Load(filename.c_str());
+    if (!source) return false;
+    SDL_Surface* rgba = SDL_ConvertSurfaceFormat(source, SDL_PIXELFORMAT_RGBA32, 0);
+    SDL_FreeSurface(source);
+    if (!rgba) return false;
+    path = filename;
+    panoramic = panorama;
+    // A bounded CPU field, independent of GPU texture limits. Each cell averages original pixels.
+    width = std::min(rgba->w, 1024);
+    height = std::min(rgba->h, 512);
+    rgb.assign(size_t(width)*height*3, 0);
+    for (int y = 0; y < height; ++y)
+        for (int x = 0; x < width; ++x)
+        {
+            Point sum;
+            int count = 0;
+            const int x0 = x*rgba->w/width, x1 = (x+1)*rgba->w/width;
+            const int y0 = y*rgba->h/height, y1 = (y+1)*rgba->h/height;
+            for (int sy = y0; sy < y1; ++sy)
+                for (int sx = x0; sx < x1; ++sx)
+                {
+                    const auto* pixel = static_cast<unsigned char*>(rgba->pixels) + sy*rgba->pitch + sx*4;
+                    const double alpha = pixel[3]/255.0;
+                    sum += Point(linear_channel(pixel[0]), linear_channel(pixel[1]), linear_channel(pixel[2])) * alpha;
+                    ++count;
+                }
+            const size_t offset = (size_t(y)*width + x)*3;
+            rgb[offset] = sum.x/count;
+            rgb[offset+1] = sum.y/count;
+            rgb[offset+2] = sum.z/count;
+        }
+    SDL_FreeSurface(rgba);
+    uint64_t value = 14695981039346656037ULL;
+    std::ifstream input(filename, std::ios::binary);
+    char byte;
+    while (input.get(byte)) value = (value ^ static_cast<unsigned char>(byte))*1099511628211ULL;
+    std::ostringstream out;
+    out << std::hex << value;
+    hash = out.str();
+    return true;
+}
+
+Point FictionalImage::sample(double u, double v) const
+{
+    if (!available() || !std::isfinite(u) || !std::isfinite(v)) return Point(0.5, 0.5, 0.5);
+    if (panoramic) u -= floor(u);
+    else if (u < 0 || u > 1 || v < 0 || v > 1) return center;
+    const double x = std::clamp(u*width - 0.5, panoramic ? -0.5 : 0.0, double(width-1));
+    const double y = std::clamp(v*height - 0.5, 0.0, double(height-1));
+    const int ix = floor(x), iy = floor(y);
+    const auto pixel = [&](int px, int py)
+    {
+        px = panoramic ? (px % width + width) % width : std::clamp(px, 0, width-1);
+        py = std::clamp(py, 0, height-1);
+        const size_t offset = (size_t(py)*width + px)*3;
+        return Point(rgb[offset], rgb[offset+1], rgb[offset+2]);
+    };
+    return pixel(ix, iy)*((1-(x-ix))*(1-(y-iy))) + pixel(ix+1, iy)*((x-ix)*(1-(y-iy)))
+        + pixel(ix, iy+1)*((1-(x-ix))*(y-iy)) + pixel(ix+1, iy+1)*((x-ix)*(y-iy));
+}
+
+FictionalGalaxy FictionalGalaxy::from_galaxy(const Galaxy& galaxy)
+{
+    FictionalGalaxy result;
+    result.name = galaxy.name;
+    result.milky_way = galaxy.reference_galaxy;
+    result.key = result.milky_way ? "MW" : galaxy.PGC ? "PGC" + std::to_string(galaxy.PGC) : "GAL:" + result.name;
+    for (char c : result.milky_way ? std::string("MW") : result.name)
+        if (isalnum(static_cast<unsigned char>(c))) result.code += c;
+    if (result.code.empty()) result.code = result.key;
+    result.code = result.code.substr(0, 24);
+    result.origin_mly = galaxy.location.galactic_center;
+    result.radius_ly = galaxy.volumetric_mean_radius / light_year;
+    if (!(result.radius_ly > 10)) result.radius_ly = galaxy.angular_diameter > 0 && galaxy.distance > 0
+        ? galaxy.angular_diameter*galaxy.distance*0.5/light_year : 50000;
+    result.morphology = galaxy.T_known ? galaxy.morphological_T : 3;
+    result.spheroid = galaxy.is_spheroidal_or_elliptical();
+    if (result.milky_way)
+    {
+        result.radius_ly = 15000*parsec/light_year;
+        result.east = unit(Point::from_ra_dec(galactic_center_RA_J2000, galactic_center_Decl_J2000, 1));
+        result.height_axis = unit(Point::from_ra_dec(galactic_north_RA_J2000, galactic_north_Decl_J2000, 1));
+        result.south = unit(compute_normal(center, result.east, result.height_axis));
+        result.origin_mly = result.east * (8200*parsec/light_year/1e6);
+    }
+    else
+    {
+        // Match face-on mesh UV axes at the original solar observing position.
+        Point los = unit(Point::from_ra_dec(galaxy.right_ascension, galaxy.declination, 1));
+        Point east_sky = unit(compute_normal(center, los, yaxis));
+        Point north_sky = unit(compute_normal(center, east_sky, los));
+        Point major = north_sky*cos(galaxy.position_angle) + east_sky*sin(galaxy.position_angle);
+        Point perpendicular = unit(compute_normal(center, los, major));
+        result.east = major * -1;
+        result.south = (perpendicular*cos(galaxy.inclination + _pi) + los*sin(galaxy.inclination + _pi))*-1;
+        result.height_axis = unit(compute_normal(center, result.east, result.south));
+    }
+    result.band_plane = galaxy.location.local_system_plane;
+    Point original_ray = result.origin_mly;
+    original_ray = rotate3D(original_ray, center, result.band_plane.v, result.band_plane.a);
+    result.band_yaw = find_angle_along_vector(zaxis, original_ray, center, yaxis);
+    result.image.load(image_path(galaxy), result.milky_way);
+    if (result.milky_way && result.image.available())
+    {
+        result.ray_columns.resize(64*32);
+        for (int y = 0; y < 32; ++y)
+            for (int x = 0; x < 64; ++x)
+            {
+                Point ray = result.image_ray((x+0.5)/64, (y+0.5)/32);
+                double column = 0;
+                for (int step = 0; step < 96; ++step)
+                {
+                    Point p = result.disk_offset(ray*((step+0.5)*result.radius_ly*2*light_year/96)
+                        - result.origin_mly*(1e6*light_year));
+                    if (result.inside(p)) column += analytic_density(result, p)*2/96;
+                }
+                result.ray_columns[y*64+x] = std::max(1e-5, column);
+            }
+    }
+    return result;
+}
+
+Point FictionalGalaxy::world_offset(Point p) const
+{
+    return (east*p.x + height_axis*p.y + south*p.z)*light_year;
+}
+
+Point FictionalGalaxy::disk_offset(Point p) const
+{
+    return Point(dot(p, east), dot(p, height_axis), dot(p, south))*(1/light_year);
+}
+
+Point FictionalGalaxy::from_milky_ray(double longitude, double latitude, double distance_ly) const
+{
+    Point ray = east*(cos(longitude)*cos(latitude)) + south*(sin(longitude)*cos(latitude))
+        + height_axis*sin(latitude);
+    return disk_offset(ray*(distance_ly*light_year) - origin_mly*(1e6*light_year));
+}
+
+Point FictionalGalaxy::image_ray(double u, double v) const
+{
+    Point ray = Point::from_ra_dec((u-0.5)*2*_pi, (0.5-v)*(_pi/3), 1);
+    ray = rotate3D(ray, center, yaxis, band_yaw);
+    return rotate3D(ray, center, band_plane.v, -band_plane.a);
+}
+
+Point FictionalGalaxy::population_color(Point p) const
+{
+    if (!image.available())
+    {
+        const double blue = spheroid ? 0.25 : morphology >= 8 ? 0.8 : 0.5;
+        return Point(0.6, 0.5, blue);
+    }
+    if (!milky_way) return image.sample(0.5 + p.x/(2*radius_ly), 0.5 + p.z/(2*radius_ly));
+    Point ray = world_offset(p) + origin_mly*(1e6*light_year);
+    ray = rotate3D(ray, center, band_plane.v, band_plane.a);
+    ray = rotate3D(ray, center, yaxis, -band_yaw);
+    const double longitude = atan2(-ray.x, ray.z), latitude = atan2(ray.y, hypot(ray.x, ray.z));
+    if (fabs(latitude) > _pi/6) return Point(0.015, 0.015, 0.015);
+    return image.sample(0.5 + longitude/(2*_pi), 0.5 - latitude/(_pi/3));
+}
+
+bool FictionalGalaxy::inside(Point p) const
+{
+    if (spheroid) return p.squared_magnitude() < radius_ly*radius_ly;
+    return hypot(p.x, p.z) < radius_ly && fabs(p.y) < radius_ly*(morphology >= 8 ? 0.45 : 0.2);
+}
+
+double FictionalGalaxy::density(Point p) const
+{
+    if (!inside(p)) return 0;
+    const double analytic = analytic_density(*this, p);
+    if (!image.available()) return analytic;
+    const double light = luminance(population_color(p));
+    // Processed imagery is a relative prior with a small floor for obscured populations.
+    double column = 1;
+    if (milky_way && !ray_columns.empty())
+    {
+        Point ray = world_offset(p) + origin_mly*(1e6*light_year);
+        ray = rotate3D(ray, center, band_plane.v, band_plane.a);
+        ray = rotate3D(ray, center, yaxis, -band_yaw);
+        const double u = 0.5 + atan2(-ray.x, ray.z)/(2*_pi);
+        const double v = 0.5 - atan2(ray.y, hypot(ray.x, ray.z))/(_pi/3);
+        const int ix = (int(floor(u*64)) % 64 + 64) % 64;
+        const int iy = std::clamp(int(v*32), 0, 31);
+        column = ray_columns[iy*64+ix];
+    }
+    return analytic * (0.015 + light) / column;
+}
+
+double FictionalGalaxy::advisory_inner() const { return radius_ly * (spheroid ? 0.25 : 0.35); }
+double FictionalGalaxy::advisory_outer() const { return radius_ly * (spheroid ? 0.75 : 0.70); }
+
+std::string alienorum::fictional_region_id()
+{
+    static std::atomic<uint64_t> counter{0};
+    std::random_device device;
+    const uint64_t value = (uint64_t(device()) << 32) ^ device()
+        ^ std::chrono::high_resolution_clock::now().time_since_epoch().count() ^ ++counter;
+    std::ostringstream out;
+    out << 'R' << std::uppercase << std::hex << value;
+    return out.str();
+}
+
+const char* alienorum::fictional_center_type(int index)
+{
+    static const char* types[] = {"F8V", "F9V", "G0V", "G1V", "G2V", "G3V", "G4V", "G5V",
+        "G6V", "G7V", "G8V", "G9V", "K0V", "K1V", "K2V"};
+    return types[std::clamp(index, 0, 14)];
+}
+
+FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy, const FictionalRegion& region,
+    const std::atomic<bool>* cancel, std::atomic<int>* progress)
+{
+    FictionalBatch result;
+    const auto start = std::chrono::steady_clock::now();
+    if (region.star_count < 1 || region.star_count >= MAX_CELOBJS || !(region.radius_ly > 0)
+        || !std::isfinite(region.radius_ly) || region.radius_ly > 1000 || !galaxy.inside(region.center_ly)
+        || region.region_id.empty() || region.region_id.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-") != std::string::npos)
+    {
+        result.error = "Choose a center inside the galaxy, a radius up to 1,000 light years, and an available star count.";
+        return result;
+    }
+    std::mt19937_64 positions(region.seed), properties(region.seed ^ 0x853c49e6748fea9bULL),
+        planes(region.seed ^ 0xda3e39cb94b95bdbULL), multiples(region.seed ^ 0x9e3779b97f4a7c15ULL);
+    result.provenance = {{"version", 1}, {"galaxy", galaxy.key}, {"region", region.region_id},
+        {"seed", region.seed}, {"center_ly", region.center_ly.to_json()}, {"radius_ly", region.radius_ly},
+        {"requested_stars", region.star_count}, {"source_image", galaxy.image.path}, {"source_hash", galaxy.image.hash},
+        {"image_encoding", "display_sRGB_approximation"}, {"model", "image_prior_disk_spheroid_v1"},
+        {"selection", "center_visibility_6.5_local_25ly_bright_tail_v1"}, {"clusters", region.clusters}};
+    struct Cluster { Point center; double width, age; };
+    std::vector<Cluster> clusters;
+    if (region.clusters && region.star_count >= 100)
+    {
+        for (int i = 0; i < std::min(4, 1 + region.star_count/4000); ++i)
+        {
+            const double radius = std::min(region.radius_ly*0.65, i == 0 ? 80.0 : 450.0);
+            Point offset = direction(positions)*(radius*(0.4 + 0.6*uniform(positions)));
+            if (galaxy.inside(region.center_ly + offset))
+                clusters.push_back({offset, 3 + 7*uniform(positions), i % 2 ? 0.08 : 0.6});
+        }
+    }
+    result.clusters = clusters.size();
+    result.stars.reserve(region.star_count);
+    while (int(result.stars.size()) < region.star_count)
+    {
+        if (cancel && cancel->load())
+        {
+            result.stars.clear();
+            result.error = "Preview cancelled.";
+            return result;
+        }
+        const bool anchor = result.stars.empty();
+        const int system_number = ++result.systems;
+        const int cluster_index = !anchor && !clusters.empty() && uniform(positions) < 0.10
+            ? int(uniform(positions)*clusters.size()) : -1;
+        Point color = galaxy.population_color(region.center_ly);
+        const double blue = std::clamp((color.z - color.x)/(color.x + color.z + 1e-6)*0.5 + 0.5, 0.0, 1.0);
+        const double age = cluster_index >= 0 ? clusters[cluster_index].age
+            : (galaxy.spheroid ? 5 + 6*uniform(properties) : 0.03 + pow(uniform(properties), 0.5)*9);
+        auto primary = std::make_unique<Star>();
+        if (anchor) main_sequence(*primary, Star::get_mseqidx_from_sptyp(fictional_center_type(region.center_subtype)));
+        else stellar_properties(*primary, blue, age, properties);
+        Point offset;
+        bool placed = anchor;
+        const double reference_density = std::max(1e-12, galaxy.density(region.center_ly));
+        for (int attempt = 0; !placed && attempt < 4096; ++attempt)
+        {
+            if (cancel && cancel->load()) break;
+            const double limit = std::min(region.radius_ly, std::max(1.0,
+                pow(10.0, (6.5 - primary->absolute_magnitude + 5)/5)*parsec/light_year));
+            const double max_radius = primary->absolute_magnitude < -2 ? region.radius_ly : limit;
+            if (cluster_index >= 0)
+            {
+                const auto& cluster = clusters[cluster_index];
+                offset = cluster.center + Point(normal(positions), normal(positions), normal(positions))*cluster.width;
+                // A cluster shares an age, with its observable luminous members represented at large distances.
+                if (attempt % 16 == 0 && offset.magnitude() > limit)
+                    stellar_properties(*primary, 0.9, age, properties);
+            }
+            else
+            {
+                double radial = max_radius*cbrt(uniform(positions));
+                if (max_radius > 100 && uniform(positions) < 0.85)
+                    radial = std::min(max_radius, -25*log(std::max(1e-15, uniform(positions))));
+                offset = direction(positions)*radial;
+            }
+            const double radius = offset.magnitude();
+            const double apparent = primary->absolute_magnitude + 5*log10(std::max(1e-6, radius)*light_year/(10*parsec));
+            if (radius > region.radius_ly || (radius > 25 && apparent > 6.5)) continue;
+            const double density = galaxy.density(region.center_ly + offset);
+            placed = density > 0 && uniform(positions) < std::min(1.0, density/(reference_density*1.5));
+        }
+        if (!placed)
+        {
+            if (cancel && cancel->load())
+            {
+                result.error = "Preview cancelled.";
+                result.stars.clear();
+                return result;
+            }
+            // An unrepresented faint cluster member falls back to a local field star.
+            offset = direction(positions)*std::min(20.0, region.radius_ly*0.25)*cbrt(uniform(positions));
+            if (!galaxy.inside(region.center_ly + offset)) offset = center;
+        }
+        const double metallicity = std::clamp(-0.05 - 0.5*hypot(region.center_ly.x, region.center_ly.z)/galaxy.radius_ly
+            + 0.15*normal(properties) + (galaxy.spheroid ? -0.2 : 0.15), -1.5, 0.5);
+        const int remaining = region.star_count - result.stars.size();
+        const double multiple_draw = uniform(multiples);
+        const int member_count = anchor ? 1 : std::min(remaining, multiple_draw < 0.08 ? 3 : multiple_draw < 0.40 ? 2 : 1);
+        std::ostringstream designation;
+        designation << "FIC " << galaxy.code << ' ' << region.region_id << ' ' << std::setw(6) << std::setfill('0') << system_number;
+        const std::string base = designation.str();
+        const std::string system_id = galaxy.key + ":" + region.region_id + ":" + std::to_string(system_number);
+        Star* root = primary.get();
+        Rotation system_plane = isotropic(planes);
+        double inner_sma = (0.2 + pow(uniform(multiples), 2)*60)*AU;
+        for (int member = 0; member < member_count; ++member)
+        {
+            std::unique_ptr<Star> star = member == 0 ? std::move(primary) : std::make_unique<Star>();
+            if (member)
+            {
+                const double desired_mass = std::max(0.09, root->mass/solar_mass*(0.15 + uniform(properties)*0.8));
+                main_sequence(*star, Star::get_mseqidx_from_mass(desired_mass));
+                if (offset.magnitude() > 25 && star->absolute_magnitude +
+                    5*log10(offset.magnitude()*light_year/(10*parsec)) > 6.5)
+                {
+                    // Distant represented systems retain luminous, coeval twins rather than invisible dwarfs.
+                    star->mass = root->mass;
+                    star->volumetric_mean_radius = root->volumetric_mean_radius;
+                    star->temperature = root->temperature;
+                    star->absolute_magnitude = root->absolute_magnitude;
+                    star->BV_color = root->BV_color;
+                    star->UB_color = root->UB_color;
+                    strcpy(star->spectral_type, root->spectral_type);
+                }
+            }
+            const std::string name = base + (member_count > 1 ? " " + std::string(1, 'A'+member) : "");
+            snprintf(star->name, sizeof(star->name), "%s", name.c_str());
+            star->namelen = name.size();
+            star->origname = name;
+            star->has_custom_name = true;
+            star->user_added = star->user_edited = true;
+            star->distance_known = true;
+            star->cenobj = root;
+            star->stellar_system = {{"system", system_id}, {"slot", int('A'+member)}, {"label", name}};
+            star->fictional_origin = {{"id", system_id + ":" + char('A'+member)}, {"batch", result.provenance},
+                {"system_index", system_number}, {"component", int('A'+member)}, {"age_gyr", age},
+                {"cluster", cluster_index}, {"anchor", anchor}, {"disk_position_ly", (region.center_ly + offset).to_json()}};
+            star->metallicity = metallicity;
+            star->metallicity_ratio = "[Fe/H]";
+            star->metallicity_source = "fictional population model v1";
+            star->sidereal_rotational_period = std::clamp(25*sqrt(age/4.6)*pow(sun_temp/star->temperature, 2), 0.25, 150.0)*oneday;
+            star->stellar_rotation = {{"estimated", true}, {"source", "fictional population model v1"},
+                {"inclination_supplied", false}, {"node_supplied", false}};
+            star->location.galactic_center = galaxy.origin_mly;
+            star->location.system_center = galaxy.world_offset(region.center_ly + offset);
+            Point position = star->location.system_center;
+            star->distance = std::max(1.0, position.magnitude());
+            star->right_ascension = atan2(-position.x, position.z);
+            if (star->right_ascension < 0) star->right_ascension += 2*_pi;
+            star->declination = atan2(position.y, hypot(position.x, position.z));
+            star->location.local_system_plane = system_plane;
+            star->location.orbital_plane = system_plane;
+            star->location.equatorial_plane = uniform(planes) < 0.80 ? tilted(system_plane, 0.15, planes) : isotropic(planes);
+            star->known_poles = star->rot_axis_known = false;
+            star->lock_system_plane = star->lock_equatorial_plane = star->estimated_poles = true;
+            if (!member && member_count > 1)
+            {
+                star->set_component('A', root);
+                result.staged_systems.emplace_back(root->multisys);
+            }
+            if (member)
+            {
+                star->set_component('A'+member, root);
+                if (!star->orbit) star->orbit = new Orbit();
+                star->orbit->center = root;
+                star->orbit->center_name = root->name;
+                star->origcenname = root->origname;
+                star->orbit->semimajor_axis = member == 1 ? inner_sma : inner_sma*(30 + uniform(multiples)*70);
+                star->orbit->eccentricity = uniform(multiples)*0.5;
+                star->orbit->period = oneyear*sqrt(pow(star->orbit->semimajor_axis/AU, 3)/((root->mass+star->mass)/solar_mass));
+                star->orbit->epoch = J2000;
+                star->orbit->mean_anomaly = uniform(multiples)*2*_pi;
+                star->orbit->arg_periapsis = uniform(multiples)*2*_pi;
+                star->orbit->inclination = uniform(planes) < 0.7 ? uniform(planes)*0.15 : acos(2*uniform(planes)-1);
+                star->orbit->ascending_node = uniform(planes)*2*_pi;
+            }
+            star->apparent_magnitude = star->absolute_magnitude + 5*log10(std::max(1.0, star->location.distance_to(CelestialLocation()))/(10*parsec));
+            star->update_location(J2000_TIME_T);
+            const double radial = offset.magnitude();
+            if (radial <= 100) ++result.nearby;
+            if (!anchor && star->absolute_magnitude + 5*log10(std::max(1e-6, radial)*light_year/(10*parsec)) <= 6.5) ++result.naked_eye;
+            result.stars.push_back(std::move(star));
+        }
+        if (progress) progress->store(result.stars.size());
+    }
+    result.elapsed_seconds = std::chrono::duration<double>(std::chrono::steady_clock::now()-start).count();
+    if (!result.stars.empty()) result.estimated_save_bytes = result.stars.front()->to_json().dump(4).size()*result.stars.size();
+    return result;
+}
+
+bool FictionalBatch::install(std::string& message)
+{
+    if (!error.empty() || stars.empty())
+    {
+        message = error.empty() ? "Generate a preview first." : error;
+        return false;
+    }
+    if (!cels || stars.size() >= size_t(MAX_CELOBJS - ncelobjs))
+    {
+        message = "The population exceeds available object capacity. Reduce Star count and preview again.";
+        return false;
+    }
+    std::set<std::string> names, identities;
+    for (int i = 0; cels[i]; ++i)
+    {
+        names.insert(cels[i]->name);
+        if (cels[i]->typeclass() == class_star)
+        {
+            Star* star = static_cast<Star*>(cels[i]);
+            if (star->fictional_origin.is_object()) identities.insert(star->fictional_origin.value("id", ""));
+        }
+    }
+    for (const auto& star : stars)
+        if (!names.insert(star->name).second || !identities.insert(star->fictional_origin.at("id")).second)
+        {
+            message = "This region identity or designation already exists. Start a new region preview.";
+            return false;
+        }
+    ExoConsGenerator::reset();
+    std::lock_guard<std::recursive_mutex> lock(catalog_mutex);
+    if (stars.size() >= size_t(MAX_CELOBJS - ncelobjs))
+    {
+        message = "Object capacity changed. Reduce Star count and preview again.";
+        return false;
+    }
+    for (auto& star : stars)
+    {
+        append_cel(star.release());
+    }
+    stars.clear();
+    for (auto& system : staged_systems) system.release();
+    staged_systems.clear();
+    lsyscache.clear();
+    viewchanged = true;
+    message = "Fictional stars added. Save the universe to preserve this region.";
+    return true;
+}

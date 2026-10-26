@@ -819,7 +819,8 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
             ImGui::Text("RA:       %s", cels[i]->RA_as_hms(here, myeq).c_str());
             ImGui::Text("Decl:     %s", cels[i]->Decl_as_degms(here).c_str());
 
-            if (cels[i]->known_poles)
+            if (cels[i]->known_poles || (cels[i]->typeclass() == class_star &&
+                static_cast<Star*>(cels[i])->fictional_origin.is_object()))
             {
                 Point pole = rotate3D(yaxis, center, cels[i]->location.equatorial_plane.v, cels[i]->location.equatorial_plane.a);
                 double poleRA = std::fmod(find_angle(pole.z, -pole.x) - myeq + azimuth_correction + _pi, _pi*2),
@@ -835,6 +836,7 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
                 poleDecl = find_angle(sqrt(pole.x*pole.x+pole.z*pole.z), pole.y);
                 while (poleDecl > half_pi) poleDecl -= _pi*2;
 
+                if (!cels[i]->known_poles) ImGui::TextUnformatted("Fictional rotation pole");
                 ImGui::Text("PoleRA:   %s", radians_to_hms(poleRA).c_str());
                 ImGui::Text("PoleDecl: %s", radians_to_degms(poleDecl).c_str());
 

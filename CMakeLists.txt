@@ -64,6 +64,7 @@ target_include_directories(ImGuiFileDialog PUBLIC src/include/imgui)
 target_link_libraries(IMGUI PUBLIC SDL2::SDL2)
 
 add_library(CLASSES STATIC
+	src/classes/fictionalstars.cpp
 	src/classes/cat.cpp
 	src/classes/chemistry.cpp
 	src/classes/stellar_catalogs.cpp
@@ -92,12 +93,13 @@ target_include_directories(CLASSES PUBLIC src/classes src/include src/include/im
     ${CURL_INCLUDE_DIRS}
     ${CURLPP_INCLUDE_DIRS})
 
-target_link_libraries(CLASSES JPEG::JPEG PNG::PNG LibArchive::LibArchive
+target_link_libraries(CLASSES $<IF:$<TARGET_EXISTS:SDL2_image::SDL2_image>,SDL2_image::SDL2_image,SDL2_image::SDL2_image-static> JPEG::JPEG PNG::PNG LibArchive::LibArchive
     ${CURL_LIBRARIES}
     cURLpp
     $<IF:$<TARGET_EXISTS:SDL2::SDL2>,SDL2::SDL2,SDL2::SDL2-static>)
 
 add_executable(alienorum
+	src/fictionalstars_ui.cpp
 	src/dialogs.cpp
 	src/globals.cpp
 	src/gputex.cpp

@@ -43,17 +43,17 @@ namespace alienorum
         Point(double x, double y, double z);
         Point(CelestialLocation& cel);
         Point(Cartesian2D cart, double distance, double azimuth, double altitude, double zoom);
-        Point operator+(Point other);
+        Point operator+(Point other) const;
         Point& operator+=(Point other);
-        Point operator-(Point other);
+        Point operator-(Point other) const;
         Point& operator-=(Point other);
-        Point operator*(double multiplier);
+        Point operator*(double multiplier) const;
         Point& operator*=(double multiplier);
         double distance_to(Point other) const;
         double magnitude() const;
         double squared_magnitude() const;
         void scale(double new_magn);
-        json to_json();
+        json to_json() const;
         bool from_json(json j);
 
         static Point from_ra_dec(double right_ascension, double declination, double distance, double node = 0);

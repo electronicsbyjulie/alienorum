@@ -34,13 +34,13 @@ TESTS_DIR = src/tests
 IMGUI_SRC = $(IMGUI_DIR)/imgui.cpp $(IMGUI_DIR)/imgui_demo.cpp $(IMGUI_DIR)/imgui_draw.cpp $(IMGUI_DIR)/imgui_tables.cpp $(IMGUI_DIR)/imgui_widgets.cpp \
             $(IMGUI_DIR)/backends/imgui_impl_sdl2.cpp $(IMGUI_DIR)/backends/imgui_impl_opengl3.cpp
 IGFD_SRC = $(IGFD_DIR)/ImGuiFileDialog.cpp
-CLASSES_SRC = $(CLASSES_DIR)/point.cpp $(CLASSES_DIR)/cat.cpp $(CLASSES_DIR)/star.cpp $(CLASSES_DIR)/celestial.cpp $(CLASSES_DIR)/color.cpp \
+CLASSES_SRC = $(CLASSES_DIR)/fictionalstars.cpp $(CLASSES_DIR)/point.cpp $(CLASSES_DIR)/cat.cpp $(CLASSES_DIR)/star.cpp $(CLASSES_DIR)/celestial.cpp $(CLASSES_DIR)/color.cpp \
             $(CLASSES_DIR)/chemistry.cpp \
             $(CLASSES_DIR)/stellar_catalogs.cpp $(CLASSES_DIR)/surfacenavigation.cpp \
             $(CLASSES_DIR)/misc.cpp $(CLASSES_DIR)/planet.cpp $(CLASSES_DIR)/moon.cpp $(CLASSES_DIR)/galaxy.cpp $(CLASSES_DIR)/comet.cpp \
 			$(CLASSES_DIR)/serial.cpp $(CLASSES_DIR)/noise.cpp $(CLASSES_DIR)/satellite.cpp $(CLASSES_DIR)/shore.cpp $(CLASSES_DIR)/patch.cpp \
 			$(CLASSES_DIR)/cons.cpp $(CLASSES_DIR)/sscimport.cpp $(CLASSES_DIR)/exocons.cpp $(CLASSES_DIR)/sound.cpp
-TESTS_SRC = $(TESTS_DIR)/point_test.cpp $(TESTS_DIR)/color_test.cpp \
+TESTS_SRC = $(TESTS_DIR)/fictionalstars_test.cpp $(TESTS_DIR)/point_test.cpp $(TESTS_DIR)/color_test.cpp \
 			$(TESTS_DIR)/celestial_test.cpp $(TESTS_DIR)/galaxy_test.cpp $(TESTS_DIR)/star_test.cpp \
 			$(TESTS_DIR)/planet_test.cpp $(TESTS_DIR)/moon_test.cpp $(TESTS_DIR)/comet_test.cpp \
 			$(TESTS_DIR)/satellite_test.cpp $(TESTS_DIR)/cons_test.cpp \
@@ -62,7 +62,7 @@ IMGUI_OBJS = $(addsuffix .o, $(addprefix $(OBJIMGUI)/, $(basename $(notdir $(IMG
 OBJS = $(IMGUI_OBJS)
 OBJS += $(addsuffix .o, $(addprefix $(OBJIGFD)/, $(basename $(notdir $(IGFD_SRC)))))
 OBJS += $(addsuffix .o, $(addprefix $(OBJINT)/, $(basename $(notdir $(CLASSES_SRC)))))
-OBJS += $(OBJINT)/globals.o $(OBJINT)/loaders.o $(OBJINT)/housekeeping.o $(OBJINT)/inputs.o \
+OBJS += $(OBJINT)/fictionalstars_ui.o $(OBJINT)/globals.o $(OBJINT)/loaders.o $(OBJINT)/housekeeping.o $(OBJINT)/inputs.o \
 	$(OBJINT)/dialogs.o $(OBJINT)/visuals.o $(OBJINT)/gputex.o $(OBJINT)/sphere_impostor.o $(OBJINT)/sunclock_gpu.o $(OBJINT)/clouds_gpu.o $(OBJINT)/horizon_ground_gpu.o $(OBJINT)/horizon_terrain_gpu.o $(OBJINT)/horizon_mesh_gpu.o
 
 TESTS = $(addprefix $(BIN)/, $(basename $(notdir $(TESTS_SRC))))
@@ -204,6 +204,9 @@ $(OBJINT)/patch.o: $(CLASSES_DIR)/patch.cpp
 
 $(OBJINT)/color.o: $(CLASSES_DIR)/color.cpp
 	$(CPP) $(CLASSES_DIR)/color.cpp $(CPPFLAGS) -c -o $(OBJINT)/color.o
+
+$(OBJINT)/fictionalstars.o: $(CLASSES_DIR)/fictionalstars.cpp
+	$(CPP) $< $(CPPFLAGS) -c -o $@
 
 $(OBJINT)/point.o: $(CLASSES_DIR)/point.cpp
 	$(CPP) $(CLASSES_DIR)/point.cpp $(CPPFLAGS) -c -o $(OBJINT)/point.o
@@ -359,3 +362,9 @@ $(BIN)/alienorum: $(OBJS) src/alienorum.cpp
 # make won't complain on a clean checkout, before any .d files exist yet.
 -include $(OBJS:.o=.d)
 
+
+$(OBJINT)/fictionalstars_ui.o: src/fictionalstars_ui.cpp
+	$(CPP) $< $(CPPFLAGS) -c -o $@
+
+$(BIN)/fictionalstars_test: $(OBJS) $(TESTS_DIR)/fictionalstars_test.cpp $(TESTS_DIR)/universe_fixture.h
+	$(CPP) $(TESTS_DIR)/fictionalstars_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $@

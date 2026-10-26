@@ -24,6 +24,7 @@ namespace alienorum
         std::string metallicity_ratio, metallicity_source;
         json stellar_abundances = nullptr;
         json stellar_rotation = nullptr;             // Period provenance and supplied/assumed pole fields.
+        json fictional_origin = nullptr;           // Stable fictional identity and generation provenance.
         json stellar_system = nullptr;               // Physical system, published label, and orbit provenance.
         json chemistry_diagnostics() const;
         bool calibrated_iron_abundance(double& value, double& uncertainty) const;

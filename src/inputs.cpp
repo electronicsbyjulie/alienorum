@@ -1,5 +1,6 @@
 
 #include "globals.h"
+#include "fictionalstars_ui.h"
 #include "misc.h"
 #include "loaders.h"
 #include "housekeeping.h"
@@ -384,6 +385,7 @@ void show_menu()
                 menu_clicked = true;
             }
             ImGui::Separator();
+            if (ImGui::MenuItem("Populate Region...")) { open_fictional_region(); menu_clicked = true; }
             if (ImGui::MenuItem("Add Object...", "Shift+A")) { process_key_cmd_char('A'); menu_clicked = true; }
             if (ImGui::MenuItem("Add Satellite...", "^")) { process_key_cmd_char('^'); menu_clicked = true; }
             if (ImGui::MenuItem("Add Asteroid...", ".")) { process_key_cmd_char('.'); menu_clicked = true; }

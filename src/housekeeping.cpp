@@ -674,7 +674,7 @@ void set_center_objects()
         {
             Star *s = (Star*)cels[i];
             s->update_location(simnow);
-            if (s->orbit && s->orbit->center && s->orbit->center->typeclass() == class_star &&
+            if (!s->fictional_origin.is_object() && s->orbit && s->orbit->center && s->orbit->center->typeclass() == class_star &&
                 std::isfinite(s->apparent_magnitude) && s->apparent_magnitude >= -40 && s->apparent_magnitude < 99)
             {
                 // Bound companions use the adopted system distance, rather than an independent

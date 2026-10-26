@@ -43,7 +43,7 @@ Point::Point(CelestialLocation &cel)
     *this = cel.local_position + cel.system_center + cel.galactic_center * light_year * 1e+6;
 }
 
-Point Point::operator+(Point other)
+Point Point::operator+(Point other) const
 {
     return Point(x+other.x, y+other.y, z+other.z);
 }
@@ -56,7 +56,7 @@ Point &Point::operator+=(Point other)
     return *this;
 }
 
-Point Point::operator-(const Point other)
+Point Point::operator-(const Point other) const
 {
     return Point(x-other.x, y-other.y, z-other.z);
 }
@@ -69,7 +69,7 @@ Point &Point::operator-=(Point other)
     return *this;
 }
 
-Point Point::operator*(double multiplier)
+Point Point::operator*(double multiplier) const
 {
     return Point(x*multiplier, y*multiplier, z*multiplier);
 }
@@ -229,7 +229,7 @@ void Point::scale(double new_magn)
     z *= multiplier;
 }
 
-json Point::to_json()
+json Point::to_json() const
 {
     return {{"x", x}, {"y", y}, {"z", z}};
 }

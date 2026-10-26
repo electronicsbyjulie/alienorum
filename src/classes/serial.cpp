@@ -746,7 +746,7 @@ bool Serialization::save_all(std::fstream& fs, CelestialObject **cels, bool oe)
         for (i=0; cels[i]; i++)
         {
             if (cels[i]->deleted) continue;
-            if (oe && !cels[i]->user_edited) continue;
+            if (oe && !cels[i]->user_edited && !cels[i]->user_added) continue;
 
             save_one(fs, cels[i], allobjs);
             if (oe && cels[i]->orbit && cels[i]->orbit->center && !cels[i]->orbit->center->user_added)
@@ -844,6 +844,13 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
         std::map<Identity, CelestialObject*> identities;
         for (unsigned int i = 0; i < count; ++i)
             identities.emplace(Identity(cels[i]->typeclass(), cels[i]->origname, cels[i]->origcenname), cels[i]);
+        std::map<std::string, CelestialObject*> fictional_ids;
+        for (unsigned int i = 0; i < count; ++i)
+        {
+            if (cels[i]->typeclass() != class_star) continue;
+            const auto& origin = static_cast<Star*>(cels[i])->fictional_origin;
+            if (origin.is_object() && origin.contains("id")) fictional_ids[origin.at("id")] = cels[i];
+        }
         std::map<CelestialObject*, int> existing_indices;
         for (unsigned int i = 0; i < count; ++i) existing_indices[cels[i]] = i;
         std::set<CelestialObject*> replacements;
@@ -881,6 +888,15 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
             entry.data["!origcenname"] = entry.parsed->origcenname = center_name;
             const auto match = identities.find(Identity(cls, original, center_name));
             entry.target = match == identities.end() ? entry.parsed.get() : match->second;
+            if (cls == class_star)
+            {
+                const auto& origin = static_cast<Star*>(entry.parsed.get())->fictional_origin;
+                if (origin.is_object() && origin.contains("id"))
+                {
+                    const auto fictional = fictional_ids.find(origin.at("id"));
+                    entry.target = fictional == fictional_ids.end() ? entry.parsed.get() : fictional->second;
+                }
+            }
             if (entry.target != entry.parsed.get())
             {
                 if (!replacements.insert(entry.target).second)

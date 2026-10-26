@@ -1620,6 +1620,7 @@ json Star::to_json()
     if (stellar_abundances.is_object() && !stellar_abundances.empty()) towrite["stellar_abundances"] = stellar_abundances;
     if (stellar_rotation.is_object()) towrite["stellar_rotation"] = stellar_rotation;
     if (stellar_system.is_object()) towrite["stellar_system"] = stellar_system;
+    if (fictional_origin.is_object()) towrite["fictional_origin"] = fictional_origin;
     towrite["known_poles"] = known_poles;
     towrite["lock_equatorial_plane"] = lock_equatorial_plane;
     towrite["lock_system_plane"] = lock_system_plane;
@@ -1687,6 +1688,7 @@ bool Star::from_json(json j)
         ? j["stellar_abundances"] : json(nullptr);
     stellar_rotation = j.contains("stellar_rotation") && j["stellar_rotation"].is_object()
         ? j["stellar_rotation"] : json(nullptr);
+    fictional_origin = j.value("fictional_origin", json(nullptr));
     stellar_system = j.value("stellar_system", json(nullptr));
     if (stellar_system.is_object()) has_custom_name = true;
     // Explicit flags keep a saved display fallback from becoming a measured pole.
