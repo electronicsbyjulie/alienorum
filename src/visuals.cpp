@@ -62,6 +62,27 @@ static bool exclude_observing_object(CelestialObject *object)
     return true;
 }
 
+static bool moon_label_separated(const CelestialObject* object)
+{
+    if (object->typeclass() != class_moon) return true;
+    const CelestialObject* parent = object->orbit ? object->orbit->center : nullptr;
+    if (!parent || parent->deleted) return false;
+    double parent_x = parent->drawnx, parent_y = parent->drawny;
+    if (!std::isfinite(parent_x) || !std::isfinite(parent_y) || parent_x <= -1e8 || parent_y <= -1e8)
+    {
+        if (view_mode == vm_system || !parent->tmprel.squared_magnitude()) return false;
+        Point rel = to_viewer_plane(parent->tmprel);
+        if (view_mode == vm_horizon && whereami > 0 && uses_rocky_map(cels[whereami]->type) &&
+            static_cast<Planet*>(cels[whereami])->get_surface_pressure()) rel = refract_true_point(rel);
+        Cartesian2D projected(rel, azimuth + azimuth_correction, altitude, zoom);
+        if (projected.x < -1e4 || projected.y < -1e4) return false;
+        parent_x = dispcx + projected.x * dispcx;
+        parent_y = dispcy + projected.y * dispcx;
+    }
+    const double dx = object->drawnx - parent_x, dy = object->drawny - parent_y;
+    return std::isfinite(dx) && std::isfinite(dy) && dx * dx + dy * dy >= 25.0;
+}
+
 Star* stellar_display_target(Star* component)
 {
     if (!component || !component->multisys) return component;
@@ -3455,6 +3476,8 @@ bool draw_single_object(int i)
     if (!add_label && label_favestars && s)
         if (s->is_faved) add_label = true;
 
+    if (add_label && !moon_label_separated(cels[i])) add_label = false;
+
     if (add_label)
     {
         const char *dispname = label_star ? label_star->name : cels[i]->name;
@@ -4444,7 +4467,7 @@ void draw_system_view()
                     moony = next_moony;
                 }
 
-                if (lbl_localsys)
+                if (lbl_localsys && moon_label_separated(m))
                 {
                     const char *dispname = m->name;
                     int disph = dispcy * 2;

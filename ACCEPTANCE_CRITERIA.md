@@ -298,6 +298,8 @@ These entries record the deliberate choices found during the earlier review. The
 
 - **G13 — Projected atmospheric sky gradient:** In horizon mode, atmospheric color falloff follows viewing elevation and the apparent horizon. Zoom narrows the sampled angular region; pitch changes select the corresponding sky colors, and a view below the horizon does not paint sky through the surface. GPU sphere sky blending consumes the same projected row colors as the CPU/background rather than stretching a separate full gradient over zoomed objects.
 
+- **G14 — Resolved moon labels:** A moon label requires at least five pixels of projected center-to-center separation from its parent planet, in addition to every existing visibility and label filter. Selection does not bypass this separation threshold. Separation alone never enables a label. Verify below, exactly at, and above five pixels, including diagonal separation and disabled local-system labels.
+
 ## 13. Constellations from every vantage
 
 - **K01:** Heliocentric boundaries, labels, genitives, and figures load correctly; catalog geometry handles polar fallbacks and split regions.
@@ -442,7 +444,7 @@ Validation: the Linux application builds; all 16 C++ test binaries pass, totalin
 | E01–E19 | Exoplanet source/cache import, transit metadata, orbital inference, minimum masses, and naming. Unknown inclinations now follow transit > disk > measured planet > stellar rotation > companion precedence; node selection is independent. Generic display designations follow the preferred host name during import, editor renaming, and universe reloads. |
 | C01–C18 | Classification, physical edits, conservative-zone defaults, orbital spacing, shoreline pressure, atmospheric phases, local climate, and moon clearance; planet, moon, celestial, and rendering suites. Supplied pressure, including explicit vacuum, survives inference and saves. Moon clearance includes ten atmospheric scale heights for each body and is rechecked after atmosphere generation. |
 | R01–R24 | Map/material persistence, cloud/ground/scenery paths, climate, pigment spectra, projection, and observer exclusion; color, celestial, utility, and rendering suites. Unsupported GPU configurations remain recorded as skips. |
-| G01–G13 | Sky/object rendering, label filters, galaxy properties, display scaling, and close-body projection; rendering, galaxy, celestial, and serialization suites. |
+| G01–G14 | Sky/object rendering, label filters, galaxy properties, display scaling, and close-body projection; rendering, galaxy, celestial, and serialization suites. |
 | K01–K09 | Authored/generated figures, vantage reuse, coverage, connectivity, length, and separation; constellation suite. Unresolved companions below the generator's 0.1° minimum segment scale use the primary representation, including in bright-star and passerby eligibility checks. |
 | A01–A08 | Asteroid selection/browser data, comet photometry and imports, satellite CSV/source/precession behavior; catalog, comet, and satellite suites. The comet photometry fixture now uses a stellar illumination object. |
 | U01–U13 | Editors, maps/textures, exports, settings, menus, and deletion; planet, utility, rendering, serialization, and housekeeping suites. Deletion now handles absent selection, preserves protected catalog descendants, removes authored descendants together, and clears affected navigation and lookup state. |

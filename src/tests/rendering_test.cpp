@@ -784,6 +784,53 @@ TEST_F(RenderingRegressionTest, CompanionHoverAndSelectionFollowFivePixelSeparat
     EXPECT_EQ(stellar_display_target(companion), primary);
 }
 
+TEST_F(RenderingRegressionTest, MoonLabelsRequireSeparationAndExistingVisibilityFilters)
+{
+    Star* sun = make_star("Sun");
+    Planet* parent = make_planet(sun, "Parent");
+    Moon* moon = new Moon();
+    strcpy(moon->name, "Test moon");
+    moon->orbit = new Orbit();
+    moon->orbit->center = parent;
+    moon->cenobj = sun;
+    append_cel(moon);
+    parent->drawnx = 96;
+    parent->drawny = 54;
+    double magnitudes[3] = {5, 5, 5}, sizes[3] = {}, bloom[3] = {};
+    bool discs[3] = {};
+    set(vmag_cache, static_cast<double*>(magnitudes));
+    set(angular_radius, static_cast<double*>(sizes));
+    set(bloomrad_cache, static_cast<double*>(bloom));
+    set(discinstead, static_cast<bool*>(discs));
+    set(labels2draw, std::vector<DrawLabel>{});
+    set(selected, -1);
+    set(show_localsys, true);
+    set(lbl_localsys, true);
+    set(show_labels, true);
+    set(global_brightness, 1.0);
+    set(mycenobj, static_cast<CelestialObject*>(sun));
+    for (const Cartesian2D& offset : {Cartesian2D(4.99, 0), Cartesian2D(5, 0),
+        Cartesian2D(5.01, 0), Cartesian2D(3, 4), Cartesian2D(2.99, 4)})
+    {
+        moon->drawnx = 96 + offset.x;
+        moon->drawny = 54 + offset.y;
+        const bool separated = offset.x * offset.x + offset.y * offset.y >= 25;
+        for (bool is_selected : {false, true})
+        {
+            selected = is_selected ? moon->seqno : -1;
+            labels2draw.clear();
+            ASSERT_TRUE(draw_single_object(moon->seqno));
+            EXPECT_EQ(labels2draw.size(), separated ? 1u : 0u);
+        }
+    }
+    selected = -1;
+    lbl_localsys = false;
+    moon->drawnx = 106;
+    labels2draw.clear();
+    ASSERT_TRUE(draw_single_object(moon->seqno));
+    EXPECT_TRUE(labels2draw.empty());
+}
+
 TEST_F(RenderingRegressionTest, ResolvedCompanionLabelsRespectVisibilityAndRetainPrimarySuffix)
 {
     Star* sun = make_star("Sun");
