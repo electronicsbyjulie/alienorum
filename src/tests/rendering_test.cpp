@@ -4,6 +4,8 @@
 #include <vector>
 #include <iostream>
 #include <chrono>
+#include <filesystem>
+#include <fstream>
 #include <gtest/gtest.h>
 #include "../globals.h"
 #include "../fictionalstars_ui.h"
@@ -803,6 +805,21 @@ TEST_F(RenderingRegressionTest, FictionalRegionDialogRendersWithImageAndAnalytic
     ImGui::GetIO().DisplaySize = ImVec2(1024, 960);
     render_width = 1024;
     render_height = 960;
+    const auto gen_framebuffers = reinterpret_cast<PFNGLGENFRAMEBUFFERSPROC>(SDL_GL_GetProcAddress("glGenFramebuffers"));
+    const auto bind_framebuffer = reinterpret_cast<PFNGLBINDFRAMEBUFFERPROC>(SDL_GL_GetProcAddress("glBindFramebuffer"));
+    const auto attach_texture = reinterpret_cast<PFNGLFRAMEBUFFERTEXTURE2DPROC>(SDL_GL_GetProcAddress("glFramebufferTexture2D"));
+    const auto framebuffer_status = reinterpret_cast<PFNGLCHECKFRAMEBUFFERSTATUSPROC>(SDL_GL_GetProcAddress("glCheckFramebufferStatus"));
+    const auto delete_framebuffers = reinterpret_cast<PFNGLDELETEFRAMEBUFFERSPROC>(SDL_GL_GetProcAddress("glDeleteFramebuffers"));
+    ASSERT_NE(gen_framebuffers, nullptr);
+    ASSERT_NE(bind_framebuffer, nullptr);
+    GLuint framebuffer = 0, color_texture = 0;
+    gen_framebuffers(1, &framebuffer);
+    glGenTextures(1, &color_texture);
+    glBindTexture(GL_TEXTURE_2D, color_texture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 1024, 960, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    bind_framebuffer(GL_FRAMEBUFFER, framebuffer);
+    attach_texture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, color_texture, 0);
+    ASSERT_EQ(framebuffer_status(GL_FRAMEBUFFER), static_cast<GLenum>(GL_FRAMEBUFFER_COMPLETE));
     for (bool fallback : {false, true})
     {
         if (fallback) strcpy(galaxy->name, "No image fictional test galaxy");
@@ -836,7 +853,92 @@ TEST_F(RenderingRegressionTest, FictionalRegionDialogRendersWithImageAndAnalytic
         }
         close_fictional_region();
     }
+    bind_framebuffer(GL_FRAMEBUFFER, 0);
+    delete_framebuffers(1, &framebuffer);
+    glDeleteTextures(1, &color_texture);
     SDL_SetWindowSize(window, 192, 108);
+    ImGui::GetIO().DisplaySize = ImVec2(192, 108);
+    ImGui::NewFrame();
+}
+
+TEST_F(RenderingRegressionTest, FictionalRegionPreviewAddsStarsAndVisitsItsBookmarkedCenter)
+{
+    const std::vector<double> saved_mass(msq_mass, msq_mass+mseqmax), saved_radius(msq_rad, msq_rad+mseqmax),
+        saved_luminosity(msq_lum, msq_lum+mseqmax), saved_temperature(msq_temp, msq_temp+mseqmax),
+        saved_color(msq_BV, msq_BV+mseqmax);
+    restore.push_back([saved_mass, saved_radius, saved_luminosity, saved_temperature, saved_color]()
+    {
+        std::copy(saved_mass.begin(), saved_mass.end(), msq_mass);
+        std::copy(saved_radius.begin(), saved_radius.end(), msq_rad);
+        std::copy(saved_luminosity.begin(), saved_luminosity.end(), msq_lum);
+        std::copy(saved_temperature.begin(), saved_temperature.end(), msq_temp);
+        std::copy(saved_color.begin(), saved_color.end(), msq_BV);
+    });
+    Star::load_main_seq_dat();
+    make_star("Sun");
+    Galaxy* galaxy = new Galaxy();
+    strcpy(galaxy->name, "Fictional UI integration galaxy");
+    galaxy->volumetric_mean_radius = 50000*light_year;
+    galaxy->location.galactic_center = Point(0, 0, 20);
+    append_cel(galaxy);
+    set(selected, 1);
+    set(mycenobj, static_cast<CelestialObject*>(cels[0]));
+    set(here, here);
+    set(favestars, std::vector<Star*>());
+    set(themes, std::vector<std::string>{"default"});
+    set(themes_selected_idx, 0);
+    const auto original_path = std::filesystem::current_path();
+    const auto temporary = std::filesystem::temp_directory_path() / ("alienorum_region_ui_" +
+        std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    std::filesystem::create_directories(temporary);
+    std::filesystem::current_path(temporary);
+    std::ofstream("user.json") << "{}";
+    ImGui::EndFrame();
+    ImGui::GetIO().DisplaySize = ImVec2(1024, 1100);
+    open_fictional_region();
+    ImGui::NewFrame();
+    ImGui::SetNextWindowPos(ImVec2(20, 20));
+    draw_fictional_region();
+    ImGuiWindow* panel = ImGui::FindWindowByName("Populate Region");
+    ASSERT_NE(panel, nullptr);
+    ImGui::ActivateItemByID(panel->GetID("Generate Preview"));
+    ImGui::EndFrame();
+    ImGui::NewFrame();
+    draw_fictional_region();
+    EXPECT_EQ(ncelobjs, 2);
+    ImGui::EndFrame();
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while (ncelobjs == 2 && std::chrono::steady_clock::now() < deadline)
+    {
+        ImGui::ActivateItemByID(panel->GetID("Add Stars"));
+        ImGui::SetScrollY(panel, 100000);
+        ImGui::NewFrame();
+        draw_fictional_region();
+        ImGui::EndFrame();
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+    EXPECT_EQ(ncelobjs, 10002);
+    if (ncelobjs > 2)
+    {
+        ASSERT_EQ(favestars.size(), 1u);
+        EXPECT_EQ(favestars.front(), cels[2]);
+        ImGui::ActivateItemByID(panel->GetID("Visit Center"));
+        ImGui::NewFrame();
+        draw_fictional_region();
+        ImGui::EndFrame();
+        EXPECT_EQ(whereami, 2);
+        EXPECT_NEAR(here.distance_to(cels[2]->location), 0, 1);
+    }
+    close_fictional_region();
+    for (int i = 2; cels[i]; ++i)
+        if (static_cast<Star*>(cels[i])->multisys)
+        {
+            auto* system = static_cast<Star*>(cels[i])->multisys;
+            system->unlink();
+            delete system;
+        }
+    std::filesystem::current_path(original_path);
+    std::filesystem::remove_all(temporary);
     ImGui::GetIO().DisplaySize = ImVec2(192, 108);
     ImGui::NewFrame();
 }

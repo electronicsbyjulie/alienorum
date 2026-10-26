@@ -111,7 +111,10 @@ namespace
             const double luminosity = pow(star.volumetric_mean_radius / solar_radius, 2)
                 * pow(star.temperature / sun_temp, 4);
             star.absolute_magnitude = 4.74 - 2.5*log10(luminosity) - Star::bolometric_correction(star.temperature);
-            snprintf(star.spectral_type, sizeof(star.spectral_type), "%c%dIII", hot < 0.35 ? 'M' : 'K', int(uniform(random)*5));
+            const double index = Star::get_mseqidx_from_temp(star.temperature);
+            const int spectral = std::clamp(int(index), 3, 68);
+            snprintf(star.spectral_type, sizeof(star.spectral_type), "%c%d%s", "OBAFGKM"[spectral/10],
+                spectral%10, star.mass/solar_mass > 5 ? "II" : "III");
         }
         else if (draw < 0.07 && age > 1)
         {
@@ -212,7 +215,8 @@ FictionalGalaxy FictionalGalaxy::from_galaxy(const Galaxy& galaxy)
     FictionalGalaxy result;
     result.name = galaxy.name;
     result.milky_way = galaxy.reference_galaxy;
-    result.key = result.milky_way ? "MW" : galaxy.PGC ? "PGC" + std::to_string(galaxy.PGC) : "GAL:" + result.name;
+    result.key = result.milky_way ? "MW" : galaxy.PGC ? "PGC" + std::to_string(galaxy.PGC)
+        : "GAL:" + (galaxy.origname.empty() ? result.name : galaxy.origname);
     for (char c : result.milky_way ? std::string("MW") : result.name)
         if (isalnum(static_cast<unsigned char>(c))) result.code += c;
     if (result.code.empty()) result.code = result.key;
@@ -382,13 +386,26 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
         result.error = "Choose a center inside the galaxy, a radius up to 1,000 light years, an available star count, and a compact region designation.";
         return result;
     }
+    if (!(Star::interpolate_mseq_mass(40) > 0) || !(Star::interpolate_mseq_temp(40) > 0)
+        || !(Star::interpolate_mseq_rad(40) > 0) || !(Star::interpolate_mseq_lum(40) > 0))
+    {
+        result.error = "The stellar model is unavailable. Restore catalogs/mainseq.dat before generating stars.";
+        return result;
+    }
     std::mt19937_64 positions(region.seed), properties(region.seed ^ 0x853c49e6748fea9bULL),
         planes(region.seed ^ 0xda3e39cb94b95bdbULL), multiples(region.seed ^ 0x9e3779b97f4a7c15ULL);
+    Rotation band_plane = galaxy.band_plane;
     result.provenance = {{"version", 1}, {"galaxy", galaxy.key}, {"region", region.region_id},
         {"seed", region.seed}, {"center_ly", region.center_ly.to_json()}, {"radius_ly", region.radius_ly},
         {"requested_stars", region.star_count}, {"source_image", galaxy.image.path}, {"source_hash", galaxy.image.hash},
         {"image_encoding", "display_sRGB_approximation"}, {"model", "image_prior_disk_spheroid_v1"},
-        {"selection", "center_visibility_6.5_local_25ly_bright_tail_v1"}, {"clusters", region.clusters}};
+        {"selection", "center_visibility_6.5_local_25ly_bright_tail_v1"}, {"clusters", region.clusters},
+        {"center_type", fictional_center_type(region.center_subtype)}, {"galaxy_radius_ly", galaxy.radius_ly},
+        {"morphology", galaxy.morphology}, {"spheroid", galaxy.spheroid},
+        {"origin_mly", galaxy.origin_mly.to_json()}, {"east", galaxy.east.to_json()},
+        {"height_axis", galaxy.height_axis.to_json()}, {"south", galaxy.south.to_json()},
+        {"band_plane", band_plane.to_json()}, {"band_yaw_rad", galaxy.band_yaw},
+        {"habitability_advice", galaxy.milky_way && region.historical_annulus ? "historical_7_9_kpc" : "broad_morphology_heuristic"}};
     struct Cluster { Point center; double width, age; };
     std::vector<Cluster> clusters;
     if (region.clusters && region.star_count >= 100)
@@ -417,12 +434,16 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
             ? int(uniform(positions)*clusters.size()) : -1;
         Point color = galaxy.population_color(region.center_ly);
         const double blue = std::clamp((color.z - color.x)/(color.x + color.z + 1e-6)*0.5 + 0.5, 0.0, 1.0);
-        const double age = cluster_index >= 0 ? clusters[cluster_index].age
+        double age = cluster_index >= 0 ? clusters[cluster_index].age
             : galaxy.spheroid ? 5 + 6*uniform(properties)
             : uniform(properties) < blue*0.65 ? 0.03 + uniform(properties)*0.3
             : 0.5 + pow(uniform(properties), 0.5)*9;
         auto primary = std::make_unique<Star>();
-        if (anchor) main_sequence(*primary, Star::get_mseqidx_from_sptyp(fictional_center_type(region.center_subtype)));
+        if (anchor)
+        {
+            main_sequence(*primary, Star::get_mseqidx_from_sptyp(fictional_center_type(region.center_subtype)));
+            age = std::min(2 + 3*uniform(properties), 0.8*10*pow(primary->mass/solar_mass, -2.5));
+        }
         else stellar_properties(*primary, blue, age, properties);
         Point offset;
         bool placed = anchor;
@@ -451,8 +472,11 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
             const double radius = offset.magnitude();
             const double apparent = primary->absolute_magnitude + 5*log10(std::max(1e-6, radius)*light_year/(10*parsec));
             if (radius > region.radius_ly || (radius > 25 && apparent > 6.5)) continue;
+            const Point local_color = galaxy.population_color(region.center_ly + offset);
+            const double local_blue = std::clamp((local_color.z-local_color.x)/(local_color.x+local_color.z+1e-6)*0.5+0.5, 0.0, 1.0);
+            const double population_weight = cluster_index >= 0 ? 1 : age < 0.5 ? 0.05+0.95*local_blue : 1-0.6*local_blue;
             const double density = galaxy.density(region.center_ly + offset);
-            placed = density > 0 && uniform(positions) < std::min(1.0, density/(reference_density*1.5));
+            placed = density > 0 && uniform(positions) < population_weight*std::min(1.0, density/(reference_density*1.5));
         }
         if (!placed)
         {
@@ -470,7 +494,12 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
             + 0.15*normal(properties) + (galaxy.spheroid ? -0.2 : 0.15), -1.5, 0.5);
         const int remaining = region.star_count - result.stars.size();
         const double multiple_draw = uniform(multiples);
-        const int member_count = anchor ? 1 : std::min(remaining, multiple_draw < 0.08 ? 3 : multiple_draw < 0.40 ? 2 : 1);
+        const double primary_mass = primary->mass/solar_mass;
+        const double multiple_fraction = primary->is_white_dwarf() ? 0.30 : primary_mass < 0.5 ? 0.26
+            : primary_mass < 1.5 ? 0.40 : primary_mass < 5 ? 0.60 : 0.75;
+        const double triple_fraction = primary_mass < 0.5 ? 0.03 : primary_mass < 1.5 ? 0.08 : 0.18;
+        const int member_count = anchor ? 1 : std::min(remaining,
+            multiple_draw < triple_fraction ? 3 : multiple_draw < multiple_fraction ? 2 : 1);
         std::ostringstream designation;
         designation << "FIC " << galaxy.code << ' ' << region.region_id << ' ' << std::setw(6) << std::setfill('0') << system_number;
         const std::string base = designation.str();
@@ -591,6 +620,25 @@ bool FictionalBatch::install(std::string& message)
         {
             Star* star = static_cast<Star*>(cels[i]);
             if (star->fictional_origin.is_object()) identities.insert(star->fictional_origin.value("id", ""));
+        }
+    }
+    std::set<const CelestialObject*> members;
+    for (const auto& star : stars) members.insert(star.get());
+    for (const auto& star : stars)
+    {
+        const auto positive = [](double value) { return std::isfinite(value) && value > 0; };
+        if (!star || !positive(star->mass) || !positive(star->temperature) || !positive(star->volumetric_mean_radius)
+            || !positive(star->sidereal_rotational_period) || !std::isfinite(star->absolute_magnitude)
+            || !std::isfinite(star->location.system_center.squared_magnitude())
+            || !std::isfinite(star->location.galactic_center.squared_magnitude())
+            || !star->fictional_origin.is_object() || !star->fictional_origin.contains("id")
+            || !star->fictional_origin.at("id").is_string()
+            || (star->orbit && (!members.count(star->orbit->center) || !positive(star->orbit->semimajor_axis)
+                || !positive(star->orbit->period) || !std::isfinite(star->orbit->eccentricity)
+                || star->orbit->eccentricity < 0 || star->orbit->eccentricity >= 1)))
+        {
+            message = "A generated star has invalid properties. Generate a fresh preview.";
+            return false;
         }
     }
     for (const auto& star : stars)

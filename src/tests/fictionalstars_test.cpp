@@ -3,6 +3,8 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <future>
+#include <thread>
 #include <set>
 #include "../classes/fictionalstars.h"
 #include "../classes/cat.h"
@@ -291,6 +293,24 @@ TEST_F(FictionalStarsTest, DefaultBudgetBenchmark)
     std::cout << "Fictional benchmark: " << batch.stars.size() << " stars, " << batch.systems
         << " systems, " << batch.elapsed_seconds << " seconds, estimated JSON "
         << batch.estimated_save_bytes/(1024.0*1024) << " MiB" << std::endl;
+    std::string message;
+    ASSERT_TRUE(batch.install(message)) << message;
+    const auto save_start = std::chrono::steady_clock::now();
+    const auto file = temporary / "default_population.json";
+    {
+        std::fstream output(file, std::ios::out);
+        ASSERT_TRUE(Serialization::save_all(output, cels, true));
+    }
+    const auto save_end = std::chrono::steady_clock::now();
+    {
+        std::fstream input(file, std::ios::in);
+        ASSERT_TRUE(Serialization::load_all(input, cels, MAX_CELOBJS));
+    }
+    EXPECT_EQ(ncelobjs, 10001);
+    std::cout << "Fictional save benchmark: " << std::filesystem::file_size(file)/(1024.0*1024)
+        << " MiB, save " << std::chrono::duration<double>(save_end-save_start).count()
+        << " seconds, reload " << std::chrono::duration<double>(std::chrono::steady_clock::now()-save_end).count()
+        << " seconds" << std::endl;
 }
 
 TEST_F(FictionalStarsTest, BluePixelsFavorYoungHotPopulationsAndBrightnessWeightsDensity)
@@ -450,7 +470,7 @@ TEST_F(FictionalStarsTest, VisibleRemoteStarsSurviveCullingAtTheGeneratedCenter)
     const double old_zoom = zoom, old_brightness = global_brightness;
     zoom = global_brightness = 1;
     auto batch = generate_fictional_stars(model, region);
-    const CelestialLocation vantage = batch.stars.front()->location;
+    CelestialLocation vantage = batch.stars.front()->location;
     int visible = 0;
     for (const auto& star : batch.stars)
     {
@@ -459,7 +479,7 @@ TEST_F(FictionalStarsTest, VisibleRemoteStarsSurviveCullingAtTheGeneratedCenter)
         if (magnitude < normal_best_mag_limit-0.01)
         {
             ++visible;
-            EXPECT_TRUE(star->is_really_truly_in_visible_box(Point(const_cast<CelestialLocation&>(vantage))))
+            EXPECT_TRUE(star->is_really_truly_in_visible_box(Point(vantage)))
                 << star->name << " magnitude " << magnitude;
         }
         CelestialLocation far = star->location;
@@ -469,4 +489,34 @@ TEST_F(FictionalStarsTest, VisibleRemoteStarsSurviveCullingAtTheGeneratedCenter)
     EXPECT_GT(visible, 30);
     zoom = old_zoom;
     global_brightness = old_brightness;
+}
+
+TEST_F(FictionalStarsTest, InvalidStagedPhysicsCannotPartiallyEnterTheUniverse)
+{
+    auto batch = generate_fictional_stars(model, region);
+    ASSERT_FALSE(batch.stars.empty());
+    batch.stars.back()->temperature = NAN;
+    std::string message;
+    EXPECT_FALSE(batch.install(message));
+    EXPECT_EQ(ncelobjs, 1);
+    EXPECT_FALSE(message.empty());
+}
+
+TEST_F(FictionalStarsTest, MidGenerationCancellationLeavesNoLiveObjects)
+{
+    region.star_count = 100000;
+    std::atomic<bool> cancel{false};
+    std::atomic<int> progress{0};
+    auto future = std::async(std::launch::async, [&]()
+    {
+        return generate_fictional_stars(model, region, &cancel, &progress);
+    });
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+    while (progress.load() < 100 && std::chrono::steady_clock::now() < deadline)
+        std::this_thread::yield();
+    cancel.store(true);
+    auto batch = future.get();
+    EXPECT_TRUE(batch.stars.empty());
+    EXPECT_FALSE(batch.error.empty());
+    EXPECT_EQ(ncelobjs, 1);
 }
