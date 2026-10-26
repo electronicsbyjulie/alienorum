@@ -850,6 +850,9 @@ void load_catalogs()
         cr.read_starname_dat(cels);
     }
 
+    // Refresh current official names and aliases even when stellar properties came from the baked catalog.
+    if (ihsc) cr.read_starname_dat(cels);
+
     // Galaxies. The UNGC goes first: its distances are measured rather than inferred from
     // velocity, and read_RC3_catalog() skips whatever it has already placed.
     if (load_aborted()) return;

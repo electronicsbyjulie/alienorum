@@ -15,6 +15,7 @@
 #include <ctime>
 #include <map>
 #include <unordered_map>
+#include <unordered_set>
 #include <memory>
 #include <string_view>
 #include <set>
@@ -4821,88 +4822,104 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
     return num_added;
 }
 
-int CatalogReader::read_starname_dat(CelestialObject **cels)
+int CatalogReader::read_starname_dat(CelestialObject **objects)
 {
-    std::string path = "starname.dat";
-    char buffer[1024];
-    char field[32];
+    std::ifstream input("starname.dat");
+    if (!input) return 0;
+    for (ncelobjs = 0; objects[ncelobjs]; ++ncelobjs);
+    std::unordered_set<Star*> assigned;
+    bool official = false;
     int num_read = 0;
-    int i;
-    uint32_t HD, HIP;
-    std::string Gliese;
-
-    for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);
-    FILE* fp = fopen(path.c_str(), "rb");
-    if (!fp) return 0;
-
-    while (fgets(buffer, 1020, fp))
+    std::string line;
+    while (std::getline(input, line))
     {
-        if (buffer[0] == '#') continue;
-
-        read_field_onebased(buffer, 26, 32, field);
-        HD = atoi(field);
-
-        read_field_onebased(buffer, 34, 39, field);
-        HIP = atoi(field);
-
-        read_field_onebased(buffer, 41, 48, field);
-        i = atoi(field);
-        Gliese = trim(field);
-        if (i >= 9000) Gliese = std::string("GJ ") + Gliese;
-        else if (i >= 3000) Gliese = std::string("GJ ") + Gliese;
-        else if (i >= 1000) Gliese = std::string("GJ ") + Gliese;
-        else Gliese = std::string("GJ ") + Gliese;
-
-        read_field_onebased(buffer, 1, 25, field);
-
-        for (i=0; cels[i]; i++)
+        if (line.rfind("# BEGIN IAU WGSN", 0) == 0) { official = true; continue; }
+        if (line.rfind("# END IAU WGSN", 0) == 0) { official = false; continue; }
+        if (line.empty() || line[0] == '#') continue;
+        const auto field = [&](size_t start, size_t length)
         {
-            if (cels[i]->type != star) continue;
-            Star* s = (Star*)cels[i];
-            if ((HD && s->HD == HD) || (HIP && s->HIP == HIP) || (Gliese.size() && !strcmp(s->Gliese, Gliese.c_str())))
+            return start < line.size() ? trim(line.substr(start, length)) : std::string();
+        };
+        const std::string name = field(0, 25);
+        const uint32_t hd = atoi(field(25, 7).c_str()), hip = atoi(field(33, 6).c_str());
+        const std::string number = field(40, 8);
+        const std::string gliese = number.empty() ? "" : "GJ " + number;
+        const char component = line.size() > 39 && line[39] >= 'A' && line[39] <= 'Z' ? line[39] : 0;
+        const std::string selector = stellar_alias_key(field(49, line.size()));
+        if (name.empty()) continue;
+        std::set<Star*> matches;
+        for (int i = 0; objects[i]; ++i)
+        {
+            if (objects[i]->deleted || objects[i]->typeclass() != class_star) continue;
+            Star *star = static_cast<Star*>(objects[i]);
+            bool match = (hd && star->HD == hd) || (hip && star->HIP == hip)
+                || (!gliese.empty() && gliese == star->Gliese);
+            if (!match && !selector.empty())
             {
-                s->add_catalog_alias(trim(field));
-                if (!s->HD && HD > 0 && HD <= MAX_HD)
+                match = selector == stellar_alias_key(star->name) || selector == stellar_alias_key(star->Bayer)
+                    || selector == stellar_alias_key(star->Flamsteed) || selector == stellar_alias_key(star->WD);
+                for (const auto &alias : star->catalog_aliases)
                 {
-                    s->HD = HD;
-                    if (hdcache) hdcache[HD] = s;
+                    if (match) break;
+                    match = selector == stellar_alias_key(alias);
                 }
-                if (!s->HIP && HIP > 0 && HIP <= MAX_HIP)
-                {
-                    s->HIP = HIP;
-                    if (hipcache) hipcache[HIP] = s;
-                }
-                if (!s->Gliese[0] && trim(Gliese) != "GJ") snprintf(s->Gliese, sizeof(s->Gliese), "%s", Gliese.c_str());
-                if (s->has_custom_name) break;
-
-                strcpy(s->name, trim(field).c_str());
-                s->namelen = strlen(s->name);
-                s->has_custom_name = true;
-                num_read++;
-
-                if (s->multisys && s->multisys->get_member('A') == s)
-                {
-                    Star* companion;
-                    for (char c = 'B'; (companion = s->multisys->get_member(c)); c++)
-                    {
-                        if (companion->has_custom_name) continue;
-
-                        // Only borrow "<primary> <letter>" when the companion has no identity of
-                        // its own, or it's identical to the primary's -- never when it already
-                        // reads differently.
-                        companion->assign_identifier_name();
-                        std::string base = lop_component(s->name);
-                        if (!trim(companion->name).size() || !strcmp(trim(companion->name).c_str(), base.c_str()))
-                            strcpy(companion->name, (base + std::string(" ") + std::string(1, c)).c_str() );
-                        companion->namelen = strlen(companion->name);
-                    }
-                }
-
-                break;
+            }
+            if (!match) continue;
+            if (component)
+            {
+                if (star->multisys) star = star->multisys->get_member(component);
+                else if (star->get_component() != component && !(component == 'A' && !star->get_component())) continue;
+                if (!star || star->deleted) continue;
+            }
+            else if (star->multisys && star->get_component() > 'A')
+            {
+                Star *primary = star->multisys->get_member('A');
+                if (primary && ((hd && primary->HD == hd) || (hip && primary->HIP == hip))) star = primary;
+            }
+            matches.insert(star);
+            if (!official) break;
+        }
+        if (matches.size() != 1) continue;
+        Star *star = *matches.begin();
+        star->add_catalog_alias(name);
+        if (!component || component == 'A')
+        {
+            if (!star->HD && hd && hd <= MAX_HD)
+            {
+                star->HD = hd;
+                if (hdcache) hdcache[hd] = star;
+            }
+            if (!star->HIP && hip && hip <= MAX_HIP)
+            {
+                star->HIP = hip;
+                if (hipcache) hipcache[hip] = star;
+            }
+        }
+        if (!star->Gliese[0] && !gliese.empty()) snprintf(star->Gliese, sizeof(star->Gliese), "%s", gliese.c_str());
+        if (assigned.count(star) || (star->has_custom_name && (!official || star->user_edited || star->user_added))) continue;
+        assigned.insert(star);
+        if (name != star->name)
+        {
+            star->add_catalog_alias(star->name);
+            snprintf(star->name, sizeof(star->name), "%s", name.c_str());
+            ++num_read;
+        }
+        star->namelen = strlen(star->name);
+        star->has_custom_name = true;
+        if (star->multisys && star->multisys->get_member('A') == star)
+        {
+            for (char slot = 'B'; slot <= 'Z'; ++slot)
+            {
+                Star *companion = star->multisys->get_member(slot);
+                if (!companion || companion->has_custom_name) continue;
+                companion->assign_identifier_name();
+                const std::string base = lop_component(star->name);
+                if (trim(companion->name).empty() || trim(companion->name) == base)
+                    snprintf(companion->name, sizeof(companion->name), "%s %c", base.c_str(), slot);
+                companion->namelen = strlen(companion->name);
             }
         }
     }
-
     return num_read;
 }
 
@@ -7628,6 +7645,7 @@ struct FixedStellarIdentifiers
 {
     int hd = 0, hip = 0;
     std::string gliese;
+    char component = 0;
 };
 
 static FixedStellarIdentifiers catalog_identifiers(const std::string& name)
@@ -7657,6 +7675,7 @@ static FixedStellarIdentifiers catalog_identifiers(const std::string& name)
             FixedStellarIdentifiers record;
             record.hd = atoi(field(25, 7).c_str());
             record.hip = atoi(field(33, 6).c_str());
+            record.component = field(39, 1).empty() ? 0 : field(39, 1)[0];
             const auto gliese = field(40, 8);
             if (!gliese.empty()) record.gliese = "GJ " + gliese;
             stored.second[stellar_alias_key(field(0, 25))] = record;
@@ -7762,6 +7781,13 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
     {
         int index = find_object(identifiers.gliese.c_str(), true, 9e29, 0, lookup);
         if (index >= 0) host_star = static_cast<Star*>(cels[index]);
+    }
+    if (host_star && identifiers.component)
+    {
+        if (host_star->multisys) host_star = host_star->multisys->get_member(identifiers.component);
+        else if (host_star->get_component() != identifiers.component
+            && !(identifiers.component == 'A' && !host_star->get_component())) return nullptr;
+        if (!host_star) return nullptr;
     }
     if (!host_star)
     {

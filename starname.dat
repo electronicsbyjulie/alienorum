@@ -1,3 +1,514 @@
+# BEGIN IAU WGSN — official catalog as of 2026-10-25
+# Source: https://exopla.net/star-names/modern-iau-star-names/
+# Source SHA256: afcf1f6c603a041f479e753741530a49b020653792cdc9d584f89910d033fc2a
+# Excludes NameExoWorlds/NEWC campaigns. Legacy/project records follow unchanged.
+# Byte fields: name 1-25; HD 26-32; HIP 34-39; component 40; GJ 41-48; optional exact selector 50+.
+Acamar                            13847
+Achernar                           7588
+Achird                             3821
+Acrab                             78820
+Acrux                             60718
+Acubens                           44066
+Adhafera                          50335
+Adhara                            33579
+Adhil                              6411
+Aerostaticus                     105140
+Ain                               20889
+Ainalrami                         92761
+Aladfar                           94481
+Alawaidh                          85829
+Alaybasan                         10064
+Albaldah                          94141
+Albali                           102618
+Albireo                           95947
+Alchiba                           59199
+Alcor                             65477
+Alcyone                           17702
+Aldebaran                         21421
+Alderamin                        105199
+Aldhanab                         108085
+Aldhibah                          83895
+Aldulfin                         101421
+Alfarasalkamil                   113726
+Alfirk                           106032
+Algedi                           100064
+Algenib                            1067
+Algieba                           50583
+Algol                             14576
+Algorab                           60965
+Alhena                            31681
+Alioth                            62956
+Aljanah                          102488
+Alkaid                            67301
+Alkalurops                        75411
+Alkaphrah                         44471
+Alkarab                          115623
+Alkes                             53740
+Almaaz                            23416
+Almach                             9640
+Almighzal                         98110
+Alnaamaat                          9347
+Alnair                           109268
+Alnasl                            88635
+Alnilam                           26311
+Alnitak                           26727
+Alniyat                           80112
+Alphard                           46390
+Alphecca                          76267
+Alpheratz                           677
+Alpherg                            7097
+Alqiladah                         93683
+Alqubba                           94160
+Alrakis                           83608
+Alrescha                           9487
+Alruba                            86782
+Alrumh                            71995
+Alsafi                            96100
+Alsamaka                         110538
+Alsciaukat                        41075
+Alsephina                         42913
+Alshain                           98036
+Alshat                           100310
+Altair                            97649
+Altais                            94376
+Alterf                            46750
+Aludra                            35904
+Alula Australis                   55203
+Alula Borealis                    55219
+Alwasl                            91014
+Alya                              92946
+Alzirr                            32362
+Ancha                            110003
+Angetenar                         13288
+Ankaa                              2081
+Anser                             95771
+Antares                           80763
+Antinous                  191692  99473
+Anunitu                            3031
+Apamvatsa                         66006
+Apdu                              10670
+Arcturus                          69673
+Arin-majlep                       93244
+Arkab Posterior                   95294
+Arkab Prior                       95241
+Arneb                             25985
+Ascella                           93506
+Asellus Australis                 42911
+Asellus Borealis                  42806
+Ashlesha                          43109
+Aspidiske                         45556
+Asterope                          17579
+Asuusiha                          79992
+Athebyne                          80331
+Atik                              17448
+Atlas                             17847
+Atria                             82273
+Aurwandilsta                      78493
+Avior                             41037
+Azelfafage                       107136
+Azha                              13701
+Azmidi                            38170
+Bade                              24305
+Bagu                              28358
+Baijiu                           107380
+Bajamar Star                                     2MASS J20555125+4352246
+Bake-eo                           87108
+Baltesha                          76952A
+Barnard's Star                    87937      699
+Baten Kaitos                       8645
+Bawy                              10324
+Beehive Proplyd                                  HH 540
+Beemim                            20535
+Beid                              19587
+Bellatrix                         25336
+Betelgeuse                        27989
+Bharani                           13209
+Bibing                            18724
+Bie                               90982
+Biham                            109427
+Blaze Star                        78322
+Bodu                              88267
+Botein                            14838
+Brachium                          73714
+Bunda                            106786
+Buranun                            5824
+Butterfly Star                                   IRAS 04302+2247
+Calvera                                          PSR J1412+7922
+Canopus                           30438
+Capella                           24608
+Caph                                746
+Castor                            36850
+Castula                            4422
+Cebalrai                          86742
+Celaeno                           17489
+Cexing                             2599
+Chamukuy                          20894
+Chara                             61317
+Chertan                           54879
+Chugao                            11345
+Cor Caroli                        63125
+Cujam                             80463
+Cursa                             23875
+Custos                            17884
+Dabih                            100345
+Dajiangjunbei                      8068
+Dalim                             14879
+Darlugal                          27288
+Deltoton                          10644
+Deneb                            102098
+Deneb Algedi                     107556
+Denebola                          57632
+Dhanishta                        102531
+Dhanuśarāgra                    88567
+Diadem                            64241
+Diphda                             3419
+Dschubba                          78401
+Dubhe                             54061
+Dust-Ball                                        V927 Per
+Dziban                            86614
+Edasich                           75458
+Electra                           17499
+Elgafar                           70755
+Elkurud                           29034
+Elnath                            25428
+Eltanin                           87833
+Enduri Senggu                    104887
+Enif                             107315
+Errai                            116727
+Fang                              78265
+Fawaris                           97165
+Felis                             48615
+Fenmu                            111497
+Flying Saucer                                    2MASS J16281370-2431391
+Fomalhaut                        113368
+Frosty Leo                                       IRAS 09371+1212
+Fulu                               2920
+Fumalsamakah                     113889
+Furud                             30122
+Fuyue                             87261
+Gacrux                            61084
+Gaja                              21881
+Gajahmina                          5364
+Gang                               9598
+Garnet Star                      107259
+Geminga                                          PSR B0633+17
+Genghe                            71284
+Giausar                           56211
+Gienah                            59803
+Ginan                             60260
+Gomeisa                           36188
+Gouguo                            98688
+Grumium                           87585
+Guansuo                           76127A
+Gudja                             77450
+Guniibuu                          84405
+Guqi                              95501
+Hadar                             68702
+Haedus                            23767
+Hamal                              9884
+Hassaleh                          23015
+Hatysa                            26241
+Heng                              67464
+Heryibwia                         89642
+Heze                              66249
+Hoerikwaggo                       29271
+Holoea                                           IRAS 05327+3404
+Homam                            112029
+Honores                          114570
+Hru                               96665
+Huagai                            11569
+Hydor                               301
+Idigna                             7535
+Iklil                             78104
+Imai                              59747
+Izar                              72105
+Jabbah                            79374
+Jian                              93085
+Jiantai                           92791
+Jishui                            37265
+Jiu                              109176
+Jordanus                          66458
+Junnanmen                          5434
+Kaffaljidhma                      12706
+Kaffalmusalsala                  116805
+Kalasungsang                      71053
+Kamelos                           31940
+Kang                              69427
+Kaus Australis                    90185
+Kaus Borealis                     90496
+Kaus Media                        89931
+Kautoki                           91971
+Keid                              19849
+Kenemu                            95168
+Khambalia                         69974
+Khepdenreret                      83207
+Kitalpha                         104987
+Kochab                            72607
+Kornephoros                       80816
+Kraz                              61359
+Krios                     240429
+Kronos                    240430
+Kuda                               3092
+Kui                                4463
+Kulou                             65109
+Kurhah                           108917
+La Superba                        62223
+Lang-Exster                      110130
+Larawag                           82396
+Leepwal                   121263  68002
+Leidian                          113186
+Lembu                             22565
+Lesath                            85696
+Ligong                           112440
+Lilii Borea                       13061
+Lintangkumba                     112716
+Lumbung                           61966
+Maasym                            85693
+Maenalus                          72220
+Magur                             90037
+Mahasim                           28380
+Maia                              17573
+Marfik                            80883
+Markab                           113963
+Markeb                            45941
+Marsic                            79043
+Matar                            112158
+Matrichakra                       77512
+Mebsuta                           32246
+Megrez                            59774
+Meissa                            26207
+Mekbuda                           34088
+Meleph                            42556
+Menkalinan                        28360
+Menkar                            14135
+Menkent                           68933
+Menkib                            18614
+Merak                             53910
+Merga                             72487
+Meridiana                         94114
+Merope                            17608
+Mesarthim                                        gam Ari
+Miaplacidus                       45238
+Mimosa                            62434
+Minchir                           42402
+Minelauva                         63090
+Mintaka                           25930
+Mira                              10826
+Mirach                             5447
+Miram                             13268
+Mirfak                            15863
+Mirzam                            30324
+Misam                             14668
+Mizar                             65378
+Moth                       61005  36948
+Mothallah                          8796
+Muliphein                         34045
+Muning                            78072
+Muphrid                           67927
+Muscida                           41704
+Naga                              64962
+Nahn                              44946
+Nandou                            92041
+Naos                              39429
+Nashira                          106985
+Necklace                                         IRAS 19417+1701
+Neichu                           109410
+Nekkar                            73555
+Nembus                             7607
+Nganurganity                      33856
+Niandao                           92862
+Nihal                             25606
+Ninnisig                          94713
+Nunki                             92855
+Nusakan                           75695
+Nüchuang                         84380
+Okab                              93747
+Pabilsang                         92845
+Pagru                             97804
+Paikauhale                        81266
+Paloma                                           2MASS J05243042+4244506
+Paradys                           72370
+Paushna                            5743B
+Peacock                          100751
+Peony Star                                       WR 102ka
+Phact                             26634
+Phecda                            58001
+Pherkad                           75097
+Pherkad Minor                     74793
+Phyllon Kissinou                  61394
+Piautos                           40881
+Pili                             118268
+Ping                              23685
+Pipirima                          82545
+Pipit                             31685
+Pistol Star                                      V4647 Sgr
+Pleione                           17851
+Polaris                           11767
+Polaris Australis                104382
+Polis                             89341
+Pollux                            37826
+Pongaponga                        91919A
+Porrima                           61941
+Praecipua                         53229
+Prima Hyadum                      20205
+Procyon                           37279
+Propus                            29655
+Protome                          104538
+Proxima Centauri                  70890      551
+Pulcherrima                       72105B
+Puwuh Atarung                    116771
+Qedty                             94005
+Qigong                            74666A
+Quadrans                          73695A     575
+Ramus                             88886
+Rana                              17378
+Rangifer                           9763
+Rasalas                           48455
+Rasalgethi                        84345
+Rasalhague                        86032
+Rasalnaqa                        116631
+Rastaban                          85670
+Red Rectangle              44179  30089
+Regulus                           49669
+Revati                             5737
+Rhombus                           19780
+Rigel                             24436
+Rigil Kentaurus                   71683
+Rosette Eye                                      RAFGL 961
+Rotanev                          101769
+Ruchbah                            6686
+Rukbat                            95347
+Sabik                             84012
+Saclateni                         23453
+Sadachbia                        110395
+Sadalbari                        112748
+Sadalmelik                       109074
+Sadalsuud                        106278
+Sadr                             100453
+Safina                           114341
+Saiph                             27366
+Salm                             115250
+Sapaki                                           WR 67-1
+Sargas                            86228
+Sarin                             84379
+Sarvvis                           17358
+Sceptrum                          21594
+Scheat                           113881
+Schedar                            3179
+Secunda Hyadum                    20455
+Segin                              8886
+Seginus                           71075
+Shakata                           20877
+Shakh                             96837
+Sham                              96757
+Shangcheng                        14862
+Shangwei                          29997
+Shaomin                    91316  51624
+Shaowei                           17959
+Shatabhisha                      112961
+Shaula                            85927
+Sheliak                           92420
+Shengong                          83100
+Sheratan                           8903
+Shimu                              3693
+Simmakh                            1645
+Sirius                            32349
+Situla                           111710
+Siwarha                                B         Alp Ori
+Skat                             113136
+Solitaire                         72571
+Southern Crab                                    WRAY 16-147
+Speedy Mic                197890 102626
+Spica                             65474
+Stella Ludoviciana        116798
+Stellio                          111169
+Stephanos                         77048
+Sualocin                         101958
+Subra                             47508
+Suhail                            44816
+Sukhurmashu                      100027
+Sulafat                           93194
+Syrma                             69701
+Tabit                             22449
+Taiyangshou                       57399
+Taiyi                             63076
+Talitha                           44127
+Tania Australis                   50801
+Tania Borealis                    50372
+Tarandus                           5372
+Tarazed                           97278
+Tarf                              40526
+Taygeta                           17531
+Tegmine                           40167
+Tejat                             30343
+Telum                             98337
+Tengshe                          113288
+Tepennekhet                      104858
+Tepiamenit                        67275
+Terebellum                        98066
+Theemin                           21393
+Thuban                            68756
+Tiaki                            112122
+Tianbang                          86414
+Tianbian                          91117
+Tiancang                           6537
+Tianfu                            98823
+Tiangang                         111188
+Tianguan                          26451
+Tianhun                            4147
+Tianji                            81693
+Tianjinnan                       104732
+Tianjiu                             841
+Tiansi                             4427
+Tianyi                            62423
+Tianyue                           88116
+Toliman                           71681
+Tonglingxing                      33694
+Torcular                           8198
+Triminus                          10280
+Tugongli                         112447
+Tureis                            39757
+Tusizuo                           90139
+Udang                            104139
+Udkadua                          116584
+Ukdah                             47431
+Unukalhai                         77070
+Uridim                            71860
+Urquchillay                       91973
+Uñallamacha              155985  84556
+Vega                              91262
+Vindemiatrix                      63608
+Waiping                            3786
+Wasat                             35550
+Wazn                              27628
+Weixiu                            12719
+Wezen                             34444
+Wurren                             5348
+Xami                              71908
+Xamidimura                        82514
+Xuange                            69732
+Yaqana                            80582
+Yed Posterior                     79882
+Yed Prior                         79593
+Yildun                            85822
+Yunyu                            114971
+Yunü                      87837  49637
+Yuyu                              43103
+Zaniah                            60129
+Zaurak                            18543
+Zavijava                          57757
+Zhang                             48356
+Zhou                              77233
+Zibal                             15197
+Zibbatu                            9353
+Zosma                             54872
+Zubenelgenubi                     72622
+Zubenelhakrabi                    76333
+Zubeneschamali                    74785
+Zuogeng                           10306
+Zuoqi                             97365
+Áldu                             18532
+# END IAU WGSN
 Alpheratz                    358    677           
 Caph                         432    746      8    
 Algenib                      886   1067           

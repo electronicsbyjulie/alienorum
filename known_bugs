@@ -3,4 +3,4 @@
 
 [COMPLETE] Zooming in on an object in vm_horizon mode, on a body that has an atmosphere, shows a full sky gradient as if not zoomed; the gradient does not zoom with the view or reposition with the view altitude. The gradient now samples viewing elevation with zoom/pitch, and GPU spheres use the same projected sky rows.
 
-starname.dat is out of date and does not include some objects, such as Blaze Star, that have names. It should be updated with the latest IAU official names, excluding NameExoWorlds since those belong in exoname.dat instead.
+[COMPLETE] starname.dat is out of date and does not include some objects, such as Blaze Star, that have names. Updated from the official WGSN catalog through 2026-10-25: 505 names, excluding 147 NameExoWorlds/NEWC entries. Cached loads refresh names and aliases; component identities, authored names, and legacy/project records are preserved. Added a repeatable updater and regression checks.

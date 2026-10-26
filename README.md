@@ -273,6 +273,8 @@ Unit tests are in place; to run them, run `make tests`. The "all" target deliber
 
 The offline planet-classifier tools in `tools/` require Python 3, NumPy, and SciPy. Run their checks with `python3 -m unittest discover -s tools -p 'test_planet*.py'`. The calibration script downloads its benchmark when absent; the fitted model used by the app is tracked in `catalogs/NASA/classification_model.json`. These Python packages are development dependencies and are not required to run Alienorum.
 
+Refresh official non-NameExoWorlds star names with `python3 tools/update_star_names.py`; the standard-library-only updater preserves legacy/project records and records source provenance in `starname.dat`. Use `--source downloaded_catalog.html --as-of YYYY-MM-DD` for a reproducible offline update. Its checks run with `python3 -m unittest discover -s tools -p 'test_star_names.py'`. The existing installer manifest already includes `starname.dat`; the updater itself is a developer tool.
+
 To benchmark the surface caches separately, compile `tools/benchmark_surface_cache.cpp` with `src/classes/noise.cpp` using C++17 and optimization enabled.
 
 Every new PR will have to pass all unit tests before merge. Recommended but not required: when adding a feature, it is a good idea to also add unit tests for it. The repo owner will check for testing gaps from time to time and fix any gaps found.

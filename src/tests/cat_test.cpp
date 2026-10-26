@@ -4397,3 +4397,59 @@ TEST_F(CatalogParsingTest, WideOrbitsWithoutPeriodsRemainValidForArbitraryNames)
     EXPECT_EQ(rows.front()["pl_name"], wide["pl_name"]);
     EXPECT_DOUBLE_EQ(rows.front()["pl_orbsmax"], 450);
 }
+
+TEST_F(CatalogParsingTest, CurrentIauNamesRefreshCachedNamesAndPreserveComponentIdentity)
+{
+    Star *blaze = make_star("T CrB");
+    blaze->HIP = 78322;
+    blaze->has_custom_name = true;
+    Star *recent = make_star("HIP 10324");
+    recent->HIP = 10324;
+    Star *authored = make_star("My authored label");
+    authored->HIP = 10064;
+    authored->has_custom_name = authored->user_edited = true;
+    Star *primary = make_star("Old primary label");
+    primary->HIP = 72105;
+    primary->set_component('A', primary);
+    Star *secondary = make_star("Old companion label", .4 * solar_mass);
+    secondary->make_companion_of(primary, 'B');
+    secondary->orbit->period = 123 * oneday;
+    secondary->orbit->inclination = .7;
+    Star *root = make_star("Betelgeuse");
+    root->HIP = 27989;
+    strcpy(root->Bayer, "Alp Ori");
+    root->set_component('A', root);
+    Star *child = make_star("Earlier B label");
+    child->make_companion_of(root, 'B');
+    child->has_custom_name = true;
+    Star *campaign = make_star("51 Peg");
+    campaign->HIP = 113357;
+    class NamedHostReader : public CatalogReader
+    {
+        public:
+        using CatalogReader::resolve_or_create_exostar;
+    };
+    NamedHostReader reader;
+    EXPECT_GT(reader.read_starname_dat(cels), 0);
+    EXPECT_STREQ(blaze->name, "Blaze Star");
+    EXPECT_EQ(find_object("T CrB", true, 9e29, 0), blaze->seqno);
+    EXPECT_STREQ(recent->name, "Bawy");
+    EXPECT_STREQ(authored->name, "My authored label");
+    EXPECT_EQ(find_object("Alaybasan", true, 9e29, 0), authored->seqno);
+    EXPECT_STREQ(primary->name, "Izar");
+    EXPECT_STREQ(secondary->name, "Pulcherrima");
+    EXPECT_EQ(secondary->HIP, 0u);
+    EXPECT_EQ(primary->HIP, 72105u);
+    EXPECT_DOUBLE_EQ(secondary->mass, .4 * solar_mass);
+    EXPECT_DOUBLE_EQ(secondary->orbit->period, 123 * oneday);
+    EXPECT_DOUBLE_EQ(secondary->orbit->inclination, .7);
+    EXPECT_STREQ(child->name, "Siwarha");
+    EXPECT_STRNE(campaign->name, "Helvetios");
+    ExoRow row;
+    row.hostname = "Pulcherrima";
+    bool was_new = true;
+    EXPECT_EQ(reader.resolve_or_create_exostar(row, true, &was_new), secondary);
+    EXPECT_FALSE(was_new);
+    EXPECT_DOUBLE_EQ(secondary->mass, .4 * solar_mass);
+    delete_the_universe();
+}
