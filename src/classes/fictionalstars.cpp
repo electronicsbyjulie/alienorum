@@ -100,17 +100,16 @@ namespace
         star.absolute_magnitude = 4.74 - 2.5*log10(std::max(1e-9, luminosity))
             - Star::bolometric_correction(star.temperature);
     }
-    void stellar_properties(Star& star, double blue, double age, std::mt19937_64& random)
+    void stellar_properties(Star& star, int phase, double age, std::mt19937_64& random)
     {
-        const double draw = uniform(random);
-        if (draw < 20.0/5230)
+        if (phase == 7 || phase == 8)
         {
-            const bool cool_evolved = uniform(random) < 0.12;
-            const double hot = uniform(random);
-            star.temperature = cool_evolved ? 2800+hot*700 : 3800+hot*1500;
+            const bool cool_evolved = phase == 8;
+            star.temperature = cool_evolved ? 2800+uniform(random)*700
+                : std::clamp(4800+350*normal(random), 3800.0, 5300.0);
             star.mass = std::clamp(pow(10/std::max(0.03, age), 0.4)*(0.95+0.1*uniform(random)), 0.85, 15.0)*solar_mass;
             star.volumetric_mean_radius = (cool_evolved ? 80+pow(uniform(random), 2)*200
-                : 5+pow(uniform(random), 2)*35)*solar_radius;
+                : std::clamp(8*pow(4800/star.temperature, 6)*exp(0.3*normal(random)), 3.0, 100.0))*solar_radius;
             star.BV_color = Star::interpolate_mseq_BV(Star::get_mseqidx_from_temp(star.temperature));
             const double luminosity = pow(star.volumetric_mean_radius / solar_radius, 2)
                 * pow(star.temperature / sun_temp, 4);
@@ -120,7 +119,20 @@ namespace
             snprintf(star.spectral_type, sizeof(star.spectral_type), "%c%d%s", "OBAFGKM"[spectral/10],
                 spectral%10, star.mass/solar_mass > 5 ? "II" : "III");
         }
-        else if (draw < 284.0/5230 && age > 1)
+        else if (phase == 9)
+        {
+            const double mass = std::clamp(pow(10/std::max(0.03, age), 0.4), 0.85, 15.0);
+            const double index = Star::get_mseqidx_from_mass(mass);
+            main_sequence(star, index);
+            star.temperature *= 0.8+0.15*uniform(random);
+            star.volumetric_mean_radius *= 1.5+uniform(random)*1.5;
+            star.BV_color = Star::interpolate_mseq_BV(Star::get_mseqidx_from_temp(star.temperature));
+            const double luminosity = pow(star.volumetric_mean_radius/solar_radius, 2)*pow(star.temperature/sun_temp, 4);
+            star.absolute_magnitude = 4.74-2.5*log10(luminosity)-Star::bolometric_correction(star.temperature);
+            const int spectral = std::clamp(int(Star::get_mseqidx_from_temp(star.temperature)), 3, 68);
+            snprintf(star.spectral_type, sizeof(star.spectral_type), "%c%dIV", "OBAFGKM"[spectral/10], spectral%10);
+        }
+        else if (phase == 10)
         {
             star.mass = (0.52 + uniform(random)*0.22)*solar_mass;
             star.volumetric_mean_radius = Star::degenerate_radius(star.mass);
@@ -132,15 +144,11 @@ namespace
         }
         else
         {
-            // Nearby dwarfs plus a bright-catalog tail, limited by a main-sequence lifetime prior.
-            const double mix = uniform(random);
-            double index = mix < 0.735 ? 60 + uniform(random)*8 : mix < 0.885 ? 50 + uniform(random)*9
-                : mix < 0.935 ? 40 + uniform(random)*9 : mix < 0.980 ? 30 + uniform(random)*9
-                : mix < 0.998 ? 20 + uniform(random)*9 : 7 + uniform(random)*12;
-            if (uniform(random) < blue*0.002) index = 8 + uniform(random)*22;
+            const double draw = uniform(random);
+            const double index = phase == 0 ? 60+8*sqrt(draw) : phase == 4 ? 20+9*sqrt(draw)
+                : phase == 5 ? 10+9*pow(draw, 0.12) : phase == 6 ? 3+6*pow(draw, 0.1)
+                : 60-10*phase+9*draw;
             main_sequence(star, index);
-            for (int attempt = 0; attempt < 32 && 10*pow(star.mass/solar_mass, -2.5) < age; ++attempt)
-                main_sequence(star, index = std::min(68.0, index + 2));
         }
         star.estimate_UB(star.temperature);
         star.sidereal_rotational_period = std::clamp(25.0 * sqrt(std::max(0.02, age)/4.6)
@@ -446,19 +454,30 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
         std::string spectral;
     };
     std::vector<PopulationSample> population;
-    const auto append_sample = [&](std::vector<PopulationSample>& samples, double blue, double age, double cluster_radius)
+    const auto append_sample = [&](std::vector<PopulationSample>& samples, int phase, double blue, double age, double cluster_radius)
     {
         Star prototype;
-        stellar_properties(prototype, blue, age, properties);
+        stellar_properties(prototype, phase, age, properties);
+        const double lifetime = 10*pow(prototype.mass/solar_mass, -2.5);
+        if (phase < 7 && lifetime < age)
+        {
+            if (cluster_radius >= 0 || galaxy.spheroid) return;
+            age = std::max(0.000001, 0.95*lifetime*uniform(properties));
+        }
+        if (phase == 10 && age < 1) return;
+        const double dwarf_densities[] = {0.0676, 0.0105, 0.0033, 0.0024, 0.00049, 0.000032, 0.000000044};
+        const double main_fraction = 4946.0/5230-0.0068;
+        const double prior = phase < 7 ? main_fraction*dwarf_densities[phase]/0.084322044
+            : phase == 7 ? 20.0/5230*0.975 : phase == 8 ? 20.0/5230*0.025
+            : phase == 9 ? 0.0068 : 264.0/5230;
+        const double phase_weight = phase == 9 ? 0.3*pow(prototype.mass/solar_mass, -2.35)
+            : phase == 7 || phase == 8 ? pow(prototype.mass/solar_mass, -1.35) : 1.0;
+        const double color_weight = phase >= 5 && phase <= 6 ? 0.25+1.5*blue : phase == 4 ? 0.7+0.6*blue : 1.0;
         const double visibility = pow(10.0, (6.5-prototype.absolute_magnitude+5)/5)*parsec/light_year;
         const double horizon = std::min(region.radius_ly, std::max(25.0, visibility));
-        // Solar reference calibration adjusts broad classes, never individual catalog identities.
-        const double representation = prototype.is_white_dwarf() ? 5.0
-            : strstr(prototype.spectral_type, "III") || strstr(prototype.spectral_type, "II") ? 0.6
-            : prototype.temperature >= 10000 ? 3.5 : prototype.temperature >= 7500 ? 2.5
-            : prototype.temperature >= 6000 ? 1.6 : horizon <= 25 ? 1.8 : 1.0;
-        const double weight = cluster_radius < 0 ? representation*horizon*horizon*horizon
-            : cluster_radius <= 25 || visibility >= cluster_radius ? 1.0 : 0.0;
+        // Stratified classes retain their census probabilities without rare-phase sampling noise.
+        const double weight = prior*phase_weight*color_weight*(cluster_radius < 0 ? horizon*horizon*horizon
+            : cluster_radius <= 25 || visibility >= cluster_radius ? 1.0 : 0.0);
         if (!(weight > 0)) return;
         const double cumulative = (samples.empty() ? 0 : samples.back().cumulative)+weight;
         samples.push_back({prototype.mass, prototype.volumetric_mean_radius, prototype.temperature,
@@ -466,7 +485,7 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
     };
     const Point center_color = galaxy.population_color(region.center_ly);
     const double center_blue = std::clamp((center_color.z-center_color.x)/(center_color.x+center_color.z+1e-6)*0.5+0.5, 0.0, 1.0);
-    for (int sample = 0; sample < 32768; ++sample)
+    for (int sample = 0; sample < 11264; ++sample)
     {
         if (sample % 256 == 0 && cancel && cancel->load())
         {
@@ -475,7 +494,7 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
         }
         const double age = galaxy.spheroid ? 5+6*uniform(properties)
             : uniform(properties) < center_blue*0.1 ? 0.03+uniform(properties)*0.3 : 0.5+9*uniform(properties);
-        append_sample(population, center_blue, age, -1);
+        append_sample(population, sample/1024, center_blue, age, -1);
     }
     struct Cluster
     {
@@ -493,14 +512,14 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
             if (galaxy.inside(region.center_ly + offset))
             {
                 Cluster cluster{offset, 3+7*uniform(positions), i % 2 ? 0.08 : 0.6, {}};
-                for (int sample = 0; sample < 8192; ++sample)
+                for (int sample = 0; sample < 5632; ++sample)
                 {
                     if (sample % 256 == 0 && cancel && cancel->load())
                     {
                         result.error = "Preview cancelled.";
                         return result;
                     }
-                    append_sample(cluster.population, 0.9, cluster.age, offset.magnitude());
+                    append_sample(cluster.population, sample/512, 0.9, cluster.age, offset.magnitude());
                 }
                 if (!cluster.population.empty()) clusters.push_back(std::move(cluster));
             }

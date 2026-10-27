@@ -165,6 +165,8 @@ int main(int argc, char** argv)
     radio_silence = true;
     CatalogReader reader;
     reader.read_condensed_star_cat();
+    for (int i = 0; cels[i]; ++i)
+        if (cels[i] != sun && !strcmp(cels[i]->name, "Sun")) cels[i]->deleted = true;
     const auto solar = measure(sun);
     SDL_Init(SDL_INIT_VIDEO);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
