@@ -10,6 +10,7 @@
 #include <set>
 #include "cons.h"
 #include "planet.h"
+#include "fictionalstars.h"
 #include "wdcolor.h"
 #include "../globals.h"
 
@@ -462,6 +463,31 @@ StarMulti::~StarMulti()
     if (members) delete[] members;
 }
 
+void Star::set_fictional_motion(Point space_velocity)
+{
+    has_fictional_motion = true;
+    fictional_epoch_position = location.system_center;
+    fictional_space_velocity = space_velocity;
+    fictional_origin["motion"] = {{"model", "galactic_velocity_ellipsoid_v1"},
+        {"reference", "stationary_galaxy_center"}, {"propagation", "linear_cartesian"},
+        {"epoch_position_m", fictional_epoch_position.to_json()},
+        {"velocity_m_s", space_velocity.to_json()}};
+    // Project against the full sightline, including the remote galaxy's offset.
+    const Point sightline = location.system_center + location.galactic_center*(1e6*light_year);
+    distance = std::max(1.0, sightline.magnitude());
+    right_ascension = atan2(-sightline.x, sightline.z);
+    if (right_ascension < 0) right_ascension += 2*_pi;
+    declination = atan2(sightline.y, hypot(sightline.x, sightline.z));
+    const Point radial = sightline*(1/distance);
+    const Point east(-cos(right_ascension), 0, -sin(right_ascension));
+    const Point north(sin(right_ascension)*sin(declination), cos(declination),
+        -cos(right_ascension)*sin(declination));
+    const auto dot = [](Point a, Point b) { return a.x*b.x + a.y*b.y + a.z*b.z; };
+    radial_velocity = dot(space_velocity, radial);
+    proper_motion_RA = dot(space_velocity, east)/(distance*std::max(1e-12, cos(declination)));
+    proper_motion_decl = dot(space_velocity, north)/distance;
+}
+
 void Star::update_location(double tmnow)
 {
     if (!(volumetric_mean_radius > 0) || !std::isfinite(volumetric_mean_radius))
@@ -472,6 +498,12 @@ void Star::update_location(double tmnow)
     if (orbit)
     {
         update_orbit_location(tmnow);
+    }
+    else if (has_fictional_motion)
+    {
+        elapsed = tmnow - J2000_TIME_T + oneday*(J2000-epoch);
+        location.system_center = fictional_epoch_position + fictional_space_velocity*elapsed;
+        l_dist = (location.system_center + location.galactic_center*(1e6*light_year)).magnitude();
     }
     else
     {
@@ -1700,6 +1732,23 @@ bool Star::from_json(json j)
     stellar_rotation = j.contains("stellar_rotation") && j["stellar_rotation"].is_object()
         ? j["stellar_rotation"] : json(nullptr);
     fictional_origin = j.value("fictional_origin", json(nullptr));
+    has_fictional_motion = false;
+    if (fictional_origin.is_object() && fictional_origin.contains("motion"))
+    {
+        const auto& motion = fictional_origin.at("motion");
+        const auto read_point = [&](const char* key, Point& point)
+        {
+            if (!motion.is_object() || !motion.contains(key) || !motion.at(key).is_object()) return false;
+            const auto& value = motion.at(key);
+            for (const char* axis : {"x", "y", "z"})
+                if (!value.contains(axis) || !value.at(axis).is_number()
+                    || !std::isfinite(value.at(axis).get<double>())) return false;
+            point.from_json(value);
+            return std::isfinite(point.squared_magnitude());
+        };
+        has_fictional_motion = read_point("epoch_position_m", fictional_epoch_position)
+            && read_point("velocity_m_s", fictional_space_velocity);
+    }
     if (fictional_origin.is_object()) is_faved = j.value("is_faved", false);
     stellar_system = j.value("stellar_system", json(nullptr));
     if (stellar_system.is_object()) has_custom_name = true;
@@ -1853,6 +1902,7 @@ bool Star::from_json(json j)
     } catch (...) { ; }
     try { j.at("BayerGrkno").get_to(BayerGrkno); } catch (...) { ; }
     try { j.at("FlamsteedNo").get_to(FlamsteedNo); } catch (...) { ; }
+    restore_fictional_motion(*this);
     return true;
 }
 

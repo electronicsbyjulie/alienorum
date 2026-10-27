@@ -39,6 +39,28 @@ namespace
     {
         return sqrt(-2 * log(std::max(1e-15, uniform(random)))) * cos(2 * _pi * uniform(random));
     }
+    double galaxy_speed_scale(const FictionalGalaxy& galaxy)
+    {
+        return std::clamp(220000*sqrt(galaxy.radius_ly/50000), 25000.0, 320000.0);
+    }
+    Point galaxy_disk_velocity(const FictionalGalaxy& galaxy, Point p, double age, std::mt19937_64& random)
+    {
+        const double speed_scale = galaxy_speed_scale(galaxy);
+        const double radius = hypot(p.x, p.z);
+        const double core = std::max(100.0, galaxy.radius_ly*0.03);
+        const double circular = speed_scale*radius/hypot(radius, core);
+        const Point radial = radius > 1e-12 ? Point(p.x/radius, 0, p.z/radius) : Point(1, 0, 0);
+        const Point tangent(-radial.z, 0, radial.x);
+        // Older populations have hotter radial and vertical velocity ellipsoids.
+        const double heating = pow((std::clamp(age, 0.0, 13.0)+0.1)/4.7, 0.35);
+        const double sigma_r = speed_scale*(galaxy.spheroid ? 0.55 : 0.16*heating);
+        const double sigma_z = galaxy.spheroid ? sigma_r : sigma_r*0.55;
+        const double sigma_phi = galaxy.spheroid ? sigma_r : sigma_r/sqrt(2.0);
+        const double streaming = galaxy.spheroid ? 0.1*circular
+            : std::max(0.0, circular-1.5*sigma_r*sigma_r/std::max(speed_scale*0.1, circular));
+        return radial*(normal(random)*sigma_r) + tangent*(streaming+normal(random)*sigma_phi)
+            + Point(0, normal(random)*sigma_z, 0);
+    }
     Rotation isotropic(std::mt19937_64& random)
     {
         return align_points_3d(direction(random), yaxis, center);
@@ -428,6 +450,39 @@ const char* alienorum::fictional_center_type(int index)
     return types[std::clamp(index, 0, 14)];
 }
 
+void alienorum::restore_fictional_motion(Star& star)
+{
+    if (star.has_fictional_motion || !star.fictional_origin.is_object()
+        || star.fictional_origin.contains("motion")) return;
+    const auto& origin = star.fictional_origin;
+    try
+    {
+        const auto& batch = origin.at("batch");
+        FictionalGalaxy galaxy;
+        galaxy.radius_ly = batch.at("galaxy_radius_ly").get<double>();
+        galaxy.spheroid = batch.at("spheroid").get<bool>();
+        galaxy.east.from_json(batch.at("east"));
+        galaxy.height_axis.from_json(batch.at("height_axis"));
+        galaxy.south.from_json(batch.at("south"));
+        Point p;
+        p.from_json(origin.at("disk_position_ly"));
+        const double age = origin.at("age_gyr").get<double>();
+        const uint64_t index = origin.at("system_index").get<uint64_t>();
+        std::mt19937_64 random(batch.at("seed").get<uint64_t>() ^ (index*0x9e3779b97f4a7c15ULL)
+            ^ 0x4b38d2e6a97c015fULL);
+        if (!(galaxy.radius_ly > 0) || !std::isfinite(galaxy.radius_ly) || !std::isfinite(age)) return;
+        const Point v = galaxy_disk_velocity(galaxy, p, age, random);
+        const Point world = galaxy.east*v.x + galaxy.height_axis*v.y + galaxy.south*v.z;
+        if (!std::isfinite(world.squared_magnitude())) return;
+        star.set_fictional_motion(world);
+        star.user_edited = true;
+    }
+    catch (const json::exception&)
+    {
+        // Older hand-authored records can omit population provenance.
+    }
+}
+
 FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy, const FictionalRegion& region,
     const std::atomic<bool>* cancel, std::atomic<int>* progress)
 {
@@ -449,7 +504,18 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
         return result;
     }
     std::mt19937_64 positions(region.seed), properties(region.seed ^ 0x853c49e6748fea9bULL),
-        planes(region.seed ^ 0xda3e39cb94b95bdbULL), multiples(region.seed ^ 0x9e3779b97f4a7c15ULL);
+        planes(region.seed ^ 0xda3e39cb94b95bdbULL), multiples(region.seed ^ 0x9e3779b97f4a7c15ULL),
+        motions(region.seed ^ 0x4b38d2e6a97c015fULL);
+    // Procedural priors, not measured rotation curves for individual galaxies.
+    const double speed_scale = galaxy_speed_scale(galaxy);
+    const auto disk_velocity = [&](Point p, double age)
+    {
+        return galaxy_disk_velocity(galaxy, p, age, motions);
+    };
+    const auto world_velocity = [&](Point v)
+    {
+        return galaxy.east*v.x + galaxy.height_axis*v.y + galaxy.south*v.z;
+    };
     Rotation band_plane = galaxy.band_plane;
     const std::string region_identity = region.identity.empty()
         ? galaxy.key + ":" + region.region_id + ":" + std::to_string(region.seed) : region.identity;
@@ -459,6 +525,7 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
         {"population_reference", "CNS5_Golovin_2023_Mamajek_local_density_Solar_catalog"}, {"source_image", galaxy.image.path}, {"source_hash", galaxy.image.hash},
         {"image_encoding", "display_sRGB_approximation"}, {"model", "image_prior_disk_spheroid_v3"},
         {"selection", "stratified_solar_cns5_v3"}, {"clusters", region.clusters},
+        {"motion_model", "galactic_velocity_ellipsoid_v1"}, {"velocity_scale_m_s", speed_scale},
         {"center_type", fictional_center_type(region.center_subtype)}, {"galaxy_radius_ly", galaxy.radius_ly},
         {"morphology", galaxy.morphology}, {"spheroid", galaxy.spheroid},
         {"origin_mly", galaxy.origin_mly.to_json()}, {"east", galaxy.east.to_json()},
@@ -544,6 +611,9 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
             }
         }
     }
+    std::vector<Point> cluster_velocities;
+    for (const auto& cluster : clusters)
+        cluster_velocities.push_back(disk_velocity(region.center_ly+cluster.center, cluster.age));
     result.clusters = clusters.size();
     result.stars.reserve(region.star_count);
     struct OccupiedSystem { Point position; double spacing; };
@@ -676,6 +746,9 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
         const int member_count = anchor ? 1 : std::min(remaining,
             multiple_draw < triple_fraction ? 3 : multiple_draw < multiple_fraction ? 2 : 1);
         const std::string system_id = region_identity + ":" + std::to_string(system_number);
+        const Point system_velocity = world_velocity(cluster_index < 0
+            ? disk_velocity(region.center_ly+offset, age)
+            : cluster_velocities[cluster_index] + Point(normal(motions), normal(motions), normal(motions))*1000);
         Star* root = primary.get();
         Rotation system_plane = isotropic(planes);
         double inner_sma = std::max((0.2 + pow(uniform(multiples), 2)*60)*AU, root->volumetric_mean_radius*20);
@@ -718,6 +791,8 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
             star->right_ascension = atan2(-position.x, position.z);
             if (star->right_ascension < 0) star->right_ascension += 2*_pi;
             star->declination = atan2(position.y, hypot(position.x, position.z));
+            star->epoch = J2000+(simnow-J2000_TIME_T)/oneday;
+            star->set_fictional_motion(system_velocity);
             star->location.local_system_plane = system_plane;
             star->location.orbital_plane = system_plane;
             star->location.equatorial_plane = uniform(planes) < 0.80 ? tilted(system_plane, 0.15, planes) : isotropic(planes);
@@ -745,7 +820,7 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
                 star->orbit->ascending_node = uniform(planes)*2*_pi;
             }
             star->apparent_magnitude = star->absolute_magnitude + 5*log10(std::max(1.0, star->location.distance_to(CelestialLocation()))/(10*parsec));
-            star->update_location(J2000_TIME_T);
+            star->update_location(simnow);
             const Point spin_pole = rotate3D(yaxis, center, star->location.equatorial_plane.v,
                 -star->location.equatorial_plane.a);
             const Point orbit_pole = rotate3D(yaxis, center, star->location.orbital_plane.v,

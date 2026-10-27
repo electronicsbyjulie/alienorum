@@ -287,11 +287,14 @@ bool fictional_visit_center(const FictionalGalaxy& galaxy, const FictionalRegion
     {
         if (cels[i]->deleted || cels[i]->typeclass() != class_star) continue;
         Star* star = static_cast<Star*>(cels[i]);
+        CelestialLocation initial = star->location;
+        if (star->has_fictional_motion) initial.system_center = star->fictional_epoch_position;
         if (star->fictional_origin.is_object() && star->fictional_origin.value("anchor", false)
-            && star->location.distance_to(destination) < light_year*1e-6)
+            && initial.distance_to(destination) < light_year*1e-6)
         {
             whereami = i;
             mycenobj = cels[i];
+            star->update_location(simnow);
             break;
         }
     }

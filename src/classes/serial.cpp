@@ -1067,13 +1067,16 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
             for (auto it = path.rbegin(); it != path.rend(); ++it)
             {
                 object = *it;
+                const bool generated_frame = object->cenobj && object->cenobj->typeclass() == class_star
+                    && static_cast<Star*>(object->cenobj)->has_fictional_motion;
+                const double update_time = generated_frame ? simnow : J2000_TIME_T;
                 switch (object->typeclass())
                 {
-                    case class_star: static_cast<Star*>(object)->update_location(J2000_TIME_T); break;
+                    case class_star: static_cast<Star*>(object)->update_location(update_time); break;
 
-                    case class_planet: static_cast<Planet*>(object)->update_location(J2000_TIME_T); break;
+                    case class_planet: static_cast<Planet*>(object)->update_location(update_time); break;
 
-                    case class_moon: static_cast<Moon*>(object)->update_location(J2000_TIME_T); break;
+                    case class_moon: static_cast<Moon*>(object)->update_location(update_time); break;
                     default: break;
                 }
             }

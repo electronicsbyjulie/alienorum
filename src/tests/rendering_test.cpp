@@ -948,6 +948,15 @@ TEST_F(RenderingRegressionTest, FictionalRegionPreviewAddsStarsAndVisitsItsBookm
         ImGui::EndFrame();
         EXPECT_EQ(whereami, 2);
         EXPECT_NEAR(here.distance_to(cels[2]->location), 0, 1);
+        const CelestialLocation original_center = here;
+        set(simnow, simnow+1000*oneyear);
+        ImGui::ActivateItemByID(panel->GetID("Visit Center"));
+        ImGui::NewFrame();
+        draw_fictional_region();
+        ImGui::EndFrame();
+        EXPECT_EQ(whereami, 2);
+        EXPECT_NEAR(here.distance_to(cels[2]->location), 0, 1);
+        EXPECT_GT(here.distance_to(original_center), light_year*0.001);
     }
     close_fictional_region();
     for (int i = 2; cels[i]; ++i)

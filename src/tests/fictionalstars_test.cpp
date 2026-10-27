@@ -137,12 +137,13 @@ TEST_F(FictionalStarsTest, RemotePositionsAndIndependentPlanesSurviveUpdates)
     int systems = 0;
     for (const auto& star : batch.stars)
     {
-        const CelestialLocation before = star->location;
         const Rotation equatorial = star->location.equatorial_plane;
         const Rotation plane = star->location.local_system_plane;
         star->update_location(J2000_TIME_T + 10*oneyear);
         EXPECT_EQ(star->location.galactic_center.to_json(), model.origin_mly.to_json());
-        EXPECT_NEAR(star->location.system_center.distance_to(before.system_center), 0, 1e6);
+        const double elapsed = 10*oneyear+oneday*(J2000-star->epoch);
+        const Point expected = star->fictional_epoch_position+star->fictional_space_velocity*elapsed;
+        EXPECT_NEAR(star->location.system_center.distance_to(expected), 0, 1e6);
         EXPECT_DOUBLE_EQ(star->location.equatorial_plane.a, equatorial.a);
         EXPECT_DOUBLE_EQ(star->location.local_system_plane.a, plane.a);
         EXPECT_FALSE(star->known_poles);
@@ -807,4 +808,123 @@ TEST_F(FictionalStarsTest, CalibratedGalaxyAssetsKeepTheirAuthoredDimensionsAndS
         ++count;
     }
     EXPECT_EQ(count, 202);
+}
+
+TEST_F(FictionalStarsTest, GalacticMotionsRotateWithIndependentRadialAndVerticalComponents)
+{
+    region.star_count = 1500;
+    region.clusters = false;
+    auto batch = generate_fictional_stars(model, region);
+    ASSERT_TRUE(batch.error.empty()) << batch.error;
+    double radial2 = 0, vertical2 = 0, rotation = 0, young2 = 0, old2 = 0;
+    int count = 0, young = 0, old = 0;
+    for (const auto& star : batch.stars)
+    {
+        ASSERT_TRUE(star->has_fictional_motion);
+        ASSERT_TRUE(std::isfinite(star->proper_motion_RA));
+        ASSERT_TRUE(std::isfinite(star->proper_motion_decl));
+        ASSERT_TRUE(std::isfinite(star->radial_velocity));
+        if (star->orbit)
+        {
+            auto* host = static_cast<Star*>(star->orbit->center);
+            EXPECT_DOUBLE_EQ(star->fictional_space_velocity.x, host->fictional_space_velocity.x);
+            EXPECT_DOUBLE_EQ(star->fictional_space_velocity.y, host->fictional_space_velocity.y);
+            EXPECT_DOUBLE_EQ(star->fictional_space_velocity.z, host->fictional_space_velocity.z);
+            continue;
+        }
+        Point p;
+        p.from_json(star->fictional_origin.at("disk_position_ly"));
+        const double r = hypot(p.x, p.z);
+        const Point v = star->fictional_space_velocity;
+        const double vr = (p.x*v.x+p.z*v.z)/r;
+        rotation += (-p.z*v.x+p.x*v.z)/r;
+        radial2 += vr*vr;
+        vertical2 += v.y*v.y;
+        const double age = star->fictional_origin.at("age_gyr");
+        if (age < 0.5) { young2 += vr*vr+v.y*v.y; ++young; }
+        if (age > 5) { old2 += vr*vr+v.y*v.y; ++old; }
+        ++count;
+    }
+    ASSERT_GT(count, 500);
+    EXPECT_GT(rotation/count, 150000);
+    EXPECT_LT(rotation/count, 250000);
+    EXPECT_GT(sqrt(radial2/count), 10000);
+    EXPECT_GT(sqrt(vertical2/count), 5000);
+    ASSERT_GT(young, 10);
+    ASSERT_GT(old, 10);
+    EXPECT_GT(old2/old, young2/young*2);
+}
+
+TEST_F(FictionalStarsTest, CartesianMotionUsesFullSightlineAndSurvivesSavingAtAnotherDate)
+{
+    region.star_count = 1;
+    auto batch = generate_fictional_stars(model, region);
+    Star& star = *batch.stars.front();
+    const Point original = star.location.system_center;
+    const Point velocity = star.fictional_space_velocity;
+    const double t0 = J2000_TIME_T+(star.epoch-J2000)*oneday;
+    const double elapsed = 100*oneyear;
+    const Point ray = original+model.origin_mly*(1e6*light_year);
+    EXPECT_NEAR(star.distance/ray.magnitude(), 1, 1e-14);
+    const Point east(-cos(star.right_ascension), 0, -sin(star.right_ascension));
+    const double projected = east.x*velocity.x+east.y*velocity.y+east.z*velocity.z;
+    EXPECT_NEAR(star.proper_motion_RA*star.distance*cos(star.declination), projected, 1e-8);
+    star.update_location(t0+elapsed);
+    EXPECT_NEAR((star.location.system_center-(original+velocity*elapsed)).magnitude(), 0, 1e6);
+    const json record = star.to_json();
+    Star restored;
+    ASSERT_TRUE(restored.from_json(record));
+    ASSERT_TRUE(restored.has_fictional_motion);
+    restored.update_location(t0-elapsed);
+    EXPECT_NEAR((restored.location.system_center-(original-velocity*elapsed)).magnitude(), 0, 1e6);
+    restored.update_location(t0);
+    EXPECT_NEAR(restored.location.system_center.distance_to(original), 0, 1e6);
+    EXPECT_EQ(restored.fictional_origin.at("motion"), star.fictional_origin.at("motion"));
+    EXPECT_NEAR(restored.proper_motion_RA, star.proper_motion_RA, 1e-30);
+    EXPECT_NEAR(restored.proper_motion_decl, star.proper_motion_decl, 1e-30);
+}
+
+TEST_F(FictionalStarsTest, SpheroidalPopulationsHaveDispersionDominatedMotions)
+{
+    model.spheroid = true;
+    region.star_count = 1000;
+    region.clusters = false;
+    auto batch = generate_fictional_stars(model, region);
+    ASSERT_TRUE(batch.error.empty()) << batch.error;
+    Point sum;
+    double speed2 = 0;
+    int count = 0;
+    for (const auto& star : batch.stars)
+    {
+        if (star->orbit) continue;
+        sum = sum+star->fictional_space_velocity;
+        speed2 += star->fictional_space_velocity.squared_magnitude();
+        ++count;
+    }
+    EXPECT_LT(sum.magnitude()/count, sqrt(speed2/count)*0.2);
+    EXPECT_GT(sqrt(speed2/count), 100000);
+}
+
+TEST_F(FictionalStarsTest, LegacyGeneratedSystemsAcquireRepeatableSharedMotionsOnLoad)
+{
+    auto batch = generate_fictional_stars(model, region);
+    Star* companion = nullptr;
+    for (const auto& star : batch.stars)
+        if (star->orbit) { companion = star.get(); break; }
+    ASSERT_NE(companion, nullptr);
+    auto legacy = [](Star& star)
+    {
+        json value = star.to_json();
+        value["fictional_origin"].erase("motion");
+        value["proper_motion_RA"] = value["proper_motion_decl"] = value["radial_velocity"] = 0;
+        return value;
+    };
+    Star root, member, repeat;
+    ASSERT_TRUE(root.from_json(legacy(*static_cast<Star*>(companion->orbit->center))));
+    ASSERT_TRUE(member.from_json(legacy(*companion)));
+    ASSERT_TRUE(repeat.from_json(legacy(*companion)));
+    EXPECT_TRUE(root.has_fictional_motion);
+    EXPECT_TRUE(member.has_fictional_motion);
+    EXPECT_EQ(root.fictional_space_velocity.to_json(), member.fictional_space_velocity.to_json());
+    EXPECT_EQ(repeat.fictional_origin.at("motion"), member.fictional_origin.at("motion"));
 }

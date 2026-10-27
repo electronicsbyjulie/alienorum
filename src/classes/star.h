@@ -17,6 +17,9 @@ namespace alienorum
         double proper_motion_RA = 0;                // radians / second
         double proper_motion_decl = 0;              // radians / second
         double radial_velocity = 0;                 // meters / second
+        bool has_fictional_motion = false;
+        Point fictional_epoch_position, fictional_space_velocity;
+        void set_fictional_motion(Point space_velocity);
         double apparent_magnitude = 1e29;           // visual/550nm
         double parallax = 0;                        // radians
         double metallicity = NAN;                  // dex relative to solar, on metallicity_ratio's scale

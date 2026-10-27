@@ -71,6 +71,7 @@ namespace alienorum
         bool install(std::string& message);
     };
 
+    void restore_fictional_motion(Star& star);
     int fictional_next_number();
     std::string fictional_region_id();
     std::string fictional_population_id();
