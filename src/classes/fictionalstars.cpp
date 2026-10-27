@@ -109,7 +109,7 @@ namespace
                 : std::clamp(4800+350*normal(random), 3800.0, 5300.0);
             star.mass = std::clamp(pow(10/std::max(0.03, age), 0.4)*(0.95+0.1*uniform(random)), 0.85, 15.0)*solar_mass;
             star.volumetric_mean_radius = (cool_evolved ? 80+pow(uniform(random), 2)*200
-                : std::clamp(8*pow(4800/star.temperature, 6)*exp(0.3*normal(random)), 3.0, 100.0))*solar_radius;
+                : std::clamp(9.2*pow(4800/star.temperature, 6)*exp(0.3*normal(random)), 3.0, 100.0))*solar_radius;
             star.BV_color = Star::interpolate_mseq_BV(Star::get_mseqidx_from_temp(star.temperature));
             const double luminosity = pow(star.volumetric_mean_radius / solar_radius, 2)
                 * pow(star.temperature / sun_temp, 4);
@@ -436,11 +436,11 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
     Rotation band_plane = galaxy.band_plane;
     const std::string region_identity = region.identity.empty()
         ? galaxy.key + ":" + region.region_id + ":" + std::to_string(region.seed) : region.identity;
-    result.provenance = {{"version", 2}, {"id", region_identity}, {"minimum_spacing_ly", region.minimum_spacing_ly}, {"galaxy", galaxy.key}, {"region", region.region_id},
+    result.provenance = {{"version", 3}, {"id", region_identity}, {"minimum_spacing_ly", region.minimum_spacing_ly}, {"galaxy", galaxy.key}, {"region", region.region_id},
         {"seed", region.seed}, {"center_ly", region.center_ly.to_json()}, {"radius_ly", region.radius_ly},
         {"requested_stars", region.star_count}, {"source_image", galaxy.image.path}, {"source_hash", galaxy.image.hash},
-        {"image_encoding", "display_sRGB_approximation"}, {"model", "image_prior_disk_spheroid_v2"},
-        {"selection", "volume_weighted_solar_cns5_v2"}, {"clusters", region.clusters},
+        {"image_encoding", "display_sRGB_approximation"}, {"model", "image_prior_disk_spheroid_v3"},
+        {"selection", "stratified_solar_cns5_v3"}, {"clusters", region.clusters},
         {"center_type", fictional_center_type(region.center_subtype)}, {"galaxy_radius_ly", galaxy.radius_ly},
         {"morphology", galaxy.morphology}, {"spheroid", galaxy.spheroid},
         {"origin_mly", galaxy.origin_mly.to_json()}, {"east", galaxy.east.to_json()},
@@ -468,15 +468,15 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
         const double dwarf_densities[] = {0.0676, 0.0105, 0.0033, 0.0024, 0.00049, 0.000032, 0.000000044};
         const double main_fraction = 4946.0/5230-0.0068;
         const double prior = phase < 7 ? main_fraction*dwarf_densities[phase]/0.084322044
-            : phase == 7 ? 20.0/5230*0.975 : phase == 8 ? 20.0/5230*0.025
+            : phase == 7 ? 20.0/5230*0.965 : phase == 8 ? 20.0/5230*0.035
             : phase == 9 ? 0.0068 : 264.0/5230;
-        const double phase_weight = phase == 9 ? 0.3*pow(prototype.mass/solar_mass, -2.35)
+        const double phase_weight = phase == 9 ? 0.55*pow(prototype.mass/solar_mass, -2.35)
             : phase == 7 || phase == 8 ? pow(prototype.mass/solar_mass, -1.35) : 1.0;
-        const double color_weight = phase >= 5 && phase <= 6 ? 0.25+1.5*blue : phase == 4 ? 0.7+0.6*blue : 1.0;
+        const double color_weight = phase >= 5 && phase <= 6 ? 0.85*(0.25+1.5*blue) : phase == 4 ? 0.7+0.6*blue : 1.0;
         const double visibility = pow(10.0, (6.5-prototype.absolute_magnitude+5)/5)*parsec/light_year;
         const double horizon = std::min(region.radius_ly, std::max(25.0, visibility));
         // Stratified classes retain their census probabilities without rare-phase sampling noise.
-        const double weight = prior*phase_weight*color_weight*(cluster_radius < 0 ? horizon*horizon*horizon
+        const double weight = prior*phase_weight*color_weight*(phase == 10 ? 1.8 : 1.0)*(cluster_radius < 0 ? horizon*horizon*horizon
             : cluster_radius <= 25 || visibility >= cluster_radius ? 1.0 : 0.0);
         if (!(weight > 0)) return;
         const double cumulative = (samples.empty() ? 0 : samples.back().cumulative)+weight;
@@ -688,6 +688,7 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
             star->metallicity_ratio = "[Fe/H]";
             star->metallicity_error_upper = star->metallicity_error_lower = 0.15;
             star->metallicity_source = "fictional population model v1";
+            star->estimate_UB(star->temperature);
             star->sidereal_rotational_period = std::clamp(25*sqrt(age/4.6)*pow(sun_temp/star->temperature, 2), 0.25, 150.0)*oneday;
             star->stellar_rotation = {{"estimated", true}, {"source", "fictional population model v1"},
                 {"inclination_supplied", false}, {"node_supplied", false}};

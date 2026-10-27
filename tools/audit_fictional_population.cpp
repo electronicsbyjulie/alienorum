@@ -67,6 +67,9 @@ namespace
                     {
                         const std::string key = std::to_string(bin);
                         result["visible_color_bins"][key] = result["visible_color_bins"].value(key, 0)+1;
+                        if (!result.contains("visible_type_colors")) result["visible_type_colors"] = json::object();
+                        if (!result["visible_type_colors"].contains(type)) result["visible_type_colors"][type] = json::object();
+                        result["visible_type_colors"][type][key] = result["visible_type_colors"][type].value(key, 0)+1;
                     }
             }
             if (type == "giant") giants.push_back({distance, star});
