@@ -60,6 +60,8 @@ namespace
             if (magnitude <= 6.5)
             {
                 result["naked_eye"] = result.value("naked_eye", 0)+1;
+                if (!result.contains("visible_types")) result["visible_types"] = json::object();
+                result["visible_types"][type] = result["visible_types"].value(type, 0)+1;
                 for (int bin = 0; bin < 6; ++bin)
                     if (star->BV_color >= color_edges[bin] && star->BV_color < color_edges[bin+1])
                     {

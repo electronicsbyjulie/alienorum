@@ -447,7 +447,7 @@ TEST_F(FictionalStarsTest, CatalogWriterExcludesSyntheticStarsAndImportsRejectDu
 
 TEST_F(FictionalStarsTest, ExistingConstellationGeneratorAcceptsGeneratedVantageAndProducesLines)
 {
-    region.star_count = 150;
+    region.star_count = 10000;
     auto batch = generate_fictional_stars(model, region);
     std::string message;
     ASSERT_TRUE(batch.install(message));

@@ -105,10 +105,12 @@ namespace
         const double draw = uniform(random);
         if (draw < 20.0/5230)
         {
+            const bool cool_evolved = uniform(random) < 0.12;
             const double hot = uniform(random);
-            star.temperature = 3400 + hot*1900;
+            star.temperature = cool_evolved ? 2800+hot*700 : 3800+hot*1500;
             star.mass = std::clamp(pow(10/std::max(0.03, age), 0.4)*(0.95+0.1*uniform(random)), 0.85, 15.0)*solar_mass;
-            star.volumetric_mean_radius = (5 + pow(uniform(random), 2)*35) * solar_radius;
+            star.volumetric_mean_radius = (cool_evolved ? 20+pow(uniform(random), 2)*60
+                : 5+pow(uniform(random), 2)*35)*solar_radius;
             star.BV_color = Star::interpolate_mseq_BV(Star::get_mseqidx_from_temp(star.temperature));
             const double luminosity = pow(star.volumetric_mean_radius / solar_radius, 2)
                 * pow(star.temperature / sun_temp, 4);
@@ -463,7 +465,8 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
         // Solar reference calibration adjusts broad classes, never individual catalog identities.
         const double representation = prototype.is_white_dwarf() ? 5.0
             : strstr(prototype.spectral_type, "III") || strstr(prototype.spectral_type, "II") ? 0.6
-            : prototype.temperature >= 7500 ? 2.5 : horizon <= 25 ? 1.8 : 1.0;
+            : prototype.temperature >= 10000 ? 3.5 : prototype.temperature >= 7500 ? 2.5
+            : prototype.temperature >= 6000 ? 1.6 : horizon <= 25 ? 1.8 : 1.0;
         total_volume += representation*horizon*horizon*horizon;
         population.push_back({prototype.mass, prototype.volumetric_mean_radius, prototype.temperature,
             prototype.absolute_magnitude, prototype.BV_color, age, total_volume, prototype.spectral_type});
