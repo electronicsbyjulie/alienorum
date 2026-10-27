@@ -109,7 +109,7 @@ namespace
             star.temperature = 3400 + hot*1900;
             star.mass = std::clamp(pow(10/std::max(0.03, age), 0.4)*(0.95+0.1*uniform(random)), 0.85, 15.0)*solar_mass;
             star.volumetric_mean_radius = (5 + pow(uniform(random), 2)*35) * solar_radius;
-            star.estimate_BV(star.temperature);
+            star.BV_color = Star::interpolate_mseq_BV(Star::get_mseqidx_from_temp(star.temperature));
             const double luminosity = pow(star.volumetric_mean_radius / solar_radius, 2)
                 * pow(star.temperature / sun_temp, 4);
             star.absolute_magnitude = 4.74 - 2.5*log10(luminosity) - Star::bolometric_correction(star.temperature);
@@ -429,8 +429,8 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
     result.provenance = {{"version", 2}, {"id", region_identity}, {"minimum_spacing_ly", region.minimum_spacing_ly}, {"galaxy", galaxy.key}, {"region", region.region_id},
         {"seed", region.seed}, {"center_ly", region.center_ly.to_json()}, {"radius_ly", region.radius_ly},
         {"requested_stars", region.star_count}, {"source_image", galaxy.image.path}, {"source_hash", galaxy.image.hash},
-        {"image_encoding", "display_sRGB_approximation"}, {"model", "image_prior_disk_spheroid_v1"},
-        {"selection", "center_visibility_6.5_local_25ly_bright_tail_v1"}, {"clusters", region.clusters},
+        {"image_encoding", "display_sRGB_approximation"}, {"model", "image_prior_disk_spheroid_v2"},
+        {"selection", "volume_weighted_solar_cns5_v2"}, {"clusters", region.clusters},
         {"center_type", fictional_center_type(region.center_subtype)}, {"galaxy_radius_ly", galaxy.radius_ly},
         {"morphology", galaxy.morphology}, {"spheroid", galaxy.spheroid},
         {"origin_mly", galaxy.origin_mly.to_json()}, {"east", galaxy.east.to_json()},
@@ -460,7 +460,11 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
         stellar_properties(prototype, center_blue, age, properties);
         const double horizon = std::min(region.radius_ly, std::max(25.0,
             pow(10.0, (6.5-prototype.absolute_magnitude+5)/5)*parsec/light_year));
-        total_volume += horizon*horizon*horizon;
+        // Solar reference calibration adjusts broad classes, never individual catalog identities.
+        const double representation = prototype.is_white_dwarf() ? 5.0
+            : strstr(prototype.spectral_type, "III") || strstr(prototype.spectral_type, "II") ? 0.6
+            : prototype.temperature >= 7500 ? 2.5 : horizon <= 25 ? 1.8 : 1.0;
+        total_volume += representation*horizon*horizon*horizon;
         population.push_back({prototype.mass, prototype.volumetric_mean_radius, prototype.temperature,
             prototype.absolute_magnitude, prototype.BV_color, age, total_volume, prototype.spectral_type});
     }

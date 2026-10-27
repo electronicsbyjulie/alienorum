@@ -18,7 +18,8 @@ namespace
     {
         if (star.is_white_dwarf()) return "WD";
         const std::string spectral = star.spectral_type;
-        if (!star.is_main_sequence() && (spectral.find("III") != std::string::npos ||
+        if (star.volumetric_mean_radius > 3*solar_radius && star.absolute_magnitude < 3.5
+            && !star.is_main_sequence() && (spectral.find("III") != std::string::npos ||
             (spectral.find("II") != std::string::npos && spectral.find("VII") == std::string::npos) ||
             spectral.find("Ia") != std::string::npos || spectral.find("Ib") != std::string::npos)) return "giant";
         if (spectral.find("IV") != std::string::npos) return "subgiant";
@@ -184,7 +185,7 @@ int main(int argc, char** argv)
     FictionalRegion region;
     region.center_ly = Point(25000,0,0);
     region.region_id = "237R";
-    region.seed = 7519;
+    region.seed = argc > 2 ? std::stoull(argv[2]) : 7519;
     region.center_subtype = 4;
     const int center_index = ncelobjs;
     auto batch = generate_fictional_stars(galaxy, region);
