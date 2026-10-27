@@ -352,11 +352,16 @@ void draw_fictional_region()
         return;
     }
     const ImVec2 display = ImGui::GetIO().DisplaySize;
-    ImGui::SetNextWindowSize(ImVec2(std::min(760.0f, display.x-30), std::min(900.0f, display.y-40)), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(0, std::min(900.0f, display.y-40)), ImGuiCond_Always);
     ImGui::Begin("Populate Region", &dialog.open);
     editing = true;
     if (ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows)) is_mouse_over_window = true;
-    ImGui::BeginChild("Region controls", ImVec2(0, -2*ImGui::GetFrameHeightWithSpacing()), false);
+    const float input_width = ImGui::CalcTextSize("000000000000000000000000").x;
+    const float natural_width = std::max(input_width+ImGui::CalcTextSize("Star count (including companions)").x,
+        ImGui::CalcTextSize("Generate Preview  Cancel Preview  Add Stars  Visit Center  Close").x)
+        + 10*ImGui::GetStyle().FramePadding.x + ImGui::GetStyle().ScrollbarSize;
+    ImGui::BeginChild("Region controls", ImVec2(std::min(natural_width, display.x-60), -2*ImGui::GetFrameHeightWithSpacing()), false);
+    ImGui::PushItemWidth(input_width);
     ImGui::BeginDisabled(dialog.running);
     bool search = ImGui::InputText("Find galaxy", dialog.filter, sizeof(dialog.filter), ImGuiInputTextFlags_EnterReturnsTrue);
     ImGui::SameLine();
@@ -385,6 +390,7 @@ void draw_fictional_region()
     {
         ImGui::TextWrapped("Choose a galaxy to place a new fictional stellar neighborhood.");
         ImGui::EndDisabled();
+        ImGui::PopItemWidth();
         ImGui::EndChild();
         draw_region_footer();
         ImGui::End();
@@ -463,7 +469,7 @@ void draw_fictional_region()
     {
         ImGui::Text("Preview: %zu stars, %d systems, %d clusters; %.2f seconds", dialog.batch.stars.size(),
             dialog.batch.systems, dialog.batch.clusters, dialog.batch.elapsed_seconds);
-        ImGui::Text("Within 100 ly: %d  |  Magnitude 6.5 or brighter from center: %d", dialog.batch.nearby, dialog.batch.naked_eye);
+        ImGui::TextWrapped("Within 100 ly: %d  |  Magnitude 6.5 or brighter from center: %d", dialog.batch.nearby, dialog.batch.naked_eye);
         ImGui::Text("Estimated JSON size: %.1f MiB", dialog.batch.estimated_save_bytes/(1024.0*1024));
         const ImVec2 preview_top = ImGui::GetCursorScreenPos();
         const float preview_width = std::min(320.0f, ImGui::GetContentRegionAvail().x);
@@ -503,6 +509,7 @@ void draw_fictional_region()
         }
     }
     if (!dialog.message.empty()) ImGui::TextWrapped("%s", dialog.message.c_str());
+    ImGui::PopItemWidth();
     ImGui::EndChild();
     draw_region_footer();
     ImGui::End();

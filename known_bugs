@@ -5,14 +5,18 @@
 
 [x] Make the function keys work when the populate region dialog is open. No user or developer should EVER be blocked from taking a screenshot.
 
-THIS IS NOT FIXED! Face-on galaxy images are broken in the dialog. They look fine in the sky because of however that render works, but they're off center and too small in the dialog, and I can't show you because F12 doesn't fucking work. Crop the dark border out of all face-on galaxies, then make sure they still look correct in the sky; LMC, SMC, and M31 are great test examples. CROP THE DARK BORDER OUT OF ALL FACE-ON GALAXY IMAGES. EXAMPLE: NGC 1023, NGC 3198, NGC 3628, NGC, 4192, AND HUNDREDS MORE.
+FULLSCREEN MODE IS BROKEN! F11 registers twice, entering and then exiting full screen.
+
+[x] Face-on galaxy images are broken in the dialog. They look fine in the sky because of however that render works, but they're off center and too small in the dialog, and I can't show you because F12 doesn't fucking work. Crop the dark border out of all face-on galaxies, then make sure they still look correct in the sky; LMC, SMC, and M31 are great test examples. CROP THE DARK BORDER OUT OF ALL FACE-ON GALAXY IMAGES. EXAMPLE: NGC 1023, NGC 3198, NGC 3628, NGC, 4192, AND HUNDREDS MORE.
 
 Make the Visit Center button always visible and always functional in the dialog.
 
-Dialog is too narrow and "including company" is cut off. Use zero for the dialog width so ImGUI auto-sizes it.
+[x] Dialog is too narrow and "including company" is cut off. Use zero for the dialog width so ImGUI auto-sizes it.
 
 Put all the bottom buttons on the same line using the ImGUI::SameLine() fuction.
 
 Make a list of mythological and historical names called object_name_pool.dat and fill it with mythological, historical, and literary figures from Roman, Greek, Celtic (both insular and continental), and Germanic lore. Ancient place names may be included too. Also include famous deceased scientists of past centuries. Examples of names that belong in the list include and are not limited to: Zeus, Aphrodite, Anaxagoras, Ulysses, Odysseus, Homer, Minerva, Vibia, Suetonius, Gaius, Lutetia, Lugdunum, Lugus, Borvo, Epona, Nantosuelta, Cú Chulainn, Boadicea, Sabrina, Thor, Freya, Woden, Beowulf, Aethelred, Wulfila, etc. Correct any spellings I might have gotten wrong. Use this list to name the center star and about 200 or so of the brightest stars by apparent magnitude as seen from the center. Track the name pool in Git and include it in the Windows installer. Add a comment at the top of the file explaining that the name pool is for naming fictional celestial objects.
 
 When adding a planet to a star, instead of calling the planet "new" let's give it the star's usual name followed by the first available letter starting with b, e.g. if the star already has a b give it c, unless the star already has a c then give it d, unless there's already a d etc. This applies to real and fictitious stars equally.
+
+Companions of a fictional star should not have their own sequence numbers. For example, if F-123456 has five companions then they would be F-123456 B through F-123456 F, not F-123457 etc. F-123457 would be a different star system.

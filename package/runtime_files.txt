@@ -45,6 +45,7 @@ ephemerides/Sun.Saturn.txt.gz
 ephemerides/Sun.Uranus.txt.gz
 ephemerides/Sun.Venus.txt.gz
 exoname.dat
+galaxies/faceon/framing.dat
 galaxies/faceon/ESO_383-087.jpg
 galaxies/faceon/HolmII.jpg
 galaxies/faceon/IC_1459.jpg

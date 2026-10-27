@@ -405,8 +405,10 @@ namespace alienorum
         }
 
         const SDL_Rect bounds = galaxy_image_bounds(*rgba_surf);
-        const ImVec4 crop(float(bounds.x)/rgba_surf->w, float(bounds.y)/rgba_surf->h,
-            float(bounds.w)/rgba_surf->w, float(bounds.h)/rgba_surf->h);
+        const auto frame = galaxy_asset_frame(path);
+        const ImVec4 crop(frame[0]+double(bounds.x)/rgba_surf->w*frame[2],
+            frame[1]+double(bounds.y)/rgba_surf->h*frame[3],
+            double(bounds.w)/rgba_surf->w*frame[2], double(bounds.h)/rgba_surf->h*frame[3]);
         SDL_Surface* cropped = SDL_CreateRGBSurfaceWithFormat(0, bounds.w, bounds.h, 32, SDL_PIXELFORMAT_RGBA32);
         if (!cropped)
         {

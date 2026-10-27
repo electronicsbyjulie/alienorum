@@ -571,6 +571,8 @@ F16–F19 verification: 20 dedicated generator tests, 71 enabled rendering tests
 
 - **F30 — Function keys during editing:** Function keys F1–F12 with existing actions remain available while Populate Region or another editor is open, including F12 screenshots and F11 fullscreen. Ordinary typing and navigation shortcuts retain the editing guard.
 
-- **F31 — Consistent face-on galaxy crops:** Automatically remove dark image borders at load time using shared CPU/GPU crop bounds, center the enlarged preview, preserve image aspect, and leave Milky Way panoramas intact. Sky UV coordinates compensate for the crop to preserve existing angular placement and scale. Verify LMC, SMC, and M31 and retain source assets without lossy resaving.
+- **F31 — Cropped face-on image assets:** Physically crop the dark border from every tracked face-on galaxy JPEG using lossless JPEG transforms. Store original-canvas framing in the tracked runtime file `galaxies/faceon/framing.dat`, include it in the installer manifest, and compensate sky texture UVs to preserve angular position and scale. Verify LMC, SMC, M31, NGC 1023, NGC 3198, NGC 3628, and NGC 4192. Keep internal panoramas intact. Runtime-only cropping does not satisfy this criterion.
 
 - **F32 — Persistent Visit Center control:** Keep Visit Center in a visible footer outside the scrolling controls, before and after population insertion and while previews run. Navigate to the selected spatial center before creation without inserting stars; resolve an existing center anchor by physical location after insertion rather than a stale array index. Stop travel on arrival.
+
+- **F33 — Automatic Populate Region width:** Request zero window width for ImGui automatic sizing, give input fields a bounded natural width, and include their full labels and footer controls in the content width. Keep height bounded by the display and scroll the controls independently of the footer.

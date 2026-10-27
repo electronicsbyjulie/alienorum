@@ -3,9 +3,42 @@
 #include <SDL.h>
 #include <algorithm>
 #include <vector>
+#include <array>
+#include <fstream>
+#include <sstream>
+#include <iomanip>
+#include <filesystem>
+#include <map>
 
 namespace alienorum
 {
+    inline std::array<double, 4> galaxy_asset_frame(const std::string& path)
+    {
+        static std::map<std::string, std::array<double, 4>> frames;
+        static std::string loaded_folder;
+        const std::filesystem::path file(path);
+        const std::string folder = file.parent_path().string();
+        if (loaded_folder != folder)
+        {
+            frames.clear();
+            std::ifstream source(file.parent_path()/"framing.dat");
+            std::string row;
+            while (std::getline(source, row))
+            {
+                if (row.empty() || row[0] == '#') continue;
+                std::istringstream values(row);
+                std::string name;
+                double original_w, original_h, left, top, width, height;
+                if (values >> std::quoted(name) >> original_w >> original_h >> left >> top >> width >> height
+                    && original_w > 0 && original_h > 0 && width > 0 && height > 0)
+                    frames[name] = {left/original_w, top/original_h, width/original_w, height/original_h};
+            }
+            loaded_folder = folder;
+        }
+        const auto found = frames.find(file.filename().string());
+        return found == frames.end() ? std::array<double, 4>{0, 0, 1, 1} : found->second;
+    }
+
     // Ignore dark padding and isolated bright pixels; retain a two-pixel interpolation margin.
     inline SDL_Rect galaxy_image_bounds(const SDL_Surface& image)
     {

@@ -10,6 +10,7 @@
 #include "../globals.h"
 #include "../fictionalstars_ui.h"
 #include "../classes/fictionalstars.h"
+#include "../classes/galaxyimage.h"
 #include "../visuals.h"
 #include "../inputs.h"
 #include "../sphere_impostor.h"
@@ -832,7 +833,12 @@ TEST_F(RenderingRegressionTest, FictionalRegionDialogRendersWithImageAndAnalytic
             draw_fictional_region();
             ImGuiWindow* panel = ImGui::FindWindowByName("Populate Region");
             ASSERT_NE(panel, nullptr);
-            EXPECT_GT(panel->DrawList->VtxBuffer.Size, 100);
+            if (frame == 1)
+            {
+                int vertices = panel->DrawList->VtxBuffer.Size;
+                for (ImGuiWindow* child : panel->DC.ChildWindows) vertices += child->DrawList->VtxBuffer.Size;
+                EXPECT_GT(vertices, 100);
+            }
             EXPECT_EQ(ncelobjs, 2);
             if (frame == 1)
             {
@@ -3650,9 +3656,16 @@ TEST_F(RenderingRegressionTest, GalaxyCropsPreserveSkyCoordinatesForMagellanicCl
         }
         SDL_Surface* original = IMG_Load(("galaxies/faceon/"+name+".jpg").c_str());
         ASSERT_NE(original, nullptr);
-        SDL_Surface* rgba = SDL_ConvertSurfaceFormat(original, SDL_PIXELFORMAT_RGBA32, 0);
+        SDL_Surface* asset = SDL_ConvertSurfaceFormat(original, SDL_PIXELFORMAT_RGBA32, 0);
         SDL_FreeSurface(original);
+        ASSERT_NE(asset, nullptr);
+        SDL_Surface* rgba = SDL_CreateRGBSurfaceWithFormat(0, 1024, 1024, 32, SDL_PIXELFORMAT_RGBA32);
         ASSERT_NE(rgba, nullptr);
+        SDL_FillRect(rgba, nullptr, SDL_MapRGBA(rgba->format, 0, 0, 0, 255));
+        const auto framing = galaxy_asset_frame("galaxies/faceon/"+name+".jpg");
+        SDL_Rect placement{int(framing[0]*1024), int(framing[1]*1024), asset->w, asset->h};
+        SDL_BlitSurface(asset, nullptr, rgba, &placement);
+        SDL_FreeSurface(asset);
         GLuint reference_texture = 0;
         glGenTextures(1, &reference_texture);
         glBindTexture(GL_TEXTURE_2D, reference_texture);
