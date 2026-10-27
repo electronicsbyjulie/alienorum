@@ -1205,7 +1205,6 @@ void process_keyboard_commands(ImGuiIO& io)
     if (ImGui::IsKeyPressed(ImGuiKey_F8)) process_key_F8();
     if (ImGui::IsKeyPressed(ImGuiKey_F9)) process_key_F9();
     if (ImGui::IsKeyPressed(ImGuiKey_F10)) process_key_F10();
-    if (ImGui::IsKeyPressed(ImGuiKey_F11, false)) process_key_F11();
     if (ImGui::IsKeyPressed(ImGuiKey_F12, false)) process_key_F12();
     if (editing) return;
 

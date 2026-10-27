@@ -1085,7 +1085,7 @@ int main (int argc, char** argv)
 
             was_mouse_down = is_mouse_down;
         }
-        if (argsfs || ImGui::IsKeyPressed(ImGuiKey_F11))
+        if (argsfs || ImGui::IsKeyPressed(ImGuiKey_F11, false))
         {
             process_key_F11();
             argsfs = false;

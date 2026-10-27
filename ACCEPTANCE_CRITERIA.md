@@ -576,3 +576,5 @@ F16–F19 verification: 20 dedicated generator tests, 71 enabled rendering tests
 - **F32 — Persistent Visit Center control:** Keep Visit Center in a visible footer outside the scrolling controls, before and after population insertion and while previews run. Navigate to the selected spatial center before creation without inserting stars; resolve an existing center anchor by physical location after insertion rather than a stale array index. Stop travel on arrival.
 
 - **F33 — Automatic Populate Region width:** Request zero window width for ImGui automatic sizing, give input fields a bounded natural width, and include their full labels and footer controls in the content width. Keep height bounded by the display and scroll the controls independently of the footer.
+
+- **F34 — Single fullscreen dispatch:** F11 is handled once in the main event loop, outside the editing guard, without key-repeat toggles. The ordinary keyboard handler must not dispatch F11 a second time. Preserve startup fullscreen requests.
