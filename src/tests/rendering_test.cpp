@@ -3589,3 +3589,18 @@ TEST_F(RenderingRegressionTest, GpuSphereUsesProjectedSkyRows)
     EXPECT_NEAR(pixels[center + 2], 96, 1);
     ImGui::NewFrame();
 }
+
+TEST_F(RenderingRegressionTest, PopulateGalaxySearchPrefersExactNamesAndAcceptsCatalogNumbers)
+{
+    Galaxy* m31 = new Galaxy();
+    strcpy(m31->name, "M31");
+    m31->PGC = 2557;
+    append_cel(m31);
+    Galaxy* m3 = new Galaxy();
+    strcpy(m3->name, "M3");
+    append_cel(m3);
+    EXPECT_EQ(fictional_find_galaxy(" M 31 "), m31->seqno);
+    EXPECT_EQ(fictional_find_galaxy("m3"), m3->seqno);
+    EXPECT_EQ(fictional_find_galaxy("PGC 2557"), m31->seqno);
+    EXPECT_EQ(fictional_find_galaxy("absent galaxy"), -1);
+}

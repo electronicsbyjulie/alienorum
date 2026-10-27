@@ -223,6 +223,24 @@ namespace
     }
 }
 
+int fictional_find_galaxy(const std::string& query)
+{
+    const std::string key = stellar_alias_key(query);
+    if (key.empty()) return -1;
+    int partial = -1;
+    for (int i = 0; cels && cels[i]; ++i)
+    {
+        if (cels[i]->deleted || cels[i]->typeclass() != class_galaxy) continue;
+        const Galaxy* galaxy = static_cast<Galaxy*>(cels[i]);
+        const std::string name = stellar_alias_key(galaxy->name);
+        const std::string original = stellar_alias_key(galaxy->origname);
+        const std::string pgc = galaxy->PGC ? "PGC"+std::to_string(galaxy->PGC) : "";
+        if (key == name || key == original || key == pgc) return i;
+        if (partial < 0 && (name.find(key) != std::string::npos || original.find(key) != std::string::npos)) partial = i;
+    }
+    return partial;
+}
+
 int fictional_default_galaxy()
 {
     const auto valid = [](int index)
@@ -311,7 +329,15 @@ void draw_fictional_region()
     editing = true;
     if (ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows)) is_mouse_over_window = true;
     ImGui::BeginDisabled(dialog.running);
-    ImGui::InputText("Find galaxy", dialog.filter, sizeof(dialog.filter));
+    bool search = ImGui::InputText("Find galaxy", dialog.filter, sizeof(dialog.filter), ImGuiInputTextFlags_EnterReturnsTrue);
+    ImGui::SameLine();
+    search |= ImGui::Button("Search");
+    if (search)
+    {
+        const int match = fictional_find_galaxy(dialog.filter);
+        if (match >= 0) dialog.choose(match);
+        else dialog.message = "No matching galaxy found.";
+    }
     if (ImGui::BeginCombo("Galaxy", dialog.galaxy.name.empty() ? "Choose a galaxy" : dialog.galaxy.name.c_str()))
     {
         const std::string filter = stellar_alias_key(dialog.filter);

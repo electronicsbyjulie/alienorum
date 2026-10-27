@@ -1,7 +1,7 @@
 
 [x] The FIC designations are way too long. Let's just use F-###### with a plain sequential number. Don't worry about ID collisions in loaded universe JSONs; I have a solution planned for after we get fake stars working right.
 
-Make the galaxy search work in the populate region dialog. Add a button for it and accept enter.
+[x] Make the galaxy search work in the populate region dialog. Add a button for it and accept enter.
 
 Make the function keys work when the populate region dialog is open. No user or developer should EVER be blocked from taking a screenshot.
 
