@@ -1,3 +1,4 @@
+#define IMGUI_DEFINE_MATH_OPERATORS
 
 #include "globals.h"
 #include "fictionalstars_ui.h"
@@ -5,6 +6,7 @@
 #include "loaders.h"
 #include "housekeeping.h"
 #include "inputs.h"
+#include "imgui_internal.h"
 #include "visuals.h"
 #include "classes/sscimport.h"
 #include "classes/exocons.h"
@@ -1183,8 +1185,14 @@ void process_key_cmd_ctrl_char(char c)
 }
 
 double steering_rate, walk_speed;
+bool keyboard_edit_field_active()
+{
+    return ImGui::GetCurrentContext() && ImGui::GetInputTextState(ImGui::GetActiveID()) != nullptr;
+}
+
 void process_keyboard_commands(ImGuiIO& io)
 {
+    editing = keyboard_edit_field_active();
     if (ImGui::IsKeyPressed(ImGuiKey_F1)) process_key_F1();
     if (ImGui::IsKeyPressed(ImGuiKey_F2)) process_key_F2();
     if (ImGui::IsKeyPressed(ImGuiKey_F3, false)) process_key_F3();
@@ -1219,13 +1227,13 @@ void process_keyboard_commands(ImGuiIO& io)
 
     steering_rate = _pi/16/zoom;
     walk_speed = 4 * frame_dur;                              // a fast run
-    if (ImGui::IsKeyDown(ImGuiKey_LeftArrow) && !is_mouse_over_window) process_key_arrowleft();
-    if (ImGui::IsKeyDown(ImGuiKey_RightArrow) && !is_mouse_over_window) process_key_arrowright();
-    if (ImGui::IsKeyDown(ImGuiKey_UpArrow) && !is_mouse_over_window) process_key_arrowup();
-    if (ImGui::IsKeyDown(ImGuiKey_DownArrow) && !is_mouse_over_window) process_key_arrowdn();
-    if (ImGui::IsKeyDown(ImGuiKey_Delete) && !is_mouse_over_window) process_key_delete();
-    if (ImGui::IsKeyDown(ImGuiKey_End) && !is_mouse_over_window) process_key_end();
-    if (ImGui::IsKeyDown(ImGuiKey_Home) && !is_mouse_over_window) process_key_home();
+    if (ImGui::IsKeyDown(ImGuiKey_LeftArrow)) process_key_arrowleft();
+    if (ImGui::IsKeyDown(ImGuiKey_RightArrow)) process_key_arrowright();
+    if (ImGui::IsKeyDown(ImGuiKey_UpArrow)) process_key_arrowup();
+    if (ImGui::IsKeyDown(ImGuiKey_DownArrow)) process_key_arrowdn();
+    if (ImGui::IsKeyDown(ImGuiKey_Delete)) process_key_delete();
+    if (ImGui::IsKeyDown(ImGuiKey_End)) process_key_end();
+    if (ImGui::IsKeyDown(ImGuiKey_Home)) process_key_home();
 
 
     if (io.KeyCtrl)

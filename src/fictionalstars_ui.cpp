@@ -399,7 +399,6 @@ void draw_fictional_region()
     const ImVec2 display = ImGui::GetIO().DisplaySize;
     ImGui::SetNextWindowSize(ImVec2(0, std::min(900.0f, display.y-40)), ImGuiCond_Always);
     ImGui::Begin("Populate Region", &dialog.open);
-    editing = true;
     if (ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows)) is_mouse_over_window = true;
     const float input_width = ImGui::CalcTextSize("000000000000000000000000").x;
     const float natural_width = std::max(input_width+ImGui::CalcTextSize("Star count (including companions)").x,

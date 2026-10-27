@@ -1017,7 +1017,6 @@ int main (int argc, char** argv)
             }
 
             // Keyboard commands
-            if (ImGui::IsAnyItemActive()) editing = true;
             process_keyboard_commands(io);
 
             if (ImGuiFileDialog::Instance()->Display("ChooseFileDlgKey", ImGuiWindowFlags_NoCollapse, ImVec2(720, 480)))

@@ -20,3 +20,7 @@ Make a list of mythological and historical names called object_name_pool.dat and
 When adding a planet to a star, instead of calling the planet "new" let's give it the star's usual name followed by the first available letter starting with b, e.g. if the star already has a b give it c, unless the star already has a c then give it d, unless there's already a d etc. This applies to real and fictitious stars equally.
 
 [x] Companions of a fictional star should not have their own sequence numbers. For example, if F-123456 has five companions then they would be F-123456 B through F-123456 F, not F-123457 etc. F-123457 would be a different star system.
+
+[x] Enable all keyboard commands, including Ctrl+G and R, with dialogs open whenever no text or numeric edit field is active. Preserve text-entry protection and always allow function keys.
+
+Milky Way appears edge-on from all outside vantage points. This is incorrect. Ensure all galaxies show the proper apparent inclination from all points and at all times, whether viewed from space, another galaxy, a star, a planet, or any other vantage.

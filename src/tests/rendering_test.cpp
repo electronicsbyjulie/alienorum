@@ -3710,3 +3710,47 @@ TEST_F(RenderingRegressionTest, VisitRegionCenterWorksBeforeStarsExist)
     EXPECT_NEAR(here.system_center.x/light_year, 25000, 1e-6);
     EXPECT_DOUBLE_EQ(velocity.magnitude(), 0);
 }
+
+TEST_F(RenderingRegressionTest, OrdinaryShortcutsWorkWithAnOpenDialogWithoutAnEditFocus)
+{
+    set(editing, true);
+    set(vplane_mode, vplane_local);
+    auto& io = ImGui::GetIO();
+    ImGui::EndFrame();
+    io.AddKeyEvent(ImGuiMod_Ctrl, true);
+    io.AddKeyEvent(ImGuiKey_G, true);
+    ImGui::NewFrame();
+    ImGui::Begin("Open dialog");
+    ImGui::TextUnformatted("No active edit field");
+    ImGui::End();
+    process_keyboard_commands(io);
+    EXPECT_EQ(vplane_mode, vplane_galactic);
+    EXPECT_FALSE(editing);
+    io.AddKeyEvent(ImGuiKey_G, false);
+    io.AddKeyEvent(ImGuiMod_Ctrl, false);
+    ImGui::EndFrame();
+    ImGui::NewFrame();
+}
+
+TEST_F(RenderingRegressionTest, ActiveTextFieldRetainsTypingAndBlocksOrdinaryShortcuts)
+{
+    set(editing, false);
+    set(vplane_mode, vplane_local);
+    char text[64] = {};
+    auto& io = ImGui::GetIO();
+    ImGui::EndFrame();
+    for (int frame = 0; frame < 2; ++frame)
+    {
+        ImGui::NewFrame();
+        ImGui::Begin("Edit test");
+        if (!frame) ImGui::SetKeyboardFocusHere();
+        ImGui::InputText("Text", text, sizeof(text));
+        ImGui::End();
+        if (!frame) ImGui::EndFrame();
+    }
+    ASSERT_TRUE(keyboard_edit_field_active());
+    process_keyboard_commands(io);
+    EXPECT_TRUE(editing);
+    EXPECT_EQ(vplane_mode, vplane_local);
+    ImGui::ClearActiveID();
+}

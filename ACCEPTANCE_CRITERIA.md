@@ -582,3 +582,5 @@ F16–F19 verification: 20 dedicated generator tests, 71 enabled rendering tests
 - **F35 — One permanent action row:** Generate Preview, Cancel Preview, Add Stars, Visit Center, and Close share a single fixed footer row using SameLine. Their enabled states reflect preview availability; scrolling content never hides the actions.
 
 - **F36 — System numbers and companion letters:** Allocate one F-###### number per generated star system. Companions share that number with uppercase B, C, and subsequent component suffixes; the next system receives the next number. Preserve the original designation in fictional provenance.
+
+- **F37 — Focus-based keyboard commands:** Ordinary keyboard shortcuts, including Ctrl+G and R, work with any dialog open whenever no text/numeric edit field is active. An open dialog or active button alone never blocks them. Active edit fields retain typing; function keys remain available regardless.
