@@ -48,7 +48,7 @@ namespace alienorum
         Point center_ly;
         double radius_ly = 1000;
         int star_count = 10000;
-        double minimum_spacing_ly = 2;
+        double minimum_spacing_ly = 1;
         int center_subtype = 6;
         uint64_t seed = 1;
         std::string region_id;

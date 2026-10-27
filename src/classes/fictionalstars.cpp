@@ -108,7 +108,7 @@ namespace
             const double hot = uniform(random);
             star.temperature = 3400 + hot*1900;
             star.mass = std::clamp(pow(10/std::max(0.03, age), 0.4)*(0.95+0.1*uniform(random)), 0.85, 15.0)*solar_mass;
-            star.volumetric_mean_radius = (12 + pow(uniform(random), 2)*110) * solar_radius;
+            star.volumetric_mean_radius = (5 + pow(uniform(random), 2)*35) * solar_radius;
             star.estimate_BV(star.temperature);
             const double luminosity = pow(star.volumetric_mean_radius / solar_radius, 2)
                 * pow(star.temperature / sun_temp, 4);
@@ -132,10 +132,10 @@ namespace
         {
             // Nearby dwarfs plus a bright-catalog tail, limited by a main-sequence lifetime prior.
             const double mix = uniform(random);
-            double index = mix < 0.48 ? 60 + uniform(random)*8 : mix < 0.69 ? 50 + uniform(random)*9
-                : mix < 0.81 ? 40 + uniform(random)*9 : mix < 0.89 ? 30 + uniform(random)*9
-                : mix < 0.95 ? 20 + uniform(random)*9 : 7 + uniform(random)*12;
-            if (uniform(random) < blue*0.20) index = 8 + uniform(random)*22;
+            double index = mix < 0.735 ? 60 + uniform(random)*8 : mix < 0.885 ? 50 + uniform(random)*9
+                : mix < 0.935 ? 40 + uniform(random)*9 : mix < 0.980 ? 30 + uniform(random)*9
+                : mix < 0.998 ? 20 + uniform(random)*9 : 7 + uniform(random)*12;
+            if (uniform(random) < blue*0.002) index = 8 + uniform(random)*22;
             main_sequence(star, index);
             for (int attempt = 0; attempt < 32 && 10*pow(star.mass/solar_mass, -2.5) < age; ++attempt)
                 main_sequence(star, index = std::min(68.0, index + 2));
@@ -437,13 +437,40 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
         {"height_axis", galaxy.height_axis.to_json()}, {"south", galaxy.south.to_json()},
         {"band_plane", band_plane.to_json()}, {"band_yaw_rad", galaxy.band_yaw},
         {"habitability_advice", galaxy.milky_way && region.historical_annulus ? "historical_7_9_kpc" : "broad_morphology_heuristic"}};
+    // Condition a physical luminosity function on represented volume, not equal counts per type.
+    struct PopulationSample
+    {
+        double mass, radius, temperature, magnitude, bv, age, cumulative;
+        std::string spectral;
+    };
+    std::vector<PopulationSample> population;
+    double total_volume = 0;
+    const Point center_color = galaxy.population_color(region.center_ly);
+    const double center_blue = std::clamp((center_color.z-center_color.x)/(center_color.x+center_color.z+1e-6)*0.5+0.5, 0.0, 1.0);
+    for (int sample = 0; sample < 32768; ++sample)
+    {
+        if (sample % 256 == 0 && cancel && cancel->load())
+        {
+            result.error = "Preview cancelled.";
+            return result;
+        }
+        const double age = galaxy.spheroid ? 5+6*uniform(properties)
+            : uniform(properties) < center_blue*0.1 ? 0.03+uniform(properties)*0.3 : 0.5+9*uniform(properties);
+        Star prototype;
+        stellar_properties(prototype, center_blue, age, properties);
+        const double horizon = std::min(region.radius_ly, std::max(25.0,
+            pow(10.0, (6.5-prototype.absolute_magnitude+5)/5)*parsec/light_year));
+        total_volume += horizon*horizon*horizon;
+        population.push_back({prototype.mass, prototype.volumetric_mean_radius, prototype.temperature,
+            prototype.absolute_magnitude, prototype.BV_color, age, total_volume, prototype.spectral_type});
+    }
     struct Cluster { Point center; double width, age; };
     std::vector<Cluster> clusters;
     if (region.clusters && region.star_count >= 100)
     {
         for (int i = 0; i < std::min(4, 1 + region.star_count/4000); ++i)
         {
-            const double radius = std::min(region.radius_ly*0.65, i == 0 ? 80.0 : 450.0);
+            const double radius = std::min(region.radius_ly*0.65, i == 0 ? 300.0 : 650.0);
             Point offset = direction(positions)*(radius*(0.4 + 0.6*uniform(positions)));
             if (galaxy.inside(region.center_ly + offset))
                 clusters.push_back({offset, 3 + 7*uniform(positions), i % 2 ? 0.08 : 0.6});
@@ -451,17 +478,18 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
     }
     result.clusters = clusters.size();
     result.stars.reserve(region.star_count);
-    std::unordered_map<int64_t, std::vector<Point>> occupied;
+    struct OccupiedSystem { Point position; double spacing; };
+    std::unordered_map<int64_t, std::vector<OccupiedSystem>> occupied;
     const auto cell_key = [](int x, int y, int z)
     {
         return ((int64_t(x)+2048)*4096 + y+2048)*4096 + z+2048;
     };
     const auto cell = [&](Point p)
     {
-        return std::array<int, 3>{int(floor(p.x/region.minimum_spacing_ly)),
-            int(floor(p.y/region.minimum_spacing_ly)), int(floor(p.z/region.minimum_spacing_ly))};
+        return std::array<int, 3>{int(floor(p.x/5)),
+            int(floor(p.y/5)), int(floor(p.z/5))};
     };
-    const auto separated = [&](Point p)
+    const auto separated = [&](Point p, double spacing)
     {
         const auto index = cell(p);
         for (int x = -1; x <= 1; ++x)
@@ -470,8 +498,11 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
                 {
                     const auto found = occupied.find(cell_key(index[0]+x, index[1]+y, index[2]+z));
                     if (found == occupied.end()) continue;
-                    for (const Point& other : found->second)
-                        if ((p-other).squared_magnitude() < region.minimum_spacing_ly*region.minimum_spacing_ly) return false;
+                    for (const auto& other : found->second)
+                    {
+                        const double exclusion = std::max(spacing, other.spacing);
+                        if ((p-other.position).squared_magnitude() < exclusion*exclusion) return false;
+                    }
                 }
         return true;
     };
@@ -485,8 +516,10 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
             return result;
         }
         const bool anchor = result.stars.empty();
+        const double spacing = anchor ? region.minimum_spacing_ly
+            : region.minimum_spacing_ly+(5-region.minimum_spacing_ly)*uniform(positions);
         const int system_number = result.systems + 1;
-        const int cluster_index = !anchor && !clusters.empty() && uniform(positions) < 0.10
+        const int cluster_index = !anchor && !clusters.empty() && uniform(positions) < 0.01
             ? int(uniform(positions)*clusters.size()) : -1;
         Point color = galaxy.population_color(region.center_ly);
         const double blue = std::clamp((color.z - color.x)/(color.x + color.z + 1e-6)*0.5 + 0.5, 0.0, 1.0);
@@ -500,7 +533,19 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
             main_sequence(*primary, Star::get_mseqidx_from_sptyp(fictional_center_type(region.center_subtype)));
             age = std::min(2 + 3*uniform(properties), 0.8*10*pow(primary->mass/solar_mass, -2.5));
         }
-        else stellar_properties(*primary, blue, age, properties);
+        else
+        {
+            const double draw = uniform(properties)*total_volume;
+            const auto& sample = *std::lower_bound(population.begin(), population.end(), draw,
+                [](const PopulationSample& entry, double value) { return entry.cumulative < value; });
+            primary->mass = sample.mass;
+            primary->volumetric_mean_radius = sample.radius;
+            primary->temperature = sample.temperature;
+            primary->absolute_magnitude = sample.magnitude;
+            primary->BV_color = sample.bv;
+            snprintf(primary->spectral_type, sizeof(primary->spectral_type), "%s", sample.spectral.c_str());
+            if (cluster_index < 0) age = sample.age;
+        }
         Point offset;
         bool placed = anchor;
         const double reference_density = std::max(1e-12, galaxy.density(region.center_ly));
@@ -509,15 +554,13 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
             if (cancel && cancel->load()) break;
             const double limit = std::min(region.radius_ly, std::max(1.0,
                 pow(10.0, (6.5 - primary->absolute_magnitude + 5)/5)*parsec/light_year));
-            const double max_radius = primary->absolute_magnitude < -2 ? region.radius_ly
-                : std::min(region.radius_ly, std::max(25.0, limit));
+            const double max_radius = std::min(region.radius_ly, std::max(25.0, limit));
             if (cluster_index >= 0)
             {
                 const auto& cluster = clusters[cluster_index];
                 offset = cluster.center + Point(normal(positions), normal(positions), normal(positions))*cluster.width;
                 // A cluster shares an age, with its observable luminous members represented at large distances.
-                if (attempt % 16 == 0 && offset.magnitude() > limit)
-                    stellar_properties(*primary, 0.9, age, properties);
+
             }
             else
             {
@@ -526,7 +569,7 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
             }
             const double radius = offset.magnitude();
             const double apparent = primary->absolute_magnitude + 5*log10(std::max(1e-6, radius)*light_year/(10*parsec));
-            if (radius > region.radius_ly || (radius > 25 && apparent > 6.5) || !separated(offset)) continue;
+            if (radius > region.radius_ly || (radius > 25 && apparent > 6.5) || !separated(offset, spacing)) continue;
             const Point local_color = galaxy.population_color(region.center_ly + offset);
             const double local_blue = std::clamp((local_color.z-local_color.x)/(local_color.x+local_color.z+1e-6)*0.5+0.5, 0.0, 1.0);
             const double population_weight = cluster_index >= 0 ? 1 : age < 0.5 ? 0.05+0.95*local_blue : 1-0.6*local_blue;
@@ -553,7 +596,7 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
         ++result.systems;
         rejected_systems = 0;
         const auto index = cell(offset);
-        occupied[cell_key(index[0], index[1], index[2])].push_back(offset);
+        occupied[cell_key(index[0], index[1], index[2])].push_back({offset, spacing});
         const double metallicity = std::clamp(-0.05 - 0.5*hypot(region.center_ly.x, region.center_ly.z)/galaxy.radius_ly
             + 0.15*normal(properties) + (galaxy.spheroid ? -0.2 : 0.15), -1.5, 0.5);
         const int remaining = region.star_count - result.stars.size();
@@ -590,7 +633,7 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
             star->cenobj = root;
             star->stellar_system = {{"system", system_id}, {"slot", int('A'+member)}, {"label", name}};
             star->fictional_origin = {{"id", system_id + ":" + char('A'+member)}, {"batch", result.provenance},
-                {"system_index", system_number}, {"component", int('A'+member)}, {"age_gyr", age},
+                {"system_index", system_number}, {"component", int('A'+member)}, {"minimum_spacing_ly", spacing}, {"age_gyr", age},
                 {"cluster", cluster_index}, {"anchor", anchor}, {"disk_position_ly", (region.center_ly + offset).to_json()}};
             star->metallicity = metallicity;
             star->metallicity_ratio = "[Fe/H]";

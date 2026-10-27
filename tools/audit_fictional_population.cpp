@@ -193,7 +193,27 @@ int main(int argc, char** argv)
     Star* center_star = static_cast<Star*>(cels[center_index]);
     const auto generated = measure(center_star);
     snapshot(center_star, generated, prefix+"_generated.png", prefix+" - Generated Stellar Neighborhood and population statistics");
-    const json report = {{"solar", solar}, {"generated", generated}, {"generation_seconds", batch.elapsed_seconds}};
+    json census = {{"source", "catalogs/CNS5/cns5.dat"}, {"objects_by_radius_ly", json::object()}};
+    std::ifstream census_file("catalogs/CNS5/cns5.dat");
+    std::string row;
+    int rows = 0;
+    while (std::getline(census_file, row))
+    {
+        if (row.size() < 148) continue;
+        const double parallax_mas = atof(row.substr(129, 19).c_str());
+        if (!(parallax_mas > 0)) continue;
+        ++rows;
+        const double distance_ly = 1000/parallax_mas*parsec/light_year;
+        for (int radius : {5, 10, 25, 50, 82})
+        {
+            const std::string key = std::to_string(radius);
+            if (distance_ly <= radius)
+                census["objects_by_radius_ly"][key] = census["objects_by_radius_ly"].value(key, 0)+1;
+        }
+    }
+    census["rows_with_parallax"] = rows;
+    census["scope"] = "All catalog objects, including brown dwarfs; Gaia G is not Johnson V.";
+    const json report = {{"cns5", census}, {"solar", solar}, {"generated", generated}, {"generation_seconds", batch.elapsed_seconds}};
     std::ofstream(prefix+".json") << report.dump(2);
     std::cout << report.dump(2) << std::endl;
     ImGui_ImplOpenGL3_Shutdown();

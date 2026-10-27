@@ -354,7 +354,6 @@ void draw_fictional_region()
         }
         if (ImGui::Checkbox("Historical 7-9 kpc annulus", &dialog.region.historical_annulus)) dialog.clear_preview();
     }
-    static const double minimum_spacing = 1, maximum_spacing = 5;
     bool changed = ImGui::InputDouble("Galactocentric radius (ly)", &dialog.radial, 100, 1000, "%.1f");
     changed |= ImGui::InputDouble("Galactocentric azimuth (deg)", &dialog.azimuth_degrees, 1, 10, "%.2f");
     changed |= ImGui::InputDouble("Height above galaxy plane (ly)", &dialog.height, 10, 100, "%.1f");
@@ -367,8 +366,7 @@ void draw_fictional_region()
     }
     changed = ImGui::InputDouble("Region radius (ly)", &dialog.region.radius_ly, 10, 100, "%.0f");
     changed |= ImGui::InputInt("Star count (including companions)", &dialog.region.star_count, 100, 1000);
-    changed |= ImGui::SliderScalar("Minimum system spacing (ly)", ImGuiDataType_Double, &dialog.region.minimum_spacing_ly,
-        &minimum_spacing, &maximum_spacing, "%.1f");
+    ImGui::TextUnformatted("Minimum spacing varies between systems: 1-5 light years.");
     const int available = std::max(0, MAX_CELOBJS-ncelobjs-1);
     dialog.region.star_count = std::clamp(dialog.region.star_count, 1, std::max(1, available));
     dialog.region.radius_ly = std::clamp(dialog.region.radius_ly, 1.0, 1000.0);
