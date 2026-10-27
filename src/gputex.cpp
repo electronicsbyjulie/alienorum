@@ -479,7 +479,12 @@ namespace alienorum
                 prepared_rgba[p * 4 + 0] = (unsigned char)std::min(255, (int)(r * 255.0f / max_val));
                 prepared_rgba[p * 4 + 1] = (unsigned char)std::min(255, (int)(g * 255.0f / max_val));
                 prepared_rgba[p * 4 + 2] = (unsigned char)std::min(255, (int)(b * 255.0f / max_val));
-                prepared_rgba[p * 4 + 3] = (unsigned char)max_val;
+                // ImGui's clamp-to-edge sampler repeats the outer texels beyond the UV bounds.
+                // A transparent outer row and a two-pixel fade keep that extension invisible.
+                const int x = int(p % w), y = int(p / w);
+                const int edge = std::min({x, y, w-1-x, h-1-y});
+                const double fade = std::min(1.0, edge/2.0);
+                prepared_rgba[p * 4 + 3] = (unsigned char)(max_val*fade);
             }
         }
 

@@ -3925,3 +3925,61 @@ TEST_F(RenderingRegressionTest, MilkyWayMeshIsFaceOnFromItsPoleAndEdgeOnFromItsD
     EXPECT_GE(edge, 0);
     EXPECT_LT(edge, 0.02);
 }
+
+TEST_F(RenderingRegressionTest, GalaxyImageEdgesFadeToTransparentWithTheImGuiSampler)
+{
+    const auto folder = std::filesystem::temp_directory_path() / ("alienorum_edge_test_"+
+        std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    std::filesystem::create_directories(folder/"galaxies/faceon");
+    SDL_Surface* source = SDL_CreateRGBSurfaceWithFormat(0, 16, 16, 32, SDL_PIXELFORMAT_RGBA32);
+    ASSERT_NE(source, nullptr);
+    SDL_FillRect(source, nullptr, SDL_MapRGBA(source->format, 255, 255, 255, 255));
+    ASSERT_EQ(IMG_SavePNG(source, (folder/"galaxies/faceon/EdgeRegression.png").c_str()), 0);
+    SDL_FreeSurface(source);
+    const auto original = std::filesystem::current_path();
+    std::filesystem::current_path(folder);
+    const GLuint synthetic = gputex_galaxy_faceon("EdgeRegression");
+    std::filesystem::current_path(original);
+    std::filesystem::remove_all(folder);
+    ASSERT_NE(synthetic, 0u);
+    for (const std::string name : {"EdgeRegression", "Milky Way", "SMC", "LMC"})
+    {
+        SCOPED_TRACE(name);
+        const GLuint texture = gputex_galaxy_faceon(name);
+        ASSERT_NE(texture, 0u);
+        glBindTexture(GL_TEXTURE_2D, texture);
+        GLint width = 0, height = 0;
+        glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &width);
+        glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &height);
+        std::vector<unsigned char> texels(width*height*4);
+        glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, texels.data());
+        for (int y = 0; y < height; ++y)
+            for (int x = 0; x < width; ++x)
+                if (x == 0 || y == 0 || x == width-1 || y == height-1)
+                {
+                    EXPECT_EQ(texels[(y*width+x)*4+3], 0);
+                }
+        if (name == "EdgeRegression")
+        {
+            EXPECT_EQ(texels[(8*width+1)*4+3], 127);
+            EXPECT_EQ(texels[(8*width+2)*4+3], 255);
+        }
+        ImGui::GetBackgroundDrawList()->AddImage((ImTextureID)(intptr_t)texture,
+            ImVec2(16, 12), ImVec2(176, 96), ImVec2(-0.5f, -0.5f), ImVec2(1.5f, 1.5f));
+        const auto pixels = render();
+        for (int y = 16; y < 92; ++y)
+            for (int x = 20; x < 172; ++x)
+                if (x < 50 || x > 142 || y < 28 || y > 80)
+                {
+                    for (int channel = 0; channel < 4; ++channel)
+                    {
+                        EXPECT_EQ(pixels[(y*render_width+x)*4+channel], 0);
+                    }
+                }
+        if (name == "EdgeRegression")
+        {
+            EXPECT_GT(pixels[(54*render_width+96)*4], 250);
+        }
+        ImGui::NewFrame();
+    }
+}
