@@ -19,4 +19,4 @@
 
 [x] Fictional moon labels DO NOT FUCKING SHOW AT ALL. DON'T GO REGRESSING THE SELECTION BEHAVIOR.
 
-If stars haven't been added yet, the Visit Center button should set the viewer's local plane to the target galaxy. When adding stars, if viewer is at the generation center, the viewer plane should change to the center star's equatorial plane.
+[x] If stars haven't been added yet, the Visit Center button should set the viewer's local plane to the target galaxy. When adding stars, if viewer is at the generation center, the viewer plane should change to the center star's equatorial plane.

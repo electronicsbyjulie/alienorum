@@ -146,6 +146,13 @@ namespace
                 anchor->is_faved = true;
                 favestars.push_back(anchor);
                 set_center_objects();
+                if (here.distance_to(anchor->location) < light_year*1e-6)
+                {
+                    whereami = center_index;
+                    mycenobj = anchor;
+                    vplane_mode = vplane_local;
+                    set_viewer_location_and_plane();
+                }
                 refresh_star_visibilities();
                 save_user_json();
                 dialog.preview_valid = false;
@@ -271,6 +278,9 @@ bool fictional_visit_center(const FictionalGalaxy& galaxy, const FictionalRegion
     CelestialLocation destination;
     destination.galactic_center = galaxy.origin_mly;
     destination.system_center = galaxy.world_offset(region.center_ly);
+    destination.equatorial_plane = align_points_3d(galaxy.height_axis, yaxis, center);
+    destination.local_system_plane = destination.equatorial_plane;
+    destination.orbital_plane = destination.equatorial_plane;
     whereami = -1;
     here = destination;
     for (int i = 0; cels && cels[i]; ++i)
@@ -289,6 +299,7 @@ bool fictional_visit_center(const FictionalGalaxy& galaxy, const FictionalRegion
     spin = 0;
     viewer_locale.clear();
     view_mode = vm_spaceship;
+    vplane_mode = vplane_local;
     set_viewer_location_and_plane();
     selected = trackidx = -1;
     zoom = 1;

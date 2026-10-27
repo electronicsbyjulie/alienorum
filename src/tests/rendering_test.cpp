@@ -909,6 +909,11 @@ TEST_F(RenderingRegressionTest, FictionalRegionPreviewAddsStarsAndVisitsItsBookm
     draw_fictional_region();
     ImGuiWindow* panel = ImGui::FindWindowByName("Populate Region");
     ASSERT_NE(panel, nullptr);
+    ImGui::ActivateItemByID(panel->GetID("Visit Center"));
+    ImGui::EndFrame();
+    ImGui::NewFrame();
+    draw_fictional_region();
+    EXPECT_EQ(whereami, -1);
     ImGui::ActivateItemByID(panel->GetID("Generate Preview"));
     ImGui::EndFrame();
     ImGui::NewFrame();
@@ -929,6 +934,14 @@ TEST_F(RenderingRegressionTest, FictionalRegionPreviewAddsStarsAndVisitsItsBookm
     {
         ASSERT_EQ(favestars.size(), 1u);
         EXPECT_EQ(favestars.front(), cels[2]);
+        EXPECT_EQ(whereami, 2);
+        EXPECT_EQ(mycenobj, cels[2]);
+        EXPECT_EQ(vplane_mode, vplane_local);
+        const Rotation spin_plane = cels[2]->location.equatorial_plane;
+        EXPECT_DOUBLE_EQ(here.equatorial_plane.a, spin_plane.a);
+        EXPECT_DOUBLE_EQ(here.equatorial_plane.v.x, spin_plane.v.x);
+        EXPECT_DOUBLE_EQ(here.equatorial_plane.v.y, spin_plane.v.y);
+        EXPECT_DOUBLE_EQ(here.equatorial_plane.v.z, spin_plane.v.z);
         ImGui::ActivateItemByID(panel->GetID("Visit Center"));
         ImGui::NewFrame();
         draw_fictional_region();
@@ -3748,8 +3761,8 @@ TEST_F(RenderingRegressionTest, VisitRegionCenterWorksBeforeStarsExist)
     set(velocity, Point(1000, 0, 0));
     alienorum::FictionalGalaxy galaxy;
     galaxy.east = Point(1, 0, 0);
-    galaxy.height_axis = Point(0, 1, 0);
-    galaxy.south = Point(0, 0, 1);
+    galaxy.height_axis = Point(0, 0, 1);
+    galaxy.south = Point(0, -1, 0);
     galaxy.origin_mly = Point(0, 0, 2.5);
     alienorum::FictionalRegion region;
     region.center_ly = Point(25000, 0, 0);
@@ -3759,6 +3772,11 @@ TEST_F(RenderingRegressionTest, VisitRegionCenterWorksBeforeStarsExist)
     EXPECT_NEAR(here.galactic_center.z, 2.5, 1e-12);
     EXPECT_NEAR(here.system_center.x/light_year, 25000, 1e-6);
     EXPECT_DOUBLE_EQ(velocity.magnitude(), 0);
+    EXPECT_EQ(vplane_mode, vplane_local);
+    const Point up = rotate3D(galaxy.height_axis, center, here.equatorial_plane.v, here.equatorial_plane.a);
+    EXPECT_NEAR(up.x, 0, 1e-12);
+    EXPECT_NEAR(up.y, 1, 1e-12);
+    EXPECT_NEAR(up.z, 0, 1e-12);
 }
 
 TEST_F(RenderingRegressionTest, OrdinaryShortcutsWorkWithAnOpenDialogWithoutAnEditFocus)
