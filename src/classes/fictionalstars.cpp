@@ -672,9 +672,6 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
         const double triple_fraction = primary_mass < 0.5 ? 0.03 : primary_mass < 1.5 ? 0.08 : 0.18;
         const int member_count = anchor ? 1 : std::min(remaining,
             multiple_draw < triple_fraction ? 3 : multiple_draw < multiple_fraction ? 2 : 1);
-        std::ostringstream designation;
-        designation << "FIC " << galaxy.code << ' ' << region.region_id << ' ' << std::setw(6) << std::setfill('0') << system_number;
-        const std::string base = designation.str();
         const std::string system_id = region_identity + ":" + std::to_string(system_number);
         Star* root = primary.get();
         Rotation system_plane = isotropic(planes);
@@ -689,7 +686,8 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
 
             }
             std::ostringstream short_name;
-            short_name << "F-" << std::setw(6) << std::setfill('0') << region.first_number+result.stars.size();
+            short_name << "F-" << std::setw(6) << std::setfill('0') << region.first_number+system_number-1;
+            if (member) short_name << ' ' << char('A'+member);
             const std::string name = short_name.str();
             snprintf(star->name, sizeof(star->name), "%s", name.c_str());
             star->namelen = name.size();
@@ -700,7 +698,7 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
             star->cenobj = root;
             star->stellar_system = {{"system", system_id}, {"slot", int('A'+member)}, {"label", name}};
             star->fictional_origin = {{"id", system_id + ":" + char('A'+member)}, {"batch", result.provenance},
-                {"system_index", system_number}, {"component", int('A'+member)}, {"minimum_spacing_ly", spacing}, {"age_gyr", age},
+                {"system_index", system_number}, {"component", int('A'+member)}, {"designation", name}, {"minimum_spacing_ly", spacing}, {"age_gyr", age},
                 {"cluster", cluster_index}, {"anchor", anchor}, {"disk_position_ly", (region.center_ly + offset).to_json()}};
             star->metallicity = metallicity;
             star->metallicity_ratio = "[Fe/H]";

@@ -704,3 +704,29 @@ TEST_F(FictionalStarsTest, FaceOnSamplingCropsPaddingWithoutCroppingPanoramas)
     EXPECT_EQ(image.width, 100);
     EXPECT_EQ(image.height, 80);
 }
+
+TEST_F(FictionalStarsTest, CompanionDesignationsShareTheirPrimarySystemNumber)
+{
+    auto batch = generate_fictional_stars(model, region);
+    ASSERT_TRUE(batch.error.empty());
+    int number = 0, companions = 0;
+    for (const auto& star : batch.stars)
+    {
+        if (!star->orbit)
+        {
+            ++number;
+            char expected[40];
+            snprintf(expected, sizeof(expected), "F-%06d", number);
+            EXPECT_STREQ(star->name, expected);
+        }
+        else
+        {
+            ++companions;
+            const char member = star->fictional_origin.at("component").get<int>();
+            const std::string expected = std::string(star->cenobj->name)+" "+member;
+            EXPECT_EQ(star->name, expected);
+        }
+    }
+    EXPECT_GT(companions, 0);
+    EXPECT_EQ(number, batch.systems);
+}
