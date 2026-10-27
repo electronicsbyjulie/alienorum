@@ -1,22 +1,10 @@
 
 [x] Face-on galaxy images are broken in the dialog. They look fine in the sky because of however that render works, but they're off center and too small in the dialog, and I can't show you because F12 doesn't fucking work. Crop the dark border out of all face-on galaxies, then make sure they still look correct in the sky; LMC, SMC, and M31 are great test examples. CROP THE DARK BORDER OUT OF ALL FACE-ON GALAXY IMAGES. EXAMPLE: NGC 1023, NGC 3198, NGC 3628, NGC 4192, AND HUNDREDS MORE.
 
-[x] Make the Visit Center button always visible and always functional in the dialog.
-
-[x] Dialog is too narrow and "including company" is cut off. Use zero for the dialog width so ImGUI auto-sizes it.
-
-[x] Put all the bottom buttons on the same line using the ImGUI::SameLine() fuction.
-
-[x] Make a list of mythological and historical names called object_name_pool.dat and fill it with mythological, historical, and literary figures from Roman, Greek, Celtic (both insular and continental), and Germanic lore. Ancient place names may be included too. Also include famous deceased scientists of past centuries. Examples of names that belong in the list include and are not limited to: Zeus, Aphrodite, Anaxagoras, Ulysses, Odysseus, Homer, Minerva, Vibia, Suetonius, Gaius, Lutetia, Lugdunum, Lugus, Borvo, Epona, Nantosuelta, Cú Chulainn, Boadicea, Sabrina, Thor, Freya, Woden, Beowulf, Aethelred, Wulfila, Galileo, Einstein, etc. Correct any spellings I might have gotten wrong. There should be hundreds of names, maybe over a thousand. Use this list to name the center star and about 200 or so of the brightest stars by apparent magnitude as seen from the center. Track the name pool in Git and include it in the Windows installer. Add a comment at the top of the file explaining that the name pool is for naming fictional celestial objects.
-
-[x] When adding a planet to a star, instead of calling the planet "new" let's give it the star's usual name followed by the first available letter starting with b, e.g. if the star already has a b give it c, unless the star already has a c then give it d, unless there's already a d etc. This applies to real and fictitious stars equally.
-
 [x] Companions of a fictional star should not have their own sequence numbers. For example, if F-123456 has five companions then they would be F-123456 B through F-123456 F, not F-123457 etc. F-123457 would be a different star system.
 
 [x] Enable all keyboard commands, including Ctrl+G and R, with dialogs open whenever no text or numeric edit field is active. Preserve text-entry protection and always allow function keys.
 
 [x] Milky Way appears edge-on from all outside vantage points. This is incorrect. Ensure all galaxies show the proper apparent inclination from all points and at all times, whether viewed from space, another galaxy, a star, a planet, or any other vantage.
-
-[x] Fictional moon labels DO NOT FUCKING SHOW AT ALL. DON'T GO REGRESSING THE SELECTION BEHAVIOR.
 
 [x] If stars haven't been added yet, the Visit Center button should set the viewer's local plane to the target galaxy. When adding stars, if viewer is at the generation center, the viewer plane should change to the center star's equatorial plane.
