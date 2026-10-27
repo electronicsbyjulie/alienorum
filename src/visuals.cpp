@@ -1,3 +1,4 @@
+#include "classes/galaxygeometry.h"
 
 #include "globals.h"
 #include "visuals.h"
@@ -2406,7 +2407,7 @@ static double galaxy_surface_intensity(double f, double t, double T, bool barred
 static double draw_galaxy(CelestialObject* cel, double appmag)
 {
     Galaxy *g = (Galaxy*)cel;
-    if (g->angular_diameter <= 0)
+    if (!(g->volumetric_mean_radius > 0) && !(g->angular_diameter > 0 && cel->distance > 0))
     {
         return 0;
     }
@@ -2416,7 +2417,8 @@ static double draw_galaxy(CelestialObject* cel, double appmag)
     }
     bool airy_rock = view_mode == vm_horizon && whereami > 0 && uses_rocky_map(cels[whereami]->type) && ((Planet*)cels[whereami])->get_surface_pressure();
 
-    g->volumetric_mean_radius = cel->distance * g->angular_diameter * 0.5;
+    if (!(g->volumetric_mean_radius > 0))
+        g->volumetric_mean_radius = cel->distance * g->angular_diameter * 0.5;
     if (!(g->volumetric_mean_radius > 0))
     {
         return 0;
@@ -2426,50 +2428,10 @@ static double draw_galaxy(CelestialObject* cel, double appmag)
 
     Point los = cel->tmprel;
     double los_len = los.magnitude();
-    Point vhat_view = (los_len > 0) ? (los * (1.0 / los_len)) : Point(0, 0, 1);
 
-    // Observer sky tangent plane basis:
-    // vhat_view points from observer to galaxy center.
-    // E_sky points towards local East (increasing RA).
-    // N_sky points towards local North (increasing Declination).
-    Point E_sky = compute_normal(center, vhat_view, yaxis);
-    double e_len = E_sky.magnitude();
-    if (e_len > 1e-6)
-    {
-        E_sky = E_sky * (1.0 / e_len);
-    }
-    else
-    {
-        E_sky = Point(1, 0, 0);
-    }
-    Point N_sky = compute_normal(center, E_sky, vhat_view);
-    double n_len = N_sky.magnitude();
-    if (n_len > 1e-6)
-    {
-        N_sky = N_sky * (1.0 / n_len);
-    }
-    else
-    {
-        N_sky = Point(0, 1, 0);
-    }
-
-    double pa = g->position_angle;
-    double incl = g->inclination + _pi;
-
-    // Major axis direction on the sky from North through East
-    Point u_maj = N_sky * cos(pa) + E_sky * sin(pa);
-    u_maj.scale(1.0);
-
-    Point u_perp = compute_normal(center, vhat_view, u_maj);
-    u_perp.scale(1.0);
-
-    // In mesh UV space, u runs horizontally (0 left to 1 right), v runs vertically (0 top to 1 bottom).
-    // In astronomical images, left is East, right is West, top is North, bottom is South.
-    // e1 and e2 correspond to +u (West) and +v (South).
-    Point e1 = u_maj * -1.0;
-    Point e2 = (u_perp * cos(incl) + vhat_view * sin(incl)) * -1.0;
-    e1.scale(1.0);
-    e2.scale(1.0);
+    const auto axes = galaxy_disk_axes(*g);
+    const Point e1 = axes.first;
+    const Point e2 = axes.second;
 
     Point pole = compute_normal(center, e1, e2);
     pole.scale(1.0);

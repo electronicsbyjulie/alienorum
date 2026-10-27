@@ -1,5 +1,6 @@
 #include "fictionalstars.h"
 #include "galaxyimage.h"
+#include "galaxygeometry.h"
 #include "exocons.h"
 #include "../globals.h"
 #include <SDL_image.h>
@@ -256,14 +257,9 @@ FictionalGalaxy FictionalGalaxy::from_galaxy(const Galaxy& galaxy)
     }
     else
     {
-        // Match face-on mesh UV axes at the original solar observing position.
-        Point los = unit(Point::from_ra_dec(galaxy.right_ascension, galaxy.declination, 1));
-        Point east_sky = unit(compute_normal(center, los, yaxis));
-        Point north_sky = unit(compute_normal(center, east_sky, los));
-        Point major = north_sky*cos(galaxy.position_angle) + east_sky*sin(galaxy.position_angle);
-        Point perpendicular = unit(compute_normal(center, los, major));
-        result.east = major * -1;
-        result.south = (perpendicular*cos(galaxy.inclination + _pi) + los*sin(galaxy.inclination + _pi))*-1;
+        const auto axes = galaxy_disk_axes(galaxy);
+        result.east = axes.first;
+        result.south = axes.second;
         result.height_axis = unit(compute_normal(center, result.east, result.south));
     }
     result.band_plane = galaxy.location.local_system_plane;

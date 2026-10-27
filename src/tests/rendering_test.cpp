@@ -11,6 +11,7 @@
 #include "../fictionalstars_ui.h"
 #include "../classes/fictionalstars.h"
 #include "../classes/galaxyimage.h"
+#include "../classes/galaxygeometry.h"
 #include "../visuals.h"
 #include "../inputs.h"
 #include "../sphere_impostor.h"
@@ -3753,4 +3754,98 @@ TEST_F(RenderingRegressionTest, ActiveTextFieldRetainsTypingAndBlocksOrdinarySho
     EXPECT_TRUE(editing);
     EXPECT_EQ(vplane_mode, vplane_local);
     ImGui::ClearActiveID();
+}
+
+TEST_F(RenderingRegressionTest, GalaxyDiskPlanesStayFixedAcrossObserverLocations)
+{
+    const auto dot = [](Point a, Point b) { return a.x*b.x+a.y*b.y+a.z*b.z; };
+    Galaxy milky_way;
+    milky_way.reference_galaxy = true;
+    const auto axes = galaxy_disk_axes(milky_way);
+    Point normal = compute_normal(center, axes.first, axes.second);
+    normal.scale(1);
+    const Point galactic_north = Point::from_ra_dec(galactic_north_RA_J2000, galactic_north_Decl_J2000, 1);
+    EXPECT_NEAR(fabs(dot(normal, galactic_north)), 1, 1e-12);
+    EXPECT_NEAR(fabs(dot(normal, axes.first)), 0, 1e-12);
+    EXPECT_NEAR(fabs(dot(normal, normal)), 1, 1e-12);
+    Galaxy external;
+    external.right_ascension = 0.8;
+    external.declination = 0.6;
+    external.position_angle = 0.3;
+    external.inclination = 65*fiftyseventh;
+    const auto fixed = galaxy_disk_axes(external);
+    Point pole = compute_normal(center, fixed.first, fixed.second);
+    pole.scale(1);
+    const Point solar_line = Point::from_ra_dec(external.right_ascension, external.declination, 1);
+    EXPECT_NEAR(fabs(dot(pole, solar_line)), cos(external.inclination), 1e-12);
+    for (Point observer : {galactic_north*1e6, Point(1e6, 0, 0), Point(0, -1e6, 0)})
+    {
+        set(here.local_position, observer*light_year);
+        const auto current = galaxy_disk_axes(external);
+        EXPECT_NEAR(current.first.distance_to(fixed.first), 0, 1e-12);
+        EXPECT_NEAR(current.second.distance_to(fixed.second), 0, 1e-12);
+    }
+}
+
+TEST_F(RenderingRegressionTest, MilkyWayMeshIsFaceOnFromItsPoleAndEdgeOnFromItsDisk)
+{
+    Galaxy* galaxy = new Galaxy();
+    strcpy(galaxy->name, "Milky Way");
+    galaxy->reference_galaxy = true;
+    galaxy->inclination = _pi/2;
+    galaxy->distance = 100000*light_year;
+    galaxy->angular_diameter = 0.4;
+    galaxy->volumetric_mean_radius = 20000*light_year;
+    append_cel(galaxy);
+    double magnitudes[2] = {-5, -5}, radii[2] = {0.2, 0.2}, blooms[2] = {};
+    bool discs[2] = {};
+    set(vmag_cache, magnitudes+0);
+    set(angular_radius, radii+0);
+    set(bloomrad_cache, blooms+0);
+    set(discinstead, discs+0);
+    set(inside_galaxy_idx, -1);
+    set(selected, -1);
+    set(show_labels, false);
+    set(show_localsys, true);
+    set(mycenobj, static_cast<CelestialObject*>(nullptr));
+    set(global_brightness, 1.0);
+    set(global_inverse_gamma, 1.0);
+    set(here, here);
+    const auto axes = galaxy_disk_axes(*galaxy);
+    Point pole = compute_normal(center, axes.first, axes.second);
+    pole.scale(1);
+    const auto ratio = [&](Point observer)
+    {
+        here = CelestialLocation();
+        here.local_position = observer*(100000*light_year);
+        galaxy->tmprel = observer*(-100000*light_year);
+        galaxy->viewrel = galaxy->tmprel;
+        azimuth = atan2(galaxy->tmprel.x, galaxy->tmprel.z);
+        altitude = atan2(galaxy->tmprel.y, hypot(galaxy->tmprel.x, galaxy->tmprel.z));
+        ImDrawList* list = ImGui::GetBackgroundDrawList();
+        const int start = list->VtxBuffer.Size;
+        draw_single_object(galaxy->seqno);
+        const int count = list->VtxBuffer.Size-start;
+        if (count < 20) return -1.0;
+        double x = 0, y = 0;
+        for (int i = start; i < list->VtxBuffer.Size; ++i)
+        {
+            x += list->VtxBuffer[i].pos.x/count;
+            y += list->VtxBuffer[i].pos.y/count;
+        }
+        double xx = 0, xy = 0, yy = 0;
+        for (int i = start; i < list->VtxBuffer.Size; ++i)
+        {
+            const double dx = list->VtxBuffer[i].pos.x-x, dy = list->VtxBuffer[i].pos.y-y;
+            xx += dx*dx;
+            xy += dx*dy;
+            yy += dy*dy;
+        }
+        const double spread = hypot(xx-yy, 2*xy);
+        return sqrt(std::max(0.0, (xx+yy-spread)/(xx+yy+spread)));
+    };
+    EXPECT_GT(ratio(pole), 0.95);
+    const double edge = ratio(axes.first);
+    EXPECT_GE(edge, 0);
+    EXPECT_LT(edge, 0.02);
 }
