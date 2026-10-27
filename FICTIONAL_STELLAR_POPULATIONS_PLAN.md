@@ -197,3 +197,9 @@ Final verification: Linux Make and CMake builds pass; all 17 dedicated fictional
 - Previously saved names and locations remain intact. Generate a fresh region to assess the new codes and spacing. Reopen the application to run the corrected executable.
 
 Verification: all 20 fictional-region checks, all 71 enabled rendering checks (six optional GPU skips), and 11 housekeeping checks pass. Acceptance criteria F16–F19 cover these corrections. In the updated default-budget fixture, 10,000 stars in 6,812 systems generated in 0.472 seconds; actual JSON was 63.43 MiB, save took 1.61 seconds, and reload took 4.93 seconds. These remain fixture measurements rather than full-universe frame-rate guarantees.
+
+### Population refinement checkpoint 1
+
+The first measured correction removes the luminous-star exponential radial bias and artificial luminous companion twins. Giant and white-dwarf base fractions use the CNS5 published census (20 giants and 264 white dwarfs among 5,230 stars; [Golovin et al. 2023](https://arxiv.org/abs/2211.01449)); the existing local source is `catalogs/CNS5/cns5.dat`. Developer target `bin/audit_fictional_population` renders the actual Stellar Neighborhood and records radial counts, magnitude/color bins, and subtype spacing. Retained snapshots and reports are `snapshots/population_refinement/00_baseline*` and `01_volume_and_companions*`.
+
+For the fixed comparison draw, the nearest giant moves from 4.31 to 58.07 light years. The count within 10 light years falls from 339 to 281, still far above the Solar reference of 13. This checkpoint fixes two luminosity defects but does not complete density calibration. The next iteration will weight the represented luminosity function by observable volume rather than pack thousands of dim stars into the local sphere.

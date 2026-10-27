@@ -368,3 +368,6 @@ $(OBJINT)/fictionalstars_ui.o: src/fictionalstars_ui.cpp
 
 $(BIN)/fictionalstars_test: $(OBJS) $(TESTS_DIR)/fictionalstars_test.cpp $(TESTS_DIR)/universe_fixture.h
 	$(CPP) $(TESTS_DIR)/fictionalstars_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $@
+
+$(BIN)/audit_fictional_population: tools/audit_fictional_population.cpp $(OBJS)
+	$(CPP) $< $(OBJS) $(CPPFLAGS) $(LIBS) -o $@

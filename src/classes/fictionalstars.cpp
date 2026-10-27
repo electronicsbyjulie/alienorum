@@ -103,7 +103,7 @@ namespace
     void stellar_properties(Star& star, double blue, double age, std::mt19937_64& random)
     {
         const double draw = uniform(random);
-        if (draw < 0.04)
+        if (draw < 20.0/5230)
         {
             const double hot = uniform(random);
             star.temperature = 3400 + hot*1900;
@@ -118,7 +118,7 @@ namespace
             snprintf(star.spectral_type, sizeof(star.spectral_type), "%c%d%s", "OBAFGKM"[spectral/10],
                 spectral%10, star.mass/solar_mass > 5 ? "II" : "III");
         }
-        else if (draw < 0.07 && age > 1)
+        else if (draw < 284.0/5230 && age > 1)
         {
             star.mass = (0.52 + uniform(random)*0.22)*solar_mass;
             star.volumetric_mean_radius = Star::degenerate_radius(star.mass);
@@ -522,8 +522,6 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
             else
             {
                 double radial = max_radius*cbrt(uniform(positions));
-                if (max_radius > 100 && uniform(positions) < 0.85)
-                    radial = std::min(max_radius, -25*log(std::max(1e-15, uniform(positions))));
                 offset = direction(positions)*radial;
             }
             const double radius = offset.magnitude();
@@ -580,18 +578,7 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
             {
                 const double desired_mass = std::max(0.09, root->mass/solar_mass*(0.15 + uniform(properties)*0.8));
                 main_sequence(*star, Star::get_mseqidx_from_mass(desired_mass));
-                if (offset.magnitude() > 25 && star->absolute_magnitude +
-                    5*log10(offset.magnitude()*light_year/(10*parsec)) > 6.5)
-                {
-                    // Distant represented systems retain luminous, coeval twins rather than invisible dwarfs.
-                    star->mass = root->mass;
-                    star->volumetric_mean_radius = root->volumetric_mean_radius;
-                    star->temperature = root->temperature;
-                    star->absolute_magnitude = root->absolute_magnitude;
-                    star->BV_color = root->BV_color;
-                    star->UB_color = root->UB_color;
-                    strcpy(star->spectral_type, root->spectral_type);
-                }
+
             }
             const std::string name = base + (member_count > 1 ? " " + std::string(1, 'A'+member) : "");
             snprintf(star->name, sizeof(star->name), "%s", name.c_str());
