@@ -387,6 +387,7 @@ void draw_fictional_region()
         dialog.cancel.store(false);
         dialog.progress.store(0);
         const FictionalGalaxy galaxy = dialog.galaxy;
+        dialog.region.first_number = fictional_next_number();
         const FictionalRegion region = dialog.region;
         dialog.worker = std::async(std::launch::async, [galaxy, region]()
         {

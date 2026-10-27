@@ -371,6 +371,18 @@ std::string alienorum::fictional_population_id()
     return out.str();
 }
 
+int alienorum::fictional_next_number()
+{
+    int highest = 0;
+    for (int i = 0; cels && cels[i]; ++i)
+    {
+        int number = 0;
+        if (sscanf(cels[i]->name, "F-%d", &number) == 1) highest = std::max(highest, number);
+        if (sscanf(cels[i]->origname.c_str(), "F-%d", &number) == 1) highest = std::max(highest, number);
+    }
+    return highest+1;
+}
+
 std::string alienorum::fictional_region_id()
 {
     // Three restricted digits and one consonant avoid words and letter/digit imitations.
@@ -674,7 +686,9 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
                 main_sequence(*star, Star::get_mseqidx_from_mass(desired_mass));
 
             }
-            const std::string name = base + (member_count > 1 ? " " + std::string(1, 'A'+member) : "");
+            std::ostringstream short_name;
+            short_name << "F-" << std::setw(6) << std::setfill('0') << region.first_number+result.stars.size();
+            const std::string name = short_name.str();
             snprintf(star->name, sizeof(star->name), "%s", name.c_str());
             star->namelen = name.size();
             star->origname = name;

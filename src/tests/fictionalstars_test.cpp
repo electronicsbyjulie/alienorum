@@ -66,6 +66,8 @@ TEST_F(FictionalStarsTest, PreviewIsDeterministicAndDoesNotAlterTheUniverse)
     ASSERT_EQ(first.stars.size(), 500u);
     ASSERT_EQ(second.stars.size(), first.stars.size());
     EXPECT_EQ(ncelobjs, 1);
+    EXPECT_STREQ(first.stars.front()->name, "F-000001");
+    EXPECT_STREQ(first.stars[1]->name, "F-000002");
     std::set<std::string> identities;
     for (size_t i = 0; i < first.stars.size(); ++i)
     {
@@ -220,6 +222,7 @@ TEST_F(FictionalStarsTest, OverlappingRegionsWithDifferentIdentitiesAreAllowed)
 {
     auto first = generate_fictional_stars(model, region);
     region.region_id = "ROVERLAP";
+    region.first_number = 501;
     auto other = generate_fictional_stars(model, region);
     std::string message;
     ASSERT_TRUE(first.install(message));
