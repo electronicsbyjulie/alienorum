@@ -107,19 +107,14 @@ namespace
         }
     } dialog;
 
-    void visit_center()
+    void draw_region_footer()
     {
-        if (dialog.last_center < 0 || dialog.last_center >= ncelobjs || !cels[dialog.last_center]
-            || cels[dialog.last_center]->deleted || cels[dialog.last_center]->typeclass() != class_star) return;
-        if (static_cast<Star*>(cels[dialog.last_center])->fictional_origin.value("id", "") != dialog.last_center_id) return;
-        whereami = dialog.last_center;
-        viewer_locale.clear();
-        set_viewer_location_and_plane();
-        selected = trackidx = -1;
-        zoom = 1;
-        global_brightness = default_brightness;
-        viewchanged = true;
-        refresh_star_visibilities();
+        if (ImGui::Button("Visit Center"))
+        {
+            if (dialog.galaxy_index < 0 || !fictional_visit_center(dialog.galaxy, dialog.region))
+                dialog.message = "Choose a location inside a galaxy first.";
+        }
+        if (ImGui::Button("Close")) dialog.open = false;
     }
 
     void draw_location_preview()
@@ -221,6 +216,39 @@ namespace
         draw->AddText(ImVec2(top2.x+4, top2.y+2), IM_COL32_WHITE, "Top view");
         draw->AddText(ImVec2(top2.x+half+4, top2.y+2), IM_COL32_WHITE, "Side view");
     }
+}
+
+bool fictional_visit_center(const FictionalGalaxy& galaxy, const FictionalRegion& region)
+{
+    if (!galaxy.inside(region.center_ly) || !std::isfinite(region.center_ly.squared_magnitude())) return false;
+    CelestialLocation destination;
+    destination.galactic_center = galaxy.origin_mly;
+    destination.system_center = galaxy.world_offset(region.center_ly);
+    whereami = -1;
+    here = destination;
+    for (int i = 0; cels && cels[i]; ++i)
+    {
+        if (cels[i]->deleted || cels[i]->typeclass() != class_star) continue;
+        Star* star = static_cast<Star*>(cels[i]);
+        if (star->fictional_origin.is_object() && star->fictional_origin.value("anchor", false)
+            && star->location.distance_to(destination) < light_year*1e-6)
+        {
+            whereami = i;
+            mycenobj = cels[i];
+            break;
+        }
+    }
+    velocity = center;
+    spin = 0;
+    viewer_locale.clear();
+    view_mode = vm_spaceship;
+    set_viewer_location_and_plane();
+    selected = trackidx = -1;
+    zoom = 1;
+    global_brightness = default_brightness;
+    viewchanged = true;
+    refresh_star_visibilities();
+    return true;
 }
 
 int fictional_find_galaxy(const std::string& query)
@@ -328,6 +356,7 @@ void draw_fictional_region()
     ImGui::Begin("Populate Region", &dialog.open);
     editing = true;
     if (ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows)) is_mouse_over_window = true;
+    ImGui::BeginChild("Region controls", ImVec2(0, -2*ImGui::GetFrameHeightWithSpacing()), false);
     ImGui::BeginDisabled(dialog.running);
     bool search = ImGui::InputText("Find galaxy", dialog.filter, sizeof(dialog.filter), ImGuiInputTextFlags_EnterReturnsTrue);
     ImGui::SameLine();
@@ -356,6 +385,8 @@ void draw_fictional_region()
     {
         ImGui::TextWrapped("Choose a galaxy to place a new fictional stellar neighborhood.");
         ImGui::EndDisabled();
+        ImGui::EndChild();
+        draw_region_footer();
         ImGui::End();
         return;
     }
@@ -471,8 +502,8 @@ void draw_fictional_region()
             }
         }
     }
-    if (dialog.last_center >= 0 && ImGui::Button("Visit Center")) visit_center();
     if (!dialog.message.empty()) ImGui::TextWrapped("%s", dialog.message.c_str());
-    if (ImGui::Button("Close")) dialog.open = false;
+    ImGui::EndChild();
+    draw_region_footer();
     ImGui::End();
 }

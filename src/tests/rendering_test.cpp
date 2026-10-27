@@ -9,6 +9,7 @@
 #include <gtest/gtest.h>
 #include "../globals.h"
 #include "../fictionalstars_ui.h"
+#include "../classes/fictionalstars.h"
 #include "../visuals.h"
 #include "../inputs.h"
 #include "../sphere_impostor.h"
@@ -901,7 +902,10 @@ TEST_F(RenderingRegressionTest, FictionalRegionPreviewAddsStarsAndVisitsItsBookm
     draw_fictional_region();
     ImGuiWindow* panel = ImGui::FindWindowByName("Populate Region");
     ASSERT_NE(panel, nullptr);
-    ImGui::ActivateItemByID(panel->GetID("Generate Preview"));
+    ASSERT_FALSE(panel->DC.ChildWindows.empty());
+    ImGuiWindow* controls = panel->DC.ChildWindows[0];
+    ImGui::SetScrollY(controls, 100000);
+    ImGui::ActivateItemByID(controls->GetID("Generate Preview"));
     ImGui::EndFrame();
     ImGui::NewFrame();
     draw_fictional_region();
@@ -910,8 +914,8 @@ TEST_F(RenderingRegressionTest, FictionalRegionPreviewAddsStarsAndVisitsItsBookm
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
     while (ncelobjs == 2 && std::chrono::steady_clock::now() < deadline)
     {
-        ImGui::ActivateItemByID(panel->GetID("Add Stars"));
-        ImGui::SetScrollY(panel, 100000);
+        ImGui::ActivateItemByID(controls->GetID("Add Stars"));
+        ImGui::SetScrollY(controls, 100000);
         ImGui::NewFrame();
         draw_fictional_region();
         ImGui::EndFrame();
@@ -3674,4 +3678,26 @@ TEST_F(RenderingRegressionTest, GalaxyCropsPreserveSkyCoordinatesForMagellanicCl
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
         ImGui::NewFrame();
     }
+}
+
+TEST_F(RenderingRegressionTest, VisitRegionCenterWorksBeforeStarsExist)
+{
+    Star* sun = make_star("Sun");
+    set(mycenobj, static_cast<CelestialObject*>(sun));
+    set(here, here);
+    set(whereami, whereami);
+    set(velocity, Point(1000, 0, 0));
+    alienorum::FictionalGalaxy galaxy;
+    galaxy.east = Point(1, 0, 0);
+    galaxy.height_axis = Point(0, 1, 0);
+    galaxy.south = Point(0, 0, 1);
+    galaxy.origin_mly = Point(0, 0, 2.5);
+    alienorum::FictionalRegion region;
+    region.center_ly = Point(25000, 0, 0);
+    ASSERT_TRUE(fictional_visit_center(galaxy, region));
+    EXPECT_EQ(whereami, -1);
+    EXPECT_EQ(ncelobjs, 1);
+    EXPECT_NEAR(here.galactic_center.z, 2.5, 1e-12);
+    EXPECT_NEAR(here.system_center.x/light_year, 25000, 1e-6);
+    EXPECT_DOUBLE_EQ(velocity.magnitude(), 0);
 }
