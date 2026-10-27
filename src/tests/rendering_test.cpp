@@ -1082,6 +1082,41 @@ TEST_F(RenderingRegressionTest, MoonLabelsRequireSeparationAndExistingVisibility
     labels2draw.clear();
     ASSERT_TRUE(draw_single_object(moon->seqno));
     EXPECT_TRUE(labels2draw.empty());
+    moon->user_added = true;
+    set(whereami, parent->seqno);
+    parent->tmprel = center;
+    parent->drawnx = parent->drawny = -1e9;
+    moon->tmprel = Point(0, 0, 132064553.41);
+    for (auto mode : {vm_spaceship, vm_skymap, vm_horizon})
+    {
+        view_mode = mode;
+        for (bool is_selected : {false, true})
+        {
+            selected = is_selected ? moon->seqno : -1;
+            lbl_localsys = true;
+            labels2draw.clear();
+            ASSERT_TRUE(draw_single_object(moon->seqno));
+            EXPECT_EQ(labels2draw.size(), 1u);
+            process_key_cmd_char('p');
+            labels2draw.clear();
+            ASSERT_TRUE(draw_single_object(moon->seqno));
+            EXPECT_EQ(labels2draw.size(), is_selected ? 1u : 0u);
+        }
+    }
+    view_mode = vm_system;
+    parent->drawnx = 96;
+    parent->drawny = 54;
+    selected = -1;
+    lbl_localsys = true;
+    for (double separation : {4.99, 5.0, 5.01})
+    {
+        moon->drawnx = 96+separation;
+        moon->drawny = 54;
+        labels2draw.clear();
+        ASSERT_TRUE(draw_single_object(moon->seqno));
+        EXPECT_EQ(labels2draw.size(), separation >= 5 ? 1u : 0u);
+    }
+
 }
 
 TEST_F(RenderingRegressionTest, ResolvedCompanionLabelsRespectVisibilityAndRetainPrimarySuffix)
@@ -1133,6 +1168,17 @@ TEST_F(RenderingRegressionTest, ResolvedCompanionLabelsRespectVisibilityAndRetai
     labels2draw.clear();
     ASSERT_TRUE(draw_single_object(companion->seqno));
     EXPECT_TRUE(labels2draw.empty());
+    set(whereami, primary->seqno);
+    primary->tmprel = center;
+    primary->drawnx = primary->drawny = -1e9;
+    show_labels = true;
+    companion->drawnx = 96;
+    EXPECT_EQ(stellar_display_target(companion), companion);
+    labels2draw.clear();
+    ASSERT_TRUE(draw_single_object(companion->seqno));
+    ASSERT_EQ(labels2draw.size(), 1u);
+    EXPECT_EQ(labels2draw.back().text, "System B");
+
 }
 
 TEST_F(RenderingRegressionTest, InnerPairsAndFilteredPrimariesUseTheirProjectedSeparation)

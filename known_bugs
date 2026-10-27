@@ -1,8 +1,4 @@
 
-[x] The FIC designations are way too long. Let's just use F-###### with a plain sequential number. Don't worry about ID collisions in loaded universe JSONs; I have a solution planned for after we get fake stars working right.
-
-[x] Make the galaxy search work in the populate region dialog. Add a button for it and accept enter.
-
 [x] Make the function keys work when the populate region dialog is open. No user or developer should EVER be blocked from taking a screenshot.
 
 [x] FULLSCREEN MODE IS BROKEN! F11 registers twice, entering and then exiting full screen.
@@ -24,3 +20,5 @@
 [x] Enable all keyboard commands, including Ctrl+G and R, with dialogs open whenever no text or numeric edit field is active. Preserve text-entry protection and always allow function keys.
 
 [x] Milky Way appears edge-on from all outside vantage points. This is incorrect. Ensure all galaxies show the proper apparent inclination from all points and at all times, whether viewed from space, another galaxy, a star, a planet, or any other vantage.
+
+[x] Fictional moon labels DO NOT FUCKING SHOW AT ALL. DON'T GO REGRESSING THE SELECTION BEHAVIOR.

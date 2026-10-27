@@ -21,6 +21,7 @@
 #include "classes/wdcolor.h"
 #include "classes/wdlimb.h"
 #include <tuple>
+#include <optional>
 
 using namespace alienorum;
 
@@ -53,9 +54,15 @@ static bool projected_position_available(float x, float y)
         && !(x == -1e9f && y == -1e9f) && !(x < -1e28f && y < -1e28f);
 }
 
+static bool is_observing_object(const CelestialObject* object)
+{
+    return view_mode != vm_system && cels && whereami >= 0 && whereami < ncelobjs
+        && object == cels[whereami];
+}
+
 static bool exclude_observing_object(CelestialObject *object)
 {
-    if (view_mode == vm_system || whereami < 0 || !cels || object != cels[whereami]) return false;
+    if (!is_observing_object(object)) return false;
     object->onscreen = false;
     object->label_shown = false;
     object->drawnx = object->drawny = object->drawnxmin = object->drawnxmax
@@ -63,25 +70,39 @@ static bool exclude_observing_object(CelestialObject *object)
     return true;
 }
 
+static bool label_screen_position(const CelestialObject* object, double& x, double& y)
+{
+    x = object->drawnx;
+    y = object->drawny;
+    if (std::isfinite(x) && std::isfinite(y) && x > -1e8 && y > -1e8) return true;
+    if (view_mode == vm_system || !object->tmprel.squared_magnitude()) return false;
+    Point rel = to_viewer_plane(object->tmprel);
+    if (view_mode == vm_horizon && whereami > 0 && uses_rocky_map(cels[whereami]->type)
+        && static_cast<Planet*>(cels[whereami])->get_surface_pressure()) rel = refract_true_point(rel);
+    Cartesian2D projected(rel, azimuth + azimuth_correction, altitude, zoom);
+    if (projected.x < -1e4 || projected.y < -1e4) return false;
+    x = dispcx + projected.x*dispcx;
+    y = dispcy + projected.y*dispcx;
+    return std::isfinite(x) && std::isfinite(y);
+}
+
+static std::optional<bool> label_pair_resolved(const CelestialObject* object, const CelestialObject* parent)
+{
+    // The observing body has no sky dot with which another object's label could merge.
+    if (is_observing_object(object) || is_observing_object(parent)) return true;
+    double x, y, parent_x, parent_y;
+    if (!label_screen_position(object, x, y) || !label_screen_position(parent, parent_x, parent_y))
+        return std::nullopt;
+    const double dx = x-parent_x, dy = y-parent_y;
+    return dx*dx+dy*dy >= 25.0;
+}
+
 static bool moon_label_separated(const CelestialObject* object)
 {
     if (object->typeclass() != class_moon) return true;
     const CelestialObject* parent = object->orbit ? object->orbit->center : nullptr;
     if (!parent || parent->deleted) return false;
-    double parent_x = parent->drawnx, parent_y = parent->drawny;
-    if (!std::isfinite(parent_x) || !std::isfinite(parent_y) || parent_x <= -1e8 || parent_y <= -1e8)
-    {
-        if (view_mode == vm_system || !parent->tmprel.squared_magnitude()) return false;
-        Point rel = to_viewer_plane(parent->tmprel);
-        if (view_mode == vm_horizon && whereami > 0 && uses_rocky_map(cels[whereami]->type) &&
-            static_cast<Planet*>(cels[whereami])->get_surface_pressure()) rel = refract_true_point(rel);
-        Cartesian2D projected(rel, azimuth + azimuth_correction, altitude, zoom);
-        if (projected.x < -1e4 || projected.y < -1e4) return false;
-        parent_x = dispcx + projected.x * dispcx;
-        parent_y = dispcy + projected.y * dispcx;
-    }
-    const double dx = object->drawnx - parent_x, dy = object->drawny - parent_y;
-    return std::isfinite(dx) && std::isfinite(dy) && dx * dx + dy * dy >= 25.0;
+    return label_pair_resolved(object, parent).value_or(false);
 }
 
 Star* stellar_display_target(Star* component)
@@ -89,22 +110,6 @@ Star* stellar_display_target(Star* component)
     if (!component || !component->multisys) return component;
     Star* primary = component->multisys->get_member('A');
     if (!primary || primary->deleted) return component;
-    const auto position = [](const Star* object, double& x, double& y)
-    {
-        x = object->drawnx;
-        y = object->drawny;
-        if (std::isfinite(x) && std::isfinite(y) && x > -1e8 && y > -1e8) return true;
-        // A magnitude-filtered primary can still represent an unresolved brighter companion.
-        if (view_mode == vm_system || !object->tmprel.squared_magnitude()) return false;
-        Point rel = to_viewer_plane(object->tmprel);
-        if (view_mode == vm_horizon && whereami > 0 && uses_rocky_map(cels[whereami]->type) &&
-            static_cast<Planet*>(cels[whereami])->get_surface_pressure()) rel = refract_true_point(rel);
-        Cartesian2D projected(rel, azimuth + azimuth_correction, altitude, zoom);
-        if (projected.x < -1e4 || projected.y < -1e4) return false;
-        x = dispcx + projected.x * dispcx;
-        y = dispcy + projected.y * dispcx;
-        return std::isfinite(x) && std::isfinite(y);
-    };
     Star* target = component;
     // Follow physical parents so an unresolved inner pair can retain its resolved outer identity.
     for (int depth = 0; target != primary && depth < 26; ++depth)
@@ -115,12 +120,8 @@ Star* stellar_display_target(Star* component)
             Star* center_star = static_cast<Star*>(target->orbit->center);
             if (center_star->multisys == component->multisys) parent = center_star;
         }
-        if (parent == target || parent->deleted ||
-            (view_mode != vm_system && whereami >= 0 && parent == cels[whereami])) return target;
-        double x, y, parent_x, parent_y;
-        if (!position(target, x, y) || !position(parent, parent_x, parent_y)) return target;
-        const double dx = x - parent_x, dy = y - parent_y;
-        if (dx * dx + dy * dy >= 25.0) return target;
+        if (parent == target || parent->deleted) return target;
+        if (label_pair_resolved(target, parent).value_or(true)) return target;
         target = parent;
     }
     return target;
