@@ -54,6 +54,7 @@ namespace alienorum
         uint64_t seed = 1;
         std::string region_id;
         std::string identity;
+        std::vector<std::string> reserved_names;
         bool clusters = true;
         bool historical_annulus = false;
     };

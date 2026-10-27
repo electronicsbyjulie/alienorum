@@ -381,6 +381,12 @@ int alienorum::fictional_next_number()
         int number = 0;
         if (sscanf(cels[i]->name, "F-%d", &number) == 1) highest = std::max(highest, number);
         if (sscanf(cels[i]->origname.c_str(), "F-%d", &number) == 1) highest = std::max(highest, number);
+        if (cels[i]->typeclass() == class_star)
+        {
+            const auto& origin = static_cast<Star*>(cels[i])->fictional_origin;
+            if (origin.is_object() && sscanf(origin.value("designation", "").c_str(), "F-%d", &number) == 1)
+                highest = std::max(highest, number);
+        }
     }
     return highest+1;
 }
@@ -755,6 +761,61 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
         }
         if (progress) progress->store(result.stars.size());
     }
+    std::ifstream name_source("object_name_pool.dat");
+    std::vector<std::string> name_pool;
+    std::set<std::string> pool_entries;
+    std::string candidate;
+    while (std::getline(name_source, candidate))
+    {
+        candidate = trim(candidate);
+        if (!candidate.empty() && candidate[0] != '#' && candidate.size() < name_max_len-4
+            && pool_entries.insert(candidate).second) name_pool.push_back(candidate);
+    }
+    if (!name_pool.empty())
+    {
+        std::mt19937_64 names(region.seed ^ 0x58c83a917be1f273ULL);
+        for (size_t i = name_pool.size(); i > 1; --i) std::swap(name_pool[i-1], name_pool[names()%i]);
+        std::vector<Star*> ranked;
+        for (size_t i = 1; i < result.stars.size(); ++i) ranked.push_back(result.stars[i].get());
+        const CelestialLocation anchor = result.stars.front()->location;
+        const auto magnitude = [&](Star* star)
+        {
+            const double radius = star->location.distance_to(anchor);
+            return star->absolute_magnitude+5*log10(std::max(1.0, radius)/(10*parsec));
+        };
+        std::stable_sort(ranked.begin(), ranked.end(), [&](Star* a, Star* b) { return magnitude(a) < magnitude(b); });
+        ranked.resize(std::min(size_t(200), ranked.size()));
+        ranked.insert(ranked.begin(), result.stars.front().get());
+        std::set<std::string> used(region.reserved_names.begin(), region.reserved_names.end());
+        size_t cursor = 0;
+        for (Star* star : ranked)
+        {
+            do
+            {
+                candidate = name_pool[cursor%name_pool.size()];
+                if (cursor >= name_pool.size()) candidate += " "+std::to_string(1+cursor/name_pool.size());
+                ++cursor;
+            } while (!used.insert(candidate).second);
+            snprintf(star->name, sizeof(star->name), "%s", candidate.c_str());
+            star->namelen = candidate.size();
+            star->fictional_origin["proper_name"] = candidate;
+        }
+        for (auto& star : result.stars)
+        {
+            Star* root = static_cast<Star*>(star->cenobj);
+            if (star->orbit && !star->fictional_origin.contains("proper_name")
+                && root->fictional_origin.contains("proper_name"))
+            {
+                candidate = std::string(root->name)+" "+char(star->fictional_origin.at("component").get<int>());
+                if (used.insert(candidate).second)
+                {
+                    snprintf(star->name, sizeof(star->name), "%s", candidate.c_str());
+                    star->namelen = strlen(star->name);
+                }
+            }
+            star->stellar_system["label"] = star->name;
+        }
+    }
     result.elapsed_seconds = std::chrono::duration<double>(std::chrono::steady_clock::now()-start).count();
     if (!result.stars.empty()) result.estimated_save_bytes = result.stars.front()->to_json().dump(4).size()*result.stars.size();
     return result;
@@ -816,7 +877,10 @@ bool FictionalBatch::install(std::string& message)
     }
     for (auto& star : stars)
     {
-        append_cel(star.release());
+        const std::string designation = star->origname;
+        Star* object = star.release();
+        append_cel(object);
+        object->origname = designation;
     }
     stars.clear();
     for (auto& system : staged_systems) system.release();

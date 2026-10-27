@@ -119,6 +119,8 @@ namespace
             dialog.progress.store(0);
             const FictionalGalaxy galaxy = dialog.galaxy;
             dialog.region.first_number = fictional_next_number();
+            dialog.region.reserved_names.clear();
+            for (int i = 0; cels[i]; ++i) dialog.region.reserved_names.emplace_back(cels[i]->name);
             const FictionalRegion region = dialog.region;
             dialog.worker = std::async(std::launch::async, [galaxy, region]()
             {

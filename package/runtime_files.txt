@@ -449,6 +449,7 @@ galaxies/internal/SMC.jpg
 galaxies/internal/Sculptor.jpg
 galaxies/internal/WLM.jpg
 locales.json
+object_name_pool.dat
 maps/Charon_surf.jpg
 maps/Earth_bump.png
 maps/Earth_surf.jpg

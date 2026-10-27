@@ -66,8 +66,8 @@ TEST_F(FictionalStarsTest, PreviewIsDeterministicAndDoesNotAlterTheUniverse)
     ASSERT_EQ(first.stars.size(), 500u);
     ASSERT_EQ(second.stars.size(), first.stars.size());
     EXPECT_EQ(ncelobjs, 1);
-    EXPECT_STREQ(first.stars.front()->name, "F-000001");
-    EXPECT_STREQ(first.stars[1]->name, "F-000002");
+    EXPECT_STREQ(first.stars.front()->origname.c_str(), "F-000001");
+    EXPECT_STREQ(first.stars[1]->origname.c_str(), "F-000002");
     std::set<std::string> identities;
     for (size_t i = 0; i < first.stars.size(); ++i)
     {
@@ -223,6 +223,7 @@ TEST_F(FictionalStarsTest, OverlappingRegionsWithDifferentIdentitiesAreAllowed)
     auto first = generate_fictional_stars(model, region);
     region.region_id = "ROVERLAP";
     region.first_number = 501;
+    for (const auto& star : first.stars) region.reserved_names.emplace_back(star->name);
     auto other = generate_fictional_stars(model, region);
     std::string message;
     ASSERT_TRUE(first.install(message));
@@ -717,16 +718,40 @@ TEST_F(FictionalStarsTest, CompanionDesignationsShareTheirPrimarySystemNumber)
             ++number;
             char expected[40];
             snprintf(expected, sizeof(expected), "F-%06d", number);
-            EXPECT_STREQ(star->name, expected);
+            EXPECT_EQ(star->origname, expected);
         }
         else
         {
             ++companions;
             const char member = star->fictional_origin.at("component").get<int>();
-            const std::string expected = std::string(star->cenobj->name)+" "+member;
-            EXPECT_EQ(star->name, expected);
+            const std::string expected = star->cenobj->origname+" "+member;
+            EXPECT_EQ(star->origname, expected);
         }
     }
     EXPECT_GT(companions, 0);
     EXPECT_EQ(number, batch.systems);
+}
+
+TEST_F(FictionalStarsTest, NamePoolNamesTheCenterAndTwoHundredBrightestStars)
+{
+    region.star_count = 1000;
+    auto batch = generate_fictional_stars(model, region);
+    ASSERT_TRUE(batch.error.empty()) << batch.error;
+    ASSERT_TRUE(batch.stars.front()->fictional_origin.contains("proper_name"));
+    EXPECT_EQ(batch.stars.front()->origname, "F-000001");
+    std::vector<std::pair<double, const Star*>> ordered;
+    int named = 0;
+    std::set<std::string> names;
+    for (const auto& star : batch.stars)
+    {
+        EXPECT_TRUE(names.insert(star->name).second);
+        if (star->fictional_origin.contains("proper_name")) ++named;
+        if (star.get() == batch.stars.front().get()) continue;
+        const double distance = (star->location.system_center-batch.stars.front()->location.system_center).magnitude();
+        ordered.push_back({star->absolute_magnitude+5*log10(distance/(10*parsec)), star.get()});
+    }
+    EXPECT_EQ(named, 201);
+    std::sort(ordered.begin(), ordered.end());
+    for (size_t i = 0; i < ordered.size(); ++i)
+        EXPECT_EQ(ordered[i].second->fictional_origin.contains("proper_name"), i < 200);
 }
