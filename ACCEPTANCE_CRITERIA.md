@@ -578,3 +578,5 @@ F16–F19 verification: 20 dedicated generator tests, 71 enabled rendering tests
 - **F33 — Automatic Populate Region width:** Request zero window width for ImGui automatic sizing, give input fields a bounded natural width, and include their full labels and footer controls in the content width. Keep height bounded by the display and scroll the controls independently of the footer.
 
 - **F34 — Single fullscreen dispatch:** F11 is handled once in the main event loop, outside the editing guard, without key-repeat toggles. The ordinary keyboard handler must not dispatch F11 a second time. Preserve startup fullscreen requests.
+
+- **F35 — One permanent action row:** Generate Preview, Cancel Preview, Add Stars, Visit Center, and Close share a single fixed footer row using SameLine. Their enabled states reflect preview availability; scrolling content never hides the actions.

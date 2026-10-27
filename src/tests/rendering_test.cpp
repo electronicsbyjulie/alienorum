@@ -908,10 +908,7 @@ TEST_F(RenderingRegressionTest, FictionalRegionPreviewAddsStarsAndVisitsItsBookm
     draw_fictional_region();
     ImGuiWindow* panel = ImGui::FindWindowByName("Populate Region");
     ASSERT_NE(panel, nullptr);
-    ASSERT_FALSE(panel->DC.ChildWindows.empty());
-    ImGuiWindow* controls = panel->DC.ChildWindows[0];
-    ImGui::SetScrollY(controls, 100000);
-    ImGui::ActivateItemByID(controls->GetID("Generate Preview"));
+    ImGui::ActivateItemByID(panel->GetID("Generate Preview"));
     ImGui::EndFrame();
     ImGui::NewFrame();
     draw_fictional_region();
@@ -920,8 +917,7 @@ TEST_F(RenderingRegressionTest, FictionalRegionPreviewAddsStarsAndVisitsItsBookm
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
     while (ncelobjs == 2 && std::chrono::steady_clock::now() < deadline)
     {
-        ImGui::ActivateItemByID(controls->GetID("Add Stars"));
-        ImGui::SetScrollY(controls, 100000);
+        ImGui::ActivateItemByID(panel->GetID("Add Stars"));
         ImGui::NewFrame();
         draw_fictional_region();
         ImGui::EndFrame();

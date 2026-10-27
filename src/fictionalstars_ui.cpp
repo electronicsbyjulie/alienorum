@@ -109,11 +109,56 @@ namespace
 
     void draw_region_footer()
     {
+        const bool can_generate = dialog.galaxy_index >= 0 && dialog.galaxy.inside(dialog.region.center_ly)
+            && ncelobjs < MAX_CELOBJS-1 && !dialog.region.region_id.empty();
+        ImGui::BeginDisabled(dialog.running || !can_generate);
+        if (ImGui::Button("Generate Preview"))
+        {
+            dialog.clear_preview();
+            dialog.cancel.store(false);
+            dialog.progress.store(0);
+            const FictionalGalaxy galaxy = dialog.galaxy;
+            dialog.region.first_number = fictional_next_number();
+            const FictionalRegion region = dialog.region;
+            dialog.worker = std::async(std::launch::async, [galaxy, region]()
+            {
+                return generate_fictional_stars(galaxy, region, &dialog.cancel, &dialog.progress);
+            });
+            dialog.running = true;
+        }
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        ImGui::BeginDisabled(!dialog.running);
+        if (ImGui::Button("Cancel Preview")) dialog.cancel.store(true);
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        ImGui::BeginDisabled(dialog.running || !dialog.preview_valid);
+        if (ImGui::Button("Add Stars"))
+        {
+            const int center_index = ncelobjs;
+            if (dialog.batch.install(dialog.message))
+            {
+                dialog.last_center = center_index;
+                Star* anchor = static_cast<Star*>(cels[center_index]);
+                dialog.last_center_id = anchor->fictional_origin.at("id");
+                anchor->is_faved = true;
+                favestars.push_back(anchor);
+                set_center_objects();
+                refresh_star_visibilities();
+                save_user_json();
+                dialog.preview_valid = false;
+                dialog.region.region_id = fictional_region_id();
+                dialog.region.identity = fictional_population_id();
+            }
+        }
+        ImGui::EndDisabled();
+        ImGui::SameLine();
         if (ImGui::Button("Visit Center"))
         {
             if (dialog.galaxy_index < 0 || !fictional_visit_center(dialog.galaxy, dialog.region))
                 dialog.message = "Choose a location inside a galaxy first.";
         }
+        ImGui::SameLine();
         if (ImGui::Button("Close")) dialog.open = false;
     }
 
@@ -360,7 +405,7 @@ void draw_fictional_region()
     const float natural_width = std::max(input_width+ImGui::CalcTextSize("Star count (including companions)").x,
         ImGui::CalcTextSize("Generate Preview  Cancel Preview  Add Stars  Visit Center  Close").x)
         + 10*ImGui::GetStyle().FramePadding.x + ImGui::GetStyle().ScrollbarSize;
-    ImGui::BeginChild("Region controls", ImVec2(std::min(natural_width, display.x-60), -2*ImGui::GetFrameHeightWithSpacing()), false);
+    ImGui::BeginChild("Region controls", ImVec2(std::min(natural_width, display.x-60), -ImGui::GetFrameHeightWithSpacing()), false);
     ImGui::PushItemWidth(input_width);
     ImGui::BeginDisabled(dialog.running);
     bool search = ImGui::InputText("Find galaxy", dialog.filter, sizeof(dialog.filter), ImGuiInputTextFlags_EnterReturnsTrue);
@@ -443,27 +488,11 @@ void draw_fictional_region()
     const bool inside = dialog.galaxy.inside(dialog.region.center_ly);
     if (!inside) ImGui::TextWrapped("The center is outside the modeled galaxy. Move the crosshair or choose Suggest Location.");
     if (dialog.region.region_id.empty()) ImGui::TextUnformatted("No unused sector codes remain in this universe.");
-    ImGui::BeginDisabled(!inside || available < 1 || dialog.region.region_id.empty());
-    if (ImGui::Button("Generate Preview"))
-    {
-        dialog.clear_preview();
-        dialog.cancel.store(false);
-        dialog.progress.store(0);
-        const FictionalGalaxy galaxy = dialog.galaxy;
-        dialog.region.first_number = fictional_next_number();
-        const FictionalRegion region = dialog.region;
-        dialog.worker = std::async(std::launch::async, [galaxy, region]()
-        {
-            return generate_fictional_stars(galaxy, region, &dialog.cancel, &dialog.progress);
-        });
-        dialog.running = true;
-    }
-    ImGui::EndDisabled();
+
     ImGui::EndDisabled();
     if (dialog.running)
     {
         ImGui::ProgressBar(float(dialog.progress.load())/dialog.region.star_count);
-        if (ImGui::Button("Cancel Preview")) dialog.cancel.store(true);
     }
     if (dialog.preview_valid)
     {
@@ -489,24 +518,7 @@ void draw_fictional_region()
             preview_draw->AddCircleFilled(point, 1.1f, color, 5);
         }
         preview_draw->AddText(ImVec2(preview_top.x+6, preview_top.y+6), IM_COL32_WHITE, "Population preview (top view)");
-        if (ImGui::Button("Add Stars"))
-        {
-            const int center_index = ncelobjs;
-            if (dialog.batch.install(dialog.message))
-            {
-                dialog.last_center = center_index;
-                Star* anchor = static_cast<Star*>(cels[center_index]);
-                dialog.last_center_id = anchor->fictional_origin.at("id");
-                anchor->is_faved = true;
-                favestars.push_back(anchor);
-                set_center_objects();
-                refresh_star_visibilities();
-                save_user_json();
-                dialog.preview_valid = false;
-                dialog.region.region_id = fictional_region_id();
-                dialog.region.identity = fictional_population_id();
-            }
-        }
+
     }
     if (!dialog.message.empty()) ImGui::TextWrapped("%s", dialog.message.c_str());
     ImGui::PopItemWidth();
