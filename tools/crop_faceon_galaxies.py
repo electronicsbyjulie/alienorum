@@ -24,7 +24,7 @@ def main():
         rows = [shlex.split(row) for row in manifest.read_text().splitlines() if row and not row.startswith("#")]
         for row in rows:
             name, original_w, original_h, left, top, width, height = row
-            values = list(map(int, row[1:]))
+            values = list(map(float, row[1:]))
             original_w, original_h, left, top, width, height = values
             with Image.open(folder / name) as image:
                 assert image.size == (width, height), name

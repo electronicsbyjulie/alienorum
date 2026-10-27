@@ -8,6 +8,7 @@
 #include <set>
 #include "../classes/fictionalstars.h"
 #include "../classes/planetnames.h"
+#include "../classes/galaxyimage.h"
 #include "../classes/cat.h"
 #include "../classes/exocons.h"
 #include "../housekeeping.h"
@@ -775,4 +776,35 @@ TEST_F(FictionalStarsTest, PlanetNamesUseTheFirstAvailableLowercaseHostSuffix)
     EXPECT_EQ(next_planet_name(*fictional, cels), "Minerva b");
     b->deleted = true;
     EXPECT_EQ(next_planet_name(*host, cels), "Sun b");
+}
+
+TEST_F(FictionalStarsTest, CalibratedGalaxyAssetsKeepTheirAuthoredDimensionsAndSkyAspect)
+{
+    std::ifstream source("galaxies/faceon/framing.dat");
+    ASSERT_TRUE(source.good());
+    std::string row;
+    int count = 0;
+    while (std::getline(source, row))
+    {
+        if (row.empty() || row[0] == '#') continue;
+        std::istringstream fields(row);
+        std::string name;
+        double canvas_w, canvas_h, left, top, width, height;
+        ASSERT_TRUE(bool(fields >> std::quoted(name) >> canvas_w >> canvas_h >> left >> top >> width >> height));
+        SDL_Surface* surface = IMG_Load(("galaxies/faceon/"+name).c_str());
+        ASSERT_NE(surface, nullptr) << name;
+        EXPECT_DOUBLE_EQ(surface->w, width) << name;
+        EXPECT_DOUBLE_EQ(surface->h, height) << name;
+        SDL_FreeSurface(surface);
+        EXPECT_DOUBLE_EQ(canvas_w, canvas_h) << name;
+        EXPECT_GE(left, 0);
+        EXPECT_GE(top, 0);
+        EXPECT_LE(left+width, canvas_w+1e-8);
+        EXPECT_LE(top+height, canvas_h+1e-8);
+        FictionalImage image;
+        ASSERT_TRUE(image.load("galaxies/faceon/"+name, false));
+        EXPECT_NEAR(double(image.width)/image.height, width/height, 0.01) << name;
+        ++count;
+    }
+    EXPECT_EQ(count, 202);
 }

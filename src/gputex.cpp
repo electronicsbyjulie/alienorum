@@ -404,8 +404,9 @@ namespace alienorum
             return 0;
         }
 
-        const SDL_Rect bounds = galaxy_image_bounds(*rgba_surf);
-        const auto frame = galaxy_asset_frame(path);
+        const auto measured = galaxy_measured_frame(path);
+        const SDL_Rect bounds = measured ? SDL_Rect{0, 0, rgba_surf->w, rgba_surf->h} : galaxy_image_bounds(*rgba_surf);
+        const auto frame = measured.value_or(std::array<double, 4>{0, 0, 1, 1});
         const ImVec4 crop(frame[0]+double(bounds.x)/rgba_surf->w*frame[2],
             frame[1]+double(bounds.y)/rgba_surf->h*frame[3],
             double(bounds.w)/rgba_surf->w*frame[2], double(bounds.h)/rgba_surf->h*frame[3]);

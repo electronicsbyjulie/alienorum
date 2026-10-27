@@ -9,11 +9,15 @@
 #include <iomanip>
 #include <filesystem>
 #include <map>
+#include <optional>
+#include <mutex>
 
 namespace alienorum
 {
-    inline std::array<double, 4> galaxy_asset_frame(const std::string& path)
+    inline std::optional<std::array<double, 4>> galaxy_measured_frame(const std::string& path)
     {
+        static std::mutex frame_mutex;
+        std::lock_guard<std::mutex> lock(frame_mutex);
         static std::map<std::string, std::array<double, 4>> frames;
         static std::string loaded_folder;
         const std::filesystem::path file(path);
@@ -36,7 +40,13 @@ namespace alienorum
             loaded_folder = folder;
         }
         const auto found = frames.find(file.filename().string());
-        return found == frames.end() ? std::array<double, 4>{0, 0, 1, 1} : found->second;
+        if (found == frames.end()) return std::nullopt;
+        return found->second;
+    }
+
+    inline std::array<double, 4> galaxy_asset_frame(const std::string& path)
+    {
+        return galaxy_measured_frame(path).value_or(std::array<double, 4>{0, 0, 1, 1});
     }
 
     // Ignore dark padding and isolated bright pixels; retain a two-pixel interpolation margin.

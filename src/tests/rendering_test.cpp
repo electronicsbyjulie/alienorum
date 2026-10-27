@@ -3675,21 +3675,20 @@ TEST_F(RenderingRegressionTest, ScreenshotFunctionKeyWorksDuringDialogEditing)
 
 TEST_F(RenderingRegressionTest, GalaxyCropsPreserveSkyCoordinatesForMagellanicCloudsAndM31)
 {
-    for (const std::string name : {"LMC", "SMC", "M31"})
+    for (const std::string name : {"LMC", "SMC", "M31", "M101"})
     {
         const GLuint texture = gputex_galaxy_faceon(name);
         ASSERT_NE(texture, 0u) << name;
         const ImVec4 crop = gputex_galaxy_faceon_crop(name);
-        EXPECT_GT(crop.x, 0);
-        EXPECT_GT(crop.y, 0);
-        EXPECT_LT(crop.z, 1);
-        EXPECT_LT(crop.w, 1);
+        EXPECT_GE(crop.x, 0);
+        EXPECT_GE(crop.y, 0);
+        EXPECT_LE(crop.z, 1);
+        EXPECT_LE(crop.w, 1);
         glBindTexture(GL_TEXTURE_2D, texture);
         GLint width = 0, height = 0;
         glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &width);
         glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &height);
-        EXPECT_NEAR(width, crop.z*1024, 1);
-        EXPECT_NEAR(height, crop.w*1024, 1);
+
         for (float coordinate : {0.0f, 0.25f, 0.5f, 0.75f, 1.0f})
         {
             const float texture_u = (coordinate-crop.x)/crop.z;
@@ -3702,11 +3701,15 @@ TEST_F(RenderingRegressionTest, GalaxyCropsPreserveSkyCoordinatesForMagellanicCl
         SDL_Surface* asset = SDL_ConvertSurfaceFormat(original, SDL_PIXELFORMAT_RGBA32, 0);
         SDL_FreeSurface(original);
         ASSERT_NE(asset, nullptr);
-        SDL_Surface* rgba = SDL_CreateRGBSurfaceWithFormat(0, 1024, 1024, 32, SDL_PIXELFORMAT_RGBA32);
+        const auto framing = galaxy_asset_frame("galaxies/faceon/"+name+".jpg");
+        const int canvas_w = lround(asset->w/framing[2]);
+        const int canvas_h = lround(asset->h/framing[3]);
+        EXPECT_NEAR(width, crop.z*canvas_w, 1);
+        EXPECT_NEAR(height, crop.w*canvas_h, 1);
+        SDL_Surface* rgba = SDL_CreateRGBSurfaceWithFormat(0, canvas_w, canvas_h, 32, SDL_PIXELFORMAT_RGBA32);
         ASSERT_NE(rgba, nullptr);
         SDL_FillRect(rgba, nullptr, SDL_MapRGBA(rgba->format, 0, 0, 0, 255));
-        const auto framing = galaxy_asset_frame("galaxies/faceon/"+name+".jpg");
-        SDL_Rect placement{int(framing[0]*1024), int(framing[1]*1024), asset->w, asset->h};
+        SDL_Rect placement{int(lround(framing[0]*canvas_w)), int(lround(framing[1]*canvas_h)), asset->w, asset->h};
         SDL_BlitSurface(asset, nullptr, rgba, &placement);
         SDL_FreeSurface(asset);
         GLuint reference_texture = 0;

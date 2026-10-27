@@ -170,7 +170,8 @@ bool FictionalImage::load(const std::string& filename, bool panorama)
     path = filename;
     panoramic = panorama;
     // A bounded CPU field, independent of GPU texture limits. Each cell averages original pixels.
-    const SDL_Rect bounds = panorama ? SDL_Rect{0, 0, rgba->w, rgba->h} : galaxy_image_bounds(*rgba);
+    const bool calibrated = !panorama && galaxy_measured_frame(filename).has_value();
+    const SDL_Rect bounds = panorama || calibrated ? SDL_Rect{0, 0, rgba->w, rgba->h} : galaxy_image_bounds(*rgba);
     const double scale = std::min({1.0, 1024.0/bounds.w, 512.0/bounds.h});
     width = std::max(1, int(bounds.w*scale));
     height = std::max(1, int(bounds.h*scale));

@@ -409,7 +409,9 @@ void draw_fictional_region()
     ImGui::BeginChild("Region controls", ImVec2(std::min(natural_width, display.x-60), -ImGui::GetFrameHeightWithSpacing()), false);
     ImGui::PushItemWidth(input_width);
     ImGui::BeginDisabled(dialog.running);
-    bool search = ImGui::InputText("Find galaxy", dialog.filter, sizeof(dialog.filter), ImGuiInputTextFlags_EnterReturnsTrue);
+    ImGui::Text("Find galaxy");
+    ImGui::SameLine();
+    bool search = ImGui::InputText("##Find galaxy", dialog.filter, sizeof(dialog.filter), ImGuiInputTextFlags_EnterReturnsTrue);
     ImGui::SameLine();
     search |= ImGui::Button("Search");
     if (search)
@@ -418,7 +420,9 @@ void draw_fictional_region()
         if (match >= 0) dialog.choose(match);
         else dialog.message = "No matching galaxy found.";
     }
-    if (ImGui::BeginCombo("Galaxy", dialog.galaxy.name.empty() ? "Choose a galaxy" : dialog.galaxy.name.c_str()))
+    ImGui::Text("Galaxy     ");
+    ImGui::SameLine();
+    if (ImGui::BeginCombo("##Galaxy", dialog.galaxy.name.empty() ? "Choose a galaxy" : dialog.galaxy.name.c_str()))
     {
         const std::string filter = stellar_alias_key(dialog.filter);
         std::vector<int> matches;
