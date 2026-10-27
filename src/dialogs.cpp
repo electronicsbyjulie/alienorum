@@ -1,3 +1,4 @@
+#include "classes/planetnames.h"
 
 // shlwapi.h must be included before any project header pulls in `using namespace std`
 // (see globals.h) -- shlwapi.h's own transitive COM headers declare an unqualified
@@ -1193,7 +1194,11 @@ void draw_addcel_window(ImGuiIO& io)
 
             if (cel)
             {
-                strcpy(cel->name, "new");
+                const std::string initial_name = cls == class_star && cel->typeclass() == class_planet
+                    ? next_planet_name(*cels[addcenidx], cels) : "new";
+                snprintf(cel->name, sizeof(cel->name), "%s", initial_name.c_str());
+                if (cls == class_star && cel->typeclass() == class_planet)
+                    static_cast<Planet*>(cel)->display_designation = initial_name;
                 cel->namelen = strlen(cel->name);
                 cel->user_added = true;
                 cels[addcenidx]->distance_known = true;

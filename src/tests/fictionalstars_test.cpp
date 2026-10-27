@@ -7,6 +7,7 @@
 #include <thread>
 #include <set>
 #include "../classes/fictionalstars.h"
+#include "../classes/planetnames.h"
 #include "../classes/cat.h"
 #include "../classes/exocons.h"
 #include "../housekeeping.h"
@@ -754,4 +755,24 @@ TEST_F(FictionalStarsTest, NamePoolNamesTheCenterAndTwoHundredBrightestStars)
     std::sort(ordered.begin(), ordered.end());
     for (size_t i = 0; i < ordered.size(); ++i)
         EXPECT_EQ(ordered[i].second->fictional_origin.contains("proper_name"), i < 200);
+}
+
+TEST_F(FictionalStarsTest, PlanetNamesUseTheFirstAvailableLowercaseHostSuffix)
+{
+    Star* host = static_cast<Star*>(cels[0]);
+    EXPECT_EQ(next_planet_name(*host, cels), "Sun b");
+    Planet* b = make_planet(host);
+    strcpy(b->name, "A named world");
+    b->catalog_designation = "An older host alias b";
+    EXPECT_EQ(next_planet_name(*host, cels), "Sun c");
+    Planet* d = make_planet(host);
+    strcpy(d->name, "Sun d");
+    EXPECT_EQ(next_planet_name(*host, cels), "Sun c");
+    Planet* c = make_planet(host);
+    strcpy(c->name, "Sun c");
+    EXPECT_EQ(next_planet_name(*host, cels), "Sun e");
+    Star* fictional = make_star("Minerva");
+    EXPECT_EQ(next_planet_name(*fictional, cels), "Minerva b");
+    b->deleted = true;
+    EXPECT_EQ(next_planet_name(*host, cels), "Sun b");
 }
