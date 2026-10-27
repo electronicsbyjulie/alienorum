@@ -3604,3 +3604,18 @@ TEST_F(RenderingRegressionTest, PopulateGalaxySearchPrefersExactNamesAndAcceptsC
     EXPECT_EQ(fictional_find_galaxy("PGC 2557"), m31->seqno);
     EXPECT_EQ(fictional_find_galaxy("absent galaxy"), -1);
 }
+
+TEST_F(RenderingRegressionTest, ScreenshotFunctionKeyWorksDuringDialogEditing)
+{
+    set(editing, true);
+    set(take_snapshot, false);
+    auto& io = ImGui::GetIO();
+    ImGui::EndFrame();
+    io.AddKeyEvent(ImGuiKey_F12, true);
+    ImGui::NewFrame();
+    process_keyboard_commands(io);
+    EXPECT_TRUE(take_snapshot);
+    io.AddKeyEvent(ImGuiKey_F12, false);
+    ImGui::EndFrame();
+    ImGui::NewFrame();
+}

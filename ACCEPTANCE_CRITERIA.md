@@ -568,3 +568,5 @@ F16–F19 verification: 20 dedicated generator tests, 71 enabled rendering tests
 - **F28 — Compact sequential designations:** New fictional components use F-###### sequential numbers, continuing after existing in-memory designations. Companion relationships and stable internal identities remain independent of display names. Imported-universe collision policy is deferred to the planned identity work.
 
 - **F29 — Galaxy search activation:** Populate Region accepts Enter and a Search button, selects exact normalized names before partial matches, accepts PGC identifiers, and reports absent matches.
+
+- **F30 — Function keys during editing:** Function keys F1–F12 with existing actions remain available while Populate Region or another editor is open, including F12 screenshots and F11 fullscreen. Ordinary typing and navigation shortcuts retain the editing guard.

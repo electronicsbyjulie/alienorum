@@ -1185,24 +1185,6 @@ void process_key_cmd_ctrl_char(char c)
 double steering_rate, walk_speed;
 void process_keyboard_commands(ImGuiIO& io)
 {
-    int i;
-    for (i = 0; i < io.InputQueueCharacters.Size; i++)
-    {
-        timeout_ms = 5;
-        ImWchar c = io.InputQueueCharacters[i];
-        if (keyprobe) std::cout << "Key press: " << c << std::endl;         // Output the ASCII value.
-        process_key_cmd_char(c);
-    }
-
-    steering_rate = _pi/16/zoom;
-    walk_speed = 4 * frame_dur;                              // a fast run
-    if (ImGui::IsKeyDown(ImGuiKey_LeftArrow) && !is_mouse_over_window) process_key_arrowleft();
-    if (ImGui::IsKeyDown(ImGuiKey_RightArrow) && !is_mouse_over_window) process_key_arrowright();
-    if (ImGui::IsKeyDown(ImGuiKey_UpArrow) && !is_mouse_over_window) process_key_arrowup();
-    if (ImGui::IsKeyDown(ImGuiKey_DownArrow) && !is_mouse_over_window) process_key_arrowdn();
-    if (ImGui::IsKeyDown(ImGuiKey_Delete) && !is_mouse_over_window) process_key_delete();
-    if (ImGui::IsKeyDown(ImGuiKey_End) && !is_mouse_over_window) process_key_end();
-    if (ImGui::IsKeyDown(ImGuiKey_Home) && !is_mouse_over_window) process_key_home();
     if (ImGui::IsKeyPressed(ImGuiKey_F1)) process_key_F1();
     if (ImGui::IsKeyPressed(ImGuiKey_F2)) process_key_F2();
     if (ImGui::IsKeyPressed(ImGuiKey_F3, false)) process_key_F3();
@@ -1223,7 +1205,29 @@ void process_keyboard_commands(ImGuiIO& io)
     if (ImGui::IsKeyPressed(ImGuiKey_F8)) process_key_F8();
     if (ImGui::IsKeyPressed(ImGuiKey_F9)) process_key_F9();
     if (ImGui::IsKeyPressed(ImGuiKey_F10)) process_key_F10();
+    if (ImGui::IsKeyPressed(ImGuiKey_F11, false)) process_key_F11();
     if (ImGui::IsKeyPressed(ImGuiKey_F12, false)) process_key_F12();
+    if (editing) return;
+
+    int i;
+    for (i = 0; i < io.InputQueueCharacters.Size; i++)
+    {
+        timeout_ms = 5;
+        ImWchar c = io.InputQueueCharacters[i];
+        if (keyprobe) std::cout << "Key press: " << c << std::endl;         // Output the ASCII value.
+        process_key_cmd_char(c);
+    }
+
+    steering_rate = _pi/16/zoom;
+    walk_speed = 4 * frame_dur;                              // a fast run
+    if (ImGui::IsKeyDown(ImGuiKey_LeftArrow) && !is_mouse_over_window) process_key_arrowleft();
+    if (ImGui::IsKeyDown(ImGuiKey_RightArrow) && !is_mouse_over_window) process_key_arrowright();
+    if (ImGui::IsKeyDown(ImGuiKey_UpArrow) && !is_mouse_over_window) process_key_arrowup();
+    if (ImGui::IsKeyDown(ImGuiKey_DownArrow) && !is_mouse_over_window) process_key_arrowdn();
+    if (ImGui::IsKeyDown(ImGuiKey_Delete) && !is_mouse_over_window) process_key_delete();
+    if (ImGui::IsKeyDown(ImGuiKey_End) && !is_mouse_over_window) process_key_end();
+    if (ImGui::IsKeyDown(ImGuiKey_Home) && !is_mouse_over_window) process_key_home();
+
 
     if (io.KeyCtrl)
     {
