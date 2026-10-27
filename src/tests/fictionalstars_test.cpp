@@ -581,3 +581,97 @@ TEST_F(FictionalStarsTest, SectorCodesAreShortRestrictedAndSeparateFromPersisten
     EXPECT_EQ(ncelobjs, 2);
     EXPECT_EQ(static_cast<Star*>(cels[1])->fictional_origin.at("id"), identity);
 }
+
+TEST_F(FictionalStarsTest, SolarLikePopulationAcrossIndependentDraws)
+{
+    region.star_count = 10000;
+    double nearby10 = 0, nearby25 = 0, visible = 0;
+    double color_counts[6] = {};
+    const double color_edges[] = {-10, 0, 0.3, 0.6, 1, 1.5, 10};
+    std::vector<double> giant_distances;
+    for (uint64_t draw : {1, 42, 7519, 2026, 8675309})
+    {
+        region.seed = draw;
+        auto batch = generate_fictional_stars(model, region);
+        ASSERT_TRUE(batch.error.empty()) << batch.error;
+        int count10 = 0, count25 = 0, bright = 0, overbright = 0;
+        double nearest_giant = 1e300;
+        for (const auto& star : batch.stars)
+        {
+            if (star.get() == batch.stars.front().get()) continue;
+            const double radius = (star->location.system_center-model.world_offset(region.center_ly)).magnitude()/light_year;
+            if (radius <= 10) ++count10;
+            if (radius <= 25) ++count25;
+            const double apparent = star->absolute_magnitude+5*log10(radius*light_year/(10*parsec));
+            if (apparent < -1) ++overbright;
+            if (apparent <= 6.5)
+            {
+                ++bright;
+                for (int bin = 0; bin < 6; ++bin)
+                    if (star->BV_color >= color_edges[bin] && star->BV_color < color_edges[bin+1]) ++color_counts[bin];
+            }
+            if (!star->is_white_dwarf() && star->volumetric_mean_radius > 3*solar_radius
+                && star->absolute_magnitude < 3.5 && strstr(star->spectral_type, "II"))
+                nearest_giant = std::min(nearest_giant, radius);
+            if (star->is_main_sequence())
+            {
+                const double age = star->fictional_origin.at("age_gyr").get<double>();
+                EXPECT_LE(age, 10*pow(star->mass/solar_mass, -2.5)+1e-6) << star->name;
+            }
+        }
+        EXPECT_LT(count10, 45);
+        EXPECT_LT(count25, 400);
+        EXPECT_LE(overbright, 12);
+        nearby10 += count10;
+        nearby25 += count25;
+        visible += bright;
+        giant_distances.push_back(nearest_giant);
+        std::cout << "Population draw " << draw << ": 10ly=" << count10 << " 25ly=" << count25
+            << " visible=" << bright << " nearest giant=" << nearest_giant << " ly" << std::endl;
+    }
+    // CNS5 gives 12 objects within 10 ly and 181 within 25 ly in the local catalog.
+    EXPECT_GT(nearby10/5, 5);
+    EXPECT_LT(nearby10/5, 25);
+    EXPECT_GT(nearby25/5, 100);
+    EXPECT_LT(nearby25/5, 300);
+    EXPECT_GT(visible/5, 5000);
+    EXPECT_LT(visible/5, 8500);
+    std::sort(giant_distances.begin(), giant_distances.end());
+    EXPECT_GT(giant_distances[2], 15);
+    EXPECT_LT(giant_distances[2], 90);
+    for (int bin = 0; bin < 6; ++bin)
+        std::cout << "Visible color fraction " << bin << ": " << color_counts[bin]/visible << std::endl;
+}
+
+TEST_F(FictionalStarsTest, EverySystemRecordsAndRespectsItsOwnSpacing)
+{
+    auto batch = generate_fictional_stars(model, region);
+    ASSERT_TRUE(batch.error.empty()) << batch.error;
+    std::vector<const Star*> systems;
+    double smallest = 5, largest = 1;
+    std::map<int, double> cluster_ages;
+    for (const auto& star : batch.stars)
+    {
+        const int cluster = star->fictional_origin.at("cluster").get<int>();
+        if (cluster >= 0)
+        {
+            const double age = star->fictional_origin.at("age_gyr").get<double>();
+            const auto entry = cluster_ages.emplace(cluster, age);
+            EXPECT_DOUBLE_EQ(entry.first->second, age);
+        }
+        if (star->orbit) continue;
+        const double spacing = star->fictional_origin.at("minimum_spacing_ly").get<double>();
+        EXPECT_GE(spacing, 1);
+        EXPECT_LE(spacing, 5);
+        smallest = std::min(smallest, spacing);
+        largest = std::max(largest, spacing);
+        for (const Star* other : systems)
+        {
+            const double exclusion = std::max(spacing, other->fictional_origin.at("minimum_spacing_ly").get<double>());
+            EXPECT_GE(star->location.system_center.distance_to(other->location.system_center)/light_year, exclusion-1e-6);
+        }
+        systems.push_back(star.get());
+    }
+    EXPECT_LT(smallest, 1.5);
+    EXPECT_GT(largest, 4.5);
+}
