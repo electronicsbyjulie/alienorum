@@ -684,3 +684,23 @@ TEST_F(FictionalStarsTest, EverySystemRecordsAndRespectsItsOwnSpacing)
     EXPECT_LT(smallest, 1.5);
     EXPECT_GT(largest, 4.5);
 }
+
+TEST_F(FictionalStarsTest, FaceOnSamplingCropsPaddingWithoutCroppingPanoramas)
+{
+    SDL_Surface* surface = SDL_CreateRGBSurfaceWithFormat(0, 100, 80, 32, SDL_PIXELFORMAT_RGBA32);
+    ASSERT_NE(surface, nullptr);
+    SDL_FillRect(surface, nullptr, SDL_MapRGBA(surface->format, 0, 0, 0, 255));
+    SDL_Rect content{20, 10, 60, 60};
+    SDL_FillRect(surface, &content, SDL_MapRGBA(surface->format, 180, 100, 40, 255));
+    const auto file = temporary / "bordered.bmp";
+    ASSERT_EQ(SDL_SaveBMP(surface, file.c_str()), 0);
+    SDL_FreeSurface(surface);
+    FictionalImage image;
+    ASSERT_TRUE(image.load(file.string(), false));
+    EXPECT_EQ(image.width, 64);
+    EXPECT_EQ(image.height, 64);
+    EXPECT_GT(image.sample(0.5, 0.5).x, 0.4);
+    ASSERT_TRUE(image.load(file.string(), true));
+    EXPECT_EQ(image.width, 100);
+    EXPECT_EQ(image.height, 80);
+}

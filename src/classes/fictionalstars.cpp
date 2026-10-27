@@ -1,4 +1,5 @@
 #include "fictionalstars.h"
+#include "galaxyimage.h"
 #include "exocons.h"
 #include "../globals.h"
 #include <SDL_image.h>
@@ -168,17 +169,18 @@ bool FictionalImage::load(const std::string& filename, bool panorama)
     path = filename;
     panoramic = panorama;
     // A bounded CPU field, independent of GPU texture limits. Each cell averages original pixels.
-    const double scale = std::min({1.0, 1024.0/rgba->w, 512.0/rgba->h});
-    width = std::max(1, int(rgba->w*scale));
-    height = std::max(1, int(rgba->h*scale));
+    const SDL_Rect bounds = panorama ? SDL_Rect{0, 0, rgba->w, rgba->h} : galaxy_image_bounds(*rgba);
+    const double scale = std::min({1.0, 1024.0/bounds.w, 512.0/bounds.h});
+    width = std::max(1, int(bounds.w*scale));
+    height = std::max(1, int(bounds.h*scale));
     rgb.assign(size_t(width)*height*3, 0);
     for (int y = 0; y < height; ++y)
         for (int x = 0; x < width; ++x)
         {
             Point sum;
             int count = 0;
-            const int x0 = x*rgba->w/width, x1 = (x+1)*rgba->w/width;
-            const int y0 = y*rgba->h/height, y1 = (y+1)*rgba->h/height;
+            const int x0 = bounds.x+x*bounds.w/width, x1 = bounds.x+(x+1)*bounds.w/width;
+            const int y0 = bounds.y+y*bounds.h/height, y1 = bounds.y+(y+1)*bounds.h/height;
             for (int sy = y0; sy < y1; ++sy)
                 for (int sx = x0; sx < x1; ++sx)
                 {

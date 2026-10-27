@@ -2628,6 +2628,11 @@ static double draw_galaxy(CelestialObject* cel, double appmag)
     GLuint tex_id = gputex_galaxy_faceon(cel->name);
     if (tex_id)
     {
+        const ImVec4 crop = gputex_galaxy_faceon_crop(cel->name);
+        const auto texture_uv = [&](float u, float v)
+        {
+            return ImVec2((u-crop.x)/crop.z, (v-crop.y)/crop.w);
+        };
         dl->PushTexture((ImTextureID)(intptr_t)tex_id);
         dl->PrimReserve(nring * nvalid * 6, nring * nvalid * 4);
         int alpha_val = (int)fmin(255.0, fmax(0.0, peak));
@@ -2653,10 +2658,10 @@ static double draw_galaxy(CelestialObject* cel, double appmag)
                 double t0 = s * (_pi * 2.0 / nseg);
                 double t1 = s1 * (_pi * 2.0 / nseg);
 
-                ImVec2 uv_a0((float)(0.5 + 0.5 * f0 * cos(t0)), (float)(0.5 + 0.5 * f0 * sin(t0)));
-                ImVec2 uv_a1((float)(0.5 + 0.5 * f0 * cos(t1)), (float)(0.5 + 0.5 * f0 * sin(t1)));
-                ImVec2 uv_b1((float)(0.5 + 0.5 * f1 * cos(t1)), (float)(0.5 + 0.5 * f1 * sin(t1)));
-                ImVec2 uv_b0((float)(0.5 + 0.5 * f1 * cos(t0)), (float)(0.5 + 0.5 * f1 * sin(t0)));
+                ImVec2 uv_a0 = texture_uv((float)(0.5 + 0.5 * f0 * cos(t0)), (float)(0.5 + 0.5 * f0 * sin(t0)));
+                ImVec2 uv_a1 = texture_uv((float)(0.5 + 0.5 * f0 * cos(t1)), (float)(0.5 + 0.5 * f0 * sin(t1)));
+                ImVec2 uv_b1 = texture_uv((float)(0.5 + 0.5 * f1 * cos(t1)), (float)(0.5 + 0.5 * f1 * sin(t1)));
+                ImVec2 uv_b0 = texture_uv((float)(0.5 + 0.5 * f1 * cos(t0)), (float)(0.5 + 0.5 * f1 * sin(t0)));
 
                 unsigned int base = dl->_VtxCurrentIdx;
                 dl->PrimWriteVtx(a0, uv_a0, vcol);

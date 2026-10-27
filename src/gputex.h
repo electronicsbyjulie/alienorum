@@ -27,6 +27,7 @@ namespace alienorum
     // Returns a cached OpenGL texture name for a galaxy's face-on map (galaxies/faceon/<name>.png).
     // Returns 0 if no face-on map exists for the specified galaxy name.
     GLuint gputex_galaxy_faceon(const std::string &name);
+    ImVec4 gputex_galaxy_faceon_crop(const std::string& name);
 
     // Returns a cached OpenGL texture name for a galaxy's internal 360-degree panorama
     // (galaxies/internal/<name>.jpg). If no custom internal map is found, returns the Milky Way

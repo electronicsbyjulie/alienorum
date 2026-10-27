@@ -3619,3 +3619,59 @@ TEST_F(RenderingRegressionTest, ScreenshotFunctionKeyWorksDuringDialogEditing)
     ImGui::EndFrame();
     ImGui::NewFrame();
 }
+
+TEST_F(RenderingRegressionTest, GalaxyCropsPreserveSkyCoordinatesForMagellanicCloudsAndM31)
+{
+    for (const std::string name : {"LMC", "SMC", "M31"})
+    {
+        const GLuint texture = gputex_galaxy_faceon(name);
+        ASSERT_NE(texture, 0u) << name;
+        const ImVec4 crop = gputex_galaxy_faceon_crop(name);
+        EXPECT_GT(crop.x, 0);
+        EXPECT_GT(crop.y, 0);
+        EXPECT_LT(crop.z, 1);
+        EXPECT_LT(crop.w, 1);
+        glBindTexture(GL_TEXTURE_2D, texture);
+        GLint width = 0, height = 0;
+        glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &width);
+        glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &height);
+        EXPECT_NEAR(width, crop.z*1024, 1);
+        EXPECT_NEAR(height, crop.w*1024, 1);
+        for (float coordinate : {0.0f, 0.25f, 0.5f, 0.75f, 1.0f})
+        {
+            const float texture_u = (coordinate-crop.x)/crop.z;
+            const float texture_v = (coordinate-crop.y)/crop.w;
+            EXPECT_NEAR(crop.x+crop.z*texture_u, coordinate, 1e-6);
+            EXPECT_NEAR(crop.y+crop.w*texture_v, coordinate, 1e-6);
+        }
+        SDL_Surface* original = IMG_Load(("galaxies/faceon/"+name+".jpg").c_str());
+        ASSERT_NE(original, nullptr);
+        SDL_Surface* rgba = SDL_ConvertSurfaceFormat(original, SDL_PIXELFORMAT_RGBA32, 0);
+        SDL_FreeSurface(original);
+        ASSERT_NE(rgba, nullptr);
+        GLuint reference_texture = 0;
+        glGenTextures(1, &reference_texture);
+        glBindTexture(GL_TEXTURE_2D, reference_texture);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, rgba->w, rgba->h, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba->pixels);
+        SDL_FreeSurface(rgba);
+        glBindTexture(GL_TEXTURE_2D, texture);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        ImGui::GetBackgroundDrawList()->AddImage((ImTextureID)(intptr_t)reference_texture, ImVec2(4, 4), ImVec2(188, 104));
+        const auto before = render();
+        ImGui::NewFrame();
+        ImGui::GetBackgroundDrawList()->AddImage((ImTextureID)(intptr_t)texture, ImVec2(4, 4), ImVec2(188, 104),
+            ImVec2(-crop.x/crop.z, -crop.y/crop.w), ImVec2((1-crop.x)/crop.z, (1-crop.y)/crop.w));
+        const auto after = render();
+        double error = 0;
+        for (size_t pixel = 0; pixel < before.size(); pixel += 4)
+            for (int channel = 0; channel < 3; ++channel)
+                error += abs(int(before[pixel+channel])-int(after[pixel+channel]));
+        EXPECT_LT(error/(render_width*render_height*3), 2.0) << name;
+        glDeleteTextures(1, &reference_texture);
+        glBindTexture(GL_TEXTURE_2D, texture);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        ImGui::NewFrame();
+    }
+}
