@@ -221,7 +221,8 @@ int main(int argc, char** argv)
     }
     census["rows_with_parallax"] = rows;
     census["scope"] = "All catalog objects, including brown dwarfs; Gaia G is not Johnson V.";
-    const json report = {{"cns5", census}, {"solar", solar}, {"generated", generated}, {"generation_seconds", batch.elapsed_seconds}};
+    const json report = {{"configuration", batch.provenance}, {"systems", batch.systems},
+        {"cns5", census}, {"solar", solar}, {"generated", generated}, {"generation_seconds", batch.elapsed_seconds}};
     std::ofstream(prefix+".json") << report.dump(2);
     std::cout << report.dump(2) << std::endl;
     ImGui_ImplOpenGL3_Shutdown();

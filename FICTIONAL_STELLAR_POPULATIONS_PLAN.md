@@ -95,6 +95,8 @@ Accepted visible designation: `FIC <galaxy-code> <region-code> <system-number>`,
 
 A sphere of radius 1,000 light years has roughly 4.19 billion cubic light years of volume. Even an illustrative density of only 0.001 stars per cubic light year would imply about 4.19 million stars, exceeding the current whole-application capacity before companions and existing objects are counted. Consequently, do not fill the entire sphere with a consistent density of stars; use a falloff function that keeps the majority of stars within 100 light years, and only the intrinsically brightest stars are allowed to approach that 1000 l.y. limit. Stars with apparent magnitudes greater than 6.5, as seen from the center point, should be pretty much absent past about 25 l.y. from that point. It is allowed to increase the maximum size of the global `cels` array.
 
+**Interpretation after population review:** The latest Solar-neighborhood comparison takes precedence over packing most retained objects inside 100 light years. The faint-star cutoff near 25 light years and the bright tail out to 1,000 light years define the falloff. Uniform volume within each luminosity-dependent horizon replaces exponential inward placement. The selected catalog is incomplete beyond 25 light years, with physical bound companions retained alongside their primaries.
+
 Recommend a bounded, representative fictional population in the first version. The radius controls the region, while a clearly labeled detail/object budget controls how many individual stars are instantiated. Preserve brighter rare populations and a representative faint population under an explicit sampling rule; do not silently claim physical completeness or multiply each retained star's individual luminosity to represent omitted stars. Record the selection rule for reproducibility.
 
 Include fictional star clusters similar to the Pleiades, Hyades, Beehive, etc.
@@ -231,3 +233,40 @@ Trial 09 contains 8 stars within 10 light years and 221 within 25. Its nearest l
 ### Population refinement checkpoint 7
 
 Trial 10 refines correlated ordinary-giant radius/temperature, the rare cool phase, subgiant abundance, hot-star abundance, and white-dwarf representation. It also derives each generated U−B from temperature and records model version 3. The five-draw mean count within 25 light years is 198 (Solar 183; local CNS5 181 including brown dwarfs). The fixed trial has giant same-type spacing 34.41 light years versus Solar 32.29. Its visible B−V fractions across the six audit bins are 17.1%, 20.8%, 17.1%, 11.1%, 26.2%, and 7.8%, versus Solar 15.4%, 21.6%, 14.8%, 15.3%, 25.6%, and 7.3%. All 22 generator checks pass. A final small broad-class calibration targets the remaining F/yellow discrepancy and central count.
+
+### Completed population refinement handoff
+
+The final model uses independent system spacing drawn within 1–5 light years, enforcing the larger of each pair's values. The dialog describes this variation rather than offering a system-wide default. CNS5 census fractions and the local CNS5 file provide the nearby reference; the app's Solar catalog supplies Johnson-V magnitudes and B−V colors. Gaia G photometry is not substituted for V. Broad class adjustments account for the represented selection and physical companions; the rules contain no individual real-star identities.
+
+The field luminosity function is stratified across seven main-sequence classes, ordinary giants, rare cool expanded giants, subgiants, and white dwarfs. Observable-volume weights prevent central bright-star crowding. Evolved progenitor weighting, correlated giant temperature/radius, main-sequence lifetime limits, and coeval cluster populations keep the physical properties coherent. Faint companions retain their own masses and luminosities. Model version 3 and the full configuration are preserved in saved provenance and final audit reports.
+
+| Fixed comparison, seed 7519 | Solar catalog | Final generated |
+| --- | ---: | ---: |
+| Stars within 10 light years | 13 | 7 |
+| Stars within 25 light years | 183 | 177 |
+| Nearest luminous giant, light years | 33.72 | 35.25 |
+| Mean giant same-type nearest neighbor inside 100 light years | 32.29 | 32.36 |
+| Stars with apparent V ≤ 6.5 inside 1,000 light years | 7,805 | 6,332 |
+
+The five independent draws (1, 42, 7519, 2026, 8675309) average 10.6 stars within 10 light years and 194.4 within 25. Their mean visible B−V fractions are 17.16%, 20.64%, 15.27%, 13.58%, 25.67%, and 7.68%; the Solar comparison is 15.44%, 21.58%, 14.84%, 15.26%, 25.57%, and 7.32%. Each bin agrees within 1.8 percentage points. Individual realizations fluctuate, including their brightest stars. The fixed 10,000-component budget retains faint physical companions, so the visible count is below the much larger Solar catalog. Solar/CNS5 object counts include classifications absent from the generated main-sequence mixture, including brown dwarfs; radial counts are an appearance benchmark rather than an assertion of identical census membership.
+
+The subtype-spacing comparison uses system primaries inside 100 light years. The published-density column is the idealized uniform Poisson mean, 0.554 times density to the power −1/3, converted from parsecs. It describes a population average. Selection, multiplicity, and small samples affect the app columns.
+
+| Population | Published-density scale, ly | Solar app, ly | Final generated, ly |
+| --- | ---: | ---: | ---: |
+| M dwarfs | 4.4 | 7.50 | 5.73 |
+| K dwarfs | 8.3 | 9.29 | 12.41 |
+| G dwarfs | 12.1 | 12.18 | 14.88 |
+| F dwarfs | 13.5 | 16.02 | 15.73 |
+| A dwarfs | 22.9 | 26.36 | 24.36 |
+| B dwarfs | 56.9 | 62.02 | 120.30 |
+| White dwarfs | 10.7 | 10.01 | 10.34 |
+| Luminous giants | 28.0 | 32.29 | 32.36 |
+
+Only two generated B systems occur inside the comparison radius in this draw, so their spacing has substantial sampling variation. The physically filtered giant reference excludes dwarf-like catalog entries carrying giant spectral labels. The source-density context is the [Mamajek compilation](https://www.pas.rochester.edu/~emamajek/memo_star_dens.html); the [CNS5 paper](https://arxiv.org/abs/2211.01449) supplies the evolved census context, and [van Belle et al. (2021)](https://arxiv.org/abs/2107.09205) supplies an observed evolved-star radius/temperature comparison.
+
+All baseline and trial artifacts remain in `snapshots/population_refinement/`, with numbered stages 00–11. Final Solar/generated Stellar Neighborhood captures and the full report use `11_final_solar_calibration*`. Additional final captures/reports use `verification_1*`, `verification_42*`, `verification_2026*`, and `verification_8675309*`. The actual Stellar Neighborhood display was inspected for every numbered trial and all final verification draws. The summary chart is `snapshots/population_refinement/comparison.png`. Rejected trials 07/08 remain available for comparison. These are local review artifacts, outside the runtime payload.
+
+Developer reproduction: `make bin/audit_fictional_population`, then run `bin/audit_fictional_population snapshots/population_refinement/review 7519`. The optional plotting utility uses Python with Matplotlib/NumPy: `python3 tools/plot_fictional_population.py`. The audit reads the existing local Solar and CNS5 catalogs and records model configuration without modifying the user's universe. No runtime assets were added.
+
+Final verification: all 22 generator checks and 71 enabled rendering checks pass, with six optional GPU skips. Linux Make and CMake application builds pass. At the 10,000-star benchmark, generation took 0.559 seconds in 6,125 systems, actual JSON was 65.90 MiB, saving took 2.28 seconds, and reload took 6.92 seconds while other validation ran. These timings are fixture measurements, with interactive frame rate left for user review. Acceptance criteria F20–F27 cover the refinements. Generate a fresh region to assess the revised model; existing saved regions retain their authored positions and stellar properties.

@@ -585,7 +585,7 @@ TEST_F(FictionalStarsTest, SectorCodesAreShortRestrictedAndSeparateFromPersisten
 TEST_F(FictionalStarsTest, SolarLikePopulationAcrossIndependentDraws)
 {
     region.star_count = 10000;
-    double nearby10 = 0, nearby25 = 0, visible = 0;
+    double nearby10 = 0, nearby25 = 0, visible = 0, overbright_total = 0;
     double color_counts[6] = {};
     const double color_edges[] = {-10, 0, 0.3, 0.6, 1, 1.5, 10};
     std::vector<double> giant_distances;
@@ -625,6 +625,7 @@ TEST_F(FictionalStarsTest, SolarLikePopulationAcrossIndependentDraws)
         nearby10 += count10;
         nearby25 += count25;
         visible += bright;
+        overbright_total += overbright;
         giant_distances.push_back(nearest_giant);
         std::cout << "Population draw " << draw << ": 10ly=" << count10 << " 25ly=" << count25
             << " visible=" << bright << " nearest giant=" << nearest_giant << " ly" << std::endl;
@@ -632,15 +633,20 @@ TEST_F(FictionalStarsTest, SolarLikePopulationAcrossIndependentDraws)
     // CNS5 gives 12 objects within 10 ly and 181 within 25 ly in the local catalog.
     EXPECT_GT(nearby10/5, 5);
     EXPECT_LT(nearby10/5, 25);
-    EXPECT_GT(nearby25/5, 100);
-    EXPECT_LT(nearby25/5, 300);
+    EXPECT_GT(nearby25/5, 140);
+    EXPECT_LT(nearby25/5, 240);
+    EXPECT_LT(overbright_total/5, 5);
     EXPECT_GT(visible/5, 5000);
     EXPECT_LT(visible/5, 8500);
     std::sort(giant_distances.begin(), giant_distances.end());
     EXPECT_GT(giant_distances[2], 15);
     EXPECT_LT(giant_distances[2], 90);
+    const double solar_colors[] = {1205.0/7805, 1684.0/7805, 1158.0/7805, 1191.0/7805, 1996.0/7805, 571.0/7805};
     for (int bin = 0; bin < 6; ++bin)
+    {
+        EXPECT_NEAR(color_counts[bin]/visible, solar_colors[bin], 0.04) << "B-V bin " << bin;
         std::cout << "Visible color fraction " << bin << ": " << color_counts[bin]/visible << std::endl;
+    }
 }
 
 TEST_F(FictionalStarsTest, EverySystemRecordsAndRespectsItsOwnSpacing)
