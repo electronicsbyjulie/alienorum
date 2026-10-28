@@ -731,7 +731,7 @@ int main (int argc, char** argv)
             {
                 sky_grad.clear();
                 sky_mag_shift = 0;
-                SoundManager::get_instance().reset_horizon_tracking();
+                SoundManager::get_instance().leave_horizon();
             }
 
             bool earth_clouds_shown = false;

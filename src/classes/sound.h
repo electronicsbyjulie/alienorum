@@ -31,6 +31,7 @@ namespace alienorum
         int last_whereami = -1;
         double last_viewer_lat = 0.0;
         double last_viewer_lon = 0.0;
+        bool horizon_tracking_active = false;
 
         std::function<void(CelestialObject*)> on_rise_callback;
         std::function<void(CelestialObject*)> on_set_callback;
@@ -51,6 +52,7 @@ namespace alienorum
         void play_set_sound(CelestialObject* obj = nullptr);
 
         void reset_horizon_tracking();
+        void leave_horizon();
         void check_rise_set_alerts();
 
         void set_rise_callback(std::function<void(CelestialObject*)> cb);

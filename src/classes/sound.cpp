@@ -235,6 +235,7 @@ namespace alienorum
 
     void SoundManager::reset_horizon_tracking()
     {
+        horizon_tracking_active = false;
         if (!cels)
         {
             return;
@@ -249,15 +250,20 @@ namespace alienorum
         }
     }
 
+    void SoundManager::leave_horizon()
+    {
+        if (horizon_tracking_active) reset_horizon_tracking();
+    }
+
     void SoundManager::check_rise_set_alerts()
     {
         if (view_mode != vm_horizon || whereami < 0 || !cels)
         {
-            reset_horizon_tracking();
+            leave_horizon();
             return;
         }
 
-        if (whereami != last_whereami
+        if (!horizon_tracking_active || whereami != last_whereami
             || std::fabs(viewer_lat - last_viewer_lat) > 0.01
             || std::fabs(viewer_lon - last_viewer_lon) > 0.01)
         {
@@ -266,6 +272,7 @@ namespace alienorum
             last_viewer_lat = viewer_lat;
             last_viewer_lon = viewer_lon;
         }
+        horizon_tracking_active = true;
 
         for (int i = 0; i < MAX_CELOBJS && cels[i]; i++)
         {
