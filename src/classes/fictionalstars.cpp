@@ -977,7 +977,12 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
     {
         std::mt19937_64 random(region.seed ^ 0x743ad81fe0962bc5ULL);
         std::vector<Star*> hosts;
-        for (auto& star : result.stars) hosts.push_back(star.get());
+        std::unordered_map<StarMulti*, std::vector<Star*>> staged_members;
+        for (auto& star : result.stars)
+        {
+            hosts.push_back(star.get());
+            if (star->multisys) staged_members[star->multisys].push_back(star.get());
+        }
         for (size_t i = hosts.size(); i > 1; --i) std::swap(hosts[i-1], hosts[random()%i]);
         const int target = int(std::lround(result.stars.size()*0.1));
         const auto draw = [&]() { return double(random() >> 11)*0x1.0p-53; };
@@ -996,9 +1001,9 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
             // Restrict circumstellar worlds well inside every companion's pericenter.
             if (host->multisys)
             {
-                for (const auto& other : result.stars)
+                for (Star* other : staged_members.at(host->multisys))
                 {
-                    if (other.get() == host || other->multisys != host->multisys) continue;
+                    if (other == host) continue;
                     disk_plane = host->orbit ? host->location.orbital_plane : other->location.orbital_plane;
                     const Orbit* binary = other->orbit ? other->orbit : host->orbit;
                     if (binary && binary->semimajor_axis > 0)

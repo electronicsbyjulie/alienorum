@@ -1048,6 +1048,20 @@ TEST_F(FictionalStarsTest, PlanetarySystemsHaveSafeSpacingMoonsAndRoundTripHostS
         const auto& planets = entry.second;
         EXPECT_GE(planets.size(), 3u);
         EXPECT_LE(planets.size(), 10u);
+        if (entry.first->multisys)
+        {
+            EXPECT_LE(entry.first->multisys->num_members(), 2);
+            for (const auto& companion : batch.stars)
+            {
+                if (companion.get() == entry.first || companion->multisys != entry.first->multisys) continue;
+                const Orbit* binary = companion->orbit ? companion->orbit : entry.first->orbit;
+                ASSERT_NE(binary, nullptr);
+                const double limit = 0.05*binary->semimajor_axis*(1-binary->eccentricity)
+                    *std::cbrt(entry.first->mass/(entry.first->mass+companion->mass));
+                for (const Planet* planet : planets)
+                    EXPECT_LE(planet->orbit->semimajor_axis*(1+planet->orbit->eccentricity), limit);
+            }
+        }
         for (size_t i = 1; i < planets.size(); ++i)
         {
             const Planet& inner = *planets[i-1], &outer = *planets[i];
