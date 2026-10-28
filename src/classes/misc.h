@@ -117,8 +117,8 @@ using json = nlohmann::json;
 #define ecliptic_north_RA_J2000 (18.00 * 15 * fiftyseventh)
 #define ecliptic_north_Decl_J2000 ((66.0 + 33.0 / 60 + 38.55 / 3600) * fiftyseventh)
 
-#define MAX_CELOBJS 524288
-#define MAX_SPLASH_STARS 5381
+#define MAX_CELOBJS 1048576
+#define MAX_SPLASH_STARS 8135
 #define MAX_HD 359083
 #define MAX_HIP 120416
 #define _USE_CCDM 1

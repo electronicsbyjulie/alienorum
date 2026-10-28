@@ -3,6 +3,7 @@
 
 #include "galaxy.h"
 #include "star.h"
+#include "planet.h"
 #include <atomic>
 #include <memory>
 #include <random>
@@ -57,6 +58,7 @@ namespace alienorum
         std::string identity;
         std::vector<std::string> reserved_names;
         bool clusters = true;
+        bool planetary_systems = true;
         bool historical_annulus = false;
     };
 
@@ -64,6 +66,8 @@ namespace alienorum
     {
         std::vector<std::unique_ptr<StarMulti>> staged_systems;
         std::vector<std::unique_ptr<Star>> stars;
+        std::vector<std::unique_ptr<Planet>> worlds;
+        int planet_hosts = 0, planets = 0, moons = 0;
         std::string error;
         json provenance;
         double elapsed_seconds = 0;

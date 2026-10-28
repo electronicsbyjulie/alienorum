@@ -6,6 +6,8 @@
 #include "climate.h"
 #include <functional>
 #include <mutex>
+#include <memory>
+#include <random>
 
 // Not sure about this number at all.
 #define phase_exponent 1.319507911
@@ -13,6 +15,7 @@
 namespace alienorum
 {
     class Star;
+    class Moon;
     enum class PlanetMeasurement
     {
         unknown, observed, minimum, estimated
@@ -79,6 +82,7 @@ namespace alienorum
         void apply_cosmic_shoreline();
         bool estimate_habitability();
         void set_color_from_type(bool HZ);
+        std::vector<std::unique_ptr<Moon>> generate_fictional_moons(std::mt19937_64& random);
         void classify();
         void classify(bool HZ, bool mass_and_rad_known = false, bool color_known = false);
                                                             // set the type, e.g. for exoplanets

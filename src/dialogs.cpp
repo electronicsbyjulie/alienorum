@@ -2973,110 +2973,13 @@ void draw_system_explorer(ImGuiIO& io)
             {
                 cel->rnd_seed = 0;          // force rerandomization.
                 ((Planet*)cel)->vegetation_r = ((Planet*)cel)->vegetation_g = ((Planet*)cel)->vegetation_b = 0;
-                double A = sqrt(cel->orbit->period / oneday) / 4;
-                double B = sqrt(cel->mass / earth_mass);
-                double C = sqrt(A*B);
-                double Hill_over_Roche = cel->Hill_sphere_radius() / cel->Roche_limit();
-                double D = C * Hill_over_Roche / 500;
-                /*int n = round(frand(0.1, 1) * C);*/
-
-                double P = 0;
-                int j=1;
-                for (i=0; i<20; i++)
+                std::mt19937_64 random(std::random_device{}());
+                for (auto& moon : static_cast<Planet*>(cel)->generate_fictional_moons(random))
                 {
-                    Moon *m = new Moon();
-                    std::string mname = std::string(cel->name) + std::string(" ") + Roman(j);
-                    strcpy(m->name, mname.c_str());
-                    m->namelen = strlen(m->name);
-                    m->user_added = true;
-                    m->user_edited = true;
-                    m->mass = pow(frand(0, 1), 4) * cel->mass / 4000;
-                    m->volumetric_mean_radius = pow(m->mass / earth_mass, 1.0/3.0) * frand(0.9, 1.5) * earth_radius;
-                    m->albedo = frand(0.1, 0.6);
-                    m->BV_color = frand(0.8, 1.8);
-                    m->cenobj = cel->cenobj;
-                    m->epoch = J2000;
-                    m->equinox = frand(0, _pi*2);
-                    m->major_moon = true;
-                    m->orbit = new Orbit();
-                    m->orbit->center = cel;
-                    m->orbit->arg_periapsis = frand(0, _pi*2);
-                    m->orbit->ascending_node = frand(0, _pi*2);
-                    m->orbit->eccentricity = pow(frand(0, 0.1), 10);
-                    m->orbit->epoch = J2000;
-                    m->orbit->mean_anomaly = frand(0, _pi*2);
-                    if (!P)
-                    {
-                        // First fictional moon of the planet. Base the SMA off the Roche limit and rings.
-                        double inner_bound = m->minimum_safe_pericenter();
-                        if (((Planet*)cel)->ring_radius > inner_bound)
-                        {
-                            inner_bound = ((Planet*)cel)->ring_radius;
-                        }
-                        double A = inner_bound * (1.1 + pow(frand(0, 1), 4) * 20);
-                        m->orbit->semimajor_axis = A;
-                        m->orbit->compute_period(m->mass);
-                        lsyscache.clear();
-                    }
-                    else
-                    {
-                        // Base the SMA off the previous moon.
-                        m->orbit->period = frand(1.8, 2.2) * P;
-                        m->orbit->compute_semimajor_axis(m->mass);
-                        lsyscache.clear();
-                    }
-
-                    double Roche_dist = m->orbit->semimajor_axis / cel->Roche_limit(m);
-                    double tidal_modifier = fmin(1.0, fmax(0.0, (Roche_dist - 1.0) / 10.0));        // 0 at Roche limit for perfect tidal alignment.
-                    m->orbit->inclination = pow(frand(0, 1), 4) * 0.2 * half_pi * tidal_modifier;
-                    if (frand(0,1) < 0.03) m->orbit->inclination = _pi - m->orbit->inclination;
-                    m->obliquity = pow(frand(0, 1), 10) * half_pi * tidal_modifier;
-
-                    if (frand(0,1) > D)
-                    {
-                        P = m->orbit->period;
-                        delete m->orbit;
-                        m->orbit = nullptr;
-                        delete m;
-                        continue;
-                    }
-
-                    if (m->orbit->semimajor_axis > ((Planet*)cel)->Hill_sphere_radius())
-                    {
-                        delete m->orbit;
-                        m->orbit = nullptr;
-                        delete m;
-                        break;
-                    }
-                    m->estimate_rotation();
-                    if (!m->sidereal_rotational_period) m->sidereal_rotational_period = oneday;
-                    m->classify();
-                    m->enforce_orbit_clearance();
-                    if (m->orbit->semimajor_axis * (1 + m->orbit->eccentricity) > cel->Hill_sphere_radius())
-                    {
-                        delete m;
-                        break;
-                    }
-                    double disc_area = pow(m->volumetric_mean_radius / earth_radius, 2);
-                    m->absolute_magnitude = earth_absmag - log(disc_area * m->albedo / earth_albedo) / log(magnbase);
-                    m->apply_cosmic_shoreline();
-
-                    m->enforce_orbit_clearance();
-                    if (m->orbit->semimajor_axis * (1 + m->orbit->eccentricity) > cel->Hill_sphere_radius())
-                    {
-                        delete m;
-                        break;
-                    }
-
-                    m->update_location(simnow);
-                    if (!append_cel(m))
-                    {
-                        delete m;               // ~Moon takes the orbit with it
-                        break;
-                    }
-                    P = m->orbit->period;
-                    j++;
+                    if (!append_cel(moon.get())) break;
+                    moon.release();
                 }
+                lsyscache.clear();
             }
         }
     }

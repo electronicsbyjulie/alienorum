@@ -92,6 +92,133 @@ bool alienorum::render_saved_planet(CelestialObject* object,
     return true;
 }
 
+std::vector<std::unique_ptr<Moon>> Planet::generate_fictional_moons(std::mt19937_64& random)
+{
+    std::vector<std::unique_ptr<Moon>> moons;
+    Planet* cel = this;
+    if (!orbit || !orbit->center || !(mass > 0) || !(orbit->period > 0)) return moons;
+    const auto draw = [&](double low, double high)
+    {
+        return low+(high-low)*double(random() >> 11)*0x1.0p-53;
+    };
+    double A = sqrt(cel->orbit->period / oneday) / 4;
+    double B = sqrt(cel->mass / earth_mass);
+    double C = sqrt(A*B);
+    double Hill_over_Roche = cel->Hill_sphere_radius() / cel->Roche_limit();
+    double D = C * Hill_over_Roche / 500;
+
+    double P = 0;
+    int j=1;
+    for (int i=0; i<20; i++)
+    {
+        Moon *m = new Moon();
+        m->rnd_seed = int(random() & 0x7fffffff) | 1;
+        m->rng.seed(m->rnd_seed);
+        std::string mname = std::string(cel->name) + std::string(" ") + Roman(j);
+        snprintf(m->name, sizeof(m->name), "%s", mname.c_str());
+        m->namelen = strlen(m->name);
+        m->user_added = true;
+        m->user_edited = true;
+        m->mass = pow(draw(0, 1), 4) * cel->mass / 4000;
+        m->volumetric_mean_radius = pow(m->mass / earth_mass, 1.0/3.0) * draw(0.9, 1.5) * earth_radius;
+        m->albedo = draw(0.1, 0.6);
+        m->BV_color = draw(0.8, 1.8);
+        m->cenobj = cel->cenobj;
+        m->epoch = J2000;
+        m->equinox = draw(0, _pi*2);
+        m->major_moon = true;
+        m->orbit = new Orbit();
+        m->orbit->center = cel;
+        m->orbit->arg_periapsis = draw(0, _pi*2);
+        m->orbit->ascending_node = draw(0, _pi*2);
+        m->orbit->eccentricity = pow(draw(0, 0.1), 10);
+        m->orbit->epoch = J2000;
+        m->orbit->mean_anomaly = draw(0, _pi*2);
+        if (!P)
+        {
+            // First fictional moon of the planet. Base the SMA off the Roche limit and rings.
+            double inner_bound = m->minimum_safe_pericenter();
+            if (cel->ring_radius > inner_bound)
+            {
+                inner_bound = cel->ring_radius;
+            }
+            double A = inner_bound * (1.1 + pow(draw(0, 1), 4) * 20);
+            m->orbit->semimajor_axis = A;
+            m->orbit->compute_period(m->mass);
+
+        }
+        else
+        {
+            // Base the SMA off the previous moon.
+            m->orbit->period = draw(1.8, 2.2) * P;
+            m->orbit->compute_semimajor_axis(m->mass);
+
+        }
+
+        double Roche_dist = m->orbit->semimajor_axis / cel->Roche_limit(m);
+        double tidal_modifier = fmin(1.0, fmax(0.0, (Roche_dist - 1.0) / 10.0));        // 0 at Roche limit for perfect tidal alignment.
+        m->orbit->inclination = pow(draw(0, 1), 4) * 0.2 * half_pi * tidal_modifier;
+        if (draw(0,1) < 0.03) m->orbit->inclination = _pi - m->orbit->inclination;
+        m->obliquity = pow(draw(0, 1), 10) * half_pi * tidal_modifier;
+
+        if (draw(0,1) > D)
+        {
+            P = m->orbit->period;
+            delete m->orbit;
+            m->orbit = nullptr;
+            delete m;
+            continue;
+        }
+
+        if (m->orbit->semimajor_axis > (0.3*cel->Hill_sphere_radius()))
+        {
+            delete m->orbit;
+            m->orbit = nullptr;
+            delete m;
+            break;
+        }
+        m->estimate_rotation();
+        if (!m->sidereal_rotational_period) m->sidereal_rotational_period = oneday;
+        m->classify();
+        m->enforce_orbit_clearance();
+        if (m->orbit->semimajor_axis * (1 + m->orbit->eccentricity) > 0.3*cel->Hill_sphere_radius())
+        {
+            delete m;
+            break;
+        }
+        double disc_area = pow(m->volumetric_mean_radius / earth_radius, 2);
+        m->absolute_magnitude = earth_absmag - log(disc_area * m->albedo / earth_albedo) / log(magnbase);
+        m->apply_cosmic_shoreline();
+
+        m->enforce_orbit_clearance();
+        if (m->orbit->semimajor_axis * (1 + m->orbit->eccentricity) > 0.3*cel->Hill_sphere_radius())
+        {
+            delete m;
+            break;
+        }
+
+        if (!moons.empty())
+        {
+            const Moon& previous = *moons.back();
+            const double h = 5*std::cbrt((m->mass+previous.mass)/(3*cel->mass));
+            const double ratio = (1+previous.orbit->eccentricity+h)/(1-m->orbit->eccentricity-h);
+            m->orbit->semimajor_axis = std::max(m->orbit->semimajor_axis, previous.orbit->semimajor_axis*ratio*1.05);
+            m->orbit->compute_period(m->mass);
+            if (m->orbit->semimajor_axis*(1+m->orbit->eccentricity) > 0.3*cel->Hill_sphere_radius())
+            {
+                delete m;
+                break;
+            }
+        }
+        m->distance_known = true;
+        m->update_location(simnow);
+        moons.emplace_back(m);
+        P = m->orbit->period;
+        j++;
+    }
+    return moons;
+}
+
 void Planet::refresh_host_display_designation()
 {
     if (!orbit || !orbit->center || orbit->center->typeclass() != class_star) return;
@@ -1473,6 +1600,7 @@ bool Atmosphere::from_json(json j)
 json Planet::to_json()
 {
     json towrite = CelestialObject::to_json();
+    towrite["lock_system_plane"] = lock_system_plane;
     towrite["mass_evidence"] = static_cast<int>(mass_evidence);
     towrite["radius_evidence"] = static_cast<int>(radius_evidence);
     if (std::isfinite(mass_error_upper)) towrite["mass_error_upper"] = mass_error_upper;
@@ -1537,6 +1665,7 @@ bool Planet::from_json(json j)
 {
     temperature = 0;
     CelestialObject::from_json(j);
+    lock_system_plane = j.value("lock_system_plane", false);
     preserve_loaded_parameters = true;
     // Optional zero-valued fields are omitted by older saves; a reload must clear stale values.
     albedo = msini = J2 = ring_radius = ring_inner_radius = ring_mean_opacity = 0;

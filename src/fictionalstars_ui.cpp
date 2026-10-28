@@ -568,6 +568,7 @@ void draw_fictional_region()
     changed |= ImGui::SliderInt("Center star", &dialog.region.center_subtype, 0, 14,
         fictional_center_type(dialog.region.center_subtype));
     changed |= ImGui::Checkbox("Include fictional open clusters", &dialog.region.clusters);
+    changed |= ImGui::Checkbox("Planetary systems on about 10% of stars", &dialog.region.planetary_systems);
     changed |= ImGui::InputScalar("Random seed", ImGuiDataType_U64, &dialog.region.seed);
     if (changed) dialog.clear_preview();
     ImGui::Text("Available object slots: %d", available);
@@ -594,7 +595,9 @@ void draw_fictional_region()
     draw_location_diagrams();
     if (dialog.running)
     {
-        ImGui::ProgressBar(float(dialog.progress.load())/dialog.region.star_count);
+        ImGui::ProgressBar(float(dialog.progress.load())/dialog.region.star_count, ImVec2(-1, 0),
+            dialog.region.planetary_systems && dialog.progress.load() >= dialog.region.star_count
+                ? "Generating planets and moons" : nullptr);
     }
     if (dialog.preview_valid)
     {
@@ -602,6 +605,8 @@ void draw_fictional_region()
             dialog.batch.systems, dialog.batch.clusters, dialog.batch.elapsed_seconds);
         ImGui::TextWrapped("Within 100 ly: %d  |  Magnitude 6.5 or brighter from center: %d", dialog.batch.nearby, dialog.batch.naked_eye);
         ImGui::Text("Estimated JSON size: %.1f MiB", dialog.batch.estimated_save_bytes/(1024.0*1024));
+        ImGui::TextWrapped("Planetary systems: %d hosts, %d planets, %d moons", dialog.batch.planet_hosts,
+            dialog.batch.planets, dialog.batch.moons);
         const ImVec2 preview_top = ImGui::GetCursorScreenPos();
         const float preview_width = ImGui::GetContentRegionAvail().x;
         const float preview_height = std::clamp(image_height-140.0f, 100.0f, 180.0f);

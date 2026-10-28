@@ -1,6 +1,7 @@
 #include "fictionalstars.h"
 #include "galaxyimage.h"
 #include "wdcolor.h"
+#include "moon.h"
 #include "galaxygeometry.h"
 #include "exocons.h"
 #include "../globals.h"
@@ -600,7 +601,7 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
         {"population_reference", "CNS5_Golovin_2023_Mamajek_local_density_Solar_catalog"}, {"source_image", galaxy.image.path}, {"source_hash", galaxy.image.hash},
         {"image_encoding", "display_sRGB_approximation"}, {"model", "image_prior_disk_spheroid_v3"},
         {"selection", "stratified_solar_cns5_v3"}, {"clusters", region.clusters},
-        {"motion_model", "galactic_velocity_ellipsoid_v1"}, {"velocity_scale_m_s", speed_scale},
+        {"planetary_systems", region.planetary_systems}, {"motion_model", "galactic_velocity_ellipsoid_v1"}, {"velocity_scale_m_s", speed_scale},
         {"center_type", fictional_center_type(region.center_subtype)}, {"galaxy_radius_ly", galaxy.radius_ly},
         {"morphology", galaxy.morphology}, {"spheroid", galaxy.spheroid},
         {"origin_mly", galaxy.origin_mly.to_json()}, {"east", galaxy.east.to_json()},
@@ -972,8 +973,108 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
             star->stellar_system["label"] = star->name;
         }
     }
+    if (region.planetary_systems)
+    {
+        std::mt19937_64 random(region.seed ^ 0x743ad81fe0962bc5ULL);
+        std::vector<Star*> hosts;
+        for (auto& star : result.stars) hosts.push_back(star.get());
+        for (size_t i = hosts.size(); i > 1; --i) std::swap(hosts[i-1], hosts[random()%i]);
+        const int target = int(std::lround(result.stars.size()*0.1));
+        const auto draw = [&]() { return double(random() >> 11)*0x1.0p-53; };
+        for (Star* host : hosts)
+        {
+            if (result.planet_hosts >= target) break;
+            if (cancel && cancel->load())
+            {
+                result.error = "Preview cancelled.";
+                result.worlds.clear();
+                return result;
+            }
+            if (host->multisys && host->multisys->num_members() > 2) continue;
+            double outer = 500*AU;
+            Rotation disk_plane = host->location.local_system_plane;
+            // Restrict circumstellar worlds well inside every companion's pericenter.
+            if (host->multisys)
+            {
+                for (const auto& other : result.stars)
+                {
+                    if (other.get() == host || other->multisys != host->multisys) continue;
+                    disk_plane = host->orbit ? host->location.orbital_plane : other->location.orbital_plane;
+                    const Orbit* binary = other->orbit ? other->orbit : host->orbit;
+                    if (binary && binary->semimajor_axis > 0)
+                        outer = std::min(outer, 0.05*binary->semimajor_axis*(1-binary->eccentricity)
+                            *std::cbrt(host->mass/(host->mass+other->mass)));
+                }
+            }
+            const double inner = std::max(0.02*AU, host->volumetric_mean_radius*8);
+            const int count = 3+random()%8;
+            std::vector<std::unique_ptr<Planet>> planets;
+            double axis = inner*(1+draw());
+            for (int i = 0; i < count; ++i)
+            {
+                auto planet = std::make_unique<Planet>();
+                planet->rnd_seed = int(random() & 0x7fffffff) | 1;
+                planet->rng.seed(planet->rnd_seed);
+                const double max_mass = std::min(3*jupiter_mass, host->mass*0.0003);
+                planet->mass = exp(log(0.04*earth_mass)+draw()*log(max_mass/(0.04*earth_mass)));
+                const double mass_earth = planet->mass/earth_mass;
+                planet->volumetric_mean_radius = earth_radius*(mass_earth < 2 ? pow(mass_earth, 0.28)*(0.9+0.2*draw())
+                    : mass_earth < 20 ? pow(mass_earth, 0.35)*(1+0.9*draw())
+                    : std::min(12.0, 3.5*pow(mass_earth/20, 0.35))*(0.8+0.4*draw()));
+                planet->mass_evidence = planet->radius_evidence = PlanetMeasurement::estimated;
+                planet->orbit = new Orbit();
+                planet->orbit->center = host;
+                planet->orbit->center_name = host->name;
+                planet->orbit->epoch = J2000+(simnow-J2000_TIME_T)/oneday;
+                planet->orbit->eccentricity = draw()*0.02;
+                planet->orbit->inclination = draw()*fiftyseventh*2;
+                planet->orbit->ascending_node = draw()*2*_pi;
+                planet->orbit->arg_periapsis = draw()*2*_pi;
+                planet->orbit->mean_anomaly = draw()*2*_pi;
+                if (!planets.empty())
+                {
+                    const Planet& previous = *planets.back();
+                    const double h = 8*std::cbrt((planet->mass+previous.mass)/(3*host->mass));
+                    axis = previous.orbit->semimajor_axis*(1+previous.orbit->eccentricity+h)
+                        /(1-planet->orbit->eccentricity-h)*(1.05+draw()*0.25);
+                }
+                if (axis*(1+planet->orbit->eccentricity) > outer) break;
+                planet->orbit->semimajor_axis = axis;
+                planet->orbit->compute_period(planet->mass);
+                const std::string name = std::string(host->name)+" "+char('b'+i);
+                snprintf(planet->name, sizeof(planet->name), "%s", name.c_str());
+                planet->display_designation = name;
+                planet->origname = name;
+                planet->cenobj = host->cenobj;
+                planet->user_added = planet->user_edited = planet->distance_known = true;
+                planet->location = host->location;
+                planet->location.local_system_plane = disk_plane;
+                planet->lock_system_plane = true;
+                planet->classify();
+                planet->estimate_albedo_and_absmagn();
+                planet->estimate_rotation();
+                planet->apply_cosmic_shoreline();
+                planet->update_location(simnow);
+                planets.push_back(std::move(planet));
+            }
+            if (int(planets.size()) != count) continue;
+            ++result.planet_hosts;
+            for (auto& planet : planets)
+            {
+                auto moons = planet->generate_fictional_moons(random);
+                ++result.planets;
+                result.worlds.push_back(std::move(planet));
+                for (auto& moon : moons)
+                {
+                    ++result.moons;
+                    result.worlds.push_back(std::move(moon));
+                }
+            }
+        }
+    }
     result.elapsed_seconds = std::chrono::duration<double>(std::chrono::steady_clock::now()-start).count();
-    if (!result.stars.empty()) result.estimated_save_bytes = result.stars.front()->to_json().dump(4).size()*result.stars.size();
+    for (const auto& world : result.worlds) result.estimated_save_bytes += world->to_json().dump(4).size();
+    if (!result.stars.empty()) result.estimated_save_bytes += result.stars.front()->to_json().dump(4).size()*result.stars.size();
     return result;
 }
 
@@ -984,7 +1085,7 @@ bool FictionalBatch::install(std::string& message)
         message = error.empty() ? "Generate a preview first." : error;
         return false;
     }
-    if (!cels || stars.size() >= size_t(MAX_CELOBJS - ncelobjs))
+    if (!cels || stars.size()+worlds.size() >= size_t(MAX_CELOBJS - ncelobjs))
     {
         message = "The population exceeds available object capacity. Reduce Star count and preview again.";
         return false;
@@ -1020,13 +1121,27 @@ bool FictionalBatch::install(std::string& message)
             return false;
         }
     }
+    for (const auto& world : worlds) members.insert(world.get());
+    for (const auto& world : worlds)
+    {
+        if (!world || !world->orbit || !members.count(world->orbit->center)
+            || !(world->mass > 0) || !(world->volumetric_mean_radius > 0)
+            || !std::isfinite(world->mass+world->volumetric_mean_radius)
+            || !(world->orbit->semimajor_axis > 0) || !(world->orbit->period > 0)
+            || !std::isfinite(world->orbit->semimajor_axis+world->orbit->period)
+            || !names.insert(world->name).second)
+        {
+            message = "A generated world has invalid properties or a conflicting name. Generate a fresh preview.";
+            return false;
+        }
+    }
     for (const auto& star : stars)
         if (!names.insert(star->name).second || !identities.insert(star->fictional_origin.at("id")).second)
         {
             message = "This region identity or designation already exists. Start a new region preview.";
             return false;
         }
-    if (stars.size() >= size_t(MAX_CELOBJS - ncelobjs))
+    if (stars.size()+worlds.size() >= size_t(MAX_CELOBJS - ncelobjs))
     {
         message = "Object capacity changed. Reduce Star count and preview again.";
         return false;
@@ -1039,6 +1154,13 @@ bool FictionalBatch::install(std::string& message)
         object->origname = designation;
     }
     stars.clear();
+    for (auto& world : worlds)
+    {
+        Planet* object = world.release();
+        append_cel(object);
+        object->sync_host_statistics();
+    }
+    worlds.clear();
     for (auto& system : staged_systems) system.release();
     staged_systems.clear();
     lsyscache.clear();

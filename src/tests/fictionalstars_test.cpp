@@ -10,6 +10,7 @@
 #include "../classes/planetnames.h"
 #include "../classes/galaxyimage.h"
 #include "../classes/wdcolor.h"
+#include "../classes/moon.h"
 #include "../classes/cat.h"
 #include "../classes/exocons.h"
 #include "../housekeeping.h"
@@ -41,6 +42,7 @@ class FictionalStarsTest : public UniverseFixture
         region.star_count = 500;
         region.center_ly = Point(25000, 0, 0);
         region.seed = 7519;
+        region.planetary_systems = false;
         temporary = std::filesystem::temp_directory_path() / ("alienorum_fictional_" +
             std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
         std::filesystem::create_directories(temporary);
@@ -1005,4 +1007,107 @@ TEST_F(FictionalStarsTest, RegionWhiteDwarfsRetainAtmosphereTemplatesAndPhysical
     std::cout << "Region WD sample: total=" << count << " warm=" << warm << " peculiar=" << peculiar << std::endl;
     EXPECT_GT(count, 10);
     EXPECT_GT(warm, 0);
+}
+
+TEST_F(FictionalStarsTest, PlanetarySystemsHaveSafeSpacingMoonsAndRoundTripHostStatistics)
+{
+    region.planetary_systems = true;
+    region.star_count = 200;
+    auto batch = generate_fictional_stars(model, region);
+    ASSERT_TRUE(batch.error.empty()) << batch.error;
+    EXPECT_EQ(batch.planet_hosts, 20);
+    EXPECT_GE(batch.planets, 60);
+    EXPECT_LE(batch.planets, 200);
+    EXPECT_GT(batch.moons, 0);
+    std::map<Star*, std::vector<Planet*>> systems;
+    for (const auto& world : batch.worlds)
+    {
+        ASSERT_NE(world->orbit, nullptr);
+        ASSERT_TRUE(world->user_added);
+        EXPECT_GT(world->mass, 0);
+        EXPECT_GT(world->volumetric_mean_radius, 0);
+        EXPECT_GT(world->sidereal_rotational_period, 0);
+        if (world->typeclass() == class_planet)
+        {
+            auto* host = static_cast<Star*>(world->orbit->center);
+            systems[host].push_back(world.get());
+            EXPECT_LT(world->orbit->eccentricity, 0.021);
+            EXPECT_LE(world->orbit->inclination, 2*fiftyseventh);
+            EXPECT_GT(world->orbit->semimajor_axis*(1-world->orbit->eccentricity), host->volumetric_mean_radius*7);
+        }
+        else
+        {
+            auto* moon = static_cast<Moon*>(world.get());
+            auto* parent = static_cast<Planet*>(world->orbit->center);
+            EXPECT_GE(world->orbit->semimajor_axis*(1-world->orbit->eccentricity), moon->minimum_safe_pericenter()/1.1);
+            EXPECT_LE(world->orbit->semimajor_axis*(1+world->orbit->eccentricity), 0.3*parent->Hill_sphere_radius());
+        }
+    }
+    for (const auto& entry : systems)
+    {
+        const auto& planets = entry.second;
+        EXPECT_GE(planets.size(), 3u);
+        EXPECT_LE(planets.size(), 10u);
+        for (size_t i = 1; i < planets.size(); ++i)
+        {
+            const Planet& inner = *planets[i-1], &outer = *planets[i];
+            const double hill = (inner.orbit->semimajor_axis+outer.orbit->semimajor_axis)*0.5
+                *std::cbrt((inner.mass+outer.mass)/(3*entry.first->mass));
+            EXPECT_GT(outer.orbit->semimajor_axis*(1-outer.orbit->eccentricity)
+                -inner.orbit->semimajor_axis*(1+inner.orbit->eccentricity), 16*hill);
+        }
+    }
+    auto repeated = generate_fictional_stars(model, region);
+    ASSERT_EQ(repeated.worlds.size(), batch.worlds.size());
+    for (size_t i = 0; i < batch.worlds.size(); ++i)
+        EXPECT_EQ(repeated.worlds[i]->to_json(), batch.worlds[i]->to_json()) << i;
+    EXPECT_EQ(ncelobjs, 1);
+    const int expected = 1+int(batch.stars.size()+batch.worlds.size());
+    std::string message;
+    ASSERT_TRUE(batch.install(message)) << message;
+    EXPECT_EQ(ncelobjs, expected);
+    for (const auto& entry : systems)
+    {
+        EXPECT_EQ(entry.first->has_planets, int(entry.second.size()));
+        EXPECT_EQ(entry.first->pl_indices.size(), entry.second.size());
+        const int hz = std::count_if(entry.second.begin(), entry.second.end(), [](Planet* p) { return p->is_in_con_HZ(); });
+        EXPECT_EQ(entry.first->has_hz_planets, hz);
+    }
+    const auto path = temporary/"planetary_universe.json";
+    {
+        std::fstream output(path, std::ios::out);
+        ASSERT_TRUE(Serialization::save_all(output, cels, true));
+    }
+    std::fstream input(path, std::ios::in);
+    ASSERT_TRUE(Serialization::load_all(input, cels, MAX_CELOBJS));
+    EXPECT_EQ(ncelobjs, expected);
+    for (const auto& entry : systems)
+    {
+        EXPECT_EQ(entry.first->has_planets, int(entry.second.size()));
+        const int hz = std::count_if(entry.second.begin(), entry.second.end(), [](Planet* p) { return p->is_in_con_HZ(); });
+        EXPECT_EQ(entry.first->has_hz_planets, hz);
+        for (Planet* planet : entry.second)
+        {
+            EXPECT_EQ(planet->orbit->center, entry.first);
+            EXPECT_TRUE(planet->lock_system_plane);
+        }
+    }
+}
+
+TEST_F(FictionalStarsTest, PlanetaryBatchCapacityAndInvalidWorldsCannotPartiallyInstall)
+{
+    region.planetary_systems = true;
+    region.star_count = 30;
+    auto batch = generate_fictional_stars(model, region);
+    ASSERT_FALSE(batch.worlds.empty());
+    const int saved_count = ncelobjs;
+    ncelobjs = MAX_CELOBJS-int(batch.stars.size())-1;
+    std::string message;
+    EXPECT_FALSE(batch.install(message));
+    ncelobjs = saved_count;
+    EXPECT_FALSE(batch.stars.empty());
+    EXPECT_FALSE(batch.worlds.empty());
+    batch.worlds.front()->mass = NAN;
+    EXPECT_FALSE(batch.install(message));
+    EXPECT_EQ(ncelobjs, saved_count);
 }
