@@ -5,6 +5,9 @@
 #include <random>
 #include <algorithm>
 #include <set>
+#include <array>
+#include <cstdint>
+#include <cstring>
 
 #include "planet.h"
 #include "moon.h"
@@ -1052,9 +1055,59 @@ double Planet::est_bolometric_flux(double t_eff)
 double Planet::estimate_bond_albedo()
 {
     #if 1
-    LocalPatchPredictor model;
-    model.load_data(dataset_bond_albedines);
-    return fmax(0, fmin(1, model.predict(BV_color, albedo)));
+    struct Entry
+    {
+        uint64_t color = 0, geometric = 0, revision = 0;
+        double result = 0;
+    };
+    struct Cache
+    {
+        std::vector<LocalPatchPoint> source;
+        LocalPatchPredictor prototype;
+        std::array<Entry, 256> entries{};
+        uint64_t revision = 0;
+        bool source_valid = false;
+    };
+    static thread_local Cache cache;
+    bool source_matches = cache.source_valid && cache.source.size() == dataset_bond_albedines.size();
+    for (size_t index = 0; source_matches && index < cache.source.size(); ++index)
+    {
+        const auto& a = cache.source[index];
+        const auto& b = dataset_bond_albedines[index];
+        source_matches = a.a == b.a && a.b == b.b && a.c == b.c;
+    }
+    if (!source_matches)
+    {
+        cache.source_valid = false;
+        cache.source = dataset_bond_albedines;
+        cache.prototype.load_data(dataset_bond_albedines);
+        if (!++cache.revision)
+        {
+            for (auto& entry : cache.entries) entry.revision = 0;
+            cache.revision = 1;
+        }
+        cache.source_valid = true;
+    }
+    Entry* entry = nullptr;
+    uint64_t color = 0, geometric = 0;
+    static_assert(sizeof(double) == sizeof(uint64_t), "Bond cache requires 64-bit doubles.");
+    if (std::isfinite(BV_color) && std::isfinite(albedo))
+    {
+        std::memcpy(&color, &BV_color, sizeof(color));
+        std::memcpy(&geometric, &albedo, sizeof(geometric));
+        uint64_t hash = color ^ (geometric + 0x9e3779b97f4a7c15ULL + (color << 6) + (color >> 2));
+        hash = (hash ^ (hash >> 30))*0xbf58476d1ce4e5b9ULL;
+        hash = (hash ^ (hash >> 27))*0x94d049bb133111ebULL;
+        hash ^= hash >> 31;
+        entry = &cache.entries[hash%cache.entries.size()];
+        if (entry->revision == cache.revision && entry->color == color && entry->geometric == geometric)
+            return entry->result;
+    }
+    // Copy the unsorted prototype so every miss retains the original interpolation order.
+    LocalPatchPredictor model = cache.prototype;
+    const double result = fmax(0, fmin(1, model.predict(BV_color, albedo)));
+    if (entry) *entry = {color, geometric, cache.revision, result};
+    return result;
     #else
     if (albedo > 0.65) return 1.0 - (1.0 - albedo) * 0.77;              // Venus
     return albedo / 1.46;                                               // typical value

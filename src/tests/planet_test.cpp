@@ -10,6 +10,7 @@
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp>
 #include "../classes/planet.h"
+#include "../classes/patch.h"
 #include "../classes/orbit_spacing.h"
 #include "../classes/cat.h"
 #include "../classes/chemistry.h"
@@ -20,6 +21,72 @@
 
 using namespace alienorum;
 using json = nlohmann::json;
+
+TEST(BondAlbedoCacheTest, InputsAndDatasetChangesRetainInterpolation)
+{
+    struct RestoreDataset
+    {
+        std::vector<LocalPatchPoint> source = dataset_bond_albedines;
+        ~RestoreDataset() { dataset_bond_albedines = std::move(source); }
+    } restore;
+    dataset_bond_albedines =
+    {
+        {0.3, 0.2, 0.2, 0, 0, 0, 0},
+        {0.4, 0.2, 0.3, 0, 0, 0, 0},
+        {0.4, 0.3, 0.4, 0, 0, 0, 0}
+    };
+    Planet planet;
+    planet.BV_color = 0.3;
+    planet.albedo = 0.2;
+    EXPECT_NEAR(planet.estimate_bond_albedo(), 0.2, 1e-14);
+    planet.BV_color = 0.4;
+    EXPECT_NEAR(planet.estimate_bond_albedo(), 0.3, 1e-14);
+    planet.albedo = 0.3;
+    EXPECT_NEAR(planet.estimate_bond_albedo(), 0.4, 1e-14);
+    planet.BV_color = 0.3;
+    planet.albedo = 0.2;
+    dataset_bond_albedines[0].c = 0.6;
+    EXPECT_NEAR(planet.estimate_bond_albedo(), 0.6, 1e-14);
+    dataset_bond_albedines[0].c = 0.2;
+    EXPECT_NEAR(planet.estimate_bond_albedo(), 0.2, 1e-14);
+    dataset_bond_albedines.push_back({1.3, 0.7, 0.11, 0, 0, 0, 0});
+    planet.BV_color = 1.3;
+    planet.albedo = 0.7;
+    EXPECT_NEAR(planet.estimate_bond_albedo(), 0.11, 1e-14);
+    dataset_bond_albedines.pop_back();
+    EXPECT_GT(planet.estimate_bond_albedo(), 0.4);
+    dataset_bond_albedines = restore.source;
+    planet.BV_color = restore.source.front().a;
+    planet.albedo = restore.source.front().b;
+    EXPECT_NEAR(planet.estimate_bond_albedo(), restore.source.front().c, 1e-14);
+}
+
+TEST(BondAlbedoCacheTest, RepeatedAndDistinctQueriesMatchFreshModelExactly)
+{
+    Planet planet;
+    for (int pass = 0; pass < 2; ++pass)
+    {
+        for (int index = 0; index < 1024; ++index)
+        {
+            planet.BV_color = double(index%127)/127*2-0.3;
+            planet.albedo = double((index*37)%113)/113;
+            LocalPatchPredictor reference;
+            reference.load_data(dataset_bond_albedines);
+            const double expected = fmax(0, fmin(1, reference.predict(planet.BV_color, planet.albedo)));
+            EXPECT_DOUBLE_EQ(planet.estimate_bond_albedo(), expected) << index;
+            EXPECT_DOUBLE_EQ(planet.estimate_bond_albedo(), expected) << index;
+        }
+    }
+    for (double value : {0.0, -0.0, std::numeric_limits<double>::infinity(),
+        std::numeric_limits<double>::quiet_NaN()})
+    {
+        planet.BV_color = value;
+        LocalPatchPredictor reference;
+        reference.load_data(dataset_bond_albedines);
+        EXPECT_DOUBLE_EQ(planet.estimate_bond_albedo(),
+            fmax(0, fmin(1, reference.predict(planet.BV_color, planet.albedo))));
+    }
+}
 
 TEST(CosmicShoreTest, PressureSaturatesWithoutOverflowOrVacuumDiscontinuity)
 {
