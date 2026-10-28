@@ -812,7 +812,8 @@ void load_catalogs()
     if (!magnitude_test)                    // If magnitude test, cut out all the slow loading stuff and streamline.
     {
         #if _USE_CCDM
-        if (have_CCDM)
+        // Companion links, positions, and orbital elements are restored from the in-house catalog.
+        if (have_CCDM && !ihsc)
         {
             mtx.lock();
             loading_msg = std::string("Loading Catalogue of the Components of Double and Multiple Stars...");
