@@ -100,6 +100,7 @@ namespace alienorum
         void estimate_albedo_and_absmagn();                 // if not known, e.g. exoplanets
         void update_location(double tmnow);                 // Only applicable if we have an orbit; otherwise just return.
         void sync_host_statistics();
+        void refresh_host_statistics_if_changed();
         static void rebuild_host_statistics();
         bool counts_for_host_statistics() const;
         double est_bolometric_flux(double t_eff = 0);

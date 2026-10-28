@@ -218,6 +218,7 @@ bool planetary_system_is_active(const CelestialObject* cel)
 
 bool compute_object_location(CelestialObject* cel)
 {
+    if (cel->typeclass() == class_planet) static_cast<Planet*>(cel)->refresh_host_statistics_if_changed();
     if (!planetary_system_is_active(cel))
     {
         cel->drawnx = cel->drawny = -1e9;

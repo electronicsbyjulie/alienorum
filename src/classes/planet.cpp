@@ -956,6 +956,26 @@ bool Planet::counts_for_host_statistics() const
         && (!std::isfinite(mass) || mass <= 0 || mass >= planet_count_mass_cutoff);
 }
 
+void Planet::refresh_host_statistics_if_changed()
+{
+    if (typeclass() != class_planet || !cels || seqno < 0 || seqno >= ncelobjs || cels[seqno] != this) return;
+    if (deleted || !counts_for_host_statistics())
+    {
+        if (statistics_host) sync_host_statistics();
+        return;
+    }
+    if (statistics_host && statistics_host_index >= 0 && statistics_host_index < ncelobjs
+        && cels[statistics_host_index] == statistics_host && !statistics_host->deleted
+        && orbit && orbit->center == statistics_host
+        && cached_hz_host == statistics_host && cached_in_cons_hz == orbit->semimajor_axis
+        && cached_hz_stellar_sma == orbit->semimajor_axis && cached_hz_mass == mass
+        && cached_hz_temperature == statistics_host->temperature
+        && cached_hz_magnitude == statistics_host->absolute_magnitude
+        && statistics_hz == cache_in_cons_hz && !statistics_host->pl_indices.empty()
+        && statistics_host->has_planets == static_cast<int>(statistics_host->pl_indices.size())) return;
+    sync_host_statistics();
+}
+
 void Planet::sync_host_statistics()
 {
     if (typeclass() != class_planet || !cels || seqno < 0 || seqno >= ncelobjs || cels[seqno] != this) return;

@@ -50,6 +50,19 @@ TEST_F(HousekeepingTest, CulledPlanetsRefreshHzCountsAfterDirectOrbitChanges)
     EXPECT_FALSE(compute_object_location(planet));
     EXPECT_EQ(host->has_hz_planets, 1);
     EXPECT_EQ(host->has_planets, 1);
+    const CelestialLocation original_location = planet->location;
+    for (int frame = 0; frame < 100; ++frame) EXPECT_FALSE(compute_object_location(planet));
+    EXPECT_EQ(planet->location.distance_to(original_location), 0);
+    EXPECT_EQ(host->pl_indices.size(), 1u);
+    planet->mass = planet_count_mass_cutoff / 2;
+    EXPECT_FALSE(compute_object_location(planet));
+    EXPECT_EQ(host->has_planets, 0);
+    planet->mass = earth_mass;
+    EXPECT_FALSE(compute_object_location(planet));
+    EXPECT_EQ(host->has_planets, 1);
+    planet->deleted = true;
+    EXPECT_FALSE(compute_object_location(planet));
+    EXPECT_EQ(host->has_planets, 0);
     delete_the_universe();
 }
 
