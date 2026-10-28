@@ -14,6 +14,7 @@
 #include "../classes/galaxygeometry.h"
 #include "../visuals.h"
 #include "../inputs.h"
+#include "../dialogs.h"
 #include "../sphere_impostor.h"
 #include "../housekeeping.h"
 #include "../classes/clouds_gpu.h"
@@ -788,6 +789,74 @@ TEST_F(RenderingRegressionTest, CompanionHoverAndSelectionFollowFivePixelSeparat
     EXPECT_EQ(stellar_display_target(companion), companion);
     companion->drawny = 57.99;
     EXPECT_EQ(stellar_display_target(companion), primary);
+}
+
+TEST_F(RenderingRegressionTest, StellarNeighborhoodSortsDistancesAndRetainsCatalogOrderForTies)
+{
+    extern std::vector<int> neighb_celids;
+    extern std::vector<double> neighb_celr;
+    extern bool onlysun, onlywd, onlyplt, onlyhz, onlyknp;
+    extern int neighbly, lneighbly;
+    Star* observer = make_star("Neighborhood observer");
+    set(mycenobj, static_cast<CelestialObject*>(observer));
+    set(last_neighb_cen, static_cast<CelestialObject*>(nullptr));
+    set(neighborhood, true);
+    set(neighbly, 1000);
+    set(lneighbly, -1);
+    set(onlysun, false);
+    set(onlywd, false);
+    set(onlyplt, false);
+    set(onlyhz, false);
+    set(onlyknp, false);
+    std::vector<int> expected{observer->seqno};
+    std::vector<Star*> stars;
+    Star* unknown = nullptr;
+    for (int index = 0; index < 1000; ++index)
+    {
+        Star* star = make_star(("Neighborhood star " + std::to_string(index)).c_str());
+        star->tmprel = Point(0, 0, (50-index%50)*light_year);
+        star->location.local_position = star->tmprel;
+        stars.push_back(star);
+        if (index == 0)
+        {
+            unknown = make_star("Neighbor without position");
+            unknown->tmprel = Point(NAN, NAN, NAN);
+            unknown->location.local_position = unknown->tmprel;
+        }
+    }
+    for (int distance = 1; distance <= 50; ++distance)
+        for (int index = 0; index < 1000; ++index)
+            if (50-index%50 == distance)
+            {
+                expected.push_back(stars[index]->seqno);
+                if (index == 0) expected.push_back(unknown->seqno);
+            }
+    Star* deleted = make_star("Deleted neighbor");
+    deleted->deleted = true;
+    Star* outside = make_star("Outside cutoff");
+    outside->tmprel = Point(0, 0, 1001*light_year);
+    for (int frame = 0; frame < 2; ++frame)
+    {
+        ImGui::GetIO().DisplaySize = ImVec2(1024, 768);
+        ImGui::SetNextWindowPos(ImVec2(0, 0));
+        ImGui::SetNextWindowSize(ImVec2(950, 650));
+        draw_stellar_neighborhood(ImGui::GetIO());
+        EXPECT_EQ(neighb_celids, expected);
+        ASSERT_EQ(neighb_celr.size(), expected.size());
+        for (size_t index = 0; index < expected.size(); ++index)
+        {
+            const double distance = cels[expected[index]]->tmprel.magnitude();
+            if (std::isnan(distance)) EXPECT_TRUE(std::isnan(neighb_celr[index]));
+            else EXPECT_DOUBLE_EQ(neighb_celr[index], distance);
+        }
+        if (frame == 0)
+        {
+            ImGui::EndFrame();
+            ImGui::NewFrame();
+        }
+    }
+    neighb_celids.clear();
+    neighb_celr.clear();
 }
 
 TEST_F(RenderingRegressionTest, FictionalRegionDialogRendersWithImageAndAnalyticFallback)

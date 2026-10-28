@@ -3051,6 +3051,13 @@ void draw_stellar_neighborhood(ImGuiIO &io)
         {
             neighb_celids.clear();
             neighb_celr.clear();
+            struct Neighbor
+            {
+                double distance, rank;
+                int index;
+            };
+            std::vector<Neighbor> neighbors;
+            double preceding_max = -INFINITY;
             for (i=0; cels[i]; i++)
             {
                 if (cels[i]->deleted) continue;
@@ -3058,33 +3065,23 @@ void draw_stellar_neighborhood(ImGuiIO &io)
                 if (cls != class_star) continue;
                 r = cels[i]->tmprel.magnitude();
                 if (r > neighb_rthresh) continue;
-
-                l = neighb_celids.size();
-                if (!l)
-                {
-                    neighb_celids.push_back(i);
-                    neighb_celr.push_back(r);
-                }
-                else
-                {
-                    bool inserted = false;
-                    for (j=0; !inserted && j<l; j++)
-                    {
-                        if (neighb_celr[j] > r)
-                        {
-                            neighb_celids.insert(neighb_celids.begin()+j, i);
-                            neighb_celr.insert(neighb_celr.begin()+j, r);
-                            inserted = true;
-                        }
-                    }
-                    if (!inserted)
-                    {
-                        neighb_celids.push_back(i);
-                        neighb_celr.push_back(r);
-                    }
-                }
+                // Legacy insertion leaves an unknown distance after the preceding maximum.
+                const double rank = std::isnan(r) ? preceding_max : r;
+                if (!std::isnan(r)) preceding_max = std::max(preceding_max, r);
+                neighbors.push_back({r, rank, i});
             }
-            
+            std::stable_sort(neighbors.begin(), neighbors.end(), [](const auto& a, const auto& b)
+            {
+                return a.rank < b.rank;
+            });
+            neighb_celids.reserve(neighbors.size());
+            neighb_celr.reserve(neighbors.size());
+            for (const auto& neighbor : neighbors)
+            {
+                neighb_celr.push_back(neighbor.distance);
+                neighb_celids.push_back(neighbor.index);
+            }
+
             lneighbly = neighbly;
         }
 
