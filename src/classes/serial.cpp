@@ -4,6 +4,7 @@
 #include <set>
 #include <memory>
 #include <tuple>
+#include <iomanip>
 #include "cat.h"
 #include "serial.h"
 #include "cons.h"
@@ -762,7 +763,7 @@ bool Serialization::save_all(std::fstream& fs, CelestialObject **cels, bool oe)
             }
         }
 
-        fs << allobjs.dump(4);
+        fs << std::setw(4) << allobjs;
         return true;
     }
     catch (...)

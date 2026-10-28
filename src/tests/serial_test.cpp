@@ -913,6 +913,38 @@ TEST_F(SerializationTest, OldFileStatingZeroPrecessionLoadsAsZero)
 // Saving only what was edited
 // =====================================================================
 
+TEST_F(SerializationTest, StreamedSaveMatchesFormattedDocumentBytes)
+{
+    Star* host = make_star("Streaming primary");
+    host->user_edited = true;
+    Planet* planet = make_planet(host, "Streaming planet");
+    planet->user_added = true;
+    host->stellar_system["format_probe"] = {{"unicode", "é Ω"}, {"escape", "line\n\t\""}, {"null", nullptr}};
+    for (bool edited : {false, true})
+    {
+        const std::string path = temp_universe("stream_bytes");
+        std::fstream output(path, std::ios::out | std::ios::trunc);
+        json reference;
+        ASSERT_TRUE(Serialization::save_one(output, host, reference));
+        ASSERT_TRUE(Serialization::save_one(output, planet, reference));
+        ASSERT_TRUE(Serialization::save_all(output, cels, edited));
+        output.close();
+        std::ifstream input(path, std::ios::binary);
+        const std::string bytes((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+        EXPECT_EQ(bytes, reference.dump(4));
+        std::remove(path.c_str());
+    }
+    delete_the_universe();
+    const std::string path = temp_universe("stream_empty");
+    std::fstream output(path, std::ios::out | std::ios::trunc);
+    ASSERT_TRUE(Serialization::save_all(output, cels, true));
+    output.close();
+    std::ifstream input(path, std::ios::binary);
+    const std::string bytes((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+    EXPECT_EQ(bytes, "null");
+    std::remove(path.c_str());
+}
+
 TEST_F(SerializationTest, OnlyEditedWritesOnlyTheEditedObjects)
 {
     // This is the mode the program actually saves in (loaders.cpp), so that a universe file holds
