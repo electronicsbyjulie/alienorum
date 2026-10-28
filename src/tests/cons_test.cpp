@@ -407,6 +407,7 @@ class ExoConsTest : public ::testing::Test
         constellations.clear();
         num_reg_cons = 0;
         read_cons_lines();
+        cache_cons_lines();
     }
 
     void TearDown() override
@@ -676,6 +677,7 @@ TEST_F(ExoConsTest, AlphaMensae_RetainsCustomShapesAndGeneratesUnusedStars)
         }
     }
     EXPECT_EQ(existing_men_cons_count, 2);
+    EXPECT_FALSE(existing_stars.empty());
 
     std::vector<Constellation> generated;
     ExoConsGenerator::generate_constellations(alp_men, generated);
