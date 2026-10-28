@@ -4188,6 +4188,83 @@ TEST_F(CatalogParsingTest, HipparcosBinaryAtlasAndCompanionSharePlanes)
 
 
 
+TEST_F(CatalogParsingTest, SourceCatalogWritesUnbinnedStarsExactlyOnce)
+{
+    struct RestoreDirectory
+    {
+        std::filesystem::path original, temporary;
+        ~RestoreDirectory()
+        {
+            std::filesystem::current_path(original);
+            std::filesystem::remove_all(temporary);
+        }
+    } restore{std::filesystem::current_path(), std::filesystem::temp_directory_path() /
+        ("alienorum_catalog_writer_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()))};
+    std::filesystem::create_directories(restore.temporary / "catalogs");
+    std::filesystem::current_path(restore.temporary);
+    Star* primary = make_star("Writer Primary");
+    primary->set_component('A', primary);
+    Star* companion = make_star("Writer Companion");
+    companion->make_companion_of(primary, 'B');
+    make_star("Writer Unbinned");
+    Star* fictional = make_star("Writer Fictional");
+    fictional->fictional_origin = {{"test", true}};
+    Constellation constellation;
+    ConsBins bins;
+    bins[&constellation][4]['y'] = {primary, primary};
+    CatalogReader reader;
+    EXPECT_EQ(reader.write_condensed_star_cat(bins), 4);
+    std::ifstream input("catalogs/soles_alienorum.dat");
+    std::map<std::string, int> names;
+    std::string line;
+    while (std::getline(input, line))
+    {
+        if (!line.empty() && line[0] != '#') ++names[trim(line.substr(15, 39))];
+    }
+    EXPECT_EQ(names.size(), 4u);
+    EXPECT_EQ(names["Sol"], 1);
+    EXPECT_EQ(names["Writer Primary"], 1);
+    EXPECT_EQ(names["Writer Companion"], 1);
+    EXPECT_EQ(names["Writer Unbinned"], 1);
+    EXPECT_EQ(names.count("Writer Fictional"), 0u);
+    delete_the_universe();
+}
+
+TEST_F(CatalogParsingTest, HipparcosOrbitPreservesMeasuredAndUnknownPhotometry)
+{
+    CatalogReader reader;
+    Star* primary = make_star("Photometry A");
+    primary->HIP = 12345;
+    primary->distance = 20 * parsec;
+    primary->distance_known = true;
+    primary->absolute_magnitude = 4;
+    Star* companion = make_star("Photometry B");
+    companion->make_companion_of(primary, 'B');
+    const double unknown = companion->apparent_magnitude;
+    std::string row = hip_atlas_orbit;
+    row.replace(0, 6, " 12345");
+    Star** saved = hipcache;
+    std::vector<Star*> cache(MAX_HIP + 1, nullptr);
+    cache[12345] = primary;
+    hipcache = cache.data();
+    struct Restore
+    {
+        Star** value;
+        ~Restore() { hipcache = value; }
+    } restore{saved};
+    int offset = ncelobjs;
+    for (double magnitude : {8.0, 0.0, unknown})
+    {
+        companion->apparent_magnitude = magnitude;
+        companion->absolute_magnitude = -3.5;
+        EXPECT_TRUE(reader.load_Hipparcos_orbit_line(row.c_str(), cels, MAX_CELOBJS, offset));
+        EXPECT_EQ(companion->apparent_magnitude, magnitude);
+        EXPECT_DOUBLE_EQ(companion->absolute_magnitude, -3.5);
+        EXPECT_EQ(primary->multisys->get_member('B'), companion);
+    }
+    delete_the_universe();
+}
+
 class CatalogPhotometryRegressionTest : public UniverseFixture {};
 
 TEST_F(CatalogPhotometryRegressionTest, EarthViewNeverGreatlyOutshinesCatalogPhotometry)
@@ -4210,8 +4287,9 @@ TEST_F(CatalogPhotometryRegressionTest, EarthViewNeverGreatlyOutshinesCatalogPho
             simnow = time;
             radio_silence = offline;
         }
-    } restore;
+    };
     std::vector<Star*> hd(MAX_HD + 1, nullptr), hip(MAX_HIP + 1, nullptr);
+    RestoreCatalogState restore;
     hdcache = hd.data();
     hipcache = hip.data();
     dmcache.clear();

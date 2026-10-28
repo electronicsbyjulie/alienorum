@@ -1021,7 +1021,7 @@ bool CatalogReader::load_Hipparcos_orbit_line(const char* buffer, CelestialObjec
     s->equinox = 0;
 
     s->distance_known = true;
-    s->apparent_magnitude = 11;         // placeholder
+    // Orbital elements supply no visual photometry; preserve measured or unknown V.
     if (s->absolute_magnitude > 1e28)
     {
         s->absolute_magnitude = A->absolute_magnitude + 1;      // garbage number
@@ -6227,7 +6227,14 @@ int alienorum::CatalogReader::write_condensed_star_cat(ConsBins cb)
     if (fp)
     {
         fprintf(fp, "# ORBITS1 %s\n", star_orbits_signature().c_str());
-        write_condensed_star_cat_line(fp, (Star*)cels[0]);
+        std::unordered_set<Star*> recorded;
+        const auto record = [&](Star* object)
+        {
+            if (!object || object->fictional_origin.is_object() || !recorded.insert(object).second) return;
+            write_condensed_star_cat_line(fp, object);
+            ++written;
+        };
+        record(static_cast<Star*>(cels[0]));
 
         for (const auto& [cs, val1] : cb)
         {
@@ -6243,10 +6250,10 @@ int alienorum::CatalogReader::write_condensed_star_cat(ConsBins cb)
                             for (c = 'A'; c <= 'Z'; c++)
                             {
                                 Star *B = val3[i]->multisys->get_member(c);
-                                if (B && B->get_component() == c) write_condensed_star_cat_line(fp, B);
+                                if (B && B->get_component() == c) record(B);
                             }
                         }
-                        else write_condensed_star_cat_line(fp, val3[i]);
+                        else record(val3[i]);
 
                         if (frand(0,1) < 0.1)
                         {
@@ -6261,6 +6268,11 @@ int alienorum::CatalogReader::write_condensed_star_cat(ConsBins cb)
             }
         }
 
+        // Keep stars outside the numbered bins or the current component slots too.
+        for (int index = 0; cels[index]; ++index)
+        {
+            if (cels[index]->typeclass() == class_star) record(static_cast<Star*>(cels[index]));
+        }
         fclose(fp);
 
         #ifndef _WIN32
