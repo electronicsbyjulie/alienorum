@@ -1,0 +1,556 @@
+FRAME-RATE AUDIT: REVIEW PROPOSALS, NOT IMPLEMENTED CHANGES
+Alienorum / fakestars / source baseline ed050bb / 28 October 2026
+
+PURPOSE AND REVIEW CONTRACT
+
+This is a fresh source and workload audit, with particular attention to walking on vegetated wet surfaces inside large fictional populations in remote galaxies. It is deliberately broader than the previous list of 17 findings. It includes conservative optimizations, architectural changes, approximations, and explicit options for cutting visual effects. None of the proposals below has been implemented. A source-confirmed cost is not proof that its replacement will be faster, and the proposed benefits are not additive: several entries attack the same work from different directions.
+
+The first review priorities are eliminating whole-catalog work from local surface frames, retaining terrain work while walking, reducing the number of plant candidates reaching detailed geometry, and avoiding repeated water/coast sampling. GPU cloud costs, synchronization, and resource arrival can also dominate particular scenes. A compact save file is valuable, but it does not eliminate the live cost of 126,874 imported objects.
+
+READING GUIDE
+
+The inventory contains 117 individually reviewable proposals. Start with the recommended review order after P110, then the M1-M5 measurement appendices and P116-P117. Priority A identifies the first investigations; Q2/Q3 explicitly identify visual cuts. Each entry states its source or hypothesis, proposed change, risk, and validation. No optimization percentage is promised for an unimplemented proposal.
+
+EVIDENCE AND QUALITY LEGEND
+
+S = confirmed structure in the current source, with an unmeasured optimization benefit. H = plausible risk requiring a targeted trace before implementation. M = an accepted measurement; the measurement supports only its stated workload. Failed fixture setup, startup time, and instrumented frame time are not native steady-state FPS measurements.
+
+Q0 = intended to preserve the current visible result and physical state. Q1 = bounded approximation, delayed update, or alternate reconstruction, requiring comparison against the current result. Q2 = a visible quality reduction that belongs behind an explicit option or an approved default change. Q3 = removing an effect or content from a rendering mode. Q0 is an implementation goal, not a guarantee before testing.
+
+Priority A means investigate first; B means a credible second wave or a scene-dependent major cost; C means lower impact, narrower applicability, or greater engineering risk. Every proposal has an ID so individual changes can be approved independently. Source anchors refer to ed050bb; they are navigation aids, not claims about unchanged line numbers after future edits.
+
+AUDITED WORKLOAD AND LIMITS
+
+The inspected population contains 10,000 stars, 19,794 planets, and 97,080 moons. The legacy archive is 698,455,272 bytes; its separately written compact counterpart is 119,418,692 bytes. The complete archive was converted and imported in isolated harnesses. A full import comparison at a fixed epoch found zero differences across all 126,874 objects in the compared physical, orbital, identity, and host-statistic state. Those checks validate the completed serialization fix, not these rendering proposals.
+
+For context, one current-reader harness run parsed the legacy JSON in 12.543 seconds and the compact JSON in 3.892 seconds; full import took 36.170 and 33.632 seconds respectively. Peak RSS was 3,431,392 and 1,667,668 KiB. These are individual controlled headless runs with a baseline Sun and the saved population, not complete application-startup timings. They establish that live memory and object construction remain substantial even after the disk-size reduction.
+
+The frame audit uses an isolated runtime directory and the actual saved population. Production files, archive contents, user layouts, and preferences are not modified by fixture experiments. Hardware performance counters are unavailable in this environment. Software-rendered runs cannot establish GPU performance on the user's laptops. The measurement appendix records the accepted rendering observations separately; the proposal body uses S or H unless a direct result supports a stronger statement.
+
+IMPORTANT EXISTING OPTIMIZATIONS
+
+Several optimizations already exist and are not being proposed as if absent. Inactive planetary systems already have an activity guard. Root astrometry is reused within a coordinate pass. Surface height fields and world-anchored scenery already have caches. Scenery classification and canopy clearance are cached. Crown contours and a coarse crown-occlusion mask already exist. Cloud rendering already uses a reduced-size cached layer and cluster/tile culling. Texture generations already suppress repeated full-map uploads. GPU uniform locations are cached. Eclipse casters are already collected once per frame and searched by light source. The neighborhood window already uses clipping. These implementations still have costs and invalidation limits described below.
+
+The default horizon path also matters: GPU ground painting is enabled, whereas optional GPU terrain-mesh generation and terrain rasterization are disabled. Current CPU mesh and depth-buffer work must not be attributed to those disabled GPU experiments. Proposals to revisit them are experiments, not diagnoses of an active bottleneck.
+
+A. GLOBAL OBJECT WORK IN A LOCAL SURFACE VIEW
+
+P001 | A / S / Q0 | Construct one active-system set per frame.
+Source: src/housekeeping.cpp, planetary_system_is_active around 254 and its callers in coordinate and eclipse processing. The activity predicate repeatedly compares the current, selected, tracked, and edited objects' roots. Its selected-star branch can walk ancestors and derive system extent. Assemble the active roots and their reasons once, then perform indexed membership tests. This preserves the present selection and zoom semantics while removing repeated ancestry work. Validate current-system planets, selected remote systems, tracking, edit dialogs, zoom thresholds, deleted parents, and switching between galaxies. A cached root set must be invalidated on all of those transitions.
+
+P002 | A / S / Q0 | Iterate active planets and moons instead of scanning every stored body.
+Source: src/housekeeping.cpp, compute_object_draw_coordinates around 420, and src/visuals.cpp, draw_objects around 3895. The early activity guard avoids expensive orbit updates but still requires walking a very large pointer array. Maintain class and host membership lists; build a compact per-frame candidate array from the active roots plus relevant stars and galaxies. This targets the 116,874 worlds in the inspected population. Preserve existing favorite, label, selection, and visibility exceptions explicitly. Verify distant-system zoom and newly generated or imported bodies; an omitted object is a correctness failure, even if FPS improves.
+
+P003 | A / S / Q0 | Reset draw state only for objects touched by the previous or current frame.
+Source: src/housekeeping.cpp around 539: magnitude and several projected-bound fields are reset before the inactive-system check. Replace blanket writes with a previous-visible list or a frame-generation stamp. This removes memory writes to dormant planets and moons and improves cache locality. Consumers must recognize invalid or stale bounds consistently; hover and labels cannot read a previous frame's location. Validate turning away, hiding a class, changing projection, teleporting, deleting an object, and leaving a system. Generation wrap and object-index reuse also require explicit handling.
+
+P004 | A / S / Q0 | Make host statistics mutation-driven rather than repeatedly checked by inactive bodies.
+Source: src/housekeeping.cpp, compute_object_location around 292, calls refresh_host_statistics_if_changed before the activity rejection. This ordering preserves recently fixed counts, but means distant worlds still participate in per-frame dependency checking. Maintain a dirty-host queue populated by every creation, import, deletion, mass, SMA, period, resonance, and host reassignment path. Reconcile dirty hosts once before consumers read them. Keep the planet-mass threshold and asteroid exclusion unchanged. Validate the Pluto-sized-asteroid case, the Sun's eight planets, HZ transitions caused by edits, and fictional imports. Do not simply move the check behind culling and recreate PA11.
+
+P005 | A / S / Q0 | Share the visible-object candidate list across drawing, glints, labels, and picking.
+Source: src/visuals.cpp around 4015 and 6314; src/inputs.cpp, identify_object_under_cursor. Several consumers independently sweep the catalog after coordinate work has already established visibility. Publish a frame-local list with projected bounds, magnitude, class, and draw eligibility. Each consumer can apply its own final filters while avoiding another global traversal. Water glints must retain very bright objects outside ordinary point-label eligibility. Picking must preserve near-object overlap ordering, and label rules must still include the five-pixel moon/companion separation and all prior filters.
+
+P006 | B / S / Q0 | Replace the rise/set alert scan with an armed-alert registry.
+Source: src/classes/sound.cpp, check_rise_set_alerts around 258 and reset_horizon_tracking around 239. Every horizon frame scans all objects to discover alert flags, including scenes with no armed alerts. Track only armed rise/set targets and reset their history on relevant observer changes. Audio mute alone is not a valid shortcut because alert state and callbacks can matter independently of playback. Validate imports, favorites, toggling either alert, removal, observer changes, time reversal, and mode changes. An empty registry should make this path constant-time.
+
+P007 | B / S / Q0 | Index eclipse candidates by active system and light source.
+Source: src/visuals.cpp, refresh_eclipse_casters around 627. Collection is already once per frame, but it still begins with a full object scan and sorts the survivors. Feed it the active-system body lists, retaining asteroid and special-body rules, then retain or rebuild each light-source bucket only when membership changes. Motion still updates the geometric data. Validate moon shadows, mutual events, companion illumination, and selected remote systems. Compare actual eclipses rather than just list lengths. This proposal removes collection overhead; it does not justify changing the existing geometric rejection tests.
+
+P008 | B / S / Q0 | Store hot frame fields in contiguous arrays.
+Source: the repeated cels pointer traversals in housekeeping.cpp and visuals.cpp. Class tests, flags, root IDs, magnitude, and draw bounds are scattered through large subclass instances. A compact hot-state array can make the retained global passes much cheaper without rewriting physical ownership immediately. Start with measured fields and synchronized mutation hooks rather than a second unsupervised object model. Validate import, deletion, capacity growth, index reuse, and generated populations. This overlaps P002/P003 and should be evaluated after their benefit is measured, not counted as a separate guaranteed multiplier.
+
+P009 | B / S / Q0 | Add galaxy-aware spatial and magnitude buckets for stars.
+Source: compute_object_draw_coordinates and Star visibility handling; generated populations in src/classes/fictionalstars.cpp. Catalog-wide star traversal persists even when the observer is inside one remote galaxy and most local stars are irrelevant. Conservative spatial bounds and luminosity ranges can reject whole groups before per-star projection. Retain bright exceptional stars, favorites, constellation endpoints, proper motion, and warp transitions. Use galactic positions with sufficient precision; distant coordinates cannot be coarsened into visible jitter. Validate the Sun, M31, and at least two fictional populations with different densities and ages.
+
+P010 | B / H / Q1 | Give unresolved distant systems a render proxy.
+A star system whose worlds are all subpixel can retain one photometric/render proxy while its full physical objects remain in the universe. Expand the render representation when selected, tracked, edited, approached, or sufficiently magnified. This goes beyond the present orbit-activity guard by removing dormant worlds from render-facing structures. Combined light and exceptional transits complicate exact equivalence, so treat it as Q1 until comparisons prove otherwise. Validate approach/retreat hysteresis and the five-pixel identity rules. It must not silently delete worlds, alter host counts, or change their saved data.
+
+P011 | C / H / Q0 | Lazily materialize dormant fictional planetary systems.
+For very large populations, retaining lightweight serialized physical records and instantiating full Planet/Moon objects only for active systems could reduce resident memory and pointer traversal. This is a larger architecture project involving stable identity handles, reference resolution, saving, search, and editing. It is not a quick substitute for P002. Activation must reproduce identical physical state and RNG behavior without a visible pause. Validate round trips and arbitrary access before considering it production-ready. The benefit is mainly memory pressure and scaling; a frame-time gain depends on eliminating associated global work.
+
+B. ASTROMETRY, PROJECTION, AND FRAME SCHEDULING
+
+P012 | A / S / Q0 | Reuse a coherent observer context through the entire frame.
+Source: src/housekeeping.cpp around 450 and 531, and src/alienorum.cpp around 720. Viewer position/plane and root-derived quantities are recomputed at several stages to accommodate dependencies. Build an explicit frame context after resolving the required ancestors, with observer basis, world radius, atmosphere/refraction, and time. Reuse it in terrain, scenery, water, clouds, and projection. Preserve ordering for a moving observer and time changes. Validate walking, standing on moons, warped time, and changing the central object. This is dependency consolidation, not skipping an update that actually changed.
+
+P013 | B / S / Q0 | Reuse observer-relative vectors instead of subtracting them again.
+Source: src/housekeeping.cpp around 292 and the following coordinate pass. tmprel is computed during location handling and then recomputed for broad sets of objects. Mark vectors valid for a particular observer/time generation and reuse them where the coordinate frames agree. Root location caching already exists within a pass, so this targets the remaining subtraction, norm, and transform repetition. Validate light-time handling, moving ancestors, and the cases that adjust the observer after an initial pass. A stale vector can corrupt both labels and physical illumination.
+
+P014 | B / S / Q0 | Cache selected-system extent and ancestry.
+Source: planetary_system_is_active's selected-star/zoom branch. Ancestor traversal and maximum orbital extent are structural properties that usually survive many frames. Cache them by system-structure and orbital-element revisions. This separates cheap per-frame camera distance tests from repeated hierarchy discovery. Validate a planet becoming a moon, SMA edits, companion changes, system import, and deletion. This can be implemented independently of P001 but is largely absorbed if P001 computes the same value once; avoid duplicate caches with conflicting invalidation.
+
+P015 | B / H / Q1 | Update very distant astrometry at an error-bounded cadence.
+A star whose projected motion is far below a small pixel fraction does not necessarily require the same update frequency as a nearby moon. Derive cadence from angular velocity, proper motion, camera movement, time acceleration, and projection scale, with exact updates on interaction or threshold crossing. Existing per-pass root caching does not provide this cross-frame reuse. Validate high-proper-motion stars, long jumps, fast warp, binaries, and apparent-position precision. This is an approximation proposal; the acceptable pixel error and cadence cap must be approved and measured, not assumed.
+
+P016 | B / H / Q1 | Cache background projection separately from observer translation.
+While walking a few centimeters on a distant planet, most background stars move by an imperceptible amount. Retain a background layer or projected candidate set until a conservative angular-error bound is crossed, while nearby systems, horizon refraction, and camera rotation remain current. This can reduce projection work in dense fictional skies. Atmospheric changes and celestial motion complicate image reuse, so candidate reuse may be safer than reusing final pixels. Validate horizon emergence, refraction, zoom, and constellation alignment. Do not freeze stars in a way that becomes visible during normal motion.
+
+P017 | A / S / Q0 | Remove avoidable sleep from an already late frame.
+Source: src/alienorum.cpp around 1188. The adaptive idle timeout has a five-millisecond floor and is applied before the final deadline sleep, including horizon frames already over budget. Measure the complete pacing chain, then use a single deadline-aware wait with responsive event handling. Preserve the 30-FPS target and elapsed-time movement semantics fixed previously. Check CPU utilization when idle, input latency, minimized windows, swap interval interactions, and fast hardware. This proposal targets latency and lost scheduling time; it does not make expensive rendering itself cheaper.
+
+P018 | B / H / Q0 | Trace catalog-mutex hold and wait times before shrinking critical sections.
+Source: the main frame's catalog_lock in src/alienorum.cpp and worker publication paths. Much rendering operates while the catalog mutex is held. Generation and texture workers can either wait for frames or interrupt them when publication gains the lock. Record contention and ownership duration in an audit build. Candidate changes include immutable frame snapshots and short commit phases. Lifetime safety is central: raw cels pointers cannot outlive deletion or replacement. Validate simultaneous generation, map arrival, imports, and dialogs. Do not remove locking merely because a single-threaded test is faster.
+
+P019 | B / H / Q0 | Schedule worker CPU and publication budgets around frame deadlines.
+Map generation and exo-constellation work can contend with the render thread during arrival in a new fictional zone. The texture queue is already bounded; thread count alone does not bound CPU interference or a large completion burst. Consider lower-priority background work, smaller publication batches, and cancellation of obsolete jobs. Validate that textures still finish and progress reporting remains responsive. Measure both frame-tail latency and total generation duration. This is a responsiveness tradeoff in scheduling, not a proposal to alter generated physical data or texture determinism.
+
+C. TERRAIN GEOMETRY AND CPU RASTERIZATION
+
+P020 | A / S / Q0 | Replace exact-position terrain-mesh invalidation with world-anchored patches.
+Source: src/visuals.cpp around 5806. The current grid has 512 columns and 40 rows, and its cache key includes exact latitude and longitude. Ordinary walking invalidates the mesh even when the physical terrain under most vertices is unchanged. Retain world-space chunks and transform them relative to the observer; refresh entering patches and any truly camera-dependent sampling separately. Preserve the current twelve-octave terrain field and shoreline displacement. Validate repeated routes, poles, longitude seams, curvature, refraction, and multiple world radii. World anchoring must not reintroduce sliding terrain.
+
+P021 | A / S / Q0 | Cache skyline samples in world space while walking.
+Source: src/visuals.cpp around 5486. In the non-mesh fallback, exact observer coordinates invalidate skyline work, which samples multiple radial positions for each of 8,192 horizon nodes. Wet biome terrain uses the separate mesh path, so this fallback is not the source of the measured wet-scene mesh cost. Store persistent local height samples and compute the observer-dependent skyline from those samples. Terrain mesh and skyline should share a common field cache, not disagree about heights. Validate low ridges, walking over crests, eye-height changes, and coastline silhouettes. A rolling cache is Q0 only if its interpolation reproduces the existing field closely enough to pass the comparison; coarse reuse belongs under Q1.
+
+P022 | A / S / Q0 | Reject terrain sectors outside the view before projection and rasterization.
+Source: src/visuals.cpp around 5930 and src/classes/horizonterrain.h. The annular grid covers a full circle, then projects about 20,480 vertices and visits up to 39,936 triangles. Conservative sector bounds can exclude terrain behind the camera and far outside the viewport. Include ridge height, refraction, near-plane intersections, and wide fields of view in the bound. Validate grazing ridges and camera rotation with no missing strips. A center-only cull is inadequate because a triangle or ridge can cross the view while its center lies outside.
+
+P023 | A / S / Q0 | Reuse terrain raster storage instead of constructing full buffers each frame.
+Source: draw_horizon's local TerrainRaster and TerrainRaster::reset in horizonterrain.h. Two full-screen float arrays hold inverse depth and surface distance, with additional per-column state. Retain their allocation across frames and resize only on viewport changes. This does not automatically eliminate clearing; separately measure whether generation stamps, dirty tiles, or a compact clear are faster. At 1280x800 the two arrays alone represent about 8.2 MB of writes per clear. Validate all viewport changes and uncovered pixels so stale terrain cannot occlude scenery or waves.
+
+P024 | A / S / Q0 | Tile the CPU terrain rasterizer and add conservative coverage rejection.
+Source: horizonterrain.h triangle rasterization. Current triangle bounding boxes drive per-pixel barycentric and depth work. Bin triangles into tiles, reject empty/outside tiles with edge tests, and use hierarchical depth only where its bound proves invisibility. Favor contiguous depth writes and SIMD-friendly interpolation. Validate perspective-correct distance, near-plane clipping, coastline gaps, and overlapping ridges. A software rasterizer rewrite carries substantial correctness risk; compare saved depth buffers and final images, not only frame rates. It may be superseded by P027 on supported hardware.
+
+P025 | B / S / Q0 | Cache projection-independent terrain topology and per-frame scratch arrays.
+Source: src/visuals.cpp, terrain projected arrays, radial clamps, and horizon buffer copies. Topology, indices, and some radial terms are regenerated or copied alongside genuinely changing coordinates. Retain fixed connectivity and reserve projected/scratch buffers. Separate height sampling from observer transforms so a camera rotation does not rebuild world geometry. Verify invalidation on resolution, world radius, eye height, and mesh-quality changes. This is lower risk than a wholesale mesh rewrite, but its benefit overlaps P020 and P022 and should not be counted twice.
+
+P026 | B / S / Q1 | Make terrain detail depend on projected error rather than a fixed full annulus.
+The 512-by-40 grid spends detail on distant or tiny triangles while sharp nearby ridges may justify more. Use a screen-space error metric with conservative near-shore detail and crack-free transitions. Evaluate the separate 8,192-node horizon representation with a conservative angular/projected-error policy as well; it is distinct from the 512-by-40 terrain mesh. This can reduce total vertices and raster work without a fixed global quality cut, but it still changes approximation error and is Q1. Validate silhouettes against the current mesh, low eye heights, zoom, narrow islands, and movement. Reject visible popping or terrain/plant disagreement. A fixed coarser grid is separately offered as a Q2 cut in P079.
+
+P027 | B / S / Q0 | Re-evaluate GPU terrain rasterization as a complete pipeline experiment.
+Source: src/horizon_terrain_gpu.cpp and disabled option in src/visuals.h. A GPU path already exists but did not win on the earlier computer/workloads. Test current heavy shoreline scenes on this machine and both laptop-class GPUs, including uploads, synchronization, and downstream consumers of depth. The proposal is not to switch it on blindly. Keeping depth on the GPU for ground, waves, and scenery may matter more than accelerating one isolated stage. Validate identical coverage and software fallback. Report hardware-specific outcomes; a universal default is not established by one GPU.
+
+P028 | B / S / Q0 | Re-evaluate GPU terrain generation without CPU round trips.
+Source: src/horizon_mesh_gpu.cpp and the disabled generation option. If height generation moves to the GPU but CPU rasterization or scenery immediately reads it back, transfer cost can erase the gain. Evaluate an end-to-end resident mesh/depth design and compare it with retained CPU world patches. Preserve procedural seed, displacement, and plane conventions. Validate coast alignment and stable features while walking. This is an alternate architecture to P020/P024, not an extra multiplier to sum with all of them. Driver coverage and fallback remain part of acceptance.
+
+P029 | B / S / Q0 | Bound the screen region that can contain ground before expensive painting.
+Source: src/visuals.cpp around 6070-6250. Ground preparation searches per-column horizons and can enter per-pixel biome sampling near raised terrain or distant boundaries. Derive conservative covered spans from terrain depth and horizon envelopes first, then process only those spans. Preserve mountain peaks above the base horizon and holes between ridges. Validate looking upward, downward, and through narrow shoreline gaps. An all-sky view should avoid terrain-paint preparation where geometry proves it cannot contribute, while keeping horizon overlays that actually remain visible.
+
+P030 | B / S / Q0 | Consolidate terrain curvature, refraction, and surface-distance calculations.
+Source: draw_horizon, its mesh projection, water projection, and scenery positioning. The same world radius, eye height, horizon lift, and angular terms are recomputed in separate loops. A shared immutable surface context and vectorized helpers can remove redundant sqrt, trigonometry, and parameter estimation. Validate that every consumer uses the same convention; this also guards against visual gaps. Do not replace precise geometry with a flat-world shortcut under Q0. Measure call counts and runtime because some compilers already hoist local constants, while cross-function duplication remains.
+
+D. BIOMES, COASTLINES, AND SURFACE CACHES
+
+P031 | A / S / Q0 | Return color, material, water, vegetation, and height from one surface query.
+Source: src/classes/surfacenavigation.cpp, SurfaceSampler::info/water_at/vegetation_at, and repeated calls in scenery/waves. A single location can trigger multiple identical coordinate displacements and map queries. Introduce a frame-local sample result that callers share rather than independently asking each question. Preserve the uniform-cap fast path and material/color fallback semantics. Validate imported maps, unknown material tags, vegetation hues, and coast detail. This is especially valuable at boundaries, where the uniform fast path cannot eliminate Perlin work.
+
+P032 | A / S / Q0 | Combine map pixel address calculation for color and material.
+Source: SurfaceSampler::info calls Map::color_at and Map::material_at after computing the same coordinates; implementations are around src/classes/celestial.cpp 2277-2312. Expose one query returning both values from the same pixel/address operation. Retain existing filtering conventions: bilinear display color must not accidentally interpolate discrete material IDs. Verify longitude wrapping, pole rows, dimensions, and generated versus imported maps. This is a small exact optimization that complements P031; it is not a reason to weaken the authoritative coast field.
+
+P033 | B / S / Q0 | Cache displaced biome coordinates for repeated samples in a frame or local tile.
+Source: src/classes/surfacebiomes.h and SurfaceSampler. Nonuniform boundary queries perform spherical coordinate conversion and multiple Perlin evaluations. Cache the displacement result where exact input coordinates recur, or retain a world-tile representation with exact endpoint handling. A hash lookup can cost more than a cheap uniform query, so instrument hit rates and keep the fast path first. Validate frame-to-frame camera independence and the detailed shoreline selected by Find Shore. Approximate tile interpolation belongs to Q1, not to this exact-result proposal.
+
+P034 | B / S / Q0 | Reduce SurfaceFieldCache bookkeeping on hot hits.
+Source: src/classes/surfacecache.h. A height lookup uses nearby cube-grid nodes, unordered lookup, and LRU maintenance; frequently used nodes can repeatedly splice list entries. Measure hit cost separately from Perlin misses. Possible changes are tile-local direct addressing, per-frame touch coalescing, or a clock-style eviction policy with the same capacity. Preserve bounded memory and world/spacing invalidation. Validate long walks, revisits, poles, and rapid world changes. The current cache already avoids much noise generation; a replacement must not trade that benefit for a lower hit rate.
+
+P035 | B / S / Q0 | Add a shared coarse material/uniformity hierarchy for all consumers.
+Source: Map::uniform_region, region_matches, and color_within_cap around celestial.cpp 2163-2240. The code already tests uniform caps; audit its traversal cost and share results across terrain painting, wave rejection, and scenery chunks. A region proved entirely water or entirely land can skip many detailed coast queries. Bounds must include the maximum Perlin displacement, not only the unwarped pixel rectangle. Validate tiny islands and thin beaches. This proposal extends existing uniformity information; it does not claim the optimization is absent.
+
+P036 | B / H / Q0 | Prefetch the next surface tiles along a walking route.
+Use current movement and the view wedge to fill bounded height/material caches ahead of the observer, under a small background or idle budget. This targets periodic cache-miss spikes rather than average stationary cost. The authoritative sampler remains unchanged, and a missed prefetch simply falls back to current evaluation. Validate sudden reversal, teleportation, high speed, and worker cancellation. Record worst-frame latency as well as average throughput. Prefetch is lower priority than removing duplicate queries; it must not compete so heavily with drawing that it worsens the frame tail.
+
+P037 | B / H / Q1 | Bake a local high-resolution surface tile with an explicit error bound.
+For a stable world and shoreline neighborhood, store a local material/height tile representing the existing Perlin boundary field and sample it during rendering. Choose spacing from projected error, retain exact queries for navigation and interaction, and refresh tiles outside the retained region. This could replace many spherical/noise calls, but approximate sampling can shift shorelines or vegetation. Compare against the authoritative field at tile seams and random interior points. It requires explicit tolerance and is not interchangeable with the exact reuse in P031-P035.
+
+P038 | C / S / Q0 | Cache shoreline search structures by map generation.
+Source: src/classes/surfacenavigation.cpp, find_nearest_shore. A Find Shore invocation scans the entire map into a wet mask and enumerates coastline segments. Cache the mask/segment index by world, map revision, water/material state, and displacement settings. This improves interaction stalls, not ordinary steady-state FPS, because the search is not a frame loop. Preserve facing bias and final detailed-field refinement. Validate map replacement and coverage edits. The audit distinguishes this one-shot cost so it is not mistaken for the cause of slow walking after the search ends.
+
+E. PLANTS AND ROCKS
+
+P039 | A / S / Q0 | Cull scenery chunks before iterating individual candidates.
+Source: src/classes/surfacescatter.h and src/visuals.cpp around 6830-7108. Scenery generation is world-anchored and cached, but the retained disk is roughly one kilometer for plants and is still traversed per frame. Partition it into stable chunks with conservative vegetation/height bounds and reject chunks outside the view. Include crown radius and shadow extent in bounds. Validate trees entering at the screen edges, large crowns, and wide views. This preserves density and locations while reducing the candidate count reaching atan2, distance, and projection work.
+
+P040 | A / S / Q0 | Separate stationary world data from observer-relative scenery coordinates.
+Source: SurfaceSceneryCache updates east/north coordinates for every retained object when latitude or longitude changes, even without rebuilding the list. Store immutable world vectors and apply a shared observer transform in a contiguous batch; evaluate incremental or SIMD transforms. Keep exact spherical placement and the accepted crown aspect rule based on line of sight and ground. Validate a long route, camera rotation without translation, and small planets. Do not confuse list regeneration with this coordinate-update cost: the list already has padded reuse.
+
+P041 | A / S / Q0 | Reject invisible scenery before expensive classification and projection.
+Source: src/visuals.cpp around 6880. Per-candidate work includes distance, azimuth, deterministic size, biome state, height, and crown/base projection. Move cheap conservative range/frustum tests ahead of expensive surface queries where ordering permits. Use crown/trunk/shadow bounds rather than a point-only test. Classification is already cached after the first pass, so report first-visit and warm-frame effects separately. Validate oversized nearby plants and crowns whose trunks are offscreen. Preserve the accepted line-of-sight aspect correction; camera altitude must never become a shortcut for physical crown shape.
+
+P042 | A / S / Q0 | Batch plant crowns and trunks with instanced GPU geometry.
+Source: src/visuals.cpp around 7137-7350 and src/classes/scenerydraw.h. Cached unit contours remove repeated trigonometry, but each visible crown still becomes an ImGui convex path with vertex/index generation and antialiasing. Upload instance data and draw shared crown/trunk geometry, with the same LOS aspect, color, terrain depth, and ordering. Validate overlapping crowns, clipping at the near plane, curved ground, and software fallback. This could cut CPU geometry and upload bandwidth substantially, but the measured result depends on plant count and driver behavior. Do not replace crowns with camera-pitch-shaped sprites.
+
+P043 | B / S / Q0 | Exploit temporal coherence in scenery depth ordering.
+Source: src/visuals.cpp around 7108, full sort of scenery draw records. Small walking steps usually preserve most depth order. Compare retained ordering plus incremental repair, radix sorting of positive depth keys, and chunk-level ordering followed by local sorts. Verify exact transparency/occlusion semantics before changing algorithms. Nearby crossings and a fast camera turn are adversarial cases. Keep a robust full-sort fallback when many entries change. This addresses sorting after culling; P039 may already shrink the list enough that a more complex sort is not worthwhile.
+
+P044 | B / S / Q0 | Use conservative hierarchical plant occlusion before geometry emission.
+Source: SceneryCrownOcclusion's four-pixel bitmap in scenerydraw.h. Existing culling uses an inscribed crown region and occurs after substantial candidate work. Extend it with conservative chunk or depth bounds so fully hidden groups can be rejected earlier. Do not treat an ellipse's bounding rectangle as opaque, and do not infer hidden trunks solely from a hidden crown unless current behavior is explicitly reviewed. Validate holes between crowns, edge antialiasing, slopes, and shadows. The existing coarse mask is already present; this is an extension with stricter whole-object safety checks.
+
+P045 | B / S / Q0 | Hoist plant lighting and palette terms out of per-object loops.
+Source: src/visuals.cpp scenery shadow and drawing loops. Sun azimuth, fixed color conversions, world palette, some trunk-lighting terms, and common geometric constants are repeatedly derived for plants in the same frame. Build one scenery-light context and retain only position-dependent terms per instance. Preserve per-object size, depth fading, local surface height, and any light-direction dependence. Compare images at sunrise, noon, night, and under different star colors. Inspect optimized assembly or call counts before claiming every source expression incurs runtime work; the compiler already hoists some local expressions.
+
+P046 | B / S / Q0 | Write final scenery alpha/color once instead of revisiting emitted vertices.
+Source: fade_scenery and vertex-range manipulation in src/visuals.cpp. Some primitives are emitted and then their vertex alpha is modified in a second pass. Calculate a final color before emission where all vertices share the fade, or pass a uniform/instance alpha in a GPU path. Preserve gradient fades where vertices genuinely differ. Validate transparent edge colors and draw-list command boundaries. This saves memory traffic and simplifies batching, but is a secondary optimization after reducing the number of emitted plants.
+
+P047 | B / S / Q1 | Use screen-space plant LOD with hysteresis.
+Keep detailed crowns/trunks for nearby plants; represent distant clusters with fewer primitives at matched projected coverage and color. Choose transitions by pixel size, not simply meters, so zoom remains correct. The current radius threshold already rejects tiny scenery; the proposal is a structured representation between full detail and rejection. Validate walking and zoom without popping, density loss, or altered crown aspect. Report both vertex reduction and visual error. A visible density reduction is Q2 and appears separately below; it must not be hidden inside an alleged exact LOD change.
+
+P048 | B / S / Q1 | Reduce shadow representation complexity with distance.
+Source: scenery shadow loop around 7137. Every eligible plant/rock can produce a shadow with projection and terrain checks. Keep nearby shadows detailed, merge or simplify distant ones, and use stable transitions. Validate low-sun long shadows and coastline crossings where merged shadows could paint over water. This changes shading approximation and therefore is Q1, even if difficult to notice. Measure shadow generation and fill separately. A complete shadow-off option is P082 and is a clearer Q3 choice if the user prefers speed over that effect.
+
+P049 | B / H / Q0 | Reuse stable scenery screen geometry when only simulation time changes slightly.
+A stationary observer with a stationary camera may retain plant silhouettes while only light/fade terms change. Cache projected instances or vertex geometry by observer, camera, world, terrain, and plant parameters, then update colors separately where possible. Shadows have a different invalidation clock from trunks/crowns. Validate moving ground, changing refraction, eye height, time warp, and atmospheric changes. Walking invalidates projection, so this targets stationary scenes rather than promising the same gain on the user's main walking case.
+
+F. WATER AND GLINTS
+
+P050 | A / S / Q0 | Derive glint lights from a retained bright-source list.
+Source: src/visuals.cpp around 6314. Water scans all objects for vmag brighter than -1.5, evaluates elevation and projection, computes color, and finally keeps at most 16 sources. Feed this stage a conservative bright-object list from the coordinate pass, with the current Sun exception preserved. Cache stable source colors by photometric revision. Validate companion stars, bright moons and planets, daylight attenuation, and lights entering from outside the viewport. It must not reuse an ordinary star-label list that excludes a legitimate glint source.
+
+P051 | A / S / Q0 | Separate wave geometry from animated phase.
+Source: src/visuals.cpp around 6410-6558. The configured 81 rows and 96 half-row steps produce up to 15,633 sample positions, with rotations, projection, water/material tests, and terrain visibility checks. Much geometry depends on observer/camera/world, while animation depends on time. Retain row directions, distances, world locations, and material results under suitable revision keys; update phase and lighting independently. Validate walking, camera rotation, shore crossings, and map changes. This is exact reuse only for unchanged inputs; approximate reuse while moving belongs under Q1.
+
+P052 | A / S / Q0 | Clip wave rows to conservative visible-water intervals.
+Before evaluating every point, derive projected spans that can contain visible water using the terrain/water masks and viewport. Reject entire rows or intervals proved land, hidden behind terrain, or outside the screen. Preserve narrow channels, detailed Perlin shorelines, refraction, and near-plane cases. Validate oblique coastlines and a view containing only a sliver of ocean. A raster water mask should represent the same authoritative material field; an unwarped base-map mask alone is insufficient near a detailed boundary.
+
+P053 | B / S / Q0 | Batch wave primitives into strips or a GPU water pass.
+Source: the water loop in draw_horizon. Replace many CPU-created small primitives with shared row geometry or an analytic shader that uses the same phase, distance fade, glints, and terrain depth. The main benefit may be reduced CPU projection and ImGui geometry rather than fewer pixels. Validate appearance under blue/red stars, day/night, multiple lights, and shore clipping. Preserve a fallback for older GPUs. Avoid changing both the wave model and renderer in the same patch, which would make visual regression attribution difficult.
+
+P054 | B / S / Q0 | Precompute row factors and shared glint terms.
+Wave rows repeatedly derive perspective distribution, curvature, near/far geometry, and source-dependent terms. Move invariant terms to row/light tables and use recurrence where it reproduces the current trigonometric sequence within accepted floating-point tolerance. Limit calculations to the actual retained lights after P050. Validate long animations and accelerated time, including phase wrap and low-sun reflections. This is a smaller local optimization than P051/P053 and should be benchmarked independently rather than assumed to provide a large gain.
+
+P055 | B / H / Q1 | Adapt wave sample spacing to projected error and water coverage.
+Use fewer samples where adjacent wave points fall into the same pixel or where distant rows become indistinguishable. Retain sufficient detail near the observer and at shore boundaries, with stable hysteresis while moving. This can reduce the fixed 81-by-193 sampling workload without a blanket effect removal, but is still an approximation. Validate wave continuity at all zoom levels and screen resolutions. Compare against the current result at the same animation phase. A simple global row reduction is the more explicit Q2 choice in P080.
+
+P056 | B / H / Q1 | Update water material and visibility caches less often than animated phase.
+While standing still, water classification and terrain occlusion are stable even though waves animate. While walking slowly, retain them until a bounded movement threshold is crossed and refine only at coast-sensitive locations. Exact stationary reuse is Q0; movement thresholds make the combined proposal Q1. Validate very narrow beaches, small islands, and close foreground water where tiny observer movement changes visibility quickly. Use world-space coast distance to choose conservative refresh rates, rather than a fixed timer for every sample.
+
+G. CLOUDS, WEATHER, AND ATMOSPHERE
+
+P057 | A / S / Q1 | Remove synchronous rain-cover readback from the render dependency chain.
+Source: src/classes/clouds_gpu.cpp, sample_rain_cover around 1421-1500. A cache miss renders a one-pixel result and calls glReadPixels. The transfer is tiny but can synchronize the CPU with pending GPU work. Walking can invalidate the query context. Options are asynchronous readback with a small delay or a matching CPU estimate. Validate rain onset/cessation, cloud edges, teleportation, and stale results after world changes. An asynchronous result is Q1 unless the value can be consumed without any semantic delay. Measure the actual stall before choosing complexity.
+
+P058 | B / S / Q0 | Replace repeated cloud GL-state queries with an owned state contract.
+Source: sample_rain_cover saves framebuffer, viewport, program, buffers, textures, masks, and enables through glGet/glIsEnabled calls. A renderer-owned state cache or explicit entry/exit contract can avoid driver queries while preserving restoration. Validate all callbacks, including ImGui, sky, spheres, snapshots, and failure paths. This is not permission to assume arbitrary GL state: a missed restoration can break unrelated rendering. Measure call count and wall time because drivers differ greatly. Combine with P057 only after each change has an independent regression check.
+
+P059 | B / S / Q0 | Retain cloud tile allocation and update data without repeated texture allocation.
+Source: prepare_tiles around 1173 and float_texture around 1033 in clouds_gpu.cpp. Tile lists are built over screen tiles and cluster bounds, then uploaded through a float texture helper. Reuse storage when dimensions are unchanged and update content with a measured streaming strategy. Verify that existing cache hits already skip this work; do not claim it happens on every stationary frame. Validate viewport changes and unusually large cluster counts. Separate allocation savings from the CPU cost of constructing tile lists.
+
+P060 | B / S / Q0 | Accelerate cloud-cluster tile assignment with a hierarchy or projected bounds.
+Source: prepare_tiles loops every tile against every cluster, with angular cone tests. For many clusters, a spatial hierarchy, conservative projected bounds, or cluster-to-tile traversal can reduce the product of those counts. Refraction and observer-inside-cloud cases require conservative handling; keep the existing all-cluster fallback for wide cones. Validate grazing cloud edges and strong refraction. Record both tile-build CPU time and shader candidate counts, because a faster but looser assignment can increase GPU work enough to lose overall.
+
+P061 | B / S / Q1 | Reproject cached cloud imagery during small camera or observer movements.
+Source: clouds_gpu.cpp cache_matches and render_cloud_sky_gpu around 1310. A reduced-resolution cloud layer already exists, so this is not a proposal merely to render clouds at lower resolution. Extend its reuse using depth-aware or direction-aware reprojection, with rejection near disocclusions and cloud edges. Validate parallax inside clouds, low horizon views, weather evolution, and rapid movement. Ghosting and stale cloud silhouettes are explicit risks. Small-motion reuse is Q1; a strict exact-parameter cache remains Q0 but has fewer hits while walking.
+
+P062 | B / S / Q1 | Make cloud ray-march effort depend on projected contribution.
+Cloud shaders have nested sampling work whose value varies with density, distance, and opacity. Tighten early termination, empty-space skipping, and step allocation while bounding image error. Validate bright silver linings, thin clouds, overlapping clusters, and high dynamic-range sunsets. GPU timers already exist and are polled without a blocking availability wait; use them rather than adding a new stall. This is a quality-sensitive proposal. A fixed low-quality cloud setting is a clearer Q2 alternative in P083 and should not be mislabeled exact.
+
+P063 | B / H / Q0 | Avoid cloud and weather preparation when no relevant pixels can contribute.
+Source: draw_cloudy_sky, cloud callbacks, and horizon masks. Test whether the current view is entirely opaque ground or whether clouds are fully hidden before preparing geometry, tiles, and rain drawing. Preserve ambient effects that still affect ground lighting or rain even when the sky is offscreen; rendering visibility and weather state are different dependencies. Validate looking straight down under an overcast sky and moving through rain. This is a candidate early exit, not a claim that all cloud work currently runs in every view.
+
+P064 | C / S / Q0 | Share and cache atmospheric/refraction lookup data by physical revision.
+Source: cloud refraction texture construction around clouds_gpu.cpp 1573 and repeated horizon/planet atmospheric helpers. Audit which inputs change per frame and which remain fixed. Reuse the 1,025-sample refraction curve and atmospheric coefficients when pressure, temperature, radius, wavelength policy, and observer height are unchanged. Do not suppress view-dependent transforms. Validate atmosphere edits, high altitude, unusual compositions, and worlds with no atmosphere. Existing internal atmosphere caches must be honored rather than bypassed by a second inconsistent cache.
+
+H. SKY, LIGHTING, AND OTHER RENDERING
+
+P065 | B / S / Q0 | Replace per-row sky-gradient map allocation with contiguous storage.
+Source: src/visuals.cpp, draw_sky_gradient around 7876. sky_grad.clear is followed by row-based gradient construction and ordered-map insertion. A vector indexed by scanline, retained across frames, avoids node allocation and tree lookup. Preserve lookup behavior at the horizon and outside the gradient range. Validate all callers and resized windows. This is a straightforward representation change, although the total benefit may be small beside terrain and plants. It should be measured before promoting it above the major candidate-count reductions.
+
+P066 | B / S / Q0 | Render the sky gradient as one shader or a retained strip.
+Source: draw_sky_gradient's per-row trigonometry, powers, and filled rectangles. A shader or precomputed vertical profile can evaluate the same transfer function without hundreds of CPU draw operations. Retain atmospheric color, particulate influence, night-map contribution, overcast behavior, and horizon alignment. Validate screenshots with white/black backgrounds, lava worlds, no atmosphere, and several sun elevations. Exact analytical equivalence is the goal; lowering the number of gradient samples is Q1. Compare both CPU geometry and GPU fill cost on the low-end computer.
+
+P067 | B / S / Q0 | Cull obscured galaxy-band and background pixels before expensive shading.
+Source: src/visuals.cpp, draw_galaxy_band around 3589, plus draw_horizon ordering. Where opaque terrain completely covers the background, conservative scissor, stencil, or depth masking could avoid background fill. Preserve peaks and gaps, translucent atmosphere, and cases with terrain disabled. Remote-galaxy skies make this particularly relevant because large photographic layers may cover much of the frame. Measure overdraw on both software and real GPUs. Avoid hiding entire layers merely because the Sun is above the horizon; that would be the optional quality cut in P085.
+
+P068 | B / S / Q0 | Restrict orbit rendering to an indexed eligible set.
+Source: draw_objects around 3935. When orbit display is enabled, another catalog traversal evaluates objects that will not contribute in the current mode. Maintain a list by active system, class, and display state, then apply existing visibility checks. Cache static tessellation where orbital elements and projection permit. Validate selected remote systems, moons, companion orbits, and changed elements. This is conditional on orbit display; it is not a diagnosis of the default horizon frame if the feature is off. Far-orbit suppression is an optional Q2 cut, not part of this exact proposal.
+
+P069 | B / H / Q0 | Budget expensive resolved-body rendering by actual pixel contribution.
+Source: draw_objects, draw_sphere around visuals.cpp 1800, and associated GPU callbacks. Bound sphere, ring, glow, and shadow work using conservative projected extents before preparing resources. Preserve bodies intersecting the viewport even when their centers are outside it. Validate large nearby planets, rings, eclipses, and selected bodies behind labels. Existing bounding tests already exist; the audit target is preparation occurring before those tests or duplicate work across passes. A trace must establish which preparations remain significant before code changes are approved.
+
+P070 | C / S / Q1 | Adapt CPU ring tessellation to screen error.
+Source: the CPU ring path around src/visuals.cpp 1938 can use thousands of angular segments plus radial work. GPU rings are preferred in normal applicable views, so this is chiefly a fallback/interaction concern. Use projected error with stable limits instead of retaining a high segment count when rings are small. Validate edge-on rings, near-plane intersections, dragging, and sky-map projection. Keep ring texture and shadow quality intact. A blanket ring-off mode would be Q3 and is available for review under P086.
+
+P071 | B / S / Q0 | Make exo-constellation forced visibility vantage-aware.
+Source: src/classes/exocons.cpp around update_frame 2545, publishing lines and marking endpoints universally visible. Visited vantages can leave endpoints carrying visibility obligations beyond the currently useful constellation set. Track the reason and active vantage separately so dormant line sets do not force redundant star updates. Preserve saved lines, explicit favorites, and intentionally universal objects. Validate revisiting several galaxies, switching to the Sun, and opening a saved universe. This is a lifetime/indexing proposal; it must not erase user-authored constellation visibility semantics.
+
+P072 | B / S / Q0 | Cache exo-constellation line preparation and bound publication work.
+Source: ExoConsGenerator::update_frame and draw_cons_lines around visuals.cpp 7980. Generation already runs asynchronously and completed vantages are cached; it is not regenerated from scratch every frame. Audit line-end transforms, active-vantage lookup, and per-frame publication batches for frame-tail spikes. Retain static topology and publish under a time budget rather than only a fixed item count if completion sizes vary. Validate line clipping at all viewport edges and rapid viewpoint changes. This proposal targets arrival and line preparation, not a claim that the worker dominates every steady-state scene.
+
+I. UI, PICKING, ALLOCATION, AND LIVE MEMORY
+
+P073 | A / S / Q0 | Pick from the frame's projected objects instead of the entire universe.
+Source: src/inputs.cpp, identify_object_under_cursor near the beginning of the file. A cursor can trigger a large catalog traversal even though most objects have no valid screen representation. Use a compact visible pick list, optionally binned into screen tiles. Retain the exact existing overlap/priority rules and special object handling. Validate companion and moon labels around the five-pixel threshold, labels near all viewport edges, tracked objects, and moving the pointer over UI windows. Pointer movement must not become disproportionately expensive inside fictional populations.
+
+P074 | B / S / Q0 | Cache label text metrics with all display-context inputs.
+Source: label preparation and CalcTextSize calls in src/visuals.cpp, including cached-label drawing around 8286. Labels can repeatedly rebuild names and measure the same text. Cache by object naming revision, selected label format, system-resolution context, font, font size, and scale. The primary-star naming rule changes when companions resolve, and a planet's proper name depends on the viewer's central system, so object ID alone is insufficient. Validate Bayer/Flamsteed options, hover panels, Unicode, and resolution changes. Preserve all existing label filters and collision behavior.
+
+P075 | B / H / Q0 | Audit closed or obscured panel preparation, not just panel drawing.
+Source: src/dialogs.cpp and its call sites in the main loop. ImGui clipping already protects the stellar-neighborhood rows, but panel data can still be sorted, formatted, or queried before a visibility check. Trace open versus closed N panels, system explorers, dialogs, and diagnostics with the same scene. Defer expensive preparation until the panel actually consumes it, and cache structural lists by mutation generation. Validate reopening panels after edits/imports. This is a hypothesis until a call trace identifies a specific recurring preparation cost; it is not a blanket claim that all hidden UI runs expensively.
+
+P076 | B / H / Q0 | Audit per-object resident memory and allocator pressure after compact loading.
+The compact archive still imports more than a hundred thousand full objects, including atmosphere and provenance structures. Measure retained bytes by class and allocation site, separate from temporary parsing peaks. Candidate changes include shared immutable metadata, compact enums, deferred diagnostic strings, and pooled small allocations. Preserve mutable-object independence and exact saving. This targets cache misses, page faults, and memory pressure that can damage frame tails even if object updates are culled. Do not infer a steady-state leak from the serializer harness's peak RSS alone.
+
+P077 | C / S / Q0 | Retain frame scratch buffers across terrain, water, scenery, and label passes.
+Several frame-local vectors and masks are rebuilt in draw_horizon and related routines. Inventory allocations under a warm frame, reserve bounded capacity, and reuse storage with explicit viewport/world invalidation. Prefer a small number of owned scratch contexts to global unbounded caches. Validate alternating a dense forest with an empty world so high-water allocations remain bounded or reclaimable. This overlaps the specific raster proposal P023; treat generic allocation cleanup as secondary, not a substitute for eliminating large loops.
+
+P078 | C / H / Q0 | Keep diagnostic reporting out of hot paths unless requested.
+Audit console output, statistics strings, optional debug overlays, and report generation during movement, map arrival, and preview activity. Retain counters cheaply and format detailed reports only for visible UI or explicit commands. Validate that error reporting and useful progress remain intact. The classification diagnostic is already removed from persistent saves by ed050bb; that completed change is not a fresh proposal. This item concerns any remaining recurring formatting discovered in a trace. It must not suppress scientific inputs or disable metallicity-informed classification.
+
+J. EXPLICIT QUALITY AND FEATURE CUTS FOR REVIEW
+
+The following are intentionally aggressive alternatives. They would change the visible result or remove an effect. They are not authorized by inclusion here. A lower-quality preset can be useful, but the current quality-preserving acceptance scope remains in force until the user approves a change.
+
+P079 | B / S / Q2 | Offer coarser terrain mesh and lower terrain-noise detail.
+Reduce radial/azimuthal mesh resolution and optionally the number of noise octaves contributing to distant terrain. This directly cuts height sampling, projection, and rasterization. It can smooth ridges, change silhouettes, and create mismatch with scenery if height consumers disagree. Keep a shared field policy or preserve exact height for nearby objects. Validate coastlines and walking; publish visual comparisons and the precise settings. Do not silently make this the default under the label of caching. P026's error-bounded LOD is the more sophisticated alternative.
+
+P080 | B / S / Q2 | Offer fewer wave rows/steps and fewer glint lights.
+The fixed wave sampling budget and cap of 16 reflection sources can be reduced, especially for low-end hardware. Visible costs are simpler water texture, less smooth reflection patterns, and missing weaker glints. Use explicit presets and retain the current setting as the quality reference. Validate animation at the same phase and include low-sun views, where reductions are easiest to notice. This is a straightforward speed/quality control, not a physical correction or an exact optimization.
+
+P081 | B / S / Q2 | Offer lower distant plant density or a shorter plant draw distance.
+Reduce the one-kilometer plant candidate region, thin distant plants deterministically, or merge them into a lower-detail canopy representation. This can remove substantial candidate, sorting, and geometry work. It changes apparent vegetation density and can reveal a visible boundary unless transitions are carefully designed. Keep underlying procedural placement stable so switching presets does not reshuffle the world. Validate views from ground level and elevated positions. The user's earlier concern about density makes silent thinning inappropriate; this is an explicit review choice.
+
+P082 | B / S / Q3 | Add independent switches for plant shadows, rock shadows, and tiny ground rocks.
+These effects incur candidate and geometry costs yet can be optional for users prioritizing movement smoothness. Separate switches allow retaining tree silhouettes while cutting shadows or minor rocks. Visible losses include weaker depth cues and less textured ground. Validate that disabling shadows also avoids their preparation work, rather than merely hiding the final draw calls. Preserve terrain occlusion and physical plants. A performance preset should state exactly which effects it disables.
+
+P083 | B / S / Q2 | Add a lower cloud-quality preset with explicit resolution and march limits.
+Clouds already render below full resolution; lower that budget further or reduce integration effort only with user-visible quality settings. Possible artifacts are blur, softened cloud edges, weaker thin clouds, and unstable detail. Validate both software rendering and laptop GPUs, because reducing pixel work helps them differently. Retain current cloud coverage and weather state even when imagery is simplified. Do not describe this as the first reduced-resolution implementation; that optimization is already present.
+
+P084 | B / H / Q3 | Offer a simple-cloud/no-rain visual mode.
+Use a static or simpler cloud representation and omit volumetric billows, rain particles, and optionally rain-cover GPU queries. Keep atmospheric physics and underlying weather data intact where possible. This can be a large cut on fill-limited hardware, but it visibly removes weather richness and may affect cloud-based lighting if not separated carefully. Validate that the mode is clearly identified and that switching back restores the same scene. This is more aggressive than the exact caching proposals and should be approved as a product option.
+
+P085 | C / S / Q2 | Suppress imperceptible background imagery in bright daylight.
+Use a conservative brightness threshold to omit galaxy/Milky-Way photographic layers when atmospheric light overwhelms them. The threshold changes visual behavior near twilight and under unusual atmospheres, so it is Q2 even if often invisible. Validate dark skies, thin atmospheres, HDR-like bright sources, and manual exposure settings. A strict proof of zero alpha would permit an exact early exit; a perceptual threshold does not. The sky must still contain all relevant point stars and user-visible selections.
+
+P086 | C / H / Q3 | Offer a minimal horizon-effects preset.
+Potential cuts include decorative rings in horizon views, broad glows, orbit lines, diffuse overlays, and other optional effects outside the terrain/plant/water core. State each disabled feature explicitly and skip its preparation as well as drawing. Some of these are rarely active, so do not promise a universal speed gain. Preserve selected-object feedback and essential navigation. This is a way to expose deliberate tradeoffs, not permission to remove arbitrary code paths or change all users' defaults.
+
+P087 | C / H / Q1 | Render distant scenery/cloud layers at a lower update cadence.
+Retain a layer for several frames and composite it between updates, while near objects, input, and the camera remain responsive. A stable camera may tolerate this; walking or turning can expose lag, so use reprojection or disable reuse under motion. Quantify latency, ghosting, and worst-case invalidation spikes. This is not equivalent to dropping the whole application's frame rate. It is a temporal-quality proposal and should be evaluated after exact caching, since stale layers can be particularly unpleasant during walking.
+
+P088 | C / H / Q3 | Allow dormant fictional worlds to be excluded from a lightweight viewing session.
+An optional viewing mode could load stars and selected systems while retaining other worlds in a backing store for later activation. This can reduce memory and global traversal dramatically, but it changes immediate availability and complicates save semantics. It is distinct from silently deleting planets or reducing generation density. Every omitted object must remain recoverable and survive saving unchanged. Search, host counts, and selecting a dormant planet must behave coherently. P011 is the architecture that could support this safely; a casual loader skip is unacceptable.
+
+K. GPU RESOURCE FLOW, ARRIVAL STALLS, AND DISK INTERACTIONS
+
+P089 | B / S / Q0 | Stream map uploads under a frame-time budget.
+Source: src/gputex.cpp. Texture-generation checks already suppress redundant uploads, but a new large map can still trigger export, allocation, upload, and mip generation together. Stage uploads or prioritize the current world and visible maps, with a fallback image until completion. Validate rapid travel and cancellation so stale maps do not appear on another world. Measure arrival stalls separately from warm steady-state FPS. This targets intermittent hitching and resource bursts, especially after generating or entering a fictional system.
+
+P090 | B / S / Q0 | Reuse GPU texture storage and update only changed regions where practical.
+Source: src/gputex.cpp texture creation/update paths and cloud float textures. A generation change does not always imply changed dimensions or every pixel. Use retained allocation and subimage updates when semantics allow, and compare staged/PBO transfers on supported drivers. Preserve texture filtering, bump data, and mip correctness. Validate map regeneration, cloud replacement, and small edits. This complements P089 but is not additive if upload time is dominated by the same full transfer. Static maps already cached by generation should remain untouched.
+
+P091 | B / S / Q0 | Revisit ImGui vertex/index streaming for very dense scenery.
+Source: src/include/imgui/backends/imgui_impl_opengl3.cpp around 496-522. The backend uses glBufferData for the vertex and index buffers; historical comments explain why a different subdata path was disabled on some drivers. Compare orphaning, a ring buffer, and persistent mapped storage behind capability checks, using actual forest draw sizes. Validate all supported drivers and large index buffers. Do not simply re-enable the old path and assume it is safe. P042 may reduce the data volume enough to be the better solution.
+
+P092 | B / H / Q0 | Warm shaders and common resources before the first visible heavy frame.
+Source: GPU initialization and lazy shader/texture paths across horizon, clouds, spheres, and ground painting. Compilation and first-use driver work can cause arrival stutters even when later frames are fast. Record first-use timings and prewarm only resources likely to be used, under a bounded loading/progress phase. Validate startup duration and machines with slow shader compilers. This redistributes work; it does not reduce all of it. Keep first-visit versus warm-frame measurements separate so a smoother arrival is not reported as a steady-state FPS improvement.
+
+P093 | B / H / Q0 | Track GPU object lifetime and retained map budgets across galaxy travel.
+Source: map and GPU cache ownership in src/gputex.cpp and associated renderers. Repeated visits to many generated worlds may accumulate CPU maps, GPU textures, or cached layers even when no leak occurs. Inventory retained resources by owner and generation, then apply an explicit LRU or memory budget to reconstructible assets. Preserve current/selected resources and avoid eviction thrashing. Validate a repeated multi-galaxy travel loop and compare frame tails before and after memory pressure. This is a hypothesis until resource counters establish growth; do not label all cache retention a leak.
+
+P094 | B / S / Q0 | Move safe portions of saving off the interactive thread.
+Source: src/classes/serial.cpp, save_all. The completed compact format greatly reduces output, but a large save can still build records, write disk data, and contend for memory bandwidth. A consistent immutable snapshot followed by background encoding/writing could reduce an explicit save hitch. Validate edits during saving, error handling, replacement safety, and atomic file publication. Do not iterate mutable raw objects asynchronously without a snapshot/lifetime design. This is an interaction-stall proposal, not an assertion that universe saving runs every surface frame.
+
+P095 | C / H / Q0 | Separate snapshot encoding and ancillary file writes from presentation.
+Source: screenshot handling and runtime preference/layout persistence. PNG encoding or synchronous disk writes can cause occasional long frames when explicitly invoked or periodically saved. Measure call frequency and duration first, then move safe encoding/writing behind bounded queues. Preserve the exact captured frame, error reporting, and shutdown completion. Do not access unrelated user images for testing. This is lower priority than ordinary render loops, but an exhaustive audit includes occasional stalls as a separate category rather than excluding them from responsiveness reporting.
+
+P096 | C / H / Q0 | Keep network/catalog activity isolated from rendering and publication bursts.
+Source: loader, TAP/cache, and worker completion call sites. Verify that downloads, parsing, and catalog publication cannot introduce long lock holds or repeated frame-side polling in an already loaded fictional region. The 24-hour exoplanet freshness rule remains unchanged. Test offline startup and a deliberately slow response without changing user caches. This is a conditional audit lead, not a claim that TAP requests occur every frame. Any optimization must preserve data freshness and complete imports while bounding interactive interruption.
+
+L. HIGHER-RISK ARCHITECTURAL AND MICRO-OPTIMIZATION OPTIONS
+
+P097 | C / H / Q0 | Use camera-relative rendering coordinates throughout distant-galaxy geometry.
+Remote galaxies have large absolute positions. Maintain high-precision physical coordinates while sending small observer-relative values to hot rendering math and GPU buffers. This may simplify repeated conversion and improve numerical stability, but precision changes alone do not guarantee faster frames. Audit conversions and measured instruction cost first. Validate proper motions, companion separation, surface geometry, and warp entry/exit. Do not reduce stored positional precision; compact saving deliberately preserves it. This proposal is particularly relevant if profiling identifies repeated large-frame transforms or precision-recovery work.
+
+P098 | C / H / Q1 | Specialize expensive math only after profiling actual hot instructions.
+Candidates include repeated small-angle transforms, vector norms, phase trigonometry, and powers in terrain/water/sky loops. Prefer shared exact results and algebraic simplification first; consider polynomial or table approximations only with a stated error bound. Never apply a global fast-math switch without investigating NaN, infinity, signed-zero, classification, and orbital implications. Validate authoritative physical calculations separately from visual approximations. A tiny speed gain is not worth corrupting scientific state. This is a targeted rendering proposal, not permission to rewrite all numerical code.
+
+P099 | C / H / Q0 | Reduce render-command fragmentation across compatible effects.
+Source: ImGui draw-list callbacks and the interleaving of ground, water, scenery, labels, and GPU effects. Count commands, texture switches, and state resets in representative scenes. Reorder only operations whose blending/occlusion semantics permit it, or batch compatible primitives within a pass. Validate alpha blending, correct foreground order, and callback state restoration. More batching can reduce CPU/driver overhead but worsen overdraw if ordering changes; compare total frame time. This is subordinate to the concrete instancing and streaming proposals, not an extra guaranteed gain.
+
+P100 | B / H / Q0 | Build repeatable frame-budget gates before accepting any approved optimization.
+The earlier audit failed partly because isolated tests were treated as comprehensive coverage. Create a reproducible scene matrix with fixed universe, viewpoint, time, camera, quality flags, and movement path; record median, p95, p99, maximum frame time, main-thread CPU, draw vertices/indices/commands, and resource/cache counters. Include software fallback and the user's laptop GPUs when available. This is a proposed verification tool, not a rendering change. A faster median with worse walking spikes or altered coast/crown geometry is not an automatic success. Store benchmark metadata alongside results so later comparisons remain meaningful.
+
+M. ADDITIONAL CONDITIONAL PATHS FOUND IN THE FULL DRAW PASS
+
+P101 | B / S / Q0 | Retain deterministic rock meshes and batch their transforms.
+Source: src/visuals.cpp around 7500-7660. The detailed rock path derives 26 perturbed vertices from a stable seed, then evaluates up to 40 facets with projection, lighting, and sorting. Retain the world-local seeded mesh and transform only the visible rocks, or instance shared mesh classes with per-rock deformation data. Validate every rock type, facet ordering, near-plane clipping, and lighting. This is conditional on detailed rocks surviving the current pixel-size tests; the 256 nominal rock count is not the number necessarily drawn. Compare warm frames with identical deterministic shapes.
+
+P102 | C / S / Q1 | Replace tiny detailed rocks with matched impostors earlier.
+Source: ROCK_PEBBLE_THRESH in src/visuals.h and the rock drawing branch. A pebble threshold already exists, so the proposal is to evaluate a more effective screen-error transition rather than inventing the feature. Raise or refine that transition only with image comparisons, preserving large foreground rocks. Visible tradeoffs are reduced facet shading and altered silhouettes at the transition. Validate camera movement without popping and different ground colors. This is a small scene-dependent opportunity, not a major fix for a forest dominated by crowns.
+
+P103 | B / S / Q0 | Precompute precipitation particle constants and batch rain rendering.
+Source: draw_planetary_rain around visuals.cpp 5055-5350. Rain can process up to 2,400 particles. Stable particle hashes, disk positions, and fall-speed constants are re-derived alongside truly animated position and camera work. Retain static particle data and batch the moving streaks, potentially with instancing. Camera orientation already has shared sine/cosine terms; preserve that existing optimization. Validate storms, rain intensity transitions, ground clipping, and world changes. This path is active only with suitable water, atmosphere, cloud coverage, and display settings; it cannot explain every clear-sky shoreline slowdown.
+
+P104 | C / S / Q2 | Offer a rain particle and streak-quality budget.
+Cap particle count below 2,400, reduce secondary streak/impact geometry, or scale density to viewport coverage. This directly changes perceived rain intensity and richness, so it is a quality option rather than an exact optimization. Preserve weather state and make the intensity display independent of the visual particle budget. Validate a downpour at multiple resolutions and a view mostly covered by terrain. A no-rain switch is already included in P084; this entry offers a less drastic intermediate setting.
+
+P105 | C / S / Q0 | Cache static lava fissure topology and particle constants.
+Source: src/visuals.cpp around 6679-6800 and the 320-particle lava precipitation path around 7715. Stable branching topology, seed hashes, and local coordinates can be separated from animation and projection. This is unrelated to ordinary wet forest scenes but belongs in an application-wide audit. Validate unchanged lava patterns, glow, sparks, camera clipping, and travel between lava worlds. A shader/instance path can be tested independently. If the current workload never enters these compile-time/runtime branches, report their cost as zero for that workload.
+
+P106 | C / S / Q2 | Offer simpler lava and mineral-cloud effects.
+Reduce fissure branches, glowing nodes, rock precipitation, and mineral-cloud puff complexity through explicit quality controls. Source: lava drawing branches and draw_cloudy_sky's specialized rock-cloud path around visuals.cpp 8383-8500. Visible changes are fewer animated details and simpler cloud silhouettes. Keep physical temperature and atmospheric composition untouched. Validate the normal and reduced modes with the same seed/time. This is a specialized cut; it should not be promoted ahead of plants or water merely because its loops look elaborate in source.
+
+P107 | B / S / Q0 | Index constellation sets by resolved active vantage.
+Source: draw_cons_lines around visuals.cpp 7980-8245. It traverses constellation records to resolve/identify vantages and then selects belonging sets. As fictional populations generate more vantages, keep a direct active-vantage index and resolve names only on mutation or initial load. Preserve the solar-reference alias rules and the spatial fallback tolerance. Validate nearby stars sharing or separating vantages, unknown names, and saved custom lines. This reduces collection traversal; P071 separately addresses forced stellar visibility, and P072 addresses preparation/publication. Those are distinct layers of the same subsystem.
+
+P108 | B / S / Q0 | Cache constellation label directions in their stable reference frame.
+Source: draw_cons_lines around visuals.cpp 8205. Label directions can be recomputed by summing boundary points or line endpoints, then transformed into the viewer frame. Cache the reference centroid for static boundaries and invalidate endpoint-based directions when constituent astrometry changes. Retain per-frame projection, refraction, and viewport-overlap logic. Validate the recent top/left-edge label fixes: cached direction must not revive perimeter-based disappearance or discard partially visible labels. This proposal addresses label preparation only, not a change to which constellation names are shown.
+
+P109 | C / H / Q0 | Audit input/event draining and high-rate pointer work under load.
+Source: the main SDL event loop, process-input paths, and post-UI picking. High-rate mouse motion, held walking keys, and repeated viewchanged triggers may cause redundant work or delay presentation when many events arrive between slow frames. Coalesce only semantically interchangeable motion events; preserve all button/key transitions and shortcuts when edit fields lack focus. Measure event count and input-to-present latency. Validate Ctrl+G, R, dialog-open commands, drag operations, and text entry. This is a conditional responsiveness investigation, not permission to discard user commands for speed.
+
+P110 | C / H / Q0 | Measure minimized, resized, and high-DPI rendering separately.
+Source: SDL window handling, ImGui display size, and full-screen terrain/cloud buffers. A high-DPI framebuffer can multiply pixel work beyond the logical dimensions shown in UI. Avoid redundant rendering when minimized and resize expensive buffers only after actual dimensions change. Validate restoring the window, monitor transitions, snapshots, and picking coordinates. A lower internal render resolution would be Q2 and must be presented as such; it is not part of this exact housekeeping proposal. Include both logical and framebuffer dimensions in every benchmark result.
+
+RECOMMENDED REVIEW ORDER
+
+First investigate P001-P005, P017, P020-P024, P031, P039-P042, and P050-P052. These remove recurring work proportional to universe size, terrain size, or scenery count while aiming to preserve the current scene. P057 is an early synchronization experiment when clouds/rain are active. Their source evidence is strong, but implementation benefit still requires comparison.
+
+Then evaluate the retained candidate counts and frame breakdown again. P006-P009, P012-P014, P034-P035, P043-P046, P058-P060, P065-P068, P071-P074, and P089-P093 are credible follow-ups depending on the dominant cost after the first wave. Do not implement all of them in one patch: a new bottleneck can become visible after each major reduction.
+
+The Q1 alternatives offer approximation or temporal reuse when exact changes are insufficient. The Q2/Q3 entries are explicit product decisions. The most direct aggressive cuts for the user's forest/coast case are P080-P084: fewer waves/glints, less distant vegetation, no selected shadow classes, lower cloud effort, and simpler weather. They can be offered independently; a single opaque 'performance mode' would conceal which visual compromises were made.
+
+The largest architectural options, P010/P011/P088, require stable references, search/save behavior, and lazy activation design. They should follow simpler indexing work, not precede it. P027/P028 are competing pipeline experiments. P042 and P091 also overlap: instancing can remove the very ImGui bandwidth that a buffer-streaming rewrite would otherwise optimize.
+
+COVERAGE MAP AND FREQUENCY DISTINCTIONS
+
+Frame setup and pacing: alienorum.cpp main frame, catalog lock, observer setup, event loop, adaptive sleeps; P012, P017-P019, P109-P110.
+Catalog and physical state: housekeeping.cpp location/projection passes, active-system predicate, host statistics, light-time and lineage; P001-P016, P076, P097-P098.
+Sky and celestial drawing: visuals.cpp draw_galaxy_band, draw_objects, spheres, rings, eclipse collection, sky gradient; P005, P007, P050, P065-P070.
+Horizon terrain: find_horizon, draw_horizon, TerrainRaster, optional GPU paths; P020-P030, P079.
+Surface queries: SurfaceSampler, SurfaceBiomes, SurfaceFieldCache, Map uniformity and material lookup; P031-P038.
+Vegetation/rocks: SurfaceSceneryCache, candidate projection/sort, occlusion, crown paths, shadows, rock facets; P039-P049, P081-P082, P101-P102.
+Water: bright-source scan, row geometry, surface/terrain tests, phase and glints; P050-P056, P080.
+Cloud/weather: cloud cache, tile/cluster assignment, rain readback, refraction, rain and lava branches; P057-P064, P083-P084, P103-P106.
+Constellations: asynchronous creation/publication, active vantages, forced endpoints, line/label drawing; P019, P071-P072, P107-P108.
+UI and picking: visible-object selection, text metrics, panel preparation, diagnostics; P073-P075, P078, P109.
+Resources and persistence: GPU uploads, buffer streaming, first-use work, cache lifetime, save/snapshot/network interruption; P076-P078, P089-P096, P099.
+Verification: workload matrix, counter attribution, image/state gates; P100 and the per-entry validation instructions.
+
+Not every entry affects steady-state FPS. P038 is a Find Shore interaction cost. P089/P092 target resource arrival. P094/P095 target explicit save/snapshot stalls. P096 concerns loading/publication. P011/P076/P088/P093 chiefly address scaling and memory pressure. These can all affect responsiveness, but their frequencies must remain distinct from a loop that runs on every walking frame.
+
+The audit covers the rendering dependency chain and associated resource/UI work; it does not establish that every source-confirmed loop is expensive on every machine. A proposal can be rejected after measurement. Conversely, a path with few source lines can dominate through a driver synchronization or large input. This is why the report includes both source structure and measurement limitations instead of declaring every candidate a proven bottleneck.
+
+N. NON-HORIZON AND DENSE-STAR CROSS-CHECKS
+
+P111 | B / S / Q0 | Cache exact point-star bloom profiles and avoid per-star temporary vectors.
+Source: src/visuals.cpp around 3330. The point-source branch constructs radius/intensity vectors and walks half-pixel bloom rings while brightness remains. In a dense fictional night sky this can repeat for many stars even though the profile depends on a small group of rendering inputs. Retain exact finite-input profiles with bounded storage, or use shared scratch memory if hits are too sparse. Validate gamma, brightness, magnitude changes, scotopic color, flares, eclipses, and selection. This is unrelated to the corrected stellar texture generation; it concerns point drawing after photometry.
+
+P112 | B / H / Q0 | Batch point stars with an equivalent analytic GPU sprite.
+Replace repeated CPU bloom geometry with a conservative sprite whose fragment function reproduces the existing radial profile. Keep magnitude/color, atmosphere, occultation, and star-size semantics. Validate dense red-dwarf populations, bright nearby stars, and the transition to resolved spheres. A sprite approximation with a different energy distribution is Q1 rather than Q0. Measure GPU overdraw as well as CPU vertex savings, especially on the low-end machine. This competes with P111: after a successful sprite path, a CPU profile cache may matter only to fallback rendering.
+
+P113 | B / S / Q0 | Apply conservative host/visibility scheduling to artificial satellites and comets.
+Source: housekeeping.cpp's class_satellite/class_comet update branches, src/classes/satellite.cpp, src/classes/comet.cpp, and visuals.cpp's class-specific drawing. The current planet/moon activity predicate does not automatically establish an equivalent skip policy for every other moving class. Index artificial satellites by orbital host and reject provably irrelevant groups before propagating them; use conservative brightness/spatial bounds for comets. Preserve alerts, selections, and Earth-view satellite behavior. Validate close passages, tails, and time jumps. The native shoreline fixture uses nosat, so it supplies no satellite timing evidence; this is a source-confirmed conditional opportunity.
+
+P114 | C / S / Q0 | Remove whole-catalog descendant scans from sun-clock overlays.
+Source: src/visuals.cpp around 4924-4950. The sun-clock path scans from first_sat onward for satellites of the selected world and scans later objects for orbiting bodies. Use retained host/child lists and explicit class indexes, preserving subsolar, substellar, sublunar, locale, and satellite overlays. Validate imported ordering where a child is not adjacent to its parent. GPU sun-clock rendering already exists, so this does not propose that feature as new. It reduces overlay membership discovery and is conditional on vm_sunclock rather than a wet-horizon fix.
+
+P115 | C / H / Q0 | Profile grid and supporting-line geometry under wide projections.
+Source: draw_ra_dec_lines, wrapped_line, and supporting graphics in src/visuals.cpp. Retain projection-independent line topology and reject conservative offscreen spans before tessellation. Preserve wrapped-map edges and the recent viewport-clipping fixes. Validate narrow/wide FOV, sky maps, horizon refraction, ecliptic/grid options, and labels partly outside all four edges. This is a conditional candidate because these overlays can be off; a trace must show preparation cost before changing it. Do not reduce line completeness or resurrect disappearing top/left labels in pursuit of fewer segments.
+
+These final cross-checks extend the source coverage beyond the principal shoreline scene: dense point-source skies, satellite/comet classes, sun-clock overlays, and optional supporting graphics. They are not native performance measurements of those modes. The original inventory is P001-P115; the final attribution section adds P116-P117.
+
+MEASUREMENT APPENDIX: ACCEPTED NATIVE SHORELINE RUNS
+
+M1 / M2 describe the current code, not before/after optimization comparisons. Both runs loaded the actual compact population plus the full private startup catalog, producing 287,579 live objects. The surface target was the planet F-000982 h, class_planet, runtime index 180681. The probe explicitly verified the object and vm_horizon, waited for the completed surface map and shoreline eligibility, invoked the actual Find Shore function successfully, warmed 60 frames, and recorded 120 frames at SDL_GL_SwapWindow. Measurement ends with a private-process exit rather than an application autosave.
+
+The saved planet was originally icy, approximately 260.78 K, with water level 0.2565. That combination did not supply a valid liquid coast for this experiment. Only the private fixture changes its type to rocky, temperature to 300 K, and internal water level to 0.5. This is a controlled wet-scene fixture, not a claim that the unedited archive shows this liquid coastline. The retained vegetation is RGB 74/44/75, crown scale 8.1554, with its original plant geometry and all other saved population objects. Water level 0.5 is not a claim of 50% measured surface coverage.
+
+The renderer reports llvmpipe (LLVM 20.1.2, 256 bits), with LP_NUM_THREADS=2. The viewport is 1280x800 under a private Xvfb display; the enclosing display is 1380x900. The app starts with noexo nosat and explicitly loads universe.json. The saved generation batch identifies its host as GAL:NGC 4236. Some screenshot filenames begin with NGC 2403 because of selected/hovered object context; that prefix is not the generated population's galaxy identity. Consequently these runs omit artificial satellites and the separate TAP startup load; the imported fictional planets/moons are present. Static runtime resources are linked into the private home; mutable universe/preferences/layout files are private copies. Network use is disabled. Production source and the user's archive remain unchanged.
+
+The camera faces approximately east, about three degrees below the nominal horizon at zoom 1, with the original visible status and object panels. The observer is placed at the detailed coastline near latitude 0.61768011192272188 and longitude -1.7957842131639568 radians. App snapshots show liquid water, shore vegetation, cloud billows, and rain. This is not a worst-case wall-to-wall forest image: only some crowns are prominently visible, although the retained scenery region and large universe still participate. Dense-forest extremes remain separate validation scenes.
+
+M1: stationary, 120 frames over 55.0007 seconds.
+  Throughput: 2.1818 frames/second.
+  Wall frame duration: median 454.904 ms; p95 478.234 ms; p99 503.024 ms; maximum 586.053 ms.
+  Main-thread CPU/frame: median 325.684 ms; p95 342.287 ms; maximum 378.523 ms.
+  ImGui geometry: median 72,905 vertices and 199,701 indices; maximum 84,636 vertices and 226,299 indices.
+  ImGui commands: 11 throughout the measured interval.
+
+M2: slow walking, 120 frames over 60.1608 seconds.
+  Throughput: 1.9947 frames/second.
+  Wall frame duration: median 513.282 ms; p95 531.515 ms; p99 535.266 ms; maximum 562.405 ms.
+  Main-thread CPU/frame: median 347.361 ms; p95 356.337 ms; maximum 366.479 ms.
+  ImGui geometry: median 73,281 vertices and 200,373 indices; maximum 85,652 vertices and 228,594 indices.
+  ImGui commands: 11 throughout the measured interval.
+
+The walking probe advances longitude by the equivalent of 0.05 meters per recorded frame, accounting for world radius and latitude. The measured endpoints differ by approximately six meters; this is a controlled cache-invalidation route, not a fixed real-time walking speed or a test of keyboard movement physics. It changes observer position without altering production code. The first measured frame precedes the first movement increment. p95/p99 use sorted samples at floor(p*(N-1)); 120 frames is a short local sample, especially for rare stalls.
+
+The runs occur sequentially and do not freeze every weather/animation phase or simulation timestamp. The approximately 58 ms difference in median wall duration is an observation for these runs, not a clean causal estimate of terrain invalidation or a promised optimization gain. A longer fixed-epoch repeated matrix would support stronger attribution. The main-thread clock excludes worker-thread CPU. Wall time minus main-thread CPU is not a GPU timer: it also includes scheduling, synchronization, deliberate waits, and other delays. The software driver's own work can appear on the main thread and its workers.
+
+These measurements support two conclusions: the full-population shoreline scene is substantially slower than the 30-FPS target in this software environment, and significant work remains on the main thread. They do not rank all 117 proposals, identify a universal GPU bottleneck, or establish behavior on the two laptops. Source-derived terrain/wave/candidate counts explain where to investigate; instruction and GPU traces supply attribution rather than replacing these native results.
+
+Rejected setup runs are excluded. They included an incorrect initial destination, a frozen/no-liquid-coast scene, and shoreline attempts made before the fixture was suitable. Their CSVs contain no accepted frame interval. Startup, map generation, Find Shore execution, screenshot encoding, and the 60-frame warmup are outside M1/M2. A UI FPS number captured during setup is not used as benchmark evidence.
+
+The native CSVs are /tmp/frame-audit-remote-coast-still-1280.csv and /tmp/frame-audit-remote-coast-walk-1280.csv. Corresponding setup/runtime logs use the same stems with .log. Copies of the accepted screenshots are retained under snapshots/performance_audit_20261028. These temporary trace paths are supporting artifacts; the permanent report contains the measured summary and conditions so its conclusions do not depend on those files surviving a reboot.
+
+ACCEPTANCE AND COMPARISON GATES FOR APPROVED WORK
+
+Every Q0 implementation must preserve existing criteria unless an explicit exception is approved. In particular: F69 crown sightline/aspect; V18 clipped labels/lines and the moon/companion separation rules; V16 return-to-present astrometry; F19 warp coordinates; F27 calibrated fictional population density/colors; F60 alert transitions; F63 precise astrometry scope; F66 task completion/cancellation; F67 elapsed-time movement; and F70 complete compatible saving. Host planet/HZ statistics and detailed shared shoreline sampling remain functional requirements regardless of whether a particular proposal's local test happens to exercise them.
+
+Q2 density/range changes would alter the visible realization of the calibrated population or scenery presentation, even if the underlying saved stars/plants remain intact. Cloud, water, shadow, rain, and ring cuts would change the corresponding visual behavior. Approval should state the default versus optional status, the exact effect removed or simplified, and whether the current acceptance wording changes. This report does not edit those criteria or mark an unimplemented proposal complete.
+
+For each approved patch, compare a fixed scene before/after, then run the relevant correctness suite and inspect its output. For indexing and lifetime changes, also test creation/import/deletion/edit transitions. For terrain/scenery/water changes, compare a stationary view, camera-only rotation, a slow walk, a fast walk, coast crossing, low eye height, a pole/seam, and world switching. For GPU changes, include software fallback and actual laptop GPUs when available. Record the existing disabled-condensation/configuration test exceptions separately; do not rewrite user settings to disguise them.
+
+A complete follow-up scene matrix should include the same large remote population in day and night; clear and cloudy coasts; a dense forest with many overlapping crowns; bare rocky/icy terrain; an ocean-only view; looking above and below the horizon; ordinary nearby real systems; multi-galaxy travel; spaceship/sky-map/sun-clock modes; satellites enabled near Earth; orbit/label/grid combinations; a selected remote system; and preview/generation activity in the background. This matrix is proposed validation work, not a claim that every combination was already measured here.
+
+MEASUREMENT APPENDIX: PRIVATE STAGE-TIMER BUILD
+
+M3 repeats slow east-facing walking for 30 recorded frames with scope timers in private copies of visuals.cpp and housekeeping.cpp. The production source, executable, and renderer settings are unchanged. The private build uses the same O2 compilation and the same full population/shoreline fixture. Wall and main-thread CPU durations are recorded at selected function/block boundaries after the same warmup. Timers and text logging add overhead, so this is attribution evidence rather than a replacement native FPS claim.
+
+Median per-call wall / main-thread CPU milliseconds, 30 calls each:
+  compute_object_draw_coordinates: 101.785 / 100.648
+    refresh_eclipse_casters:         12.139 / 12.106
+  draw_objects:                     45.513 / 45.404
+  draw_horizon:                    157.634 / 157.180
+    terrain block:                  23.905 / 23.862
+    water block:                    37.594 / 37.526
+    scenery block:                   1.482 / 1.472
+  find_horizon:                      1.408 / 1.399
+  draw_cons_lines:                   5.391 / 5.375
+  draw_sky_gradient:                 0.196 / 0.194
+  draw_galaxy_band:                  0.011 / 0.008
+  draw_cloudy_sky preparation:        0.288 / 0.190
+
+The indentation indicates inclusive nesting. Eclipse collection is already inside coordinate processing; terrain, water, and scenery are already inside draw_horizon. Do not add parent and child times. Medians of separate stages also do not form an exact decomposition of one particular frame.
+
+The cloud preparation function queues GPU callbacks. Its short CPU scope is not evidence that cloud GPU execution is cheap; the callbacks run later through the ImGui renderer. Likewise, ground painting can combine CPU preparation with later GPU callbacks. The terrain block includes mesh invalidation/rebuild, projection, raster storage/reset, and rasterization, rather than measuring noise generation alone.
+
+This scene makes the global object/coordinate paths and water/terrain work clear investigation priorities. It does not establish that plant drawing is generally cheap: the accepted image has a limited number of prominent crowns, and the requested dense-forest extreme is a separate case. The roughly 95 ms of draw_horizon outside the three measured child blocks also warrants subdivision before assigning it to a particular cause. A follow-up private timer adds ground-preparation and horizon-preparation boundaries for that purpose.
+
+The stage log is /tmp/frame-audit-remote-coast-walk-stages.log and the corresponding frame records are /tmp/frame-audit-remote-coast-walk-stages.csv. An attempted full-population Callgrind launch was stopped during setup, before any accepted frame trace; it supplies no instruction-count or FPS evidence. No instruction-profile result is being inferred from that attempt.
+
+M4 adds the finer timers at a west-facing coastline selected by Find Shore, again with 30 slow-walking frames. Because Find Shore is facing-biased, this is a different coastline location, not merely a rotation at the M1/M2 position. The initial coordinates are latitude 0.54404283335622405 and longitude -2.2089246001455494 radians; the final longitude is -2.2089244757604076. The source/population and private physical adjustments are otherwise the same.
+
+Median per-call wall / main-thread CPU milliseconds, 30 calls each:
+  compute_object_draw_coordinates: 100.483 / 100.030
+    refresh_eclipse_casters:         12.095 / 11.996
+  draw_objects:                     42.147 / 42.078
+  draw_horizon:                    186.136 / 185.539
+    initial horizon preparation:     0.475 / 0.474
+    terrain block:                  27.319 / 27.301
+    ground-paint preparation:      114.273 / 114.186
+    water block:                    41.200 / 41.031
+    scenery block:                   2.041 / 2.039
+  draw_cons_lines:                   5.360 / 5.342
+
+Ground-paint preparation includes the CPU work that constructs ground spans/rectangles and samples the surface, before the queued GPU painting callback. That result makes P029 and P031-P037 particularly relevant; they should move into the first investigation wave for this scene. It does not establish how much of the 114 ms belongs to Perlin versus coordinate conversion, recursive patch handling, map uniformity, or mask preparation. That finer attribution remains part of choosing among those proposals.
+
+The scenery cache contains 34,604 candidates throughout the recorded M4 interval. The candidate loop retains 11-14 records for subsequent sorting/drawing, with a median of 13. 'Retained' is not a final visible-tree count: the records can include rocks, and later occlusion/filtering can remove more. This strongly supports investigating conservative chunk rejection, while the small drawing population means it still cannot quantify the heavy-crown case. The screenshot shows a largely water-dominated view with scattered small ground objects.
+
+M4's median instrumented frame duration is 510.334 ms. It is not an improvement result and is not combined with native M1/M2 into a single average. Its log/CSV stem is /tmp/frame-audit-remote-coast-west-walk-stages, and its screenshot is retained as snapshots/performance_audit_20261028/west-coast-stage-probe.png.
+
+O. TWO ADDITIONAL DIRECT CUT OPTIONS SUGGESTED BY GROUND/WATER ATTRIBUTION
+
+P116 | A / S / Q2 | Offer the existing adaptive ground-sampling path as an explicit quality choice.
+Source: distant_biome_pixel_sampling in src/visuals.h and the guarded per-pixel path around visuals.cpp 6213. The current default is 1; the source already contains the alternate adaptive path when it is 0. Compare a user-visible adaptive-versus-detailed setting before considering a new ground renderer. Potential gains come from fewer detailed surface samples near the horizon; risks are missed thin features, patch boundaries, and apparent shore/vegetation differences. Keep Find Shore and physical water coverage authoritative. M4 demonstrates that the surrounding preparation is expensive, not that this switch alone removes all 114 ms. No switch has been changed by this audit.
+
+P117 | B / S / Q3 | Offer static water without animated waves or glints.
+Source: draw_horizon's surface_water block around visuals.cpp 6280-6560. Retain the water surface, color, coastline, navigation, and planetary water state while skipping wave-row generation and glint-source processing entirely. This is a more aggressive option than reducing rows/lights in P080. It removes animated highlights and much of the sense of water movement. M3/M4 show about 38-41 ms of CPU work inside the current water block, which identifies the work being cut; an actual end-to-end gain still requires a controlled comparison. It is an optional visual sacrifice, not a replacement for the exact water-caching proposals.
+
+MEASUREMENT APPENDIX: ACTUAL DESKTOP GPU
+
+M5 runs the unmodified production executable through the existing desktop display, with the same private runtime and populated east-facing shoreline fixture. It reports Mesa Intel(R) HD Graphics 2000 (SNB GT1), rather than llvmpipe. The saved snapshot is 1280x800. This checks the current computer's actual renderer; it does not test either laptop or Windows. No desktop image or wallpaper is captured: the retained PNG comes from the application's own frame capture.
+
+After the same 60-frame warmup, 60 slow-walking frames take 20.6607 seconds, for 2.9041 FPS. Median wall frame duration is 342.655 ms, p95 355.257 ms, p99 363.113 ms, and maximum 412.622 ms. Median main-thread CPU/frame is 335.091 ms, p95 346.684 ms, and maximum 361.972 ms. ImGui geometry has median 72,394 vertices and 198,168 indices, with maxima 85,646 and 228,465. The command count is 11 throughout. Quantiles use the same sample-index rule as M1/M2. Sixty frames is especially limited evidence for rare stalls.
+
+The route begins at latitude 0.61768011192272188, longitude -1.7957842131639568 radians, and ends at longitude -1.7957839475640294. The probe again advances 0.05 meters per frame, approximately three meters total. The runtime verifies the same target index, object count, water level, vegetation, and vm_horizon. Map generation identifiers can differ with worker completion order; they are revision counters, not a change to the saved population.
+
+This result strengthens the case that substantial CPU work affects the real desktop shoreline frame, rather than being solely an artifact of software rendering. It does not prove clouds or other GPU effects are cheap in every view, and no GPU hardware-time attribution is supplied. Do not calculate an optimization speedup from M2 versus M5: they use different renderers, different run times/weather phases, and different sample lengths. No proposed optimization is applied in either run.
+
+The raw records are /tmp/frame-audit-remote-coast-walk-desktop.csv and .log. The app screenshot is retained as snapshots/performance_audit_20261028/desktop-gpu-shoreline.png. The archive batch metadata, rather than the selected-object screenshot prefix, confirms that the fictional population belongs to NGC 4236.
+
+FINAL INVENTORY AND STATUS
+
+There are 117 proposals: 24 priority A, 70 priority B, and 23 priority C. There are 85 source-anchored S entries and 32 H entries. Quality classes total 88 Q0, 16 Q1, eight Q2, and five Q3. These counts classify proposals, not proven successful optimizations. The measurements are M1-M5 and the separate completed serialization harness results.
+
+No proposal is implemented, no new acceptance item is marked complete, and no production source is changed by the audit. The only committed audit deliverables are this report and PERFORMANCE_AUDIT_FAILURE_EXPLANATION.txt. The temporary instrumentation, runtime copies, and raw logs stay outside the release sources. Existing unrelated untracked project files are left in place.
