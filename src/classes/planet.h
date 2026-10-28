@@ -123,7 +123,7 @@ namespace alienorum
         ~Planet() { if (orbit) delete orbit; if (atm) delete atm; }
 
         json to_json();
-        bool from_json(json j);
+        bool from_json(const json& j);
 
         bool guess_has_rings();
         void generate_ring_parameters(bool guarantee_rings = false);        // e.g. if we have a map file

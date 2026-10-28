@@ -140,12 +140,12 @@ json Moon::to_json()
     return towrite;
 }
 
-bool Moon::from_json(json j)
+bool Moon::from_json(const json& j)
 {
     Planet::from_json(j);
     try
     {
-        json j1 = j.at("Laplace_plane");
+        const json& j1 = j.at("Laplace_plane");
         Laplace_plane.from_json(j1);
     } catch (...) { ; }
     try { j.at("Laplace_set").get_to(Laplace_set); } catch (...) { ; }

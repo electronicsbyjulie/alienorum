@@ -41,7 +41,7 @@ class SerializationTest : public UniverseFixture
         std::fstream in(temp_universe(stem), std::ios::in);
         json j;
         in >> j;
-        return j;
+        return Serialization::expand_document(std::move(j));
     }
 
     void write_file(const char* stem, json j)
@@ -915,6 +915,147 @@ TEST_F(SerializationTest, OldFileStatingZeroPrecessionLoadsAsZero)
 // Saving only what was edited
 // =====================================================================
 
+TEST_F(SerializationTest, CompactDefaultsClearCatalogValuesAndKeepMeaningfulZeros)
+{
+    Star* host = make_star("Compact Primary");
+    host->user_edited = true;
+    host->apparent_magnitude = 0;
+    host->BayerGrkno = 0;
+    host->known_poles = false;
+    Planet* world = make_planet(host, "Compact Planet");
+    world->user_added = true;
+    world->static_clouds = false;
+    world->classification_evidence = {{"diagnostic_only", true}};
+    const std::string path = temp_universe("compact_defaults");
+    std::fstream output(path, std::ios::out | std::ios::trunc);
+    ASSERT_TRUE(Serialization::save_all(output, cels, true));
+    output.close();
+    json packed;
+    { std::ifstream input(path); input >> packed; }
+    ASSERT_EQ(packed.at("v"), 2);
+    const auto& saved = packed.at("o").at("Compact Primary");
+    EXPECT_FALSE(saved.contains("HD"));
+    EXPECT_FALSE(saved.contains("WD"));
+    EXPECT_FALSE(saved.contains("tc"));
+    EXPECT_FALSE(saved.contains("known_poles"));
+    EXPECT_EQ(saved.at("V"), 0);
+    EXPECT_EQ(saved.at("BayerGrkno"), 0);
+    EXPECT_FALSE(packed.at("o").at("Compact Primary.Compact Planet").at("sc").get<bool>());
+    EXPECT_EQ(packed.dump().find("diagnostic_only"), std::string::npos);
+    host->HD = 123;
+    host->known_poles = true;
+    host->apparent_magnitude = 6;
+    ASSERT_TRUE(load_file("compact_defaults"));
+    EXPECT_EQ(host->HD, 0u);
+    EXPECT_FALSE(host->known_poles);
+    EXPECT_DOUBLE_EQ(host->apparent_magnitude, 0);
+    EXPECT_FALSE(world->static_clouds);
+    std::remove(path.c_str());
+    delete_the_universe();
+}
+
+TEST_F(SerializationTest, CompactFictionalRecordsShareBatchesAndRetainPhysicalState)
+{
+    Star* star = make_star("Compact Fiction");
+    star->user_added = true;
+    star->is_faved = true;
+    star->fictional_origin = {{"id", "batch:1:A"}, {"component", 65}, {"designation", star->name},
+        {"batch", {{"seed", uint64_t(18446744073709551000ULL)}, {"galaxy", "test galaxy"}}},
+        {"anchor", false}, {"cluster", 0}, {"age_gyr", 4.5}};
+    star->stellar_system = {{"system", "batch:1"}, {"slot", 65}, {"label", star->name}};
+    star->location.system_center = Point(1.234567890123456e20, -8.123456789012345e18, 1e-100);
+    star->set_fictional_motion(Point(.123456789012345, -12345.6789012345, 1e-80));
+    star->metallicity = .123456789;
+    star->metallicity_ratio = "[M/H]";
+    star->metallicity_source = "fictional population model v1";
+    star->metallicity_error_upper = star->metallicity_error_lower = .15;
+    json original = star->to_json();
+    original["m"] = "literal alias key";
+    original["extension"] = {{"v", {1, 2, 3}}, {"local_position", {4, 5, 6}}, {"~v", "literal tilde"}};
+    json second = original;
+    second["!name"] = second["!origname"] = "Compact Fiction Two";
+    second["is_faved"] = false;
+    const json packed = Serialization::compact_document({{"one", original}, {"two", second}});
+    ASSERT_EQ(packed.at("b").size(), 1u);
+    const auto& saved = packed.at("o").at("one");
+    EXPECT_EQ(saved.at("fic"), 1);
+    ASSERT_TRUE(packed.contains("p"));
+    EXPECT_TRUE(saved.at("l").at("s").is_number_integer());
+    EXPECT_EQ(saved.at("l").at("s"), packed.at("o").at("two").at("l").at("s"));
+    EXPECT_FALSE(saved.contains("sy"));
+    EXPECT_FALSE(saved.at("z").contains("eu"));
+    EXPECT_FALSE(saved.at("z").contains("el"));
+    EXPECT_FALSE(saved.at("z").contains("src"));
+    EXPECT_EQ(saved.at("z").at("rt"), 2);
+    EXPECT_FALSE(packed.at("o").at("two").contains("is_faved"));
+    const json expanded = Serialization::expand_document(packed).at("one");
+    EXPECT_EQ(expanded.at("m"), "literal alias key");
+    EXPECT_EQ(expanded.at("extension"), original.at("extension"));
+    EXPECT_EQ(expanded.at("location"), original.at("location"));
+    EXPECT_EQ(expanded.at("fictional_origin").at("motion"), original.at("fictional_origin").at("motion"));
+    EXPECT_EQ(expanded.at("fictional_origin").at("id"), original.at("fictional_origin").at("id"));
+    EXPECT_EQ(expanded.at("fictional_origin").at("batch"), original.at("fictional_origin").at("batch"));
+    EXPECT_EQ(expanded.at("stellar_system"), original.at("stellar_system"));
+    EXPECT_NEAR(expanded.at("stellar_metallicity").at("value_dex").get<double>(), star->metallicity, .00005);
+    Star restored;
+    ASSERT_TRUE(restored.from_json(expanded));
+    EXPECT_TRUE(restored.has_fictional_motion);
+    EXPECT_TRUE(restored.is_faved);
+    EXPECT_TRUE(std::isnan(restored.metallicity_error_upper));
+    EXPECT_EQ(restored.metallicity_ratio, "[M/H]");
+    double iron = 0, uncertainty = -1;
+    EXPECT_FALSE(restored.calibrated_iron_abundance(iron, uncertainty));
+    restored.metallicity_ratio = "[Fe/H]";
+    ASSERT_TRUE(restored.calibrated_iron_abundance(iron, uncertainty));
+    EXPECT_DOUBLE_EQ(uncertainty, 0);
+    EXPECT_DOUBLE_EQ(iron, restored.metallicity);
+    restored.fictional_origin = nullptr;
+    EXPECT_FALSE(restored.calibrated_iron_abundance(iron, uncertainty));
+    EXPECT_EQ(restored.fictional_space_velocity.to_json(), star->fictional_space_velocity.to_json());
+    delete_the_universe();
+}
+
+TEST_F(SerializationTest, CompactAtmospheresDistinguishUnknownFromExplicitlyAirless)
+{
+    Star* host = make_star("Atmosphere Primary");
+    Planet* unknown = make_planet(host, "Atmosphere Unknown");
+    Planet* airless = make_planet(host, "Atmosphere Airless");
+    airless->ensure_atmosphere()->surface_pressure = 0;
+    const json compact = Serialization::compact_document({{"host", host->to_json()},
+        {"unknown", unknown->to_json()}, {"airless", airless->to_json()}});
+    const json expanded = Serialization::expand_document(compact);
+    EXPECT_TRUE(expanded.at("unknown").at("atmosphere").is_null());
+    EXPECT_TRUE(expanded.at("airless").at("atmosphere").is_object());
+    write_file("compact_atmospheres", compact);
+    ASSERT_TRUE(load_file("compact_atmospheres"));
+    EXPECT_EQ(unknown->atm, nullptr);
+    EXPECT_NE(airless->atm, nullptr);
+    std::remove(temp_universe("compact_atmospheres").c_str());
+    delete_the_universe();
+}
+
+TEST_F(SerializationTest, CompactHeaderFailuresAreTransactional)
+{
+    Star* host = make_star("Compact Survivor");
+    host->location.system_center = Point(1e20, -3e22, .123456789012345);
+    const json packed = Serialization::compact_document({{"survivor", host->to_json()}});
+    for (int problem : {0, 1, 2, 3})
+    {
+        json invalid = packed;
+        if (problem == 0) invalid["v"] = 99;
+        else if (problem == 1) invalid["d"].at(std::to_string(int(class_star)))["typeclass"] = int(class_planet);
+        else if (problem == 2) invalid["o"]["survivor"]["l"]["s"] = -1;
+        else invalid["o"]["survivor"]["l"]["s"] = 999999;
+        write_file("compact_invalid", invalid);
+        EXPECT_FALSE(load_file("compact_invalid"));
+        EXPECT_EQ(ncelobjs, 1);
+        EXPECT_EQ(cels[0], host);
+        EXPECT_STREQ(host->name, "Compact Survivor");
+    }
+    std::remove(temp_universe("compact_invalid").c_str());
+    delete_the_universe();
+}
+
 TEST_F(SerializationTest, StreamedSaveMatchesFormattedDocumentBytes)
 {
     Star* host = make_star("Streaming primary");
@@ -933,7 +1074,7 @@ TEST_F(SerializationTest, StreamedSaveMatchesFormattedDocumentBytes)
         output.close();
         std::ifstream input(path, std::ios::binary);
         const std::string bytes((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
-        EXPECT_EQ(bytes, reference.dump(4));
+        EXPECT_EQ(bytes, Serialization::compact_document(reference).dump());
         std::remove(path.c_str());
     }
     delete_the_universe();
@@ -990,7 +1131,7 @@ TEST_F(SerializationTest, SharedAncestorsRetainLastWriterBehaviorForDuplicateKey
     ASSERT_TRUE(Serialization::save_one(output, second, reference));
     ASSERT_TRUE(Serialization::save_all(output, cels, true));
     output.close();
-    EXPECT_EQ(read_file("shared_ancestors"), reference);
+    EXPECT_EQ(read_file("shared_ancestors"), Serialization::expand_document(Serialization::compact_document(reference)));
     EXPECT_EQ(reference.size(), 4u);
     std::remove(path.c_str());
     delete_the_universe();
@@ -1024,7 +1165,7 @@ TEST_F(SerializationTest, DISABLED_SharedAncestorSaveTimings)
     ASSERT_TRUE(Serialization::save_all(output, cels, true));
     output.close();
     const double optimized = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now()-start).count();
-    EXPECT_EQ(read_file("ancestor_timings"), reference);
+    EXPECT_EQ(read_file("ancestor_timings"), Serialization::expand_document(Serialization::compact_document(reference)));
     std::cout << "Shared ancestor save ms: reference=" << baseline << " optimized=" << optimized << '\n';
     std::remove(path.c_str());
     delete_the_universe();

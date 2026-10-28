@@ -775,7 +775,7 @@ json CelestialObject::to_json()
     return towrite;
 }
 
-bool CelestialObject::from_json(json j)
+bool CelestialObject::from_json(const json& j)
 {
     home_world = j.value("home_world", false);
     map_inverted = j.value("map_inverted", false);
@@ -806,7 +806,7 @@ bool CelestialObject::from_json(json j)
     } catch (...) { ; }
     try
     {
-        json j1 = j.at("location");
+        const json& j1 = j.at("location");
         location.from_json(j1);
     } catch (...) { ; }
     try { j.at("lon_J2000_offset").get_to(lon_J2000_offset); lon_J2000_offset *= fiftyseventh; } catch (...) { ; }
@@ -814,7 +814,7 @@ bool CelestialObject::from_json(json j)
     try { j.at("oblateness").get_to(oblateness); } catch (...) { ; }
     try
     {
-        json j1 = j.at("orbit");
+        const json& j1 = j.at("orbit");
         if (orbit) delete orbit;
         orbit = new Orbit();
         orbit->from_json(j1);
@@ -842,8 +842,8 @@ bool CelestialObject::from_json(json j)
 
     // Blanks to copy-paste when adding a field here or to another class's from_json():
     //   plain:      try { j.at("").get_to(); } catch (...) { ; }
-    //   object:     try { json j1 = j.at(""); .from_json(j1); } catch (...) { ; }
-    //   object ptr: try { json j1 = j.at(""); = new (); ->from_json(j1); } catch (...) { ; }
+    //   object:     try { const json& j1 = j.at(""); .from_json(j1); } catch (...) { ; }
+    //   object ptr: try { const json& j1 = j.at(""); = new (); ->from_json(j1); } catch (...) { ; }
     //   char[]:     try { std::string s; j.at("").get_to(s); strcpy(, s.c_str()); } catch (...) { ; }
     // TODO: Convert the char[] fields back to std::strings.
 

@@ -450,7 +450,7 @@ namespace alienorum
         double Hill_sphere_radius();
         double Roche_limit(CelestialObject *orbiter = nullptr);
         json to_json();
-        bool from_json(json j);
+        bool from_json(const json& j);
         void mark_all_maps_for_regen();
         void generate_water_clouds();
 

@@ -1734,7 +1734,7 @@ json Planet::to_json()
     return towrite;
 }
 
-bool Planet::from_json(json j)
+bool Planet::from_json(const json& j)
 {
     temperature = 0;
     CelestialObject::from_json(j);
@@ -1803,7 +1803,7 @@ bool Planet::from_json(json j)
     // below by leaving atm non-null.
     try
     {
-        json ja = j.at("atmosphere");
+        const json& ja = j.at("atmosphere");
         if (ja.is_object()) ensure_atmosphere()->from_json(ja);
     }
     catch (...) { ; }

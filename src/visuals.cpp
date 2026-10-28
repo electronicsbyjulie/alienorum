@@ -6963,9 +6963,9 @@ void draw_horizon()
 
                         crown_rx = (rock_size * p->plant_crown_size / z_crown_cam) * dispcx * zoom;
                         crown_rx = fmax(1.2, crown_rx);
-                        // Project the oblate crown from an ellipse at the horizon to a circle overhead.
-                        double crown_aspect = sqrt(p->plant_crown_oblateness * p->plant_crown_oblateness
-                            * cos_alt * cos_alt + sin_alt * sin_alt);
+                        // The viewing angle belongs to this crown's sightline, independent of camera pitch.
+                        const double crown_aspect = scenery_crown_aspect(dist_m, y_crown_world,
+                            p->plant_crown_oblateness);
                         crown_ry = fmax(1.0, crown_rx * crown_aspect);
 
                         // Attach the trunk to the lower pole of the crown in world space.

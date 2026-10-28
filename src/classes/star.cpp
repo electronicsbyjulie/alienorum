@@ -1747,7 +1747,7 @@ json Star::to_json()
     return towrite;
 }
 
-bool Star::from_json(json j)
+bool Star::from_json(const json& j)
 {
     CelestialObject::from_json(j);
     stellar_abundances = j.contains("stellar_abundances") && j["stellar_abundances"].is_object()
@@ -1807,6 +1807,7 @@ bool Star::from_json(json j)
                 metallicity_source = measurement["source"].get<std::string>();
         }
     }
+    if (fictional_origin.is_object()) metallicity_error_upper = metallicity_error_lower = NAN;
     try { j.at("proper_motion_RA").get_to(proper_motion_RA); proper_motion_RA *= fiftyseventh/oneyear; } catch (...) { ; }
     try { j.at("proper_motion_decl").get_to(proper_motion_decl); proper_motion_decl *= fiftyseventh/oneyear; } catch (...) { ; }
     try { j.at("radial_velocity").get_to(radial_velocity); } catch (...) { ; }

@@ -152,7 +152,7 @@ namespace alienorum
         void gotta_be_named_something();
         void assign_identifier_name();       // Custom name > Bayer > Flamsteed > GJ > Gould > HD > HIP > other identifiers.
         json to_json();
-        bool from_json(json j);
+        bool from_json(const json& j);
         void make_companion_of(Star* primary, char comp = 'B');
 
     protected:

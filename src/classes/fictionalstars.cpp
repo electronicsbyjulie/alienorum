@@ -2,6 +2,7 @@
 #include "galaxyimage.h"
 #include "wdcolor.h"
 #include "moon.h"
+#include "serial.h"
 #include "galaxygeometry.h"
 #include "exocons.h"
 #include "../globals.h"
@@ -863,7 +864,7 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
             }
             star->metallicity = metallicity;
             star->metallicity_ratio = "[Fe/H]";
-            star->metallicity_error_upper = star->metallicity_error_lower = 0.15;
+            star->metallicity_error_upper = star->metallicity_error_lower = NAN;
             star->metallicity_source = "fictional population model v1";
             star->estimate_UB(star->temperature);
             star->sidereal_rotational_period = std::clamp(25*sqrt(age/4.6)*pow(sun_temp/star->temperature, 2), 0.25, 150.0)*oneday;
@@ -984,14 +985,14 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
             if (star->multisys) staged_members[star->multisys].push_back(star.get());
         }
         for (size_t i = hosts.size(); i > 1; --i) std::swap(hosts[i-1], hosts[random()%i]);
-        const int target = int(std::lround(result.stars.size()*0.1));
+        const int target = int(std::lround(result.stars.size()*0.333));
         const auto draw = [&]() { return double(random() >> 11)*0x1.0p-53; };
         for (Star* host : hosts)
         {
             if (result.planet_hosts >= target) break;
             if (cancel && cancel->load())
             {
-                result.error = "Preview cancelled.";
+                result.error = "Preview canceled.";
                 result.worlds.clear();
                 return result;
             }
@@ -1077,9 +1078,36 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
             }
         }
     }
+    Serialization::SaveContext save_context;
+    const auto estimate = [&](const auto& objects)
+    {
+        const size_t samples = std::min(size_t(128), objects.size());
+        if (!samples) return size_t(0);
+        const size_t previous_frames = save_context.header.contains("p") ? save_context.header["p"].dump().size() : 2;
+        size_t bytes = 0;
+        for (size_t sample = 0; sample < samples; ++sample)
+        {
+            auto* object = objects[sample * objects.size() / samples].get();
+            std::string key = object->name;
+            CelestialObject* ancestor = object;
+            for (int depth = 0; depth < 100 && ancestor->orbit && ancestor->orbit->center; ++depth)
+            {
+                ancestor = ancestor->orbit->center;
+                key = std::string(ancestor->name) + "." + key;
+            }
+            bytes += Serialization::compact_record(object->to_json(), save_context).dump().size() + json(key).dump().size() + 2;
+        }
+        const size_t frames = save_context.header.contains("p") ? save_context.header["p"].dump().size() : 2;
+        return (bytes + frames - previous_frames) * objects.size() / samples;
+    };
+    result.estimated_save_bytes = estimate(result.stars);
+    result.estimated_save_bytes += estimate(result.worlds);
+    if (save_context.header.is_object())
+    {
+        save_context.header.erase("p");
+        result.estimated_save_bytes += save_context.header.dump().size();
+    }
     result.elapsed_seconds = std::chrono::duration<double>(std::chrono::steady_clock::now()-start).count();
-    for (const auto& world : result.worlds) result.estimated_save_bytes += world->to_json().dump(4).size();
-    if (!result.stars.empty()) result.estimated_save_bytes += result.stars.front()->to_json().dump(4).size()*result.stars.size();
     return result;
 }
 

@@ -3128,6 +3128,39 @@ TEST_F(RenderingRegressionTest, LargeTimeKeysRetainEarthOrLocalSolarTime)
     }
 }
 
+TEST_F(RenderingRegressionTest, CrownAspectUsesIndividualSightlinesInsteadOfCameraPitch)
+{
+    EXPECT_DOUBLE_EQ(scenery_crown_aspect(100, 0, .1), .1);
+    EXPECT_DOUBLE_EQ(scenery_crown_aspect(0, 100, .1), 1);
+    EXPECT_DOUBLE_EQ(scenery_crown_aspect(0, -100, .1), 1);
+    EXPECT_NEAR(scenery_crown_aspect(100, 100, .1), std::sqrt(.505), 1e-14);
+    EXPECT_LT(scenery_crown_aspect(100, 10, .1), scenery_crown_aspect(10, 10, .1));
+    for (double oblateness : {.02, .1, .5, 1.0, 2.0})
+    {
+        for (double height : {-100.0, 0.0, 10.0, 100.0})
+        {
+            const double expected = scenery_crown_aspect(100, height, oblateness);
+            EXPECT_DOUBLE_EQ(expected, scenery_crown_aspect(100, -height, oblateness));
+            EXPECT_DOUBLE_EQ(expected, scenery_crown_aspect(1000, height * 10, oblateness));
+            // Recover the same world sightline after different camera pitch and azimuth transforms.
+            for (double pitch : {-.6, 0.0, .3, .8, 1.3})
+            {
+                for (double azimuth : {-.8, 0.0, .8})
+                {
+                    const double x = 100 * std::sin(azimuth);
+                    const double z = 100 * std::cos(azimuth);
+                    const double camera_y = height * std::cos(pitch) - z * std::sin(pitch);
+                    const double camera_z = height * std::sin(pitch) + z * std::cos(pitch);
+                    const double world_y = camera_y * std::cos(pitch) + camera_z * std::sin(pitch);
+                    const double world_z = camera_z * std::cos(pitch) - camera_y * std::sin(pitch);
+                    EXPECT_NEAR(scenery_crown_aspect(std::hypot(x, world_z), world_y, oblateness),
+                        expected, 1e-14);
+                }
+            }
+        }
+    }
+}
+
 TEST_F(RenderingRegressionTest, CachedCrownContoursMatchNativeEllipseVertices)
 {
     for (bool antialias : {false, true})

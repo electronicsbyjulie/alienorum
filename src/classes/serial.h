@@ -31,6 +31,15 @@ namespace alienorum
     class Serialization
     {
         public:
+            struct SaveContext
+            {
+                json header;
+                std::unordered_map<std::string, size_t> frames;
+            };
+            static json compact_record(json record, SaveContext& context);
+            static json expand_record(const json& record, const json& header);
+            static json compact_document(json records);
+            static json expand_document(json document);
             static bool save_one(std::fstream &fs, CelestialObject *cel, json &allobjs);
             static bool save_all(std::fstream &fs, CelestialObject **cels, bool only_edited = false);
             static bool load_all(std::fstream &fs, CelestialObject **cels, unsigned int max, bool as_user_added = true);
