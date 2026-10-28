@@ -548,7 +548,7 @@ int main (int argc, char** argv)
     {
         std::unique_lock<std::recursive_mutex> catalog_lock(catalog_mutex);
         const bool loading_frame = splash;
-        auto frame_began = std::chrono::high_resolution_clock::now();
+        auto frame_began = std::chrono::steady_clock::now();
         if (hide_mouse && (!is_mouse_over_window || dragging) && !splash
             && !ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopup))
         {
@@ -857,9 +857,7 @@ int main (int argc, char** argv)
             // Positioning updates
             vm = velocity.magnitude();
             vmfr = vm * target_frame_rate;
-            Point vdil = velocity;
-            if (vmfr < speed_of_light) vdil.scale(vdil.magnitude() / compute_time_dilation(vmfr));
-            here.local_position += vdil;
+            here.local_position += viewer_displacement(velocity, frame_dur);
             azimuth += spin;
 
             // Slow down to avoid zipping past tracked object
@@ -1215,12 +1213,11 @@ int main (int argc, char** argv)
             searched = false;
             PrevDispSize = io.DisplaySize;
 
-            auto frame_finished = std::chrono::high_resolution_clock::now();
-            auto frame_elapsed = std::chrono::duration_cast<std::chrono::microseconds>(frame_finished - frame_began);
-            frame_dur = frame_elapsed.count() * 1e-6;
+            const auto frame_deadline = frame_began + std::chrono::duration<double>(1.0/target_frame_rate);
             catalog_lock.unlock();
-            std::this_thread::sleep_for(std::chrono::duration<double, std::micro>(66666 - frame_dur * 1e6));
+            std::this_thread::sleep_until(frame_deadline);
             catalog_lock.lock();
+            frame_dur = std::chrono::duration<double>(std::chrono::steady_clock::now()-frame_began).count();
             if (frame_dur < best_frame_dur) best_frame_dur = frame_dur;
             io.DeltaTime = frame_dur;
             is_click = is_dbl_click = false;

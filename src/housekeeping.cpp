@@ -16,6 +16,14 @@ void refresh_star_visibilities()
     }
 }
 
+Point viewer_displacement(const Point& motion, double elapsed_seconds)
+{
+    const double speed = motion.magnitude()*target_frame_rate;
+    Point displacement = motion;
+    if (speed < speed_of_light) displacement.scale(displacement.magnitude()/compute_time_dilation(speed));
+    return displacement*(elapsed_seconds*target_frame_rate);
+}
+
 void set_viewer_surface_location(bool also_set_plane)
 {
     CelestialObject *cel = cels[whereami];

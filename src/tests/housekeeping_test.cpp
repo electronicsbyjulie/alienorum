@@ -18,6 +18,29 @@ extern double celmasslim;
 
 class HousekeepingTest : public UniverseFixture {};
 
+TEST_F(HousekeepingTest, FlightDisplacementTracksElapsedTimeAcrossFrameCadences)
+{
+    for (double speed : {0.0, 0.3*speed_of_light, 0.999*speed_of_light,
+        1.00001*speed_of_light, 100*speed_of_light})
+    {
+        Point motion(1, -2, 3);
+        motion.scale(speed/target_frame_rate);
+        Point nominal = motion;
+        if (speed < speed_of_light) nominal.scale(nominal.magnitude()/compute_time_dilation(speed));
+        const Point expected = nominal*target_frame_rate;
+        for (int cadence : {10, 30, 60})
+        {
+            Point integrated;
+            for (int frame = 0; frame < cadence; ++frame)
+                integrated += viewer_displacement(motion, 1.0/cadence);
+            EXPECT_NEAR(integrated.distance_to(expected), 0, std::max(1e-9, speed*1e-12));
+        }
+        EXPECT_EQ(viewer_displacement(motion, 0).magnitude(), 0);
+        EXPECT_NEAR(viewer_displacement(motion, 1.0/target_frame_rate).distance_to(nominal),
+            0, std::max(1e-9, speed*1e-12));
+    }
+}
+
 TEST_F(HousekeepingTest, CulledPlanetsRefreshHzCountsAfterDirectOrbitChanges)
 {
     struct RestoreFrame
