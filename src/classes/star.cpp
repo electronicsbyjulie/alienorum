@@ -412,10 +412,33 @@ bool Star::resolve_wd_color(Color &linear_rgb, std::string *source)
         return true;
     }
 
+    if (is_white_dwarf() && fictional_origin.is_object()
+        && fictional_origin.contains("white_dwarf_atmosphere"))
+    {
+        const auto& profile = fictional_origin.at("white_dwarf_atmosphere");
+        if (profile.is_object() && profile.contains("srgb") && profile.at("srgb").is_number_unsigned()
+            && profile.contains("template_temperature_k") && profile.at("template_temperature_k").is_number()
+            && profile.value("template_spectral_type", std::string()) == spectral_type
+            && fabs(temperature-profile.at("template_temperature_k").get<double>()) < 1)
+        {
+            linear_rgb = wd_linear_from_srgb(profile.at("srgb").get<uint32_t>());
+            if (source) *source = profile.value("template_source", std::string("Hollands2026"))+"_fictional_template_approx";
+            return true;
+        }
+    }
     WdAtmosphere atmosphere;
     if (spectral_type[0] != 'D') return false;
     if (spectral_type[1] == 'A') atmosphere = WdAtmosphere::Hydrogen;
     else if (spectral_type[1] == 'B') atmosphere = WdAtmosphere::Helium;
+    else if (spectral_type[1] == 'C' && fictional_origin.is_object()
+        && fictional_origin.contains("white_dwarf_atmosphere"))
+    {
+        const auto& profile = fictional_origin.at("white_dwarf_atmosphere");
+        const std::string composition = profile.is_object() ? profile.value("composition", std::string()) : std::string();
+        if (composition == "helium") atmosphere = WdAtmosphere::Helium;
+        else if (composition == "hydrogen") atmosphere = WdAtmosphere::Hydrogen;
+        else return false;
+    }
     else return false;
     // Mixed, magnetic, uncertain and peculiar spectra lack a suitable pure-atmosphere fit.
     // Ordinary DAZ stars may use the hydrogen approximation; broad DZ opacity cannot.

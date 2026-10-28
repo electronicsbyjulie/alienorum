@@ -1,5 +1,6 @@
 #include "fictionalstars.h"
 #include "galaxyimage.h"
+#include "wdcolor.h"
 #include "galaxygeometry.h"
 #include "exocons.h"
 #include "../globals.h"
@@ -158,13 +159,7 @@ namespace
         }
         else if (phase == 10)
         {
-            star.mass = (0.52 + uniform(random)*0.22)*solar_mass;
-            star.volumetric_mean_radius = Star::degenerate_radius(star.mass);
-            star.temperature = 6000 + uniform(random)*18000;
-            star.estimate_BV(star.temperature);
-            const double luminosity = pow(star.volumetric_mean_radius/solar_radius, 2)*pow(star.temperature/sun_temp, 4);
-            star.absolute_magnitude = 4.74 - 2.5*log10(luminosity) - Star::bolometric_correction(star.temperature);
-            strcpy(star.spectral_type, "DA");
+            generate_fictional_white_dwarf(star, age, random);
         }
         else
         {
@@ -450,6 +445,86 @@ const char* alienorum::fictional_center_type(int index)
     return types[std::clamp(index, 0, 14)];
 }
 
+void alienorum::generate_fictional_white_dwarf(Star& star, double age_gyr, std::mt19937_64& random)
+{
+    struct Template
+    {
+        double temperature;
+        std::string spectral, label, method;
+        uint32_t rgb;
+    };
+    static const auto templates = []()
+    {
+        std::vector<Template> result;
+        std::ifstream input("catalogs/WD_colors.dat");
+        std::string line, spectral;
+        double temperature = 0;
+        while (std::getline(input, line))
+        {
+            if (line.empty()) continue;
+            std::istringstream row(line);
+            if (line[0] == '#')
+            {
+                spectral.clear();
+                temperature = 0;
+                std::string token;
+                while (row >> token)
+                {
+                    if (token.compare(0, 4, "SpT=") == 0) spectral = token.substr(4);
+                    if (token.compare(0, 5, "Teff=") == 0) temperature = strtod(token.c_str()+5, nullptr);
+                }
+                continue;
+            }
+            Template entry;
+            std::string hex;
+            if (!(row >> entry.label >> entry.method >> hex >> entry.method)) continue;
+            if (temperature < 3000 || temperature > 12000 || hex.size() != 7 || hex[0] != '#'
+                || (spectral.compare(0, 2, "DQ") != 0 && spectral.compare(0, 2, "DZ") != 0)) continue;
+            entry.temperature = temperature;
+            entry.spectral = spectral;
+            entry.rgb = std::stoul(hex.substr(1), nullptr, 16);
+            result.push_back(entry);
+        }
+        return result;
+    }();
+    const double age = std::max(0.2, age_gyr);
+    // A bounded Mestel-like cooling prior with a range of remnant formation times.
+    const double cooling_age = 0.01+(age-0.11)*pow(uniform(random), 3);
+    star.mass = (0.52+uniform(random)*0.22)*solar_mass;
+    star.volumetric_mean_radius = Star::degenerate_radius(star.mass);
+    star.temperature = std::clamp(9000*pow(cooling_age/0.8, -0.35), 3500.0, 40000.0);
+    const bool helium = uniform(random) < 0.25;
+    strcpy(star.spectral_type, helium ? (star.temperature >= 11000 ? "DB" : "DC")
+        : (star.temperature >= 5000 ? "DA" : "DC"));
+    json atmosphere = {{"estimated", true}, {"model", "fictional_wd_cooling_atmospheres_v1"},
+        {"composition", helium ? "helium" : "hydrogen"}, {"cooling_age_gyr", cooling_age}};
+    if (star.temperature < 8000 && uniform(random) < 0.18)
+    {
+        std::vector<const Template*> suitable;
+        for (const auto& entry : templates)
+            if (fabs(entry.temperature-star.temperature) < star.temperature*0.12
+                && 0.8*pow(9000/entry.temperature, 1/0.35) < age-0.1) suitable.push_back(&entry);
+        if (!suitable.empty())
+        {
+            const Template& entry = *suitable[std::min(suitable.size()-1, size_t(uniform(random)*suitable.size()))];
+            star.temperature = entry.temperature;
+            snprintf(star.spectral_type, sizeof(star.spectral_type), "%s", entry.spectral.c_str());
+            atmosphere["composition"] = entry.spectral.compare(0, 2, "DQ") == 0 ? "carbon_bearing" : "metal_polluted";
+            atmosphere["template_source"] = "Hollands2026_"+entry.method;
+            atmosphere["template_reference"] = entry.label;
+            atmosphere["template_temperature_k"] = entry.temperature;
+            atmosphere["template_spectral_type"] = entry.spectral;
+            atmosphere["srgb"] = entry.rgb;
+            atmosphere["cooling_age_gyr"] = 0.8*pow(9000/entry.temperature, 1/0.35);
+        }
+    }
+    star.fictional_origin["white_dwarf_atmosphere"] = atmosphere;
+    star.wd_temperature_source = "fictional_Mestel_like_cooling_prior";
+    star.estimate_BV(star.temperature);
+    const double luminosity = pow(star.volumetric_mean_radius/solar_radius, 2)*pow(star.temperature/sun_temp, 4);
+    star.absolute_magnitude = 4.74-2.5*log10(luminosity)-Star::bolometric_correction(star.temperature);
+}
+
 void alienorum::restore_fictional_motion(Star& star)
 {
     if (star.has_fictional_motion || !star.fictional_origin.is_object()
@@ -537,6 +612,7 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
     {
         double mass, radius, temperature, magnitude, bv, age, cumulative;
         std::string spectral;
+        json atmosphere;
     };
     std::vector<PopulationSample> population;
     const auto append_sample = [&](std::vector<PopulationSample>& samples, int phase, double blue, double age, double cluster_radius)
@@ -567,7 +643,8 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
         if (!(weight > 0)) return;
         const double cumulative = (samples.empty() ? 0 : samples.back().cumulative)+weight;
         samples.push_back({prototype.mass, prototype.volumetric_mean_radius, prototype.temperature,
-            prototype.absolute_magnitude, prototype.BV_color, age, cumulative, prototype.spectral_type});
+            prototype.absolute_magnitude, prototype.BV_color, age, cumulative, prototype.spectral_type,
+            prototype.fictional_origin.is_object() ? prototype.fictional_origin.value("white_dwarf_atmosphere", json(nullptr)) : json(nullptr)});
     };
     const Point center_color = galaxy.population_color(region.center_ly);
     const double center_blue = std::clamp((center_color.z-center_color.x)/(center_color.x+center_color.z+1e-6)*0.5+0.5, 0.0, 1.0);
@@ -665,6 +742,7 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
             : galaxy.spheroid ? 5 + 6*uniform(properties)
             : uniform(properties) < blue*0.65 ? 0.03 + uniform(properties)*0.3
             : 0.5 + pow(uniform(properties), 0.5)*9;
+        json primary_atmosphere = nullptr;
         auto primary = std::make_unique<Star>();
         if (anchor)
         {
@@ -684,6 +762,7 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
             primary->BV_color = sample.bv;
             snprintf(primary->spectral_type, sizeof(primary->spectral_type), "%s", sample.spectral.c_str());
             age = sample.age;
+            primary_atmosphere = sample.atmosphere;
         }
         Point offset;
         bool placed = anchor;
@@ -776,6 +855,11 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
             star->fictional_origin = {{"id", system_id + ":" + char('A'+member)}, {"batch", result.provenance},
                 {"system_index", system_number}, {"component", int('A'+member)}, {"designation", name}, {"minimum_spacing_ly", spacing}, {"age_gyr", age},
                 {"cluster", cluster_index}, {"anchor", anchor}, {"disk_position_ly", (region.center_ly + offset).to_json()}};
+            if (!member && primary_atmosphere.is_object())
+            {
+                star->fictional_origin["white_dwarf_atmosphere"] = primary_atmosphere;
+                star->wd_temperature_source = "fictional_Mestel_like_cooling_prior";
+            }
             star->metallicity = metallicity;
             star->metallicity_ratio = "[Fe/H]";
             star->metallicity_error_upper = star->metallicity_error_lower = 0.15;

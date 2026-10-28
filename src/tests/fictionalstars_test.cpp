@@ -9,6 +9,7 @@
 #include "../classes/fictionalstars.h"
 #include "../classes/planetnames.h"
 #include "../classes/galaxyimage.h"
+#include "../classes/wdcolor.h"
 #include "../classes/cat.h"
 #include "../classes/exocons.h"
 #include "../housekeeping.h"
@@ -927,4 +928,81 @@ TEST_F(FictionalStarsTest, LegacyGeneratedSystemsAcquireRepeatableSharedMotionsO
     EXPECT_TRUE(member.has_fictional_motion);
     EXPECT_EQ(root.fictional_space_velocity.to_json(), member.fictional_space_velocity.to_json());
     EXPECT_EQ(repeat.fictional_origin.at("motion"), member.fictional_origin.at("motion"));
+}
+
+TEST_F(FictionalStarsTest, WhiteDwarfCoolingAndAtmospheresProducePublishedColorDiversity)
+{
+    std::mt19937_64 random(7519);
+    int blue = 0, orange = 0, pink = 0, green = 0, yellow = 0, helium = 0;
+    constexpr int count = 12000;
+    for (int i = 0; i < count; ++i)
+    {
+        Star star;
+        const double age = 1+10*double(random() >> 11)*0x1.0p-53;
+        generate_fictional_white_dwarf(star, age, random);
+        ASSERT_TRUE(star.is_white_dwarf());
+        const auto& profile = star.fictional_origin.at("white_dwarf_atmosphere");
+        EXPECT_LT(profile.at("cooling_age_gyr").get<double>(), age);
+        if (profile.at("composition") == "helium") ++helium;
+        Color linear;
+        std::string source;
+        ASSERT_TRUE(star.resolve_wd_color(linear, &source)) << star.spectral_type << " " << star.temperature;
+        const RGB3 rgb = wd_srgb_from_linear(linear);
+        if (rgb.b > rgb.r*1.03) ++blue;
+        if (rgb.r > rgb.b*1.3 && rgb.r > rgb.g*1.1) ++orange;
+        if (rgb.r > rgb.g*1.1 && rgb.b > rgb.g*1.05) ++pink;
+        if (rgb.g > rgb.r*1.05 && rgb.g > rgb.b*1.05) ++green;
+        if (rgb.r >= rgb.g*0.95 && rgb.r < rgb.g*1.1 && rgb.g > rgb.b*1.1) ++yellow;
+        EXPECT_GT(star.absolute_magnitude, 5);
+        EXPECT_GT(star.volumetric_mean_radius, 0);
+        EXPECT_TRUE(star.WD.empty());
+        EXPECT_TRUE(star.gaia_wd_name.empty());
+        if (profile.contains("srgb"))
+        {
+            Star restored;
+            ASSERT_TRUE(restored.from_json(star.to_json()));
+            Color saved_color;
+            ASSERT_TRUE(restored.resolve_wd_color(saved_color));
+            EXPECT_EQ(wd_srgb_from_linear(saved_color).r, rgb.r);
+            EXPECT_EQ(wd_srgb_from_linear(saved_color).g, rgb.g);
+            EXPECT_EQ(wd_srgb_from_linear(saved_color).b, rgb.b);
+            restored.temperature += 2000;
+            EXPECT_FALSE(restored.resolve_wd_color(saved_color));
+        }
+    }
+    std::cout << "Generated WD colors: blue=" << blue << " orange=" << orange << " pink=" << pink
+        << " green=" << green << " yellow=" << yellow << " helium=" << helium << std::endl;
+    EXPECT_GT(blue, count/2);
+    EXPECT_GT(orange, 50);
+    EXPECT_GT(pink, 5);
+    EXPECT_GT(green, 0);
+    EXPECT_GT(yellow, 5);
+    EXPECT_GT(helium, count/10);
+}
+
+TEST_F(FictionalStarsTest, RegionWhiteDwarfsRetainAtmosphereTemplatesAndPhysicalLuminosity)
+{
+    region.star_count = 10000;
+    auto batch = generate_fictional_stars(model, region);
+    ASSERT_TRUE(batch.error.empty()) << batch.error;
+    int count = 0, warm = 0, peculiar = 0;
+    for (const auto& star : batch.stars)
+    {
+        if (!star->is_white_dwarf()) continue;
+        ++count;
+        ASSERT_TRUE(star->fictional_origin.contains("white_dwarf_atmosphere"));
+        Color color;
+        EXPECT_TRUE(star->resolve_wd_color(color));
+        const RGB3 rgb = wd_srgb_from_linear(color);
+        if (rgb.r > rgb.b*1.1) ++warm;
+        if (star->fictional_origin.at("white_dwarf_atmosphere").contains("srgb")) ++peculiar;
+        const double luminosity = pow(star->volumetric_mean_radius/solar_radius, 2)*pow(star->temperature/sun_temp, 4);
+        EXPECT_NEAR(star->absolute_magnitude, 4.74-2.5*log10(luminosity)-Star::bolometric_correction(star->temperature), 1e-9);
+        Star restored;
+        EXPECT_TRUE(restored.from_json(star->to_json()));
+        EXPECT_EQ(restored.fictional_origin.at("white_dwarf_atmosphere"), star->fictional_origin.at("white_dwarf_atmosphere"));
+    }
+    std::cout << "Region WD sample: total=" << count << " warm=" << warm << " peculiar=" << peculiar << std::endl;
+    EXPECT_GT(count, 10);
+    EXPECT_GT(warm, 0);
 }

@@ -5,6 +5,7 @@
 #include "star.h"
 #include <atomic>
 #include <memory>
+#include <random>
 #include <vector>
 
 namespace alienorum
@@ -71,6 +72,7 @@ namespace alienorum
         bool install(std::string& message);
     };
 
+    void generate_fictional_white_dwarf(Star& star, double age_gyr, std::mt19937_64& random);
     void restore_fictional_motion(Star& star);
     int fictional_next_number();
     std::string fictional_region_id();
