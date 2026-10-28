@@ -66,6 +66,7 @@ OBJS += $(OBJINT)/fictionalstars_ui.o $(OBJINT)/globals.o $(OBJINT)/loaders.o $(
 	$(OBJINT)/dialogs.o $(OBJINT)/visuals.o $(OBJINT)/gputex.o $(OBJINT)/sphere_impostor.o $(OBJINT)/sunclock_gpu.o $(OBJINT)/clouds_gpu.o $(OBJINT)/horizon_ground_gpu.o $(OBJINT)/horizon_terrain_gpu.o $(OBJINT)/horizon_mesh_gpu.o
 
 TESTS = $(addprefix $(BIN)/, $(basename $(notdir $(TESTS_SRC))))
+TEST_OBJS = $(addprefix $(OBJ)/tests/, $(notdir $(TESTS_SRC:.cpp=.o)))
 
 INCLUDES = -I./src/include -I./$(IMGUI_DIR) -I./$(CLASSES_DIR)
 CPPFLAGS += $(INCLUDES)
@@ -120,11 +121,13 @@ $(OBJINT):
 	mkdir -p $(OBJINT)
 
 clean:
+	rm -Rf $(OBJ)/tests
 	rm -Rf $(OBJINT)/*.o
 	rm -Rf $(OBJINT)/*.d
 	rm -Rf $(BIN)/*
 
 deepclean:
+	rm -Rf $(OBJ)/tests
 	rm -Rf $(OBJIMGUI)/*.o
 	rm -Rf $(OBJIMGUI)/*.d
 	rm -Rf $(OBJIGFD)/*.o
@@ -302,72 +305,29 @@ $(OBJINT)/horizon_mesh_gpu.o: src/horizon_mesh_gpu.cpp
 	$(CPP) src/horizon_mesh_gpu.cpp $(CPPFLAGS) -c -o $(OBJINT)/horizon_mesh_gpu.o
 
 
-# Every test binary links the whole object set, so $(OBJS) has to be a prerequisite of each of
-# them as well: without it, editing a class only rebuilt that class's .o, and the test kept the
-# copy that was linked into it before the edit -- passing or failing on code that is no longer
-# there. The .cpp and .h that the test is actually about stay listed too, for clarity.
-$(BIN)/point_test: $(OBJS) $(TESTS_DIR)/point_test.cpp $(CLASSES_DIR)/point.h $(CLASSES_DIR)/point.cpp
-	$(CPP) $(TESTS_DIR)/point_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/point_test
+# Cache test translation units independently, while relinking every suite against changed
+# production objects. Generated dependencies cover test fixtures and transitive headers.
+$(OBJS): | $(OBJIMGUI) $(OBJIGFD) $(OBJINT)
 
-$(BIN)/color_test: $(OBJS) $(TESTS_DIR)/color_test.cpp $(CLASSES_DIR)/color.h $(CLASSES_DIR)/color.cpp
-	$(CPP) $(TESTS_DIR)/color_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/color_test
+$(TEST_OBJS): $(OBJ)/tests/%.o: $(TESTS_DIR)/%.cpp
+	mkdir -p $(@D)
+	$(CPP) $< $(CPPFLAGS) -c -o $@
 
-$(BIN)/celestial_test: $(OBJS) $(TESTS_DIR)/celestial_test.cpp $(CLASSES_DIR)/celestial.h $(CLASSES_DIR)/celestial.cpp
-	$(CPP) $(TESTS_DIR)/celestial_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/celestial_test
-
-$(BIN)/galaxy_test: $(OBJS) $(TESTS_DIR)/galaxy_test.cpp $(CLASSES_DIR)/galaxy.h $(CLASSES_DIR)/galaxy.cpp
-	$(CPP) $(TESTS_DIR)/galaxy_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/galaxy_test
-
-$(BIN)/star_test: $(OBJS) $(TESTS_DIR)/star_test.cpp $(CLASSES_DIR)/star.h $(CLASSES_DIR)/star.cpp
-	$(CPP) $(TESTS_DIR)/star_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/star_test
-
-$(BIN)/cons_test: $(OBJS) $(TESTS_DIR)/cons_test.cpp $(CLASSES_DIR)/cons.h $(CLASSES_DIR)/cons.cpp
-	$(CPP) $(TESTS_DIR)/cons_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/cons_test
-
-$(BIN)/planet_test: $(OBJS) $(TESTS_DIR)/planet_test.cpp $(CLASSES_DIR)/planet.h $(CLASSES_DIR)/planet.cpp
-	$(CPP) $(TESTS_DIR)/planet_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/planet_test
-
-$(BIN)/moon_test: $(OBJS) $(TESTS_DIR)/moon_test.cpp $(CLASSES_DIR)/moon.h $(CLASSES_DIR)/moon.cpp
-	$(CPP) $(TESTS_DIR)/moon_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/moon_test
-
-$(BIN)/comet_test: $(OBJS) $(TESTS_DIR)/comet_test.cpp $(CLASSES_DIR)/comet.h $(CLASSES_DIR)/comet.cpp
-	$(CPP) $(TESTS_DIR)/comet_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/comet_test
-
-$(BIN)/satellite_test: $(OBJS) $(TESTS_DIR)/satellite_test.cpp $(CLASSES_DIR)/satellite.h $(CLASSES_DIR)/satellite.cpp
-	$(CPP) $(TESTS_DIR)/satellite_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/satellite_test
-
-$(BIN)/serial_test: $(OBJS) $(TESTS_DIR)/serial_test.cpp $(TESTS_DIR)/universe_fixture.h $(CLASSES_DIR)/serial.h $(CLASSES_DIR)/serial.cpp
-	$(CPP) $(TESTS_DIR)/serial_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/serial_test
-
-$(BIN)/misc_test: $(OBJS) $(TESTS_DIR)/misc_test.cpp $(CLASSES_DIR)/misc.h $(CLASSES_DIR)/misc.cpp
-	$(CPP) $(TESTS_DIR)/misc_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/misc_test
-
-$(BIN)/cat_test: $(OBJS) $(TESTS_DIR)/cat_test.cpp $(TESTS_DIR)/universe_fixture.h $(CLASSES_DIR)/cat.h $(CLASSES_DIR)/cat.cpp
-	$(CPP) $(TESTS_DIR)/cat_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/cat_test
-
-$(BIN)/housekeeping_test: $(OBJS) $(TESTS_DIR)/housekeeping_test.cpp $(TESTS_DIR)/universe_fixture.h src/housekeeping.h src/housekeeping.cpp
-	$(CPP) $(TESTS_DIR)/housekeeping_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/housekeeping_test
-
-$(BIN)/sound_test: $(OBJS) $(TESTS_DIR)/sound_test.cpp $(CLASSES_DIR)/sound.h $(CLASSES_DIR)/sound.cpp
-	$(CPP) $(TESTS_DIR)/sound_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/sound_test
-
-$(BIN)/rendering_test: $(OBJS) $(TESTS_DIR)/rendering_test.cpp $(TESTS_DIR)/universe_fixture.h $(CLASSES_DIR)/clouds_gpu.h
-	$(CPP) $(TESTS_DIR)/rendering_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/rendering_test
+$(TESTS): $(BIN)/%: $(OBJ)/tests/%.o $(OBJS) | $(BIN)
+	$(CPP) $< $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $@
 
 # gprof requires compiling and linking main code file in one unified command; do not split out.
-$(BIN)/alienorum: $(OBJS) src/alienorum.cpp
+$(BIN)/alienorum: $(OBJS) src/alienorum.cpp | $(BIN)
 	$(CPP) src/alienorum.cpp $(OBJS) $(CPPFLAGS) -o $(BIN)/alienorum $(LIBS) $(GPROF)
 
 # Auto-generated per-object header dependencies (see -MMD -MP above). The leading '-' means
 # make won't complain on a clean checkout, before any .d files exist yet.
--include $(OBJS:.o=.d)
+-include $(OBJS:.o=.d) $(TEST_OBJS:.o=.d)
 
 
 $(OBJINT)/fictionalstars_ui.o: src/fictionalstars_ui.cpp
 	$(CPP) $< $(CPPFLAGS) -c -o $@
 
-$(BIN)/fictionalstars_test: $(OBJS) $(TESTS_DIR)/fictionalstars_test.cpp $(TESTS_DIR)/universe_fixture.h
-	$(CPP) $(TESTS_DIR)/fictionalstars_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $@
 
 $(BIN)/audit_fictional_population: tools/audit_fictional_population.cpp $(OBJS)
 	$(CPP) $< $(OBJS) $(CPPFLAGS) $(LIBS) -o $@
