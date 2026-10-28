@@ -3086,6 +3086,10 @@ void draw_stellar_neighborhood(ImGuiIO &io)
         }
 
         n = neighb_celids.size();
+        static std::vector<int> filtered_neighbors;
+        filtered_neighbors.clear();
+        filtered_neighbors.reserve(n);
+        int selected_row = -1;
         for (j=0; j<n; j++)
         {
             i = neighb_celids[j];
@@ -3099,69 +3103,86 @@ void draw_stellar_neighborhood(ImGuiIO &io)
             else if (onlyplt && (s->has_planets < minpl)) continue;
             if (onlyknp && !s->known_poles) continue;
             if (first_visible < 0) first_visible = j;
-            if (item_selected_idx == j) selected_visible = true;
-
-            stringstream line;
-            line << cels[i]->name;
-            l = line.str().size();
-            if (l < 36) line << std::string(36-l, ' ');
-
-            r = cels[i]->tmprel.magnitude();
-            if (r)
+            if (item_selected_idx == j)
             {
-                m = cels[i]->viewer_magnitude(here);
-                line << setprecision(4) << ((m>=0) ? "+" : "") << m;
-            }
-            else line << "-";
-            l = line.str().size();
-            if (l < 43) line << std::string(43-l, ' ');
-
-            line << s->spectral_type;
-            l = line.str().size();
-            if (l < 59) line << std::string(59-l, ' ');
-
-            if (s->has_planets)
-            {
-                line << s->has_planets;
-                line << "/";
-                if (s->has_hz_planets) line << s->has_hz_planets;
-                else line << "-";
-            }
-            l = line.str().size();
-            if (l < 68) line << std::string(68-l, ' ');
-
-            if (r < 0.1*AU) line << setprecision(3) << (r / 1000) << " km";
-            else if (r < 0.1 * light_year) line << setprecision(3) << (r / AU) << " A.U.";
-            else line << setprecision(3) << (r / light_year) << " l.y.";
-
-            ImGui::PushID(i);
-            if (s->is_white_dwarf())
-            {
-                // Swatches show hue at full brightness; stellar intensity would clip every channel to white.
-                const RGB3 rgb = Color::rgb_from_color(Color::color_from_star(0, s, s->BV_color), -1);
-                ImVec4 swatch(rgb.r / 255.0f, rgb.g / 255.0f, rgb.b / 255.0f, 1);
-                float hue, saturation, value;
-                ImGui::ColorConvertRGBtoHSV(swatch.x, swatch.y, swatch.z, hue, saturation, value);
-                ImGui::ColorConvertHSVtoRGB(hue, std::min(1.0f, saturation * 4.0f), value,
-                    swatch.x, swatch.y, swatch.z);
-                const float side = ImGui::GetTextLineHeight();
-                ImGui::ColorButton("##wd_color", swatch,
-                    ImGuiColorEditFlags_NoTooltip | ImGuiColorEditFlags_NoDragDrop, ImVec2(side, side));
-                ImGui::SameLine();
-            }
-            bool is_selected = (item_selected_idx == j);
-            ImGuiSelectableFlags flags = (item_highlighted_idx == j) ? ImGuiSelectableFlags_Highlight : 0;
-            if (ImGui::Selectable(line.str().c_str(), is_selected, flags))
-            {
-                item_selected_idx = j;
                 selected_visible = true;
+                selected_row = static_cast<int>(filtered_neighbors.size());
             }
+            filtered_neighbors.push_back(j);
+        }
+        ImGuiListClipper clipper;
+        clipper.Begin(static_cast<int>(filtered_neighbors.size()));
+        if (selected_row >= 0) clipper.IncludeItemByIndex(selected_row);
+        while (clipper.Step())
+        {
+            for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row)
+            {
+                j = filtered_neighbors[row];
+                i = neighb_celids[j];
+                Star* s = static_cast<Star*>(cels[i]);
 
-            ImGui::PopID();
+                stringstream line;
+                line << cels[i]->name;
+                l = line.str().size();
+                if (l < 36) line << std::string(36-l, ' ');
 
-            // Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
-            if (is_selected)
-                ImGui::SetItemDefaultFocus();
+                r = cels[i]->tmprel.magnitude();
+                if (r)
+                {
+                    m = cels[i]->viewer_magnitude(here);
+                    line << setprecision(4) << ((m>=0) ? "+" : "") << m;
+                }
+                else line << "-";
+                l = line.str().size();
+                if (l < 43) line << std::string(43-l, ' ');
+
+                line << s->spectral_type;
+                l = line.str().size();
+                if (l < 59) line << std::string(59-l, ' ');
+
+                if (s->has_planets)
+                {
+                    line << s->has_planets;
+                    line << "/";
+                    if (s->has_hz_planets) line << s->has_hz_planets;
+                    else line << "-";
+                }
+                l = line.str().size();
+                if (l < 68) line << std::string(68-l, ' ');
+
+                if (r < 0.1*AU) line << setprecision(3) << (r / 1000) << " km";
+                else if (r < 0.1 * light_year) line << setprecision(3) << (r / AU) << " A.U.";
+                else line << setprecision(3) << (r / light_year) << " l.y.";
+
+                ImGui::PushID(i);
+                if (s->is_white_dwarf())
+                {
+                    // Swatches show hue at full brightness; stellar intensity would clip every channel to white.
+                    const RGB3 rgb = Color::rgb_from_color(Color::color_from_star(0, s, s->BV_color), -1);
+                    ImVec4 swatch(rgb.r / 255.0f, rgb.g / 255.0f, rgb.b / 255.0f, 1);
+                    float hue, saturation, value;
+                    ImGui::ColorConvertRGBtoHSV(swatch.x, swatch.y, swatch.z, hue, saturation, value);
+                    ImGui::ColorConvertHSVtoRGB(hue, std::min(1.0f, saturation * 4.0f), value,
+                        swatch.x, swatch.y, swatch.z);
+                    const float side = ImGui::GetTextLineHeight();
+                    ImGui::ColorButton("##wd_color", swatch,
+                        ImGuiColorEditFlags_NoTooltip | ImGuiColorEditFlags_NoDragDrop, ImVec2(side, side));
+                    ImGui::SameLine();
+                }
+                bool is_selected = (item_selected_idx == j);
+                ImGuiSelectableFlags flags = (item_highlighted_idx == j) ? ImGuiSelectableFlags_Highlight : 0;
+                if (ImGui::Selectable(line.str().c_str(), is_selected, flags))
+                {
+                    item_selected_idx = j;
+                    selected_visible = true;
+                }
+
+                ImGui::PopID();
+
+                // Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
+                if (is_selected)
+                    ImGui::SetItemDefaultFocus();
+            }
         }
         ImGui::EndListBox();
     }

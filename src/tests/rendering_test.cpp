@@ -859,6 +859,68 @@ TEST_F(RenderingRegressionTest, StellarNeighborhoodSortsDistancesAndRetainsCatal
     neighb_celr.clear();
 }
 
+TEST_F(RenderingRegressionTest, StellarNeighborhoodClippingPreservesFilteredSelectionAndScrolling)
+{
+    extern bool onlysun, onlywd, onlyplt, onlyhz, onlyknp;
+    extern int neighbly, lneighbly;
+    Star* observer = make_star("Neighborhood observer");
+    set(mycenobj, static_cast<CelestialObject*>(observer));
+    set(last_neighb_cen, static_cast<CelestialObject*>(nullptr));
+    set(neighborhood, true);
+    set(selected, -1);
+    set(neighbly, 1000);
+    set(lneighbly, -1);
+    set(onlysun, false);
+    set(onlywd, false);
+    set(onlyplt, false);
+    set(onlyhz, false);
+    set(onlyknp, true);
+    Star* target = nullptr;
+    for (int index = 1; index <= 200; ++index)
+    {
+        target = make_star(("Filtered neighbor " + std::to_string(index)).c_str());
+        target->tmprel = Point(0, 0, index*light_year);
+        target->location.local_position = target->tmprel;
+    }
+    target->obliquity = 0.3;
+    target->equinox = 0.4;
+    target->known_poles = true;
+    const auto draw = [&]()
+    {
+        ImGui::GetIO().DisplaySize = ImVec2(1024, 768);
+        ImGui::SetNextWindowPos(ImVec2(0, 0));
+        ImGui::SetNextWindowSize(ImVec2(950, 650));
+        draw_stellar_neighborhood(ImGui::GetIO());
+    };
+    const auto next_frame = [&]()
+    {
+        ImGui::EndFrame();
+        ImGui::NewFrame();
+    };
+    draw();
+    ImGuiWindow* window = ImGui::FindWindowByName("Stellar Neighborhood");
+    ASSERT_NE(window, nullptr);
+    ImGui::ActivateItemByID(window->GetID("Select##neighbors"));
+    next_frame();
+    draw();
+    EXPECT_EQ(selected, target->seqno);
+    onlyknp = false;
+    selected = -1;
+    next_frame();
+    draw();
+    ASSERT_FALSE(window->DC.ChildWindows.empty());
+    ImGuiWindow* list = window->DC.ChildWindows[0];
+    next_frame();
+    draw();
+    EXPECT_GT(list->ScrollMax.y, 1000);
+    ImGui::SetScrollY(list, list->ScrollMax.y);
+    ImGui::ActivateItemByID(window->GetID("Select##neighbors"));
+    next_frame();
+    draw();
+    EXPECT_EQ(selected, target->seqno);
+    EXPECT_GT(list->Scroll.y, 1000);
+}
+
 TEST_F(RenderingRegressionTest, FictionalRegionDialogRendersWithImageAndAnalyticFallback)
 {
     make_star("Sun");
