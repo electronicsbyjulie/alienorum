@@ -6,6 +6,10 @@
 #include <unordered_map>
 #include <string_view>
 #include <condition_variable>
+#include <deque>
+#include <thread>
+#include <algorithm>
+#include <exception>
 
 using namespace alienorum;
 
@@ -27,6 +31,81 @@ namespace
         }
     };
 
+    class TextureWorkerPool
+    {
+        std::condition_variable available;
+        std::deque<std::function<void()>> tasks;
+        std::vector<std::thread> workers;
+        bool stopping = false;
+
+        void run()
+        {
+            while (true)
+            {
+                std::function<void()> task;
+                {
+                    std::unique_lock<std::mutex> lock(texture_tasks_mutex);
+                    available.wait(lock, [&]() { return stopping || !tasks.empty(); });
+                    if (tasks.empty() && stopping) return;
+                    task = std::move(tasks.front());
+                    tasks.pop_front();
+                }
+                TextureLoadTicket ticket;
+                try
+                {
+                    task();
+                }
+                catch (const std::exception& error)
+                {
+                    std::cerr << "Texture task failed: " << error.what() << std::endl;
+                }
+                catch (...)
+                {
+                    std::cerr << "Texture task failed with an unknown exception." << std::endl;
+                }
+                task = {};
+            }
+        }
+
+        public:
+        ~TextureWorkerPool()
+        {
+            {
+                std::lock_guard<std::mutex> lock(texture_tasks_mutex);
+                stopping = true;
+                available.notify_all();
+            }
+            for (auto& worker : workers) worker.join();
+        }
+
+        bool submit(std::function<void()> task)
+        {
+            std::lock_guard<std::mutex> lock(texture_tasks_mutex);
+            if (stopping || abort_load.load()) return false;
+            if (workers.empty())
+            {
+                const unsigned limit = std::max(1u, std::min(4u, std::thread::hardware_concurrency()/2));
+                workers.reserve(limit);
+                for (unsigned index = 0; index < limit; ++index)
+                {
+                    try
+                    {
+                        workers.emplace_back([this]() { run(); });
+                    }
+                    catch (...)
+                    {
+                        if (workers.empty()) throw;
+                        break;
+                    }
+                }
+            }
+            tasks.push_back(std::move(task));
+            ++texture_loads_pending;
+            available.notify_one();
+            return true;
+        }
+    };
+
     struct BatchSatTicket
     {
         ~BatchSatTicket() { batch_sats_running = false; }
@@ -35,25 +114,8 @@ namespace
 
 bool spawn_texture_task(std::function<void()> task)
 {
-    std::lock_guard<std::mutex> lock(texture_tasks_mutex);
-    if (abort_load.load()) return false;
-    texture_loads_pending++;
-    try
-    {
-        std::thread([task = std::move(task)]() mutable
-        {
-            TextureLoadTicket ticket;
-            task();
-            task = {};
-        }).detach();
-    }
-    catch (...)
-    {
-        texture_loads_pending--;
-        texture_tasks_finished.notify_all();
-        throw;
-    }
-    return true;
+    static TextureWorkerPool pool;
+    return pool.submit(std::move(task));
 }
 
 void wait_for_texture_tasks()

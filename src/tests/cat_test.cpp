@@ -7,6 +7,9 @@
 #include <iomanip>
 #include <set>
 #include <vector>
+#include <stdexcept>
+#include <memory>
+#include <thread>
 #include <gtest/gtest.h>
 #include "../classes/cat.h"
 #include "../classes/cons.h"
@@ -579,6 +582,73 @@ TEST(TextureTaskTest, ShutdownWaitsBeyondFiveSecondsAndRejectsNewWork)
     EXPECT_EQ(status, std::future_status::timeout);
     EXPECT_FALSE(finished_before_release);
     EXPECT_TRUE(finished.load());
+    EXPECT_EQ(texture_loads_pending.load(), 0);
+}
+
+TEST(TextureTaskTest, BurstConcurrencyIsBoundedAndAcceptedJobsSurviveCancellation)
+{
+    wait_for_texture_tasks();
+    struct RestoreAbort
+    {
+        bool value = abort_load.load();
+        ~RestoreAbort() { abort_load = value; }
+    } restore;
+    struct Counters
+    {
+        std::atomic<int> running{0}, peak{0}, completed{0};
+        std::atomic<bool> signaled{false};
+    };
+    auto counters = std::make_shared<Counters>();
+    auto started = std::make_shared<std::promise<void>>();
+    auto first = started->get_future();
+    std::promise<void> release;
+    auto gate = release.get_future().share();
+    abort_load = false;
+    for (int index = 0; index < 16; ++index)
+    {
+        EXPECT_TRUE(spawn_texture_task([counters, started, gate]()
+        {
+            const int active = ++counters->running;
+            int previous = counters->peak.load();
+            while (previous < active && !counters->peak.compare_exchange_weak(previous, active)) {}
+            if (!counters->signaled.exchange(true)) started->set_value();
+            gate.wait();
+            --counters->running;
+            ++counters->completed;
+        }));
+    }
+    EXPECT_EQ(first.wait_for(std::chrono::seconds(2)), std::future_status::ready);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    EXPECT_EQ(texture_loads_pending.load(), 16);
+    EXPECT_GE(counters->peak.load(), 1);
+    EXPECT_LE(counters->peak.load(), 4);
+    abort_load = true;
+    EXPECT_FALSE(spawn_texture_task([]() {}));
+    release.set_value();
+    wait_for_texture_tasks();
+    EXPECT_EQ(counters->completed.load(), 16);
+    EXPECT_EQ(counters->running.load(), 0);
+    EXPECT_EQ(texture_loads_pending.load(), 0);
+    std::cout << "Texture peak concurrency: " << counters->peak.load() << " for 16 jobs.\n";
+}
+
+TEST(TextureTaskTest, FailedTasksReleaseTheirTicketsAndWorkersContinue)
+{
+    wait_for_texture_tasks();
+    struct RestoreAbort
+    {
+        bool value = abort_load.load();
+        ~RestoreAbort() { abort_load = value; }
+    } restore;
+    abort_load = false;
+    auto completed = std::make_shared<std::atomic<bool>>(false);
+    testing::internal::CaptureStderr();
+    EXPECT_TRUE(spawn_texture_task([]() { throw std::runtime_error("Synthetic texture failure"); }));
+    EXPECT_TRUE(spawn_texture_task([completed]() { *completed = true; }));
+    wait_for_texture_tasks();
+    const std::string diagnostic = testing::internal::GetCapturedStderr();
+    EXPECT_NE(diagnostic.find("Synthetic texture failure"), std::string::npos);
+    EXPECT_TRUE(completed->load());
     EXPECT_EQ(texture_loads_pending.load(), 0);
 }
 
