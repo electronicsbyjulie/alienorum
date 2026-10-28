@@ -177,7 +177,7 @@ namespace
         const bool panorama = galaxy.milky_way;
         const float available = ImGui::GetContentRegionAvail().x;
         const float width = std::max(220.0f, available - 16);
-        const float height = panorama ? 180 : 260;
+        const float height = std::clamp(ImGui::GetContentRegionAvail().y*0.40f, 120.0f, panorama ? 180.0f : 220.0f);
         ImGui::BeginChild("Region image", ImVec2(0, height + 24), true,
             ImGuiWindowFlags_HorizontalScrollbar);
         const float inner_width = std::max(100.0f, ImGui::GetContentRegionAvail().x);
@@ -413,14 +413,17 @@ void draw_fictional_region()
         return;
     }
     const ImVec2 display = ImGui::GetIO().DisplaySize;
-    ImGui::SetNextWindowSize(ImVec2(0, std::min(900.0f, display.y-40)), ImGuiCond_Always);
+    const float input_width = ImGui::CalcTextSize("000000000000000000000000").x;
+    const float controls_width = input_width+ImGui::CalcTextSize("Star count (including companions)").x
+        + 4*ImGui::GetStyle().FramePadding.x + ImGui::GetStyle().ScrollbarSize;
+    const float preferred_height = (dialog.preview_valid ? 740.0f : 560.0f)*ImGui::GetFontSize()/13.0f;
+    ImGui::SetNextWindowSize(ImVec2(std::min(display.x-40, controls_width+400),
+        std::min(preferred_height, display.y-40)), ImGuiCond_Always);
     ImGui::Begin("Populate Region", &dialog.open);
     if (ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows)) is_mouse_over_window = true;
-    const float input_width = ImGui::CalcTextSize("000000000000000000000000").x;
-    const float natural_width = std::max(input_width+ImGui::CalcTextSize("Star count (including companions)").x,
-        ImGui::CalcTextSize("Generate Preview  Cancel Preview  Add Stars  Visit Center  Close").x)
-        + 10*ImGui::GetStyle().FramePadding.x + ImGui::GetStyle().ScrollbarSize;
-    ImGui::BeginChild("Region controls", ImVec2(std::min(natural_width, display.x-60), -ImGui::GetFrameHeightWithSpacing()), false);
+    const float left_width = std::min(controls_width, ImGui::GetContentRegionAvail().x*0.60f);
+    const float pane_height = ImGui::GetContentRegionAvail().y-ImGui::GetFrameHeightWithSpacing();
+    ImGui::BeginChild("Region controls", ImVec2(left_width, pane_height), false);
     ImGui::PushItemWidth(input_width);
     ImGui::BeginDisabled(dialog.running);
     ImGui::Text("Find galaxy");
@@ -460,11 +463,6 @@ void draw_fictional_region()
         ImGui::End();
         return;
     }
-    ImGui::TextWrapped("%s", dialog.galaxy.image.available() ? (dialog.galaxy.milky_way
-        ? "Click the Milky Way band to choose a direction, then adjust distance. Top and side views show the location."
-        : "Click the image to choose a location. Green boundaries suggest a habitable region.")
-        : "No image is available for this galaxy. Using a fictional model based on galaxy shape.");
-    draw_location_preview();
     if (dialog.galaxy.milky_way)
     {
         bool changed = ImGui::InputDouble("Galactic longitude (deg)", &dialog.longitude, 1, 10, "%.2f");
@@ -493,7 +491,7 @@ void draw_fictional_region()
     }
     changed = ImGui::InputDouble("Region radius (ly)", &dialog.region.radius_ly, 10, 100, "%.0f");
     changed |= ImGui::InputInt("Star count (including companions)", &dialog.region.star_count, 100, 1000);
-    ImGui::TextUnformatted("Minimum spacing varies between systems: 1-5 light years.");
+    ImGui::TextWrapped("Minimum spacing varies between systems: 1-5 light years.");
     const int available = std::max(0, MAX_CELOBJS-ncelobjs-1);
     dialog.region.star_count = std::clamp(dialog.region.star_count, 1, std::max(1, available));
     dialog.region.radius_ly = std::clamp(dialog.region.radius_ly, 1.0, 1000.0);
@@ -502,28 +500,33 @@ void draw_fictional_region()
     changed |= ImGui::Checkbox("Include fictional open clusters", &dialog.region.clusters);
     changed |= ImGui::InputScalar("Random seed", ImGuiDataType_U64, &dialog.region.seed);
     if (changed) dialog.clear_preview();
-    ImGui::Text("Region: %s  |  Available object slots: %d", dialog.region.region_id.c_str(), available);
-    ImGui::Text("Star storage estimate: %.1f MiB plus metadata and indices", sizeof(Star)*dialog.region.star_count/(1024.0*1024));
+    ImGui::Text("Available object slots: %d", available);
+    ImGui::TextWrapped("Star storage estimate: %.1f MiB plus metadata and indices", sizeof(Star)*dialog.region.star_count/(1024.0*1024));
     const bool inside = dialog.galaxy.inside(dialog.region.center_ly);
     if (!inside) ImGui::TextWrapped("The center is outside the modeled galaxy. Move the crosshair or choose Suggest Location.");
     if (dialog.region.region_id.empty()) ImGui::TextUnformatted("No unused sector codes remain in this universe.");
 
     ImGui::EndDisabled();
+    ImGui::PopItemWidth();
+    ImGui::EndChild();
+    ImGui::SameLine();
+    ImGui::BeginChild("Region graphics", ImVec2(0, pane_height), false);
     if (dialog.running)
     {
         ImGui::ProgressBar(float(dialog.progress.load())/dialog.region.star_count);
     }
     if (dialog.preview_valid)
     {
-        ImGui::Text("Preview: %zu stars, %d systems, %d clusters; %.2f seconds", dialog.batch.stars.size(),
+        ImGui::TextWrapped("Preview: %zu stars, %d systems, %d clusters; %.2f seconds", dialog.batch.stars.size(),
             dialog.batch.systems, dialog.batch.clusters, dialog.batch.elapsed_seconds);
         ImGui::TextWrapped("Within 100 ly: %d  |  Magnitude 6.5 or brighter from center: %d", dialog.batch.nearby, dialog.batch.naked_eye);
         ImGui::Text("Estimated JSON size: %.1f MiB", dialog.batch.estimated_save_bytes/(1024.0*1024));
         const ImVec2 preview_top = ImGui::GetCursorScreenPos();
         const float preview_width = std::min(320.0f, ImGui::GetContentRegionAvail().x);
-        ImGui::InvisibleButton("Population preview", ImVec2(preview_width, 180));
+        constexpr float preview_height = 140;
+        ImGui::InvisibleButton("Population preview", ImVec2(preview_width, preview_height));
         ImDrawList* preview_draw = ImGui::GetWindowDrawList();
-        preview_draw->AddRectFilled(preview_top, ImVec2(preview_top.x+preview_width, preview_top.y+180),
+        preview_draw->AddRectFilled(preview_top, ImVec2(preview_top.x+preview_width, preview_top.y+preview_height),
             IM_COL32(5, 8, 16, 255));
         const Point center_offset = dialog.galaxy.world_offset(dialog.region.center_ly);
         for (size_t i = 0; i < dialog.batch.stars.size(); i += std::max(size_t(1), dialog.batch.stars.size()/2500))
@@ -531,7 +534,7 @@ void draw_fictional_region()
             const Star& star = *dialog.batch.stars[i];
             const Point offset = dialog.galaxy.disk_offset(star.location.system_center-center_offset);
             const ImVec2 point(preview_top.x+preview_width*(0.5+offset.x/(2*dialog.region.radius_ly)),
-                preview_top.y+180*(0.5+offset.z/(2*dialog.region.radius_ly)));
+                preview_top.y+preview_height*(0.5+offset.z/(2*dialog.region.radius_ly)));
             const ImU32 color = star.temperature > 7500 ? IM_COL32(160, 190, 255, 190)
                 : star.temperature < 4500 ? IM_COL32(255, 175, 120, 190) : IM_COL32(255, 245, 215, 190);
             preview_draw->AddCircleFilled(point, 1.1f, color, 5);
@@ -540,7 +543,13 @@ void draw_fictional_region()
 
     }
     if (!dialog.message.empty()) ImGui::TextWrapped("%s", dialog.message.c_str());
-    ImGui::PopItemWidth();
+    ImGui::TextWrapped("%s", dialog.galaxy.image.available() ? (dialog.galaxy.milky_way
+        ? "Click the Milky Way band to choose a direction, then adjust distance. Top and side views show the location."
+        : "Click the image to choose a location. Green boundaries suggest a habitable region.")
+        : "No image is available for this galaxy. Using a fictional model based on galaxy shape.");
+    ImGui::BeginDisabled(dialog.running);
+    draw_location_preview();
+    ImGui::EndDisabled();
     ImGui::EndChild();
     draw_region_footer();
     ImGui::End();
