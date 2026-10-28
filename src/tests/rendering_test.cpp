@@ -823,9 +823,12 @@ TEST_F(RenderingRegressionTest, FictionalRegionDialogRendersWithImageAndAnalytic
     bind_framebuffer(GL_FRAMEBUFFER, framebuffer);
     attach_texture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, color_texture, 0);
     ASSERT_EQ(framebuffer_status(GL_FRAMEBUFFER), static_cast<GLenum>(GL_FRAMEBUFFER_COMPLETE));
-    for (bool fallback : {false, true})
+    for (int mode : {0, 1, 2})
     {
-        if (fallback) strcpy(galaxy->name, "No image fictional test galaxy");
+        const bool fallback = mode == 1;
+        galaxy->reference_galaxy = mode == 2;
+        galaxy->internal_texture = mode == 2 ? "galaxies/internal/Milky Way.jpg" : "";
+        strcpy(galaxy->name, mode == 2 ? "Milky Way" : fallback ? "No image fictional test galaxy" : "M31");
         open_fictional_region();
         for (int frame = 0; frame < 2; ++frame)
         {
@@ -853,7 +856,9 @@ TEST_F(RenderingRegressionTest, FictionalRegionDialogRendersWithImageAndAnalytic
                     SDL_Surface* surface = SDL_CreateRGBSurfaceWithFormatFrom(flipped.data(), render_width,
                         render_height, 32, render_width*4, SDL_PIXELFORMAT_RGBA32);
                     ASSERT_NE(surface, nullptr);
-                    EXPECT_EQ(IMG_SavePNG(surface, "/tmp/alienorum-fictional-region-ui.png"), 0);
+                    const char* image_path = mode == 2 ? "/tmp/alienorum-population-milky-way-ui.png"
+                        : "/tmp/alienorum-fictional-region-ui.png";
+                    EXPECT_EQ(IMG_SavePNG(surface, image_path), 0);
                     SDL_FreeSurface(surface);
                 }
             }

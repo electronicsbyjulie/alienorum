@@ -171,20 +171,19 @@ namespace
         if (ImGui::Button("Close")) dialog.open = false;
     }
 
-    void draw_location_preview()
+    void draw_location_preview(float height)
     {
         const auto& galaxy = dialog.galaxy;
         const bool panorama = galaxy.milky_way;
-        const float available = ImGui::GetContentRegionAvail().x;
-        const float width = std::max(220.0f, available - 16);
-        const float height = std::clamp(ImGui::GetContentRegionAvail().y*0.40f, 120.0f, panorama ? 180.0f : 220.0f);
         ImGui::BeginChild("Region image", ImVec2(0, height + 24), true,
             ImGuiWindowFlags_HorizontalScrollbar);
         const float inner_width = std::max(100.0f, ImGui::GetContentRegionAvail().x);
+        const float inner_height = ImGui::GetContentRegionAvail().y;
         const float aspect = galaxy.image.available() ? float(galaxy.image.width)/galaxy.image.height : 1;
         const float base_width = panorama ? inner_width : std::min(inner_width, height*aspect);
         const ImVec2 size(base_width*dialog.image_zoom, base_width/aspect*dialog.image_zoom);
         if (size.x < inner_width) ImGui::SetCursorPosX(ImGui::GetCursorPosX()+(inner_width-size.x)/2);
+        if (size.y < inner_height) ImGui::SetCursorPosY(ImGui::GetCursorPosY()+(inner_height-size.y)/2);
         const ImVec2 top = ImGui::GetCursorScreenPos();
         ImGui::InvisibleButton("Galaxy position", size);
         ImDrawList* draw = ImGui::GetWindowDrawList();
@@ -235,12 +234,20 @@ namespace
             draw->AddLine(ImVec2(position.x, position.y-8), ImVec2(position.x, position.y+8), IM_COL32_WHITE);
         }
         ImGui::EndChild();
+        ImGui::SetNextItemWidth(std::max(100.0f, ImGui::GetContentRegionAvail().x
+            -ImGui::CalcTextSize("Image zoom").x-ImGui::GetStyle().ItemInnerSpacing.x));
         if (ImGui::SliderFloat("Image zoom", &dialog.image_zoom, 1, 5, "%.1fx")) viewchanged = true;
+    }
 
+    void draw_location_diagrams()
+    {
+        const auto& galaxy = dialog.galaxy;
+        const bool panorama = galaxy.milky_way;
+        const float width = std::max(220.0f, ImGui::GetContentRegionAvail().x-16);
         // Fixed galaxy coordinates: top-down and side views make the chosen depth explicit.
         const ImVec2 top2 = ImGui::GetCursorScreenPos();
         ImGui::InvisibleButton("Location diagram", ImVec2(width, 92));
-        draw = ImGui::GetWindowDrawList();
+        ImDrawList* draw = ImGui::GetWindowDrawList();
         const float half = width/2;
         const ImVec2 center_top(top2.x+half/2, top2.y+46), center_side(top2.x+half*1.5f, top2.y+46);
         const float rx = half*0.45f, ry = 38;
@@ -416,14 +423,12 @@ void draw_fictional_region()
     const float input_width = ImGui::CalcTextSize("000000000000000000000000").x;
     const float controls_width = input_width+ImGui::CalcTextSize("Star count (including companions)").x
         + 4*ImGui::GetStyle().FramePadding.x + ImGui::GetStyle().ScrollbarSize;
-    const float preferred_height = (dialog.preview_valid ? 740.0f : 560.0f)*ImGui::GetFontSize()/13.0f;
-    ImGui::SetNextWindowSize(ImVec2(std::min(display.x-40, controls_width+400),
-        std::min(preferred_height, display.y-40)), ImGuiCond_Always);
+    ImGui::SetNextWindowSizeConstraints(ImVec2(0, 0), ImVec2(display.x-40, display.y-40));
+    ImGui::SetNextWindowSize(ImVec2(std::min(display.x-40, controls_width*2+32), 0), ImGuiCond_Always);
     ImGui::Begin("Populate Region", &dialog.open);
     if (ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows)) is_mouse_over_window = true;
-    const float left_width = std::min(controls_width, ImGui::GetContentRegionAvail().x*0.60f);
-    const float pane_height = ImGui::GetContentRegionAvail().y-ImGui::GetFrameHeightWithSpacing();
-    ImGui::BeginChild("Region controls", ImVec2(left_width, pane_height), false);
+    ImGui::BeginTable("Population controls", 2, ImGuiTableFlags_SizingStretchSame);
+    ImGui::TableNextColumn();
     ImGui::PushItemWidth(input_width);
     ImGui::BeginDisabled(dialog.running);
     ImGui::Text("Find galaxy");
@@ -458,7 +463,7 @@ void draw_fictional_region()
         ImGui::TextWrapped("Choose a galaxy to place a new fictional stellar neighborhood.");
         ImGui::EndDisabled();
         ImGui::PopItemWidth();
-        ImGui::EndChild();
+        ImGui::EndTable();
         draw_region_footer();
         ImGui::End();
         return;
@@ -489,6 +494,9 @@ void draw_fictional_region()
         ++dialog.region.seed;
         dialog.suggest();
     }
+    ImGui::PopItemWidth();
+    ImGui::TableNextColumn();
+    ImGui::PushItemWidth(input_width);
     changed = ImGui::InputDouble("Region radius (ly)", &dialog.region.radius_ly, 10, 100, "%.0f");
     changed |= ImGui::InputInt("Star count (including companions)", &dialog.region.star_count, 100, 1000);
     ImGui::TextWrapped("Minimum spacing varies between systems: 1-5 light years.");
@@ -508,9 +516,20 @@ void draw_fictional_region()
 
     ImGui::EndDisabled();
     ImGui::PopItemWidth();
-    ImGui::EndChild();
-    ImGui::SameLine();
-    ImGui::BeginChild("Region graphics", ImVec2(0, pane_height), false);
+    ImGui::EndTable();
+    ImGui::Separator();
+    const float image_height = std::clamp(display.y-ImGui::GetCursorScreenPos().y-140, 160.0f, 320.0f);
+    ImGui::BeginTable("Population graphics", 2, ImGuiTableFlags_SizingStretchSame);
+    ImGui::TableNextColumn();
+    ImGui::TextWrapped("%s", dialog.galaxy.image.available() ? (dialog.galaxy.milky_way
+        ? "Click the Milky Way band to choose a direction, then adjust distance."
+        : "Click the image to choose a location. Green boundaries suggest a habitable region.")
+        : "No image is available for this galaxy. Using a fictional model based on galaxy shape.");
+    ImGui::BeginDisabled(dialog.running);
+    draw_location_preview(image_height);
+    ImGui::EndDisabled();
+    ImGui::TableNextColumn();
+    draw_location_diagrams();
     if (dialog.running)
     {
         ImGui::ProgressBar(float(dialog.progress.load())/dialog.region.star_count);
@@ -522,8 +541,8 @@ void draw_fictional_region()
         ImGui::TextWrapped("Within 100 ly: %d  |  Magnitude 6.5 or brighter from center: %d", dialog.batch.nearby, dialog.batch.naked_eye);
         ImGui::Text("Estimated JSON size: %.1f MiB", dialog.batch.estimated_save_bytes/(1024.0*1024));
         const ImVec2 preview_top = ImGui::GetCursorScreenPos();
-        const float preview_width = std::min(320.0f, ImGui::GetContentRegionAvail().x);
-        constexpr float preview_height = 140;
+        const float preview_width = ImGui::GetContentRegionAvail().x;
+        const float preview_height = std::clamp(image_height-140.0f, 100.0f, 180.0f);
         ImGui::InvisibleButton("Population preview", ImVec2(preview_width, preview_height));
         ImDrawList* preview_draw = ImGui::GetWindowDrawList();
         preview_draw->AddRectFilled(preview_top, ImVec2(preview_top.x+preview_width, preview_top.y+preview_height),
@@ -543,14 +562,9 @@ void draw_fictional_region()
 
     }
     if (!dialog.message.empty()) ImGui::TextWrapped("%s", dialog.message.c_str());
-    ImGui::TextWrapped("%s", dialog.galaxy.image.available() ? (dialog.galaxy.milky_way
-        ? "Click the Milky Way band to choose a direction, then adjust distance. Top and side views show the location."
-        : "Click the image to choose a location. Green boundaries suggest a habitable region.")
-        : "No image is available for this galaxy. Using a fictional model based on galaxy shape.");
-    ImGui::BeginDisabled(dialog.running);
-    draw_location_preview();
-    ImGui::EndDisabled();
-    ImGui::EndChild();
+    if (!dialog.running && !dialog.preview_valid && dialog.message.empty())
+        ImGui::TextWrapped("Generate a preview to view the population here.");
+    ImGui::EndTable();
     draw_region_footer();
     ImGui::End();
 }
