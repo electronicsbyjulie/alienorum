@@ -11,6 +11,7 @@ namespace alienorum
     static HorizonMeshGpuStats stats;
     static SDL_GLContext context = nullptr;
     static GLuint program = 0, vao = 0, framebuffer = 0;
+    static GLint count_location = -1, width_location = -1;
     static std::array<GLuint, 4> textures = {};
     static bool attempted = false;
     static unsigned int builds = 0;
@@ -196,6 +197,7 @@ void main()
         }
         context = nullptr;
         program = vao = framebuffer = 0;
+        count_location = width_location = -1;
         textures = {};
         attempted = false;
         stats = {};
@@ -243,6 +245,8 @@ void main()
         if (vertex) glDeleteShader(vertex);
         if (fragment) glDeleteShader(fragment);
         if (!program) return false;
+        count_location = glGetUniformLocation(program, "uCount");
+        width_location = glGetUniformLocation(program, "uWidth");
         GLint previous_program;
         glGetIntegerv(GL_CURRENT_PROGRAM, &previous_program);
         glUseProgram(program);
@@ -397,8 +401,8 @@ void main()
             if (check_framebuffer(framebuffer_target) != 0x8CD5) return false;
             glViewport(0, 0, width, height);
             glUseProgram(program);
-            glUniform1i(glGetUniformLocation(program, "uCount"), positions.size());
-            glUniform1i(glGetUniformLocation(program, "uWidth"), width);
+            glUniform1i(count_location, positions.size());
+            glUniform1i(width_location, width);
             glBindVertexArray(vao);
             draw_arrays(GL_TRIANGLES, 0, 3);
             glReadPixels(0, 0, width, height, rg_format, GL_FLOAT, output.data());
