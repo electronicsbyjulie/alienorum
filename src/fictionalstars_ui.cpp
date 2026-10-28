@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <chrono>
 #include <future>
+#include <filesystem>
+#include <set>
 #include <random>
 
 using namespace alienorum;
@@ -27,6 +29,36 @@ namespace
         double radial = 0, azimuth_degrees = 0, height = 0;
         double longitude = 0, latitude = 0, distance = 20000;
         float image_zoom = 1;
+        bool only_photos = false;
+        std::set<std::string> photo_files;
+
+        void refresh_photos()
+        {
+            photo_files.clear();
+            std::error_code error;
+            for (std::filesystem::directory_iterator entry("galaxies/faceon", error), end;
+                !error && entry != end; entry.increment(error))
+            {
+                if (entry->is_regular_file(error)) photo_files.insert(entry->path().filename().string());
+            }
+        }
+        bool has_photo(const char* name) const
+        {
+            const std::string original = name;
+            std::string underscored = original, compact;
+            for (char& c : underscored) if (c == ' ') c = '_';
+            for (char c : original) if (c != ' ') compact += c;
+            std::vector<std::string> names{original, underscored, compact};
+            if (compact.size() > 1 && compact[0] == 'M' && isdigit(static_cast<unsigned char>(compact[1])))
+            {
+                names.push_back("M "+compact.substr(1));
+                names.push_back("M_"+compact.substr(1));
+            }
+            for (const auto& candidate : names)
+                for (const auto& extension : {".jpg", ".png"})
+                    if (photo_files.count(candidate+extension)) return true;
+            return false;
+        }
         char filter[100] = {};
         std::string message;
         int last_center = -1;
@@ -106,6 +138,23 @@ namespace
             suggest();
         }
     } dialog;
+
+    void draw_photo_icon(ImVec2 position)
+    {
+        const float size = ImGui::GetTextLineHeight();
+        const ImU32 night = IM_COL32(25, 42, 88, 255), light = IM_COL32(235, 242, 255, 255);
+        ImDrawList* draw = ImGui::GetWindowDrawList();
+        draw->AddRectFilled(position, ImVec2(position.x+size, position.y+size), night, 2);
+        draw->AddCircleFilled(ImVec2(position.x+size*0.70f, position.y+size*0.32f), size*0.23f, light, 12);
+        draw->AddCircleFilled(ImVec2(position.x+size*0.80f, position.y+size*0.25f), size*0.21f, night, 12);
+        for (ImVec2 star : {ImVec2(0.25f, 0.25f), ImVec2(0.40f, 0.70f), ImVec2(0.78f, 0.78f)})
+        {
+            const ImVec2 center(position.x+size*star.x, position.y+size*star.y);
+            const float radius = size*0.08f;
+            draw->AddLine(ImVec2(center.x-radius, center.y), ImVec2(center.x+radius, center.y), light);
+            draw->AddLine(ImVec2(center.x, center.y-radius), ImVec2(center.x, center.y+radius), light);
+        }
+    }
 
     void draw_region_footer()
     {
@@ -378,6 +427,7 @@ void open_fictional_region()
         return;
     }
     dialog.open = true;
+    dialog.refresh_photos();
     dialog.region.region_id = fictional_region_id();
     dialog.region.identity = fictional_population_id();
     std::random_device random;
@@ -450,14 +500,26 @@ void draw_fictional_region()
         std::vector<int> matches;
         for (int i = 0; cels[i]; ++i)
             if (!cels[i]->deleted && cels[i]->typeclass() == class_galaxy
+                && (!dialog.only_photos || dialog.has_photo(cels[i]->name))
                 && (filter.empty() || stellar_alias_key(cels[i]->name).find(filter) != std::string::npos)) matches.push_back(i);
         ImGuiListClipper clipper;
         clipper.Begin(matches.size());
         while (clipper.Step())
             for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row)
-                if (ImGui::Selectable(cels[matches[row]]->name, dialog.galaxy_index == matches[row])) dialog.choose(matches[row]);
+            {
+                const int index = matches[row];
+                const ImVec2 position = ImGui::GetCursorScreenPos();
+                const std::string label = "    "+std::string(cels[index]->name);
+                ImGui::PushID(index);
+                if (ImGui::Selectable(label.c_str(), dialog.galaxy_index == index)) dialog.choose(index);
+                if (dialog.has_photo(cels[index]->name)) draw_photo_icon(position);
+                ImGui::PopID();
+            }
+        if (matches.empty()) ImGui::TextDisabled("No matching galaxies");
         ImGui::EndCombo();
     }
+    ImGui::SameLine();
+    ImGui::Checkbox("has photo", &dialog.only_photos);
     if (dialog.galaxy_index < 0)
     {
         ImGui::TextWrapped("Choose a galaxy to place a new fictional stellar neighborhood.");
