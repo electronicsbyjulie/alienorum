@@ -1,0 +1,24 @@
+Performance audit — baseline e72b4a8, 2026-10-27
+
+Scope and verification
+- Review first-party startup/catalog/network paths, simulation and coordinate updates, space/system/horizon/sunclock rendering, terrain/vegetation/cloud/water generation, texture/GPU state, constellation generation and labels, dialogs/search, serialization/import/export, audio, and packaging/build integration.
+- Preserve numeric models, image resolution, sample counts, authored identities, selection rules, physical parameters, and saved-file compatibility. Prefer removing repeated work over reducing detail.
+- Capture automated baselines and relevant timing/geometry checks before fixes. For each item, record the implementation, evidence, acceptance coverage, and commit; commit and push separately before continuing.
+- Hardware-counter profiling is unavailable under the current perf permissions. Use wall-clock timing, deterministic output checks, and call tracing where supported. Timings describe this machine and workload.
+- Baseline exceptions: five atmospheric-condensation tests expect a feature explicitly disabled in the committed implementation. Barycenter integration, alternate-GPU validation, and Windows installer execution remain documented acceptance gaps. Automated tests cannot establish every visual/hardware criterion; retain those distinctions.
+
+Confirmed findings, in implementation order
+[ ] PA01 — Universe saves materialize the entire indented JSON document as an additional string after constructing its DOM (src/classes/serial.cpp, save_all). Stream identical formatted JSON directly to the output stream to remove this second full-document allocation.
+[ ] PA02 — Edited-object saves repeatedly serialize the same unedited ancestors for each child (src/classes/serial.cpp, save_all). Track already serialized object pointers while retaining all required ancestors and the same JSON keys/values.
+[ ] PA03 — Planetary-system generation scans the complete staged star population for every multiple-star host (src/classes/fictionalstars.cpp). Index staged members by StarMulti once, preserving member order, random draws, binary limits, and generated output.
+[ ] PA04 — Stellar Neighborhood builds two sorted arrays by linear search plus middle insertion for every accepted star (src/dialogs.cpp). Collect once and perform a stable distance sort, preserving catalog order for ties and aligned indices/distances.
+[ ] PA05 — Stellar Neighborhood formats photometry, distance strings, and white-dwarf swatches for every matching row on every frame even when only 16 rows fit (src/dialogs.cpp). Filter lightweight row indices first and clip expensive row formatting/drawing, preserving filtered selection and default focus.
+[ ] PA06 — Every non-horizon frame scans the full catalog to reset rise/set history, although history only changes while tracking a horizon view (src/alienorum.cpp and src/classes/sound.cpp). Reset once when leaving active tracking; retain explicit reset behavior and alert semantics.
+[ ] PA07 — Every seeded PerlinNoise construction acquires random-device entropy and constructs an entropy-seeded engine immediately overwritten by the supplied seed (src/classes/noise.cpp). Initialize directly from that seed, preserving every permutation and terrain/cloud sample.
+[ ] PA08 — Cloud/rain and optional terrain/mesh passes repeatedly query uniform locations for already linked programs (src/classes/clouds_gpu.cpp, src/horizon_terrain_gpu.cpp, src/horizon_mesh_gpu.cpp). Cache locations with correct shader lifecycle invalidation; preserve all uniforms, shader math, and existing renderer defaults.
+[ ] PA09 — Stellar-lineage updates repeatedly update shared primaries and can repeat the proper-motion prepass in the same frame (src/housekeeping.cpp). Reuse exact same-object/same-epoch work within one coordinate pass without caching across edits, frame boundaries, or differing retarded epochs.
+[ ] PA10 — Bond-albedo queries construct and transform the same interpolation dataset and sort it repeatedly for unchanged inputs (src/classes/planet.cpp). Memoize exact results with invalidation for B-V, geometric albedo, and source dataset changes; retain the existing interpolation and clamping.
+
+Audit review notes
+- Existing texture/map-generation caches, surface field/vegetation/rock caches, galaxy framing, explicit object visibility exceptions, eclipse quality, constellation geometry, atmospheric models, satellite propagation, and transactional import are quality constraints, not grounds to lower detail or suppress behavior.
+- Additional concrete findings discovered during measurements will be appended before their fixes. This ledger records the audited implementation and test coverage, not a claim that all possible workloads or external libraries have zero remaining cost.
