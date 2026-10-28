@@ -687,12 +687,9 @@ int find_object(const char *term, bool stars, double limit, int distance, const 
     return result;
 }
 
-bool Serialization::save_one(std::fstream& fs, CelestialObject *cel, json &allobjs)
+static std::string serialized_object_key(CelestialObject* cel)
 {
-    Star *s;
-
-    std::string key = "";
-    key = std::string(cel->name);
+    std::string key = cel->name;
     CelestialObject *cursor = cel;
     int depth = 0;
     while (cursor->orbit && cursor->orbit->center && depth++ < 100)
@@ -700,6 +697,12 @@ bool Serialization::save_one(std::fstream& fs, CelestialObject *cel, json &allob
         cursor = cursor->orbit->center;
         key = std::string(cursor->name) + std::string(".") + key;
     }
+    return key;
+}
+
+static bool save_object_record(CelestialObject* cel, json& allobjs, const std::string& key)
+{
+    Star *s;
 
     const char* l = key.c_str();
 
@@ -738,24 +741,43 @@ bool Serialization::save_one(std::fstream& fs, CelestialObject *cel, json &allob
     return true;
 }
 
+bool Serialization::save_one(std::fstream& fs, CelestialObject* cel, json& allobjs)
+{
+    return save_object_record(cel, allobjs, serialized_object_key(cel));
+}
+
 bool Serialization::save_all(std::fstream& fs, CelestialObject **cels, bool oe)
 {
     try
     {
         int i;
         json allobjs;
+        std::unordered_map<std::string, CelestialObject*> last_writer;
+        const auto save = [&](CelestialObject* object, bool ancestor = false)
+        {
+            if (!oe || (!ancestor && last_writer.empty()))
+            {
+                save_one(fs, object, allobjs);
+                return;
+            }
+            const std::string key = serialized_object_key(object);
+            auto previous = last_writer.find(key);
+            if (previous != last_writer.end() && previous->second == object) return;
+            save_object_record(object, allobjs, key);
+            if (ancestor || previous != last_writer.end()) last_writer[key] = object;
+        };
         for (i=0; cels[i]; i++)
         {
             if (cels[i]->deleted) continue;
             if (oe && !cels[i]->user_edited && !cels[i]->user_added) continue;
 
-            save_one(fs, cels[i], allobjs);
+            save(cels[i]);
             if (oe && cels[i]->orbit && cels[i]->orbit->center && !cels[i]->orbit->center->user_added)
             {
                 CelestialObject *cen = cels[i]->orbit->center;
                 while (1)
                 {
-                    save_one(fs, cen, allobjs);
+                    save(cen, true);
                     if (!cen->orbit) break;
                     if (!cen->orbit->center) break;
                     cen = cen->orbit->center;

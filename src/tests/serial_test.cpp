@@ -2,6 +2,8 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <chrono>
+#include <iomanip>
 #include <gtest/gtest.h>
 #include "../classes/cons.h"
 #include "../classes/cat.h"
@@ -964,6 +966,67 @@ TEST_F(SerializationTest, OnlyEditedWritesOnlyTheEditedObjects)
     EXPECT_TRUE(j.contains("Edited Star"));
     EXPECT_FALSE(j.contains("Catalog Star"));
 
+    delete_the_universe();
+}
+
+TEST_F(SerializationTest, SharedAncestorsRetainLastWriterBehaviorForDuplicateKeys)
+{
+    Star* first = make_star("Shared saved key", solar_mass);
+    Star* second = make_star("Shared saved key", 2 * solar_mass);
+    Planet* second_child = make_planet(second, "Second child");
+    Planet* first_child = make_planet(first, "First child");
+    Planet* final_child = make_planet(second, "Final child");
+    second_child->user_added = first_child->user_added = final_child->user_added = true;
+    first->user_added = second->user_added = false;
+    first->user_edited = second->user_edited = false;
+    const std::string path = temp_universe("shared_ancestors");
+    std::fstream output(path, std::ios::out | std::ios::trunc);
+    json reference;
+    ASSERT_TRUE(Serialization::save_one(output, second_child, reference));
+    ASSERT_TRUE(Serialization::save_one(output, second, reference));
+    ASSERT_TRUE(Serialization::save_one(output, first_child, reference));
+    ASSERT_TRUE(Serialization::save_one(output, first, reference));
+    ASSERT_TRUE(Serialization::save_one(output, final_child, reference));
+    ASSERT_TRUE(Serialization::save_one(output, second, reference));
+    ASSERT_TRUE(Serialization::save_all(output, cels, true));
+    output.close();
+    EXPECT_EQ(read_file("shared_ancestors"), reference);
+    EXPECT_EQ(reference.size(), 4u);
+    std::remove(path.c_str());
+    delete_the_universe();
+}
+
+TEST_F(SerializationTest, DISABLED_SharedAncestorSaveTimings)
+{
+    Star* host = make_star("Benchmark catalog primary");
+    host->user_added = host->user_edited = false;
+    host->stellar_system["audit_payload"] = std::string(16384, 'x');
+    for (int i = 0; i < 1000; ++i)
+    {
+        Planet* planet = make_planet(host, ("Benchmark world " + std::to_string(i)).c_str());
+        planet->user_edited = true;
+        planet->user_added = false;
+    }
+    const std::string path = temp_universe("ancestor_timings");
+    std::fstream output(path, std::ios::out | std::ios::trunc);
+    auto start = std::chrono::steady_clock::now();
+    json reference;
+    for (int i = 1; cels[i]; ++i)
+    {
+        Serialization::save_one(output, cels[i], reference);
+        Serialization::save_one(output, host, reference);
+    }
+    output << std::setw(4) << reference;
+    output.close();
+    const double baseline = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now()-start).count();
+    output.open(path, std::ios::out | std::ios::trunc);
+    start = std::chrono::steady_clock::now();
+    ASSERT_TRUE(Serialization::save_all(output, cels, true));
+    output.close();
+    const double optimized = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now()-start).count();
+    EXPECT_EQ(read_file("ancestor_timings"), reference);
+    std::cout << "Shared ancestor save ms: reference=" << baseline << " optimized=" << optimized << '\n';
+    std::remove(path.c_str());
     delete_the_universe();
 }
 
