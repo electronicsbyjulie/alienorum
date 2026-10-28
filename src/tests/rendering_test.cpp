@@ -921,6 +921,56 @@ TEST_F(RenderingRegressionTest, StellarNeighborhoodClippingPreservesFilteredSele
     EXPECT_GT(list->Scroll.y, 1000);
 }
 
+TEST_F(RenderingRegressionTest, StellarFrameReuseExpiresBeforeSameEpochEditsAndDirectUpdates)
+{
+    std::array<double, 4> magnitudes{}, blooms{}, radii{};
+    std::array<bool, 4> discs{};
+    set(vmag_cache, magnitudes.data());
+    set(bloomrad_cache, blooms.data());
+    set(angular_radius, radii.data());
+    set(discinstead, discs.data());
+    set(simnow, static_cast<double>(J2000_TIME_T));
+    Star* observer = make_star("Frame observer");
+    observer->distance = 0;
+    observer->cenobj = observer;
+    observer->update_location(simnow);
+    Star* primary = make_star("Frame primary");
+    primary->cenobj = primary;
+    primary->epoch = J2000;
+    primary->right_ascension = 0.2;
+    primary->declination = 0.1;
+    Star* companion = make_star("Frame companion");
+    companion->cenobj = primary;
+    companion->orbit = new Orbit();
+    companion->orbit->center = primary;
+    companion->orbit->semimajor_axis = AU;
+    companion->orbit->epoch = J2000;
+    companion->orbit->compute_period(companion->mass);
+    set(whereami, observer->seqno);
+    set(mycenobj, static_cast<CelestialObject*>(observer));
+    set(here, observer->location);
+    set(selected, primary->seqno);
+    set(trackidx, -1);
+    set(editidx, -1);
+    set(redo_proper_motions, true);
+    compute_object_draw_coordinates();
+    const Point before = primary->location.system_center;
+    primary->right_ascension += 0.02;
+    redo_proper_motions = true;
+    compute_object_draw_coordinates();
+    EXPECT_GT(primary->location.system_center.distance_to(before), 0.01*primary->distance);
+    EXPECT_DOUBLE_EQ(companion->location.system_center.x, primary->location.system_center.x);
+    EXPECT_DOUBLE_EQ(companion->location.system_center.y, primary->location.system_center.y);
+    EXPECT_DOUBLE_EQ(companion->location.system_center.z, primary->location.system_center.z);
+    for (int edit = 0; edit < 2; ++edit)
+    {
+        const Point previous = primary->location.system_center;
+        primary->right_ascension += 0.02;
+        ASSERT_TRUE(compute_object_location(primary));
+        EXPECT_GT(primary->location.system_center.distance_to(previous), 0.01*primary->distance);
+    }
+}
+
 TEST_F(RenderingRegressionTest, FictionalRegionDialogRendersWithImageAndAnalyticFallback)
 {
     make_star("Sun");

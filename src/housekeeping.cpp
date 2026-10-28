@@ -2,6 +2,7 @@
 #include "housekeeping.h"
 #include "inputs.h"
 #include "visuals.h"        // eclipse_obscuration(): an eclipse dims the daylight computed here
+#include <cstdint>
 
 using namespace alienorum;
 
@@ -161,6 +162,43 @@ void set_viewer_location_and_plane()
 }
 
 double dispw, disph, celmasslim;
+namespace
+{
+    struct StellarUpdateStamp
+    {
+        Star* star = nullptr;
+        CelestialObject* center = nullptr;
+        double epoch = 0;
+        uint64_t generation = 0;
+    };
+    struct StellarUpdateFrame;
+    thread_local std::vector<StellarUpdateStamp> stellar_update_stamps;
+    thread_local uint64_t stellar_update_generation = 0;
+    thread_local StellarUpdateFrame* stellar_update_frame = nullptr;
+
+    struct StellarUpdateFrame
+    {
+        uint64_t generation;
+        StellarUpdateFrame* previous;
+
+        StellarUpdateFrame() : generation(++stellar_update_generation), previous(stellar_update_frame)
+        {
+            if (!generation)
+            {
+                for (auto& stamp : stellar_update_stamps) stamp.generation = 0;
+                generation = ++stellar_update_generation;
+            }
+            stellar_update_stamps.resize(ncelobjs);
+            stellar_update_frame = this;
+        }
+
+        ~StellarUpdateFrame()
+        {
+            stellar_update_frame = previous;
+        }
+    };
+}
+
 static bool update_stellar_lineage(Star *member, double epoch, double orbital_epoch)
 {
     Star *lineage[26];
@@ -180,7 +218,28 @@ static bool update_stellar_lineage(Star *member, double epoch, double orbital_ep
     {
         Star *ancestor = lineage[--count];
         // Catalog astrometry already represents received light at its reference epoch.
-        ancestor->update_location(ancestor->orbit ? orbital_epoch : epoch);
+        const double update_epoch = ancestor->orbit ? orbital_epoch : epoch;
+        StellarUpdateStamp* stamp = nullptr;
+        // Independent astrometry is reusable; orbital members retain parent-state updates.
+        // Variable brightness also depends on viewer-relative state, so always update it.
+        if (stellar_update_frame && !ancestor->orbit && !ancestor->variability_period && !ancestor->deleted
+            && ancestor->volumetric_mean_radius > 0 && std::isfinite(ancestor->volumetric_mean_radius)
+            && ancestor->seqno >= 0 && ancestor->seqno < static_cast<int>(stellar_update_stamps.size())
+            && cels[ancestor->seqno] == ancestor)
+            stamp = &stellar_update_stamps[ancestor->seqno];
+        const bool reused = stamp && stamp->generation == stellar_update_frame->generation
+            && stamp->star == ancestor && stamp->epoch == update_epoch && stamp->center == mycenobj;
+        if (!reused)
+        {
+            ancestor->update_location(update_epoch);
+            if (stamp)
+            {
+                stamp->star = ancestor;
+                stamp->center = mycenobj;
+                stamp->epoch = update_epoch;
+                stamp->generation = stellar_update_frame->generation;
+            }
+        }
         CelestialLocation relative = ancestor->location - here;
         ancestor->tmprel = Point(relative);
     }
@@ -355,6 +414,7 @@ void compute_object_draw_coordinates()
 {
     num_stars_in_box = 0;
     if (!ncelobjs) return;
+    StellarUpdateFrame update_frame;
 
     if (redo_proper_motions)
     {
