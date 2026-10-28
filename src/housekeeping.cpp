@@ -187,8 +187,42 @@ static bool update_stellar_lineage(Star *member, double epoch, double orbital_ep
     return true;
 }
 
+bool planetary_system_is_active(const CelestialObject* cel)
+{
+    const cel_obj_class cls = cel->typeclass();
+    if (cls != class_planet && cls != class_moon) return true;
+    if (cel->cenobj == mycenobj) return true;
+    for (int index : {whereami, selected, trackidx, editidx})
+    {
+        if (index < 0 || index >= ncelobjs || !cels[index] || cels[index]->deleted) continue;
+        const CelestialObject* target = cels[index];
+        if (target == cel) return true;
+        const CelestialObject* target_system = target->cenobj ? target->cenobj : target;
+        if (!cel->cenobj || target_system != cel->cenobj) continue;
+        if (target->typeclass() == class_planet || target->typeclass() == class_moon) return true;
+        if (target->typeclass() != class_star || !(zoom > 1)) continue;
+        // A selected/ tracked stellar system becomes relevant when its orbits resolve on screen.
+        double extent = 0;
+        const CelestialObject* cursor = cel;
+        for (int depth = 0; cursor && cursor->orbit && depth < 32; ++depth)
+        {
+            extent += cursor->orbit->semimajor_axis*(1+cursor->orbit->eccentricity);
+            cursor = cursor->orbit->center;
+            if (cursor && cursor->typeclass() == class_star) break;
+        }
+        const double distance = cel->cenobj->location.distance_to(here);
+        if (extent*zoom*dispcx >= std::max(1.0, distance)) return true;
+    }
+    return false;
+}
+
 bool compute_object_location(CelestialObject* cel)
 {
+    if (!planetary_system_is_active(cel))
+    {
+        cel->drawnx = cel->drawny = -1e9;
+        return false;
+    }
     bool star_in_box;
     int i = cel->seqno;
     const bool system_object = view_mode == vm_system && mycenobj &&
@@ -255,17 +289,11 @@ bool compute_object_location(CelestialObject* cel)
         break;
 
         case class_planet:
-        static_cast<Planet*>(cel)->sync_host_statistics();
         if (i > 0)
         {
             if (!system_object && i!=selected && i!=trackidx && i!=editidx && i!=whereami)
             {
-                if (cel->cenobj!=mycenobj)
-                {
-                    cel->drawnx = cel->drawny = -1e9;
-                    return false;
-                }
-                else if (cel->orbit &&
+                if (cel->cenobj == mycenobj && cel->orbit &&
                     (
                         ((cel->mass < celmasslim)
                         && (cel->tmprel.squared_magnitude() > AU_zoomed_squared)
@@ -291,12 +319,7 @@ bool compute_object_location(CelestialObject* cel)
         {
             if (!system_object && i!=selected && i!=trackidx && i!=editidx && i!=whereami)
             {
-                if (cel->cenobj!=mycenobj)
-                {
-                    cel->drawnx = cel->drawny = -1e9;
-                    return false;
-                }
-                else if (cel->orbit &&
+                if (cel->cenobj == mycenobj && cel->orbit &&
                     (
                             ((cel->mass >= celmasslim)
                         && (cel->tmprel.squared_magnitude() > AU_zoomed_squared)
@@ -348,7 +371,6 @@ void compute_object_draw_coordinates()
     disph = dispcy*2;
     celmasslim = lbllsys_mass_lim * 1000;
 
-    refresh_eclipse_casters();
     eclipsed_light = nullptr;
     eclipsed_fraction = 0;
     if (whereami >= 0) mycenobj = cels[whereami]->cenobj;
@@ -437,6 +459,7 @@ void compute_object_draw_coordinates()
         }
     }
 
+    refresh_eclipse_casters();
     set_viewer_location_and_plane();
     if (trackidx >= 0) center_tracked();
 
@@ -451,6 +474,7 @@ void compute_object_draw_coordinates()
         if (cels[i]->deleted) continue;
         cels[i]->drawnx = cels[i]->drawnxmin = cels[i]->drawnxmax
             = cels[i]->drawny = cels[i]->drawnymin = cels[i]->drawnymax = -1e9;
+        if (!planetary_system_is_active(cels[i])) continue;
         if (isnan(cels[i]->tmprel.x)) continue;
         
         // From inside a galaxy's disc, it won't do to merely project an ellipse. We wrap a band all the way round with draw_galaxy_band() instead,

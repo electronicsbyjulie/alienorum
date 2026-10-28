@@ -642,6 +642,7 @@ void refresh_eclipse_casters()
         // size: an object a few meters across casts a shadow a few meters across, which is
         // below one pixel from any distance the body it orbits is still on screen.
         if (cls != class_planet && cls != class_moon) continue;
+        if (!planetary_system_is_active(c)) continue;
 
         // Minor planets are skipped for both reasons at once -- an asteroid's shadow is never
         // resolvable, and astorb can load hundreds of thousands of them, which is exactly the
@@ -3927,7 +3928,7 @@ void draw_objects()
 
     // Once per frame, ahead of any disc: every disc drawn below asks this list who might be
     // The eclipse caster list every disc below consults is rebuilt earlier than this, at the top
-    // of compute_object_draw_coordinates(), because the sky's own brightness depends on it too
+    // of the projection pass in compute_object_draw_coordinates(), because sky brightness depends on it too
     // and is settled before any of this runs. See refresh_eclipse_casters() near draw_sphere_gpu().
 
     // Orbits
@@ -4014,6 +4015,7 @@ void draw_objects()
     for (pass=0; pass<=1; pass++) for (i=0; cels[i] && i<MAX_CELOBJS; i++)
     {
         if (cels[i]->deleted) continue;
+        if (!planetary_system_is_active(cels[i])) continue;
         cels[i]->drawnxmin = cels[i]->drawnxmax = cels[i]->drawnymin = cels[i]->drawnymax = -1e9;
         if (exclude_observing_object(cels[i])) continue;
 

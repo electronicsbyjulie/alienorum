@@ -3988,3 +3988,60 @@ TEST_F(RenderingRegressionTest, GalaxyImageEdgesFadeToTransparentWithTheImGuiSam
         ImGui::NewFrame();
     }
 }
+
+TEST_F(RenderingRegressionTest, DistantWorldsSkipOrbitProjectionAndPhotometryUntilTheirSystemIsActive)
+{
+    Star* sun = make_star("Sun");
+    Star* remote = make_star("Remote host");
+    remote->distance = 100*light_year;
+    remote->location.system_center = Point(0, 0, remote->distance);
+    Planet* planet = make_planet(remote, "Remote planet", 2*AU);
+    Moon* moon = new Moon();
+    strcpy(moon->name, "Remote moon");
+    moon->mass = lunar_mass;
+    moon->volumetric_mean_radius = 1737400;
+    moon->orbit = new Orbit();
+    moon->orbit->center = planet;
+    moon->orbit->semimajor_axis = 4e8;
+    moon->orbit->compute_period(moon->mass);
+    moon->cenobj = remote;
+    append_cel(moon);
+    const json planet_before = planet->location.to_json(), moon_before = moon->location.to_json();
+    std::vector<double> magnitudes(ncelobjs), sizes(ncelobjs), bloom(ncelobjs);
+    set(vmag_cache, magnitudes.data());
+    set(angular_radius, sizes.data());
+    set(bloomrad_cache, bloom.data());
+    set(mycenobj, static_cast<CelestialObject*>(sun));
+    set(whereami, sun->seqno);
+    set(selected, -1);
+    set(trackidx, -1);
+    set(editidx, -1);
+    set(here, sun->location);
+    set(redo_proper_motions, true);
+    EXPECT_FALSE(planetary_system_is_active(planet));
+    compute_object_draw_coordinates();
+    EXPECT_EQ(planet->location.to_json(), planet_before);
+    EXPECT_EQ(moon->location.to_json(), moon_before);
+    EXPECT_EQ(magnitudes[planet->seqno], 999);
+    EXPECT_EQ(magnitudes[moon->seqno], 999);
+    EXPECT_LT(planet->drawnx, -1e8);
+    EXPECT_LT(moon->drawnx, -1e8);
+    selected = remote->seqno;
+    EXPECT_FALSE(planetary_system_is_active(planet));
+    zoom = 1e8;
+    EXPECT_TRUE(planetary_system_is_active(planet));
+    EXPECT_TRUE(compute_object_location(planet));
+    EXPECT_GT(planet->location.system_center.z, 90*light_year);
+    zoom = 1;
+    selected = planet->seqno;
+    EXPECT_TRUE(planetary_system_is_active(planet));
+    EXPECT_TRUE(planetary_system_is_active(moon));
+    EXPECT_TRUE(compute_object_location(moon));
+    selected = -1;
+    editidx = moon->seqno;
+    EXPECT_TRUE(planetary_system_is_active(moon));
+    editidx = -1;
+    mycenobj = remote;
+    EXPECT_TRUE(planetary_system_is_active(planet));
+    EXPECT_TRUE(planetary_system_is_active(moon));
+}
