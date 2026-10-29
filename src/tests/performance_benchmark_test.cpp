@@ -292,6 +292,7 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
 #ifdef ALIENORUM_PERFORMANCE_FIXED
     std::cout << "PERF comparison: fixed\n";
 #endif
+    std::cout << "PERF object bytes: " << sizeof(CelestialObject) << '\n';
     std::cout << "PERF renderer: " << glGetString(GL_RENDERER) << '\n';
     std::cout << "PERF viewport: " << drawable_width << 'x' << drawable_height << '\n';
     const char* output = std::getenv("ALIENORUM_PERF_OUTPUT");
@@ -418,6 +419,7 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
             : id == 18 ? std::vector<std::string>{"catalog-lock-idle", "catalog-lock-publication"}
             : id == 13 ? std::vector<std::string>{"catalog", "catalog-walk", "catalog-time-jump"}
             : id <= 5 || id == 8 ? std::vector<std::string>{"catalog", "catalog-time-jump"}
+            : id == 78 ? std::vector<std::string>{"catalog-rotation-missing", "catalog-rotation-known"}
             : id == 77 ? std::vector<std::string>{"forest-walk", "shore-walk", "galaxy-shore-still", "skyline-walk", "catalog-scratch"}
             : id == 73 ? std::vector<std::string>{"catalog-pick-empty", "catalog-pick-moving", "catalog-pick-target"}
             : id == 68 ? std::vector<std::string>{"catalog-orbits", "catalog-orbits-walk", "catalog-orbits-time-jump"}
@@ -437,6 +439,7 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
             : std::vector<std::string>{"shore-walk", "forest-walk"};
         for (const std::string& scene : scenes)
         {
+            if (id == 78) world->sidereal_rotational_period = scene == "catalog-rotation-missing" ? 0 : oneday;
             if (publication) publication->active = scene == "catalog-lock-publication";
             delete world->surf_map;
             const bool skyline = scene.find("skyline") != std::string::npos;

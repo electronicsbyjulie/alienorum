@@ -1,0 +1,3 @@
+proposal,workload,round,order,before_ms,after_ms,change_percent,max_channel_error,before_cpu_ms,after_cpu_ms,before_max_ms,after_max_ms
+78,catalog-rotation-missing,0,AB,0.9375744374999999,0.730664125,-22.068681080055576,0,0.147905375,0.1182585625,,
+78,catalog-rotation-known,0,AB,0.6429773750000001,0.726550625,12.997852373887952,0,0.104592875,0.12121825,,

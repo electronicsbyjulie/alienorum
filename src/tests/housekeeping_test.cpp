@@ -720,3 +720,59 @@ TEST_F(HousekeepingTest, CatalogTracePreservesRecursiveReleaseAndReacquire)
         EXPECT_GT(after.maximum_hold_ns, 0u);
     }
 }
+
+TEST_F(HousekeepingTest, MissingRotationDiagnosticKeepsTheFirstWarningAndRearmsAfterRecovery)
+{
+    CandidateFrameRestore frame_restore;
+    struct ObserverRestore
+    {
+        double latitude = viewer_lat, longitude = viewer_lon, north = npaz, correction = azimuth_correction;
+        bool changed = viewchanged;
+        CelestialLocation pole = npdummy.location;
+        ~ObserverRestore()
+        {
+            viewer_lat = latitude;
+            viewer_lon = longitude;
+            npaz = north;
+            azimuth_correction = correction;
+            viewchanged = changed;
+            npdummy.location = pole;
+        }
+    } observer_restore;
+    std::ostringstream captured;
+    struct StreamRestore
+    {
+        std::streambuf* previous;
+        ~StreamRestore() { std::cerr.rdbuf(previous); }
+    } stream_restore{std::cerr.rdbuf(captured.rdbuf())};
+    Star* host = make_star("Diagnostic host");
+    Planet* first = make_planet(host, "Diagnostic first world");
+    Planet* second = make_planet(host, "Diagnostic second world");
+    first->sidereal_rotational_period = second->sidereal_rotational_period = 0;
+    whereami = first->seqno;
+    view_mode = vm_horizon;
+    viewer_lat = .2;
+    viewer_lon = .3;
+    set_viewer_surface_location(true);
+    const CelestialLocation position = here;
+    set_viewer_surface_location(true);
+    EXPECT_TRUE(here.local_position == position.local_position);
+    first->sidereal_rotational_period = oneday;
+    set_viewer_surface_location(true);
+    first->sidereal_rotational_period = 0;
+    set_viewer_surface_location(true);
+    set_viewer_surface_location(true);
+    EXPECT_TRUE(here.local_position == position.local_position);
+    whereami = second->seqno;
+    set_viewer_surface_location(true);
+    set_viewer_surface_location(true);
+    whereami = first->seqno;
+    set_viewer_surface_location(true);
+    const std::string output = captured.str(), message = "has no rotation period";
+    size_t count = 0, offset = 0;
+    while ((offset = output.find(message, offset)) != std::string::npos) { ++count; offset += message.size(); }
+    EXPECT_EQ(count, performance_enabled(78) ? 3u : 7u);
+    EXPECT_NE(output.find(first->name), std::string::npos);
+    EXPECT_NE(output.find(second->name), std::string::npos);
+    EXPECT_FALSE(first->to_json().contains("missing_rotation_reported"));
+}

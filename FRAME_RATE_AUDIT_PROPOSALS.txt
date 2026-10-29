@@ -282,7 +282,7 @@ The compact archive still imports more than a hundred thousand full objects, inc
 [x] P077 | C / S / Q0 | Retain frame scratch buffers across terrain, water, scenery, and label passes. DISABLED: PERF_P077=0; five compiled comparisons are all mixed/neutral.
 Several frame-local vectors and masks are rebuilt in draw_horizon and related routines. Inventory allocations under a warm frame, reserve bounded capacity, and reuse storage with explicit viewport/world invalidation. Prefer a small number of owned scratch contexts to global unbounded caches. Validate alternating a dense forest with an empty world so high-water allocations remain bounded or reclaimable. This overlaps the specific raster proposal P023; treat generic allocation cleanup as secondary, not a substitute for eliminating large loops.
 
-P078 | C / H / Q0 | Keep diagnostic reporting out of hot paths unless requested.
+[x] P078 | C / H / Q0 | Keep diagnostic reporting out of hot paths unless requested. DISABLED: PERF_P078=0; repeated-warning latch reduces CPU work but establishes no frame-time improvement.
 Audit console output, statistics strings, optional debug overlays, and report generation during movement, map arrival, and preview activity. Retain counters cheaply and format detailed reports only for visible UI or explicit commands. Validate that error reporting and useful progress remain intact. The classification diagnostic is already removed from persistent saves by ed050bb; that completed change is not a fresh proposal. This item concerns any remaining recurring formatting discovered in a trace. It must not suppress scientific inputs or disable metallicity-informed classification.
 
 J. EXPLICIT QUALITY AND FEATURE CUTS FOR REVIEW

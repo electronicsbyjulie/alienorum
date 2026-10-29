@@ -951,3 +951,51 @@ shoreline timing is neutral. The last compiled rechecks remain in progress.
 P077 production validation: application builds; 118 rendering checks and all eighteen
 housekeeping checks pass, with eight optional GPU skips. Both dedicated storage/image
 checks also pass in the enabled private binary. Manual/hardware review remains separate.
+
+P078 — REPEATED OBSERVER DIAGNOSTIC (implemented, DISABLED: PERF_P078=0)
+Audit finds a confirmed per-update stream: a surface body with zero rotation period
+prints the same warning on every observer update. Other inspected renderer messages
+are commented out, one-time resolution reports or conditional failures; this experiment
+targets the observed stream, not scientific inputs or classification diagnostics.
+Add a transient per-body latch, preserving the first warning and its text. Rearm when
+a nonzero period is observed, so a later zero-period episode reports again. Keep every
+position/plane calculation and the existing fixed-body interpretation unchanged.
+The latch occupies existing padding: both native binaries report sizeof(CelestialObject)
+as 5,784 bytes. It is never serialized. Enabled tests verify first warnings for separate
+bodies, recovery/repetition, unchanged observer position and JSON omission; they pass
+alongside the existing surface-position/rotation/shape regression.
+Use three local objects and the real coordinate/observer pass, with no synthetic
+repetition multiplier and no heavy terrain drawing. Compare zero-period and ordinary
+nonzero-period controls, including GPU completion and exact image/object-state hashes.
+This isolates diagnostic cost; it is not a dense wet-forest FPS measurement.
+Actual before source: 8bbe668. Separate fixed binaries rebuild all affected class-header
+consumers. Twenty-one alternating external pairs measure two 128-frame blocks per
+workload, following the functional pilot.
+Raw data: PERFORMANCE_BENCHMARK_P078_FIXED_RESULTS.csv.
+catalog-rotation-known: 0.764455 -> 0.748631 ms; paired median +1.82%; 95% interval [-7.75%, +11.36%]; mixed/neutral; image/state error 0.
+  Main-thread CPU medians: 0.096907 -> 0.100892 ms.
+catalog-rotation-missing: 0.764164 -> 0.740443 ms; paired median -3.96%; 95% interval [-8.52%, +0.63%]; mixed/neutral; image/state error 0.
+  Main-thread CPU medians: 0.117448 -> 0.097235 ms.
+The missing-period CPU median falls, but neither wall-time interval establishes
+a frame improvement. Disable P078 under the requested frame-performance gate rather
+than substituting the CPU result for an FPS claim. Physical calculations, metallicity
+classification, error text and progress reporting remain in the original production
+path. The tested warning-latch experiment remains available for later review.
+
+COMPILED RECHECK DETAIL P042/P050
+PERFORMANCE_BENCHMARK_FIXED_P042_RESULTS.csv
+  forest-still: +5.46% [+3.17%, +5.81%], slower; maximum image error 1.
+  forest-walk: +5.10% [+2.61%, +8.96%], slower; maximum image error 1.
+PERFORMANCE_BENCHMARK_FIXED_P042_CONFIRM_RESULTS.csv
+  forest-still: +5.42% [+4.68%, +7.16%], slower; maximum image error 1.
+  forest-walk: +6.50% [+0.58%, +8.50%], slower; maximum image error 1.
+PERFORMANCE_BENCHMARK_FIXED_P050_RESULTS.csv
+  forest-walk: +0.68% [-0.89%, +1.34%], mixed/neutral; maximum image error 0.
+  ocean-still: +1.11% [-0.43%, +2.94%], mixed/neutral; maximum image error 0.
+  shore-walk: +0.39% [-0.69%, +1.34%], mixed/neutral; maximum image error 0.
+P042 confirms GPU regressions and stays disabled. P050 is neutral without a
+confirmed loss, so the earlier implementation stays enabled with gain unproven.
+The final two compiled rechecks remain in progress.
+P078 production validation: application builds; 118 rendering and nineteen
+housekeeping checks pass, with eight optional GPU skips. The two focused warning/
+observer checks also pass in the enabled private binary. Manual review remains separate.

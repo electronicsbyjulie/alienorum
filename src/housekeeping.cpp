@@ -49,7 +49,17 @@ void set_viewer_surface_location(bool also_set_plane)
     // where it started, which is the sensible reading of "no rotation" and what the rest of this
     // function then works from.
     if (!cel->sidereal_rotational_period)
-        std::cerr << "Warning: " << cel->name << " has no rotation period; treating it as fixed." << std::endl;
+    {
+        if (!performance_enabled(78) || !cel->missing_rotation_reported)
+        {
+            std::cerr << "Warning: " << cel->name << " has no rotation period; treating it as fixed." << std::endl;
+            if (performance_enabled(78)) cel->missing_rotation_reported = true;
+        }
+    }
+    else if (performance_enabled(78) && cel->missing_rotation_reported)
+    {
+        cel->missing_rotation_reported = false;
+    }
 
     bool dwh = false;
     if (cel->typeclass() == class_moon)
