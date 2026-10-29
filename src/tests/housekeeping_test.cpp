@@ -18,6 +18,123 @@ extern double celmasslim;
 
 class HousekeepingTest : public UniverseFixture {};
 
+namespace
+{
+    struct CandidateFrameRestore
+    {
+        CelestialObject* root = mycenobj;
+        CelestialLocation position = here;
+        int place = whereami, selection = selected, tracking = trackidx, editing = editidx;
+        double magnification = zoom, width = dispcx;
+        ViewMode mode = view_mode;
+        ~CandidateFrameRestore()
+        {
+            mycenobj = root;
+            here = position;
+            whereami = place;
+            selected = selection;
+            trackidx = tracking;
+            editidx = editing;
+            zoom = magnification;
+            dispcx = width;
+            view_mode = mode;
+            invalidate_frame_objects();
+        }
+    };
+}
+
+TEST_F(HousekeepingTest, FrameCandidatesPreserveOrderAndSystemActivationRules)
+{
+    CandidateFrameRestore restore;
+    Star* local = make_star("Candidate local");
+    Star* remote = make_star("Candidate remote");
+    local->cenobj = local;
+    remote->cenobj = remote;
+    remote->location.system_center = Point(0, 0, 100 * light_year);
+    Planet* near = make_planet(local, "Local world");
+    Planet* far = make_planet(remote, "Remote world");
+    Planet* sibling = make_planet(remote, "Remote sibling", 2 * AU);
+    mycenobj = local;
+    here = CelestialLocation();
+    whereami = selected = trackidx = editidx = -1;
+    zoom = 1;
+    dispcx = 640;
+    view_mode = vm_spaceship;
+    const auto contains = [](const std::vector<int>& values, int index)
+    {
+        return std::find(values.begin(), values.end(), index) != values.end();
+    };
+    EXPECT_TRUE(contains(frame_object_candidates(), near->seqno));
+    EXPECT_FALSE(contains(frame_object_candidates(), far->seqno));
+    selected = remote->seqno;
+    EXPECT_FALSE(contains(frame_object_candidates(), far->seqno));
+    zoom = 1e8;
+    EXPECT_TRUE(contains(frame_object_candidates(), far->seqno));
+    zoom = 2;
+    here = remote->location;
+    here.local_position = Point(0, 0, AU);
+    EXPECT_TRUE(contains(frame_object_candidates(), far->seqno));
+    here = CelestialLocation();
+    EXPECT_FALSE(contains(frame_object_candidates(), far->seqno));
+    zoom = 1;
+    selected = far->seqno;
+    EXPECT_TRUE(contains(frame_object_candidates(), sibling->seqno));
+    EXPECT_TRUE(std::is_sorted(frame_object_candidates().begin(), frame_object_candidates().end()));
+    Planet* added = make_planet(remote, "Added after caching", 3 * AU);
+    EXPECT_TRUE(contains(frame_object_candidates(), added->seqno));
+    selected = -1;
+    added->cenobj = local;
+    added->orbit->center = local;
+    added->sync_host_statistics();
+    EXPECT_TRUE(contains(frame_object_candidates(), added->seqno));
+    EXPECT_EQ(added->get_light_center(), local);
+    selected = far->seqno;
+    added->deleted = true;
+    invalidate_frame_objects();
+    EXPECT_FALSE(contains(frame_object_candidates(), added->seqno));
+    selected = -1;
+    editidx = far->seqno;
+    EXPECT_TRUE(contains(frame_object_candidates(), sibling->seqno));
+    editidx = -1;
+    trackidx = far->seqno;
+    EXPECT_TRUE(contains(frame_object_candidates(), sibling->seqno));
+    trackidx = -1;
+    EXPECT_FALSE(contains(frame_object_candidates(), sibling->seqno));
+    delete_the_universe();
+}
+
+TEST_F(HousekeepingTest, QueuedInactiveOrbitAndHostEditsReconcileWithoutMovingThePlanet)
+{
+    CandidateFrameRestore restore;
+    Star* local = make_star("Queue observer");
+    Star* host = make_star("Queue host");
+    Planet* planet = make_planet(host, "Queued world");
+    local->cenobj = local;
+    host->cenobj = host;
+    mycenobj = local;
+    whereami = selected = trackidx = editidx = -1;
+    zoom = 1;
+    const CelestialLocation position = planet->location;
+    ASSERT_EQ(host->has_hz_planets, 1);
+    planet->orbit->semimajor_axis = 4 * AU;
+    planet->orbit->compute_period(planet->mass);
+    Planet::reconcile_host_statistics();
+    EXPECT_EQ(host->has_hz_planets, 0);
+    planet->orbit->period = oneyear;
+    planet->orbit->compute_semimajor_axis(planet->mass);
+    Planet::reconcile_host_statistics();
+    EXPECT_EQ(host->has_hz_planets, 1);
+    host->absolute_magnitude = 0;
+    host->update_location(simnow);
+    Planet::reconcile_host_statistics();
+    EXPECT_EQ(host->has_hz_planets, 0);
+    EXPECT_EQ(planet->location.distance_to(position), 0);
+    planet->set_explicit_mass(planet_count_mass_cutoff / 2);
+    Planet::reconcile_host_statistics();
+    EXPECT_EQ(host->has_planets, 0);
+    delete_the_universe();
+}
+
 TEST_F(HousekeepingTest, FlightDisplacementTracksElapsedTimeAcrossFrameCadences)
 {
     for (double speed : {0.0, 0.3*speed_of_light, 0.999*speed_of_light,

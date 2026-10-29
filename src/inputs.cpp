@@ -85,8 +85,9 @@ void identify_object_under_cursor(ImGuiIO& io)
     {
         is_an_obj_under_cursor = system_target(trackidx);
     }
-    else for (i=0; cels[i] && i<MAX_CELOBJS; i++)
+    else for (int index : frame_pick_candidates())
     {
+        i = index;
         if ((i == whereami) && (view_mode != vm_system)) continue;
         if (cels[i]->deleted) continue;
         if (lsysonly && cels[i]->cenobj != mycenobj) continue;
@@ -1352,6 +1353,7 @@ void process_key_delete()
             if (hipcache && star->HIP > 0 && star->HIP <= MAX_HIP && hipcache[star->HIP] == star) hipcache[star->HIP] = nullptr;
         }
     }
+    invalidate_frame_objects();
     if (parent && parent->deleted) parent = nullptr;
     const auto is_removed = [](int index)
     {

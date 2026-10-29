@@ -65,6 +65,7 @@ CelestialObject::CelestialObject()
 
 CelestialObject::~CelestialObject()
 {
+    if (cels && seqno >= 0 && seqno < ncelobjs && cels[seqno] == this) invalidate_frame_objects();
     if (merged_day_map)
     {
         delete merged_day_map;
@@ -419,8 +420,18 @@ void alienorum::Orbit::interpolate_osculating_e(double for_epoch, double &n, dou
     effe = coeff0 * osculating[j].T_periapsis + coeff1 * T_peri_j1;
 }
 
+static void notify_orbit_statistics(CelestialObject* object)
+{
+    if (!object || object->seqno < 0) return;
+    std::lock_guard<std::recursive_mutex> lock(catalog_mutex);
+    if (!cels || object->seqno >= ncelobjs || cels[object->seqno] != object) return;
+    invalidate_frame_objects();
+    Planet::mark_host_statistics_dirty(object);
+}
+
 void Orbit::compute_period(double mm)
 {
+    notify_orbit_statistics(center);
     if (!center) return;
     if (is_open()) { period = 0; return; }               // Nothing to compute: it never comes back.
     if (!center->mass)
@@ -473,6 +484,7 @@ void Orbit::compute_period(double mm)
 
 void Orbit::compute_semimajor_axis(double mm)
 {
+    notify_orbit_statistics(center);
     if (!center) return;
     if (!period) return;
     if (is_open()) return;                               // An open orbit's scale is its perihelion, set where it is read.
@@ -777,6 +789,11 @@ json CelestialObject::to_json()
 
 bool CelestialObject::from_json(const json& j)
 {
+    if (cels && seqno >= 0 && seqno < ncelobjs && cels[seqno] == this)
+    {
+        invalidate_frame_objects();
+        Planet::mark_host_statistics_dirty(this);
+    }
     home_world = j.value("home_world", false);
     map_inverted = j.value("map_inverted", false);
     rnd_seed = j.value("rnd_seed", 0);
@@ -4397,6 +4414,9 @@ bool append_cel(CelestialObject *cel)
     cel->seqno = ncelobjs;
     ncelobjs++;
     cels[ncelobjs] = 0;
+    invalidate_frame_objects();
+    cel->drawnx = cel->drawnxmin = cel->drawnxmax
+        = cel->drawny = cel->drawnymin = cel->drawnymax = -1e9;
     if (cel->typeclass() == class_planet) static_cast<Planet*>(cel)->sync_host_statistics();
     return true;
 }

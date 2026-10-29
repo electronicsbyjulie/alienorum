@@ -472,6 +472,7 @@ extern CelestialObject **cels, *mycenobj;
 extern std::vector<std::vector<CelestialObject*>> first_letter_index;
 extern std::map<std::string,std::vector<CelestialObject*>> constellation_index;
 bool append_cel(CelestialObject* cel);          // maintain indices; false if the array is full
+void invalidate_frame_objects();
 
 Point to_viewer_plane(Point pt, int sign = 1);
 

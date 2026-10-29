@@ -8,6 +8,7 @@
 #include <array>
 #include <cstdint>
 #include <cstring>
+#include <unordered_map>
 
 #include "planet.h"
 #include "moon.h"
@@ -949,7 +950,59 @@ void Planet::estimate_albedo_and_absmagn()
 void Planet::update_location(double tmnow)
 {
     if (orbit) update_orbit_location(tmnow);
-    sync_host_statistics();
+    refresh_host_statistics_if_changed();
+}
+
+namespace
+{
+    std::unordered_map<int, Planet*>& dirty_planet_statistics()
+    {
+        static std::unordered_map<int, Planet*> pending;
+        return pending;
+    }
+    std::unordered_map<int, Star*>& dirty_host_statistics()
+    {
+        static std::unordered_map<int, Star*> pending;
+        return pending;
+    }
+}
+
+void Planet::mark_host_statistics_dirty(CelestialObject* object)
+{
+    if (!object || !cels || object->seqno < 0 || object->seqno >= ncelobjs
+        || cels[object->seqno] != object) return;
+    std::lock_guard<std::recursive_mutex> lock(catalog_mutex);
+    if (object->typeclass() == class_planet)
+        dirty_planet_statistics()[object->seqno] = static_cast<Planet*>(object);
+    CelestialObject* light = object->typeclass() == class_star ? object : object->get_light_center();
+    if (!light || light->typeclass() != class_star) return;
+    if (light->seqno >= 0 && light->seqno < ncelobjs && cels[light->seqno] == light)
+        dirty_host_statistics()[light->seqno] = static_cast<Star*>(light);
+}
+
+void Planet::reconcile_host_statistics()
+{
+    std::lock_guard<std::recursive_mutex> lock(catalog_mutex);
+    auto hosts = std::move(dirty_host_statistics());
+    dirty_host_statistics().clear();
+    for (const auto& entry : hosts)
+    {
+        if (!cels || entry.first < 0 || entry.first >= ncelobjs || cels[entry.first] != entry.second
+            || cels[entry.first]->typeclass() != class_star) continue;
+        for (int index : entry.second->pl_indices)
+        {
+            if (index >= 0 && index < ncelobjs && cels[index] && cels[index]->typeclass() == class_planet)
+                dirty_planet_statistics()[index] = static_cast<Planet*>(cels[index]);
+        }
+    }
+    auto pending = std::move(dirty_planet_statistics());
+    dirty_planet_statistics().clear();
+    for (const auto& entry : pending)
+    {
+        if (cels && entry.first >= 0 && entry.first < ncelobjs && cels[entry.first] == entry.second
+            && cels[entry.first]->typeclass() == class_planet)
+            entry.second->sync_host_statistics();
+    }
 }
 
 bool Planet::counts_for_host_statistics() const
@@ -985,6 +1038,7 @@ void Planet::sync_host_statistics()
     std::lock_guard<std::recursive_mutex> lock(catalog_mutex);
     CelestialObject* light = !deleted && counts_for_host_statistics() ? get_light_center() : nullptr;
     Star* host = light && !light->deleted && light->typeclass() == class_star ? static_cast<Star*>(light) : nullptr;
+    if (statistics_host != host) invalidate_frame_objects();
     if (statistics_host != host && statistics_host_index >= 0 && statistics_host_index < ncelobjs
         && cels[statistics_host_index] == statistics_host)
     {
@@ -1006,6 +1060,9 @@ void Planet::sync_host_statistics()
 void Planet::rebuild_host_statistics()
 {
     std::lock_guard<std::recursive_mutex> lock(catalog_mutex);
+    dirty_planet_statistics().clear();
+    invalidate_frame_objects();
+    dirty_host_statistics().clear();
     if (!cels) return;
     int count = 0;
     while (count < MAX_CELOBJS && cels[count]) ++count;

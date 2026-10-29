@@ -1,4 +1,5 @@
 #include "classes/planetnames.h"
+#include <tuple>
 
 // shlwapi.h must be included before any project header pulls in `using namespace std`
 // (see globals.h) -- shlwapi.h's own transitive COM headers declare an unqualified
@@ -1272,6 +1273,9 @@ void draw_objedit_window(ImGuiIO& io)
     CelestialObject *cel = cels[editidx];
     WaterCoverageEditor &water_editor = surface_editors[cel->seqno];
     Orbit *orb = cel->orbit;
+    const auto structure_before = std::make_tuple(orb, orb ? orb->center : nullptr,
+        orb ? orb->semimajor_axis : 0, orb ? orb->eccentricity : 0, cel->cenobj, cel->deleted);
+    const auto statistics_before = std::make_tuple(cel->mass, cel->temperature, cel->absolute_magnitude);
 
     ImGui::Begin("Edit Object", &objedtwnd, 0);
 
@@ -2731,6 +2735,15 @@ void draw_objedit_window(ImGuiIO& io)
     ImVec2 pos = ImGui::GetWindowPos(), siz = ImGui::GetWindowSize();
     ImGui::End();
 
+    const auto structure_after = std::make_tuple(cel->orbit, cel->orbit ? cel->orbit->center : nullptr,
+        cel->orbit ? cel->orbit->semimajor_axis : 0, cel->orbit ? cel->orbit->eccentricity : 0, cel->cenobj, cel->deleted);
+    if (structure_before != structure_after) invalidate_frame_objects();
+    if (structure_before != structure_after
+        || statistics_before != std::make_tuple(cel->mass, cel->temperature, cel->absolute_magnitude))
+    {
+        Planet::mark_host_statistics_dirty(cel);
+        Planet::reconcile_host_statistics();
+    }
     last_edit_idx = editidx;
 
     if (io.MousePos.x >= pos.x && io.MousePos.y >= pos.y

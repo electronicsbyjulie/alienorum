@@ -630,7 +630,7 @@ void refresh_eclipse_casters()
 #if !ALIENORUM_GPU_SPHERES
     return;                     // only the GPU impostor path shades eclipses
 #else
-    for (int i = 0; cels[i] && i < MAX_CELOBJS; i++)
+    for (int i : frame_object_candidates())
     {
         CelestialObject *c = cels[i];
         if (c->deleted) continue;
@@ -3932,8 +3932,9 @@ void draw_objects()
     // and is settled before any of this runs. See refresh_eclipse_casters() near draw_sphere_gpu().
 
     // Orbits
-    if (show_orbits && show_localsys) for (i=0; cels[i] && i<MAX_CELOBJS; i++)
+    if (show_orbits && show_localsys) for (int index : frame_object_candidates())
     {
+        i = index;
         if (cels[i]->deleted) continue;
         if (!cels[i]->orbit) continue;
         if (cels[i]->cenobj != mycenobj && (whereami<0 || cels[i]->orbit->center != cels[whereami])) continue;
@@ -4012,8 +4013,9 @@ void draw_objects()
     // Grid and backdrop labels belong behind celestial objects.
     draw_cached_labels();
     // Collect visible objects before painting either their discs or labels.
-    for (pass=0; pass<=1; pass++) for (i=0; cels[i] && i<MAX_CELOBJS; i++)
+    for (pass=0; pass<=1; pass++) for (int index : frame_draw_candidates())
     {
+        i = index;
         if (cels[i]->deleted) continue;
         if (!planetary_system_is_active(cels[i])) continue;
         cels[i]->drawnxmin = cels[i]->drawnxmax = cels[i]->drawnymin = cels[i]->drawnymax = -1e9;
@@ -6311,7 +6313,7 @@ void draw_horizon()
                 }
             }
 
-            for (int ci = 0; cels[ci] && ci < MAX_CELOBJS; ci++)
+            for (int ci : frame_bright_candidates())
             {
                 if (cels[ci]->deleted || ci == whereami || cels[ci] == sun_obj)
                 {

@@ -4240,6 +4240,7 @@ TEST_F(RenderingRegressionTest, DistantWorldsSkipOrbitProjectionAndPhotometryUnt
     EXPECT_EQ(magnitudes[moon->seqno], 999);
     EXPECT_LT(planet->drawnx, -1e8);
     EXPECT_LT(moon->drawnx, -1e8);
+    EXPECT_EQ(std::count(frame_draw_candidates().begin(), frame_draw_candidates().end(), planet->seqno), 0);
     selected = remote->seqno;
     EXPECT_FALSE(planetary_system_is_active(planet));
     zoom = 1e8;
@@ -4251,7 +4252,13 @@ TEST_F(RenderingRegressionTest, DistantWorldsSkipOrbitProjectionAndPhotometryUnt
     EXPECT_TRUE(planetary_system_is_active(planet));
     EXPECT_TRUE(planetary_system_is_active(moon));
     EXPECT_TRUE(compute_object_location(moon));
+    compute_object_draw_coordinates();
+    EXPECT_EQ(std::count(frame_object_candidates().begin(), frame_object_candidates().end(), planet->seqno), 1);
     selected = -1;
+    compute_object_draw_coordinates();
+    EXPECT_EQ(magnitudes[planet->seqno], 999);
+    EXPECT_LT(planet->drawnx, -1e8);
+    EXPECT_EQ(std::count(frame_pick_candidates().begin(), frame_pick_candidates().end(), planet->seqno), 0);
     editidx = moon->seqno;
     EXPECT_TRUE(planetary_system_is_active(moon));
     editidx = -1;

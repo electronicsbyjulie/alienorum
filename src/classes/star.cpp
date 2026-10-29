@@ -38,6 +38,8 @@ void Star::refresh_planet_statistics()
     }
     pl_indices.swap(valid);
     has_planets = static_cast<int>(pl_indices.size());
+    planet_statistics_temperature = temperature;
+    planet_statistics_magnitude = absolute_magnitude;
 }
 static std::map<std::string, std::set<Star*>> catalog_alias_index;
 static std::mutex catalog_alias_mutex;
@@ -578,6 +580,17 @@ void Star::update_location(double tmnow)
         absolute_magnitude = -log(intrinsic_brightness) * invlogmagnbase;
 
         volumetric_mean_radius = estimate_radius(true);
+    }
+    const auto changed = [](double before, double after)
+    {
+        return before != after && !(std::isnan(before) && std::isnan(after));
+    };
+    if (!pl_indices.empty() && (changed(planet_statistics_temperature, temperature)
+        || changed(planet_statistics_magnitude, absolute_magnitude)))
+    {
+        Planet::mark_host_statistics_dirty(this);
+        planet_statistics_temperature = temperature;
+        planet_statistics_magnitude = absolute_magnitude;
     }
 }
 

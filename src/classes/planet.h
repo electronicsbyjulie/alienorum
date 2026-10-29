@@ -102,6 +102,8 @@ namespace alienorum
         void sync_host_statistics();
         void refresh_host_statistics_if_changed();
         static void rebuild_host_statistics();
+        static void mark_host_statistics_dirty(CelestialObject* object);
+        static void reconcile_host_statistics();
         bool counts_for_host_statistics() const;
         double est_bolometric_flux(double t_eff = 0);
         double estimate_bond_albedo();                      // for want of an actual parameter.

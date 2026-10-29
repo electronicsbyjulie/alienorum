@@ -80,6 +80,7 @@ namespace alienorum
         bool has_custom_name = false;
         int has_planets = 0;
         int has_hz_planets = 0;
+        double planet_statistics_temperature = NAN, planet_statistics_magnitude = NAN;
         std::vector<int> pl_indices;
         void refresh_planet_statistics();
         bool tmp_vis_flag = false;                  // Used only for rendering.
