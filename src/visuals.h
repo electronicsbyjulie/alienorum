@@ -80,6 +80,7 @@
 #define distant_biome_pixel_sampling 1    // Set to 0 to restore adaptive sampling near the horizon.
 #endif
 extern bool horizon_terrain_cpu_reference;
+extern bool horizon_background_cpu_reference;
 extern bool scenery_cpu_reference;
 extern bool water_cpu_reference;
 struct HorizonWaterStats
@@ -143,6 +144,7 @@ void draw_objects();
 void draw_system_view();
 void draw_sunclock();
 void find_horizon();
+float horizon_background_clip_y();
 void draw_local_rings();
 void draw_horizon();
 void draw_sky_gradient();

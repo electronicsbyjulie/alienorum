@@ -20,6 +20,7 @@
 #include "classes/surfacecache.h"
 #include "classes/surfaceprefetch.h"
 #include "classes/localsurfacetile.h"
+#include "classes/horizonbackground.h"
 #include "classes/surfacebiomes.h"
 #include "classes/surfacenavigation.h"
 #include "classes/horizonterrain.h"
@@ -31,6 +32,7 @@
 
 using namespace alienorum;
 bool horizon_terrain_cpu_reference = false;
+bool horizon_background_cpu_reference = false;
 bool scenery_cpu_reference = false;
 bool water_cpu_reference = false;
 static size_t scenery_projection_hits = 0;
@@ -2645,6 +2647,7 @@ static double draw_galaxy(CelestialObject* cel, double appmag)
         return 0;
     }
 
+    if (performance_enabled(67)) dl->PushClipRect(ImVec2(0, 0), ImVec2(dispcx * 2, horizon_background_clip_y()), true);
     GLuint tex_id = gputex_galaxy_faceon(cel->name);
     if (tex_id)
     {
@@ -2747,6 +2750,8 @@ static double draw_galaxy(CelestialObject* cel, double appmag)
         }
         #undef galaxy_vtx_col
     }
+
+    if (performance_enabled(67)) dl->PopClipRect();
 
     // The catalog can distinguish the visible optical body from its full mesh extent.
     double vis_fraction = g->label_radius_fraction;
@@ -3797,6 +3802,8 @@ void draw_galaxy_band()
 
     float dispw = dispcx * 2.0f;
     float disph = dispcy * 2.0f;
+    const float background_bottom = performance_enabled(67) ? horizon_background_clip_y() : disph;
+    if (performance_enabled(67)) list->PushClipRect(ImVec2(0, 0), ImVec2(dispw, background_bottom), true);
 
     for (int j = 0; j < N_lat; j++)
     {
@@ -3924,7 +3931,7 @@ void draw_galaxy_band()
                 float min_y = std::min({v00.pos.y, v10.pos.y, v11.pos.y, v01.pos.y});
                 float max_y = std::max({v00.pos.y, v10.pos.y, v11.pos.y, v01.pos.y});
 
-                if (max_x < 0.0f || min_x > dispw || max_y < 0.0f || min_y > disph)
+                if (max_x < 0.0f || min_x > dispw || max_y < 0.0f || min_y > background_bottom)
                 {
                     continue;
                 }
@@ -3945,6 +3952,7 @@ void draw_galaxy_band()
         }
     }
 
+    if (performance_enabled(67)) list->PopClipRect();
     list->PopTexture();
 }
 
@@ -5030,6 +5038,60 @@ void draw_sunclock()
 #define hznodes 8192
 bool draw_marker[hznodes];
 double hz_dx[hznodes], hz_dy[hznodes];
+namespace
+{
+    struct BackgroundHorizonPose
+    {
+        CelestialObject* world = nullptr;
+        Map* map = nullptr;
+        unsigned int generation = 0;
+        int index = -1, type = -1;
+        std::array<double, 12> values = {};
+        bool operator==(const BackgroundHorizonPose& other) const
+        {
+            return world == other.world && map == other.map && generation == other.generation
+                && index == other.index && type == other.type && values == other.values;
+        }
+    };
+    BackgroundHorizonPose background_horizon_pose;
+    int background_horizon_frame = -1;
+    uint64_t background_horizon_revision = 0;
+    BackgroundHorizonPose background_pose(CelestialObject* body, double radius, double lift)
+    {
+        return {body, body->surf_map, body->surf_map ? body->surf_map->gen : 0u, whereami, body->type,
+            {viewer_lat, viewer_lon, azimuth, altitude, zoom, dispcx, dispcy,
+                fmax(.01, viewer_eye_height), radius, lift, shore_displacement, body->oblateness}};
+    }
+}
+float horizon_background_clip_y()
+{
+    const float height = dispcy * 2;
+    if (!performance_enabled(67) || horizon_background_cpu_reference || view_mode != vm_horizon || whereami < 0 || whereami >= ncelobjs
+        || !show_terrain || dragging || background_horizon_frame != ImGui::GetFrameCount()) return height;
+    CelestialObject* body = cels[whereami];
+    if (!body || body->deleted || uses_gaseous_map(body->type) || body->type == lavaworld
+        || (body->typeclass() != class_planet && body->typeclass() != class_moon)) return height;
+    auto* planet = static_cast<Planet*>(body);
+    Map* map = body->surf_map;
+    if (!map || !map->gen || !map->is_complete() || generating_fic_texture) return height;
+    double radius = body->get_equatorial_radius();
+    if (!(radius > 0)) radius = body->volumetric_mean_radius;
+    if (!(radius > 0)) return height;
+    const double lift = planet->atmospheric_horizon_lift();
+    if (!(background_pose(body, radius, lift) == background_horizon_pose)) return height;
+    SurfaceBiomes field(static_cast<uint32_t>(whereami));
+    SurfaceSampler surface(planet, map, field, radius, shore_displacement);
+    if (!surface.has_biomes() || surface.ocean_world()) return height;
+    static uint64_t saved_revision = 0;
+    static float saved_bottom = 0;
+    if (saved_revision != background_horizon_revision)
+    {
+        saved_bottom = opaque_background_bottom(hz_dx, hz_dy, hznodes, static_cast<int>(dispcx * 2),
+            static_cast<int>(height), radius, fmax(.01, viewer_eye_height), lift, altitude, zoom * dispcx);
+        saved_revision = background_horizon_revision;
+    }
+    return saved_bottom;
+}
 static double horizon_noise_value(PerlinNoise &noise, double x, double y, double z, int octaves)
 {
     double total = 0, amplitude = 1, frequency = 1, weight = 0;
@@ -5045,6 +5107,8 @@ static double horizon_noise_value(PerlinNoise &noise, double x, double y, double
 
 void find_horizon()
 {
+    background_horizon_frame = -1;
+    ++background_horizon_revision;
     hz_y = dispcy*29;
     // whereami >= 0, not just view_mode: nothing keeps the two in step. process_key_cmd_char()
     // sets whereami to -1 on 'w' (warp) and on '+' from a standing start, neither of which
@@ -5092,6 +5156,8 @@ void find_horizon()
             if (draw_marker[j] && hz_y > dispcy*2) hz_y = fmax(hz_y, hz_dy[j]);
             theta += step;
         }
+        background_horizon_pose = background_pose(cel, R, horizon_lift_rad);
+        background_horizon_frame = ImGui::GetFrameCount();
     }
 }
 

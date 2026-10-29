@@ -711,3 +711,80 @@ P049 production validation: application builds; 111 rendering checks and all eig
 housekeeping checks pass, with eight optional GPU skips. The expanded enabled-path
 projection/lighting test also passes in the private binary. Manual/hardware checks
 remain separate from these automated results.
+
+P067 — OPAQUE-GROUND BACKGROUND CLIPPING
+Reuse current-frame projected horizon nodes, reproducing the ground painter's column
+interpolation. Combine their envelope with exact base-surface intersection tests in
+the monotonic camera domain. A full-width rectangle is eligible only below both
+limits plus a four-pixel interior/filter margin. Every column must be certified.
+Reject uncertain/non-finite/overflow geometry, incomplete/unversioned maps, gaseous
+or unsupported surfaces, transparent dragging, terrain-off views and stale horizon
+pose/frame data. Preserve original geometry, blending and projection outside the
+certified rectangle. Clip galaxy photographs and the internal galaxy band, skipping
+fully covered band quads after projection. Preserve galaxy label bounds and restore
+draw-list clipping state. No pixels are removed merely because the Sun is up.
+An initial smoke fixture lost its active galaxy during coordinate preparation. Stop
+that run and exclude its timings: PERFORMANCE_BENCHMARK_P067_INVALID_EMPTY_BAND_RESULTS.csv.
+The corrected fixture restores its deterministic active-galaxy context after projection,
+loads the tracked M31 internal texture and reports emitted band vertices. A one-pair
+pilot validates exact images, not a speed claim: PERFORMANCE_BENCHMARK_P067_PILOT_RESULTS.csv.
+At 1280 x 720 the shore band emits 3,312 -> 1,492 vertices; downward 2,784 -> 112.
+Upward and dragging views retain 4,288 and 3,312 vertices respectively. Clip rows are
+268 for shore views, 4 downward and 720 for upward/dragging views. These counters
+verify active work; vertex reduction alone does not establish an FPS improvement.
+Actual pre-change source: aa630d0. Separate fixed binaries reuse identical production
+baseline objects as described for P049; every affected candidate TU is rebuilt.
+Nine alternating external pairs measure two sixteen-frame blocks per view, including
+GPU completion and exact image hashes. Raw data: PERFORMANCE_BENCHMARK_P067_FIXED_RESULTS.csv.
+
+P067 FIRST VALID COMPILED RESULT
+galaxy-shore-down: 34.759 -> 34.962 ms; paired median +0.95%; 95% interval [-0.52%, +2.45%]; mixed/neutral; image error 0.
+galaxy-shore-drag: 118.299 -> 118.744 ms; paired median +0.66%; 95% interval [-0.77%, +1.56%]; mixed/neutral; image error 0.
+galaxy-shore-still: 118.839 -> 118.612 ms; paired median +0.08%; 95% interval [-0.86%, +1.29%]; mixed/neutral; image error 0.
+galaxy-shore-up: 12.978 -> 13.212 ms; paired median +1.80%; 95% interval [-3.29%, +2.86%]; mixed/neutral; image error 0.
+galaxy-shore-walk: 131.287 -> 131.394 ms; paired median -0.67%; 95% interval [-1.08%, +1.19%]; mixed/neutral; image error 0.
+All first-run intervals cross zero. Geometry reduction alone is insufficient.
+Refine coverage work: at a fixed row the slope is monotone in absolute horizontal
+distance, so the most distant intersection is at the center or either edge. Three
+probes conservatively certify the whole row, even with negative atmospheric curvature.
+Search once for the full-width covered row rather than once per column. Early-return
+when the bottom row cannot be certified, or when the original all-ground domain is
+fully covered. Preserve the four-pixel margin and horizon-envelope certificate.
+The revised tests compare an external NGC 5194 photograph as well as the internal
+band, and exhaustively check every pixel below certified rows using long-double
+reference intersections across both curvature signs. All three enabled tests pass.
+Revised raw data: PERFORMANCE_BENCHMARK_P067_REFINED_RESULTS.csv.
+
+P067 REFINED COMPILED RESULT
+galaxy-shore-down: 34.796 -> 34.103 ms; paired median -1.74%; 95% interval [-2.68%, -1.14%]; faster; image error 0.
+galaxy-shore-drag: 119.375 -> 119.183 ms; paired median -0.52%; 95% interval [-1.86%, +1.54%]; mixed/neutral; image error 0.
+galaxy-shore-still: 119.484 -> 118.698 ms; paired median -0.70%; 95% interval [-1.14%, +1.61%]; mixed/neutral; image error 0.
+galaxy-shore-up: 13.011 -> 12.972 ms; paired median -0.45%; 95% interval [-1.36%, +0.15%]; mixed/neutral; image error 0.
+galaxy-shore-walk: 131.353 -> 131.200 ms; paired median -0.12%; 95% interval [-2.33%, +1.62%]; mixed/neutral; image error 0.
+
+P067 CONFIRM COMPILED RESULT
+galaxy-shore-down: 34.857 -> 33.998 ms; paired median -2.42%; 95% interval [-8.00%, -0.91%]; faster; image error 0.
+galaxy-shore-drag: 119.265 -> 119.196 ms; paired median -0.14%; 95% interval [-0.92%, +0.71%]; mixed/neutral; image error 0.
+galaxy-shore-still: 119.062 -> 118.700 ms; paired median +0.05%; 95% interval [-1.47%, +0.91%]; mixed/neutral; image error 0.
+galaxy-shore-up: 12.951 -> 12.956 ms; paired median -0.25%; 95% interval [-5.26%, +0.74%]; mixed/neutral; image error 0.
+galaxy-shore-walk: 131.701 -> 131.900 ms; paired median +0.65%; 95% interval [-0.63%, +2.31%]; mixed/neutral; image error 0.
+Keep PERF_P067=1: final-source downward-view gains confirm at 1.74% and 2.42%.
+Other workloads remain neutral in both runs, with no established slowdown. This is
+a small view-dependent gain, not a general walking or galaxy-frame speedup. All
+accepted captures match exactly. The invalid empty-band run is excluded throughout.
+Three enabled-path quality tests pass, including external-photo rendering, transparent
+views, stale poses, overflow rejection and every-pixel positive/negative-curvature
+coverage. No runtime data asset or installer rule is added.
+
+COMPILED P026 RECHECK
+PERFORMANCE_BENCHMARK_FIXED_P026_RESULTS.csv
+  forest-walk: +5.94% [+1.81%, +6.82%], slower; image error 0.
+  shore-walk: +2.21% [+1.17%, +3.24%], slower; image error 0.
+PERFORMANCE_BENCHMARK_FIXED_P026_CONFIRM_RESULTS.csv
+  forest-walk: +5.48% [+4.60%, +8.28%], slower; image error 0.
+  shore-walk: +0.99% [-0.71%, +3.75%], mixed/neutral; image error 0.
+P026 confirms a forest slowdown and stays disabled. The remaining compiled
+rechecks continue independently; their source stays frozen at e659e47.
+P067 production validation: application builds; 114 rendering checks and all eighteen
+housekeeping checks pass, with eight optional GPU skips. The three expanded enabled
+quality checks also pass in the private binary. Manual/hardware review remains separate.

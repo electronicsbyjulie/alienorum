@@ -344,6 +344,22 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
             body->orbit->inclination = i * .01;
         }
     }
+    int benchmark_galaxy_index = -1;
+    if (std::find(ids.begin(), ids.end(), 67) != ids.end())
+    {
+        Galaxy* galaxy = new Galaxy();
+        strcpy(galaxy->name, "M31");
+        galaxy->volumetric_mean_radius = 50000 * light_year;
+        galaxy->tmprel = Point(10 * light_year, 0, 0);
+        galaxy->location.local_system_plane.v = xaxis;
+        galaxy->location.local_system_plane.a = .6;
+        append_cel(galaxy);
+        benchmark_galaxy_index = galaxy->seqno;
+        set(inside_galaxy_idx, galaxy->seqno);
+        set(show_galaxy_band, true);
+        set(sky_mag_shift, 0.0);
+        ASSERT_NE(gputex_galaxy_internal(galaxy->name), 0u);
+    }
     set(play_rise_set_sound, false);
     auto& alerts = SoundManager::get_instance();
     surface_radii.assign(ncelobjs + 32, 0);
@@ -372,6 +388,7 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
             : id == 18 ? std::vector<std::string>{"catalog-lock-idle", "catalog-lock-publication"}
             : id == 13 ? std::vector<std::string>{"catalog", "catalog-walk", "catalog-time-jump"}
             : id <= 5 || id == 8 ? std::vector<std::string>{"catalog", "catalog-time-jump"}
+            : id == 67 ? std::vector<std::string>{"galaxy-shore-walk", "galaxy-shore-still", "galaxy-shore-up", "galaxy-shore-down", "galaxy-shore-drag"}
             : id == 49 ? std::vector<std::string>{"forest-still", "forest-walk", "forest-turn", "shore-still"}
             : id == 43 ? std::vector<std::string>{"forest-walk", "forest-still", "forest-turn"}
             : id == 37 ? std::vector<std::string>{"shore-walk", "forest-walk", "shore-still", "shore-pole", "shore-seam"}
@@ -402,9 +419,11 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
             world->plant_trunk_height = 22.2;
             world->plant_crown_oblateness = .35;
             show_terrain = true;
-            altitude = scene == "shore-up" ? .9 : scene == "shore-down" ? -.9 : -.15;
+            altitude = scene.find("shore-up") != std::string::npos ? .9 : scene.find("shore-down") != std::string::npos ? -.9 : -.15;
+            dragging = scene == "galaxy-shore-drag";
             azimuth = .7;
             zoom = 1;
+            [[maybe_unused]] float captured_background_clip = dispcy * 2;
             const auto frame = [&](int frame_index, bool capture)
             {
                 std::optional<CatalogLock> frame_lock;
@@ -428,6 +447,12 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
                     cels[1]->location.local_position += ray;
                 }
                 compute_object_draw_coordinates();
+                if (id == 67)
+                {
+                    inside_galaxy_idx = benchmark_galaxy_index;
+                    cels[benchmark_galaxy_index]->tmprel = Point(10 * light_year, 0, 0);
+                    sky_mag_shift = 0;
+                }
                 if (scene.rfind("catalog", 0) == 0 || id == 28)
                 {
                     // Exercise all three consumers, including pointer/filter traversal.
@@ -447,6 +472,16 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
                 {
                     luminous_flux = 4e10;
                     find_horizon();
+                    if (id == 67)
+                    {
+#ifdef PERF_P067
+                        if (capture) captured_background_clip = horizon_background_clip_y();
+#endif
+                        const int band_start = ImGui::GetBackgroundDrawList()->VtxBuffer.Size;
+                        draw_galaxy_band();
+                        if (capture) std::cout << "PERF galaxy-band vertices: "
+                            << ImGui::GetBackgroundDrawList()->VtxBuffer.Size - band_start << '\n';
+                    }
                     draw_horizon();
                 }
                 if (id == 28) resident_probe->prepare(frame_index, scene.find("walk") != std::string::npos);
@@ -519,6 +554,9 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
             const auto expected = frame(0, true);
             select(false);
             const auto actual = frame(0, true);
+#ifdef PERF_P067
+            if (id == 67) std::cout << "PERF background clip row: " << captured_background_clip << '\n';
+#endif
 #ifdef PERF_P049
             if (id == 49) std::cout << "PERF scenery projection cache hits: " << scenery_projection_cache_hits() << '\n';
 #endif

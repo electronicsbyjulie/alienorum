@@ -27,6 +27,7 @@
 #include "../classes/surfacecache.h"
 #include "../classes/surfaceprefetch.h"
 #include "../classes/localsurfacetile.h"
+#include "../classes/horizonbackground.h"
 #include "../horizon_ground_gpu.h"
 #include "../scenery_gpu.h"
 #include "../horizon_terrain_gpu.h"
@@ -5386,4 +5387,128 @@ TEST_F(RenderingRegressionTest, StationarySceneryProjectionTracksCameraShapeMapA
             EXPECT_EQ(scenery_projection_cache_hits(), 1u);
         }
     }
+}
+
+TEST_F(RenderingRegressionTest, OpaqueGroundBackgroundClippingPreservesCoastsAndTransparentViews)
+{
+    Planet* world = surface(true);
+    delete world->surf_map;
+    world->surf_map = new CoastalTestMap();
+    Galaxy* galaxy = new Galaxy();
+    strcpy(galaxy->name, "M31");
+    galaxy->volumetric_mean_radius = 50000 * light_year;
+    galaxy->tmprel = Point(10 * light_year, 0, 0);
+    galaxy->location.local_system_plane.v = xaxis;
+    galaxy->location.local_system_plane.a = .6;
+    append_cel(galaxy);
+    Galaxy* external = new Galaxy();
+    strcpy(external->name, "NGC 5194");
+    external->volumetric_mean_radius = 3e7;
+    external->distance = 1e8;
+    external->tmprel = external->viewrel = external->location.local_position = Point(0, 2e6, 1e8);
+    append_cel(external);
+    double magnitudes[8] = {-3, -3, -3, -3, -3}, radii[8] = {.3, .3, .3, .3, .3}, blooms[8] = {};
+    bool discs[8] = {};
+    set(vmag_cache, magnitudes + 0);
+    set(angular_radius, radii + 0);
+    set(bloomrad_cache, blooms + 0);
+    set(discinstead, discs + 0);
+    set(show_labels, false);
+    set(selected, -1);
+    ASSERT_NE(gputex_galaxy_faceon(external->name), 0u);
+    set(inside_galaxy_idx, galaxy->seqno);
+    set(show_galaxy_band, true);
+    set(sky_mag_shift, 0.0);
+    set(horizon_background_cpu_reference, false);
+    bool clipped = false, photo_drawn = false;
+    const auto image = [&](bool reference)
+    {
+        horizon_background_cpu_reference = reference;
+        freeze_surface_time();
+        find_horizon();
+        clipped |= horizon_background_clip_y() < dispcy * 2;
+        draw_galaxy_band();
+        const int photo_start = ImGui::GetBackgroundDrawList()->VtxBuffer.Size;
+        draw_single_object(external->seqno);
+        photo_drawn |= ImGui::GetBackgroundDrawList()->VtxBuffer.Size > photo_start;
+        draw_horizon();
+        auto result = render();
+        ImGui::NewFrame();
+        return result;
+    };
+    for (int step = 0; step < 16; ++step)
+    {
+        viewer_lat = step < 12 ? step * .25 / earth_radius : half_pi - 1e-6;
+        viewer_lon = _pi - step * .25 / earth_radius;
+        azimuth = step * .4;
+        altitude = -.7 + (step % 4) * .45;
+        dragging = step % 5 == 1;
+        show_terrain = step % 5 != 2;
+        viewer_eye_height = step % 3 ? 1.75 : 100;
+        const auto expected = image(true);
+        EXPECT_EQ(image_difference(image(false), expected), 0) << step;
+        if (dragging || !show_terrain)
+        {
+            freeze_surface_time();
+            find_horizon();
+            EXPECT_EQ(horizon_background_clip_y(), dispcy * 2) << step;
+        }
+    }
+    EXPECT_TRUE(photo_drawn);
+    if (performance_enabled(67))
+    {
+        EXPECT_TRUE(clipped);
+    }
+    dragging = false;
+    show_terrain = true;
+    freeze_surface_time();
+    find_horizon();
+    azimuth += .1;
+    EXPECT_EQ(horizon_background_clip_y(), dispcy * 2);
+}
+
+TEST(HorizonBackgroundTest, RejectsUncertainGeometryAndRetainsAnInteriorMargin)
+{
+    const double xs[] = {-1, 0, 1, 2, 3, 4, 5};
+    const double ys[] = {2, 2, 2, 2, 2, 2, 2};
+    EXPECT_EQ(opaque_background_bottom(xs, ys, 7, 4, 20, earth_radius, 1.75, 0, 0, 8), 14);
+    EXPECT_EQ(opaque_background_bottom(xs, ys, 7, 4, 20, 0, 1.75, 0, 0, 8), 20);
+    EXPECT_EQ(opaque_background_bottom(xs, ys, 7, 4, 20, earth_radius, 1.75, 0, _pi, 8), 20);
+    EXPECT_EQ(opaque_background_bottom(xs, ys, 7, 4, 20, earth_radius, 1.75, 0, 0, 0), 20);
+    EXPECT_EQ(opaque_background_bottom(xs, ys, 7, 4, 20, 1e308, 1e308, 0, 0, 8), 20);
+    const double gap[] = {-1000, -999, -998};
+    EXPECT_EQ(opaque_background_bottom(gap, ys, 3, 4, 20, earth_radius, 1.75, 0, 0, 8), 20);
+}
+
+TEST(HorizonBackgroundTest, CertifiedRowsCoverEveryPixelForPositiveAndNegativeCurvature)
+{
+    double xs[65], ys[65];
+    for (int i = 0; i < 65; ++i) { xs[i] = i; ys[i] = 2; }
+    int certified = 0;
+    for (double radius : {1000.0, earth_radius})
+    for (double eye : {1.75, 100.0})
+    for (double lift : {0.0, .0001, .01})
+    for (double altitude : {-.8, -.2, .4})
+    for (double focal : {64.0, 128.0})
+    {
+        const float row = opaque_background_bottom(xs, ys, 65, 64, 64, radius, eye, lift, altitude, focal);
+        if (row >= 64) continue;
+        ++certified;
+        const long double range = sqrtl(2.L * radius * eye);
+        const long double curvature = .5L / radius - lift / range;
+        for (int y = static_cast<int>(row); y < 64; ++y)
+        for (int x = 0; x < 64; ++x)
+        {
+            const long double vx = (x + .5L - 32) / focal, vy = (32 - y - .5L) / focal;
+            const long double north = cosl(altitude) - vy * sinl(altitude);
+            const long double up = vy * cosl(altitude) + sinl(altitude);
+            const long double slope = -up / hypotl(vx, north);
+            const long double discriminant = slope * slope - 4 * curvature * eye;
+            ASSERT_GE(discriminant, 0);
+            const long double denominator = slope + sqrtl(discriminant);
+            ASSERT_GT(denominator, 0);
+            EXPECT_LE(2 * eye / denominator, range);
+        }
+    }
+    EXPECT_GT(certified, 5);
 }

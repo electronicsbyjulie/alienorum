@@ -247,7 +247,7 @@ Source: src/visuals.cpp, draw_sky_gradient around 7876. sky_grad.clear is follow
 P066 | B / S / Q0 | Render the sky gradient as one shader or a retained strip.
 Source: draw_sky_gradient's per-row trigonometry, powers, and filled rectangles. A shader or precomputed vertical profile can evaluate the same transfer function without hundreds of CPU draw operations. Retain atmospheric color, particulate influence, night-map contribution, overcast behavior, and horizon alignment. Validate screenshots with white/black backgrounds, lava worlds, no atmosphere, and several sun elevations. Exact analytical equivalence is the goal; lowering the number of gradient samples is Q1. Compare both CPU geometry and GPU fill cost on the low-end computer.
 
-P067 | B / S / Q0 | Cull obscured galaxy-band and background pixels before expensive shading.
+[x] P067 | B / S / Q0 | Cull obscured galaxy-band and background pixels before expensive shading. ENABLED: PERF_P067=1; compiled downward-view gains 1.74%/2.42%, other views neutral.
 Source: src/visuals.cpp, draw_galaxy_band around 3589, plus draw_horizon ordering. Where opaque terrain completely covers the background, conservative scissor, stencil, or depth masking could avoid background fill. Preserve peaks and gaps, translucent atmosphere, and cases with terrain disabled. Remote-galaxy skies make this particularly relevant because large photographic layers may cover much of the frame. Measure overdraw on both software and real GPUs. Avoid hiding entire layers merely because the Sun is above the horizon; that would be the optional quality cut in P085.
 
 P068 | B / S / Q0 | Restrict orbit rendering to an indexed eligible set.

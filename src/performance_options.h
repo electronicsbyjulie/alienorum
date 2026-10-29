@@ -97,6 +97,9 @@
 #ifndef PERF_P049
 #define PERF_P049 1
 #endif
+#ifndef PERF_P067
+#define PERF_P067 1
+#endif
 #ifndef PERF_P050
 #define PERF_P050 1
 #endif
@@ -148,6 +151,7 @@ namespace alienorum
             case 50: compiled = PERF_P050; break;
             case 51: compiled = PERF_P051; break;
             case 52: compiled = PERF_P052; break;
+            case 67: compiled = PERF_P067; break;
             default: break;
         }
 #if defined(ALIENORUM_PERFORMANCE_BENCHMARK) && !defined(ALIENORUM_PERFORMANCE_FIXED)
