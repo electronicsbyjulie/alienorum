@@ -54,6 +54,84 @@ namespace alienorum
         }
     };
 
+    inline bool horizon_segment_within(const double* xs, const double* ys, int count, int first, int last,
+        double limit = .025)
+    {
+        if (count <= 0 || last <= first + 1 || last > count || first < 0) return false;
+        const double x0 = xs[first % count], x1 = xs[last % count];
+        const double y0 = ys[first % count], y1 = ys[last % count];
+        const double span = x1 - x0;
+        if (!std::isfinite(span) || fabs(span) < 1e-8 || fabs(span) > 8) return false;
+        double prior = x0;
+        for (int index = first; index <= last; ++index)
+        {
+            const double x = xs[index % count], y = ys[index % count];
+            if (!std::isfinite(x) || !std::isfinite(y) || x < -1e5 || y < -1e4 || y > 1e5) return false;
+            if ((x - prior) * span < 0) return false;
+            if (fabs(y - (y0 + (y1 - y0) * (x - x0) / span)) > limit) return false;
+            prior = x;
+        }
+        return true;
+    }
+
+    struct TerrainLodError
+    {
+        double height_error = 0, distance_error = 0, maximum_range = 0;
+        bool valid = false;
+        void prepare(const std::array<std::array<double, 4>, 15>& points)
+        {
+            valid = false;
+            constexpr int boundary[] = {0, 1, 2, 5, 8, 11, 14, 13, 12, 9, 6, 3};
+            double orientation = 0;
+            for (int edge = 0; edge < 12; ++edge)
+            {
+                const auto& first = points[boundary[edge]];
+                const auto& last = points[boundary[(edge + 1) % 12]];
+                const double cross = (last[0] - first[0]) * (points[7][1] - first[1])
+                    - (last[1] - first[1]) * (points[7][0] - first[0]);
+                if (!std::isfinite(cross) || cross == 0) return;
+                if (orientation && cross * orientation < 0) return;
+                orientation = cross;
+            }
+            const auto& a = points[0];
+            const auto& b = points[2];
+            const auto& c = points[12];
+            const double bx = b[0] - a[0], by = b[1] - a[1];
+            const double cx = c[0] - a[0], cy = c[1] - a[1];
+            const double determinant = bx * cy - by * cx;
+            if (!std::isfinite(determinant) || fabs(determinant) < 1e-12) return;
+            double residuals[2] = {};
+            maximum_range = 0;
+            for (int field = 2; field < 4; ++field)
+            {
+                const double db = b[field] - a[field], dc = c[field] - a[field];
+                const double dx = (db * cy - by * dc) / determinant;
+                const double dy = (bx * dc - db * cx) / determinant;
+                for (const auto& point : points)
+                {
+                    for (double value : point) if (!std::isfinite(value)) return;
+                    const double estimate = a[field] + dx * (point[0] - a[0]) + dy * (point[1] - a[1]);
+                    residuals[field - 2] = std::max(residuals[field - 2], fabs(point[field] - estimate));
+                    maximum_range = std::max(maximum_range, point[3]);
+                }
+            }
+            // Two interpolants of the same node set differ by at most twice this residual.
+            const double roundoff = 1e-10 * (1 + maximum_range);
+            height_error = 2 * residuals[0] + roundoff;
+            distance_error = 2 * residuals[1] + roundoff;
+            valid = maximum_range > 0;
+        }
+        bool within(double focal, double sine_altitude, double minimum_depth, double limit = .2) const
+        {
+            if (!valid || !std::isfinite(minimum_depth) || minimum_depth <= .1 || focal <= 0) return false;
+            const double depth = minimum_depth - height_error * fabs(sine_altitude);
+            if (depth <= .1) return false;
+            const double error = focal * (height_error * maximum_range * (1 + fabs(sine_altitude)) / (depth * depth)
+                + distance_error / depth);
+            return std::isfinite(error) && error <= limit;
+        }
+    };
+
     // A depth buffer for the terrain mesh; biome colors are sampled at pixel centers.
     class HorizonTerrainRaster
     {

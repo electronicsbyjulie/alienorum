@@ -31,6 +31,8 @@ bool horizon_terrain_cpu_reference = false;
 bool scenery_cpu_reference = false;
 bool water_cpu_reference = false;
 static HorizonWaterStats water_stats;
+static HorizonTerrainLodStats terrain_lod_stats;
+const HorizonTerrainLodStats& horizon_terrain_lod_stats() { return terrain_lod_stats; }
 const HorizonWaterStats& horizon_water_stats() { return water_stats; }
 
 double jay, appmag, bloomrad, flare, theta, lmasslim, hz_y;
@@ -5428,6 +5430,7 @@ void draw_local_rings()
 void draw_horizon()
 {
     water_stats = {};
+    terrain_lod_stats = {};
     // Horizon
     // TODO: Generate a fictitious skyline.
     // See find_horizon() for why the whereami test has to be here as well as the view_mode one.
@@ -5810,8 +5813,24 @@ void draw_horizon()
         }
         else
         {
+            int prior_horizon = -1;
             for (j = 0; j <= hznodes; j++)
             {
+                if (performance_enabled(26) && !horizon_terrain_cpu_reference && prior_horizon >= 0
+                    && altitude <= fiftyseventh * 40)
+                {
+                    for (int end = std::min(j + 7, hznodes); end > j; --end)
+                    {
+                        const double first_x = hz_dx[prior_horizon % hznodes], last_x = hz_dx[end % hznodes];
+                        const bool offscreen = fmax(first_x, last_x) < -3 || fmin(first_x, last_x) > dispcx * 2 + 3;
+                        if (offscreen && horizon_segment_within(hz_dx, hzheight, hznodes, prior_horizon, end))
+                        {
+                            terrain_lod_stats.horizon_segments_removed += end - j;
+                            j = end;
+                            break;
+                        }
+                    }
+                }
                 if (hz_dx[j%hznodes] > -1e5 && hzheight[j%hznodes] > -1e5)
                 {
                     j1 = j%hznodes;
@@ -5835,6 +5854,7 @@ void draw_horizon()
                     _skip_hz_element:
                     hz_fx = hz_dx[j1];
                     hz_fy = hzheight[j1];
+                    prior_horizon = j;
                 }
             }
         }
@@ -5908,6 +5928,13 @@ void draw_horizon()
             constexpr int terrain_rows = 40;
             static std::vector<HorizonTerrainVertex> mesh;
             static std::vector<double> terrain_up;
+            struct AdaptiveTerrainPatch
+            {
+                int row, column;
+                bool uniform = false;
+                TerrainLodError error;
+            };
+            static std::vector<AdaptiveTerrainPatch> adaptive_patches;
             bool gpu_mesh_noise = false;
             #if horizon_gpu_mesh_generation
             gpu_mesh_noise = !horizon_mesh_gpu_reference && map->is_complete();
@@ -5916,7 +5943,8 @@ void draw_horizon()
             auto mesh_key = std::make_tuple(whereami, map, surface_radius,
                 map->gen, p ? p->has_water : 0.0f, water_favorable,
                 p ? p->vegetation_r : 0, p ? p->vegetation_g : 0, p ? p->vegetation_b : 0, shore_displacement,
-                gpu_mesh_noise, horizon_terrain_cpu_reference, performance_enabled(20), (performance_enabled(25) && !horizon_terrain_cpu_reference));
+                gpu_mesh_noise, horizon_terrain_cpu_reference, performance_enabled(20), (performance_enabled(25) && !horizon_terrain_cpu_reference),
+                performance_enabled(26) && !horizon_terrain_cpu_reference);
             static decltype(mesh_key) saved_mesh_key;
             auto mesh_view = std::make_tuple(viewer_lat, viewer_lon, surface_eye, surface_lift);
             static decltype(mesh_view) saved_mesh_view;
@@ -6082,6 +6110,46 @@ void draw_horizon()
                             - source.distance * source.distance / (2.0 * surface_radius) + refraction;
                     }
                 }
+                adaptive_patches.clear();
+                if (performance_enabled(26) && !horizon_terrain_cpu_reference)
+                {
+                    for (int row = 0; row + 4 < terrain_rows; row += 4)
+                    {
+                        for (int column = 0; column < terrain_columns; column += 2)
+                        {
+                            AdaptiveTerrainPatch patch{row, column, false, {}};
+                            const double middle_distance = row_distances[row + 2];
+                            const double middle_bearing = directions[(column + 1) % terrain_columns][0];
+                            const auto coordinate = surface_coord(middle_distance, middle_bearing);
+                            const double radial_bound = fmax(middle_distance - row_distances[row],
+                                row_distances[row + 4] - middle_distance);
+                            const double angle_bound = (radial_bound + row_distances[row + 4] * 2 * _pi / terrain_columns)
+                                / surface_radius;
+                            SurfaceSampler::Sample material;
+                            patch.uniform = surface.uniform_sample(coordinate.first, coordinate.second, angle_bound, material)
+                                && !material.water;
+                            if (patch.uniform)
+                            {
+                                std::array<std::array<double, 4>, 15> points;
+                                for (int dr = 0; dr <= 4; ++dr)
+                                {
+                                    for (int dc = 0; dc <= 2; ++dc)
+                                    {
+                                        const int sector = (column + dc) % terrain_columns;
+                                        const auto& source = mesh[(row + dr) * terrain_columns + sector];
+                                        const double refraction = surface_lift * fmin(1.0, source.distance / surface_range) * source.distance;
+                                        const double up = source.elevation - surface_eye
+                                            - source.distance * source.distance / (2.0 * surface_radius) + refraction;
+                                        points[dr * 3 + dc] = {source.distance * directions[sector][1],
+                                            source.distance * directions[sector][2], up, source.distance};
+                                    }
+                                }
+                                patch.error.prepare(points);
+                            }
+                            adaptive_patches.push_back(patch);
+                        }
+                    }
+                }
                 saved_mesh_key = mesh_key;
                 saved_mesh_view = mesh_view;
                 mesh_valid = true;
@@ -6182,11 +6250,48 @@ void draw_horizon()
             if (!performance_enabled(23)) std::vector<ProjectedTerrainVertex>().swap(triangles);
             triangles.clear();
             if (gpu_raster) triangles.reserve((terrain_rows - 1) * terrain_columns * 6);
+            static std::vector<unsigned char> adaptive_cells;
+            const bool adaptive = performance_enabled(26) && !horizon_terrain_cpu_reference
+                && performance_enabled(22) && !gpu_raster;
+            if (adaptive)
+            {
+                adaptive_cells.assign((terrain_rows - 1) * terrain_columns, 0);
+                terrain_lod_stats.patches = adaptive_patches.size();
+                for (const auto& patch : adaptive_patches)
+                {
+                    if (!patch.uniform || !visible_sectors[patch.column]
+                        || !visible_sectors[(patch.column + 1) % terrain_columns]) continue;
+                    double minimum_depth = std::numeric_limits<double>::infinity();
+                    for (int dr = 0; dr <= 4; ++dr)
+                        for (int dc = 0; dc <= 2; ++dc)
+                            minimum_depth = fmin(minimum_depth, camera_vertices[(patch.row + dr) * terrain_columns
+                                + (patch.column + dc) % terrain_columns][2]);
+                    if (!patch.error.within(zoom * dispcx, sin_alt, minimum_depth)) continue;
+                    ++terrain_lod_stats.accepted_patches;
+                    terrain_lod_stats.triangles_removed += 4;
+                    constexpr int boundary[12][2] = {{0, 0}, {0, 1}, {0, 2}, {1, 2}, {2, 2}, {3, 2},
+                        {4, 2}, {4, 1}, {4, 0}, {3, 0}, {2, 0}, {1, 0}};
+                    const auto vertex = [&](int row, int column) -> const ProjectedTerrainVertex&
+                    {
+                        return projected[(patch.row + row) * terrain_columns + (patch.column + column) % terrain_columns];
+                    };
+                    const auto& middle = vertex(2, 1);
+                    for (int edge = 0; edge < 12; ++edge)
+                    {
+                        const auto& a = vertex(boundary[edge][0], boundary[edge][1]);
+                        const auto& b = vertex(boundary[(edge + 1) % 12][0], boundary[(edge + 1) % 12][1]);
+                        terrain_raster.triangle(a, b, middle, performance_enabled(24));
+                    }
+                    for (int dr = 0; dr < 4; ++dr)
+                        for (int dc = 0; dc < 2; ++dc)
+                            adaptive_cells[(patch.row + dr) * terrain_columns + (patch.column + dc) % terrain_columns] = 1;
+                }
+            }
             for (int row = 0; row < terrain_rows - 1; ++row)
             {
                 for (int column = 0; column < terrain_columns; ++column)
                 {
-                    if (!visible_sectors[column]) continue;
+                    if (!visible_sectors[column] || (adaptive && adaptive_cells[row * terrain_columns + column])) continue;
                     const int next = (column + 1) % terrain_columns;
                     const auto &a = projected[row * terrain_columns + column];
                     const auto &b = projected[row * terrain_columns + next];

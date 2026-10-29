@@ -4979,3 +4979,62 @@ TEST_F(RenderingRegressionTest, EclipseCollectionRefreshesPhysicalEditsAndMember
     refresh_eclipse_casters();
     EXPECT_DOUBLE_EQ(eclipse_illumination(receiver), 1);
 }
+
+TEST(TerrainLodTest, RejectsPeaksDegeneracyAndCameraPlaneCrossings)
+{
+    std::array<std::array<double, 4>, 15> points;
+    for (int row = 0; row < 5; ++row)
+        for (int column = 0; column < 3; ++column)
+            points[row * 3 + column] = {double(column), 1000.0 + row, -1, 1000.0 + row};
+    TerrainLodError error;
+    error.prepare(points);
+    EXPECT_TRUE(error.within(640, 0, 1000));
+    EXPECT_FALSE(error.within(640, 0, .05));
+    points[7][2] = 100;
+    error.prepare(points);
+    EXPECT_FALSE(error.within(640, 0, 1000));
+    for (auto& point : points) point[0] = 0;
+    error.prepare(points);
+    EXPECT_FALSE(error.within(640, 0, 1000));
+}
+
+TEST(TerrainLodTest, HorizonSegmentsRetainRidgesAndDiscontinuities)
+{
+    double xs[] = {0, 1, 2, 3, 4};
+    double ys[] = {10, 10, 10, 10, 10};
+    EXPECT_TRUE(horizon_segment_within(xs, ys, 5, 0, 4));
+    ys[2] += .1;
+    EXPECT_FALSE(horizon_segment_within(xs, ys, 5, 0, 4));
+    ys[2] = 10;
+    xs[2] = -1e9;
+    EXPECT_FALSE(horizon_segment_within(xs, ys, 5, 0, 4));
+}
+
+TEST(TerrainLodTest, FullBoundaryFanPreservesPlanarCoverageAndDistance)
+{
+    std::array<ProjectedTerrainVertex, 15> vertices;
+    for (int row = 0; row < 5; ++row)
+        for (int column = 0; column < 3; ++column)
+            vertices[row * 3 + column] = {2.0 + column * 8, 2.0 + row * 8, .01, 1};
+    HorizonTerrainRaster expected, actual;
+    expected.reset(24, 40);
+    actual.reset(24, 40);
+    for (int row = 0; row < 4; ++row)
+    {
+        for (int column = 0; column < 2; ++column)
+        {
+            int a = row * 3 + column, b = a + 1, c = a + 3, d = c + 1;
+            expected.triangle(vertices[a], vertices[b], vertices[c]);
+            expected.triangle(vertices[b], vertices[d], vertices[c]);
+        }
+    }
+    constexpr int boundary[] = {0, 1, 2, 5, 8, 11, 14, 13, 12, 9, 6, 3};
+    for (int edge = 0; edge < 12; ++edge)
+        actual.triangle(vertices[boundary[edge]], vertices[boundary[(edge + 1) % 12]], vertices[7]);
+    ASSERT_EQ(actual.distances().size(), expected.distances().size());
+    for (size_t pixel = 0; pixel < actual.distances().size(); ++pixel)
+    {
+        EXPECT_EQ(actual.inverse_depths()[pixel] > 0, expected.inverse_depths()[pixel] > 0);
+        EXPECT_NEAR(actual.distances()[pixel], expected.distances()[pixel], 1e-4);
+    }
+}

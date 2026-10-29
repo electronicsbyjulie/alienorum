@@ -329,3 +329,39 @@ same-configuration repeat (+0.96%, mixed). Every repeated workload is mixed/neut
 Keep PERF_P025=0 for lack of reproducible improvement. Exact terrain image tests pass
 while walking/turning, crossing poles, and changing radius, eye height and maps.
 The original projection arithmetic and temporary vectors remain the production path.
+
+P026 — PROJECTED-ERROR TERRAIN/HORIZON LOD (implemented, DISABLED: PERF_P026=0)
+Mesh experiment: replace eligible 4-by-2-cell patches (16 triangles) with a full-boundary
+12-triangle fan. Retain every boundary vertex to prevent transition cracks. A uniform
+dry-material cap certificate excludes uncertain shorelines. Reject nonfinite/degenerate
+geometry, centers outside the polygon kernel, camera-plane crossings, and error beyond
+0.2 pixel. Bound height and radial-parameter interpolation residuals against affine
+planes, then project conservative residual bounds using minimum camera depth. Full
+detail remains the fallback. Fixed 512-by-40 source sampling remains authoritative.
+Horizon experiment: evaluate the separate 8,192-node representation for segment merging
+under a 0.025-pixel line bound, monotonicity/discontinuity guards and an eight-pixel span.
+All source samples remain; only draw connectivity can merge. The initial version merged
+visible strips too. Although geometric deviation was small, antialiased-strip overlap
+changed opacity: native shoreline maximum channel error was 129, and wider terrain
+checks found errors up to 198. That version is rejected regardless of its speed.
+Correction: preserve all visible strips, permitting merges only when the entire segment
+is certified outside the horizontal viewport plus a three-pixel antialias margin.
+Native Intel HD 2000, 1280 x 720; nine alternating pairs, sixteen frames per mode.
+PERFORMANCE_BENCHMARK_P026_RESULTS.csv
+  forest-walk: 31.091 -> 26.412 ms; paired median -14.33%; 95% interval [-16.43%, -12.19%]; maximum image error 0.
+  shore-walk: 121.646 -> 115.014 ms; paired median -5.74%; 95% interval [-6.33%, -4.12%]; maximum image error 129.
+PERFORMANCE_BENCHMARK_P026_CORRECTED_RESULTS.csv
+  forest-walk: 31.451 -> 33.021 ms; paired median +5.66%; 95% interval [+0.64%, +8.13%]; maximum image error 0.
+  shore-walk: 118.959 -> 120.334 ms; paired median +1.01%; 95% interval [-0.07%, +3.79%]; maximum image error 0.
+The initial timing explicitly used ALIENORUM_PERF_MEASURE_REJECTED_LOD=1 to measure
+a known image-rejected experiment; its image error remains in the CSV and is not an
+accepted quality result. The corrected run used normal strict image assertions.
+Initial visible merging removed 2,593 horizon segments per capture. The correction
+removed 807 offscreen segments. Both captured workloads tested 2,304 mesh patches and
+accepted none under the conservative material/error guards; no mesh speedup is claimed.
+The corrected version passes exact terrain image checks across movement, turning,
+poles, eye height and world/map changes, but forest walking is consistently slower
+(+5.66%, interval above zero); shoreline timing is mixed. Disable P026. Three focused
+LOD checks cover peaks, degeneracy, camera-plane rejection, horizon discontinuities,
+and planar fan coverage/distance. Practical mesh eligibility in other scenes and
+quality on other hardware remain unproven; no approximation ships by default.

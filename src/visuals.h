@@ -87,6 +87,11 @@ struct HorizonWaterStats
     unsigned int clipped_points = 0, land_points = 0, uniform_water_points = 0, color_misses = 0;
 };
 const HorizonWaterStats& horizon_water_stats();
+struct HorizonTerrainLodStats
+{
+    unsigned int patches = 0, accepted_patches = 0, triangles_removed = 0, horizon_segments_removed = 0;
+};
+const HorizonTerrainLodStats& horizon_terrain_lod_stats();
 
 struct RockInstance
 {

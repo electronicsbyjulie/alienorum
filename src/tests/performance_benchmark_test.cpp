@@ -314,7 +314,16 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
             int maximum = 0;
             for (size_t i = 0; i < actual.size(); ++i)
                 maximum = std::max(maximum, abs(int(actual[i]) - int(expected[i])));
-            ASSERT_LE(maximum, id == 42 ? 2 : 0) << "P" << id << ' ' << scene;
+            if (id == 26)
+            {
+                const auto& stats = horizon_terrain_lod_stats();
+                std::cout << "PERF P26 quality max_channel_error=" << maximum
+                    << " patches=" << stats.patches << " accepted=" << stats.accepted_patches
+                    << " triangles_removed=" << stats.triangles_removed
+                    << " horizon_segments_removed=" << stats.horizon_segments_removed << '\n';
+            }
+            if (!(id == 26 && std::getenv("ALIENORUM_PERF_MEASURE_REJECTED_LOD")))
+                ASSERT_LE(maximum, id == 42 ? 2 : 0) << "P" << id << ' ' << scene;
             for (int round = 0; round < rounds; ++round)
             {
                 double milliseconds[2] = {}, cpu_times[2] = {};
