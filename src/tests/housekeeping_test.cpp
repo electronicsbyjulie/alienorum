@@ -1,3 +1,4 @@
+#include "../performance_options.h"
 #include <cstring>
 #include <iostream>
 #include <sstream>
@@ -649,4 +650,31 @@ TEST_F(HousekeepingTest, SurfaceObserverRefreshesWalkingRotationShapeAndBodyFram
     moon->height *= 2;
     set_viewer_surface_location(true);
     EXPECT_GT(here.distance_to(first), 100);
+}
+
+TEST_F(HousekeepingTest, RelativeVectorValidityFollowsTheFinalLocation)
+{
+    CandidateFrameRestore restore;
+    Star* host = make_star("Relative source");
+    host->cenobj = host;
+    Planet* world = make_planet(host);
+    mycenobj = host;
+    here = CelestialLocation();
+    here.local_position = Point(2 * AU, AU, 0);
+    whereami = selected = trackidx = editidx = -1;
+    view_mode = vm_system;
+    bool valid = false;
+    ASSERT_TRUE(compute_object_location(host, &valid));
+    EXPECT_EQ(valid, performance_enabled(13));
+    CelestialLocation relative = host->location - here;
+    EXPECT_TRUE(host->tmprel == Point(relative));
+    valid = false;
+    here.local_position.y += AU;
+    ASSERT_TRUE(compute_object_location(host, &valid));
+    EXPECT_EQ(valid, performance_enabled(13));
+    relative = host->location - here;
+    EXPECT_TRUE(host->tmprel == Point(relative));
+    valid = false;
+    ASSERT_TRUE(compute_object_location(world, &valid));
+    EXPECT_FALSE(valid);
 }

@@ -252,3 +252,19 @@ state. Both timings are mixed/neutral, so the new cache stays disabled. Enabled-
 housekeeping checks pass, including walking, time, radius and body-frame changes.
 The production fallback remains the original calculation, with rotation phase read
 once into a local value. This experiment does not establish a whole-frame speedup.
+
+P013 — CALL-LOCAL RELATIVE VECTOR VALIDITY (implemented, DISABLED: PERF_P013=0)
+Location handling reports whether tmprel matches its final location and the current
+observer. The immediate frame caller can reuse a valid result instead of repeating
+the same subtraction. Motion updates clear validity; stellar lineage updates clear it
+before running and publish it only after refreshing the final vector. The flag does
+not outlive this call/caller pair, so observer changes and later frames cannot reuse it.
+All light-time, ancestor, physical and geometric calculations otherwise remain intact.
+Native Intel HD 2000, 1280 x 720, 42,123 objects; fifteen alternating paired blocks,
+thirty-two frames per mode. Raw results: PERFORMANCE_BENCHMARK_P013_RESULTS.csv.
+catalog: 12.323 -> 12.071 ms; paired median +1.08%; 95% interval [-4.91%, +4.26%]; maximum image/state error 0.
+catalog-time-jump: 41.583 -> 41.605 ms; paired median -0.77%; 95% interval [-3.34%, +2.63%]; maximum image/state error 0.
+catalog-walk: 12.072 -> 12.038 ms; paired median +0.41%; 95% interval [-6.69%, +5.63%]; maximum image/state error 0.
+All three comparisons are mixed/neutral. Keep PERF_P013=0; this is not an established
+shipping improvement. Enabled-path housekeeping checks pass (17), including exact
+relative vectors after observer changes and invalidation before planetary motion.

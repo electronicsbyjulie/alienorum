@@ -73,7 +73,7 @@ B. ASTROMETRY, PROJECTION, AND FRAME SCHEDULING
 [x] P012 | A / S / Q0 | Reuse a coherent observer context through the entire frame. DISABLED: PERF_P012=0; exact surface-observer reuse shows no established frame-time gain.
 Source: src/housekeeping.cpp around 450 and 531, and src/alienorum.cpp around 720. Viewer position/plane and root-derived quantities are recomputed at several stages to accommodate dependencies. Build an explicit frame context after resolving the required ancestors, with observer basis, world radius, atmosphere/refraction, and time. Reuse it in terrain, scenery, water, clouds, and projection. Preserve ordering for a moving observer and time changes. Validate walking, standing on moons, warped time, and changing the central object. This is dependency consolidation, not skipping an update that actually changed.
 
-P013 | B / S / Q0 | Reuse observer-relative vectors instead of subtracting them again.
+[x] P013 | B / S / Q0 | Reuse observer-relative vectors instead of subtracting them again. DISABLED: PERF_P013=0; call-local validity experiment has no established gain in three workloads.
 Source: src/housekeeping.cpp around 292 and the following coordinate pass. tmprel is computed during location handling and then recomputed for broad sets of objects. Mark vectors valid for a particular observer/time generation and reuse them where the coordinate frames agree. Root location caching already exists within a pass, so this targets the remaining subtraction, norm, and transform repetition. Validate light-time handling, moving ancestors, and the cases that adjust the observer after an initial pass. A stale vector can corrupt both labels and physical illumination.
 
 P014 | B / S / Q0 | Cache selected-system extent and ancestry.

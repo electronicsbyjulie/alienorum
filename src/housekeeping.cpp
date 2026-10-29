@@ -514,8 +514,13 @@ bool planetary_system_is_active(const CelestialObject* cel)
     return false;
 }
 
-bool compute_object_location(CelestialObject* cel)
+bool compute_object_location(CelestialObject* cel, bool* relative_valid)
 {
+    const auto mark_relative = [&](bool valid)
+    {
+        if (performance_enabled(13) && relative_valid) *relative_valid = valid;
+    };
+    mark_relative(false);
     if (!frame_location_pass && cel->typeclass() == class_planet)
         static_cast<Planet*>(cel)->refresh_host_statistics_if_changed();
     if (!planetary_system_is_active(cel))
@@ -530,6 +535,7 @@ bool compute_object_location(CelestialObject* cel)
 
     CelestialLocation tmp = cel->location - here;
     cel->tmprel = Point(tmp);
+    mark_relative(true);
     double viewer_distance = cel->tmprel.magnitude();
     double light_travel_time = system_object ? 0 : viewer_distance / speed_of_light;
     double AU_zoomed_squared = AU*AU*zoom*zoom;
@@ -578,9 +584,11 @@ bool compute_object_location(CelestialObject* cel)
             }
         }
 
+        mark_relative(false);
         if (!update_stellar_lineage(static_cast<Star*>(cel), simnow, simnow - light_travel_time)) return false;
         tmp = cel->location - here;
         cel->tmprel = Point(tmp);
+        mark_relative(true);
         if (!system_object && i > 0 && whereami >= 0 && cel->tmprel.magnitude() < cels[whereami]->volumetric_mean_radius)
         {
             cel->drawnx = cel->drawny = -1e9;
@@ -611,6 +619,7 @@ bool compute_object_location(CelestialObject* cel)
                 }
             }
         }
+        mark_relative(false);
         ((Planet*)cel)->update_location(simnow - light_travel_time);
         break;
 
@@ -633,14 +642,17 @@ bool compute_object_location(CelestialObject* cel)
                 }
             }
         }
+        mark_relative(false);
         ((Moon*)cel)->update_location(simnow - light_travel_time);
         break;
 
         case class_comet:
+        mark_relative(false);
         ((Comet*)cel)->update_location(simnow - light_travel_time);
         break;
 
         case class_satellite:
+        mark_relative(false);
         ((Satellite*)cel)->update_location(simnow - light_travel_time);
 
         default:
@@ -730,13 +742,17 @@ void compute_object_draw_coordinates()
     {
         i = index;
         if (cels[i]->deleted) continue;
-        const bool updated = compute_object_location(cels[i]);
+        bool relative_valid = false;
+        const bool updated = compute_object_location(cels[i], performance_enabled(13) ? &relative_valid : nullptr);
         const bool cached_visible_star = (performance_enabled(8) ? objects.classes[i] : cels[i]->typeclass()) == class_star &&
             static_cast<Star*>(cels[i])->tmp_vis_flag;
         if (!updated && !cached_visible_star) continue;
 
-        CelestialLocation tmp = cels[i]->location - here;
-        cels[i]->tmprel = Point(tmp);                           // fix race condition: tmprel must come AFTER tmp, not before.
+        if (!relative_valid)
+        {
+            CelestialLocation tmp = cels[i]->location - here;
+            cels[i]->tmprel = Point(tmp);
+        }
 
         // If entering a new star system, change allegiance to new center object.
         if (whereami < 0 && cels[i]->type == star

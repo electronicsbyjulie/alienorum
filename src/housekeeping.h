@@ -15,7 +15,7 @@ const std::vector<int>& frame_active_world_candidates();
 const std::vector<int>& frame_draw_candidates();
 const std::vector<int>& frame_bright_candidates();
 const std::vector<int>& frame_pick_candidates();
-bool compute_object_location(CelestialObject *cel);
+bool compute_object_location(CelestialObject *cel, bool* relative_valid = nullptr);
 void compute_object_draw_coordinates();
 void set_center_objects();
 #endif
