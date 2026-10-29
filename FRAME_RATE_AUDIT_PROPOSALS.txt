@@ -250,7 +250,7 @@ Source: draw_sky_gradient's per-row trigonometry, powers, and filled rectangles.
 [x] P067 | B / S / Q0 | Cull obscured galaxy-band and background pixels before expensive shading. ENABLED: PERF_P067=1; compiled downward-view gains 1.74%/2.42%, other views neutral.
 Source: src/visuals.cpp, draw_galaxy_band around 3589, plus draw_horizon ordering. Where opaque terrain completely covers the background, conservative scissor, stencil, or depth masking could avoid background fill. Preserve peaks and gaps, translucent atmosphere, and cases with terrain disabled. Remote-galaxy skies make this particularly relevant because large photographic layers may cover much of the frame. Measure overdraw on both software and real GPUs. Avoid hiding entire layers merely because the Sun is above the horizon; that would be the optional quality cut in P085.
 
-P068 | B / S / Q0 | Restrict orbit rendering to an indexed eligible set.
+[x] P068 | B / S / Q0 | Restrict orbit rendering to an indexed eligible set. ENABLED: PERF_P068=1; compiled walking gains 7.85%/5.17%, exact image/state matches.
 Source: draw_objects around 3935. When orbit display is enabled, another catalog traversal evaluates objects that will not contribute in the current mode. Maintain a list by active system, class, and display state, then apply existing visibility checks. Cache static tessellation where orbital elements and projection permit. Validate selected remote systems, moons, companion orbits, and changed elements. This is conditional on orbit display; it is not a diagnosis of the default horizon frame if the feature is off. Far-orbit suppression is an optional Q2 cut, not part of this exact proposal.
 
 P069 | B / H / Q0 | Budget expensive resolved-body rendering by actual pixel contribution.

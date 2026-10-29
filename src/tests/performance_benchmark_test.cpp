@@ -220,6 +220,7 @@ void main()
 class PerformanceBenchmarkTest : public RenderingRegressionTest
 {
     protected:
+    std::unique_ptr<bool[]> orbit_discs;
     static double cpu_milliseconds()
     {
 #ifdef CLOCK_THREAD_CPUTIME_ID
@@ -312,7 +313,7 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
     {
         ASSERT_GT(id, 0);
         ASSERT_LT(static_cast<size_t>(id), performance_reference.size());
-        catalog |= id <= 18;
+        catalog |= id <= 18 || id == 68;
     }
     if (catalog)
     {
@@ -343,6 +344,21 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
             Planet* body = make_planet(static_cast<Star*>(cels[0]), "Active eclipse body", (2 + i * .5) * AU);
             body->orbit->inclination = i * .01;
         }
+    }
+    if (std::find(ids.begin(), ids.end(), 68) != ids.end())
+    {
+        for (int i = 0; i < 8; ++i)
+        {
+            Planet* body = make_planet(static_cast<Star*>(cels[0]), "Orbit benchmark body", (1.5 + i * .7) * AU);
+            body->orbit->inclination = i * .03;
+        }
+        orbit_discs.reset(new bool[ncelobjs + 32]{});
+        set(discinstead, orbit_discs.get());
+        set(show_orbits, true);
+        set(show_localsys, true);
+        set(show_labels, false);
+        set(show_sats, false);
+        for (int i = 0; i < ncelobjs; ++i) cels[i]->looked_for_maps = true;
     }
     int benchmark_galaxy_index = -1;
     if (std::find(ids.begin(), ids.end(), 67) != ids.end())
@@ -388,6 +404,7 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
             : id == 18 ? std::vector<std::string>{"catalog-lock-idle", "catalog-lock-publication"}
             : id == 13 ? std::vector<std::string>{"catalog", "catalog-walk", "catalog-time-jump"}
             : id <= 5 || id == 8 ? std::vector<std::string>{"catalog", "catalog-time-jump"}
+            : id == 68 ? std::vector<std::string>{"catalog-orbits", "catalog-orbits-walk", "catalog-orbits-time-jump"}
             : id == 67 ? std::vector<std::string>{"galaxy-shore-walk", "galaxy-shore-still", "galaxy-shore-up", "galaxy-shore-down", "galaxy-shore-drag"}
             : id == 49 ? std::vector<std::string>{"forest-still", "forest-walk", "forest-turn", "shore-still"}
             : id == 43 ? std::vector<std::string>{"forest-walk", "forest-still", "forest-turn"}
@@ -467,6 +484,11 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
                     }
                     (void)count;
                     if (id == 6) alerts.check_rise_set_alerts();
+                    if (id == 68)
+                    {
+                        labels2draw.clear();
+                        draw_objects();
+                    }
                 }
                 else
                 {
@@ -556,6 +578,9 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
             const auto actual = frame(0, true);
 #ifdef PERF_P067
             if (id == 67) std::cout << "PERF background clip row: " << captured_background_clip << '\n';
+#endif
+#ifdef PERF_P068
+            if (id == 68) std::cout << "PERF orbit candidates: " << frame_orbit_candidates().size() << '\n';
 #endif
 #ifdef PERF_P049
             if (id == 49) std::cout << "PERF scenery projection cache hits: " << scenery_projection_cache_hits() << '\n';

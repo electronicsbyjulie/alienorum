@@ -1,0 +1,4 @@
+proposal,workload,round,order,before_ms,after_ms,change_percent,max_channel_error,before_cpu_ms,after_cpu_ms,before_max_ms,after_max_ms
+68,catalog-orbits,0,AB,15.240696625,11.649102625,-23.565812563374223,0,12.04339375,10.443471875,,
+68,catalog-orbits-walk,0,AB,17.803331625,12.947912875,-27.272528829277476,0,13.272996,10.3933985,,
+68,catalog-orbits-time-jump,0,AB,36.99244362500001,36.7648075,-0.6153584426798031,0,36.277868874999996,36.047714125,,

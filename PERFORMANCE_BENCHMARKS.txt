@@ -788,3 +788,54 @@ rechecks continue independently; their source stays frozen at e659e47.
 P067 production validation: application builds; 114 rendering checks and all eighteen
 housekeeping checks pass, with eight optional GPU skips. The three expanded enabled
 quality checks also pass in the private binary. Manual/hardware review remains separate.
+
+P068 — PER-FRAME ORBIT CANDIDATE INDEX
+During the existing final projection pass, collect every nondeleted active candidate
+with an orbit before later body-projection filters. Retain catalog order. The orbit
+renderer consumes that list and retains all existing class/system/center/mass checks,
+live orbital elements and trajectory drawing. No class or offscreen-body shortcut
+removes orbit lines. Rebuild each projection; collect only while orbit/local-system
+display is on. Before publication, after structural/context changes, or when toggled
+on after a pass that did not collect, fall back to the original candidate list.
+This index follows the same locked projection-to-render publication boundary as the
+other frame lists; it does not cache immutable orbital elements across frames.
+The enabled membership test covers stellar companions, a moon, selected remote worlds,
+element/center edits, deletion, new objects, display toggles and unpublished fallback.
+It passes. A short native pilot verifies exact image/state hashes and nine indexed
+orbits; it is not statistical speed evidence. Benchmark 42,131 synthetic objects,
+including 30,000 background stars and 12,000 dormant worlds; nine local orbit-bearing
+objects replace a 30,131-entry orbit scan. Include the actual draw_objects orbit and
+body passes plus coordinate updates, with ordinary, walking and time-jump workloads.
+Synthetic objects are marked as already checked for maps, keeping catalog downloads
+and asynchronous texture generation outside this controlled comparison.
+Actual before source: 1cbe53f. Separate fixed binaries reuse identical baseline
+production objects; all changed-header candidate units are rebuilt consistently.
+Nine alternating external pairs measure two twenty-four-frame blocks each, with GPU
+completion and exact image plus full captured object-coordinate/state hashes.
+Raw data: PERFORMANCE_BENCHMARK_P068_FIXED_RESULTS.csv.
+catalog-orbits: 12.358 -> 11.878 ms; paired median -6.53%; 95% interval [-10.57%, +2.90%]; mixed/neutral; image/state error 0.
+catalog-orbits-time-jump: 39.712 -> 38.191 ms; paired median -2.59%; 95% interval [-5.11%, -2.36%]; faster; image/state error 0.
+catalog-orbits-walk: 12.560 -> 11.598 ms; paired median -7.85%; 95% interval [-10.63%, -4.67%]; faster; image/state error 0.
+
+P068 COMPILED CONFIRMATION
+Raw data: PERFORMANCE_BENCHMARK_P068_CONFIRM_RESULTS.csv.
+catalog-orbits: 13.006 -> 11.700 ms; paired median -9.15%; 95% interval [-12.33%, -6.93%]; faster; image/state error 0.
+catalog-orbits-time-jump: 38.732 -> 38.774 ms; paired median -0.60%; 95% interval [-3.12%, +0.80%]; mixed/neutral; image/state error 0.
+catalog-orbits-walk: 12.585 -> 11.708 ms; paired median -5.17%; 95% interval [-9.13%, -1.51%]; faster; image/state error 0.
+Keep PERF_P068=1: walking gains confirm at 7.85% and 5.17%. Ordinary timing is
+neutral initially and faster in confirmation; the time-jump gain is not confirmed.
+Do not claim either as a repeated gain. The enabled production application builds;
+115 rendering and eighteen housekeeping checks pass, with eight optional GPU skips.
+The dedicated membership check also passes in the private enabled binary.
+
+COMPILED P029 RECHECK
+PERFORMANCE_BENCHMARK_FIXED_P029_RESULTS.csv
+  shore-down: -3.97% [-7.10%, +0.03%], mixed/neutral; image error 0.
+  shore-up: -23.38% [-30.16%, -16.72%], faster; image error 0.
+  shore-walk: +0.11% [-0.55%, +0.57%], mixed/neutral; image error 0.
+PERFORMANCE_BENCHMARK_FIXED_P029_CONFIRM_RESULTS.csv
+  shore-down: -1.47% [-4.76%, -0.32%], faster; image error 0.
+  shore-up: -23.78% [-28.99%, -13.43%], faster; image error 0.
+  shore-walk: +0.46% [-0.80%, +6.26%], mixed/neutral; image error 0.
+P029 confirms upward/downward gains and stays enabled; walking remains neutral.
+Further compiled rechecks remain in progress.

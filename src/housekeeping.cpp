@@ -331,11 +331,11 @@ namespace
     struct FrameObjects
     {
         std::atomic<bool> dirty{true};
-        bool prepared = false, published = false, initialize_projection = true;
+        bool prepared = false, published = false, initialize_projection = true, orbits_ready = false;
         CelestialObject** array = nullptr;
         int count = -1;
         FrameContext context;
-        std::vector<int> other, all, worlds, candidates, projected, bright;
+        std::vector<int> other, all, worlds, candidates, projected, bright, orbits;
         std::vector<const CelestialObject*> hosts;
         std::vector<cel_obj_class> classes;
         std::unordered_map<const CelestialObject*, std::vector<int>> systems;
@@ -467,6 +467,13 @@ const std::vector<int>& frame_draw_candidates()
 {
     const auto& fallback = frame_object_candidates();
     return performance_enabled(5) && frame_objects().published ? frame_objects().projected : fallback;
+}
+
+const std::vector<int>& frame_orbit_candidates()
+{
+    const auto& fallback = frame_object_candidates();
+    const auto& state = frame_objects();
+    return performance_enabled(68) && state.published && state.orbits_ready ? state.orbits : fallback;
 }
 
 const std::vector<int>& frame_bright_candidates()
@@ -830,10 +837,15 @@ void compute_object_draw_coordinates()
     objects.previous.clear();
     objects.projected.clear();
     objects.bright.clear();
+    const bool collect_orbits = performance_enabled(68) && show_orbits && show_localsys;
+    objects.orbits_ready = collect_orbits;
+    if (collect_orbits) objects.orbits.clear();
     for (int index : objects.candidates)
     {
         i = index;
         if (cels[i]->deleted) continue;
+        // Orbit lines can remain visible when their bodies fail later projection filters.
+        if (collect_orbits && cels[i]->orbit) objects.orbits.push_back(i);
         if (!performance_enabled(2) && !planetary_system_is_active(cels[i])) continue;
         if (isnan(cels[i]->tmprel.x)) continue;
         

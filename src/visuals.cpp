@@ -3996,7 +3996,7 @@ void draw_objects()
     // and is settled before any of this runs. See refresh_eclipse_casters() near draw_sphere_gpu().
 
     // Orbits
-    if (show_orbits && show_localsys) for (int index : frame_object_candidates())
+    if (show_orbits && show_localsys) for (int index : frame_orbit_candidates())
     {
         i = index;
         if (cels[i]->deleted) continue;

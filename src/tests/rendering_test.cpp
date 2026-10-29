@@ -5512,3 +5512,72 @@ TEST(HorizonBackgroundTest, CertifiedRowsCoverEveryPixelForPositiveAndNegativeCu
     }
     EXPECT_GT(certified, 5);
 }
+
+TEST_F(RenderingRegressionTest, OrbitCandidatesRefreshEachProjectionAndFallBackBeforePublication)
+{
+    Planet* world = surface(true);
+    world->sidereal_rotational_period = oneday;
+    Star* companion = make_star("Orbit index companion");
+    companion->orbit = new Orbit();
+    companion->orbit->center = cels[0];
+    companion->orbit->semimajor_axis = 20 * AU;
+    companion->orbit->compute_period(companion->mass);
+    companion->cenobj = cels[0];
+    Moon* moon = new Moon();
+    moon->orbit = new Orbit();
+    moon->orbit->center = world;
+    moon->orbit->semimajor_axis = 4e8;
+    moon->orbit->compute_period(moon->mass);
+    moon->cenobj = cels[0];
+    append_cel(moon);
+    Star* remote = make_star("Orbit index remote");
+    remote->location.system_center = Point(0, 0, 100 * light_year);
+    remote->cenobj = remote;
+    Planet* dormant = make_planet(remote);
+    set(show_orbits, true);
+    set(show_localsys, true);
+    surface_magnitudes.assign(ncelobjs + 8, 999);
+    surface_radii.assign(ncelobjs + 8, 0);
+    system_bloom.assign(ncelobjs + 8, 0);
+    vmag_cache = surface_magnitudes.data();
+    set(angular_radius, surface_radii.data());
+    set(bloomrad_cache, system_bloom.data());
+    const auto verify = [&]()
+    {
+        compute_object_draw_coordinates();
+        std::vector<int> expected;
+        for (int index : frame_object_candidates())
+            if (!cels[index]->deleted && cels[index]->orbit) expected.push_back(index);
+        if (performance_enabled(68) && show_orbits && show_localsys)
+        {
+            EXPECT_EQ(frame_orbit_candidates(), expected);
+        }
+        else
+        {
+            EXPECT_EQ(frame_orbit_candidates(), frame_object_candidates());
+        }
+    };
+    verify();
+    companion->orbit->inclination += .4;
+    companion->orbit->semimajor_axis *= 1.2;
+    verify();
+    selected = dormant->seqno;
+    verify();
+    moon->deleted = true;
+    verify();
+    delete companion->orbit;
+    companion->orbit = nullptr;
+    verify();
+    Planet* fresh = make_planet(static_cast<Star*>(cels[0]), "Orbit index new body");
+    EXPECT_EQ(frame_orbit_candidates(), frame_object_candidates());
+    verify();
+    fresh->orbit->center = companion;
+    verify();
+    show_orbits = false;
+    verify();
+    show_orbits = true;
+    EXPECT_EQ(frame_orbit_candidates(), frame_object_candidates());
+    verify();
+    invalidate_frame_objects();
+    EXPECT_EQ(frame_orbit_candidates(), frame_object_candidates());
+}
