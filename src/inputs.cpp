@@ -1,3 +1,4 @@
+#include "catalog_lock_trace.h"
 #define IMGUI_DEFINE_MATH_OPERATORS
 
 #include "globals.h"
@@ -1317,7 +1318,7 @@ void process_key_arrowright()
 
 void process_key_delete()
 {
-    std::lock_guard<std::recursive_mutex> catalog_lock(catalog_mutex);
+    alienorum::CatalogLock catalog_lock(catalog_mutex, alienorum::CatalogLockSite::input);
     const int target = selected > 0 ? selected : trackidx;
     if (!cels || target <= 0 || target >= ncelobjs || !cels[target]) return;
     CelestialObject* object = cels[target];

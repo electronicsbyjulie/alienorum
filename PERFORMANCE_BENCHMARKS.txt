@@ -268,3 +268,32 @@ catalog-walk: 12.072 -> 12.038 ms; paired median +0.41%; 95% interval [-6.69%, +
 All three comparisons are mixed/neutral. Keep PERF_P013=0; this is not an established
 shipping improvement. Enabled-path housekeeping checks pass (17), including exact
 relative vectors after observer changes and invalidation before planetary motion.
+
+P018 — CATALOG LOCK TRACING (implemented, DISABLED: PERF_P018=0)
+Optional tracing covers the main frame lock, catalog loaders/publication, fictional
+batch installation, planetary publication, and input mutation. Record acquisition
+count, cumulative wait/hold time and maxima by frame/publication/input site. Explicit
+unlock/relock boundaries are measured individually; recursive scopes retain recursive
+mutex semantics. Nested hold totals overlap and cannot be summed as wall-clock time.
+The disabled specialization is the ordinary unique_lock with no trace timing/storage.
+An explicit -DPERF_P018=1 audit build prints aggregates at orderly application exit.
+No critical section is shortened, and no object-lifetime protection is removed.
+Native Intel HD 2000, 1280 x 720, 42,123 objects; fifteen alternating paired blocks,
+thirty-two frames per mode. Raw results: PERFORMANCE_BENCHMARK_P018_RESULTS.csv.
+The benchmark adds the frame lock to both paths. One workload has no publisher; the
+other uses a synthetic mutex contender with a small bounded task and 250-us pause.
+Stop/join the contender before changing comparison controls. This tests tracing cost
+and contention collection; it does not measure actual imports or fictional installs.
+catalog-lock-idle: 12.094 -> 11.999 ms; paired median -0.53%; 95% interval [-6.99%, +6.79%]; maximum image/state error 0.
+catalog-lock-publication: 11.920 -> 12.394 ms; paired median +2.74%; 95% interval [-5.08%, +7.05%]; maximum image/state error 0.
+Both timings are mixed/neutral, so production tracing stays disabled. Aggregates
+include warmups, comparisons and capture frames, and only tracing-enabled intervals:
+Catalog lock site=0 acquisitions=1026 wait_ns=240703 hold_ns=12976720906 max_wait_ns=39109 max_hold_ns=43559118
+Catalog lock site=1 acquisitions=39188 wait_ns=6507223227 hold_ns=52313874 max_wait_ns=444462506 max_hold_ns=7582045
+Catalog lock site=2 acquisitions=0 wait_ns=0 hold_ns=0 max_wait_ns=0 max_hold_ns=0
+The synthetic publisher maximum wait is 444.46 ms; this illustrates possible mutex
+starvation, not evidence that a real worker experiences that delay. Actual generation,
+map-arrival and import contention are unmeasured here. Eighteen enabled-path
+housekeeping checks pass, including recursive release/reacquire and cross-thread
+exclusion. The instrumentation supplies evidence for future lock-scope work; it is
+not a lock-removal optimization or a demonstrated shipping speedup.

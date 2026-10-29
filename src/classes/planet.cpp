@@ -1,3 +1,4 @@
+#include "../catalog_lock_trace.h"
 #include <iostream>
 #include <cmath>
 #include <cctype>
@@ -971,7 +972,7 @@ void Planet::mark_host_statistics_dirty(CelestialObject* object)
 {
     if (!object || !cels || object->seqno < 0 || object->seqno >= ncelobjs
         || cels[object->seqno] != object) return;
-    std::lock_guard<std::recursive_mutex> lock(catalog_mutex);
+    alienorum::CatalogLock lock(catalog_mutex);
     if (object->typeclass() == class_planet)
         dirty_planet_statistics()[object->seqno] = static_cast<Planet*>(object);
     CelestialObject* light = object->typeclass() == class_star ? object : object->get_light_center();
@@ -982,7 +983,7 @@ void Planet::mark_host_statistics_dirty(CelestialObject* object)
 
 void Planet::reconcile_host_statistics()
 {
-    std::lock_guard<std::recursive_mutex> lock(catalog_mutex);
+    alienorum::CatalogLock lock(catalog_mutex);
     auto hosts = std::move(dirty_host_statistics());
     dirty_host_statistics().clear();
     for (const auto& entry : hosts)
@@ -1035,7 +1036,7 @@ void Planet::refresh_host_statistics_if_changed()
 void Planet::sync_host_statistics()
 {
     if (typeclass() != class_planet || !cels || seqno < 0 || seqno >= ncelobjs || cels[seqno] != this) return;
-    std::lock_guard<std::recursive_mutex> lock(catalog_mutex);
+    alienorum::CatalogLock lock(catalog_mutex);
     CelestialObject* light = !deleted && counts_for_host_statistics() ? get_light_center() : nullptr;
     Star* host = light && !light->deleted && light->typeclass() == class_star ? static_cast<Star*>(light) : nullptr;
     if (statistics_host != host) invalidate_frame_objects();
@@ -1059,7 +1060,7 @@ void Planet::sync_host_statistics()
 
 void Planet::rebuild_host_statistics()
 {
-    std::lock_guard<std::recursive_mutex> lock(catalog_mutex);
+    alienorum::CatalogLock lock(catalog_mutex);
     dirty_planet_statistics().clear();
     invalidate_frame_objects();
     dirty_host_statistics().clear();

@@ -1,4 +1,6 @@
 #include "../performance_options.h"
+#include "../catalog_lock_trace.h"
+#include <thread>
 #include <cstring>
 #include <iostream>
 #include <sstream>
@@ -677,4 +679,44 @@ TEST_F(HousekeepingTest, RelativeVectorValidityFollowsTheFinalLocation)
     valid = false;
     ASSERT_TRUE(compute_object_location(world, &valid));
     EXPECT_FALSE(valid);
+}
+
+TEST_F(HousekeepingTest, CatalogTracePreservesRecursiveReleaseAndReacquire)
+{
+    std::recursive_mutex mutex;
+    const auto before = catalog_lock_sample(CatalogLockSite::frame);
+    {
+        CatalogLock outer(mutex, CatalogLockSite::frame);
+        EXPECT_TRUE(outer.owns_lock());
+        {
+            CatalogLock inner(mutex, CatalogLockSite::frame);
+            EXPECT_TRUE(inner.owns_lock());
+        }
+        outer.unlock();
+        EXPECT_FALSE(outer.owns_lock());
+        outer.lock();
+        EXPECT_TRUE(outer.owns_lock());
+    }
+    {
+        CatalogLock owner(mutex, CatalogLockSite::publication);
+        std::atomic<bool> started{false}, acquired{false};
+        std::thread worker([&]()
+        {
+            started = true;
+            CatalogLock publisher(mutex, CatalogLockSite::publication);
+            acquired = true;
+        });
+        while (!started.load()) std::this_thread::yield();
+        EXPECT_FALSE(acquired.load());
+        owner.unlock();
+        worker.join();
+        EXPECT_TRUE(acquired.load());
+    }
+    const auto after = catalog_lock_sample(CatalogLockSite::frame);
+    EXPECT_EQ(after.acquisitions - before.acquisitions, performance_enabled(18) ? 3u : 0u);
+    if (performance_enabled(18))
+    {
+        EXPECT_GT(after.hold_ns, before.hold_ns);
+        EXPECT_GT(after.maximum_hold_ns, 0u);
+    }
 }

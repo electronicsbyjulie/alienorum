@@ -1,3 +1,4 @@
+#include "catalog_lock_trace.h"
 
 #include "loaders.h"
 #include "housekeeping.h"
@@ -1866,10 +1867,10 @@ void load_exoplanets_worker()
         int nexo = cr.load_exoplanets_from_tap();
         if (!nexo)
         {
-            std::lock_guard<std::recursive_mutex> catalog_lock(catalog_mutex);
+            alienorum::CatalogLock catalog_lock(catalog_mutex);
             nexo = cr.read_exoplanets_catalog(cels, MAX_CELOBJS);
         }
-        std::lock_guard<std::recursive_mutex> catalog_lock(catalog_mutex);
+        alienorum::CatalogLock catalog_lock(catalog_mutex);
         if (nexo)
         {
             have_exo = true;

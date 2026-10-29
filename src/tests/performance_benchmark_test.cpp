@@ -7,6 +7,31 @@
 #include <sstream>
 #include <numeric>
 #include <ctime>
+#include <optional>
+#include "../catalog_lock_trace.h"
+
+struct CatalogPublicationProbe
+{
+    std::atomic<bool> active{false}, stop{false};
+    std::thread worker;
+    CatalogPublicationProbe() : worker([this]()
+    {
+        while (!stop.load())
+        {
+            if (active.load())
+            {
+                alienorum::CatalogLock lock(catalog_mutex);
+                for (volatile unsigned int work = 0; work < 10000; ++work) {}
+            }
+            std::this_thread::sleep_for(std::chrono::microseconds(250));
+        }
+    }) {}
+    ~CatalogPublicationProbe()
+    {
+        stop = true;
+        worker.join();
+    }
+};
 
 class PerformanceBenchmarkTest : public RenderingRegressionTest
 {
@@ -144,12 +169,14 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
     surface_magnitudes[1] = -20;
     Planet::reconcile_host_statistics();
     if (catalog) compute_object_draw_coordinates();
+    std::unique_ptr<CatalogPublicationProbe> publication;
     const double base_latitude = 0, base_longitude = .3;
     for (int id : ids)
     {
         std::vector<std::string> scenes = id == 6 ? std::vector<std::string>{"catalog-alerts-none", "catalog-alerts-armed"}
             : id == 7 ? std::vector<std::string>{"catalog-eclipse", "catalog-eclipse-time-jump"}
             : id == 12 ? std::vector<std::string>{"catalog-observer-still", "catalog-observer-walk"}
+            : id == 18 ? std::vector<std::string>{"catalog-lock-idle", "catalog-lock-publication"}
             : id == 13 ? std::vector<std::string>{"catalog", "catalog-walk", "catalog-time-jump"}
             : id <= 5 || id == 8 ? std::vector<std::string>{"catalog", "catalog-time-jump"}
             : id == 21 ? std::vector<std::string>{"skyline-walk", "skyline-still"}
@@ -159,6 +186,7 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
             : std::vector<std::string>{"shore-walk", "forest-walk"};
         for (const std::string& scene : scenes)
         {
+            if (publication) publication->active = scene == "catalog-lock-publication";
             delete world->surf_map;
             const bool skyline = scene.find("skyline") != std::string::npos;
             const bool forest = scene.find("forest") != std::string::npos;
@@ -178,6 +206,8 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
             zoom = 1;
             const auto frame = [&](int frame_index, bool capture)
             {
+                std::optional<CatalogLock> frame_lock;
+                if (id == 18) frame_lock.emplace(catalog_mutex, CatalogLockSite::frame);
                 viewer_lat = base_latitude;
                 viewer_lon = base_longitude;
                 if (scene.find("walk") != std::string::npos) viewer_lat += frame_index * .25 / earth_radius;
@@ -257,9 +287,15 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
             };
             const auto select = [&](bool before)
             {
+                if (id == 18) publication.reset();
                 performance_reference.fill(false);
                 performance_reference[id] = before;
                 invalidate_frame_objects();
+                if (id == 18)
+                {
+                    publication = std::make_unique<CatalogPublicationProbe>();
+                    publication->active = scene == "catalog-lock-publication";
+                }
                 if (id == 6)
                 {
                     const bool armed = scene == "catalog-alerts-armed";
@@ -302,6 +338,8 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
             }
         }
     }
+    publication.reset();
+    print_catalog_lock_trace(std::cout);
     alerts.leave_horizon();
     performance_reference.fill(false);
     invalidate_frame_objects();

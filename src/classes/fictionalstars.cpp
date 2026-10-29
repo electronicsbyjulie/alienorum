@@ -1,3 +1,4 @@
+#include "../catalog_lock_trace.h"
 #include "fictionalstars.h"
 #include "galaxyimage.h"
 #include "wdcolor.h"
@@ -1124,7 +1125,7 @@ bool FictionalBatch::install(std::string& message)
         return false;
     }
     ExoConsGenerator::reset();
-    std::lock_guard<std::recursive_mutex> lock(catalog_mutex);
+    alienorum::CatalogLock lock(catalog_mutex);
     std::set<std::string> names, identities;
     for (int i = 0; cels[i]; ++i)
     {

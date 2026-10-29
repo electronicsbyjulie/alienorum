@@ -1,3 +1,4 @@
+#include "catalog_lock_trace.h"
 #include "fictionalstars_ui.h"
 
 #define _CRT_SECURE_NO_WARNINGS
@@ -547,7 +548,7 @@ int main (int argc, char** argv)
     ImVec2 last_click_pos;
     while (!done)
     {
-        std::unique_lock<std::recursive_mutex> catalog_lock(catalog_mutex);
+        alienorum::CatalogLock catalog_lock(catalog_mutex, alienorum::CatalogLockSite::frame);
         const bool loading_frame = splash;
         auto frame_began = std::chrono::steady_clock::now();
         if (hide_mouse && (!is_mouse_over_window || dragging) && !splash
@@ -1315,5 +1316,6 @@ int main (int argc, char** argv)
     SDL_DestroyWindow(window);
     SoundManager::get_instance().close_audio();
     SDL_Quit();
+    alienorum::print_catalog_lock_trace(std::cout);
     return 0;
 }

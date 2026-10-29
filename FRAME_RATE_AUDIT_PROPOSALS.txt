@@ -88,7 +88,7 @@ While walking a few centimeters on a distant planet, most background stars move 
 P017 | A / S / Q0 | Remove avoidable sleep from an already late frame.
 Source: src/alienorum.cpp around 1188. The adaptive idle timeout has a five-millisecond floor and is applied before the final deadline sleep, including horizon frames already over budget. Measure the complete pacing chain, then use a single deadline-aware wait with responsive event handling. Preserve the 30-FPS target and elapsed-time movement semantics fixed previously. Check CPU utilization when idle, input latency, minimized windows, swap interval interactions, and fast hardware. This proposal targets latency and lost scheduling time; it does not make expensive rendering itself cheaper.
 
-P018 | B / H / Q0 | Trace catalog-mutex hold and wait times before shrinking critical sections.
+[x] P018 | B / H / Q0 | Trace catalog-mutex hold and wait times before shrinking critical sections. DISABLED: PERF_P018=0; optional tracing is implemented, with no established frame-time gain.
 Source: the main frame's catalog_lock in src/alienorum.cpp and worker publication paths. Much rendering operates while the catalog mutex is held. Generation and texture workers can either wait for frames or interrupt them when publication gains the lock. Record contention and ownership duration in an audit build. Candidate changes include immutable frame snapshots and short commit phases. Lifetime safety is central: raw cels pointers cannot outlive deletion or replacement. Validate simultaneous generation, map arrival, imports, and dialogs. Do not remove locking merely because a single-threaded test is faster.
 
 P019 | B / H / Q0 | Schedule worker CPU and publication budgets around frame deadlines.

@@ -1,3 +1,4 @@
+#include "../catalog_lock_trace.h"
 
 #include <string>
 #include <vector>
@@ -3766,7 +3767,7 @@ void CatalogReader::reconcile_exoplanet_inclinations(
 void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>& planet_celids,
     const ExactStarSearchIndex *lookup)
 {
-    std::lock_guard<std::recursive_mutex> catalog_lock(catalog_mutex);
+    alienorum::CatalogLock catalog_lock(catalog_mutex);
     std::unique_ptr<ExactStarSearchIndex> local_lookup;
     if (!lookup)
     {
@@ -4936,7 +4937,7 @@ static void apply_rotation_fallback(Star* object, CelestialObject* observer)
 
 int CatalogReader::read_stellar_rotation_catalog(CelestialObject** objects)
 {
-    std::lock_guard<std::recursive_mutex> catalog_lock(catalog_mutex);
+    alienorum::CatalogLock catalog_lock(catalog_mutex);
     std::ifstream input("catalogs/StellarRotation/catalog.dat");
     if (!input || !objects || !objects[0]) return 0;
     // Wright et al. 2011, CDS J/ApJ/743/48: enrich exact, unambiguous identities only.
@@ -5073,7 +5074,7 @@ static void calibrate_stellar_system_photometry(const json& system, const std::m
 
 int CatalogReader::read_stellar_systems(CelestialObject** objects)
 {
-    std::lock_guard<std::recursive_mutex> catalog_lock(catalog_mutex);
+    alienorum::CatalogLock catalog_lock(catalog_mutex);
     const json catalog = stellar_system_catalog();
     if (!catalog.contains("systems")) return 0;
     int count = 0;
@@ -5233,7 +5234,7 @@ int CatalogReader::read_stellar_systems(CelestialObject** objects)
 
 int CatalogReader::read_star_orbits_dat(CelestialObject **cels, int first_host)
 {
-    std::lock_guard<std::recursive_mutex> catalog_lock(catalog_mutex);
+    alienorum::CatalogLock catalog_lock(catalog_mutex);
     if (!first_host) read_stellar_systems(cels);
     std::string path = "catalogs" _FILESLASH "star_orbits.dat";
     char buffer[1024];
@@ -7755,7 +7756,7 @@ Star* CatalogReader::resolve_saved_host(const std::string& name, unsigned int ma
 Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_starsonly, bool* was_new,
     ExactStarSearchIndex *lookup)
 {
-    std::lock_guard<std::recursive_mutex> catalog_lock(catalog_mutex);
+    alienorum::CatalogLock catalog_lock(catalog_mutex);
     *was_new = false;
     std::string hostname = row.hostname;
     // Resolve identities through source identifiers and the shared catalog index.
@@ -8091,7 +8092,7 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
 
 bool CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, std::map<int, std::vector<int>>& planet_celids, unsigned int& result)
 {
-    std::lock_guard<std::recursive_mutex> catalog_lock(catalog_mutex);
+    alienorum::CatalogLock catalog_lock(catalog_mutex);
     // 2. Instantiate and fill target Planet properties
     Planet* new_planet = new Planet();
     new_planet->catalog_designation = row.pl_name;
@@ -8814,7 +8815,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
     static bool loaded_starsonly = false;
     ExactStarSearchIndex host_lookup = []()
     {
-        std::lock_guard<std::recursive_mutex> catalog_lock(catalog_mutex);
+        alienorum::CatalogLock catalog_lock(catalog_mutex);
         return ExactStarSearchIndex();
     }();
 
@@ -8885,7 +8886,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
 
             while (exorow_read_line(fp, row))
             {
-                std::lock_guard<std::recursive_mutex> catalog_lock(catalog_mutex);
+                alienorum::CatalogLock catalog_lock(catalog_mutex);
                 if (abort_load)
                 {
                     break;
@@ -9458,7 +9459,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
 
     for (const auto& jrow : planets_array)
     {
-        std::lock_guard<std::recursive_mutex> catalog_lock(catalog_mutex);
+        alienorum::CatalogLock catalog_lock(catalog_mutex);
         if (abort_load)
         {
             break;
@@ -9572,7 +9573,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
     // Recover identified hosts after the ordinary star pass, before committing its cache.
     for (ExoRow& row : deferred_hosts)
     {
-        std::lock_guard<std::recursive_mutex> catalog_lock(catalog_mutex);
+        alienorum::CatalogLock catalog_lock(catalog_mutex);
         if (abort_load || ncelobjs >= MAX_CELOBJS)
         {
             break;
