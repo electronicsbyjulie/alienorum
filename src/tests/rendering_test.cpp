@@ -1,6 +1,7 @@
 #include "../performance_options.h"
 #define IMGUI_DEFINE_MATH_OPERATORS
 #include <algorithm>
+#include <cstdlib>
 #include <functional>
 #include <vector>
 #include <iostream>
@@ -200,6 +201,8 @@ class RenderingRegressionTest : public UniverseFixture
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
         SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 8);
+        if (const char* depth = std::getenv("ALIENORUM_PERF_DEPTH"))
+            SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, atoi(depth));
         window = SDL_CreateWindow("Rendering regression", 0, 0, 192, 108,
             SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN);
         if (window)
@@ -5037,4 +5040,27 @@ TEST(TerrainLodTest, FullBoundaryFanPreservesPlanarCoverageAndDistance)
         EXPECT_EQ(actual.inverse_depths()[pixel] > 0, expected.inverse_depths()[pixel] > 0);
         EXPECT_NEAR(actual.distances()[pixel], expected.distances()[pixel], 1e-4);
     }
+}
+
+TEST_F(RenderingRegressionTest, ResidentMeshStorageHasNoImplicitReadback)
+{
+    set(horizon_mesh_gpu_reference, false);
+    const std::vector<std::array<double, 3>> points = {{.1, .2, .3}, {127.123456789, -.001, 42.5}};
+    HorizonMeshResident resident;
+    if (!performance_enabled(28))
+    {
+        EXPECT_FALSE(generate_horizon_mesh_gpu_resident(points, PerlinNoise(42), resident));
+        EXPECT_EQ(resident.texture, 0u);
+        return;
+    }
+    ASSERT_TRUE(generate_horizon_mesh_gpu_resident(points, PerlinNoise(42), resident));
+    EXPECT_NE(resident.texture, 0u);
+    EXPECT_EQ(resident.samples, 2);
+    EXPECT_EQ(resident.context, SDL_GL_GetCurrentContext());
+    EXPECT_EQ(horizon_mesh_gpu_stats().readback_bytes, 0u);
+    std::vector<double> totals;
+    ASSERT_TRUE(generate_horizon_mesh_gpu(points, PerlinNoise(42), totals));
+    EXPECT_EQ(totals.size(), points.size());
+    EXPECT_GT(horizon_mesh_gpu_stats().readback_bytes, 0u);
+    clear_horizon_mesh_gpu();
 }

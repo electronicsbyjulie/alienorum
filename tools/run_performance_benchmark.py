@@ -62,7 +62,8 @@ def main():
         metadata = dict(source_commit=subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
                         source_diff=subprocess.check_output(['git', 'diff', '--stat'], text=True),
                         parameters=vars(args), elapsed_seconds=time.time() - start,
-                        exit_code=result.returncode, display=env.get('DISPLAY', ''))
+                        exit_code=result.returncode, display=env.get('DISPLAY', ''),
+                        requested_depth_bits=env.get('ALIENORUM_PERF_DEPTH', 'default'))
         args.output.with_suffix('.metadata.json').write_text(json.dumps(metadata, indent=2, default=str) + '\n')
         if result.returncode:
             raise SystemExit(f'Benchmark failed ({result.returncode}); inspect {args.output.with_suffix(".log")}.')

@@ -1,3 +1,4 @@
+#include "performance_options.h"
 #include <array>
 #include <chrono>
 #include <iostream>
@@ -336,11 +337,12 @@ void main()
         return true;
     }
 
-    bool generate_horizon_mesh_gpu(const std::vector<std::array<double, 3>> &positions,
-        const PerlinNoise &noise, std::vector<double> &totals)
+    static bool generate_mesh(const std::vector<std::array<double, 3>>& positions,
+        const PerlinNoise& noise, std::vector<double>* totals, HorizonMeshResident* resident)
     {
         stats = {};
-        totals.clear();
+        if (totals) totals->clear();
+        if (resident) *resident = {};
         if (horizon_mesh_gpu_reference || positions.empty() || noise.permutation().size() != 512) return false;
         const auto start = std::chrono::steady_clock::now();
         const bool cold = !attempted || context != SDL_GL_GetCurrentContext();
@@ -378,7 +380,8 @@ void main()
             frequency *= 1.29;
             amplitude *= 0.8559;
         }
-        std::vector<float> output(static_cast<size_t>(width) * height * 2);
+        std::vector<float> output;
+        if (totals) output.resize(static_cast<size_t>(width) * height * 2);
         {
             MeshGlState state;
             glActiveTexture(GL_TEXTURE0);
@@ -405,21 +408,47 @@ void main()
             glUniform1i(width_location, width);
             glBindVertexArray(vao);
             draw_arrays(GL_TRIANGLES, 0, 3);
-            glReadPixels(0, 0, width, height, rg_format, GL_FLOAT, output.data());
+            if (totals)
+            {
+                glReadPixels(0, 0, width, height, rg_format, GL_FLOAT, output.data());
+                stats.readback_bytes = output.size() * sizeof(float);
+            }
             if (glGetError() != 0) return false;
         }
-        for (size_t index = 0; index < positions.size(); ++index)
+        if (totals)
         {
-            const double total = static_cast<double>(output[index * 2]) + output[index * 2 + 1];
-            if (!std::isfinite(total)) return false;
-            totals.push_back(total);
+            for (size_t index = 0; index < positions.size(); ++index)
+            {
+                const double total = static_cast<double>(output[index * 2]) + output[index * 2 + 1];
+                if (!std::isfinite(total)) return false;
+                totals->push_back(total);
+            }
         }
         saved_permutation = noise.permutation();
         stats.samples = positions.size();
         stats.builds = ++builds;
         stats.generation_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - generation_start).count();
         stats.accelerated = true;
+        if (resident) *resident = {textures[3], width, height, static_cast<int>(positions.size()), builds, context};
         return true;
+    }
+
+    bool generate_horizon_mesh_gpu(const std::vector<std::array<double, 3>>& positions,
+        const PerlinNoise& noise, std::vector<double>& totals)
+    {
+        return generate_mesh(positions, noise, &totals, nullptr);
+    }
+
+    bool generate_horizon_mesh_gpu_resident(const std::vector<std::array<double, 3>>& positions,
+        const PerlinNoise& noise, HorizonMeshResident& result)
+    {
+        result = {};
+        if (!performance_enabled(28))
+        {
+            stats = {};
+            return false;
+        }
+        return generate_mesh(positions, noise, nullptr, &result);
     }
 
     const HorizonMeshGpuStats &horizon_mesh_gpu_stats() { return stats; }

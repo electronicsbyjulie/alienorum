@@ -33,6 +33,190 @@ struct CatalogPublicationProbe
     }
 };
 
+class ResidentTerrainProbe
+{
+    GLuint program = 0, vao = 0, cpu_texture = 0, texture = 0;
+    inline static PFNGLCREATESHADERPROC create_shader = nullptr;
+    inline static PFNGLSHADERSOURCEPROC shader_source = nullptr;
+    inline static PFNGLCOMPILESHADERPROC compile_shader = nullptr;
+    inline static PFNGLGETSHADERIVPROC get_shader = nullptr;
+    inline static PFNGLUSEPROGRAMPROC use_program = nullptr;
+    inline static PFNGLBINDVERTEXARRAYPROC bind_array = nullptr;
+    inline static PFNGLCREATEPROGRAMPROC create_program = nullptr;
+    inline static PFNGLATTACHSHADERPROC attach_shader = nullptr;
+    inline static PFNGLLINKPROGRAMPROC link_program = nullptr;
+    inline static PFNGLDELETESHADERPROC delete_shader = nullptr;
+    inline static PFNGLGETPROGRAMIVPROC get_program = nullptr;
+    inline static PFNGLGENVERTEXARRAYSPROC gen_arrays = nullptr;
+    inline static PFNGLDELETEVERTEXARRAYSPROC delete_arrays = nullptr;
+    inline static PFNGLDELETEPROGRAMPROC delete_program = nullptr;
+    using Draw = void (APIENTRY *)(GLenum, GLint, GLsizei);
+    Draw draw = nullptr;
+    static GLuint shader(GLenum type, const char* text)
+    {
+        GLuint result = create_shader(type);
+        shader_source(result, 1, &text, nullptr);
+        compile_shader(result);
+        GLint success = 0;
+        get_shader(result, GL_COMPILE_STATUS, &success);
+        if (!success) throw std::runtime_error("Resident terrain probe shader compilation failed.");
+        return result;
+    }
+    static void callback(const ImDrawList*, const ImDrawCmd* command)
+    {
+        auto& probe = *static_cast<ResidentTerrainProbe*>(command->UserCallbackData);
+        GLint depth_function;
+        GLboolean depth_mask;
+        glGetIntegerv(GL_DEPTH_FUNC, &depth_function);
+        glGetBooleanv(GL_DEPTH_WRITEMASK, &depth_mask);
+        glDisable(GL_SCISSOR_TEST);
+        glDisable(GL_BLEND);
+        glEnable(GL_DEPTH_TEST);
+        glDepthMask(GL_TRUE);
+        glDepthFunc(GL_LEQUAL);
+        glClear(GL_DEPTH_BUFFER_BIT);
+        use_program(probe.program);
+        bind_array(probe.vao);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, probe.texture);
+        probe.draw(GL_TRIANGLES, 0, 511 * 39 * 6);
+        glDepthFunc(depth_function);
+        glDepthMask(depth_mask);
+        glDisable(GL_DEPTH_TEST);
+    }
+    public:
+    std::vector<std::array<double, 3>> positions;
+    PerlinNoise noise{42};
+    ResidentTerrainProbe()
+    {
+        GLint depth_bits = 0;
+        glGetIntegerv(GL_DEPTH_BITS, &depth_bits);
+        std::cout << "PERF resident depth bits: " << depth_bits << '\n';
+        if (!depth_bits) throw std::runtime_error("Resident terrain probe requires a depth attachment.");
+        create_shader = reinterpret_cast<PFNGLCREATESHADERPROC>(SDL_GL_GetProcAddress("glCreateShader"));
+        if (!create_shader) throw std::runtime_error("Resident terrain probe GL entry is unavailable.");
+        shader_source = reinterpret_cast<PFNGLSHADERSOURCEPROC>(SDL_GL_GetProcAddress("glShaderSource"));
+        if (!shader_source) throw std::runtime_error("Resident terrain probe GL entry is unavailable.");
+        compile_shader = reinterpret_cast<PFNGLCOMPILESHADERPROC>(SDL_GL_GetProcAddress("glCompileShader"));
+        if (!compile_shader) throw std::runtime_error("Resident terrain probe GL entry is unavailable.");
+        get_shader = reinterpret_cast<PFNGLGETSHADERIVPROC>(SDL_GL_GetProcAddress("glGetShaderiv"));
+        if (!get_shader) throw std::runtime_error("Resident terrain probe GL entry is unavailable.");
+        use_program = reinterpret_cast<PFNGLUSEPROGRAMPROC>(SDL_GL_GetProcAddress("glUseProgram"));
+        if (!use_program) throw std::runtime_error("Resident terrain probe GL entry is unavailable.");
+        bind_array = reinterpret_cast<PFNGLBINDVERTEXARRAYPROC>(SDL_GL_GetProcAddress("glBindVertexArray"));
+        if (!bind_array) throw std::runtime_error("Resident terrain probe GL entry is unavailable.");
+        create_program = reinterpret_cast<PFNGLCREATEPROGRAMPROC>(SDL_GL_GetProcAddress("glCreateProgram"));
+        if (!create_program) throw std::runtime_error("Resident terrain probe GL entry is unavailable.");
+        attach_shader = reinterpret_cast<PFNGLATTACHSHADERPROC>(SDL_GL_GetProcAddress("glAttachShader"));
+        if (!attach_shader) throw std::runtime_error("Resident terrain probe GL entry is unavailable.");
+        link_program = reinterpret_cast<PFNGLLINKPROGRAMPROC>(SDL_GL_GetProcAddress("glLinkProgram"));
+        if (!link_program) throw std::runtime_error("Resident terrain probe GL entry is unavailable.");
+        delete_shader = reinterpret_cast<PFNGLDELETESHADERPROC>(SDL_GL_GetProcAddress("glDeleteShader"));
+        if (!delete_shader) throw std::runtime_error("Resident terrain probe GL entry is unavailable.");
+        get_program = reinterpret_cast<PFNGLGETPROGRAMIVPROC>(SDL_GL_GetProcAddress("glGetProgramiv"));
+        if (!get_program) throw std::runtime_error("Resident terrain probe GL entry is unavailable.");
+        gen_arrays = reinterpret_cast<PFNGLGENVERTEXARRAYSPROC>(SDL_GL_GetProcAddress("glGenVertexArrays"));
+        if (!gen_arrays) throw std::runtime_error("Resident terrain probe GL entry is unavailable.");
+        delete_arrays = reinterpret_cast<PFNGLDELETEVERTEXARRAYSPROC>(SDL_GL_GetProcAddress("glDeleteVertexArrays"));
+        if (!delete_arrays) throw std::runtime_error("Resident terrain probe GL entry is unavailable.");
+        delete_program = reinterpret_cast<PFNGLDELETEPROGRAMPROC>(SDL_GL_GetProcAddress("glDeleteProgram"));
+        if (!delete_program) throw std::runtime_error("Resident terrain probe GL entry is unavailable.");
+        const char* vertex = R"GLSL(#version 130
+uniform sampler2D uNoise;
+out vec3 color;
+void main()
+{
+    const ivec2 corners[6] = ivec2[6](ivec2(0, 0), ivec2(1, 0), ivec2(0, 1),
+        ivec2(1, 0), ivec2(1, 1), ivec2(0, 1));
+    int cell = gl_VertexID / 6;
+    ivec2 node = ivec2(cell % 511, cell / 511) + corners[gl_VertexID % 6];
+    vec2 value = texelFetch(uNoise, node, 0).rg;
+    float relief = value.r + value.g;
+    vec2 position = vec2(float(node.x) / 511.0 * 2.0 - 1.0, float(node.y) / 39.0 * 1.7 - .85);
+    gl_Position = vec4(position.x, position.y + relief * .04, relief * .2, 1.0);
+    color = vec3(.4 + relief * .1, .5 + relief * .08, .2);
+}
+)GLSL";
+        const char* fragment = R"GLSL(#version 130
+in vec3 color;
+out vec4 result;
+void main()
+{
+    result = vec4(color, 1.0);
+}
+)GLSL";
+        GLuint vs = shader(GL_VERTEX_SHADER, vertex), fs = shader(GL_FRAGMENT_SHADER, fragment);
+        program = create_program();
+        attach_shader(program, vs);
+        attach_shader(program, fs);
+        link_program(program);
+        delete_shader(vs);
+        delete_shader(fs);
+        GLint success = 0;
+        get_program(program, GL_LINK_STATUS, &success);
+        if (!success) throw std::runtime_error("Resident terrain probe linking failed.");
+        gen_arrays(1, &vao);
+        glGenTextures(1, &cpu_texture);
+        draw = reinterpret_cast<Draw>(SDL_GL_GetProcAddress("glDrawArrays"));
+        if (!draw) throw std::runtime_error("Resident terrain probe draw entry is unavailable.");
+        positions.resize(512 * 40);
+    }
+    ~ResidentTerrainProbe()
+    {
+        glDeleteTextures(1, &cpu_texture);
+        delete_arrays(1, &vao);
+        delete_program(program);
+    }
+    void prepare(int frame, bool moving)
+    {
+        for (int row = 0; row < 40; ++row)
+        {
+            for (int column = 0; column < 512; ++column)
+            {
+                const double angle = column * 2 * _pi / 512;
+                const double latitude = .3 + row * .0001 + (moving ? frame * 1e-7 : 0);
+                positions[row * 512 + column] = {127 * cos(latitude) * cos(angle),
+                    127 * cos(latitude) * sin(angle), 127 * sin(latitude)};
+            }
+        }
+        if (performance_enabled(28))
+        {
+            HorizonMeshResident resident;
+            if (!generate_horizon_mesh_gpu_resident(positions, noise, resident))
+                throw std::runtime_error("Resident terrain generation is unavailable.");
+            if (horizon_mesh_gpu_stats().readback_bytes != 0)
+                throw std::runtime_error("Resident terrain generation performed a CPU transfer.");
+            texture = resident.texture;
+        }
+        else
+        {
+            std::vector<float> values;
+            values.reserve(positions.size() * 2);
+            for (const auto& point : positions)
+            {
+                double total = 0, amplitude = 1, frequency = 1;
+                for (int octave = 0; octave < 12; ++octave)
+                {
+                    total += noise.noise(point[0] * frequency, point[1] * frequency, point[2] * frequency) * amplitude;
+                    amplitude *= .8559;
+                    frequency *= 1.29;
+                }
+                const float high = static_cast<float>(total);
+                values.push_back(high);
+                values.push_back(static_cast<float>(total - high));
+            }
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, cpu_texture);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            glTexImage2D(GL_TEXTURE_2D, 0, 0x8230, 512, 40, 0, 0x8227, GL_FLOAT, values.data());
+            texture = cpu_texture;
+        }
+        ImGui::GetBackgroundDrawList()->AddCallback(callback, this);
+        ImGui::GetBackgroundDrawList()->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
+    }
+};
+
 class PerformanceBenchmarkTest : public RenderingRegressionTest
 {
     protected:
@@ -169,6 +353,12 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
     surface_magnitudes[1] = -20;
     Planet::reconcile_host_statistics();
     if (catalog) compute_object_draw_coordinates();
+    std::unique_ptr<ResidentTerrainProbe> resident_probe;
+    if (std::find(ids.begin(), ids.end(), 28) != ids.end())
+    {
+        set(horizon_mesh_gpu_reference, false);
+        resident_probe = std::make_unique<ResidentTerrainProbe>();
+    }
     std::unique_ptr<CatalogPublicationProbe> publication;
     const double base_latitude = 0, base_longitude = .3;
     for (int id : ids)
@@ -179,6 +369,7 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
             : id == 18 ? std::vector<std::string>{"catalog-lock-idle", "catalog-lock-publication"}
             : id == 13 ? std::vector<std::string>{"catalog", "catalog-walk", "catalog-time-jump"}
             : id <= 5 || id == 8 ? std::vector<std::string>{"catalog", "catalog-time-jump"}
+            : id == 28 ? std::vector<std::string>{"resident-mesh-still", "resident-mesh-walk"}
             : id == 25 ? std::vector<std::string>{"shore-still", "forest-still", "shore-walk", "forest-walk"}
             : id == 21 ? std::vector<std::string>{"skyline-walk", "skyline-still"}
             : id == 31 ? std::vector<std::string>{"shore-walk", "forest-refresh"}
@@ -227,7 +418,7 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
                     cels[1]->location.local_position += ray;
                 }
                 compute_object_draw_coordinates();
-                if (scene.rfind("catalog", 0) == 0)
+                if (scene.rfind("catalog", 0) == 0 || id == 28)
                 {
                     // Exercise all three consumers, including pointer/filter traversal.
                     volatile size_t count = 0;
@@ -248,6 +439,7 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
                     find_horizon();
                     draw_horizon();
                 }
+                if (id == 28) resident_probe->prepare(frame_index, scene.find("walk") != std::string::npos);
                 if (capture)
                 {
                     auto pixels = render();
@@ -323,7 +515,9 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
                     << " horizon_segments_removed=" << stats.horizon_segments_removed << '\n';
             }
             if (!(id == 26 && std::getenv("ALIENORUM_PERF_MEASURE_REJECTED_LOD")))
+            {
                 ASSERT_LE(maximum, id == 42 ? 2 : 0) << "P" << id << ' ' << scene;
+            }
             for (int round = 0; round < rounds; ++round)
             {
                 double milliseconds[2] = {}, cpu_times[2] = {};

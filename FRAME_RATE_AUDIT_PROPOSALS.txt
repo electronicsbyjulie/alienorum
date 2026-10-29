@@ -120,7 +120,7 @@ The 512-by-40 grid spends detail on distant or tiny triangles while sharp nearby
 P027 | B / S / Q0 | Re-evaluate GPU terrain rasterization as a complete pipeline experiment.
 Source: src/horizon_terrain_gpu.cpp and disabled option in src/visuals.h. A GPU path already exists but did not win on the earlier computer/workloads. Test current heavy shoreline scenes on this machine and both laptop-class GPUs, including uploads, synchronization, and downstream consumers of depth. The proposal is not to switch it on blindly. Keeping depth on the GPU for ground, waves, and scenery may matter more than accelerating one isolated stage. Validate identical coverage and software fallback. Report hardware-specific outcomes; a universal default is not established by one GPU.
 
-P028 | B / S / Q0 | Re-evaluate GPU terrain generation without CPU round trips.
+[x] P028 | B / S / Q0 | Re-evaluate GPU terrain generation without CPU round trips. PROTOTYPE IMPLEMENTED, APPLICATION DISABLED: PERF_P028=0. Resident mesh/depth prototype improves 38.72–40.17%; full application integration remains unmet.
 Source: src/horizon_mesh_gpu.cpp and the disabled generation option. If height generation moves to the GPU but CPU rasterization or scenery immediately reads it back, transfer cost can erase the gain. Evaluate an end-to-end resident mesh/depth design and compare it with retained CPU world patches. Preserve procedural seed, displacement, and plane conventions. Validate coast alignment and stable features while walking. This is an alternate architecture to P020/P024, not an extra multiplier to sum with all of them. Driver coverage and fallback remain part of acceptance.
 
 P029 | B / S / Q0 | Bound the screen region that can contain ground before expensive painting.

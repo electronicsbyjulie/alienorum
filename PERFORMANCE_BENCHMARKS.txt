@@ -365,3 +365,39 @@ poles, eye height and world/map changes, but forest walking is consistently slow
 LOD checks cover peaks, degeneracy, camera-plane rejection, horizon discontinuities,
 and planar fan coverage/distance. Practical mesh eligibility in other scenes and
 quality on other hardware remain unproven; no approximation ships by default.
+
+P028 — GPU-RESIDENT TERRAIN PROTOTYPE (application DISABLED: PERF_P028=0)
+Add a borrowed GPU-resident high/low noise result with dimensions, context and generation
+metadata. Its storage lasts until the next mesh generation/clear in that GL context.
+The existing CPU-download API retains its original behavior and reports transferred
+bytes. Resident generation allocates no CPU output array and performs no terrain
+readback. A dedicated developer consumer fetches this texture in its vertex shader,
+constructs a 512-by-40 height mesh, and performs depth-tested drawing on the GPU.
+The before path computes the same twelve-octave noise on the CPU, uploads high/low
+pairs and runs that same GPU consumer. Positions, noise seed, geometry and shading
+are shared. Final image capture is validation, not an intermediate terrain readback.
+This is a controlled resident generation/mesh/depth prototype, not the application's
+complete terrain renderer. Its regular rectangular probe projection does not implement
+the application's coast clamps, map painting or scenery occlusion. Those constraints
+are not removed from production. No ordinary application frame calls the prototype API.
+Native Intel HD 2000, 1280 x 720, 20,480 noise nodes; all comparisons wait for GPU completion.
+The first fixture attempt stopped before timing because the mesh-reference override was
+still active; it supplied no samples. Corrected pilot: five pairs of eight frames,
+fixture-default depth format. Confirmation: nine pairs of twenty-four frames with
+ALIENORUM_PERF_DEPTH=24; GL reports 24 actual depth bits. Do not pool configurations.
+PERFORMANCE_BENCHMARK_P028_RESULTS.csv
+  resident-mesh-still: 35.642 -> 22.360 ms; paired median -36.82%; 95% interval [-46.09%, -32.19%]; maximum image error 0.
+  resident-mesh-walk: 35.434 -> 21.016 ms; paired median -41.23%; 95% interval [-42.43%, -39.93%]; maximum image error 0.
+PERFORMANCE_BENCHMARK_P028_CONFIRM_RESULTS.csv
+  resident-mesh-still: 37.712 -> 22.564 ms; paired median -40.17%; 95% interval [-43.74%, -34.60%]; maximum image error 0.
+  resident-mesh-walk: 36.067 -> 22.145 ms; paired median -38.72%; 95% interval [-43.25%, -32.35%]; maximum image error 0.
+The prototype improves consistently and retains exact captured images. Its enabled-path
+functional check verifies resident context/count, zero implicit readback, and the
+existing explicit-download API. Retain the implementation for further integration.
+Keep PERF_P028=0 in the application because whole-renderer integration remains unmet,
+not because these prototype timings are slower. Current CPU consumers include coastal
+row/radial slope constraints, terrain horizon bounds, ground-paint distance buffers,
+and scenery occlusion. Replacing them requires an integrated resident architecture
+with equivalent quality and a full-app comparison. No application FPS gain is claimed.
+An explicit -DPERF_P028=1 private build enables repeat measurements; the normal old
+horizon_gpu_mesh_generation option stays unchanged. No runtime asset is introduced.
