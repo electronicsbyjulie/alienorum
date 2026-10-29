@@ -30,7 +30,7 @@ def main():
                          after=hashlib.sha256(args.after.read_bytes()).hexdigest())
     started = time.time()
     fields = ['proposal', 'workload', 'round', 'order', 'before_ms', 'after_ms',
-              'change_percent', 'max_channel_error', 'before_cpu_ms', 'after_cpu_ms']
+              'change_percent', 'max_channel_error', 'before_cpu_ms', 'after_cpu_ms', 'before_max_ms', 'after_max_ms']
     with tempfile.TemporaryDirectory(prefix='alienorum-fixed-perf-') as temporary:
         with args.output.open('w') as output, args.output.with_suffix('.log').open('w') as log:
             writer = csv.DictWriter(output, fieldnames=fields)
@@ -82,10 +82,14 @@ def main():
                     after_ms = statistics.mean(float(after[name]) for name in ['before_ms', 'after_ms'])
                     before_cpu = statistics.mean(float(before[name]) for name in ['before_cpu_ms', 'after_cpu_ms'])
                     after_cpu = statistics.mean(float(after[name]) for name in ['before_cpu_ms', 'after_cpu_ms'])
-                    writer.writerow(dict(proposal=key[0], workload=key[1], round=pair,
-                                         order='AB' if pair % 2 == 0 else 'BA', before_ms=before_ms,
-                                         after_ms=after_ms, change_percent=(after_ms / before_ms - 1) * 100,
-                                         max_channel_error=errors[key], before_cpu_ms=before_cpu, after_cpu_ms=after_cpu))
+                    record = dict(proposal=key[0], workload=key[1], round=pair,
+                                  order='AB' if pair % 2 == 0 else 'BA', before_ms=before_ms,
+                                  after_ms=after_ms, change_percent=(after_ms / before_ms - 1) * 100,
+                                  max_channel_error=errors[key], before_cpu_ms=before_cpu, after_cpu_ms=after_cpu)
+                    if all(row.get('before_max_ms') and row.get('after_max_ms') for row in [before, after]):
+                        record['before_max_ms'] = max(float(before[name]) for name in ['before_max_ms', 'after_max_ms'])
+                        record['after_max_ms'] = max(float(after[name]) for name in ['before_max_ms', 'after_max_ms'])
+                    writer.writerow(record)
                 output.flush()
                 print(f'Fixed comparison pair {pair + 1}/{args.rounds} complete.', flush=True)
     final_hashes = dict(before=hashlib.sha256(args.before.read_bytes()).hexdigest(),

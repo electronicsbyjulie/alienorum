@@ -146,7 +146,7 @@ Source: src/classes/surfacecache.h. A height lookup uses nearby cube-grid nodes,
 P035 | B / S / Q0 | Add a shared coarse material/uniformity hierarchy for all consumers.
 Source: Map::uniform_region, region_matches, and color_within_cap around celestial.cpp 2163-2240. The code already tests uniform caps; audit its traversal cost and share results across terrain painting, wave rejection, and scenery chunks. A region proved entirely water or entirely land can skip many detailed coast queries. Bounds must include the maximum Perlin displacement, not only the unwarped pixel rectangle. Validate tiny islands and thin beaches. This proposal extends existing uniformity information; it does not claim the optimization is absent.
 
-P036 | B / H / Q0 | Prefetch the next surface tiles along a walking route.
+[x] P036 | B / H / Q0 | Prefetch the next surface tiles along a walking route. DISABLED: PERF_P036=0; compiled-path walking comparisons establish neither mean nor worst-frame improvement.
 Use current movement and the view wedge to fill bounded height/material caches ahead of the observer, under a small background or idle budget. This targets periodic cache-miss spikes rather than average stationary cost. The authoritative sampler remains unchanged, and a missed prefetch simply falls back to current evaluation. Validate sudden reversal, teleportation, high speed, and worker cancellation. Record worst-frame latency as well as average throughput. Prefetch is lower priority than removing duplicate queries; it must not compete so heavily with drawing that it worsens the frame tail.
 
 P037 | B / H / Q1 | Bake a local high-resolution surface tile with an explicit error bound.

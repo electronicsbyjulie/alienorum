@@ -92,6 +92,8 @@ struct HorizonTerrainLodStats
     unsigned int patches = 0, accepted_patches = 0, triangles_removed = 0, horizon_segments_removed = 0;
 };
 const HorizonTerrainLodStats& horizon_terrain_lod_stats();
+size_t prefetch_surface_tiles(double milliseconds);
+bool surface_prefetch_pending();
 
 struct RockInstance
 {

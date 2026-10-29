@@ -24,6 +24,7 @@
 #include "../classes/surfacenavigation.h"
 #include "../classes/scenerydraw.h"
 #include "../classes/surfacecache.h"
+#include "../classes/surfaceprefetch.h"
 #include "../horizon_ground_gpu.h"
 #include "../scenery_gpu.h"
 #include "../horizon_terrain_gpu.h"
@@ -5093,4 +5094,68 @@ TEST_F(RenderingRegressionTest, GroundBoundsPreserveSkyPeaksGapsAndDownwardViews
             }
         }
     }
+}
+
+TEST(SurfacePrefetchTest, RunsWithinABudgetAndCancelsInvalidOrReplacedWork)
+{
+    SurfacePrefetchQueue queue;
+    int count = 0;
+    bool valid = true;
+    queue.schedule([&]() { return valid; }, [&]() { return ++count < 4; });
+    EXPECT_EQ(queue.run_for(0), 0u);
+    EXPECT_EQ(queue.run_for(100), 4u);
+    EXPECT_EQ(count, 4);
+    queue.schedule([&]() { return valid; }, [&]() { ++count; return true; });
+    valid = false;
+    EXPECT_EQ(queue.run_for(100), 0u);
+    EXPECT_EQ(count, 4);
+    valid = true;
+    queue.schedule([&]() { return valid; }, [&]() { ++count; return true; });
+    queue.schedule([&]() { return valid; }, [&]() { count += 10; return false; });
+    EXPECT_EQ(queue.run_for(100), 1u);
+    EXPECT_EQ(count, 14);
+}
+
+TEST_F(RenderingRegressionTest, SurfacePrefetchPreservesImagesAndCancelsStaleWorldMapAndMotion)
+{
+    Planet* world = surface(true);
+    delete world->surf_map;
+    world->surf_map = new CoastalTestMap();
+    const auto paint = [&]()
+    {
+        freeze_surface_time();
+        find_horizon();
+        draw_horizon();
+        auto pixels = render();
+        ImGui::NewFrame();
+        return pixels;
+    };
+    const auto walk = [&]()
+    {
+        viewer_lat += .25 / earth_radius;
+        return paint();
+    };
+    paint();
+    const auto expected = walk();
+    const size_t count = prefetch_surface_tiles(.25);
+    if (performance_enabled(36)) EXPECT_TRUE(count > 0 || surface_prefetch_pending());
+    else EXPECT_EQ(count, 0u);
+    EXPECT_EQ(image_difference(paint(), expected), 0);
+    walk();
+    viewer_lon += .1;
+    EXPECT_EQ(prefetch_surface_tiles(.25), 0u);
+    paint();
+    walk();
+    Map* previous = world->surf_map;
+    world->surf_map = new CoastalTestMap();
+    delete previous;
+    EXPECT_EQ(prefetch_surface_tiles(.25), 0u);
+    paint();
+    walk();
+    world->deleted = true;
+    EXPECT_EQ(prefetch_surface_tiles(.25), 0u);
+    world->deleted = false;
+    viewer_lat += 100 / earth_radius;
+    paint();
+    EXPECT_EQ(prefetch_surface_tiles(.25), 0u);
 }

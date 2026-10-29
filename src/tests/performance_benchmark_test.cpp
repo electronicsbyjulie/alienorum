@@ -297,7 +297,7 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
     ASSERT_NE(output, nullptr);
     std::ofstream csv(output);
     ASSERT_TRUE(csv.good());
-    csv << "proposal,workload,round,order,before_ms,after_ms,change_percent,max_channel_error,before_cpu_ms,after_cpu_ms\n";
+    csv << "proposal,workload,round,order,before_ms,after_ms,change_percent,max_channel_error,before_cpu_ms,after_cpu_ms,before_max_ms,after_max_ms\n";
     csv << std::setprecision(12);
     Planet* world = surface(true);
     world->sidereal_rotational_period = oneday;
@@ -372,6 +372,7 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
             : id == 18 ? std::vector<std::string>{"catalog-lock-idle", "catalog-lock-publication"}
             : id == 13 ? std::vector<std::string>{"catalog", "catalog-walk", "catalog-time-jump"}
             : id <= 5 || id == 8 ? std::vector<std::string>{"catalog", "catalog-time-jump"}
+            : id == 36 ? std::vector<std::string>{"shore-walk", "forest-walk"}
             : id == 30 ? std::vector<std::string>{"shore-walk", "forest-walk", "ocean-still"}
             : id == 29 ? std::vector<std::string>{"shore-up", "shore-walk", "shore-down"}
             : id == 28 ? std::vector<std::string>{"resident-mesh-still", "resident-mesh-walk"}
@@ -481,6 +482,12 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
                     return pixels;
                 }
                 finish_frame();
+                if (id == 36)
+                {
+                    const auto idle_end = std::chrono::steady_clock::now() + std::chrono::milliseconds(5);
+                    if (performance_enabled(36)) prefetch_surface_tiles(SURFACE_PREFETCH_BUDGET_MS);
+                    std::this_thread::sleep_until(idle_end);
+                }
                 return std::vector<unsigned char>();
             };
             const auto select = [&](bool before)
@@ -542,14 +549,20 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
             }
             for (int round = 0; round < rounds; ++round)
             {
-                double milliseconds[2] = {}, cpu_times[2] = {};
+                double milliseconds[2] = {}, cpu_times[2] = {}, maximum_times[2] = {};
                 for (int order = 0; order < 2; ++order)
                 {
                     const int mode = (round + order) % 2;
                     select(mode == 0);
                     const auto start = std::chrono::steady_clock::now();
                     const double cpu_start = cpu_milliseconds();
-                    for (int sample = 0; sample < frames; ++sample) frame(sample, false);
+                    for (int sample = 0; sample < frames; ++sample)
+                    {
+                        const auto frame_start = id == 36 ? std::chrono::steady_clock::now() : start;
+                        frame(sample, false);
+                        if (id == 36) maximum_times[mode] = std::max(maximum_times[mode],
+                            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - frame_start).count());
+                    }
                     cpu_times[mode] = (cpu_milliseconds() - cpu_start) / frames;
                     milliseconds[mode] = std::chrono::duration<double, std::milli>(
                         std::chrono::steady_clock::now() - start).count() / frames;
@@ -557,7 +570,10 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
                 csv << id << ',' << scene << ',' << round << ',' << (round % 2 ? "BA" : "AB") << ','
                     << milliseconds[0] << ',' << milliseconds[1] << ','
                     << (milliseconds[1] / milliseconds[0] - 1) * 100 << ',' << maximum << ','
-                    << cpu_times[0] << ',' << cpu_times[1] << '\n';
+                    << cpu_times[0] << ',' << cpu_times[1];
+                if (id == 36) csv << ',' << maximum_times[0] << ',' << maximum_times[1];
+                else csv << ",,";
+                csv << '\n';
                 csv.flush();
                 std::cout << "PERF P" << id << ' ' << scene << " pair " << round + 1 << "/" << rounds
                     << ": " << milliseconds[0] << " -> " << milliseconds[1] << " ms\n" << std::flush;

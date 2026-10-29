@@ -17,6 +17,7 @@
 #include "classes/surfacescatter.h"
 #include "classes/scenerydraw.h"
 #include "classes/surfacecache.h"
+#include "classes/surfaceprefetch.h"
 #include "classes/surfacebiomes.h"
 #include "classes/surfacenavigation.h"
 #include "classes/horizonterrain.h"
@@ -30,6 +31,13 @@ using namespace alienorum;
 bool horizon_terrain_cpu_reference = false;
 bool scenery_cpu_reference = false;
 bool water_cpu_reference = false;
+static SurfacePrefetchQueue surface_prefetch;
+bool surface_prefetch_pending() { return performance_enabled(36) && surface_prefetch.queued(); }
+size_t prefetch_surface_tiles(double milliseconds)
+{
+    if (!(milliseconds > 0) || !std::isfinite(milliseconds)) return 0;
+    return performance_enabled(36) ? surface_prefetch.run_for(std::min(SURFACE_PREFETCH_BUDGET_MS, milliseconds)) : 0;
+}
 static HorizonWaterStats water_stats;
 static HorizonTerrainLodStats terrain_lod_stats;
 const HorizonTerrainLodStats& horizon_terrain_lod_stats() { return terrain_lod_stats; }
@@ -5429,6 +5437,7 @@ void draw_local_rings()
 
 void draw_horizon()
 {
+    if (performance_enabled(36)) surface_prefetch.clear();
     water_stats = {};
     terrain_lod_stats = {};
     // Horizon
@@ -5507,6 +5516,52 @@ void draw_horizon()
         };
         const bool terrain_mesh = show_terrain && surface_biomes
             && !ocean_world && cel->type != lavaworld;
+        struct PrefetchRoute
+        {
+            CelestialObject* body = nullptr;
+            Map* map = nullptr;
+            unsigned int generation = 0;
+            double latitude = 0, longitude = 0, radius = 0, last_latitude_step = 0, last_longitude_step = 0;
+            size_t cursor = 0;
+        };
+        static PrefetchRoute prefetch_route;
+        bool prefetch_walking = false;
+        double predicted_latitude = viewer_lat, predicted_longitude = viewer_lon;
+        if (performance_enabled(36) && performance_enabled(20) && !horizon_terrain_cpu_reference && terrain_mesh)
+        {
+            const double dlat = viewer_lat - prefetch_route.latitude;
+            const double dlon = std::remainder(viewer_lon - prefetch_route.longitude, 2 * _pi);
+            const double distance = surface_radius * hypot(dlat, cos(viewer_lat) * dlon);
+            const bool same = prefetch_route.body == cel && prefetch_route.map == map
+                && prefetch_route.generation == map->gen && prefetch_route.radius == surface_radius;
+            prefetch_walking = same && distance > 1e-6 && distance <= 5 && fabs(dlat) < .01 && fabs(dlon) < .01;
+            if (!prefetch_walking || dlat * prefetch_route.last_latitude_step + dlon * prefetch_route.last_longitude_step < 0)
+                prefetch_route.cursor = 0;
+            if (prefetch_walking)
+            {
+                predicted_latitude += dlat * 4;
+                predicted_longitude += dlon * 4;
+                if (predicted_latitude > half_pi)
+                {
+                    predicted_latitude = _pi - predicted_latitude;
+                    predicted_longitude += _pi;
+                }
+                else if (predicted_latitude < -half_pi)
+                {
+                    predicted_latitude = -_pi - predicted_latitude;
+                    predicted_longitude += _pi;
+                }
+                predicted_longitude = std::remainder(predicted_longitude, 2 * _pi);
+            }
+            prefetch_route.body = cel;
+            prefetch_route.map = map;
+            prefetch_route.generation = map->gen;
+            prefetch_route.radius = surface_radius;
+            prefetch_route.latitude = viewer_lat;
+            prefetch_route.longitude = viewer_lon;
+            prefetch_route.last_latitude_step = dlat;
+            prefetch_route.last_longitude_step = dlon;
+        }
         static HorizonTerrainRaster terrain_raster;
         if (!performance_enabled(23)) terrain_raster = HorizonTerrainRaster();
         terrain_raster.deactivate();
@@ -6168,6 +6223,51 @@ void draw_horizon()
                             adaptive_patches.push_back(patch);
                         }
                     }
+                }
+                if (performance_enabled(36) && prefetch_walking)
+                {
+                    const int slot = whereami;
+                    CelestialObject* const body = cel;
+                    Map* const source_map = map;
+                    const unsigned int generation = map->gen;
+                    const double origin_latitude = viewer_lat, origin_longitude = viewer_lon;
+                    const double origin_azimuth = azimuth, original_eye = viewer_eye_height;
+                    const auto original_type = cel->type;
+                    const double original_radius = cel->volumetric_mean_radius, original_oblateness = cel->oblateness;
+                    const double radius = surface_radius;
+                    const int facing = (static_cast<int>(std::llround(azimuth * terrain_columns / (2 * _pi)))
+                        % terrain_columns + terrain_columns) % terrain_columns;
+                    auto* field = &relief_field;
+                    auto* noise = &relief_noise;
+                    surface_prefetch.schedule([=]()
+                    {
+                        return view_mode == vm_horizon && cels && whereami == slot && slot >= 0 && slot < ncelobjs && cels[slot] == body
+                            && !body->deleted && body->surf_map == source_map && source_map && source_map->gen == generation
+                            && viewer_lat == origin_latitude && viewer_lon == origin_longitude
+                            && azimuth == origin_azimuth && viewer_eye_height == original_eye && body->type == original_type
+                            && body->volumetric_mean_radius == original_radius && body->oblateness == original_oblateness;
+                    }, [=]() mutable
+                    {
+                        const size_t cursor = prefetch_route.cursor;
+                        prefetch_route.cursor = (cursor + 1) % (terrain_rows * terrain_columns);
+                        const int row = cursor / terrain_columns, offset = cursor % terrain_columns;
+                        const int delta = offset & 1 ? -(offset + 1) / 2 : offset / 2;
+                        const int column = (facing + delta + terrain_columns) % terrain_columns;
+                        const double bearing = 2 * _pi * column / terrain_columns;
+                        const double arc = row_distances[row] / radius;
+                        const double sine = std::clamp(sin(predicted_latitude) * cos(arc)
+                            + cos(predicted_latitude) * sin(arc) * cos(bearing), -1.0, 1.0);
+                        const double latitude = asin(sine);
+                        const double longitude = predicted_longitude + atan2(sin(bearing) * sin(arc) * cos(predicted_latitude),
+                            cos(arc) - sin(predicted_latitude) * sine);
+                        const auto sample = [=](double x, double y, double z)
+                        {
+                            const double scale = radius / 50000.0;
+                            return horizon_noise_value(*noise, x * scale, y * scale, z * scale, 12);
+                        };
+                        field->value(cos(latitude) * cos(longitude), cos(latitude) * sin(longitude), sin(latitude), sample);
+                        return true;
+                    });
                 }
                 saved_mesh_key = mesh_key;
                 saved_mesh_view = mesh_view;

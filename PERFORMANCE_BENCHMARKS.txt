@@ -479,3 +479,40 @@ fresh after build. The final shipping default is 0. Fixed comparison support als
 records executable checksums and rejects executable changes during a run. P042 retains
 its established two-channel-level tolerance using raw captures; other comparisons
 require exact cross-binary image/state hashes.
+
+P036 — IDLE-BUDGET HEIGHT PREFETCH (implemented, DISABLED: PERF_P036=0)
+Predict four walking steps ahead, prioritizing nearby rows and the facing direction.
+Populate the existing bounded scalar-field cache using its unchanged authoritative
+node callback. Keep normal queries as fallback. Material queries and all sampling
+formulas remain unchanged. The work queue runs on the main thread under the catalog
+mutex and replaces up to SURFACE_PREFETCH_BUDGET_MS (0.25 ms) of the existing idle
+sleep. It does not add a sleep or access mutable catalog objects from a worker.
+Validate owner/index, deletion, map identity/generation, viewer coordinates, heading,
+eye height, type and body shape before cache work. Teleports/high-speed steps decline
+prediction; reversals reset ordering. A replaced/invalid job cannot touch stale maps.
+Each deadline check permits one bounded scalar lookup to finish before stopping.
+Enabled-path checks cover image equality, stale movement, map replacement/deletion,
+high speed, queue invalidation/replacement and bounded work execution.
+Compiled comparison: separate fresh before/after object directories with fixed controls,
+PERF_P036=0 versus 1. Native Intel HD 2000, 1280 x 720; nine external alternating pairs,
+thirty-two frames in each of two blocks per executable/workload. Both paths include the
+same five-ms idle window. GPU completion, prefetch work and idle time are all timed.
+Cross-binary image hashes match exactly. Raw data: PERFORMANCE_BENCHMARK_P036_FIXED_RESULTS.csv.
+forest-walk: 39.011 -> 38.835 ms; paired median -0.74%; 95% interval [-4.45%, +1.27%].
+  Observed maxima: 59.659 -> 56.864 ms; median per-pair maximum change -7.92%; interval [-18.64%, +5.83%].
+shore-walk: 136.779 -> 136.190 ms; paired median -0.65%; 95% interval [-4.21%, +0.08%].
+  Observed maxima: 317.504 -> 183.388 ms; median per-pair maximum change -2.90%; interval [-7.83%, +5.55%].
+Mean and tail intervals cross zero in both workloads. Isolated lower maxima are not
+reproducible latency evidence. Disable P036. No speculative approximation or changed
+sampler result is accepted. Header-only queue support adds no runtime installer asset.
+
+COMPILED RECHECK PROGRESS
+Frozen application source for rechecks is e659e47, with only developer fixed-control
+and capture support added. Marginal comparisons invert one proposal define while other
+defaults stay fixed. Separate object directories retain identical unaffected objects
+only when their dependency files omit the proposal-options header; all affected units
+compile with consistent overrides. The recheck pauses before other compilation/tests.
+P001 is neutral. P002 confirms ordinary/time-jump gains in two runs (-21.99%/-9.61%
+and -25.77%/-7.90%). P003's first ordinary gain is not statistically confirmed by the
+second run; keep its gain unproven. P004 confirms ordinary/time-jump gains in both
+runs (-22.29%/-4.55% and -20.01%/-4.99%). Further rechecks remain in progress.

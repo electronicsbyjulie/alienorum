@@ -1199,9 +1199,20 @@ int main (int argc, char** argv)
                 if (timeout_ms > 67) timeout_ms = 67;
             }
 
-            catalog_lock.unlock();
-            std::this_thread::sleep_for(std::chrono::milliseconds(timeout_ms));
-            catalog_lock.lock();
+            if (alienorum::performance_enabled(36) && view_mode == vm_horizon)
+            {
+                const auto idle_end = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+                prefetch_surface_tiles(SURFACE_PREFETCH_BUDGET_MS);
+                catalog_lock.unlock();
+                std::this_thread::sleep_until(idle_end);
+                catalog_lock.lock();
+            }
+            else
+            {
+                catalog_lock.unlock();
+                std::this_thread::sleep_for(std::chrono::milliseconds(timeout_ms));
+                catalog_lock.lock();
+            }
 
             hide_mouse = !splash && !fdlg_shown
                 && !mouse_over_menu

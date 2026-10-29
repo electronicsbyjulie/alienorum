@@ -33,6 +33,17 @@ def summarize(path):
                             before_cpu_ms=statistics.median(float(row.get('before_cpu_ms', 'nan')) for row in rows),
                             after_cpu_ms=statistics.median(float(row.get('after_cpu_ms', 'nan')) for row in rows),
                             maximum_channel_error=max(int(row['max_channel_error']) for row in rows)))
+        if all(row.get('before_max_ms') and row.get('after_max_ms') for row in rows):
+            results[-1]['before_max_ms'] = max(float(row['before_max_ms']) for row in rows)
+            results[-1]['after_max_ms'] = max(float(row['after_max_ms']) for row in rows)
+            tails = [(float(row['after_max_ms']) / float(row['before_max_ms']) - 1) * 100 for row in rows]
+            tail_rng = random.Random(42)
+            tail_medians = sorted(statistics.median(tail_rng.choices(tails, k=len(tails))) for _ in range(4000))
+            tail_low, tail_high = tail_medians[100], tail_medians[3899]
+            results[-1].update(median_tail_change_percent=statistics.median(tails),
+                               tail_change_ci_low=tail_low, tail_change_ci_high=tail_high,
+                               tail_status='slower' if len(rows) >= 5 and tail_low > 0 else
+                               'faster' if len(rows) >= 5 and tail_high < 0 else 'mixed/neutral')
     return results
 
 
