@@ -23,10 +23,14 @@
 #include "classes/wdlimb.h"
 #include <tuple>
 #include <optional>
+#include <unordered_map>
 
 using namespace alienorum;
 bool horizon_terrain_cpu_reference = false;
 bool scenery_cpu_reference = false;
+bool water_cpu_reference = false;
+static HorizonWaterStats water_stats;
+const HorizonWaterStats& horizon_water_stats() { return water_stats; }
 
 double jay, appmag, bloomrad, flare, theta, lmasslim, hz_y;
 ImVec2 xycoord;
@@ -5053,6 +5057,36 @@ struct GlintSource
     double b;
 };
 
+static Color water_light_color(CelestialObject* object)
+{
+    using Key = std::tuple<int, double, double, double, double>;
+    struct Entry
+    {
+        Key key;
+        Color color;
+    };
+    static std::unordered_map<CelestialObject*, Entry> colors;
+    const auto cls = object->typeclass();
+    const bool dynamic_wd = cls == class_star && static_cast<Star*>(object)->is_white_dwarf();
+    const Key key = {cls, object->BV_color, global_brightness, bv_correction, planet_bv_correction};
+    const auto found = colors.find(object);
+    if (!water_cpu_reference && !dynamic_wd && found != colors.end() && found->second.key == key)
+        return found->second.color;
+    ++water_stats.color_misses;
+    const Color original = cls == class_star
+        ? Color::color_from_star(0, static_cast<Star*>(object), object->BV_color)
+        : Color::color_from_magnitude_indices(0, object->BV_color + planet_bv_correction);
+    const double maximum = fmax(original.red, fmax(original.green, original.blue));
+    Color color(maximum > 0 ? original.red / maximum : 1,
+        maximum > 0 ? original.green / maximum : 1, maximum > 0 ? original.blue / maximum : 1);
+    if (!dynamic_wd)
+    {
+        if (colors.size() >= 64) colors.clear();
+        colors[object] = {key, color};
+    }
+    return color;
+}
+
 #if planetary_rain
 static CloudRainCover overhead_rain_cover;
 double norm_cloud, min_rain_intensity = 0.0, max_rain_intensity = 0;
@@ -5357,6 +5391,7 @@ void draw_local_rings()
 
 void draw_horizon()
 {
+    water_stats = {};
     // Horizon
     // TODO: Generate a fictitious skyline.
     // See find_horizon() for why the whereami test has to be here as well as the view_mode one.
@@ -6372,10 +6407,11 @@ void draw_horizon()
             if (gpu_ground) queue_horizon_ground_gpu(std::move(gpu_rectangles));
         }
 
-        if (surface_water && !faded)
+        if (surface_water && !faded && screen_w > 0)
         {
             double wave_t = ImGui::GetTime();
-            std::vector<GlintSource> glint_sources;
+            static std::vector<GlintSource> glint_sources;
+            glint_sources.clear();
             CelestialObject *sun_obj = mycenobj ? mycenobj : (whereami >= 0 ? cels[whereami]->get_light_center() : nullptr);
             if (sun_obj)
             {
@@ -6450,14 +6486,10 @@ void draw_horizon()
                     low_factor = (WAVE_GLINT_LOW_SUN_ELEV - elev) / WAVE_GLINT_LOW_SUN_ELEV * 2.0;
                 }
 
-                cel_obj_class obj_cls = cels[ci]->typeclass();
-                Color objcol = obj_cls == class_star
-                    ? Color::color_from_star(0, (Star*)cels[ci], cels[ci]->BV_color)
-                    : Color::color_from_magnitude_indices(0, cels[ci]->BV_color + planet_bv_correction);
-                double max_comp = fmax(objcol.red, fmax(objcol.green, objcol.blue));
-                double br = (max_comp > 0.0) ? (objcol.red / max_comp) : 1.0;
-                double bg = (max_comp > 0.0) ? (objcol.green / max_comp) : 1.0;
-                double bb = (max_comp > 0.0) ? (objcol.blue / max_comp) : 1.0;
+                const Color objcol = water_light_color(cels[ci]);
+                double br = objcol.red;
+                double bg = objcol.green;
+                double bb = objcol.blue;
 
                 double warm_r = fmin(255.0, br * 180.0 + 50.0 * low_factor);
                 double warm_g = fmax(0.0, bg * 160.0 - 10.0 * low_factor);
@@ -6524,134 +6556,276 @@ void draw_horizon()
                 delta_far = delta_near - 0.001;
             }
 
-            int num_wave_rows = WAVE_NUM_ROWS;
-            for (int wr_i = 1; wr_i <= num_wave_rows; wr_i++)
+            struct WavePoint
             {
-                double u = (num_wave_rows > 1)
-                    ? (wr_i - 1.0 + WAVE_PERSPECTIVE_OFFSET) / (num_wave_rows - 1.0 + WAVE_PERSPECTIVE_OFFSET)
-                    : 1.0;
-                double blend = pow(1.0 - u, WAVE_PERSPECTIVE_EXP);
-                double delta = delta_far + (delta_near - delta_far) * blend;
-                const double slope = tan(delta);
-                const double curvature = 0.5 / surface_radius - surface_lift / surface_range;
-                const double root = sqrt(fmax(0.0, slope * slope - 4.0 * curvature * surface_eye));
-                const double dist_m = slope + root > 0
-                    ? fmin(surface_range, 2.0 * surface_eye / (slope + root)) : surface_range;
+                double wx = 0, wy = 0, u_world = 0, v_world = 0, amplitude = 0;
+                int column = 0;
+                bool visible = false;
+            };
+            struct WaveSpan
+            {
+                size_t first, last;
+                bool uniform = false;
+                SurfaceSampler::Sample value;
+            };
+            struct WaveRow
+            {
+                double distance = 0;
+                std::vector<WavePoint> points;
+                std::vector<WaveSpan> spans;
+            };
+            static std::vector<WaveRow> wave_rows;
+            auto wave_key = std::make_tuple(whereami, R_planet, surface_radius, surface_eye, surface_lift,
+                surface_range, delta_far, delta_near, azimuth, altitude, zoom, dispcx, dispcy, screen_w);
+            static decltype(wave_key) saved_wave_key;
+            static bool wave_valid = false;
+            const bool rebuild_geometry = water_cpu_reference || !wave_valid || wave_key != saved_wave_key;
+            int num_wave_rows = WAVE_NUM_ROWS;
+            if (rebuild_geometry)
+            {
+                ++water_stats.geometry_builds;
+                wave_rows.resize(num_wave_rows);
+                for (int wr_i = 1; wr_i <= num_wave_rows; ++wr_i)
+                {
+                    WaveRow& row = wave_rows[wr_i - 1];
+                    double u = (num_wave_rows > 1)
+                        ? (wr_i - 1.0 + WAVE_PERSPECTIVE_OFFSET) / (num_wave_rows - 1.0 + WAVE_PERSPECTIVE_OFFSET)
+                        : 1.0;
+                    double blend = pow(1.0 - u, WAVE_PERSPECTIVE_EXP);
+                    double delta = delta_far + (delta_near - delta_far) * blend;
+                    const double slope = tan(delta);
+                    const double curvature = 0.5 / surface_radius - surface_lift / surface_range;
+                    const double root = sqrt(fmax(0.0, slope * slope - 4.0 * curvature * surface_eye));
+                    row.distance = slope + root > 0
+                        ? fmin(surface_range, 2.0 * surface_eye / (slope + root)) : surface_range;
+                    const int num_steps = WAVE_STEPS_PER_ROW;
+                    const double step_angle = (0.9 / fmax(0.3, zoom)) / (double)num_steps;
+                    const double row_offset = (wr_i % 2 == 1) ? (0.5 * step_angle) : 0.0;
+                    row.points.resize(num_steps * 2 + 1);
+                    for (int si = -num_steps; si <= num_steps; ++si)
+                    {
+                        WavePoint& sample = row.points[si + num_steps];
+                        const double th_rel = si * step_angle + row_offset;
+                        const double th_world = azimuth + th_rel;
+                        Point pt_w = rotate3D(zaxis, center, xaxis, delta);
+                        pt_w = rotate3D(pt_w, center, yaxis, th_world);
+                        Cartesian2D cart(pt_w, azimuth, altitude, zoom);
+                        sample.wx = cart.x * dispcx + dispcx;
+                        sample.wy = cart.y * dispcx + dispcy;
+                        sample.visible = cart.x >= -1e10 && sample.wx >= -20 && sample.wx <= dispcx * 2 + 20
+                            && sample.wy >= -20 && sample.wy <= dispcy * 2 + 20;
+                        sample.column = sample.visible
+                            ? static_cast<int>(std::clamp(round(sample.wx), 0.0, double(screen_w - 1))) : 0;
+                        sample.u_world = row.distance * sin(th_world);
+                        sample.v_world = row.distance * cos(th_world);
+                        sample.amplitude = fmax(0.5, fmin(4.5,
+                            (0.04 / fmax(1.0, row.distance * 0.1)) * dispcx * zoom));
+                    }
+                }
+                saved_wave_key = wave_key;
+                wave_valid = true;
+            }
 
-                int num_steps = WAVE_STEPS_PER_ROW;
-                double step_angle = (0.9 / fmax(0.3, zoom)) / (double)num_steps;
-                double row_offset = (wr_i % 2 == 1) ? (0.5 * step_angle) : 0.0;
+            auto bounds_key = std::make_tuple(viewer_lat, viewer_lon, map, map ? map->gen : 0u,
+                map && map->is_complete(), generating_fic_texture, water_favorable, surface_biomes,
+                ocean_world, p ? p->has_water : 0.0f, cel->type, terrain_mesh, shore_displacement,
+                p ? p->vegetation_r : 0, p ? p->vegetation_g : 0, p ? p->vegetation_b : 0, water_cpu_reference);
+            static decltype(bounds_key) saved_bounds_key;
+            static std::vector<double> saved_wave_horizon;
+            static unsigned int saved_clipped = 0, saved_land = 0;
+            const bool rebuild_bounds = rebuild_geometry || bounds_key != saved_bounds_key
+                || saved_wave_horizon.size() != static_cast<size_t>(screen_w)
+                || !std::equal(saved_wave_horizon.begin(), saved_wave_horizon.end(), min_hz_y_at_x.begin());
+            if (rebuild_bounds)
+            {
+                ++water_stats.bounds_builds;
+                saved_clipped = saved_land = 0;
+                // Surface coordinates use the base intersection or the mesh's radial distance.
+                // Double its farthest row to cover the CPU raster tolerance; larger domains retain all spans.
+                const double farthest = terrain_mesh
+                    ? fmin(fmax(60000.0, surface_range * 8.0), surface_radius * .15) : surface_range;
+                const double maximum_distance = 2 * std::max(surface_range, farthest);
+                const bool certify_land = !water_cpu_reference && maximum_distance <= 1e6
+                    && maximum_distance <= _pi * surface_radius;
+                for (auto& row : wave_rows)
+                {
+                    row.spans.clear();
+                    size_t first = 0;
+                    while (first < row.points.size())
+                    {
+                        const auto eligible = [&](size_t i)
+                        {
+                            const auto& point = row.points[i];
+                            return point.visible && point.wy >= min_hz_y_at_x[point.column] - 2.0;
+                        };
+                        if (!eligible(first))
+                        {
+                            ++saved_clipped;
+                            ++first;
+                            continue;
+                        }
+                        size_t last = first + 1;
+                        while (last < row.points.size() && last - first < 16 && eligible(last)) ++last;
+                        bool land = false, uniform = false;
+                        SurfaceSampler::Sample value;
+                        if (certify_land)
+                        {
+                            double left = 1e100, right = -1e100, top = 1e100, bottom = -1e100;
+                            for (size_t i = first; i < last; ++i)
+                            {
+                                const auto& point = row.points[i];
+                                const double point_bottom = std::max(point.wy + point.amplitude, min_hz_y_at_x[point.column]);
+                                const double point_top = std::min(point.wy - point.amplitude, min_hz_y_at_x[point.column]);
+                                // Connecting endpoints are stored as floats by ImGui.
+                                const double guard = 16 * 1.1920929e-7
+                                    * (1 + fabs(point.wx) + fabs(point_top) + fabs(point_bottom) + dispcx + dispcy);
+                                left = std::min(left, point.wx - guard);
+                                right = std::max(right, point.wx + guard);
+                                top = std::min(top, point_top - guard);
+                                bottom = std::max(bottom, point_bottom + guard);
+                            }
+                            double low = _pi, high = -_pi;
+                            const double north_top = cos(altitude) - (dispcy - top) / (zoom * dispcx) * sin(altitude);
+                            const double north_bottom = cos(altitude) - (dispcy - bottom) / (zoom * dispcx) * sin(altitude);
+                            bool certain = !(left <= dispcx && right >= dispcx
+                                && std::min(north_top, north_bottom) <= 0 && std::max(north_top, north_bottom) >= 0);
+                            for (double sx : {left, right})
+                            {
+                                for (double north : {north_top, north_bottom})
+                                {
+                                    const double bearing = atan2((sx - dispcx) / (zoom * dispcx), north);
+                                    low = std::min(low, bearing);
+                                    high = std::max(high, bearing);
+                                    certain &= std::isfinite(bearing);
+                                }
+                            }
+                            if (certain && high - low < half_pi)
+                            {
+                                const auto middle = surface_coord(maximum_distance * .5, azimuth + (low + high) * .5);
+                                const double angle = maximum_distance * (.5 + (high - low) * .5) / surface_radius + 1e-10;
+                                uniform = surface.uniform_sample(middle.first, middle.second, angle, value);
+                                land = uniform && !value.water;
+                            }
+                        }
+                        if (land) saved_land += last - first;
+                        else if (!uniform && !row.spans.empty() && !row.spans.back().uniform
+                            && row.spans.back().last == first) row.spans.back().last = last;
+                        else row.spans.push_back({first, last, uniform, value});
+                        first = last;
+                    }
+                }
+                saved_bounds_key = bounds_key;
+                saved_wave_horizon = min_hz_y_at_x;
+            }
+            water_stats.clipped_points = saved_clipped;
+            water_stats.land_points = saved_land;
+            for (const auto& row : wave_rows)
+            {
+                const double dist_m = row.distance;
                 ImVec2 prev_pt;
                 bool has_prev = false;
-
-                for (int si = -num_steps; si <= num_steps; si++)
+                size_t previous_end = 0;
+                for (const auto& span : row.spans)
                 {
-                    double th_rel = si * step_angle + row_offset;
-                    double th_world = azimuth + th_rel;
-
-                    Point pt_w = rotate3D(zaxis, center, xaxis, delta);
-                    pt_w = rotate3D(pt_w, center, yaxis, th_world);
-                    Cartesian2D cart(pt_w, azimuth, altitude, zoom);
-
-                    if (cart.x < -1e10)
+                    if (span.first != previous_end) has_prev = false;
+                    previous_end = span.last;
+                    for (size_t si = span.first; si < span.last; ++si)
                     {
-                        has_prev = false;
-                        continue;
-                    }
+                        const auto& sample = row.points[si];
+                        const double wx = sample.wx;
+                        double wy = sample.wy;
+                        const int ix_lookup = sample.column;
+                        const double u_world = sample.u_world;
+                        const double v_world = sample.v_world;
+                        double phi1 = 0.6 * u_world + 0.3 * v_world - 2.4 * wave_t;
+                        double phi2 = -0.3 * u_world + 0.7 * v_world - 1.8 * wave_t;
+                        double wave_val = 0.6 * sin(phi1) + 0.4 * sin(phi2);
 
-                    double wx = cart.x * dispcx + dispcx;
-                    double wy = cart.y * dispcx + dispcy;
+                        double amp_px = sample.amplitude;
+                        wy += wave_val * amp_px;
+                        if (wy < min_hz_y_at_x[ix_lookup])
+                        {
+                            wy = min_hz_y_at_x[ix_lookup];
+                        }
 
-                    if (wx < -20.0 || wx > dispcx * 2 + 20.0 || wy < -20.0 || wy > dispcy * 2 + 20.0)
-                    {
-                        has_prev = false;
-                        continue;
-                    }
-
-                    int ix_lookup = fmax(0, fmin(screen_w - 1, (int)round(wx)));
-                    if (wy < min_hz_y_at_x[ix_lookup] - 2.0)
-                    {
-                        has_prev = false;
-                        continue;
-                    }
-
-                    double u_world = dist_m * sin(th_world);
-                    double v_world = dist_m * cos(th_world);
-
-                    double phi1 = 0.6 * u_world + 0.3 * v_world - 2.4 * wave_t;
-                    double phi2 = -0.3 * u_world + 0.7 * v_world - 1.8 * wave_t;
-                    double wave_val = 0.6 * sin(phi1) + 0.4 * sin(phi2);
-
-                    double amp_px = fmax(0.5, fmin(4.5, (0.04 / fmax(1.0, dist_m * 0.1)) * dispcx * zoom));
-                    wy += wave_val * amp_px;
-                    if (wy < min_hz_y_at_x[ix_lookup])
-                    {
-                        wy = min_hz_y_at_x[ix_lookup];
-                    }
-
-                    const auto coord = ground_coord(wx, wy);
-                    const auto wave_sample = surface.sample(coord.first, coord.second);
-                    if (!wave_sample.water)
-                    {
-                        has_prev = false;
-                        continue;
-                    }
-                    const RGB3 wave_rgb = wave_sample.color;
-
-                    ImVec2 cur_pt(wx, wy);
-
-                    // When light sources are low on the horizon, expand glint reflections
-                    double min_crest = 0.25 - 0.20 * fmin(2.0, max_low_factor);
-                    if (has_prev && wave_val > min_crest)
-                    {
-                        const auto midpoint = ground_coord((wx + prev_pt.x) * 0.5, (wy + prev_pt.y) * 0.5);
-                        if (!water_at(midpoint.first, midpoint.second))
+                        SurfaceSampler::Sample wave_sample;
+                        if (span.uniform)
+                        {
+                            wave_sample = span.value;
+                            ++water_stats.uniform_water_points;
+                        }
+                        else
+                        {
+                            const auto coord = ground_coord(wx, wy);
+                            ++water_stats.samples;
+                            wave_sample = surface.sample(coord.first, coord.second);
+                        }
+                        if (!wave_sample.water)
                         {
                             has_prev = false;
                             continue;
                         }
-                        double crest_fac = (wave_val - min_crest) / (1.0 - min_crest);
-                        int cr = fmin(255.0, is_day * wave_rgb.r * 0.5 + 40.0 * crest_fac);
-                        int cg = fmin(255.0, is_day * wave_rgb.g * 0.7 + 60.0 * crest_fac);
-                        int cb = fmin(255.0, is_day * wave_rgb.b * 0.95 + 75.0 * crest_fac);
-                        int ca = (int)(90.0 + 130.0 * crest_fac);
+                        const RGB3 wave_rgb = wave_sample.color;
 
-                        if (!glint_sources.empty())
+                        ImVec2 cur_pt(wx, wy);
+
+                        // When light sources are low on the horizon, expand glint reflections
+                        double min_crest = 0.25 - 0.20 * fmin(2.0, max_low_factor);
+                        if (has_prev && wave_val > min_crest)
                         {
-                            double sparkle1 = 0.5 + 0.5 * sin(12.0 * u_world - 5.0 * wave_t);
-                            double sparkle2 = 0.5 + 0.5 * sin(24.0 * u_world + 7.0 * v_world - 8.0 * wave_t);
-                            double sparkle = 0.6 * sparkle1 + 0.4 * sparkle2;
-
-                            for (const auto &gsrc : glint_sources)
+                            if (!span.uniform || si == span.first)
                             {
-                                double dx_src = fabs(wx - gsrc.screen_x);
-                                double base_w = dispcx * fmax(0.04, fmin(0.20, 0.06 + 0.3 / fmax(1.0, dist_m * 0.1)));
-                                double glint_w = base_w * (1.0 + 1.2 * gsrc.low_factor);
-                                if (dx_src < glint_w * 2.5)
+                                const auto midpoint = ground_coord((wx + prev_pt.x) * 0.5, (wy + prev_pt.y) * 0.5);
+                                ++water_stats.samples;
+                                if (!water_at(midpoint.first, midpoint.second))
                                 {
-                                    double g_factor = exp(-pow(dx_src / glint_w, 2.0));
-                                    double sparkle_thresh = 0.50 - 0.25 * gsrc.low_factor;
-                                    if (sparkle > sparkle_thresh)
-                                    {
-                                        double low_boost = 1.0 + 0.8 * gsrc.low_factor;
-                                        double sp_int = (sparkle - sparkle_thresh) / (1.0 - sparkle_thresh);
+                                    has_prev = false;
+                                    continue;
+                                }
+                            }
+                            double crest_fac = (wave_val - min_crest) / (1.0 - min_crest);
+                            int cr = fmin(255.0, is_day * wave_rgb.r * 0.5 + 40.0 * crest_fac);
+                            int cg = fmin(255.0, is_day * wave_rgb.g * 0.7 + 60.0 * crest_fac);
+                            int cb = fmin(255.0, is_day * wave_rgb.b * 0.95 + 75.0 * crest_fac);
+                            int ca = (int)(90.0 + 130.0 * crest_fac);
 
-                                        cr = fmin(255.0, cr + g_factor * gsrc.r * sp_int * low_boost * gsrc.intensity);
-                                        cg = fmin(255.0, cg + g_factor * gsrc.g * sp_int * low_boost * gsrc.intensity);
-                                        cb = fmin(255.0, cb + g_factor * gsrc.b * sp_int * low_boost * gsrc.intensity);
-                                        ca = fmin(255.0, ca + g_factor * 130.0 * low_boost * gsrc.intensity);
+                            if (!glint_sources.empty())
+                            {
+                                double sparkle1 = 0.5 + 0.5 * sin(12.0 * u_world - 5.0 * wave_t);
+                                double sparkle2 = 0.5 + 0.5 * sin(24.0 * u_world + 7.0 * v_world - 8.0 * wave_t);
+                                double sparkle = 0.6 * sparkle1 + 0.4 * sparkle2;
+
+                                for (const auto &gsrc : glint_sources)
+                                {
+                                    double dx_src = fabs(wx - gsrc.screen_x);
+                                    double base_w = dispcx * fmax(0.04, fmin(0.20, 0.06 + 0.3 / fmax(1.0, dist_m * 0.1)));
+                                    double glint_w = base_w * (1.0 + 1.2 * gsrc.low_factor);
+                                    if (dx_src < glint_w * 2.5)
+                                    {
+                                        double g_factor = exp(-pow(dx_src / glint_w, 2.0));
+                                        double sparkle_thresh = 0.50 - 0.25 * gsrc.low_factor;
+                                        if (sparkle > sparkle_thresh)
+                                        {
+                                            double low_boost = 1.0 + 0.8 * gsrc.low_factor;
+                                            double sp_int = (sparkle - sparkle_thresh) / (1.0 - sparkle_thresh);
+
+                                            cr = fmin(255.0, cr + g_factor * gsrc.r * sp_int * low_boost * gsrc.intensity);
+                                            cg = fmin(255.0, cg + g_factor * gsrc.g * sp_int * low_boost * gsrc.intensity);
+                                            cb = fmin(255.0, cb + g_factor * gsrc.b * sp_int * low_boost * gsrc.intensity);
+                                            ca = fmin(255.0, ca + g_factor * 130.0 * low_boost * gsrc.intensity);
+                                        }
                                     }
                                 }
                             }
+
+                            ImU32 w_col = rgba_apply_redlight(IM_COL32(cr, cg, cb, ca));
+                            float line_th = fmax(1.0f, (float)(1.5 / fmax(1.0, dist_m * 0.1)));
+                            ImGui::GetBackgroundDrawList()->AddLine(prev_pt, cur_pt, w_col, line_th);
                         }
 
-                        ImU32 w_col = rgba_apply_redlight(IM_COL32(cr, cg, cb, ca));
-                        float line_th = fmax(1.0f, (float)(1.5 / fmax(1.0, dist_m * 0.1)));
-                        ImGui::GetBackgroundDrawList()->AddLine(prev_pt, cur_pt, w_col, line_th);
+                        prev_pt = cur_pt;
+                        has_prev = (wave_val > min_crest * 0.8);
                     }
-
-                    prev_pt = cur_pt;
-                    has_prev = (wave_val > min_crest * 0.8);
                 }
             }
 

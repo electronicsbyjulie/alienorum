@@ -56,6 +56,17 @@ SurfaceSampler::Sample SurfaceSampler::sample(double latitude, double longitude)
     return {value.first, value.second, water_sample(value), vegetation};
 }
 
+bool SurfaceSampler::uniform_sample(double latitude, double longitude, double angle, Sample& result)
+{
+    RGB3 color;
+    if (!map || !map->is_complete() || generating_fic_texture || !std::isfinite(angle) || angle < 0
+        || !map->color_within_cap(latitude, longitude, angle + (biomes ? bound : 0), color, true)) return false;
+    const auto value = std::make_pair(color, map->material_at(latitude, longitude));
+    result = {color, value.second, water_sample(value), value.second == SurfaceMaterial::unknown
+        ? vegetation_color(color) : value.second == SurfaceMaterial::vegetation};
+    return true;
+}
+
 bool SurfaceSampler::water_sample(const std::pair<RGB3, SurfaceMaterial> &sample) const
 {
     if (!water) return false;

@@ -22,8 +22,8 @@ namespace alienorum
         struct Sample
         {
             RGB3 color;
-            SurfaceMaterial material;
-            bool water, vegetation;
+            SurfaceMaterial material = SurfaceMaterial::unknown;
+            bool water = false, vegetation = false;
         };
         struct WaterPatch
         {
@@ -35,6 +35,7 @@ namespace alienorum
         SurfaceSampler(Planet *body, Map *surface, SurfaceBiomes &noise, double world_radius, double displacement);
         std::pair<RGB3, SurfaceMaterial> info(double latitude, double longitude);
         Sample sample(double latitude, double longitude);
+        bool uniform_sample(double latitude, double longitude, double angle, Sample& result);
         RGB3 color_at(double latitude, double longitude) { return info(latitude, longitude).first; }
         bool vegetation_color(const RGB3 &sample) const;
         bool vegetation_at(double latitude, double longitude);

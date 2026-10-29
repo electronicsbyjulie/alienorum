@@ -266,6 +266,7 @@ class RenderingRegressionTest : public UniverseFixture
         set(horizon_terrain_cpu_reference, false);
         set(scenery_gpu_reference, true);
         set(scenery_cpu_reference, false);
+        set(water_cpu_reference, false);
         ImGui::GetIO().DisplaySize = ImVec2(192, 108);
         ImGui::GetIO().DeltaTime = 1.0f / 60;
         ImGui_ImplOpenGL3_NewFrame();
@@ -4701,4 +4702,205 @@ TEST_F(RenderingRegressionTest, InstancedForestMatchesTheReferenceDuringTravelAn
     SDL_SetWindowSize(window, 192, 108);
     ImGui::GetIO().DisplaySize = ImVec2(192, 108);
     ImGui::NewFrame();
+}
+
+TEST_F(RenderingRegressionTest, UniformSurfaceCertificatesAgreeWithDetailedSamples)
+{
+    Planet* world = surface(true);
+    SurfaceBiomes field(123);
+    int certificates = 0;
+    for (int kind = 0; kind < 4; ++kind)
+    {
+        delete world->surf_map;
+        world->surf_map = kind == 0 ? static_cast<Map*>(new CoastalTestMap())
+            : static_cast<Map*>(new BlueBiomeTestMap(static_cast<SurfaceMaterial>(kind)));
+        for (double radius : {5000.0, earth_radius})
+        {
+            SurfaceSampler sampler(world, world->surf_map, field, radius, shore_displacement);
+            for (double latitude : {-.3, 0.0, .3, half_pi - 1e-8})
+            {
+                SurfaceSampler::Sample uniform;
+                if (!sampler.uniform_sample(latitude, .3, .01, uniform)) continue;
+                ++certificates;
+                for (int i = 0; i < 40; ++i)
+                {
+                    const double lat = std::clamp(latitude + .004 * sin(i), -half_pi, half_pi);
+                    const auto sample = sampler.sample(lat, .3 + .004 * cos(i));
+                    EXPECT_EQ(sample.color.r, uniform.color.r);
+                    EXPECT_EQ(sample.color.g, uniform.color.g);
+                    EXPECT_EQ(sample.color.b, uniform.color.b);
+                    EXPECT_EQ(sample.material, uniform.material);
+                    EXPECT_EQ(sample.water, uniform.water);
+                    EXPECT_EQ(sample.vegetation, uniform.vegetation);
+                }
+            }
+        }
+    }
+    EXPECT_GT(certificates, 10);
+}
+
+TEST_F(RenderingRegressionTest, CachedWaveGeometryAndWaterSpansPreserveAnimatedCoasts)
+{
+    Planet* world = surface(true);
+    const auto original_type = world->type;
+    for (int kind = 0; kind < 6; ++kind)
+    {
+        world->type = kind == 4 ? waterworld : kind == 5 ? hycean : original_type;
+        delete world->surf_map;
+        world->surf_map = (kind == 0 || kind >= 4) ? static_cast<Map*>(new BlueBiomeTestMap(SurfaceMaterial::water))
+            : kind == 1 ? static_cast<Map*>(new BlueBiomeTestMap(SurfaceMaterial::ground))
+            : kind == 2 ? static_cast<Map*>(new CoastalTestMap()) : static_cast<Map*>(new MountainBandsTestMap());
+        for (int step = 0; step < 8; ++step)
+        {
+            world->volumetric_mean_radius = step < 4 ? earth_radius : 5000;
+            viewer_lat = (step < 4 ? 0.0 : half_pi - 1e-7) + (step % 4) * .25 / earth_radius;
+            viewer_lon = _pi + step * .1 / earth_radius;
+            altitude = (step % 4 - 2) * .25;
+            azimuth = step * .7;
+            zoom = step % 3 == 0 ? .4 : step % 3 == 1 ? 1 : 3;
+            viewer_eye_height = step % 2 ? 1.75 : 10;
+            for (bool terrain : {false, true})
+            {
+                show_terrain = terrain;
+                water_cpu_reference = true;
+                freeze_surface_time();
+                ImGui::GetCurrentContext()->Time += step * 12345.67;
+                draw_horizon();
+                const auto expected = render();
+                ImGui::NewFrame();
+                water_cpu_reference = false;
+                freeze_surface_time();
+                ImGui::GetCurrentContext()->Time += step * 12345.67;
+                draw_horizon();
+                EXPECT_EQ(image_difference(render(), expected), 0) << kind << ", " << step << ", " << terrain;
+                ImGui::NewFrame();
+            }
+        }
+    }
+}
+
+TEST_F(RenderingRegressionTest, WaterCachesReuseGeometryAndInvalidateSurfaceCertificates)
+{
+    Planet* world = surface(true);
+    delete world->surf_map;
+    world->surf_map = new BlueBiomeTestMap(SurfaceMaterial::water);
+    show_terrain = false;
+    altitude = -.4;
+    const auto paint = [&](double time)
+    {
+        freeze_surface_time();
+        ImGui::GetCurrentContext()->Time = time;
+        draw_horizon();
+        const auto stats = horizon_water_stats();
+        render();
+        ImGui::NewFrame();
+        return stats;
+    };
+    paint(50);
+    const auto warm = paint(51);
+    EXPECT_EQ(warm.geometry_builds, 0u);
+    EXPECT_EQ(warm.bounds_builds, 0u);
+    EXPECT_GT(warm.uniform_water_points, 100u);
+    EXPECT_LT(warm.samples, warm.uniform_water_points);
+    viewer_lat += .25 / earth_radius;
+    const auto walking = paint(52);
+    EXPECT_EQ(walking.geometry_builds, 0u);
+    EXPECT_EQ(walking.bounds_builds, 1u);
+    viewer_lon += .25 / earth_radius;
+    EXPECT_EQ(paint(53).bounds_builds, 1u);
+    azimuth += .2;
+    EXPECT_EQ(paint(54).geometry_builds, 1u);
+    world->surf_map->touch_gen();
+    EXPECT_EQ(paint(55).bounds_builds, 1u);
+    delete world->surf_map;
+    world->surf_map = new BlueBiomeTestMap(SurfaceMaterial::ground);
+    const auto land = paint(56);
+    EXPECT_EQ(land.bounds_builds, 1u);
+    EXPECT_GT(land.land_points, 100u);
+    EXPECT_EQ(land.samples, 0u);
+    EXPECT_EQ(land.uniform_water_points, 0u);
+}
+
+TEST_F(RenderingRegressionTest, GlintColorCachePreservesPhotometricAndWhiteDwarfEdits)
+{
+    Planet* world = surface(true);
+    delete world->surf_map;
+    world->surf_map = new BlueBiomeTestMap(SurfaceMaterial::water);
+    show_terrain = false;
+    altitude = -.2;
+    surface_magnitudes.resize(32, 999);
+    vmag_cache = surface_magnitudes.data();
+    auto* reflector = make_planet(static_cast<Star*>(cels[0]), "Glint reflector");
+    auto* moon = new Moon();
+    moon->cenobj = cels[0];
+    append_cel(moon);
+    reflector->location.local_position = reflector->tmprel = Point(-3e9, 2e9, 1e10);
+    moon->location.local_position = moon->tmprel = Point(3e9, 2e9, 1e10);
+    surface_magnitudes[reflector->seqno] = -20;
+    surface_magnitudes[moon->seqno] = -20;
+    surface_magnitudes[1] = -20;
+    cels[1]->location.local_position = cels[1]->tmprel = Point(0, 2e10, 1e11);
+    for (int step = 0; step < 8; ++step)
+    {
+        cels[1]->BV_color = step * .3;
+        reflector->BV_color = step * .2;
+        moon->BV_color = step * -.1;
+        cels[1]->location.local_position = cels[1]->tmprel = Point(step % 2 ? 1.2e11 : 0, 2e10, 1e11);
+        set(global_brightness, 1.0 + step * .1);
+        set(bv_correction, step * .02);
+        auto* star = static_cast<Star*>(cels[1]);
+        strcpy(star->spectral_type, step < 4 ? "G2V" : "DA");
+        star->temperature = 4000 + step * 1000;
+        water_cpu_reference = true;
+        freeze_surface_time();
+        draw_horizon();
+        const auto reference_stats = horizon_water_stats();
+        EXPECT_GT(reference_stats.color_misses, 0u);
+        const auto expected = render();
+        ImGui::NewFrame();
+        water_cpu_reference = false;
+        freeze_surface_time();
+        draw_horizon();
+        const auto cached_stats = horizon_water_stats();
+        if (step < 4)
+        {
+            EXPECT_EQ(cached_stats.color_misses, 0u);
+        }
+        else
+        {
+            EXPECT_GT(cached_stats.color_misses, 0u);
+        }
+        EXPECT_EQ(image_difference(render(), expected), 0) << step;
+        ImGui::NewFrame();
+    }
+}
+
+TEST_F(RenderingRegressionTest, RetainedWaterCertificatesPreserveChangingAnimationPhases)
+{
+    Planet* world = surface(true);
+    delete world->surf_map;
+    world->surf_map = new BlueBiomeTestMap(SurfaceMaterial::water);
+    show_terrain = false;
+    altitude = -.4;
+    const double times[] = {0, .1, 2, 50, 1e6, 1e9};
+    std::vector<std::vector<unsigned char>> expected;
+    const auto paint = [&](double time)
+    {
+        freeze_surface_time();
+        ImGui::GetCurrentContext()->Time = time;
+        draw_horizon();
+        const auto pixels = render();
+        ImGui::NewFrame();
+        return pixels;
+    };
+    water_cpu_reference = true;
+    for (double time : times) expected.push_back(paint(time));
+    water_cpu_reference = false;
+    for (size_t i = 0; i < expected.size(); ++i)
+    {
+        EXPECT_EQ(image_difference(paint(times[i]), expected[i]), 0) << times[i];
+        EXPECT_GT(horizon_water_stats().uniform_water_points, 100u);
+        EXPECT_EQ(horizon_water_stats().geometry_builds, 0u);
+        EXPECT_EQ(horizon_water_stats().bounds_builds, i == 0 ? 1u : 0u);
+    }
 }

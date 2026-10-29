@@ -80,6 +80,13 @@
 #endif
 extern bool horizon_terrain_cpu_reference;
 extern bool scenery_cpu_reference;
+extern bool water_cpu_reference;
+struct HorizonWaterStats
+{
+    unsigned int geometry_builds = 0, bounds_builds = 0, samples = 0;
+    unsigned int clipped_points = 0, land_points = 0, uniform_water_points = 0, color_misses = 0;
+};
+const HorizonWaterStats& horizon_water_stats();
 
 struct RockInstance
 {
