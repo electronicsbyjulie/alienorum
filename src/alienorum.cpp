@@ -21,6 +21,7 @@
 #include "visuals.h"
 #include "sphere_impostor.h"
 #include "horizon_ground_gpu.h"
+#include "scenery_gpu.h"
 #include "horizon_terrain_gpu.h"
 #include "horizon_mesh_gpu.h"
 #include "classes/sscimport.h"
@@ -1302,6 +1303,7 @@ int main (int argc, char** argv)
     if (hdcache) delete[] hdcache;
     if (hipcache) delete[] hipcache;
 
+    alienorum::clear_scenery_gpu();
     alienorum::clear_horizon_ground_gpu();
     alienorum::clear_horizon_terrain_gpu();
     alienorum::clear_horizon_mesh_gpu();

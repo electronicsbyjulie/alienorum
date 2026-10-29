@@ -63,7 +63,7 @@ OBJS = $(IMGUI_OBJS)
 OBJS += $(addsuffix .o, $(addprefix $(OBJIGFD)/, $(basename $(notdir $(IGFD_SRC)))))
 OBJS += $(addsuffix .o, $(addprefix $(OBJINT)/, $(basename $(notdir $(CLASSES_SRC)))))
 OBJS += $(OBJINT)/fictionalstars_ui.o $(OBJINT)/globals.o $(OBJINT)/loaders.o $(OBJINT)/housekeeping.o $(OBJINT)/inputs.o \
-	$(OBJINT)/dialogs.o $(OBJINT)/visuals.o $(OBJINT)/gputex.o $(OBJINT)/sphere_impostor.o $(OBJINT)/sunclock_gpu.o $(OBJINT)/clouds_gpu.o $(OBJINT)/horizon_ground_gpu.o $(OBJINT)/horizon_terrain_gpu.o $(OBJINT)/horizon_mesh_gpu.o
+	$(OBJINT)/dialogs.o $(OBJINT)/visuals.o $(OBJINT)/gputex.o $(OBJINT)/sphere_impostor.o $(OBJINT)/sunclock_gpu.o $(OBJINT)/clouds_gpu.o $(OBJINT)/scenery_gpu.o $(OBJINT)/horizon_ground_gpu.o $(OBJINT)/horizon_terrain_gpu.o $(OBJINT)/horizon_mesh_gpu.o
 
 TESTS = $(addprefix $(BIN)/, $(basename $(notdir $(TESTS_SRC))))
 TEST_OBJS = $(addprefix $(OBJ)/tests/, $(notdir $(TESTS_SRC:.cpp=.o)))
@@ -331,3 +331,6 @@ $(OBJINT)/fictionalstars_ui.o: src/fictionalstars_ui.cpp
 
 $(BIN)/audit_fictional_population: tools/audit_fictional_population.cpp $(OBJS)
 	$(CPP) $< $(OBJS) $(CPPFLAGS) $(LIBS) -o $@
+
+$(OBJINT)/scenery_gpu.o: src/scenery_gpu.cpp
+	$(CPP) src/scenery_gpu.cpp $(CPPFLAGS) -c -o $(OBJINT)/scenery_gpu.o

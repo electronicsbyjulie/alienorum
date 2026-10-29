@@ -188,7 +188,18 @@ namespace alienorum
     // Keep a padded geographic patch across small steps; only its local projection changes.
     class SurfaceSceneryCache
     {
+        struct Chunk
+        {
+            size_t first = 0, last = 0;
+            std::array<double, 3> low, high;
+        };
         std::vector<SurfaceScenery> scenery;
+        std::vector<Chunk> chunks;
+        std::vector<size_t> candidates;
+        std::vector<size_t> projected_revision;
+        size_t pose_revision = 0;
+        bool fully_projected = false;
+        std::array<double, 3> current_observer, current_east, current_north;
         std::array<double, 3> anchor = {};
         double saved_radius = 0, saved_range = 0, saved_spacing = 0;
         double saved_latitude = NAN, saved_longitude = NAN;
@@ -197,13 +208,15 @@ namespace alienorum
 
         public:
         const std::vector<SurfaceScenery> &update(double radius, double latitude, double longitude,
-            double range, double spacing, std::uint64_t world)
+            double range, double spacing, std::uint64_t world, bool project_all = true)
         {
             if (!(radius > 0) || !(range > 0) || !(spacing > 0) || !std::isfinite(radius)
                 || !std::isfinite(range) || !std::isfinite(spacing)
                 || !std::isfinite(latitude) || !std::isfinite(longitude))
             {
                 scenery.clear();
+                chunks.clear();
+                projected_revision.clear();
                 saved_radius = 0;
                 ++revision;
                 return scenery;
@@ -220,6 +233,24 @@ namespace alienorum
                 || world != saved_world || offset_squared > padding * padding * .5625)
             {
                 scenery = surface_scenery(radius, latitude, longitude, range + padding, spacing, world);
+                projected_revision.assign(scenery.size(), 0);
+                chunks.clear();
+                for (size_t first = 0; first < scenery.size(); first += 64)
+                {
+                    Chunk chunk;
+                    chunk.first = first;
+                    chunk.last = std::min(first + 64, scenery.size());
+                    chunk.low = chunk.high = scenery[first].position;
+                    for (size_t i = first + 1; i < chunk.last; ++i)
+                    {
+                        for (int axis = 0; axis < 3; ++axis)
+                        {
+                            chunk.low[axis] = std::min(chunk.low[axis], scenery[i].position[axis]);
+                            chunk.high[axis] = std::max(chunk.high[axis], scenery[i].position[axis]);
+                        }
+                    }
+                    chunks.push_back(chunk);
+                }
                 std::copy(observer, observer + 3, anchor.begin());
                 saved_radius = radius;
                 saved_range = range;
@@ -230,25 +261,69 @@ namespace alienorum
             }
             if (latitude != saved_latitude || longitude != saved_longitude)
             {
+                ++pose_revision;
+                fully_projected = false;
                 const double east[] = {-sin(longitude), cos(longitude), 0};
                 const double north[] = {-sin(latitude) * cos(longitude), -sin(latitude) * sin(longitude), cos(latitude)};
-                for (size_t i = 0; i < scenery.size(); ++i)
-                {
-                    scenery[i].east = scenery[i].north = 0;
-                    for (int axis = 0; axis < 3; ++axis)
-                    {
-                        const double offset = radius * (scenery[i].position[axis] - observer[axis]);
-                        scenery[i].east += offset * east[axis];
-                        scenery[i].north += offset * north[axis];
-                    }
-                }
+                std::copy(observer, observer + 3, current_observer.begin());
+                std::copy(east, east + 3, current_east.begin());
+                std::copy(north, north + 3, current_north.begin());
                 saved_latitude = latitude;
                 saved_longitude = longitude;
+            }
+            if (project_all && !fully_projected)
+            {
+                for (size_t i = 0; i < scenery.size(); ++i) project(i);
+                fully_projected = true;
             }
             return scenery;
         }
 
         size_t generation() const { return revision; }
+
+        void project(size_t i)
+        {
+            if (projected_revision[i] == pose_revision) return;
+            projected_revision[i] = pose_revision;
+            scenery[i].east = scenery[i].north = 0;
+            for (int axis = 0; axis < 3; ++axis)
+            {
+                const double offset = saved_radius * (scenery[i].position[axis] - current_observer[axis]);
+                scenery[i].east += offset * current_east[axis];
+                scenery[i].north += offset * current_north[axis];
+            }
+        }
+
+        // Reject only a certified rear volume. Wide/pitched views and uncertain bounds retain it.
+        const std::vector<size_t>& visible(double azimuth, double pitch, double low_height,
+            double high_height, bool reference = false, bool project_candidates = true)
+        {
+            candidates.clear();
+            const double sa = sin(azimuth), ca = cos(azimuth), sp = sin(pitch), cp = cos(pitch);
+            std::array<double, 3> forward;
+            for (int axis = 0; axis < 3; ++axis)
+                forward[axis] = current_east[axis] * sa + current_north[axis] * ca;
+            for (const auto& chunk : chunks)
+            {
+                double low = 0, high = 0;
+                for (int axis = 0; axis < 3; ++axis)
+                {
+                    const double a = saved_radius * (chunk.low[axis] - current_observer[axis]) * forward[axis];
+                    const double b = saved_radius * (chunk.high[axis] - current_observer[axis]) * forward[axis];
+                    low += std::min(a, b);
+                    high += std::max(a, b);
+                }
+                const double z = std::max(low * cp, high * cp)
+                    + std::max(low_height * sp, high_height * sp);
+                if (!reference && std::isfinite(high) && std::isfinite(z) && high < -1e-5 && z < -1e-5) continue;
+                for (size_t i = chunk.first; i < chunk.last; ++i)
+                {
+                    if (project_candidates) project(i);
+                    candidates.push_back(i);
+                }
+            }
+            return candidates;
+        }
     };
 }
 

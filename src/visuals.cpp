@@ -8,6 +8,7 @@
 #include "gputex.h"
 #include "sunclock_gpu.h"
 #include "horizon_ground_gpu.h"
+#include "scenery_gpu.h"
 #include "horizon_terrain_gpu.h"
 #include "horizon_mesh_gpu.h"
 #include "classes/clouds_gpu.h"
@@ -25,6 +26,7 @@
 
 using namespace alienorum;
 bool horizon_terrain_cpu_reference = false;
+bool scenery_cpu_reference = false;
 
 double jay, appmag, bloomrad, flare, theta, lmasslim, hz_y;
 ImVec2 xycoord;
@@ -6943,7 +6945,7 @@ void draw_horizon()
                 const double scenery_range = has_plants ? std::max(PLANT_MAX_DIST, ROCK_MAX_DIST) : ROCK_MAX_DIST;
                 static SurfaceSceneryCache scenery_cache;
                 const auto &scenery = scenery_cache.update(R_planet, viewer_lat, viewer_lon,
-                    scenery_range + canopy_margin, scenery_spacing, static_cast<std::uint64_t>(whereami));
+                    scenery_range + canopy_margin, scenery_spacing, static_cast<std::uint64_t>(whereami), false);
                 auto scenery_key = std::make_tuple(whereami, scenery_cache.generation(), R_planet,
                     map ? map->gen : 0u, generating_fic_texture, water_favorable,
                     p ? p->has_water : 0.0f, p ? p->type : cel->type,
@@ -6961,6 +6963,7 @@ void draw_horizon()
                     std::vector<double> canopy_radii(scenery.size(), 0);
                     for (size_t index = 0; index < scenery.size(); index++)
                     {
+                        scenery_cache.project(index);
                         const auto &object = scenery[index];
                         const auto sample = surface.sample(object.latitude, object.longitude);
                         water[index] = sample.water;
@@ -6975,21 +6978,33 @@ void draw_horizon()
                 }
                 rocks.reserve(scenery.size());
 
+                const double bound_range = scenery_range + canopy_margin + 128;
+                const double bound_drop = bound_range * bound_range * (.5 / R_planet
+                    + fabs(horizon_lift_rad) / fmax(1.0, s_horizon));
+                const double bound_height = ROCK_MAX_SIZE * (p ? fabs(p->plant_trunk_height)
+                    + fabs(p->plant_crown_size * p->plant_crown_oblateness) : 1);
+                const auto& visible_scenery = scenery_cache.visible(azimuth, altitude,
+                    -h_eye - bound_drop - bound_height, bound_height + bound_drop, scenery_cpu_reference, false);
+
                 // Sedentary lifeforms when is_vegetation is true, otherwise surface rocks.
-                for (size_t index = 0; index < scenery.size(); index++)
+                for (size_t index : visible_scenery)
                 {
-                    const SurfaceScenery &object = scenery[index];
                     if (water[index] || !canopy_clear[index])
                     {
                         continue;
                     }
+                    scenery_cache.project(index);
+                    const SurfaceScenery &object = scenery[index];
                     const bool is_vegetation = plant[index];
                     const double rock_aspect = (is_vegetation && p)
                         ? (p->plant_trunk_height + p->plant_crown_size * p->plant_crown_oblateness)
                         : (is_lava ? ROCK_ASPECT_LAVA : (is_venus ? ROCK_ASPECT_VENUS : (is_icy ? ROCK_ASPECT_ICY : ROCK_ASPECT_DEFAULT)));
 
                     const uint32_t rhash = object.seed;
-                    const double theta_world = atan2(object.east, object.north);
+                    const double squared_distance = object.east * object.east + object.north * object.north;
+                    const double limit = is_vegetation ? PLANT_MAX_DIST : ROCK_MAX_DIST;
+                    if (!scenery_cpu_reference && (squared_distance < .0025 - 1e-12
+                        || squared_distance > limit * limit + 1e-8)) continue;
                     const double dist_m = hypot(object.east, object.north);
                     double dist_ratio = dist_m / ROCK_MAX_DIST;
                     if (is_vegetation) dist_ratio *= 0.666;
@@ -7006,6 +7021,8 @@ void draw_horizon()
                     {
                         continue;
                     }
+
+                    const double theta_world = atan2(object.east, object.north);
 
                     double sx = 0.0;
                     double sy = 0.0;
@@ -7331,6 +7348,7 @@ void draw_horizon()
                     }
                 }
 
+                const bool gpu_plants = prepare_scenery_gpu();
                 ImDrawList *scenery_draw_list = ImGui::GetBackgroundDrawList();
                 auto fade_scenery = [&](int first_vertex, double opacity)
                 {
@@ -7355,6 +7373,7 @@ void draw_horizon()
                     double rw = rk.width;
                     double rh = rk.height;
 
+                    if (gpu_plants && !is_vegetation) flush_scenery_gpu();
                     if (rw < ROCK_PEBBLE_THRESH)
                     {
                         if (is_vegetation && rk.crown_hidden) continue;
@@ -7389,7 +7408,15 @@ void draw_horizon()
                         ImU32 peb_col = rgba_apply_redlight(IM_COL32(pr, pg, pb, 255));
                         double px = is_vegetation ? rk.crown_x : rx;
                         double py = is_vegetation ? rk.crown_y : (ry - rh * 0.5);
-                        ImGui::GetBackgroundDrawList()->AddCircleFilled(ImVec2(px, py), rw * 0.5f, peb_col);
+                        if (gpu_plants && is_vegetation)
+                        {
+                            SceneryPlantGpu plant;
+                            plant.crown = ImVec4(px, py, rw * .5f, rw * .5f);
+                            plant.crown_color = peb_col;
+                            plant.trunk_visible = 0;
+                            add_scenery_plant_gpu(plant, true, true);
+                        }
+                        else ImGui::GetBackgroundDrawList()->AddCircleFilled(ImVec2(px, py), rw * 0.5f, peb_col);
                         fade_scenery(first_vertex, rk.opacity);
                         continue;
                     }
@@ -7448,9 +7475,24 @@ void draw_horizon()
                         int cg = fmin(255.0, veg_base.g * tint_factor * crown_light);
                         int cb = fmin(255.0, veg_base.b * tint_factor * crown_light);
                         ImU32 crown_col = rgba_apply_redlight(IM_COL32(cr, cg, cb, 255));
+                        SceneryPlantGpu gpu_plant;
+                        gpu_plant.crown = ImVec4(cx, cy, crown_rx, crown_ry);
+                        gpu_plant.crown_color = crown_col;
+                        gpu_plant.trunk_color = trunk_col;
+                        if (rk.opacity < 1)
+                        {
+                            for (ImU32* color : {&gpu_plant.crown_color, &gpu_plant.trunk_color})
+                            {
+                                const ImU32 alpha = static_cast<ImU32>(((*color & IM_COL32_A_MASK)
+                                    >> IM_COL32_A_SHIFT) * rk.opacity);
+                                *color = (*color & ~IM_COL32_A_MASK) | (alpha << IM_COL32_A_SHIFT);
+                            }
+                        }
+                        gpu_plant.crown_visible = rk.crown_hidden ? 0 : 1;
+                        gpu_plant.trunk_visible = 0;
                         const auto draw_crown = [&]()
                         {
-                            if (rk.crown_hidden) return;
+                            if (rk.crown_hidden || gpu_plants) return;
                             draw_scenery_crown(scenery_draw_list,
                                 ImVec2(cx, cy),
                                 ImVec2((float)crown_rx, (float)crown_ry),
@@ -7472,10 +7514,17 @@ void draw_horizon()
                             trunk_pts[1] = ImVec2(top_x - nx * trunk_w_top * 0.38, top_y - ny * trunk_w_top * 0.38);
                             trunk_pts[2] = ImVec2(top_x + nx * trunk_w_top * 0.38, top_y + ny * trunk_w_top * 0.38);
                             trunk_pts[3] = ImVec2(bx + nx * trunk_w_bot * 0.50, by + ny * trunk_w_bot * 0.50);
-                            ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(trunk_pts, 4, trunk_col);
+                            if (gpu_plants)
+                            {
+                                std::copy(trunk_pts, trunk_pts + 4, gpu_plant.trunk);
+                                gpu_plant.trunk_visible = 1;
+                            }
+                            else ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(trunk_pts, 4, trunk_col);
                         }
 
                         if (!rk.crown_above_eye) draw_crown();
+                        if (gpu_plants && (gpu_plant.crown_visible || gpu_plant.trunk_visible))
+                            add_scenery_plant_gpu(gpu_plant, rk.crown_above_eye);
                     }
                     else if (is_venus)
                     {
@@ -7781,6 +7830,7 @@ void draw_horizon()
                     }
                     fade_scenery(first_vertex, rk.opacity);
                 }
+                if (gpu_plants) flush_scenery_gpu();
             }
         }
 
