@@ -1,5 +1,6 @@
 #include "universe_fixture.h"
 #include "../background_file.h"
+#include "../snapshot_io.h"
 #include "../performance_options.h"
 #include <chrono>
 #include <cstdlib>
@@ -22,6 +23,8 @@ class IoPerformanceTest : public UniverseFixture
     }
     void TearDown() override
     {
+        snapshot_writer().finish();
+        layout_writer().finish();
         Serialization::finish_file_saves();
         delete_the_universe();
         std::error_code error;
@@ -113,22 +116,27 @@ TEST_F(IoPerformanceTest, PairedProductionPaths)
 #ifdef ALIENORUM_PERFORMANCE_FIXED
     std::cout << "PERF comparison: fixed\n";
 #endif
-    for (int i = 0; i < 5000; ++i)
+    const bool png_case = std::getenv("ALIENORUM_PERF_CASES") && std::string(std::getenv("ALIENORUM_PERF_CASES")) == "95";
+    std::vector<unsigned char> pixels(1280 * 720 * 3);
+    for (size_t i = 0; i < pixels.size(); ++i) pixels[i] = (i * 31 + i / 997) & 255;
+    for (int i = 0; i < (png_case ? 0 : 5000); ++i)
     {
         const auto name = "Synthetic " + std::to_string(i);
         auto* star = make_star(name.c_str());
         star->user_added = true;
         star->location.local_position = Point(i * light_year, i * .3 * light_year, i * .7 * light_year);
     }
-    const auto path = directory / "benchmark.json";
+    const auto path = directory / (png_case ? "benchmark.png" : "benchmark.json");
     const int frames = std::getenv("ALIENORUM_PERF_FRAMES") ? std::max(1, atoi(std::getenv("ALIENORUM_PERF_FRAMES"))) : 4;
     double producer = 0, completion = 0;
     for (int i = -1; i < frames; ++i)
     {
         const auto start = std::chrono::steady_clock::now();
-        ASSERT_TRUE(Serialization::save_file(path.string(), cels, true, performance_enabled(94)));
+        if (png_case) ASSERT_TRUE(save_snapshot_pixels(path.string(), 1280, 720, pixels, PERF_P095));
+        else ASSERT_TRUE(Serialization::save_file(path.string(), cels, true, performance_enabled(94)));
         const auto returned = std::chrono::steady_clock::now();
-        ASSERT_TRUE(Serialization::finish_file_saves());
+        if (png_case) ASSERT_TRUE(snapshot_writer().finish());
+        else ASSERT_TRUE(Serialization::finish_file_saves());
         const auto finished = std::chrono::steady_clock::now();
         if (i >= 0)
         {
@@ -137,14 +145,57 @@ TEST_F(IoPerformanceTest, PairedProductionPaths)
         }
     }
     const auto bytes = contents(path);
-    ASSERT_EQ(bytes, Serialization::snapshot(cels, true).dump());
+    if (!png_case) ASSERT_EQ(bytes, Serialization::snapshot(cels, true).dump());
     std::ofstream csv(output);
     csv << "proposal,workload,round,order,before_ms,after_ms,change_percent,max_channel_error,before_cpu_ms,after_cpu_ms,before_max_ms,after_max_ms\n";
     csv << std::setprecision(12);
     for (const auto& sample : {std::make_pair("save-interactive", producer), std::make_pair("save-completion", completion)})
     {
-        csv << "94," << sample.first << ",0,AB," << sample.second << ',' << sample.second << ",0,0,0,0,,\n";
-        std::cout << "PERF IMAGE P94 " << sample.first << ' ' << hash(bytes) << '\n';
+        csv << (png_case ? "95," : "94,") << sample.first << ",0,AB," << sample.second << ',' << sample.second << ",0,0,0,0,,\n";
+        std::cout << (png_case ? "PERF IMAGE P95 " : "PERF IMAGE P94 ") << sample.first << ' ' << hash(bytes) << '\n';
     }
     std::cout << "PERF save objects: 5000; output bytes: " << bytes.size() << '\n';
+}
+
+TEST_F(IoPerformanceTest, SnapshotPixelsPreserveOrientationBytesAndOrderedOverwrite)
+{
+    const int width = 17, height = 9;
+    std::vector<unsigned char> pixels(width * height * 3);
+    for (size_t i = 0; i < pixels.size(); ++i) pixels[i] = (i * 37 + 13) & 255;
+    const auto old = directory / "original.png", path = directory / "snapshot.png";
+    ASSERT_TRUE(save_snapshot_pixels(old.string(), width, height, pixels, false));
+    ASSERT_TRUE(save_snapshot_pixels(path.string(), width, height, pixels, true));
+    ASSERT_TRUE(snapshot_writer().finish());
+    EXPECT_EQ(contents(old), contents(path));
+    png_image image{};
+    image.version = PNG_IMAGE_VERSION;
+    ASSERT_TRUE(png_image_begin_read_from_file(&image, path.string().c_str()));
+    image.format = PNG_FORMAT_RGB;
+    std::vector<unsigned char> decoded(PNG_IMAGE_SIZE(image));
+    ASSERT_TRUE(png_image_finish_read(&image, nullptr, decoded.data(), 0, nullptr));
+    png_image_free(&image);
+    for (int row = 0; row < height; ++row)
+        for (int column = 0; column < width * 3; ++column)
+            EXPECT_EQ(decoded[row * width * 3 + column], pixels[(height - row - 1) * width * 3 + column]);
+    ASSERT_TRUE(save_snapshot_pixels(path.string(), width, height, pixels, true));
+    std::fill(pixels.begin(), pixels.end(), 123);
+    ASSERT_TRUE(save_snapshot_pixels(path.string(), width, height, pixels, true));
+    ASSERT_TRUE(snapshot_writer().finish());
+    ASSERT_TRUE(save_snapshot_pixels(old.string(), width, height, pixels, false));
+    EXPECT_EQ(contents(old), contents(path));
+    EXPECT_FALSE(save_snapshot_pixels(path.string(), 0, height, {}, true));
+    EXPECT_FALSE(save_snapshot_pixels(path.string(), width, height, {}, true));
+    ASSERT_TRUE(save_snapshot_pixels((directory / "absent" / "image.png").string(), width, height, pixels, true));
+    EXPECT_FALSE(snapshot_writer().finish());
+}
+
+TEST_F(IoPerformanceTest, LayoutTextRetainsExactLatestSettings)
+{
+    const auto path = directory / "layout.ini";
+    std::string text = "[Window][Test]\nPos=24,35\nSize=700,400\nCollapsed=0\n";
+    ASSERT_TRUE(save_layout_text(path, text));
+    text += "\n[Window][Second]\nPos=10,20\nSize=200,300\nCollapsed=0\n";
+    ASSERT_TRUE(save_layout_text(path, text));
+    ASSERT_TRUE(layout_writer().finish());
+    EXPECT_EQ(contents(path), text);
 }

@@ -1043,3 +1043,36 @@ or faster-disk claim. Snapshot construction remains the dominant stall.
 Three lifecycle checks pass: immutable edits, ordered saves, failed publication
 with prior-file preservation/recovery, bounded capture and destructor completion.
 All 73 serialization checks pass; application builds. Manual acceptance remains separate.
+
+P095 — owned snapshot encoding and layout publication
+Parent: 08fda84. glReadPixels remains on the GL thread at the original capture
+point, before swap, with the original dimensions, RGB bytes and bottom-row-first
+readback. Workers own pixel vectors/absolute paths; libpng keeps original RGB,
+compression and reverse-row output. A bounded ordered writer prevents same-name
+captures from overtaking one another; shutdown waits, completion logs occur after
+publication, and failures are reported. C++ row storage is constructed before the
+libpng recovery point. No unrelated images are accessed.
+ImGui ordinarily writes settings after its five-second modification quiet period.
+Load the existing settings explicitly before disabling automatic disk writes,
+then capture SaveIniSettingsToMemory on the UI thread when requested; publish
+owned text through a separate bounded writer. Final settings are captured and
+flushed before context destruction. Ordinary unchanged frames queue no work.
+Five IO lifecycle/PNG/layout checks pass. PNG tests verify byte identity against
+the synchronous FILE pipeline, decoded odd-width row orientation, ordered repeated
+filenames, invalid input, failure and completion; layout bytes retain latest state.
+Application builds. Benchmark uses synthetic 1280x720 RGB data, no user files.
+Two constant-folded caller/inline-encoder binaries share identical application
+objects; baseline uses synchronous FILE encoding, candidate uses owned background
+encoding plus atomic publication. Nine AB/BA pairs per table, eight saves/sample,
+private temporary paths and complete exact PNG hashes. CPU fields are placeholders.
+This measures encoding/publication only: existing GL readback and synthetic pixel
+construction are outside it. It is not a complete screenshot latency/FPS result.
+PERFORMANCE_BENCHMARK_P095_FIXED_RESULTS.csv
+  save-completion: 48.892 -> 50.184 ms; +2.59% [+1.36%, +3.55%], slower.
+  save-interactive: 48.891 -> 0.747 ms; -98.47% [-98.52%, -98.35%], faster.
+PERFORMANCE_BENCHMARK_P095_CONFIRM_RESULTS.csv
+  save-completion: 49.002 -> 50.237 ms; +2.77% [+1.55%, +3.11%], slower.
+  save-interactive: 49.002 -> 0.770 ms; -98.42% [-98.58%, -98.35%], faster.
+Keep PERF_P095=1 for the repeated interaction gain, while explicitly recording
+the roughly 3% total-completion cost. Layout writing shares the safety mechanism;
+no independent layout-performance gain is claimed. No steady-state FPS claim.

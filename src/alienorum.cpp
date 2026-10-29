@@ -1,4 +1,5 @@
 #include "catalog_lock_trace.h"
+#include "snapshot_io.h"
 #include "fictionalstars_ui.h"
 
 #define _CRT_SECURE_NO_WARNINGS
@@ -111,72 +112,15 @@ bool LoadTextureFromFile(const char* file_name, GLuint* out_texture, int* out_wi
 }
 // End ImGui Example Code
 
-// Writes the just-rendered back buffer out as a PNG (same libpng plumbing as Map::save_to_png,
-// but sourced from glReadPixels). GL's row 0 is the bottom of the image, so rows go out in
-// reverse to come out right-side up.
+// Capture stays on the GL thread; the worker owns only RGB pixels and its path.
 bool save_snapshot_png(const std::string& filename, int width, int height)
 {
     if (width <= 0 || height <= 0) return false;
-
     establish_project_root();
-
-    std::vector<unsigned char> pixels(width * height * 3);
+    std::vector<unsigned char> pixels(size_t(width) * height * 3);
     glPixelStorei(GL_PACK_ALIGNMENT, 1);
     glReadPixels(0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, pixels.data());
-
-    FILE *fp = fopen(filename.c_str(), "wb");
-    if (!fp)
-    {
-        std::cerr << "Failed to open " << filename << " for writing." << std::endl;
-        return false;
-    }
-
-    png_structp png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
-    if (!png_ptr)
-    {
-        fclose(fp);
-        return false;
-    }
-
-    png_infop info_ptr = png_create_info_struct(png_ptr);
-    if (!info_ptr)
-    {
-        png_destroy_write_struct(&png_ptr, NULL);
-        fclose(fp);
-        return false;
-    }
-
-    if (setjmp(png_jmpbuf(png_ptr)))
-    {
-        png_destroy_write_struct(&png_ptr, &info_ptr);
-        fclose(fp);
-        return false;
-    }
-
-    png_init_io(png_ptr, fp);
-    png_set_IHDR(
-        png_ptr,
-        info_ptr,
-        width,
-        height,
-        8,                          // 8 bits per channel
-        PNG_COLOR_TYPE_RGB,
-        PNG_INTERLACE_NONE,
-        PNG_COMPRESSION_TYPE_DEFAULT,
-        PNG_FILTER_TYPE_DEFAULT
-    );
-
-    std::vector<png_bytep> row_pointers(height);
-    for (int y = 0; y < height; y++)
-        row_pointers[y] = &pixels[(size_t)(height - 1 - y) * width * 3];
-
-    png_write_info(png_ptr, info_ptr);
-    png_write_image(png_ptr, row_pointers.data());
-    png_write_end(png_ptr, NULL);
-
-    png_destroy_write_struct(&png_ptr, &info_ptr);
-    fclose(fp);
-    return true;
+    return alienorum::save_snapshot_pixels(filename, width, height, std::move(pixels));
 }
 
 int main (int argc, char** argv)
@@ -458,6 +402,13 @@ int main (int argc, char** argv)
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO(); (void)io;
+    std::filesystem::path layout_path;
+    if (PERF_P095 && io.IniFilename)
+    {
+        layout_path = std::filesystem::absolute(std::filesystem::u8path(io.IniFilename));
+        ImGui::LoadIniSettingsFromDisk(io.IniFilename);
+        io.IniFilename = nullptr;
+    }
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
 
@@ -1127,6 +1078,14 @@ int main (int argc, char** argv)
         glClearColor(background.x * background.w, background.y * background.w, background.z * background.w, background.w);
         glClear(GL_COLOR_BUFFER_BIT);
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        if (PERF_P095 && !layout_path.empty() && io.WantSaveIniSettings)
+        {
+            size_t size = 0;
+            const char* text = ImGui::SaveIniSettingsToMemory(&size);
+            if (!alienorum::save_layout_text(layout_path, std::string(text, size)))
+                std::cerr << "Failed to queue window layout." << std::endl;
+            io.WantSaveIniSettings = false;
+        }
         if (take_snapshot)
         {
             if (loading_frame) catalog_lock.lock();
@@ -1172,7 +1131,7 @@ int main (int argc, char** argv)
                 << ".png";
 
             if (save_snapshot_png(shnapsot_fname.str(), (int)io.DisplaySize.x, (int)io.DisplaySize.y))
-                std::cout << "Saved " << shnapsot_fname.str() << " (" << (int)io.DisplaySize.x << "x" << (int)io.DisplaySize.y << ")" << std::endl;
+                std::cout << (PERF_P095 ? "Snapshot queued: " : "Saved ") << shnapsot_fname.str() << " (" << (int)io.DisplaySize.x << "x" << (int)io.DisplaySize.y << ")" << std::endl;
             else
                 std::cerr << "Failed to save " << shnapsot_fname.str() << " to disk." << std::endl;
             take_snapshot = false;
@@ -1321,6 +1280,14 @@ int main (int argc, char** argv)
     alienorum::clear_horizon_ground_gpu();
     alienorum::clear_horizon_terrain_gpu();
     alienorum::clear_horizon_mesh_gpu();
+    alienorum::snapshot_writer().finish();
+    if (PERF_P095 && !layout_path.empty())
+    {
+        size_t size = 0;
+        const char* text = ImGui::SaveIniSettingsToMemory(&size);
+        alienorum::save_layout_text(layout_path, std::string(text, size));
+    }
+    alienorum::layout_writer().finish();
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplSDL2_Shutdown();
     ImGui::DestroyContext();
