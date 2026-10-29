@@ -18,6 +18,7 @@
 #include "classes/scenerydraw.h"
 #include "classes/sceneryorder.h"
 #include "classes/rockmeshcache.h"
+#include "classes/waveboundsoptions.h"
 #include "classes/surfacecache.h"
 #include "classes/surfaceprefetch.h"
 #include "classes/localsurfacetile.h"
@@ -7107,9 +7108,10 @@ void draw_horizon()
             auto bounds_key = std::make_tuple(viewer_lat, viewer_lon, map, map ? map->gen : 0u,
                 map && map->is_complete(), generating_fic_texture, water_favorable, surface_biomes,
                 ocean_world, p ? p->has_water : 0.0f, cel->type, terrain_mesh, shore_displacement,
-                p ? p->vegetation_r : 0, p ? p->vegetation_g : 0, p ? p->vegetation_b : 0, water_cpu_reference, performance_enabled(52));
+                p ? p->vegetation_r : 0, p ? p->vegetation_g : 0, p ? p->vegetation_b : 0, water_cpu_reference, bool(PERF_P052_WAVES && performance_enabled(52)));
             static decltype(bounds_key) saved_bounds_key;
             static std::vector<double> saved_wave_horizon;
+            static bool wave_bounds_active = false;
             static unsigned int saved_clipped = 0, saved_land = 0;
             const bool rebuild_bounds = geometry_changed || water_cpu_reference || bounds_key != saved_bounds_key
                 || saved_wave_horizon.size() != static_cast<size_t>(screen_w)
@@ -7123,12 +7125,16 @@ void draw_horizon()
                 const double farthest = terrain_mesh
                     ? fmin(fmax(60000.0, surface_range * 8.0), surface_radius * .15) : surface_range;
                 const double maximum_distance = 2 * std::max(surface_range, farthest);
-                const bool certify_land = performance_enabled(52) && !water_cpu_reference && maximum_distance <= 1e6
+                SurfaceSampler::Sample footprint;
+                wave_bounds_active = PERF_P052_WAVES && performance_enabled(52)
+                    && (PERF_P052_BOUNDARY || surface.uniform_sample(viewer_lat, viewer_lon,
+                        maximum_distance / surface_radius + 1e-10, footprint));
+                const bool certify_land = wave_bounds_active && !water_cpu_reference && maximum_distance <= 1e6
                     && maximum_distance <= _pi * surface_radius;
                 for (auto& row : wave_rows)
                 {
                     row.spans.clear();
-                    if (!performance_enabled(52))
+                    if (!wave_bounds_active)
                     {
                         row.spans.push_back({0, row.points.size(), false, {}});
                         continue;
@@ -7215,7 +7221,7 @@ void draw_horizon()
                     for (size_t si = span.first; si < span.last; ++si)
                     {
                         const auto& sample = row.points[si];
-                        if (!performance_enabled(52) && (!sample.visible
+                        if (!wave_bounds_active && (!sample.visible
                             || sample.wy < min_hz_y_at_x[sample.column] - 2.0))
                         {
                             has_prev = false;

@@ -25,6 +25,7 @@
 #include "../classes/scenerydraw.h"
 #include "../classes/sceneryorder.h"
 #include "../classes/rockmeshcache.h"
+#include "../classes/waveboundsoptions.h"
 #include "../classes/surfacecache.h"
 #include "../classes/surfaceprefetch.h"
 #include "../classes/localsurfacetile.h"
@@ -5891,4 +5892,31 @@ TEST_F(RenderingRegressionTest, RockMeshCachePreservesLiveViewsAndBoundedShapes)
     {
         EXPECT_GT(rock_mesh_cache().hits, 0u);
     }
+}
+
+TEST_F(RenderingRegressionTest, AmbiguousWaveFootprintsUseOriginalBoundaryPath)
+{
+    auto* world = surface(true);
+    delete world->surf_map;
+    world->surf_map = new CoastalTestMap();
+    viewer_lat = 0;
+    viewer_lon = .3;
+    altitude = -.3;
+    set(water_cpu_reference, false);
+    freeze_surface_time();
+    draw_horizon();
+    const auto stats = horizon_water_stats();
+    const auto actual = render();
+    ImGui::NewFrame();
+    if (!PERF_P052_BOUNDARY)
+    {
+        EXPECT_EQ(stats.land_points, 0u);
+        EXPECT_EQ(stats.clipped_points, 0u);
+        EXPECT_EQ(stats.uniform_water_points, 0u);
+    }
+    water_cpu_reference = true;
+    freeze_surface_time();
+    draw_horizon();
+    EXPECT_EQ(render(), actual);
+    ImGui::NewFrame();
 }

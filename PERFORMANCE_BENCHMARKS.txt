@@ -1,12 +1,14 @@
 PER-PROPOSAL PERFORMANCE REVIEW
 
-Status: separately compiled rechecks are in progress after P030 exposed compiler-cost
-bias in runtime-switch timing. Earlier dynamic tables remain historical evidence;
-compiled-path comparisons govern final enable/disable decisions. Current application
-defaults remain stable during revalidation. P030 is disabled after its fixed comparison.
+Status: all 27 frozen-source compiled rechecks are complete. P030 exposed
+compiler-cost bias in runtime-switch timing; compiled-path tables supersede the
+earlier dynamic numbers. P042 remains disabled. P052 now disables its repeatedly
+slower ambiguous-boundary path while retaining certified-uniform gains. New
+requested work has separate per-item evidence below; P105/P108 are still pending.
 
 Method
-Each proposal has a separate PERF_Pxxx compile-time switch in src/performance_options.h.
+Each proposal has a PERF_Pxxx compile-time switch in performance_options.h or
+its owning helper header.
 Production builds fold these switches to constants. Fixed benchmark builds use the same
 constant folding; a second private mode permits one runtime reference path at a time
 for behavior comparisons. Dynamic timing can distort compiler optimization costs.
@@ -23,7 +25,7 @@ are untouched. Software-renderer results are identified explicitly and cannot es
 performance on other GPUs. No production universe or catalog is changed.
 
 Existing proposals
-P001-P005, P020-P024, P031, P039-P042, P050-P052: initial comparisons completed; confirmations pending.
+P001-P005, P020-P024, P031, P039-P042, P050-P052: compiled rechecks complete.
 Consistent regressions will receive a default PERF_Pxxx value of 0 and a disabled status
 in FRAME_RATE_AUDIT_PROPOSALS.txt. Neutral existing results will not be called gains.
 
@@ -995,7 +997,7 @@ PERFORMANCE_BENCHMARK_FIXED_P050_RESULTS.csv
   shore-walk: +0.39% [-0.69%, +1.34%], mixed/neutral; maximum image error 0.
 P042 confirms GPU regressions and stays disabled. P050 is neutral without a
 confirmed loss, so the earlier implementation stays enabled with gain unproven.
-The final two compiled rechecks remain in progress.
+The final P051/P052 compiled tables are recorded in the completion section below.
 P078 production validation: application builds; 118 rendering and nineteen
 housekeeping checks pass, with eight optional GPU skips. The two focused warning/
 observer checks also pass in the enabled private binary. Manual review remains separate.
@@ -1099,3 +1101,133 @@ All intervals cross zero, and CPU medians are effectively unchanged. Set
 PERF_P101=0 under the new-proposal gain gate. No shipping speedup is claimed.
 P101 shipping validation: application builds; 120 rendering and nineteen
 housekeeping checks pass, with eight optional GPU skips.
+
+COMPILED RECHECK COMPLETION — 27/27
+Frozen application source: e659e47; each before/after pair differs by one
+constant-folded proposal switch. No compiler runs overlap accepted native timing.
+Nine external pairs per ordinary table; confirm significant results. P007 gets
+an extended 21-pair run, and P052 gets 21 pairs after mixed shoreline evidence.
+Initial runtime-switch figures above are historical and do not govern decisions.
+Latest frozen-source tables follow; P052 uniform-only results below supersede its
+original whole-path outcome. These marginal gains must not be added together.
+PERFORMANCE_BENCHMARK_FIXED_P001_RESULTS.csv
+  catalog: -3.74% [-17.09%, +8.96%], mixed/neutral.
+  catalog-time-jump: -0.88% [-6.85%, +2.26%], mixed/neutral.
+PERFORMANCE_BENCHMARK_FIXED_P002_CONFIRM_RESULTS.csv
+  catalog: -25.77% [-31.74%, -15.24%], faster.
+  catalog-time-jump: -7.90% [-11.57%, -5.78%], faster.
+PERFORMANCE_BENCHMARK_FIXED_P003_CONFIRM_RESULTS.csv
+  catalog: -15.64% [-19.04%, +5.27%], mixed/neutral.
+  catalog-time-jump: -0.36% [-8.18%, +2.94%], mixed/neutral.
+PERFORMANCE_BENCHMARK_FIXED_P004_CONFIRM_RESULTS.csv
+  catalog: -20.01% [-30.24%, -7.59%], faster.
+  catalog-time-jump: -4.99% [-8.38%, -1.07%], faster.
+PERFORMANCE_BENCHMARK_FIXED_P005_CONFIRM_RESULTS.csv
+  catalog: -18.83% [-27.30%, -15.00%], faster.
+  catalog-time-jump: -6.08% [-8.01%, -3.47%], faster.
+PERFORMANCE_BENCHMARK_FIXED_P006_CONFIRM_RESULTS.csv
+  catalog-alerts-armed: -14.15% [-22.72%, -5.47%], faster.
+  catalog-alerts-none: -8.85% [-22.46%, -1.86%], faster.
+PERFORMANCE_BENCHMARK_FIXED_P007_EXTENDED_RESULTS.csv
+  catalog-eclipse: -10.01% [-12.36%, -5.96%], faster.
+  catalog-eclipse-time-jump: -3.71% [-4.88%, -2.70%], faster.
+PERFORMANCE_BENCHMARK_FIXED_P008_RESULTS.csv
+  catalog: +2.64% [-0.76%, +18.50%], mixed/neutral.
+  catalog-time-jump: -2.94% [-3.47%, +1.60%], mixed/neutral.
+PERFORMANCE_BENCHMARK_FIXED_P012_RESULTS.csv
+  catalog-observer-still: +1.29% [-10.05%, +8.29%], mixed/neutral.
+  catalog-observer-walk: +0.86% [-16.21%, +4.48%], mixed/neutral.
+PERFORMANCE_BENCHMARK_FIXED_P013_RESULTS.csv
+  catalog: +1.74% [-4.49%, +6.16%], mixed/neutral.
+  catalog-time-jump: +0.10% [-0.79%, +2.41%], mixed/neutral.
+  catalog-walk: -2.10% [-9.95%, +4.59%], mixed/neutral.
+PERFORMANCE_BENCHMARK_FIXED_P018_RESULTS.csv
+  catalog-lock-idle: +1.49% [-11.60%, +7.41%], mixed/neutral.
+  catalog-lock-publication: -3.04% [-10.14%, +10.61%], mixed/neutral.
+PERFORMANCE_BENCHMARK_FIXED_P020_CONFIRM_RESULTS.csv
+  forest-walk: -18.14% [-20.63%, -11.91%], faster.
+  shore-walk: -5.44% [-5.80%, -3.85%], faster.
+PERFORMANCE_BENCHMARK_FIXED_P021_CONFIRM_RESULTS.csv
+  skyline-still: -3.36% [-13.74%, +8.25%], mixed/neutral.
+  skyline-walk: -10.15% [-14.22%, +0.87%], mixed/neutral.
+PERFORMANCE_BENCHMARK_FIXED_P022_RESULTS.csv
+  forest-walk: +0.85% [-1.79%, +6.34%], mixed/neutral.
+  shore-walk: +0.41% [-1.00%, +5.54%], mixed/neutral.
+PERFORMANCE_BENCHMARK_FIXED_P023_CONFIRM_RESULTS.csv
+  forest-walk: -0.16% [-2.10%, +4.83%], mixed/neutral.
+  shore-walk: -0.43% [-1.64%, +0.02%], mixed/neutral.
+PERFORMANCE_BENCHMARK_FIXED_P024_RESULTS.csv
+  forest-walk: -2.66% [-3.59%, +3.27%], mixed/neutral.
+  shore-walk: -1.00% [-9.22%, +1.50%], mixed/neutral.
+PERFORMANCE_BENCHMARK_FIXED_P025_RESULTS.csv
+  forest-still: +1.40% [-10.73%, +3.20%], mixed/neutral.
+  forest-walk: -0.46% [-2.07%, +2.92%], mixed/neutral.
+  shore-still: -1.16% [-4.85%, +0.92%], mixed/neutral.
+  shore-walk: -0.29% [-1.37%, +0.53%], mixed/neutral.
+PERFORMANCE_BENCHMARK_FIXED_P026_CONFIRM_RESULTS.csv
+  forest-walk: +5.48% [+4.60%, +8.28%], slower.
+  shore-walk: +0.99% [-0.71%, +3.75%], mixed/neutral.
+PERFORMANCE_BENCHMARK_FIXED_P029_CONFIRM_RESULTS.csv
+  shore-down: -1.47% [-4.76%, -0.32%], faster.
+  shore-up: -23.78% [-28.99%, -13.43%], faster.
+  shore-walk: +0.46% [-0.80%, +6.26%], mixed/neutral.
+PERFORMANCE_BENCHMARK_FIXED_P031_CONFIRM_RESULTS.csv
+  forest-refresh: -8.65% [-9.39%, -7.75%], faster.
+  shore-walk: +0.56% [-0.51%, +0.84%], mixed/neutral.
+PERFORMANCE_BENCHMARK_FIXED_P039_RESULTS.csv
+  forest-walk: -1.48% [-5.44%, +3.00%], mixed/neutral.
+  shore-walk: -0.01% [-1.62%, +1.84%], mixed/neutral.
+PERFORMANCE_BENCHMARK_FIXED_P040_RESULTS.csv
+  forest-walk: -0.64% [-3.85%, +0.81%], mixed/neutral.
+  shore-walk: -0.62% [-0.81%, +4.87%], mixed/neutral.
+PERFORMANCE_BENCHMARK_FIXED_P041_CONFIRM_RESULTS.csv
+  forest-walk: -3.86% [-5.45%, -1.82%], faster.
+  shore-walk: +0.03% [-4.02%, +0.71%], mixed/neutral.
+PERFORMANCE_BENCHMARK_FIXED_P042_CONFIRM_RESULTS.csv
+  forest-still: +5.42% [+4.68%, +7.16%], slower.
+  forest-walk: +6.50% [+0.58%, +8.50%], slower.
+PERFORMANCE_BENCHMARK_FIXED_P050_RESULTS.csv
+  forest-walk: +0.68% [-0.89%, +1.34%], mixed/neutral.
+  ocean-still: +1.11% [-0.43%, +2.94%], mixed/neutral.
+  shore-walk: +0.39% [-0.69%, +1.34%], mixed/neutral.
+PERFORMANCE_BENCHMARK_FIXED_P051_CONFIRM_RESULTS.csv
+  forest-walk: -11.77% [-13.21%, -10.38%], faster.
+  ocean-still: -13.41% [-16.66%, -11.66%], faster.
+  shore-walk: -3.50% [-4.07%, -1.61%], faster.
+PERFORMANCE_BENCHMARK_FIXED_P052_EXTENDED_RESULTS.csv
+  forest-walk: -11.43% [-12.40%, -10.80%], faster.
+  ocean-still: -17.29% [-17.61%, -16.63%], faster.
+  shore-walk: +0.39% [+0.03%, +1.55%], slower.
+Earlier P001/P003/P021/P022/P023/P024/P039/P040/P050 results remain neutral
+or unconfirmed; retain existing implementations without calling them gains.
+P042 repeats a loss and stays 0. P008/P012/P013/P018/P025 remain 0 without
+established new-proposal gains; P026 repeats a loss and stays 0. P006/P007/P029
+compiled results support their enabled defaults. P051 confirms water-row gains.
+
+P052 — disable the ambiguous-boundary path, retain uniform-footprint gains
+Original shoreline medians: +0.25% mixed, +1.70% slower confirmation, then
++0.39% [ +0.03%, +1.55% ] slower over 21 pairs. Uniform land/ocean repeat
+large gains. Disable the costly ambiguous-footprint span preparation with
+#define PERF_P052_BOUNDARY 0. Retain PERF_P052_WAVES=1 and PERF_P052=1.
+A single conservative SurfaceSampler certificate checks the complete footprint,
+including the established radial and procedural displacement bounds. Uniform
+footprints keep the original optimization; uncertain footprints use the original
+point/connecting-midpoint path. Camera/map/observer/shape invalidation remains.
+Parent: b607299. Separately compile the same current visuals body with the wave
+switch 0/1; all other application objects are identical. This compares revised
+P052 against its original per-point path without perturbing unrelated inlined
+performance switches. Nine native AB/BA pairs per table, 24-frame blocks, GPU
+completion and exact images; no catalogs or user universe files are modified.
+PERFORMANCE_BENCHMARK_P052_GATED_FIXED_RESULTS.csv
+  forest-walk: -12.00% [-12.80%, -7.04%], faster.
+  ocean-still: -18.56% [-20.25%, -14.69%], faster.
+  shore-walk: -0.12% [-1.23%, +1.25%], mixed/neutral.
+PERFORMANCE_BENCHMARK_P052_GATED_CONFIRM_RESULTS.csv
+  forest-walk: -12.59% [-15.88%, -9.73%], faster.
+  ocean-still: -16.90% [-25.57%, -16.19%], faster.
+  shore-walk: +0.62% [-0.27%, +3.10%], mixed/neutral.
+The revised uniform paths repeat their gains; both revised shoreline intervals
+cross zero. No shoreline improvement is claimed. Preserve all original wave
+geometry/phase/color/clipping. Existing 96 rendered coast/world/camera cases and
+cache invalidation checks pass. A focused boundary check verifies no certified
+span/land preprocessing on the ambiguous shore, with exact reference pixels.

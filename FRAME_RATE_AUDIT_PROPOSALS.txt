@@ -198,7 +198,7 @@ Source: src/visuals.cpp around 6314. Water scans all objects for vmag brighter t
 [x] P051 | A / S / Q0 | Separate wave geometry from animated phase.
 Source: src/visuals.cpp around 6410-6558. The configured 81 rows and 96 half-row steps produce up to 15,633 sample positions, with rotations, projection, water/material tests, and terrain visibility checks. Much geometry depends on observer/camera/world, while animation depends on time. Retain row directions, distances, world locations, and material results under suitable revision keys; update phase and lighting independently. Validate walking, camera rotation, shore crossings, and map changes. This is exact reuse only for unchanged inputs; approximate reuse while moving belongs under Q1.
 
-[x] P052 | A / S / Q0 | Clip wave rows to conservative visible-water intervals.
+[x] P052 | A / S / Q0 | Clip wave rows to conservative visible-water intervals. PARTLY DISABLED: PERF_P052_BOUNDARY=0 after repeated shoreline losses; certified-uniform paths remain enabled with confirmed 12–19% gains. Revised shoreline results are neutral.
 Before evaluating every point, derive projected spans that can contain visible water using the terrain/water masks and viewport. Reject entire rows or intervals proved land, hidden behind terrain, or outside the screen. Preserve narrow channels, detailed Perlin shorelines, refraction, and near-plane cases. Validate oblique coastlines and a view containing only a sliver of ocean. A raster water mask should represent the same authoritative material field; an unwarped base-map mask alone is insufficient near a detailed boundary.
 
 P053 | B / S / Q0 | Batch wave primitives into strips or a GPU water pass.
@@ -580,3 +580,10 @@ painter preserves the scene; developers can explicitly enable P042 for other GPU
 Other existing proposals remain enabled where results improve or are inconclusive;
 no neutral result is reported as an established speedup. The new requested queue follows
 its stricter rule: new implementations without demonstrated improvement default to 0.
+
+COMPILED REVIEW COMPLETION
+All 27 frozen-source rechecks are complete; separately compiled results in
+PERFORMANCE_BENCHMARKS.txt supersede historical runtime-switch timings. P042
+confirms losses and stays disabled. P052 now disables ambiguous-boundary span
+preparation, while retaining independently confirmed uniform-footprint gains.
+Neutral earlier implementations remain enabled without a speedup claim.
