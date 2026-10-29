@@ -200,7 +200,9 @@ void main()
     float delta = uWorld[0].z;
     // Ground uses an apparent horizon, including its atmospheric bowl lift.
     // Refraction changes the cloud lookup ray, not this screen-space boundary.
-    if (delta > 0.0 && apparent_y < uWorld[0].w)
+    // Cover the filtering footprint beneath opaque ground when enlarging the cloud layer.
+    float horizon_guard = uWorld[2].x > 0.5 ? 2.0 * fwidth(apparent_y) + 4.7683716e-7 : 0.0;
+    if (delta > 0.0 && apparent_y < uWorld[0].w - horizon_guard)
     {
         discard;
     }

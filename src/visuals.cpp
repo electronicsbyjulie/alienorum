@@ -8739,6 +8739,7 @@ void draw_cloudy_sky()
     // Match the apparent ground boundary in find_horizon(), before cloud-ray refraction.
     const double horizon_dip = acos(std::clamp(planet_radius / observer, 0.0, 1.0));
     in.world[3] = (float)sin(p->atmospheric_horizon_lift() - horizon_dip);
+    in.world[8] = dragging ? 0.0f : 1.0f;
     in.light[0] = (float)daylight;
     in.light[1] = (float)(std::clamp(cumulus_day_swing * pow(daylight, cumulus_day_exponent), 0.0, 1.0) * cumulus_day_maximum);
     in.light[2] = p->overcast ? 1.0f : 0.0f;

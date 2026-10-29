@@ -46,6 +46,7 @@ struct CloudTestView
     double bend = 0;
     bool patterned = false;
     bool overcast = false;
+    bool opaque_ground = false;
     bool isolated = false;
     bool sample_overhead = false;
     bool dark = false;
@@ -468,6 +469,7 @@ class RenderingRegressionTest : public UniverseFixture
         input.world[1] = view.shell;
         input.world[2] = (view.shell - view.observer) * (view.shell + view.observer);
         input.world[3] = sin(view.horizon_angle);
+        input.world[8] = view.opaque_ground ? 1 : 0;
         input.light[0] = view.dark ? 0 : 1;
         input.light[1] = view.dark ? 0 : 0.6;
         input.light[2] = view.overcast ? 1 : 0;
@@ -4460,6 +4462,53 @@ TEST_F(RenderingRegressionTest, CpuTerrainPreservesImagesWhileWalkingTurningAndS
                 if (reference) expected = pixels;
                 else EXPECT_EQ(image_difference(pixels, expected), 0) << "scene " << scene << ", frame " << frame;
                 ImGui::NewFrame();
+            }
+        }
+    }
+}
+
+TEST_F(RenderingRegressionTest, OpaqueCloudDeckCoversTheFilteredGroundBoundary)
+{
+    CloudTestView view;
+    view.overcast = true;
+    view.opaque_ground = true;
+    view.bend = .03;
+    for (double horizon : {.06, .35})
+    {
+        view.horizon_angle = horizon;
+        for (double scale : {.125, .8})
+        {
+            for (double offset : {-.003, 0.0, .004})
+            {
+                const double elevation = horizon + offset;
+                const auto pixels = clouds(255, elevation, scale, view);
+                size_t sky = 0, uncovered = 0, below = 0, leaking = 0;
+                for (int y = 0; y < render_height; ++y)
+                {
+                    for (int x = 0; x < render_width; ++x)
+                    {
+                        const double px = (2.0 * (x + .5) / render_width - 1) * scale;
+                        const double py = (2.0 * (y + .5) / render_height - 1) * scale * render_height / render_width;
+                        const double forward = cos(elevation) - py * sin(elevation);
+                        const double up = py * cos(elevation) + sin(elevation);
+                        const double apparent = up / sqrt(px * px + forward * forward + up * up);
+                        const int alpha = pixels[(y * render_width + x) * 4 + 3];
+                        if (apparent >= sin(horizon) && apparent < sin(horizon) + .02)
+                        {
+                            ++sky;
+                            uncovered += alpha < 254;
+                        }
+                        if (apparent < sin(horizon) - 20 * scale / render_width)
+                        {
+                            ++below;
+                            leaking += alpha != 0;
+                        }
+                    }
+                }
+                EXPECT_GT(sky, 20u);
+                EXPECT_EQ(uncovered, 0u) << horizon << ", " << scale << ", " << offset;
+                EXPECT_GT(below, 20u);
+                EXPECT_EQ(leaking, 0u);
             }
         }
     }
