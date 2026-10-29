@@ -38,6 +38,7 @@
 #include "imgui/backends/imgui_impl_opengl3.h"
 #include "imgui_internal.h"
 #include "universe_fixture.h"
+#include "texture_upload_fixture.h"
 
 using namespace alienorum;
 
@@ -5765,4 +5766,84 @@ TEST_F(RenderingRegressionTest, FrameScratchPreservesFreshImagesAcrossMapsViewsA
         EXPECT_EQ(image_difference(image(false), expected), 0) << step;
         EXPECT_EQ(image_difference(image(false), expected), 0) << step;
     }
+}
+
+TEST_F(RenderingRegressionTest, ReusedTextureStorageMatchesFreshColorBumpAndMipLevels)
+{
+    gputex_clear_cache();
+    TextureUploadTestMap map;
+    std::vector<std::unique_ptr<TextureUploadTestMap>> references;
+    GLint maximum = 0;
+    glGetIntegerv(GL_MAX_TEXTURE_SIZE, &maximum);
+    GLuint previous_color = 0, previous_bump = 0;
+    for (int phase = 0; phase < 6; ++phase)
+    {
+        const unsigned long width = phase < 2 ? 17 : phase < 4 ? 33 : static_cast<unsigned long>(maximum) + 1;
+        const unsigned long height = phase < 2 ? 9 : phase < 4 ? 17 : 2;
+        if (width > TextureUploadTestMap::capacity / height) continue;
+        map.reshape(width, height, phase);
+        reset_gputex_upload_stats();
+        const GLuint color = gputex_for(&map), bump = gputex_bump_for(&map);
+        ASSERT_NE(color, 0u);
+        ASSERT_NE(bump, 0u);
+        const auto stats = gputex_upload_stats();
+        const bool reuse = performance_enabled(90) && phase % 2;
+        EXPECT_EQ(stats.updates, reuse ? 2u : 0u);
+        EXPECT_EQ(stats.allocations, reuse ? 0u : 2u);
+        if (previous_color)
+        {
+            EXPECT_EQ(color, previous_color);
+            EXPECT_EQ(bump, previous_bump);
+        }
+        previous_color = color;
+        previous_bump = bump;
+        EXPECT_EQ(gputex_for(&map), color);
+        EXPECT_EQ(gputex_bump_for(&map), bump);
+        EXPECT_EQ(gputex_upload_stats().allocations, stats.allocations);
+        EXPECT_EQ(gputex_upload_stats().updates, stats.updates);
+        references.push_back(std::make_unique<TextureUploadTestMap>());
+        references.back()->reshape(width, height, phase);
+        const GLuint fresh_color = gputex_for(references.back().get()), fresh_bump = gputex_bump_for(references.back().get());
+        for (int kind = 0; kind < 2; ++kind)
+        {
+            const GLuint current = kind ? bump : color, fresh = kind ? fresh_bump : fresh_color;
+            for (int level = 0; ; ++level)
+            {
+                glBindTexture(GL_TEXTURE_2D, current);
+                GLint w = 0, h = 0;
+                glGetTexLevelParameteriv(GL_TEXTURE_2D, level, GL_TEXTURE_WIDTH, &w);
+                glGetTexLevelParameteriv(GL_TEXTURE_2D, level, GL_TEXTURE_HEIGHT, &h);
+                ASSERT_GT(w, 0);
+                ASSERT_GT(h, 0);
+                if (kind)
+                {
+                    std::vector<float> actual(w * h), expected(w * h);
+                    glGetTexImage(GL_TEXTURE_2D, level, GL_RED, GL_FLOAT, actual.data());
+                    glBindTexture(GL_TEXTURE_2D, fresh);
+                    glGetTexImage(GL_TEXTURE_2D, level, GL_RED, GL_FLOAT, expected.data());
+                    EXPECT_EQ(actual, expected) << phase << ", " << level;
+                }
+                else
+                {
+                    std::vector<unsigned char> actual(w * h * 4), expected(w * h * 4);
+                    glGetTexImage(GL_TEXTURE_2D, level, GL_RGBA, GL_UNSIGNED_BYTE, actual.data());
+                    glBindTexture(GL_TEXTURE_2D, fresh);
+                    glGetTexImage(GL_TEXTURE_2D, level, GL_RGBA, GL_UNSIGNED_BYTE, expected.data());
+                    EXPECT_EQ(actual, expected) << phase << ", " << level;
+                }
+                if (w == 1 && h == 1) break;
+            }
+            glBindTexture(GL_TEXTURE_2D, current);
+            GLint filter = 0, wrap = 0;
+            glGetTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, &filter);
+            glGetTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, &wrap);
+            EXPECT_EQ(filter, GL_LINEAR_MIPMAP_LINEAR);
+            EXPECT_EQ(wrap, GL_REPEAT);
+        }
+        EXPECT_EQ(glGetError(), static_cast<unsigned int>(GL_NO_ERROR));
+    }
+    map.gen = 0;
+    EXPECT_EQ(gputex_for(&map), 0u);
+    EXPECT_EQ(gputex_bump_for(&map), 0u);
+    gputex_clear_cache();
 }

@@ -999,3 +999,19 @@ The final two compiled rechecks remain in progress.
 P078 production validation: application builds; 118 rendering and nineteen
 housekeeping checks pass, with eight optional GPU skips. The two focused warning/
 observer checks also pass in the enabled private binary. Manual review remains separate.
+
+P090 — retained GPU storage experiment, disabled
+Actual parent: 2c79ff3. Separate constant-folded native binaries, nine alternating
+pairs of 64-frame blocks; GPU completion included. Same-size generation changes
+use subimage uploads; dimensions/format changes allocate again. Existing generation
+fast paths and mip/filter/wrap behavior remain intact. Exact pixel hashes match.
+Enabled tests compare fresh/reused color and float bump storage at every mip level,
+including resizing and maximum-size downsampling; all pass.
+texture-bump-updates: -3.32% [-21.03%, +13.70%], mixed/neutral.
+texture-cached: -3.88% [-18.91%, +14.22%], mixed/neutral.
+texture-resize: +3.85% [-16.80%, +10.98%], mixed/neutral.
+texture-rgb-updates: +1.15% [-7.92%, +7.61%], mixed/neutral.
+All intervals cross zero. Set PERF_P090=0: no shipping speedup claim.
+Raw data: PERFORMANCE_BENCHMARK_P090_FIXED_RESULTS.csv; pilot retained separately.
+P090 shipping validation: application builds; 119 rendering checks and nineteen
+housekeeping checks pass, with eight optional GPU skips.

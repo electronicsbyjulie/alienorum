@@ -6,6 +6,12 @@
 
 namespace alienorum
 {
+    struct GpuTexUploadStats
+    {
+        uint64_t allocations = 0, updates = 0;
+    };
+    GpuTexUploadStats gputex_upload_stats();
+    void reset_gputex_upload_stats();
     // Returns a cached OpenGL texture name holding this map's current RGB pixel data as
     // GL_RGBA8, uploading (or re-uploading, if the map has changed since the last request --
     // see Map::gen) as necessary. Must only be called from the thread owning the GL context.

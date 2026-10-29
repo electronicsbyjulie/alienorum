@@ -1,5 +1,6 @@
 // Developer-only paired benchmarks; ordinary test runs skip this suite.
 #include "rendering_test.cpp"
+#include "texture_upload_fixture.h"
 #include "../performance_options.h"
 #include "../classes/sound.h"
 #include <cstdlib>
@@ -409,6 +410,8 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
         set(horizon_mesh_gpu_reference, false);
         resident_probe = std::make_unique<ResidentTerrainProbe>();
     }
+    std::unique_ptr<TextureUploadTestMap> texture_probe;
+    if (std::find(ids.begin(), ids.end(), 90) != ids.end()) texture_probe = std::make_unique<TextureUploadTestMap>();
     std::unique_ptr<CatalogPublicationProbe> publication;
     const double base_latitude = 0, base_longitude = .3;
     for (int id : ids)
@@ -419,6 +422,7 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
             : id == 18 ? std::vector<std::string>{"catalog-lock-idle", "catalog-lock-publication"}
             : id == 13 ? std::vector<std::string>{"catalog", "catalog-walk", "catalog-time-jump"}
             : id <= 5 || id == 8 ? std::vector<std::string>{"catalog", "catalog-time-jump"}
+            : id == 90 ? std::vector<std::string>{"texture-rgb-updates", "texture-bump-updates", "texture-resize", "texture-cached"}
             : id == 78 ? std::vector<std::string>{"catalog-rotation-missing", "catalog-rotation-known"}
             : id == 77 ? std::vector<std::string>{"forest-walk", "shore-walk", "galaxy-shore-still", "skyline-walk", "catalog-scratch"}
             : id == 73 ? std::vector<std::string>{"catalog-pick-empty", "catalog-pick-moving", "catalog-pick-target"}
@@ -489,7 +493,15 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
                     cels[benchmark_galaxy_index]->tmprel = Point(10 * light_year, 0, 0);
                     sky_mag_shift = 0;
                 }
-                if (scene.rfind("catalog", 0) == 0 || id == 28)
+                if (id == 90)
+                {
+                    if (scene == "texture-resize") texture_probe->reshape(frame_index % 2 ? 1024 : 512, frame_index % 2 ? 512 : 256, frame_index);
+                    else if (scene != "texture-cached") texture_probe->update(frame_index);
+                    const GLuint texture = scene == "texture-bump-updates" ? gputex_bump_for(texture_probe.get()) : gputex_for(texture_probe.get());
+                    if (!texture) throw std::runtime_error("Upload benchmark has no texture.");
+                    ImGui::GetBackgroundDrawList()->AddImage((ImTextureID)(intptr_t)texture, ImVec2(0, 0), ImVec2(render_width, render_height));
+                }
+                else if (scene.rfind("catalog", 0) == 0 || id == 28)
                 {
                     // Exercise all three consumers, including pointer/filter traversal.
                     volatile size_t count = 0;
@@ -609,6 +621,9 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
             const auto actual = frame(0, true);
 #ifdef PERF_P067
             if (id == 67) std::cout << "PERF background clip row: " << captured_background_clip << '\n';
+#endif
+#ifdef PERF_P090
+            if (id == 90) std::cout << "PERF texture uploads: " << gputex_upload_stats().allocations << " allocations, " << gputex_upload_stats().updates << " updates\n";
 #endif
 #ifdef PERF_P068
             if (id == 68) std::cout << "PERF orbit candidates: " << frame_orbit_candidates().size() << '\n';

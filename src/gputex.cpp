@@ -1,3 +1,4 @@
+#include "performance_options.h"
 #include "classes/galaxyimage.h"
 
 #include <unordered_map>
@@ -12,6 +13,9 @@ using namespace alienorum;
 
 namespace alienorum
 {
+    static GpuTexUploadStats upload_stats;
+    GpuTexUploadStats gputex_upload_stats() { return upload_stats; }
+    void reset_gputex_upload_stats() { upload_stats = {}; }
     // glGenerateMipmap is core since GL 3.0 but predates this file's SDL_opengl.h -- the
     // legacy header sphere_impostor.cpp's own comment describes avoiding (imgui's bundled GL
     // loader would clash with SDL_opengl.h's typedefs in the same translation unit). On Windows
@@ -29,6 +33,10 @@ namespace alienorum
     {
         GLuint tex = 0;
         unsigned int gen = 0;
+        #if PERF_P090
+        GLsizei width = 0, height = 0;
+        GLenum format = 0;
+        #endif
     };
 
     // Only ever touched from the main/render thread.
@@ -102,7 +110,27 @@ namespace alienorum
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);          // longitude wraps
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);   // latitude does not
         glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, (GLsizei)w, (GLsizei)h, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());
+        bool reuse_storage = false;
+        #if PERF_P090
+        reuse_storage = performance_enabled(90) && entry.tex && w > 0 && h > 0
+            && entry.width == static_cast<GLsizei>(w)
+            && entry.height == static_cast<GLsizei>(h) && entry.format == GL_RGBA;
+        #endif
+        if (reuse_storage)
+        {
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, (GLsizei)w, (GLsizei)h, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());
+            ++upload_stats.updates;
+        }
+        else
+        {
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, (GLsizei)w, (GLsizei)h, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());
+            ++upload_stats.allocations;
+        }
+        #if PERF_P090
+        entry.width = w;
+        entry.height = h;
+        entry.format = GL_RGBA;
+        #endif
         gputex_generate_mipmap(GL_TEXTURE_2D);
 
         entry.gen = map->gen;
@@ -161,7 +189,27 @@ namespace alienorum
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);          // longitude wraps
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);   // latitude does not
         glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, (GLsizei)w, (GLsizei)h, 0, GL_RED, GL_FLOAT, bump.data());
+        bool reuse_storage = false;
+        #if PERF_P090
+        reuse_storage = performance_enabled(90) && entry.tex && w > 0 && h > 0
+            && entry.width == static_cast<GLsizei>(w)
+            && entry.height == static_cast<GLsizei>(h) && entry.format == GL_R32F;
+        #endif
+        if (reuse_storage)
+        {
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, (GLsizei)w, (GLsizei)h, GL_RED, GL_FLOAT, bump.data());
+            ++upload_stats.updates;
+        }
+        else
+        {
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, (GLsizei)w, (GLsizei)h, 0, GL_RED, GL_FLOAT, bump.data());
+            ++upload_stats.allocations;
+        }
+        #if PERF_P090
+        entry.width = w;
+        entry.height = h;
+        entry.format = GL_R32F;
+        #endif
         gputex_generate_mipmap(GL_TEXTURE_2D);
 
         entry.gen = map->gen;
