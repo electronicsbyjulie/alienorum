@@ -279,7 +279,7 @@ Source: src/dialogs.cpp and its call sites in the main loop. ImGui clipping alre
 P076 | B / H / Q0 | Audit per-object resident memory and allocator pressure after compact loading.
 The compact archive still imports more than a hundred thousand full objects, including atmosphere and provenance structures. Measure retained bytes by class and allocation site, separate from temporary parsing peaks. Candidate changes include shared immutable metadata, compact enums, deferred diagnostic strings, and pooled small allocations. Preserve mutable-object independence and exact saving. This targets cache misses, page faults, and memory pressure that can damage frame tails even if object updates are culled. Do not infer a steady-state leak from the serializer harness's peak RSS alone.
 
-P077 | C / S / Q0 | Retain frame scratch buffers across terrain, water, scenery, and label passes.
+[x] P077 | C / S / Q0 | Retain frame scratch buffers across terrain, water, scenery, and label passes. DISABLED: PERF_P077=0; five compiled comparisons are all mixed/neutral.
 Several frame-local vectors and masks are rebuilt in draw_horizon and related routines. Inventory allocations under a warm frame, reserve bounded capacity, and reuse storage with explicit viewport/world invalidation. Prefer a small number of owned scratch contexts to global unbounded caches. Validate alternating a dense forest with an empty world so high-water allocations remain bounded or reclaimable. This overlaps the specific raster proposal P023; treat generic allocation cleanup as secondary, not a substitute for eliminating large loops.
 
 P078 | C / H / Q0 | Keep diagnostic reporting out of hot paths unless requested.

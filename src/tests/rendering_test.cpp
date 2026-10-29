@@ -28,6 +28,7 @@
 #include "../classes/surfaceprefetch.h"
 #include "../classes/localsurfacetile.h"
 #include "../classes/horizonbackground.h"
+#include "../classes/framescratch.h"
 #include "../horizon_ground_gpu.h"
 #include "../scenery_gpu.h"
 #include "../horizon_terrain_gpu.h"
@@ -5672,5 +5673,96 @@ TEST_F(RenderingRegressionTest, IndexedPickingMatchesOriginalPriorityAcrossPubli
         std::vector<int> all;
         for (int i = 0; i < ncelobjs; ++i) all.push_back(i);
         EXPECT_EQ(frame_pick_candidates(), all);
+    }
+}
+
+TEST(FrameScratchTest, ClearsContentsRetainsSmallStorageAndReleasesChangedOrOversizedBuffers)
+{
+    FrameScratch<int> scratch(256);
+    auto& first = scratch.acquire(1, 192, 108);
+    first.assign(32, 9);
+    const auto capacity = scratch.retained_capacity();
+    EXPECT_GE(capacity, 32u);
+    auto& reused = scratch.acquire(1, 192, 108);
+    EXPECT_TRUE(reused.empty());
+    EXPECT_EQ(scratch.retained_capacity(), capacity);
+    reused.resize(32);
+    EXPECT_EQ(reused, std::vector<int>(32, 0));
+    scratch.acquire(2, 192, 108);
+    EXPECT_EQ(scratch.retained_capacity(), 0u);
+    scratch.acquire(2, 192, 108).resize(32);
+    scratch.acquire(2, 384, 216);
+    EXPECT_EQ(scratch.retained_capacity(), 0u);
+    scratch.acquire(2, 384, 216).resize(4096);
+    scratch.acquire(2, 384, 216);
+    EXPECT_EQ(scratch.retained_capacity(), 0u);
+}
+
+TEST_F(RenderingRegressionTest, FrameScratchPreservesFreshImagesAcrossMapsViewsAndWorlds)
+{
+    Planet* world = surface(true);
+    Planet* original = world;
+    Planet* alternate = make_planet(static_cast<Star*>(cels[1]), "Scratch alternate world", 2 * AU);
+    alternate->cenobj = cels[0];
+    alternate->temperature = 280;
+    alternate->looked_for_maps = true;
+    alternate->ensure_atmosphere()->surface_pressure = oneatm;
+    set(frame_scratch_reference, false);
+    Galaxy* galaxy = new Galaxy();
+    strcpy(galaxy->name, "M31");
+    galaxy->volumetric_mean_radius = 50000 * light_year;
+    galaxy->tmprel = Point(10 * light_year, 0, 0);
+    append_cel(galaxy);
+    surface_magnitudes.resize(ncelobjs + 8, 999);
+    surface_radii.resize(ncelobjs + 8, 0);
+    system_bloom.resize(ncelobjs + 8, 0);
+    vmag_cache = surface_magnitudes.data();
+    set(angular_radius, surface_radii.data());
+    set(bloomrad_cache, system_bloom.data());
+    set(inside_galaxy_idx, galaxy->seqno);
+    set(show_galaxy_band, true);
+    set(sky_mag_shift, 0.0);
+    const auto image = [&](bool reference)
+    {
+        frame_scratch_reference = reference;
+        freeze_surface_time();
+        find_horizon();
+        draw_galaxy_band();
+        draw_horizon();
+        auto result = render();
+        ImGui::NewFrame();
+        return result;
+    };
+    for (int step = 0; step < 12; ++step)
+    {
+        world = step % 2 ? alternate : original;
+        whereami = world->seqno;
+        if (step == 4 || step == 8)
+        {
+            ImGui::EndFrame();
+            render_width = step == 4 ? 256 : 192;
+            render_height = step == 4 ? 144 : 108;
+            SDL_SetWindowSize(window, render_width, render_height);
+            ImGui::GetIO().DisplaySize = ImVec2(render_width, render_height);
+            dispcx = render_width * .5;
+            dispcy = render_height * .5;
+            ImGui::NewFrame();
+        }
+        delete world->surf_map;
+        world->surf_map = step % 3 == 0 ? static_cast<Map*>(new BlueBiomeTestMap(SurfaceMaterial::vegetation))
+            : step % 3 == 1 ? static_cast<Map*>(new BlueBiomeTestMap(SurfaceMaterial::water))
+            : static_cast<Map*>(new MountainBandsTestMap());
+        world->has_water = step % 3 == 2 ? 0 : 1;
+        world->vegetation_r = step % 3 == 2 ? 0 : 80;
+        world->vegetation_g = step % 3 == 2 ? 0 : 140;
+        world->vegetation_b = step % 3 == 2 ? 0 : 30;
+        viewer_lat = step * .25 / earth_radius;
+        viewer_lon = .3;
+        azimuth = step * .3;
+        altitude = -.4 + (step % 3) * .3;
+        zoom = step % 2 ? 1.5 : 1;
+        const auto expected = image(true);
+        EXPECT_EQ(image_difference(image(false), expected), 0) << step;
+        EXPECT_EQ(image_difference(image(false), expected), 0) << step;
     }
 }

@@ -1,6 +1,7 @@
 #ifndef ALIENORUM_HORIZON_BACKGROUND_H
 #define ALIENORUM_HORIZON_BACKGROUND_H
 
+#include "framescratch.h"
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -47,7 +48,10 @@ namespace alienorum
             if (covered_row(middle + .5)) last_row = middle;
             else first_row = middle + 1;
         }
-        std::vector<double> columns(width, all_ground ? 0 : 1e9);
+        static FrameScratch<double> columns_scratch;
+        std::vector<double> local_columns;
+        auto& columns = frame_scratch_enabled() ? columns_scratch.acquire(0, width, height) : local_columns;
+        columns.assign(width, all_ground ? 0 : 1e9);
         for (int j = 0; j <= nodes; ++j)
         {
             const int a = (j + nodes - 1) % nodes, b = j % nodes;

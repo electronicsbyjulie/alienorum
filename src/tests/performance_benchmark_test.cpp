@@ -313,7 +313,7 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
     {
         ASSERT_GT(id, 0);
         ASSERT_LT(static_cast<size_t>(id), performance_reference.size());
-        catalog |= id <= 18 || id == 68 || id == 73;
+        catalog |= id <= 18 || id == 68 || id == 73 || id == 77;
     }
     if (catalog)
     {
@@ -360,8 +360,17 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
         set(show_sats, false);
         for (int i = 0; i < ncelobjs; ++i) cels[i]->looked_for_maps = true;
     }
+    if (std::find(ids.begin(), ids.end(), 77) != ids.end())
+    {
+        orbit_discs.reset(new bool[ncelobjs + 64]{});
+        set(discinstead, orbit_discs.get());
+        set(show_orbits, false);
+        set(show_localsys, true);
+        set(show_labels, false);
+        for (int i = 0; i < ncelobjs; ++i) cels[i]->looked_for_maps = true;
+    }
     int benchmark_galaxy_index = -1;
-    if (std::find(ids.begin(), ids.end(), 67) != ids.end())
+    if (std::find(ids.begin(), ids.end(), 67) != ids.end() || std::find(ids.begin(), ids.end(), 77) != ids.end())
     {
         Galaxy* galaxy = new Galaxy();
         strcpy(galaxy->name, "M31");
@@ -409,6 +418,7 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
             : id == 18 ? std::vector<std::string>{"catalog-lock-idle", "catalog-lock-publication"}
             : id == 13 ? std::vector<std::string>{"catalog", "catalog-walk", "catalog-time-jump"}
             : id <= 5 || id == 8 ? std::vector<std::string>{"catalog", "catalog-time-jump"}
+            : id == 77 ? std::vector<std::string>{"forest-walk", "shore-walk", "galaxy-shore-still", "skyline-walk", "catalog-scratch"}
             : id == 73 ? std::vector<std::string>{"catalog-pick-empty", "catalog-pick-moving", "catalog-pick-target"}
             : id == 68 ? std::vector<std::string>{"catalog-orbits", "catalog-orbits-walk", "catalog-orbits-time-jump"}
             : id == 67 ? std::vector<std::string>{"galaxy-shore-walk", "galaxy-shore-still", "galaxy-shore-up", "galaxy-shore-down", "galaxy-shore-drag"}
@@ -470,7 +480,7 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
                     cels[1]->location.local_position += ray;
                 }
                 compute_object_draw_coordinates();
-                if (id == 67)
+                if (id == 67 || id == 77)
                 {
                     inside_galaxy_idx = benchmark_galaxy_index;
                     cels[benchmark_galaxy_index]->tmprel = Point(10 * light_year, 0, 0);
@@ -498,7 +508,7 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
                         identify_object_under_cursor(io);
                     }
                     if (id == 6) alerts.check_rise_set_alerts();
-                    if (id == 68)
+                    if (id == 68 || id == 77)
                     {
                         labels2draw.clear();
                         draw_objects();
@@ -508,7 +518,7 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
                 {
                     luminous_flux = 4e10;
                     find_horizon();
-                    if (id == 67)
+                    if (id == 67 || id == 77)
                     {
 #ifdef PERF_P067
                         if (capture) captured_background_clip = horizon_background_clip_y();

@@ -896,3 +896,58 @@ No additional spatial bins or hit-test shortcuts are introduced. The production
 application builds; 116 rendering and eighteen housekeeping checks pass, with eight
 optional GPU skips. Both focused picking checks pass in the enabled private binary.
 No new runtime asset or installer rule is involved.
+
+P077 — OWNED FRAME SCRATCH STORAGE
+Inventory identifies remaining transient vectors in galaxy-band grids, object layering,
+system-layout coordinates, coastal relief/wet masks, horizon/base columns, terrain-row
+relief/wet masks, canopy preparation and the P067 coverage certificate. Retain these
+in individually owned FrameScratch contexts, clearing every borrow and preserving
+all original initialization, sampling and drawing. World/viewport changes release
+storage. Capacity above an eight-MiB per-context retention budget is discarded on
+the next borrow; temporary working size and image quality are never capped.
+Existing P023 raster/projection retention is unchanged. P025's mathematical experiment
+stays disabled; only independent scratch storage overlaps its old retention option.
+Canopy preparation is conditional on classification refresh, not a new warm-frame
+loop saving. Move-owned GPU ground rectangles retain their original callback lifetime
+and are excluded from recycling. No borrowed callback data is overwritten early.
+The enabled storage test checks empty/zero initialization, retained capacity, owner/
+viewport replacement and oversized-buffer reclamation. The image test alternates two
+worlds, forest/water/mountain maps, camera angles/zoom and viewport dimensions, comparing
+fresh and retained storage exactly. Both pass. The native pilot also preserves images
+and captured object state; its timings are not statistical evidence.
+Actual before source: 392fe6c. Separate fixed binaries reuse identical production
+baseline objects; all changed-header candidate units are rebuilt. Nine alternating
+external pairs measure two sixteen-frame blocks per scene, including GPU completion.
+Use 42,124 synthetic objects: 30,000 background stars, 12,000 dormant worlds and an
+active galaxy band. Cover forest/shore walking, still galaxy/shore, fallback skyline
+walking and actual object drawing. Full image/state hashes are checked.
+Raw data: PERFORMANCE_BENCHMARK_P077_FIXED_RESULTS.csv.
+
+P077 FIXED RESULT — DISABLED
+catalog-scratch: 10.850 -> 10.383 ms; paired median -2.49%; 95% interval [-4.61%, +0.26%]; mixed/neutral; image/state error 0.
+forest-walk: 48.212 -> 48.583 ms; paired median +0.74%; 95% interval [-0.56%, +3.57%]; mixed/neutral; image/state error 0.
+galaxy-shore-still: 128.132 -> 130.184 ms; paired median +1.59%; 95% interval [-0.27%, +2.70%]; mixed/neutral; image/state error 0.
+shore-walk: 141.329 -> 143.622 ms; paired median +0.98%; 95% interval [-0.66%, +3.00%]; mixed/neutral; image/state error 0.
+skyline-walk: 29.116 -> 29.394 ms; paired median +0.16%; 95% interval [-1.55%, +2.15%]; mixed/neutral; image/state error 0.
+Every interval crosses zero. The apparent catalog improvement is not established,
+and no target horizon workload improves. Set PERF_P077=0. Preserve the tested code
+for later hardware review without claiming allocator reuse as a shipping speedup.
+This is a disabled exact-storage experiment; no density, resolution or drawing quality
+is reduced. Header-only support adds no runtime installer asset.
+
+COMPILED RECHECK DETAIL P040/P041
+PERFORMANCE_BENCHMARK_FIXED_P040_RESULTS.csv
+  forest-walk: -0.64% [-3.85%, +0.81%], mixed/neutral; image error 0.
+  shore-walk: -0.62% [-0.81%, +4.87%], mixed/neutral; image error 0.
+PERFORMANCE_BENCHMARK_FIXED_P041_RESULTS.csv
+  forest-walk: -4.08% [-4.75%, -0.86%], faster; image error 0.
+  shore-walk: -0.17% [-1.68%, +1.97%], mixed/neutral; image error 0.
+PERFORMANCE_BENCHMARK_FIXED_P041_CONFIRM_RESULTS.csv
+  forest-walk: -3.86% [-5.45%, -1.82%], faster; image error 0.
+  shore-walk: +0.03% [-4.02%, +0.71%], mixed/neutral; image error 0.
+P040 is neutral without a confirmed loss and remains an earlier implementation
+with its gain unproven. P041 confirms forest gains of 4.08%/3.86% and stays enabled;
+shoreline timing is neutral. The last compiled rechecks remain in progress.
+P077 production validation: application builds; 118 rendering checks and all eighteen
+housekeeping checks pass, with eight optional GPU skips. Both dedicated storage/image
+checks also pass in the enabled private binary. Manual/hardware review remains separate.

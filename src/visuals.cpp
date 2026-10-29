@@ -21,6 +21,7 @@
 #include "classes/surfaceprefetch.h"
 #include "classes/localsurfacetile.h"
 #include "classes/horizonbackground.h"
+#include "classes/framescratch.h"
 #include "classes/surfacebiomes.h"
 #include "classes/surfacenavigation.h"
 #include "classes/horizonterrain.h"
@@ -3694,7 +3695,10 @@ void draw_galaxy_band()
         bool valid;
     };
 
-    std::vector<BandVertex> grid((N_lon + 1) * (N_lat + 1));
+    static FrameScratch<BandVertex> band_grid;
+    std::vector<BandVertex> local_grid;
+    auto& grid = frame_scratch_enabled() ? band_grid.acquire(inside_galaxy_idx, dispcx * 2, dispcy * 2) : local_grid;
+    grid.resize((N_lon + 1) * (N_lat + 1));
 
     double az = azimuth + azimuth_correction;
     double alt = altitude;
@@ -3973,7 +3977,10 @@ void draw_objects()
     double step, dispw = dispcx*2, disph = dispcy*2;
     double orbseg = 81;
     lmasslim = lbllsys_mass_lim*1000;
-    std::vector<std::pair<double, CelestialObject*>> to_draw_layered;
+    static FrameScratch<std::pair<double, CelestialObject*>> layered_scratch;
+    std::vector<std::pair<double, CelestialObject*>> local_layered;
+    auto& to_draw_layered = frame_scratch_enabled()
+        ? layered_scratch.acquire(reinterpret_cast<uintptr_t>(mycenobj), dispcx * 2, dispcy * 2) : local_layered;
     global_magshift = -log(global_brightness) * invlogmagnbase;
     myeq = (whereami >= 0) ? cels[whereami]->equinox_RA : 0;
 
@@ -4263,7 +4270,12 @@ void draw_system_view()
         // dry run - find planetary system scaling
         double sdrad = display_radius(s, solar_radius, dispcy/std::max(2, num_stars), 20.0);
         double cursor = s->drawnx + sdrad + padding;
-        std::vector<int> plcenx, plxrad;
+        static FrameScratch<int> planet_centers_scratch, planet_radii_scratch;
+        std::vector<int> local_plcenx, local_plxrad;
+        auto& plcenx = frame_scratch_enabled()
+            ? planet_centers_scratch.acquire(reinterpret_cast<uintptr_t>(mycenobj), dispcx * 2, dispcy * 2) : local_plcenx;
+        auto& plxrad = frame_scratch_enabled()
+            ? planet_radii_scratch.acquire(reinterpret_cast<uintptr_t>(mycenobj), dispcx * 2, dispcy * 2) : local_plxrad;
         int first_hz_planet = 99999, last_hz_planet = -1;
 
         for (j=num_stars; j<n; j++)
@@ -5853,8 +5865,16 @@ void draw_horizon()
             }
 
             double terrain_height = dispcx * 0.08 * zoom;
-            std::vector<double> coastal_relief(hznodes);
-            std::vector<bool> coastal_water(hznodes, false);
+            static FrameScratch<double> coastal_relief_scratch;
+            static FrameScratch<bool> coastal_water_scratch;
+            std::vector<double> local_coastal_relief;
+            std::vector<bool> local_coastal_water;
+            auto& coastal_relief = frame_scratch_enabled()
+                ? coastal_relief_scratch.acquire(whereami, dispcx * 2, dispcy * 2) : local_coastal_relief;
+            auto& coastal_water = frame_scratch_enabled()
+                ? coastal_water_scratch.acquire(whereami, dispcx * 2, dispcy * 2) : local_coastal_water;
+            coastal_relief.resize(hznodes);
+            coastal_water.assign(hznodes, false);
             for (j = 0; j < hznodes; j++)
             {
                 double bump_px = cached_bump_relief[j] * dispcx * zoom;
@@ -6029,7 +6049,10 @@ void draw_horizon()
         int screen_w = (int)(dispcx * 2.0);
         static std::vector<double> retained_horizon_columns;
         std::vector<double> temporary_horizon_columns;
-        auto& min_hz_y_at_x = (performance_enabled(25) && !horizon_terrain_cpu_reference) ? retained_horizon_columns : temporary_horizon_columns;
+        static FrameScratch<double> horizon_columns_scratch;
+        auto& min_hz_y_at_x = frame_scratch_enabled()
+            ? horizon_columns_scratch.acquire(whereami, screen_w, dispcy * 2)
+            : ((performance_enabled(25) && !horizon_terrain_cpu_reference) ? retained_horizon_columns : temporary_horizon_columns);
         min_hz_y_at_x.assign(screen_w > 0 ? screen_w : 1, min_hz_y);
 
         for (j = 0; j < hznodes; j++)
@@ -6084,7 +6107,10 @@ void draw_horizon()
         #if distant_biome_pixel_sampling
         static std::vector<double> retained_base_columns;
         std::vector<double> temporary_base_columns;
-        auto& base_horizon_y_at_x = (performance_enabled(25) && !horizon_terrain_cpu_reference) ? retained_base_columns : temporary_base_columns;
+        static FrameScratch<double> base_columns_scratch;
+        auto& base_horizon_y_at_x = frame_scratch_enabled()
+            ? base_columns_scratch.acquire(whereami, screen_w, dispcy * 2)
+            : ((performance_enabled(25) && !horizon_terrain_cpu_reference) ? retained_base_columns : temporary_base_columns);
         base_horizon_y_at_x = min_hz_y_at_x;
         #endif
         if (terrain_mesh)
@@ -6195,8 +6221,16 @@ void draw_horizon()
                     }
                     gpu_generated = generate_horizon_mesh_gpu(positions, relief_noise, gpu_totals);
                 }
-                std::vector<double> row_relief(terrain_columns);
-                std::vector<bool> row_water(terrain_columns);
+                static FrameScratch<double> row_relief_scratch;
+                static FrameScratch<bool> row_water_scratch;
+                std::vector<double> local_row_relief;
+                std::vector<bool> local_row_water;
+                auto& row_relief = frame_scratch_enabled()
+                    ? row_relief_scratch.acquire(whereami, dispcx * 2, dispcy * 2) : local_row_relief;
+                auto& row_water = frame_scratch_enabled()
+                    ? row_water_scratch.acquire(whereami, dispcx * 2, dispcy * 2) : local_row_water;
+                row_relief.resize(terrain_columns);
+                row_water.resize(terrain_columns);
                 for (int row = 0; row < terrain_rows; ++row)
                 {
                     const double distance = row_distances[row];
@@ -7593,7 +7627,11 @@ void draw_horizon()
                     plant.assign(scenery.size(), false);
                     water.assign(scenery.size(), false);
                     scenery_colors.resize(scenery.size());
-                    std::vector<double> canopy_radii(scenery.size(), 0);
+                    static FrameScratch<double> canopy_scratch;
+                    std::vector<double> local_canopy_radii;
+                    auto& canopy_radii = frame_scratch_enabled()
+                        ? canopy_scratch.acquire(whereami, dispcx * 2, dispcy * 2) : local_canopy_radii;
+                    canopy_radii.assign(scenery.size(), 0);
                     for (size_t index = 0; index < scenery.size(); index++)
                     {
                         scenery_cache.project(index);
