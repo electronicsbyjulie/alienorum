@@ -288,6 +288,9 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
     SDL_GL_GetDrawableSize(window, &drawable_width, &drawable_height);
     ASSERT_EQ(drawable_width, render_width);
     ASSERT_EQ(drawable_height, render_height);
+#ifdef ALIENORUM_PERFORMANCE_FIXED
+    std::cout << "PERF comparison: fixed\n";
+#endif
     std::cout << "PERF renderer: " << glGetString(GL_RENDERER) << '\n';
     std::cout << "PERF viewport: " << drawable_width << 'x' << drawable_height << '\n';
     const char* output = std::getenv("ALIENORUM_PERF_OUTPUT");
@@ -369,6 +372,7 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
             : id == 18 ? std::vector<std::string>{"catalog-lock-idle", "catalog-lock-publication"}
             : id == 13 ? std::vector<std::string>{"catalog", "catalog-walk", "catalog-time-jump"}
             : id <= 5 || id == 8 ? std::vector<std::string>{"catalog", "catalog-time-jump"}
+            : id == 30 ? std::vector<std::string>{"shore-walk", "forest-walk", "ocean-still"}
             : id == 29 ? std::vector<std::string>{"shore-up", "shore-walk", "shore-down"}
             : id == 28 ? std::vector<std::string>{"resident-mesh-still", "resident-mesh-walk"}
             : id == 25 ? std::vector<std::string>{"shore-still", "forest-still", "shore-walk", "forest-walk"}
@@ -504,6 +508,23 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
             const auto expected = frame(0, true);
             select(false);
             const auto actual = frame(0, true);
+            ASSERT_EQ(actual.size(), expected.size());
+            std::uint64_t image_hash = 14695981039346656037ULL;
+            for (unsigned char byte : actual)
+            {
+                image_hash ^= byte;
+                image_hash *= 1099511628211ULL;
+            }
+            std::cout << "PERF IMAGE P" << id << ' ' << scene << ' ' << image_hash << '\n';
+            if (id == 42)
+            {
+                if (const char* prefix = std::getenv("ALIENORUM_PERF_CAPTURE_PREFIX"))
+                {
+                    std::ofstream capture(std::string(prefix) + ".P" + std::to_string(id) + "." + scene + ".bin", std::ios::binary);
+                    capture.write(reinterpret_cast<const char*>(actual.data()), actual.size());
+                    ASSERT_TRUE(capture.good());
+                }
+            }
             int maximum = 0;
             for (size_t i = 0; i < actual.size(); ++i)
                 maximum = std::max(maximum, abs(int(actual[i]) - int(expected[i])));

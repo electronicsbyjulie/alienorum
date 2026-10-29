@@ -5487,6 +5487,24 @@ void draw_horizon()
         // Keep terrain sampling on the geometric horizon ring, with visual lift in projection.
         // Enlarging this ring inflates relief and separates the sea mesh from the horizon.
         const double surface_range = sqrt(2.0 * surface_radius * surface_eye);
+        struct HorizonSurfaceContext
+        {
+            double cos_alt, sin_alt, cos_lat, sin_lat, focal, curvature;
+        };
+        const bool shared_surface = performance_enabled(30) && !horizon_terrain_cpu_reference;
+        const HorizonSurfaceContext surface_context = shared_surface
+            ? HorizonSurfaceContext{cos(altitude), sin(altitude), cos(viewer_lat), sin(viewer_lat),
+                zoom * dispcx, .5 / surface_radius - surface_lift / surface_range}
+            : HorizonSurfaceContext{};
+        const auto surface_cos_altitude = [&]() { return shared_surface ? surface_context.cos_alt : cos(altitude); };
+        const auto surface_sin_altitude = [&]() { return shared_surface ? surface_context.sin_alt : sin(altitude); };
+        const auto surface_cos_latitude = [&]() { return shared_surface ? surface_context.cos_lat : cos(viewer_lat); };
+        const auto surface_sin_latitude = [&]() { return shared_surface ? surface_context.sin_lat : sin(viewer_lat); };
+        const auto surface_focal = [&]() { return shared_surface ? surface_context.focal : zoom * dispcx; };
+        const auto surface_curvature = [&]()
+        {
+            return shared_surface ? surface_context.curvature : .5 / surface_radius - surface_lift / surface_range;
+        };
         const bool terrain_mesh = show_terrain && surface_biomes
             && !ocean_world && cel->type != lavaworld;
         static HorizonTerrainRaster terrain_raster;
@@ -5495,26 +5513,27 @@ void draw_horizon()
         const auto surface_coord = [&](double distance, double bearing)
         {
             const double arc = distance / surface_radius;
-            const double sin_lat = fmax(-1.0, fmin(1.0, sin(viewer_lat) * cos(arc)
-                + cos(viewer_lat) * sin(arc) * cos(bearing)));
+            const double sin_lat = fmax(-1.0, fmin(1.0, surface_sin_latitude() * cos(arc)
+                + surface_cos_latitude() * sin(arc) * cos(bearing)));
             const double latitude = asin(sin_lat);
-            const double longitude = viewer_lon + atan2(sin(bearing) * sin(arc) * cos(viewer_lat),
-                cos(arc) - sin(viewer_lat) * sin_lat);
+            const double longitude = viewer_lon + atan2(sin(bearing) * sin(arc) * surface_cos_latitude(),
+                cos(arc) - surface_sin_latitude() * sin_lat);
             return std::make_pair(latitude, longitude);
         };
         // The sea stays on the curved base surface; raised terrain has its own depth.
         const auto base_distance = [&](double screen_x, double screen_y)
         {
-            const double x = (screen_x - dispcx) / (zoom * dispcx);
-            const double y = (dispcy - screen_y) / (zoom * dispcx);
-            const double north = cos(altitude) - y * sin(altitude);
-            const double up = y * cos(altitude) + sin(altitude);
+            const double x = (screen_x - dispcx) / surface_focal();
+            const double y = (dispcy - screen_y) / surface_focal();
+            const double north = surface_cos_altitude() - y * surface_sin_altitude();
+            const double up = y * surface_cos_altitude() + surface_sin_altitude();
             const double slope = -up / fmax(1e-12, hypot(x, north));
-            const double curvature = 0.5 / surface_radius - surface_lift / surface_range;
+            const double curvature = surface_curvature();
             const double discriminant = slope * slope - 4.0 * curvature * surface_eye;
-            if (discriminant >= 0 && slope + sqrt(discriminant) > 0)
+            const double root = shared_surface && discriminant >= 0 ? sqrt(discriminant) : 0;
+            if (discriminant >= 0 && slope + (shared_surface ? root : sqrt(discriminant)) > 0)
             {
-                const double distance = 2.0 * surface_eye / (slope + sqrt(discriminant));
+                const double distance = 2.0 * surface_eye / (slope + (shared_surface ? root : sqrt(discriminant)));
                 if (distance <= surface_range)
                 {
                     return distance;
@@ -5534,9 +5553,9 @@ void draw_horizon()
         };
         const auto ground_coord = [&](double screen_x, double screen_y)
         {
-            const double x = (screen_x - dispcx) / (zoom * dispcx);
-            const double y = (dispcy - screen_y) / (zoom * dispcx);
-            const double north = cos(altitude) - y * sin(altitude);
+            const double x = (screen_x - dispcx) / surface_focal();
+            const double y = (dispcy - screen_y) / surface_focal();
+            const double north = surface_cos_altitude() - y * surface_sin_altitude();
             const double depth = visible_distance(screen_x, screen_y);
             const double distance = std::isfinite(depth) ? depth : surface_range;
             return surface_coord(distance, azimuth + atan2(x, north));
@@ -5593,7 +5612,7 @@ void draw_horizon()
                 {
                     skyline_noise.reseed(static_cast<uint32_t>(whereami) * 2654435761u + 0xb0ad1ceau);
                 }
-                double R_planet = cel->get_equatorial_radius();
+                double R_planet = shared_surface ? surface_radius : cel->get_equatorial_radius();
                 if (R_planet <= 0)
                 {
                     R_planet = cel->volumetric_mean_radius;
@@ -5612,7 +5631,7 @@ void draw_horizon()
                     return horizon_noise_value(skyline_noise, x * scale, y * scale, z * scale, 29);
                 };
                 const double ring_angle = std::min(0.19, 9500.0 / R_planet);
-                const double sin_lat = sin(viewer_lat), cos_lat = cos(viewer_lat);
+                const double sin_lat = surface_sin_latitude(), cos_lat = surface_cos_latitude();
                 const double sin_lon = sin(viewer_lon), cos_lon = cos(viewer_lon);
                 const double radial = R_planet * cos(ring_angle) / spatial_scale;
                 const double ring_distance = R_planet * sin(ring_angle);
@@ -5634,7 +5653,7 @@ void draw_horizon()
                 }
 
                 bool has_bump = (cel->surf_map && cel->surf_map->has_bump_data());
-                double h_eye = fmax(0.01, viewer_eye_height);
+                double h_eye = shared_surface ? surface_eye : fmax(0.01, viewer_eye_height);
                 double geom_dist = sqrt(2.0 * R_planet * h_eye);
                 double E0 = has_bump ? cel->surf_map->elevation_at_bilinear(viewer_lat, viewer_lon) : 0.0;
                 double hz_dip = acos(R_planet / (R_planet + h_eye));
@@ -5991,7 +6010,7 @@ void draw_horizon()
                     row_sines[row] = sin(row_distances[row] / surface_radius);
                     row_cosines[row] = cos(row_distances[row] / surface_radius);
                 }
-                const double latitude_sine = sin(viewer_lat), latitude_cosine = cos(viewer_lat);
+                const double latitude_sine = surface_sin_latitude(), latitude_cosine = surface_cos_latitude();
                 const auto ring_coordinate = [&](int row, int column)
                 {
                     const double sin_lat = fmax(-1.0, fmin(1.0, latitude_sine * row_cosines[row]
@@ -6162,7 +6181,7 @@ void draw_horizon()
             static std::vector<std::array<double, 3>> camera_vertices;
             if (!performance_enabled(23)) std::vector<std::array<double, 3>>().swap(camera_vertices);
             std::array<bool, terrain_columns> visible_sectors;
-            const double cos_alt = cos(altitude), sin_alt = sin(altitude);
+            const double cos_alt = surface_cos_altitude(), sin_alt = surface_sin_altitude();
             if (!performance_enabled(22) || horizon_terrain_cpu_reference)
             {
                 visible_sectors.fill(true);
@@ -6195,8 +6214,8 @@ void draw_horizon()
             {
                 camera_vertices.resize(mesh.size());
                 std::array<HorizonTerrainSector, terrain_columns> sectors;
-                const double horizontal = (dispcx + 2) / (zoom * dispcx);
-                const double vertical = (dispcy + 2) / (zoom * dispcx);
+                const double horizontal = (dispcx + 2) / surface_focal();
+                const double vertical = (dispcy + 2) / surface_focal();
                 for (int column = 0; column < terrain_columns; ++column)
                 {
                     const double bearing = mesh[column].bearing - azimuth;
@@ -6404,11 +6423,11 @@ void draw_horizon()
         #endif
 
         const int ground_height = static_cast<int>(dispcy * 2.0);
-        const double top_north = cos(altitude) - dispcy / (zoom * dispcx) * sin(altitude);
-        const double bottom_north = cos(altitude) + dispcy / (zoom * dispcx) * sin(altitude);
+        const double top_north = surface_cos_altitude() - dispcy / surface_focal() * surface_sin_altitude();
+        const double bottom_north = surface_cos_altitude() + dispcy / surface_focal() * surface_sin_altitude();
         const bool bounded_ground = performance_enabled(29) && !horizon_terrain_cpu_reference
             && terrain_mesh && !faded && map && map->is_complete() && screen_w > 0 && ground_height > 0
-            && cos(altitude) >= 0 && top_north > 0 && bottom_north > 0;
+            && surface_cos_altitude() >= 0 && top_north > 0 && bottom_north > 0;
         static std::vector<int> bounded_base_top, ground_coverage_top;
         int first_ground = ground_height;
         if (bounded_ground)
@@ -6442,7 +6461,7 @@ void draw_horizon()
             #if horizon_gpu_ground_painting
             // In this domain base-surface coverage is monotonic down each column.
             // Other views retain the reference painter, including views past the nadir.
-            if (map && map->is_complete() && cos(altitude) >= 0 && top_north > 0 && bottom_north > 0
+            if (map && map->is_complete() && surface_cos_altitude() >= 0 && top_north > 0 && bottom_north > 0
                 && !horizon_ground_gpu_reference)
             {
                 std::vector<int> local_base_top;
@@ -6497,8 +6516,8 @@ void draw_horizon()
                 {
                     for (double y : {top + 0.5, bottom - 0.5})
                     {
-                        const double north = cos(altitude) - (dispcy - y) / (zoom * dispcx) * sin(altitude);
-                        const double bearing = atan2((x - dispcx) / (zoom * dispcx), north);
+                        const double north = surface_cos_altitude() - (dispcy - y) / surface_focal() * surface_sin_altitude();
+                        const double bearing = atan2((x - dispcx) / surface_focal(), north);
                         low_bearing = fmin(low_bearing, bearing);
                         high_bearing = fmax(high_bearing, bearing);
                     }
@@ -6759,7 +6778,7 @@ void draw_horizon()
                 }
             }
 
-            double R_planet = cel->get_equatorial_radius();
+            double R_planet = shared_surface ? surface_radius : cel->get_equatorial_radius();
             if (R_planet <= 0)
             {
                 R_planet = cel->volumetric_mean_radius;
@@ -6773,10 +6792,10 @@ void draw_horizon()
             if ((cel->typeclass() == class_planet || cel->typeclass() == class_moon) && !uses_gaseous_map(cel->type))
             {
                 p = (Planet*)cel;
-                horizon_lift_rad = p->atmospheric_horizon_lift();
+                horizon_lift_rad = shared_surface ? surface_lift : p->atmospheric_horizon_lift();
             }
 
-            double h_eye = fmax(0.01, viewer_eye_height);
+            double h_eye = shared_surface ? surface_eye : fmax(0.01, viewer_eye_height);
             double horizon_dip_rad = (R_planet > 0) ? acos(R_planet / (R_planet + h_eye)) : 0.0;
             double net_horizon_angle = horizon_lift_rad - horizon_dip_rad;
             double delta_horizon = -net_horizon_angle;
@@ -6827,7 +6846,7 @@ void draw_horizon()
                     double blend = pow(1.0 - u, WAVE_PERSPECTIVE_EXP);
                     double delta = delta_far + (delta_near - delta_far) * blend;
                     const double slope = tan(delta);
-                    const double curvature = 0.5 / surface_radius - surface_lift / surface_range;
+                    const double curvature = surface_curvature();
                     const double root = sqrt(fmax(0.0, slope * slope - 4.0 * curvature * surface_eye));
                     row.distance = slope + root > 0
                         ? fmin(surface_range, 2.0 * surface_eye / (slope + root)) : surface_range;
@@ -6923,15 +6942,15 @@ void draw_horizon()
                                 bottom = std::max(bottom, point_bottom + guard);
                             }
                             double low = _pi, high = -_pi;
-                            const double north_top = cos(altitude) - (dispcy - top) / (zoom * dispcx) * sin(altitude);
-                            const double north_bottom = cos(altitude) - (dispcy - bottom) / (zoom * dispcx) * sin(altitude);
+                            const double north_top = surface_cos_altitude() - (dispcy - top) / surface_focal() * surface_sin_altitude();
+                            const double north_bottom = surface_cos_altitude() - (dispcy - bottom) / surface_focal() * surface_sin_altitude();
                             bool certain = !(left <= dispcx && right >= dispcx
                                 && std::min(north_top, north_bottom) <= 0 && std::max(north_top, north_bottom) >= 0);
                             for (double sx : {left, right})
                             {
                                 for (double north : {north_top, north_bottom})
                                 {
-                                    const double bearing = atan2((sx - dispcx) / (zoom * dispcx), north);
+                                    const double bearing = atan2((sx - dispcx) / surface_focal(), north);
                                     low = std::min(low, bearing);
                                     high = std::max(high, bearing);
                                     certain &= std::isfinite(bearing);
@@ -7108,8 +7127,8 @@ void draw_horizon()
                 sun_az_world = atan2(sun_horiz.x, sun_horiz.z);
             }
 
-            double h_eye = fmax(0.01, viewer_eye_height);
-            double R_planet = cel->get_equatorial_radius();
+            double h_eye = shared_surface ? surface_eye : fmax(0.01, viewer_eye_height);
+            double R_planet = shared_surface ? surface_radius : cel->get_equatorial_radius();
             if (R_planet <= 0)
             {
                 R_planet = cel->volumetric_mean_radius;
@@ -7123,10 +7142,10 @@ void draw_horizon()
             if ((cel->typeclass() == class_planet || cel->typeclass() == class_moon) && !uses_gaseous_map(cel->type))
             {
                 p = (Planet*)cel;
-                horizon_lift_rad = p->atmospheric_horizon_lift();
+                horizon_lift_rad = shared_surface ? surface_lift : p->atmospheric_horizon_lift();
             }
 
-            double s_horizon = sqrt(2.0 * R_planet * h_eye);
+            double s_horizon = shared_surface ? surface_range : sqrt(2.0 * R_planet * h_eye);
             if (horizon_lift_rad > 0.0)
             {
                 s_horizon += R_planet * sin(horizon_lift_rad);
@@ -7169,8 +7188,8 @@ void draw_horizon()
                             double zc = d_horiz * cos(d_az);
                             double yc = yw;
 
-                            double yc_rot = yc * cos(altitude) - zc * sin(altitude);
-                            double zc_rot = yc * sin(altitude) + zc * cos(altitude);
+                            double yc_rot = yc * surface_cos_altitude() - zc * surface_sin_altitude();
+                            double zc_rot = yc * surface_sin_altitude() + zc * surface_cos_altitude();
 
                             if (zc_rot <= 0.35 || zc <= 0.1)
                             {
@@ -7493,8 +7512,8 @@ void draw_horizon()
                         double x_cam = dist_m * sin_daz;
                         double z_horiz = dist_m * cos_daz;
 
-                        double cos_alt = cos(altitude);
-                        double sin_alt = sin(altitude);
+                        double cos_alt = surface_cos_altitude();
+                        double sin_alt = surface_sin_altitude();
 
                         double z_crown_cam = y_crown_world * sin_alt + z_horiz * cos_alt;
                         double y_crown_cam = y_crown_world * cos_alt - z_horiz * sin_alt;
@@ -7679,8 +7698,8 @@ void draw_horizon()
 
                 if (has_sun_shadow)
                 {
-                    double cos_alt = cos(altitude);
-                    double sin_alt = sin(altitude);
+                    double cos_alt = surface_cos_altitude();
+                    double sin_alt = surface_sin_altitude();
                     double cos_az = cos(azimuth);
                     double sin_az = sin(azimuth);
 
@@ -8297,7 +8316,7 @@ void draw_horizon()
             if (p && p->type == lavaworld)
             {
                 double t_rain = ImGui::GetTime();
-                double h_eye = fmax(0.01, viewer_eye_height);
+                double h_eye = shared_surface ? surface_eye : fmax(0.01, viewer_eye_height);
                 uint32_t rain_seed = (uint32_t)(whereami * 1013904223u + 0x5a17e);
                 int num_particles = 320;
 
@@ -8355,8 +8374,8 @@ void draw_horizon()
                     double yc = yw;
 
                     // Pitch with camera altitude
-                    double yc_rot = yc * cos(altitude) - zc * sin(altitude);
-                    double zc_rot = yc * sin(altitude) + zc * cos(altitude);
+                    double yc_rot = yc * surface_cos_altitude() - zc * surface_sin_altitude();
+                    double zc_rot = yc * surface_sin_altitude() + zc * surface_cos_altitude();
 
                     if (zc_rot <= 0.35 || zc <= 0.1)
                     {
@@ -8375,8 +8394,8 @@ void draw_horizon()
                     // Perspective streak tail
                     double streak_dt = 0.038;
                     double yw_tail = yw + fall_speed * streak_dt;
-                    double yc_tail_rot = yw_tail * cos(altitude) - zc * sin(altitude);
-                    double zc_tail_rot = yw_tail * sin(altitude) + zc * cos(altitude);
+                    double yc_tail_rot = yw_tail * surface_cos_altitude() - zc * surface_sin_altitude();
+                    double zc_tail_rot = yw_tail * surface_sin_altitude() + zc * surface_cos_altitude();
 
                     if (zc_tail_rot <= 0.30)
                     {

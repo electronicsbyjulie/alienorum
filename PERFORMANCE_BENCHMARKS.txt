@@ -1,11 +1,15 @@
 PER-PROPOSAL PERFORMANCE REVIEW
 
-Status: independent review of all eighteen existing proposals complete. P042 is disabled by default; other inconclusive results remain labeled as such.
+Status: separately compiled rechecks are in progress after P030 exposed compiler-cost
+bias in runtime-switch timing. Earlier dynamic tables remain historical evidence;
+compiled-path comparisons govern final enable/disable decisions. Current application
+defaults remain stable during revalidation. P030 is disabled after its fixed comparison.
 
 Method
 Each proposal has a separate PERF_Pxxx compile-time switch in src/performance_options.h.
-Production builds fold these switches to constants. A private benchmark build also permits
-one reference path at a time, while keeping the other implemented proposals enabled.
+Production builds fold these switches to constants. Fixed benchmark builds use the same
+constant folding; a second private mode permits one runtime reference path at a time
+for behavior comparisons. Dynamic timing can distort compiler optimization costs.
 Shared infrastructure remains present where another enabled proposal relies on it.
 These are marginal before/after comparisons, not additive speedup claims.
 
@@ -431,3 +435,47 @@ Reproduction note: use a fresh OBJ directory when changing SANFLAGS or compile-t
 performance overrides. Make tracks file dependencies, not changes to command-line
 compiler flags. Reusing objects built with other overrides can invalidate a comparison.
 Keep every private object on the same benchmark macro configuration.
+
+P030 — SHARED SURFACE PROJECTION CONTEXT (implemented, DISABLED: PERF_P030=0)
+Share frame-local camera/latitude trigonometry, focal scale and curvature, retaining
+operation order. Reuse radius, eye height and atmospheric lift across terrain, water
+and scenery. Preserve the geometric terrain range separately from the lifted scenery
+range. Reuse a discriminant square root without changing its value. Original math
+remains available through the disabled switch and terrain reference path.
+Native Intel HD 2000, 1280 x 720. Initial runtime-switch comparisons used nine pairs
+of 24 frames. Their apparent 7–10% gains are NOT accepted as shipping evidence: a
+separately compiled source comparison fails to reproduce them. Runtime branches
+interfere with compiler optimization of these math-heavy loops.
+PERFORMANCE_BENCHMARK_P030_RESULTS.csv
+  forest-walk: 33.475 -> 30.965 ms; paired median -7.46%; 95% interval [-9.03%, -5.57%]; maximum image/state error 0.
+  ocean-still: 27.664 -> 24.876 ms; paired median -10.08%; 95% interval [-19.11%, -5.46%]; maximum image/state error 0.
+  shore-walk: 130.940 -> 119.878 ms; paired median -8.47%; 95% interval [-10.30%, -8.10%]; maximum image/state error 0.
+PERFORMANCE_BENCHMARK_P030_FIXED_RESULTS.csv
+  forest-walk: 31.547 -> 31.221 ms; paired median +0.39%; 95% interval [-2.66%, +4.62%]; maximum image/state error 0.
+  ocean-still: 24.834 -> 25.167 ms; paired median +0.61%; 95% interval [-0.47%, +2.59%]; maximum image/state error 0.
+  shore-walk: 119.734 -> 120.896 ms; paired median +0.21%; 95% interval [-0.66%, +1.86%]; maximum image/state error 0.
+Fixed comparison: the before source is commit e659e47 in a detached worktree; the
+after source contains P030. Both compile with ALIENORUM_PERFORMANCE_BENCHMARK=1 and
+ALIENORUM_PERFORMANCE_FIXED=1, making performance switches compile-time constants.
+Use separate fresh object directories. Nine external pairs alternate executable
+order. Each executable measures two 16-frame blocks per workload; their average is
+one sample. GPU completion is included. Full captured image hashes match across both
+executables before accepting timing pairs. All three fixed comparisons are neutral,
+so disable P030. Exact terrain, animated coast and ground-bound image checks pass.
+The first dynamic table is retained to show the rejected inference, not a claimed gain.
+
+DECISION-METHOD UPDATE AFTER P030
+Use separately compiled paths for subsequent decisions. Earlier runtime-switch
+comparisons establish behavior/equality but can distort compiler optimization costs;
+their enable/disable decisions are provisional until compiled-path rechecks finish.
+The original performance controls remain useful for image/debug comparisons. The new
+tools/run_fixed_performance_comparison.py requires fixed-mode binaries and validates
+cross-binary image/state hashes, alternating process order to limit scheduling drift.
+Existing mixed results were already described as unproven; do not reinterpret them
+as established gains. Recheck earlier enabled/disabled experiments under fixed controls.
+
+To reproduce the P030 candidate after its disable decision, use -DPERF_P030=1 in the
+fresh after build. The final shipping default is 0. Fixed comparison support also
+records executable checksums and rejects executable changes during a run. P042 retains
+its established two-channel-level tolerance using raw captures; other comparisons
+require exact cross-binary image/state hashes.
