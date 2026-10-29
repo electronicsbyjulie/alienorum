@@ -5842,7 +5842,10 @@ void draw_horizon()
         // Measure visible horizon line screen bounds and per-column horizon heights
         double min_hz_y = full_ground_view ? 0 : 1e9;
         int screen_w = (int)(dispcx * 2.0);
-        std::vector<double> min_hz_y_at_x(screen_w > 0 ? screen_w : 1, min_hz_y);
+        static std::vector<double> retained_horizon_columns;
+        std::vector<double> temporary_horizon_columns;
+        auto& min_hz_y_at_x = (performance_enabled(25) && !horizon_terrain_cpu_reference) ? retained_horizon_columns : temporary_horizon_columns;
+        min_hz_y_at_x.assign(screen_w > 0 ? screen_w : 1, min_hz_y);
 
         for (j = 0; j < hznodes; j++)
         {
@@ -5894,13 +5897,17 @@ void draw_horizon()
         }
 
         #if distant_biome_pixel_sampling
-        const std::vector<double> base_horizon_y_at_x = min_hz_y_at_x;
+        static std::vector<double> retained_base_columns;
+        std::vector<double> temporary_base_columns;
+        auto& base_horizon_y_at_x = (performance_enabled(25) && !horizon_terrain_cpu_reference) ? retained_base_columns : temporary_base_columns;
+        base_horizon_y_at_x = min_hz_y_at_x;
         #endif
         if (terrain_mesh)
         {
             constexpr int terrain_columns = 512;
             constexpr int terrain_rows = 40;
             static std::vector<HorizonTerrainVertex> mesh;
+            static std::vector<double> terrain_up;
             bool gpu_mesh_noise = false;
             #if horizon_gpu_mesh_generation
             gpu_mesh_noise = !horizon_mesh_gpu_reference && map->is_complete();
@@ -5909,7 +5916,7 @@ void draw_horizon()
             auto mesh_key = std::make_tuple(whereami, map, surface_radius,
                 map->gen, p ? p->has_water : 0.0f, water_favorable,
                 p ? p->vegetation_r : 0, p ? p->vegetation_g : 0, p ? p->vegetation_b : 0, shore_displacement,
-                gpu_mesh_noise, horizon_terrain_cpu_reference, performance_enabled(20));
+                gpu_mesh_noise, horizon_terrain_cpu_reference, performance_enabled(20), (performance_enabled(25) && !horizon_terrain_cpu_reference));
             static decltype(mesh_key) saved_mesh_key;
             auto mesh_view = std::make_tuple(viewer_lat, viewer_lon, surface_eye, surface_lift);
             static decltype(mesh_view) saved_mesh_view;
@@ -6064,6 +6071,17 @@ void draw_horizon()
                             + (next.distance - vertex.distance) * coastal_slope);
                     }
                 }
+                if ((performance_enabled(25) && !horizon_terrain_cpu_reference))
+                {
+                    terrain_up.resize(mesh.size());
+                    for (size_t vertex = 0; vertex < mesh.size(); ++vertex)
+                    {
+                        const auto& source = mesh[vertex];
+                        const double refraction = surface_lift * fmin(1.0, source.distance / surface_range) * source.distance;
+                        terrain_up[vertex] = source.elevation - surface_eye
+                            - source.distance * source.distance / (2.0 * surface_radius) + refraction;
+                    }
+                }
                 saved_mesh_key = mesh_key;
                 saved_mesh_view = mesh_view;
                 mesh_valid = true;
@@ -6086,9 +6104,14 @@ void draw_horizon()
                     const double bearing = source.bearing - azimuth;
                     const double x = source.distance * sin(bearing);
                     const double north = source.distance * cos(bearing);
-                    const double refraction = surface_lift * fmin(1.0, source.distance / surface_range) * source.distance;
-                    const double up = source.elevation - surface_eye
-                        - source.distance * source.distance / (2.0 * surface_radius) + refraction;
+                    double up;
+                    if ((performance_enabled(25) && !horizon_terrain_cpu_reference)) up = terrain_up[vertex];
+                    else
+                    {
+                        const double refraction = surface_lift * fmin(1.0, source.distance / surface_range) * source.distance;
+                        up = source.elevation - surface_eye
+                            - source.distance * source.distance / (2.0 * surface_radius) + refraction;
+                    }
                     const double depth = up * sin_alt + north * cos_alt;
                     if (depth > 0.1)
                     {
@@ -6116,9 +6139,14 @@ void draw_horizon()
                         const HorizonTerrainVertex &source = mesh[vertex];
                         const double x = source.distance * sine;
                         const double north = source.distance * cosine;
-                        const double refraction = surface_lift * fmin(1.0, source.distance / surface_range) * source.distance;
-                        const double up = source.elevation - surface_eye
-                            - source.distance * source.distance / (2.0 * surface_radius) + refraction;
+                        double up;
+                        if ((performance_enabled(25) && !horizon_terrain_cpu_reference)) up = terrain_up[vertex];
+                        else
+                        {
+                            const double refraction = surface_lift * fmin(1.0, source.distance / surface_range) * source.distance;
+                            up = source.elevation - surface_eye
+                                - source.distance * source.distance / (2.0 * surface_radius) + refraction;
+                        }
                         const double depth = up * sin_alt + north * cos_alt;
                         const double y = up * cos_alt - north * sin_alt;
                         camera_vertices[vertex] = {x, y, depth};

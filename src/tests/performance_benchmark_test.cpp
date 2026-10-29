@@ -179,6 +179,7 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
             : id == 18 ? std::vector<std::string>{"catalog-lock-idle", "catalog-lock-publication"}
             : id == 13 ? std::vector<std::string>{"catalog", "catalog-walk", "catalog-time-jump"}
             : id <= 5 || id == 8 ? std::vector<std::string>{"catalog", "catalog-time-jump"}
+            : id == 25 ? std::vector<std::string>{"shore-still", "forest-still", "shore-walk", "forest-walk"}
             : id == 21 ? std::vector<std::string>{"skyline-walk", "skyline-still"}
             : id == 31 ? std::vector<std::string>{"shore-walk", "forest-refresh"}
             : id == 42 ? std::vector<std::string>{"forest-walk", "forest-still"}

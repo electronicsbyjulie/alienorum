@@ -111,7 +111,7 @@ Source: draw_horizon's local TerrainRaster and TerrainRaster::reset in horizonte
 [x] P024 | A / S / Q0 | Tile the CPU terrain rasterizer and add conservative coverage rejection.
 Source: horizonterrain.h triangle rasterization. Current triangle bounding boxes drive per-pixel barycentric and depth work. Bin triangles into tiles, reject empty/outside tiles with edge tests, and use hierarchical depth only where its bound proves invisibility. Favor contiguous depth writes and SIMD-friendly interpolation. Validate perspective-correct distance, near-plane clipping, coastline gaps, and overlapping ridges. A software rasterizer rewrite carries substantial correctness risk; compare saved depth buffers and final images, not only frame rates. It may be superseded by P027 on supported hardware.
 
-P025 | B / S / Q0 | Cache projection-independent terrain topology and per-frame scratch arrays.
+[x] P025 | B / S / Q0 | Cache projection-independent terrain topology and per-frame scratch arrays. DISABLED: PERF_P025=0; exact height-term/scratch reuse has no reproducible frame-time gain.
 Source: src/visuals.cpp, terrain projected arrays, radial clamps, and horizon buffer copies. Topology, indices, and some radial terms are regenerated or copied alongside genuinely changing coordinates. Retain fixed connectivity and reserve projected/scratch buffers. Separate height sampling from observer transforms so a camera rotation does not rebuild world geometry. Verify invalidation on resolution, world radius, eye height, and mesh-quality changes. This is lower risk than a wholesale mesh rewrite, but its benefit overlaps P020 and P022 and should not be counted twice.
 
 P026 | B / S / Q1 | Make terrain detail depend on projected error rather than a fixed full annulus.

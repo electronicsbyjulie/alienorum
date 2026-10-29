@@ -297,3 +297,35 @@ map-arrival and import contention are unmeasured here. Eighteen enabled-path
 housekeeping checks pass, including recursive release/reacquire and cross-thread
 exclusion. The instrumentation supplies evidence for future lock-scope work; it is
 not a lock-removal optimization or a demonstrated shipping speedup.
+
+P025 — TERRAIN PROJECTION INVARIANTS AND SCRATCH (implemented, DISABLED: PERF_P025=0)
+Retain exact camera-independent vertex up terms while the existing mesh is valid;
+refresh on world/map generation, water/vegetation state, world radius, observer
+latitude/longitude, eye height or refraction lift changes. Preserve arithmetic order.
+Retain horizon/base-horizon scratch vector capacity, overwriting values each frame.
+Connectivity remains the existing fixed implicit grid; no duplicate index graph is
+allocated for topology already encoded by the fixed rows/columns. Camera-dependent
+projection, geometry resolution, rasterization and sampling remain unchanged. This
+measures additional reuse with P020/P022/P023 enabled, not their gains again.
+Native Intel HD 2000, 1280 x 720, local surface fixture. No compilation overlaps timing.
+Initial run: nine paired blocks of 24 frames, walking workloads. Confirmation/repeat:
+nine paired blocks of 16 frames, adding stationary views. Do not pool these different
+frame counts. Each mode alternates ordering and waits for GPU completion.
+PERFORMANCE_BENCHMARK_P025_RESULTS.csv
+  forest-walk: 31.345 -> 31.947 ms; paired median +0.96%; 95% interval [-1.04%, +3.62%]; maximum image/state error 0.
+  shore-walk: 121.311 -> 124.417 ms; paired median +0.57%; 95% interval [-0.14%, +5.67%]; maximum image/state error 0.
+PERFORMANCE_BENCHMARK_P025_CONFIRM_RESULTS.csv
+  forest-still: 25.365 -> 26.100 ms; paired median +2.85%; 95% interval [-0.46%, +4.45%]; maximum image/state error 0.
+  forest-walk: 31.185 -> 30.777 ms; paired median -1.73%; 95% interval [-2.87%, -0.34%]; maximum image/state error 0.
+  shore-still: 106.696 -> 106.674 ms; paired median +0.15%; 95% interval [-1.32%, +0.64%]; maximum image/state error 0.
+  shore-walk: 119.496 -> 119.924 ms; paired median +0.20%; 95% interval [-1.33%, +1.97%]; maximum image/state error 0.
+PERFORMANCE_BENCHMARK_P025_REPEAT_RESULTS.csv
+  forest-still: 25.964 -> 25.753 ms; paired median -0.38%; 95% interval [-3.96%, +1.21%]; maximum image/state error 0.
+  forest-walk: 31.116 -> 31.308 ms; paired median +0.96%; 95% interval [-2.48%, +4.22%]; maximum image/state error 0.
+  shore-still: 106.937 -> 106.814 ms; paired median -0.42%; 95% interval [-4.92%, +2.75%]; maximum image/state error 0.
+  shore-walk: 119.919 -> 119.502 ms; paired median -0.21%; 95% interval [-1.49%, +0.77%]; maximum image/state error 0.
+The first confirmation's forest-walk improvement (-1.73%) is not reproduced by the
+same-configuration repeat (+0.96%, mixed). Every repeated workload is mixed/neutral.
+Keep PERF_P025=0 for lack of reproducible improvement. Exact terrain image tests pass
+while walking/turning, crossing poles, and changing radius, eye height and maps.
+The original projection arithmetic and temporary vectors remain the production path.
