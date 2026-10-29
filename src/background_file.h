@@ -9,6 +9,7 @@
 #include <iostream>
 #include <mutex>
 #include <functional>
+#include <optional>
 #ifdef _WIN32
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -40,10 +41,11 @@ namespace alienorum
             try
             {
                 auto task = capture();
-                pending = std::async(std::launch::async, [task = std::move(task)]() mutable
+                pending = std::async(std::launch::async, [task = std::make_optional(std::move(task))]() mutable
                 {
                     bool ok = false;
-                    try { ok = task(); } catch (...) {}
+                    try { ok = (*task)(); } catch (...) {}
+                    task.reset();
                     if (!ok) std::cerr << "Background file publication failed." << std::endl;
                     return ok;
                 });

@@ -338,11 +338,11 @@ P093 | B / H / Q0 | Track GPU object lifetime and retained map budgets across ga
 Source: map and GPU cache ownership in src/gputex.cpp and associated renderers. Repeated visits to many generated worlds may accumulate CPU maps, GPU textures, or cached layers even when no leak occurs. Inventory retained resources by owner and generation, then apply an explicit LRU or memory budget to reconstructible assets. Preserve current/selected resources and avoid eviction thrashing. Validate a repeated multi-galaxy travel loop and compare frame tails before and after memory pressure. This is a hypothesis until resource counters establish growth; do not label all cache retention a leak.
 
 [x] P094 | B / S / Q0 | Move safe portions of saving off the interactive thread.
-IMPLEMENTED: PERF_P094=1. Immutable snapshot plus bounded background encoding/atomic publication; save interaction latency improves in two fixed comparisons. Total completion is slower; this is not a steady FPS gain.
+IMPLEMENTED: PERF_P094=1. Immutable snapshot plus bounded background encoding/atomic publication; save interaction latency improves in two fixed comparisons. Final interaction gains are 5–6%, with 7–9% slower completion; this is not a steady FPS gain.
 Source: src/classes/serial.cpp, save_all. The completed compact format greatly reduces output, but a large save can still build records, write disk data, and contend for memory bandwidth. A consistent immutable snapshot followed by background encoding/writing could reduce an explicit save hitch. Validate edits during saving, error handling, replacement safety, and atomic file publication. Do not iterate mutable raw objects asynchronously without a snapshot/lifetime design. This is an interaction-stall proposal, not an assertion that universe saving runs every surface frame.
 
 [x] P095 | C / H / Q0 | Separate snapshot encoding and ancillary file writes from presentation.
-IMPLEMENTED: PERF_P095=1. Owned ordered PNG/layout writers; two fixed comparisons shorten PNG encoding/publication interaction stalls by about 98%, with about 3% slower total completion. Framebuffer readback stays synchronous and is excluded from this encoding benchmark.
+IMPLEMENTED: PERF_P095=1. Owned ordered PNG/layout writers; two fixed comparisons shorten PNG encoding/publication interaction stalls by about 98%, with mixed/slower total completion (about +5% in confirmation). Framebuffer readback stays synchronous and is excluded from this encoding benchmark.
 Source: screenshot handling and runtime preference/layout persistence. PNG encoding or synchronous disk writes can cause occasional long frames when explicitly invoked or periodically saved. Measure call frequency and duration first, then move safe encoding/writing behind bounded queues. Preserve the exact captured frame, error reporting, and shutdown completion. Do not access unrelated user images for testing. This is lower priority than ordinary render loops, but an exhaustive audit includes occasional stalls as a separate category rather than excluding them from responsiveness reporting.
 
 P096 | C / H / Q0 | Keep network/catalog activity isolated from rendering and publication bursts.
@@ -563,7 +563,7 @@ The original audit deliverables were this report and PERFORMANCE_AUDIT_FAILURE_E
 
 
 
-IMPLEMENTATION BENCHMARK REVIEW
+INITIAL IMPLEMENTATION BENCHMARK REVIEW (HISTORICAL)
 See PERFORMANCE_BENCHMARKS.txt and the paired CSV files for methods and measurements.
 All eighteen implemented proposals have independent before/after measurements. Initial
 component timings are followed by core-frame runs with coherent observer/projection state,
@@ -594,4 +594,9 @@ Neutral earlier implementations remain enabled without a speedup claim.
 FINAL REQUESTED QUEUE STATUS
 All 26 requested proposal entries are checked and carry their implementation or
 disabled status. P028 remains a GPU prototype with application integration unmet.
-P094/P095 target interaction latency, with total save completion reported separately.
+P094/P095 target interaction latency, with total save completion reported separately. Final ownership comparisons supersede the initial IO tables.
+
+Final P094/P095 ownership review removes an extra JSON document copy and releases
+job payloads on the writer thread. The destructor-thread regression reproduces
+before correction and passes afterward. Final-source IO tables supersede the
+initial timing numbers; interaction gains retain both enabled defaults.

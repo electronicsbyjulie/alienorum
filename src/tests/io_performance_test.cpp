@@ -132,11 +132,23 @@ TEST_F(IoPerformanceTest, PairedProductionPaths)
     for (int i = -1; i < frames; ++i)
     {
         const auto start = std::chrono::steady_clock::now();
-        if (png_case) ASSERT_TRUE(save_snapshot_pixels(path.string(), 1280, 720, pixels, PERF_P095));
-        else ASSERT_TRUE(Serialization::save_file(path.string(), cels, true, performance_enabled(94)));
+        if (png_case)
+        {
+            ASSERT_TRUE(save_snapshot_pixels(path.string(), 1280, 720, pixels, PERF_P095));
+        }
+        else
+        {
+            ASSERT_TRUE(Serialization::save_file(path.string(), cels, true, performance_enabled(94)));
+        }
         const auto returned = std::chrono::steady_clock::now();
-        if (png_case) ASSERT_TRUE(snapshot_writer().finish());
-        else ASSERT_TRUE(Serialization::finish_file_saves());
+        if (png_case)
+        {
+            ASSERT_TRUE(snapshot_writer().finish());
+        }
+        else
+        {
+            ASSERT_TRUE(Serialization::finish_file_saves());
+        }
         const auto finished = std::chrono::steady_clock::now();
         if (i >= 0)
         {
@@ -145,7 +157,10 @@ TEST_F(IoPerformanceTest, PairedProductionPaths)
         }
     }
     const auto bytes = contents(path);
-    if (!png_case) ASSERT_EQ(bytes, Serialization::snapshot(cels, true).dump());
+    if (!png_case)
+    {
+        ASSERT_EQ(bytes, Serialization::snapshot(cels, true).dump());
+    }
     std::ofstream csv(output);
     csv << "proposal,workload,round,order,before_ms,after_ms,change_percent,max_channel_error,before_cpu_ms,after_cpu_ms,before_max_ms,after_max_ms\n";
     csv << std::setprecision(12);
@@ -198,4 +213,23 @@ TEST_F(IoPerformanceTest, LayoutTextRetainsExactLatestSettings)
     ASSERT_TRUE(save_layout_text(path, text));
     ASSERT_TRUE(layout_writer().finish());
     EXPECT_EQ(contents(path), text);
+}
+
+TEST_F(IoPerformanceTest, WriterReleasesOwnedPayloadOnWorkerThread)
+{
+    struct Payload
+    {
+        std::thread::id& destroyed_on;
+        explicit Payload(std::thread::id& result) : destroyed_on(result) {}
+        ~Payload() { destroyed_on = std::this_thread::get_id(); }
+    };
+    std::thread::id destroyed_on;
+    BackgroundFile writer;
+    ASSERT_TRUE(writer.submit([&]()
+    {
+        return [payload = std::make_unique<Payload>(destroyed_on)]() { return bool(payload); };
+    }));
+    ASSERT_TRUE(writer.finish());
+    EXPECT_NE(destroyed_on, std::thread::id());
+    EXPECT_NE(destroyed_on, std::this_thread::get_id());
 }

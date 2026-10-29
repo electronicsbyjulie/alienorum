@@ -1018,7 +1018,7 @@ Raw data: PERFORMANCE_BENCHMARK_P090_FIXED_RESULTS.csv; pilot retained separatel
 P090 shipping validation: application builds; 119 rendering checks and nineteen
 housekeeping checks pass, with eight optional GPU skips.
 
-P094 — owned background universe publication
+P094 — owned background universe publication (initial; superseded below)
 Parent: 66c1848. Object traversal and compact-record construction stay on the
 caller under the catalog lock. The writer receives only an owned JSON document
 and absolute path. One active job, backpressure before the next snapshot, ordered
@@ -1046,7 +1046,7 @@ Three lifecycle checks pass: immutable edits, ordered saves, failed publication
 with prior-file preservation/recovery, bounded capture and destructor completion.
 All 73 serialization checks pass; application builds. Manual acceptance remains separate.
 
-P095 — owned snapshot encoding and layout publication
+P095 — owned snapshot encoding and layout publication (initial; superseded below)
 Parent: 08fda84. glReadPixels remains on the GL thread at the original capture
 point, before swap, with the original dimensions, RGB bytes and bottom-row-first
 readback. Workers own pixel vectors/absolute paths; libpng keeps original RGB,
@@ -1306,3 +1306,63 @@ shore fixture remains expensive overall; this change does not solve the rest
 of that frame. No laptop/Windows/manual acceptance claim follows from this GPU.
 P108 shipping validation: application builds; 123 rendering and nineteen
 housekeeping checks pass, with eight optional GPU skips.
+
+FINAL WRITER OWNERSHIP REVIEW — P094/P095
+Parent: 906a42f. Review found a return-by-value member expression in the JSON
+builder and captured payloads retained by the async shared state. Explicitly
+move the completed header out of its construction context. Store each owned
+callable in an optional and reset it on the worker before publishing its result;
+large JSON/pixel/text storage cannot wait for UI-side future disposal.
+A destructor-thread witness fails on the previous writer and passes after this
+correction. Six IO checks pass, including prior-file preservation, immutable
+snapshots, ordering, bounded capture, PNG bytes/orientation, layout text and worker
+release. All 73 serialization and eight sound checks pass; the application builds.
+Initial IO timing tables above remain historical. The following final-source
+comparisons supersede them for current enable/disable decisions. The synchronous
+JSON path retains the original traversal/stream work without an extra document
+clone; the background path captures the same compact document. Both fixed caller
+binaries share the corrected serialization implementation. PNG uses the original
+synchronous FILE pipeline versus owned background encoding/publication. Both PNG
+variants include a common input-buffer copy in this synthetic API benchmark;
+real framebuffer capture moves its buffer. GL readback is outside these timings.
+Nine AB/BA pairs per table: four JSON saves or eight PNG saves per sample, private
+temporary paths, complete byte-identical output hashes. CPU fields remain zero
+placeholders. No native frame timing overlaps compiler work.
+PERFORMANCE_BENCHMARK_P094_OWNERSHIP_FIXED_RESULTS.csv
+  save-completion: 269.954 -> 290.757 ms; +7.15% [+6.08%, +10.42%], slower.
+  save-interactive: 269.952 -> 254.975 ms; -6.03% [-7.17%, -3.65%], faster.
+PERFORMANCE_BENCHMARK_P094_OWNERSHIP_CONFIRM_RESULTS.csv
+  save-completion: 268.494 -> 293.514 ms; +8.55% [+6.62%, +9.92%], slower.
+  save-interactive: 268.493 -> 256.782 ms; -4.64% [-7.01%, -4.09%], faster.
+PERFORMANCE_BENCHMARK_P095_OWNERSHIP_FIXED_RESULTS.csv
+  save-completion: 49.376 -> 49.953 ms; +1.38% [-1.18%, +2.60%], mixed/neutral.
+  save-interactive: 49.375 -> 0.766 ms; -98.44% [-98.58%, -98.31%], faster.
+PERFORMANCE_BENCHMARK_P095_OWNERSHIP_CONFIRM_RESULTS.csv
+  save-completion: 48.942 -> 51.617 ms; +5.15% [+2.72%, +6.57%], slower.
+  save-interactive: 48.942 -> 0.750 ms; -98.46% [-98.56%, -98.28%], faster.
+Retain P094/P095 for repeated interaction-latency gains: about 5–6% for the
+JSON producer and 98% for PNG encoding/publication. Completion is about 7–9%
+slower for JSON; PNG completion is mixed once and about 5% slower in confirmation.
+These are explicit responsiveness/throughput tradeoffs, not steady-state FPS or
+faster-storage claims. Building the JSON snapshot remains the dominant save stall.
+The first implemented IO measurements are not presented as timings of the literal
+pre-refactor executable. Fixed workflow comparisons, output fidelity and final
+source controls are stated explicitly rather than conflating these categories.
+
+FINAL VALIDATION AND HANDOFF
+The full rendering run passes 123 checks with eight optional GPU skips, and
+nineteen housekeeping checks pass. The final ownership-only correction then
+passes six IO checks, all 73 serialization checks and eight sound checks; the
+developer IO benchmark test intentionally skips ordinary test runs. One older
+serialization test is explicitly disabled. Both final Make and CMake application
+builds pass. This is 229 passed automated checks across the stated suites, not
+a claim that every manual acceptance criterion or the entire test inventory ran.
+All 26 requested proposals have code/evaluation, before/after evidence and status.
+Ten requested application switches are enabled; sixteen are default zero. P028
+remains a disabled GPU prototype, with full renderer integration explicitly unmet.
+Earlier P042 stays disabled; P052's ambiguous-boundary path is separately disabled.
+Two-minute pauses separate completed fixes. Source work stays on fakestars.
+Hardware evidence is this desktop's Intel HD2000. Laptop GPUs, Windows execution
+and user visual acceptance remain separate. No production universe/catalog or
+unrelated user image is changed. The manifest archives raw CSV/executable hashes
+and recorded metadata; compiled comparisons govern final defaults.

@@ -1162,7 +1162,7 @@ json Serialization::snapshot(CelestialObject **cels, bool oe)
     }
 
     if (!allobjs.is_null()) context.header["o"] = std::move(allobjs);
-    return context.header;
+    return std::move(context.header);
 }
 
 bool Serialization::save_all(std::fstream& fs, CelestialObject **cels, bool oe)
