@@ -1,3 +1,5 @@
+#include "../performance_options.h"
+#include "localsurfacetile.h"
 #include "surfacenavigation.h"
 #include <queue>
 #include <limits>
@@ -23,6 +25,15 @@ std::pair<RGB3, SurfaceMaterial> SurfaceSampler::info(double latitude, double lo
         RGB3 uniform;
         if (map->color_within_cap(latitude, longitude, bound, uniform, true))
             return {uniform, map->material_at(latitude, longitude)};
+        if (performance_enabled(37) && local_tile && local_tile->matches(field.world_id(), map, map->gen, radius, strength))
+        {
+            std::pair<double, double> approximate;
+            double error_angle = 0;
+            RGB3 certified;
+            if (local_tile->coordinates(field, latitude, longitude, approximate, error_angle)
+                && map->color_within_cap(approximate.first, approximate.second, error_angle, certified, true))
+                return {certified, map->material_at(approximate.first, approximate.second)};
+        }
         const auto coord = field.coordinates(radius, latitude, longitude, strength);
         latitude = coord.first;
         longitude = coord.second;

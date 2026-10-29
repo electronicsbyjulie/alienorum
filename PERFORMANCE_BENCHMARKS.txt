@@ -516,3 +516,97 @@ P001 is neutral. P002 confirms ordinary/time-jump gains in two runs (-21.99%/-9.
 and -25.77%/-7.90%). P003's first ordinary gain is not statistically confirmed by the
 second run; keep its gain unproven. P004 confirms ordinary/time-jump gains in both
 runs (-22.29%/-4.55% and -20.01%/-4.99%). Further rechecks remain in progress.
+
+P037 — BOUNDED LOCAL SURFACE TILE (implemented, DISABLED: PERF_P037=0)
+A lazy 65 x 65 tangent-chart tile stores the existing displaced field at exact nodes.
+Choose spacing from a conservative derivative/normalization bound and a quarter-pixel
+rendering budget; cap spacing at 0.125 m. Retain an angular error bound for each query.
+Accept a cached query only when the map certifies identical color AND material across
+that error cap. Uncertain coasts fall back to the authoritative field; navigation and
+interaction always use the exact field. Height geometry is unchanged.
+Invalidate on world/map identity, map generation, radius, displacement, chart extent or
+spacing changes. Reject polar charts, unsafe small radii, non-finite inputs and precision
+budgets below roundoff. Storage is bounded to 4,225 nodes. No file/installer asset is added.
+Enabled-path tests check interior points, cell edges, longitude seams, three seeds,
+small/Earth radii, chart replacement, map changes and equal-color/different-material
+coastlines. Both new tests pass. Native before/after images match in all five workloads.
+Actual pre-change source is a044a58; candidate source enables P037. Both executables use
+fixed compile-time controls, with fresh object directories. Nine alternating external
+pairs measure two sixteen-frame blocks each; GPU completion is included.
+Raw data: PERFORMANCE_BENCHMARK_P037_FIXED_RESULTS.csv.
+
+COMPILED RECHECK DETAIL THROUGH P022
+All rows below use separate fixed binaries. Percentages are paired medians;
+95% bootstrap intervals appear in brackets. Negative values mean faster.
+Mixed earlier implementations remain enabled unless a repeat establishes a loss.
+New experiments without a demonstrated gain remain disabled.
+P005 initial: PERFORMANCE_BENCHMARK_FIXED_P005_RESULTS.csv
+  catalog: -16.63% [-32.86%, -10.04%], faster; image/state error 0.
+  catalog-time-jump: -8.61% [-10.71%, -5.26%], faster; image/state error 0.
+P005 confirmation: PERFORMANCE_BENCHMARK_FIXED_P005_CONFIRM_RESULTS.csv
+  catalog: -18.83% [-27.30%, -15.00%], faster; image/state error 0.
+  catalog-time-jump: -6.08% [-8.01%, -3.47%], faster; image/state error 0.
+P006 initial: PERFORMANCE_BENCHMARK_FIXED_P006_RESULTS.csv
+  catalog-alerts-armed: -10.36% [-20.10%, -0.83%], faster; image/state error 0.
+  catalog-alerts-none: -11.78% [-14.43%, -6.01%], faster; image/state error 0.
+P006 confirmation: PERFORMANCE_BENCHMARK_FIXED_P006_CONFIRM_RESULTS.csv
+  catalog-alerts-armed: -14.15% [-22.72%, -5.47%], faster; image/state error 0.
+  catalog-alerts-none: -8.85% [-22.46%, -1.86%], faster; image/state error 0.
+P007 initial: PERFORMANCE_BENCHMARK_FIXED_P007_RESULTS.csv
+  catalog-eclipse: -8.58% [-13.95%, +11.22%], mixed/neutral; image/state error 0.
+  catalog-eclipse-time-jump: -2.72% [-5.28%, +0.58%], mixed/neutral; image/state error 0.
+P008 initial: PERFORMANCE_BENCHMARK_FIXED_P008_RESULTS.csv
+  catalog: +2.64% [-0.76%, +18.50%], mixed/neutral; image/state error 0.
+  catalog-time-jump: -2.94% [-3.47%, +1.60%], mixed/neutral; image/state error 0.
+P012 initial: PERFORMANCE_BENCHMARK_FIXED_P012_RESULTS.csv
+  catalog-observer-still: +1.29% [-10.05%, +8.29%], mixed/neutral; image/state error 0.
+  catalog-observer-walk: +0.86% [-16.21%, +4.48%], mixed/neutral; image/state error 0.
+P013 initial: PERFORMANCE_BENCHMARK_FIXED_P013_RESULTS.csv
+  catalog: +1.74% [-4.49%, +6.16%], mixed/neutral; image/state error 0.
+  catalog-time-jump: +0.10% [-0.79%, +2.41%], mixed/neutral; image/state error 0.
+  catalog-walk: -2.10% [-9.95%, +4.59%], mixed/neutral; image/state error 0.
+P018 initial: PERFORMANCE_BENCHMARK_FIXED_P018_RESULTS.csv
+  catalog-lock-idle: +1.49% [-11.60%, +7.41%], mixed/neutral; image/state error 0.
+  catalog-lock-publication: -3.04% [-10.14%, +10.61%], mixed/neutral; image/state error 0.
+P020 initial: PERFORMANCE_BENCHMARK_FIXED_P020_RESULTS.csv
+  forest-walk: -18.49% [-24.11%, -17.50%], faster; image/state error 0.
+  shore-walk: -5.18% [-6.15%, -2.96%], faster; image/state error 0.
+P020 confirmation: PERFORMANCE_BENCHMARK_FIXED_P020_CONFIRM_RESULTS.csv
+  forest-walk: -18.14% [-20.63%, -11.91%], faster; image/state error 0.
+  shore-walk: -5.44% [-5.80%, -3.85%], faster; image/state error 0.
+P021 initial: PERFORMANCE_BENCHMARK_FIXED_P021_RESULTS.csv
+  skyline-still: -1.36% [-7.64%, +14.69%], mixed/neutral; image/state error 0.
+  skyline-walk: -7.56% [-13.67%, -0.37%], faster; image/state error 0.
+P021 confirmation: PERFORMANCE_BENCHMARK_FIXED_P021_CONFIRM_RESULTS.csv
+  skyline-still: -3.36% [-13.74%, +8.25%], mixed/neutral; image/state error 0.
+  skyline-walk: -10.15% [-14.22%, +0.87%], mixed/neutral; image/state error 0.
+P022 initial: PERFORMANCE_BENCHMARK_FIXED_P022_RESULTS.csv
+  forest-walk: +0.85% [-1.79%, +6.34%], mixed/neutral; image/state error 0.
+  shore-walk: +0.41% [-1.00%, +5.54%], mixed/neutral; image/state error 0.
+P007 extended: PERFORMANCE_BENCHMARK_FIXED_P007_EXTENDED_RESULTS.csv
+  Twenty-one alternating pairs, twenty-four frames per block; exact image/state hashes.
+  catalog-eclipse: -10.01% [-12.36%, -5.96%], faster.
+  catalog-eclipse-time-jump: -3.71% [-4.88%, -2.70%], faster.
+Keep P007 enabled. P020 also confirms its gains in both runs. P021 walking gains
+are not statistically confirmed by the second run; P022 is neutral. These remain
+earlier implementations with unproven gains, rather than confirmed regressions.
+The other compiled rechecks are still in progress.
+
+P037 FINAL COMPILED RESULT
+forest-walk: 33.971 -> 33.296 ms; paired median -0.71%; 95% interval [-4.37%, +4.31%]; mixed/neutral; image error 0.
+  Observed frame maxima 49.059 -> 44.125 ms; tail status mixed/neutral.
+shore-pole: 111.933 -> 112.626 ms; paired median +0.20%; 95% interval [-0.61%, +0.81%]; mixed/neutral; image error 0.
+  Observed frame maxima 149.787 -> 168.376 ms; tail status slower.
+shore-seam: 102.665 -> 110.060 ms; paired median +6.19%; 95% interval [+3.89%, +13.19%]; slower; image error 0.
+  Observed frame maxima 137.770 -> 139.139 ms; tail status mixed/neutral.
+shore-still: 118.389 -> 124.861 ms; paired median +4.53%; 95% interval [+3.26%, +7.30%]; slower; image error 0.
+  Observed frame maxima 164.176 -> 165.575 ms; tail status mixed/neutral.
+shore-walk: 131.907 -> 140.405 ms; paired median +6.63%; 95% interval [+4.34%, +7.89%]; slower; image error 0.
+  Observed frame maxima 344.996 -> 183.765 ms; tail status mixed/neutral.
+Three shoreline workloads establish a slowdown; forest and polar results are neutral.
+Disable PERF_P037. The existing exact sampler remains the production path. The tile
+is actually exercised in shoreline captures (828/926 nodes); forest uniformity and
+polar safety can bypass it. No application FPS gain is claimed for this experiment.
+P037 production validation: application builds; 109 rendering checks pass, eight
+optional GPU checks skip; all eighteen housekeeping checks pass. The two new tests
+also pass in the enabled private binary. Manual/hardware acceptance is not inferred.

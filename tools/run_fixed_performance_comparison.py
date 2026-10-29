@@ -33,7 +33,7 @@ def main():
               'change_percent', 'max_channel_error', 'before_cpu_ms', 'after_cpu_ms', 'before_max_ms', 'after_max_ms']
     with tempfile.TemporaryDirectory(prefix='alienorum-fixed-perf-') as temporary:
         with args.output.open('w') as output, args.output.with_suffix('.log').open('w') as log:
-            writer = csv.DictWriter(output, fieldnames=fields)
+            writer = csv.DictWriter(output, fieldnames=fields, lineterminator="\n")
             writer.writeheader()
             for pair in range(args.rounds):
                 modes = [0, 1] if pair % 2 == 0 else [1, 0]

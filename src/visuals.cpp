@@ -18,6 +18,7 @@
 #include "classes/scenerydraw.h"
 #include "classes/surfacecache.h"
 #include "classes/surfaceprefetch.h"
+#include "classes/localsurfacetile.h"
 #include "classes/surfacebiomes.h"
 #include "classes/surfacenavigation.h"
 #include "classes/horizonterrain.h"
@@ -31,6 +32,9 @@ using namespace alienorum;
 bool horizon_terrain_cpu_reference = false;
 bool scenery_cpu_reference = false;
 bool water_cpu_reference = false;
+static LocalSurfaceTile local_surface_tile;
+static bool local_surface_tile_active = false;
+size_t local_surface_tile_sample_count() { return local_surface_tile_active ? local_surface_tile.sample_count() : 0; }
 static SurfacePrefetchQueue surface_prefetch;
 bool surface_prefetch_pending() { return performance_enabled(36) && surface_prefetch.queued(); }
 size_t prefetch_surface_tiles(double milliseconds)
@@ -5438,6 +5442,7 @@ void draw_local_rings()
 void draw_horizon()
 {
     if (performance_enabled(36)) surface_prefetch.clear();
+    local_surface_tile_active = false;
     water_stats = {};
     terrain_lod_stats = {};
     // Horizon
@@ -5615,6 +5620,22 @@ void draw_horizon()
             const double distance = std::isfinite(depth) ? depth : surface_range;
             return surface_coord(distance, azimuth + atan2(x, north));
         };
+
+        if (performance_enabled(37) && !horizon_terrain_cpu_reference && surface.has_biomes() && map && map->is_complete())
+        {
+            const double hint_distance = base_distance(dispcx, dispcy * 1.9);
+            if (std::isfinite(hint_distance))
+            {
+                const auto hint = surface_coord(hint_distance, azimuth);
+                const double maximum_error = .25 * surface_eye / std::max(1.0, zoom * dispcx);
+                if (local_surface_tile.configure(static_cast<uint32_t>(whereami), map, map->gen, surface_radius,
+                    hint.first, hint.second, shore_displacement, maximum_error))
+                {
+                    surface.use_local_tile(local_surface_tile);
+                    local_surface_tile_active = true;
+                }
+            }
+        }
 
         rgb.r = fmin(255, is_day*rgb.r);
         rgb.g = fmin(255, is_day*rgb.g);

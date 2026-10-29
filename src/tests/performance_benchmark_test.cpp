@@ -372,6 +372,7 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
             : id == 18 ? std::vector<std::string>{"catalog-lock-idle", "catalog-lock-publication"}
             : id == 13 ? std::vector<std::string>{"catalog", "catalog-walk", "catalog-time-jump"}
             : id <= 5 || id == 8 ? std::vector<std::string>{"catalog", "catalog-time-jump"}
+            : id == 37 ? std::vector<std::string>{"shore-walk", "forest-walk", "shore-still", "shore-pole", "shore-seam"}
             : id == 36 ? std::vector<std::string>{"shore-walk", "forest-walk"}
             : id == 30 ? std::vector<std::string>{"shore-walk", "forest-walk", "ocean-still"}
             : id == 29 ? std::vector<std::string>{"shore-up", "shore-walk", "shore-down"}
@@ -406,8 +407,8 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
             {
                 std::optional<CatalogLock> frame_lock;
                 if (id == 18) frame_lock.emplace(catalog_mutex, CatalogLockSite::frame);
-                viewer_lat = base_latitude;
-                viewer_lon = base_longitude;
+                viewer_lat = scene == "shore-pole" ? half_pi - 1e-6 : base_latitude;
+                viewer_lon = scene == "shore-seam" ? _pi - 1e-6 : base_longitude;
                 if (scene.find("walk") != std::string::npos) viewer_lat += frame_index * .25 / earth_radius;
                 if (scene == "forest-refresh") world->surf_map->touch_gen();
                 freeze_surface_time();
@@ -515,6 +516,9 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
             const auto expected = frame(0, true);
             select(false);
             const auto actual = frame(0, true);
+#ifdef PERF_P037
+            if (id == 37) std::cout << "PERF local tile nodes: " << local_surface_tile_sample_count() << '\n';
+#endif
             ASSERT_EQ(actual.size(), expected.size());
             std::uint64_t image_hash = 14695981039346656037ULL;
             for (unsigned char byte : actual)
@@ -558,9 +562,9 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
                     const double cpu_start = cpu_milliseconds();
                     for (int sample = 0; sample < frames; ++sample)
                     {
-                        const auto frame_start = id == 36 ? std::chrono::steady_clock::now() : start;
+                        const auto frame_start = (id == 36 || id == 37) ? std::chrono::steady_clock::now() : start;
                         frame(sample, false);
-                        if (id == 36) maximum_times[mode] = std::max(maximum_times[mode],
+                        if (id == 36 || id == 37) maximum_times[mode] = std::max(maximum_times[mode],
                             std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - frame_start).count());
                     }
                     cpu_times[mode] = (cpu_milliseconds() - cpu_start) / frames;
@@ -571,7 +575,7 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
                     << milliseconds[0] << ',' << milliseconds[1] << ','
                     << (milliseconds[1] / milliseconds[0] - 1) * 100 << ',' << maximum << ','
                     << cpu_times[0] << ',' << cpu_times[1];
-                if (id == 36) csv << ',' << maximum_times[0] << ',' << maximum_times[1];
+                if (id == 36 || id == 37) csv << ',' << maximum_times[0] << ',' << maximum_times[1];
                 else csv << ",,";
                 csv << '\n';
                 csv.flush();

@@ -94,6 +94,7 @@ struct HorizonTerrainLodStats
 const HorizonTerrainLodStats& horizon_terrain_lod_stats();
 size_t prefetch_surface_tiles(double milliseconds);
 bool surface_prefetch_pending();
+size_t local_surface_tile_sample_count();
 
 struct RockInstance
 {

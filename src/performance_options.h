@@ -76,6 +76,9 @@
 #ifndef SURFACE_PREFETCH_BUDGET_MS
 #define SURFACE_PREFETCH_BUDGET_MS 0.25
 #endif
+#ifndef PERF_P037
+#define PERF_P037 0
+#endif
 #ifndef PERF_P039
 #define PERF_P039 1
 #endif
@@ -129,6 +132,7 @@ namespace alienorum
             case 30: compiled = PERF_P030; break;
             case 31: compiled = PERF_P031; break;
             case 36: compiled = PERF_P036; break;
+            case 37: compiled = PERF_P037; break;
             case 39: compiled = PERF_P039; break;
             case 40: compiled = PERF_P040; break;
             case 41: compiled = PERF_P041; break;

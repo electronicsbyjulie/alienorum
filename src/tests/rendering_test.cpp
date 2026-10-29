@@ -25,6 +25,7 @@
 #include "../classes/scenerydraw.h"
 #include "../classes/surfacecache.h"
 #include "../classes/surfaceprefetch.h"
+#include "../classes/localsurfacetile.h"
 #include "../horizon_ground_gpu.h"
 #include "../scenery_gpu.h"
 #include "../horizon_terrain_gpu.h"
@@ -5158,4 +5159,109 @@ TEST_F(RenderingRegressionTest, SurfacePrefetchPreservesImagesAndCancelsStaleWor
     viewer_lat += 100 / earth_radius;
     paint();
     EXPECT_EQ(prefetch_surface_tiles(.25), 0u);
+}
+
+TEST(LocalSurfaceTileTest, BoundsCoordinateErrorAcrossSeedsCellsAndChartReplacement)
+{
+    int source = 0;
+    for (uint32_t seed : {0u, 42u, 0xffffffffu})
+    {
+        SurfaceBiomes field(seed);
+        LocalSurfaceTile tile;
+        for (double radius : {1000.0, 6371000.0})
+        {
+            for (double longitude : {.3, _pi - 1e-6})
+            {
+                const double latitude = .2;
+                ASSERT_TRUE(tile.configure(seed, &source, 1, radius, latitude, longitude, 1));
+                for (double east : {-3.0, -1.0, -.0625, 0.0, .0625, 1.0, 3.0})
+                {
+                    for (double north : {-3.0, -1.0, 0.0, 1.0, 3.0})
+                    {
+                        const double lat = latitude + north / radius;
+                        const double lon = longitude + east / (radius * cos(latitude));
+                        std::pair<double, double> approximate;
+                        double bound = 0;
+                        ASSERT_TRUE(tile.coordinates(field, lat, lon, approximate, bound));
+                        const auto exact = field.coordinates(radius, lat, lon);
+                        const double y = sin((exact.first - approximate.first) * .5);
+                        const double x = sin((exact.second - approximate.second) * .5);
+                        const double angle = 2 * asin(sqrt(std::clamp(y * y + cos(exact.first) * cos(approximate.first) * x * x, 0.0, 1.0)));
+                        EXPECT_LE(angle, bound);
+                    }
+                }
+                EXPECT_GT(tile.sample_count(), 0u);
+                EXPECT_FALSE(tile.matches(seed, &source, 2, radius, 1));
+                ASSERT_TRUE(tile.configure(seed, &source, 2, radius, latitude, longitude, 1));
+                EXPECT_EQ(tile.sample_count(), 0u);
+            }
+        }
+        EXPECT_FALSE(tile.configure(seed, &source, 3, 6371000, half_pi - 1e-6, .3, 1));
+        EXPECT_FALSE(tile.configure(seed, &source, 3, 10, .2, .3, 1));
+    }
+}
+
+TEST_F(RenderingRegressionTest, LocalSurfaceTileRetainsExactMaterialAcrossAnAmbiguousColorCoast)
+{
+    Planet* world = surface(true);
+    delete world->surf_map;
+    class MaterialBoundaryMap : public Map
+    {
+        public:
+        MaterialBoundaryMap()
+        {
+            image_width = 2;
+            image_height = 4;
+            allocated = 8;
+            lat_scale = 4 / _pi;
+            lon_scale = 1 / _pi;
+            red_data = new unsigned char[8];
+            green_data = new unsigned char[8];
+            blue_data = new unsigned char[8];
+            surface_materials.resize(8);
+            for (int index = 0; index < 8; ++index)
+            {
+                red_data[index] = 20;
+                green_data[index] = 100;
+                blue_data[index] = 160;
+                surface_materials[index] = index < 6 ? SurfaceMaterial::vegetation : SurfaceMaterial::water;
+            }
+            touch_gen();
+        }
+    };
+    Map* map = new MaterialBoundaryMap();
+    world->surf_map = map;
+    SurfaceBiomes field(42);
+    const double radius = earth_radius, longitude = .3;
+    double first = -200 / radius, last = 200 / radius;
+    for (int iteration = 0; iteration < 60; ++iteration)
+    {
+        const double middle = (first + last) * .5;
+        if (field.coordinates(radius, middle, longitude).first > 0) last = middle;
+        else first = middle;
+    }
+    const double coast = (first + last) * .5;
+    LocalSurfaceTile tile;
+    ASSERT_TRUE(tile.configure(42, map, map->gen, radius, coast, longitude, 1));
+    SurfaceSampler exact(world, map, field, radius, 1), candidate(world, map, field, radius, 1);
+    candidate.use_local_tile(tile);
+    for (double offset : {-1.0, -.01, -.001, -.000001, .000001, .001, .01, 1.0})
+    {
+        const auto expected = exact.sample(coast + offset / radius, longitude);
+        const auto actual = candidate.sample(coast + offset / radius, longitude);
+        EXPECT_EQ(actual.color.r, expected.color.r);
+        EXPECT_EQ(actual.color.g, expected.color.g);
+        EXPECT_EQ(actual.color.b, expected.color.b);
+        EXPECT_EQ(actual.material, expected.material);
+        EXPECT_EQ(actual.water, expected.water);
+        EXPECT_EQ(actual.vegetation, expected.vegetation);
+    }
+    if (performance_enabled(37))
+    {
+        EXPECT_GT(tile.sample_count(), 0u);
+    }
+    map->touch_gen();
+    EXPECT_FALSE(tile.matches(42, map, map->gen, radius, 1));
+    const auto expected = exact.sample(coast, longitude), actual = candidate.sample(coast, longitude);
+    EXPECT_EQ(actual.material, expected.material);
 }

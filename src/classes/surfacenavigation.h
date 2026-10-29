@@ -7,6 +7,8 @@
 
 namespace alienorum
 {
+    class LocalSurfaceTile;
+
     // One material interpretation for horizon painting, scenery, and navigation.
     class SurfaceSampler
     {
@@ -15,6 +17,7 @@ namespace alienorum
         SurfaceBiomes &field;
         double radius, strength, bound;
         bool favorable, biomes, ocean, water;
+        LocalSurfaceTile* local_tile = nullptr;
 
         bool water_sample(const std::pair<RGB3, SurfaceMaterial> &sample) const;
 
@@ -33,6 +36,7 @@ namespace alienorum
             bool attempted = false, uniform = false, value = false;
         };
         SurfaceSampler(Planet *body, Map *surface, SurfaceBiomes &noise, double world_radius, double displacement);
+        void use_local_tile(LocalSurfaceTile& tile) { local_tile = &tile; }
         std::pair<RGB3, SurfaceMaterial> info(double latitude, double longitude);
         Sample sample(double latitude, double longitude);
         bool uniform_sample(double latitude, double longitude, double angle, Sample& result);
