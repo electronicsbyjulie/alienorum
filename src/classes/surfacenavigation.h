@@ -19,6 +19,12 @@ namespace alienorum
         bool water_sample(const std::pair<RGB3, SurfaceMaterial> &sample) const;
 
         public:
+        struct Sample
+        {
+            RGB3 color;
+            SurfaceMaterial material;
+            bool water, vegetation;
+        };
         struct WaterPatch
         {
             using Key = std::tuple<Map*, unsigned int, Planet*, double, double, bool, bool, bool, bool, int, int, int, int>;
@@ -28,6 +34,7 @@ namespace alienorum
         };
         SurfaceSampler(Planet *body, Map *surface, SurfaceBiomes &noise, double world_radius, double displacement);
         std::pair<RGB3, SurfaceMaterial> info(double latitude, double longitude);
+        Sample sample(double latitude, double longitude);
         RGB3 color_at(double latitude, double longitude) { return info(latitude, longitude).first; }
         bool vegetation_color(const RGB3 &sample) const;
         bool vegetation_at(double latitude, double longitude);

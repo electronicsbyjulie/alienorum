@@ -5399,10 +5399,6 @@ void draw_horizon()
             return surface.color_at(latitude, longitude);
         };
         RGB3 rgb = surface_sample(viewer_lat, viewer_lon);
-        const auto vegetation_at = [&](double latitude, double longitude)
-        {
-            return surface.vegetation_at(latitude, longitude);
-        };
         const bool ocean_world = surface.ocean_world();
         const bool surface_water = surface.has_surface_water();
         const auto water_at = [&](double latitude, double longitude)
@@ -6592,12 +6588,13 @@ void draw_horizon()
                     }
 
                     const auto coord = ground_coord(wx, wy);
-                    if (!water_at(coord.first, coord.second))
+                    const auto wave_sample = surface.sample(coord.first, coord.second);
+                    if (!wave_sample.water)
                     {
                         has_prev = false;
                         continue;
                     }
-                    const RGB3 wave_rgb = surface_sample(coord.first, coord.second);
+                    const RGB3 wave_rgb = wave_sample.color;
 
                     ImVec2 cur_pt(wx, wy);
 
@@ -6965,9 +6962,10 @@ void draw_horizon()
                     for (size_t index = 0; index < scenery.size(); index++)
                     {
                         const auto &object = scenery[index];
-                        water[index] = water_at(object.latitude, object.longitude);
-                        plant[index] = !water[index] && vegetation_at(object.latitude, object.longitude);
-                        scenery_colors[index] = surface_sample(object.latitude, object.longitude);
+                        const auto sample = surface.sample(object.latitude, object.longitude);
+                        water[index] = sample.water;
+                        plant[index] = !sample.water && sample.vegetation;
+                        scenery_colors[index] = sample.color;
                         if (plant[index]) canopy_radii[index] = crown_scale
                             * scenery_size(object.seed, ROCK_MIN_SIZE, ROCK_MAX_SIZE);
                     }

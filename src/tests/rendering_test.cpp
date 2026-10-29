@@ -4513,3 +4513,41 @@ TEST_F(RenderingRegressionTest, OpaqueCloudDeckCoversTheFilteredGroundBoundary)
         }
     }
 }
+
+TEST_F(RenderingRegressionTest, SharedSurfaceSamplesPreserveMaterialAndColorInterpretation)
+{
+    Planet* world = surface(true);
+    SurfaceBiomes field(31);
+    for (int kind = 0; kind < 6; ++kind)
+    {
+        delete world->surf_map;
+        world->surf_map = kind == 0 ? static_cast<Map*>(new CoastalTestMap())
+            : kind == 1 ? static_cast<Map*>(new SceneryTestMap(true))
+            : static_cast<Map*>(new BlueBiomeTestMap(static_cast<SurfaceMaterial>(kind - 2)));
+        for (double temperature : {280.0, 1000.0})
+        {
+            world->temperature = temperature;
+            for (double radius : {1000.0, earth_radius})
+            {
+                SurfaceSampler sampler(world, world->surf_map, field, radius, shore_displacement);
+                for (int step = 0; step < 200; ++step)
+                {
+                    const double latitude = step < 100 ? (step - 50) / radius : (step - 150) * _pi / 100;
+                    const double longitude = step < 100 ? .3 : (step - 150) * _pi / 50;
+                    const auto shared = sampler.sample(latitude, longitude);
+                    const auto legacy = sampler.info(latitude, longitude);
+                    EXPECT_EQ(shared.color.r, legacy.first.r);
+                    EXPECT_EQ(shared.color.g, legacy.first.g);
+                    EXPECT_EQ(shared.color.b, legacy.first.b);
+                    EXPECT_EQ(shared.material, legacy.second);
+                    EXPECT_EQ(shared.water, sampler.water_at(latitude, longitude));
+                    EXPECT_EQ(shared.vegetation, sampler.vegetation_at(latitude, longitude));
+                }
+            }
+        }
+    }
+    SurfaceSampler absent(world, nullptr, field, earth_radius, 1);
+    const auto sample = absent.sample(0, 0);
+    EXPECT_EQ(sample.material, SurfaceMaterial::unknown);
+    EXPECT_FALSE(sample.vegetation);
+}

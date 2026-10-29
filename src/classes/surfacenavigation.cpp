@@ -48,6 +48,14 @@ bool SurfaceSampler::vegetation_at(double latitude, double longitude)
         : sample.second == SurfaceMaterial::vegetation;
 }
 
+SurfaceSampler::Sample SurfaceSampler::sample(double latitude, double longitude)
+{
+    const auto value = info(latitude, longitude);
+    const bool vegetation = value.second == SurfaceMaterial::unknown
+        ? vegetation_color(value.first) : value.second == SurfaceMaterial::vegetation;
+    return {value.first, value.second, water_sample(value), vegetation};
+}
+
 bool SurfaceSampler::water_sample(const std::pair<RGB3, SurfaceMaterial> &sample) const
 {
     if (!water) return false;
