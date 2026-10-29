@@ -24,6 +24,7 @@
 #include "../classes/surfacenavigation.h"
 #include "../classes/scenerydraw.h"
 #include "../classes/sceneryorder.h"
+#include "../classes/rockmeshcache.h"
 #include "../classes/surfacecache.h"
 #include "../classes/surfaceprefetch.h"
 #include "../classes/localsurfacetile.h"
@@ -5846,4 +5847,48 @@ TEST_F(RenderingRegressionTest, ReusedTextureStorageMatchesFreshColorBumpAndMipL
     EXPECT_EQ(gputex_for(&map), 0u);
     EXPECT_EQ(gputex_bump_for(&map), 0u);
     gputex_clear_cache();
+}
+
+TEST_F(RenderingRegressionTest, RockMeshCachePreservesLiveViewsAndBoundedShapes)
+{
+    RockMeshCache cache;
+    const RockShape expected = cache.get(42);
+    EXPECT_EQ(cache.get(42).vertices, expected.vertices);
+    EXPECT_EQ(cache.hits, 1u);
+    for (uint32_t seed = 0; seed < 2048; ++seed) cache.get(seed);
+    EXPECT_LE(cache.size(), 1024u);
+    EXPECT_EQ(cache.get(42).vertices, expected.vertices);
+    auto* world = surface(true);
+    delete world->surf_map;
+    world->surf_map = new BlueBiomeTestMap(SurfaceMaterial::ground);
+    world->vegetation_r = world->vegetation_g = world->vegetation_b = 0;
+    world->has_water = 0;
+    set(rock_mesh_reference, false);
+    set(zoom, 4.0);
+    const auto capture = [&]()
+    {
+        freeze_surface_time();
+        draw_horizon();
+        auto result = render();
+        ImGui::NewFrame();
+        return result;
+    };
+    for (int pose = 0; pose < 12; ++pose)
+    {
+        viewer_lat = pose * .4 / earth_radius;
+        viewer_lon = pose > 8 ? _pi - 1e-6 : .3;
+        altitude = -.15 - pose * .03;
+        azimuth = .4 + pose * .2;
+        viewer_eye_height = pose < 6 ? 1.7 : .4;
+        cels[0]->tmprel = Point(AU * (pose + 1), AU * .5, AU);
+        rock_mesh_reference = true;
+        const auto original = capture();
+        rock_mesh_reference = false;
+        EXPECT_EQ(capture(), original);
+    }
+    std::cout << "Rock cache: " << rock_mesh_cache().hits << " hits; " << rock_mesh_cache().misses << " misses\n";
+    if (PERF_P101)
+    {
+        EXPECT_GT(rock_mesh_cache().hits, 0u);
+    }
 }

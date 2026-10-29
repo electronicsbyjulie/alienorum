@@ -364,7 +364,8 @@ The earlier audit failed partly because isolated tests were treated as comprehen
 
 M. ADDITIONAL CONDITIONAL PATHS FOUND IN THE FULL DRAW PASS
 
-P101 | B / S / Q0 | Retain deterministic rock meshes and batch their transforms.
+[x] P101 | B / S / Q0 | Retain deterministic rock meshes and batch their transforms.
+DISABLED: PERF_P101=0. Bounded seeded local-mesh cache passes live-view image checks, but four fixed native workload intervals cross zero.
 Source: src/visuals.cpp around 7500-7660. The detailed rock path derives 26 perturbed vertices from a stable seed, then evaluates up to 40 facets with projection, lighting, and sorting. Retain the world-local seeded mesh and transform only the visible rocks, or instance shared mesh classes with per-rock deformation data. Validate every rock type, facet ordering, near-plane clipping, and lighting. This is conditional on detailed rocks surviving the current pixel-size tests; the 256 nominal rock count is not the number necessarily drawn. Compare warm frames with identical deterministic shapes.
 
 P102 | C / S / Q1 | Replace tiny detailed rocks with matched impostors earlier.

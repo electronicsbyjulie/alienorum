@@ -17,6 +17,7 @@
 #include "classes/surfacescatter.h"
 #include "classes/scenerydraw.h"
 #include "classes/sceneryorder.h"
+#include "classes/rockmeshcache.h"
 #include "classes/surfacecache.h"
 #include "classes/surfaceprefetch.h"
 #include "classes/localsurfacetile.h"
@@ -3230,7 +3231,7 @@ bool draw_single_object(int i)
     cels[i]->label_shown = false;
     bool obj_is_localsys = (cels[i]->cenobj == mycenobj);
     if (!show_localsys && obj_is_localsys) return false;
-    
+
     int j;
     double coma_px = 0;
     cel_obj_class cls = cels[i]->typeclass();
@@ -3362,7 +3363,7 @@ bool draw_single_object(int i)
         }
         discinstead[i] = false;
         if (!cels[1]) return false;
-        
+
         if (selected == i)
         {
             xycoord = ImVec2(cels[i]->drawnx, cels[i]->drawny);
@@ -3386,7 +3387,7 @@ bool draw_single_object(int i)
             col.red = effect*0.5*col.green + effect1*col.red;
             col.blue = effect*col.green + effect1*col.blue;
         }
-        
+
         if (flare)
         {
             draw_flare(flare, col, vmag_cache[i], 0);
@@ -3434,7 +3435,7 @@ bool draw_single_object(int i)
             if (lpxval < 0.03) break;
         }
         bloomrad_cache[i] = fmin(1.414, bloomrad);
-        
+
         double divisor = 1.0 / fmax(.00392, fmin(col.red, col.blue));
         col.red *= divisor; col.green *= divisor; col.blue *= divisor;
         int n = circradii.size();
@@ -3453,7 +3454,7 @@ bool draw_single_object(int i)
             if (rgb.r == 255 && rgb.b == 255) break;
         }
     }
-    
+
     // A comet drawn as a comet is far larger than the condensation the point path just finished
     // with, and the label and the selection ring belong outside the coma rather than buried in it.
     // The cache goes with it so the layering in draw_objects() puts a comet in front of the field
@@ -3468,7 +3469,7 @@ bool draw_single_object(int i)
         xycoord = ImVec2(cels[i]->drawnx, cels[i]->drawny);
         ImGui::GetBackgroundDrawList()->AddCircle(xycoord, bloomrad+2, rgba_apply_redlight(global_style.selected_color), 0, 2);
     }
-    
+
 
     labels_step:
     Star *s = cls == class_star ? static_cast<Star*>(cels[i]) : nullptr;
@@ -4558,7 +4559,7 @@ ImVec2 sc_drawcoords(CelestialObject *obj, CelestialObject *cel, bool update_dra
     double lat = fmod(find_angle(sqrt(relloc.x*relloc.x+relloc.z*relloc.z), relloc.y) - altitude, _pi*2);
     if (lat < -half_pi) lat += _pi*2;
     if (lat >  half_pi) lat -= _pi*2;
- 
+
     int dx = dispcx + lon/sclk_scale;
     int dy = dispcy - lat/sclk_scale;
 
@@ -5538,7 +5539,7 @@ void draw_horizon()
         cel_obj_class cls = cel->typeclass();
         Planet *p = (cls == class_planet || cls == class_moon) ? (Planet*)cel : nullptr;
         bool gaseous = uses_gaseous_map(cel->type);
-    
+
         spawn_texture_load(cel);
 
         double is_day = fmin(1, luminous_flux*2.5e-11 + starlight);
@@ -5940,7 +5941,7 @@ void draw_horizon()
         }
         #endif
 
-        if (faded) 
+        if (faded)
         {
             const double bluing = 0.9;
             const int fadelength = 250 * zoom, fader = (1.0 - bluing)*rgb.r, fadeg = (1.0 - 0.5*bluing)*rgb.g;
@@ -5975,7 +5976,7 @@ void draw_horizon()
                     points[1] = ImVec2(0, hz_y);
                     points[2] = ImVec2(0, hz_y+2);
                     points[3] = ImVec2(dispcx*2, hz_y1+2);
-                
+
                     ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(points, 4, fadecol);
 
                     hz_y += 1;
@@ -8294,6 +8295,8 @@ void draw_horizon()
                         double sun_mult = is_moon ? 2.0 : (is_mars ? 1.5 : (is_icy ? 1.6 : 1.4));
                         double amb_mult = is_moon ? 0.35 : 0.55;
 
+                        const bool cached_shape = PERF_P101 && !rock_mesh_reference;
+                        const RockShape* shape = cached_shape ? &rock_mesh_cache().get(rk.seed_val) : nullptr;
                         // Derive pseudo-random vertex offsets deterministically from rock seed
                         uint32_t sh = rk.seed_val;
                         auto next_rnd = [&sh]() -> double
@@ -8348,19 +8351,19 @@ void draw_horizon()
                             {5, 15, 25}, {1, 18, 15}, {15, 18, 25},{5, 25, 23}
                         };
 
-                        double yaw = next_rnd() * 2.0 * _pi;
-                        double cos_y = cos(yaw);
-                        double sin_y = sin(yaw);
+                        double yaw = cached_shape ? 0 : next_rnd() * 2.0 * _pi;
+                        double cos_y = cached_shape ? shape->cos_y : cos(yaw);
+                        double sin_y = cached_shape ? shape->sin_y : sin(yaw);
 
-                        double scale_x = rw * 0.5 * (0.88 + 0.24 * next_rnd());
-                        double scale_z = rw * 0.5 * (0.78 + 0.30 * next_rnd());
-                        double scale_y = rh * (0.92 + 0.16 * next_rnd());
+                        double scale_x = cached_shape ? rw * 0.5 * shape->scale_x : rw * 0.5 * (0.88 + 0.24 * next_rnd());
+                        double scale_z = cached_shape ? rw * 0.5 * shape->scale_z : rw * 0.5 * (0.78 + 0.30 * next_rnd());
+                        double scale_y = cached_shape ? rh * shape->scale_y : rh * (0.92 + 0.16 * next_rnd());
 
-                        double apex_shift_x = (next_rnd() - 0.5) * 0.35;
-                        double apex_shift_z = (next_rnd() - 0.5) * 0.35;
+                        double apex_shift_x = cached_shape ? 0 : (next_rnd() - 0.5) * 0.35;
+                        double apex_shift_z = cached_shape ? 0 : (next_rnd() - 0.5) * 0.35;
 
-                        double tilt_x = (next_rnd() - 0.5) * 0.12;
-                        double tilt_z = (next_rnd() - 0.5) * 0.12;
+                        double tilt_x = cached_shape ? shape->tilt_x : (next_rnd() - 0.5) * 0.12;
+                        double tilt_z = cached_shape ? shape->tilt_z : (next_rnd() - 0.5) * 0.12;
 
                         // Viewer depression angle looking down at ground at rock distance
                         double alpha = atan2(h_eye, rk.ground_dist);
@@ -8381,7 +8384,7 @@ void draw_horizon()
                             sun_cam_z /= sun_cam_len;
                         }
 
-                        double jagg = ROCK_JAGGEDNESS * (0.85 + 0.30 * next_rnd());
+                        double jagg = cached_shape ? 0 : ROCK_JAGGEDNESS * (0.85 + 0.30 * next_rnd());
 
                         struct CamVertex
                         {
@@ -8395,25 +8398,36 @@ void draw_horizon()
 
                         for (int vi = 0; vi < 26; vi++)
                         {
-                            uint32_t vsh = (rk.seed_val ^ ((uint32_t)vi * 0x9e3779b9u));
-                            vsh = ((vsh >> 16) ^ vsh) * 0x45d9f3b;
-                            vsh = ((vsh >> 16) ^ vsh) * 0x45d9f3b;
-                            vsh = (vsh >> 16) ^ vsh;
-                            double vrnd = (double)(vsh & 0xFFFF) / 65535.0;
-
-                            double disp = 1.0 + jagg * (vrnd - 0.5);
-                            double vx = rock_dome_verts[vi][0] * disp;
-                            double vy = rock_dome_verts[vi][1] * disp;
-                            double vz = rock_dome_verts[vi][2] * disp;
-
-                            if (vi == 0)
+                            double vx, vy, vz;
+                            if (cached_shape)
                             {
-                                vx += apex_shift_x;
-                                vz += apex_shift_z;
+                                vx = shape->vertices[vi][0];
+                                vy = shape->vertices[vi][1];
+                                vz = shape->vertices[vi][2];
                             }
-                            else if (rock_dome_verts[vi][1] < 0.05f)
+                            else
                             {
-                                vy = 0.0;
+                                uint32_t vsh = (rk.seed_val ^ ((uint32_t)vi * 0x9e3779b9u));
+                                vsh = ((vsh >> 16) ^ vsh) * 0x45d9f3b;
+                                vsh = ((vsh >> 16) ^ vsh) * 0x45d9f3b;
+                                vsh = (vsh >> 16) ^ vsh;
+                                double vrnd = (double)(vsh & 0xFFFF) / 65535.0;
+
+                                double disp = 1.0 + jagg * (vrnd - 0.5);
+                                vx = rock_dome_verts[vi][0] * disp;
+                                vy = rock_dome_verts[vi][1] * disp;
+                                vz = rock_dome_verts[vi][2] * disp;
+
+                                if (vi == 0)
+                                {
+                                    vx += apex_shift_x;
+                                    vz += apex_shift_z;
+                                }
+                                else if (rock_dome_verts[vi][1] < 0.05f)
+                                {
+                                    vy = 0.0;
+                                }
+
                             }
 
                             // Rotate around Y axis (yaw) and scale

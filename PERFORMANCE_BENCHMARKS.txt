@@ -1076,3 +1076,26 @@ PERFORMANCE_BENCHMARK_P095_CONFIRM_RESULTS.csv
 Keep PERF_P095=1 for the repeated interaction gain, while explicitly recording
 the roughly 3% total-completion cost. Layout writing shares the safety mechanism;
 no independent layout-performance gain is claimed. No steady-state FPS claim.
+
+P101 — deterministic rock shape cache, disabled
+Parent: 9ce8f68. Freeze actual original application objects before editing; compare
+against newly compiled candidate visuals with identical developer harnesses and
+constant-folded application paths. Cache only seeded yaw/scale factors, apex/tilt
+and 26 deformed local vertices. Preserve arithmetic grouping, per-frame camera
+transforms, facet ordering, lighting, shadows, clipping and all existing filters.
+A lazy FIFO cache holds at most 1,024 shapes; disabled shipping code constructs
+no cache. Enabled capacity/seed-eviction and twelve live view/walk/light/seam image
+checks pass. The initial small viewport exercised no cache hits; enlarge test
+zoom, verify actual hits, and then benchmark native 1280x720 detailed rock fields.
+The original and candidate frame images match exactly. Candidate diagnostics
+show thousands of actual hits; nominal rock counts are not substituted for use.
+Nine AB/BA pairs, 24-frame blocks, GPU completion included; native Intel HD2000.
+Raw data: PERFORMANCE_BENCHMARK_P101_FIXED_RESULTS.csv.
+rocks-low-eye: -0.35% [-6.29%, +4.68%], mixed/neutral; exact image match.
+rocks-still: -1.27% [-5.66%, +5.11%], mixed/neutral; exact image match.
+rocks-turn: -1.45% [-5.86%, +5.78%], mixed/neutral; exact image match.
+rocks-walk: -2.18% [-4.82%, +2.00%], mixed/neutral; exact image match.
+All intervals cross zero, and CPU medians are effectively unchanged. Set
+PERF_P101=0 under the new-proposal gain gate. No shipping speedup is claimed.
+P101 shipping validation: application builds; 120 rendering and nineteen
+housekeeping checks pass, with eight optional GPU skips.
