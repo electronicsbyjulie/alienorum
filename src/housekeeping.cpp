@@ -272,7 +272,7 @@ namespace
         CelestialObject** array = nullptr;
         int count = -1;
         FrameContext context;
-        std::vector<int> other, all, candidates, projected, bright;
+        std::vector<int> other, all, worlds, candidates, projected, bright;
         std::vector<const CelestialObject*> hosts;
         std::unordered_map<const CelestialObject*, std::vector<int>> systems;
         std::unordered_set<int> active;
@@ -358,7 +358,8 @@ namespace
                 }
             }
         }
-        std::vector<int> worlds(state.active.begin(), state.active.end());
+        auto& worlds = state.worlds;
+        worlds.assign(state.active.begin(), state.active.end());
         std::sort(worlds.begin(), worlds.end());
         state.candidates.clear();
         state.candidates.reserve(state.other.size() + worlds.size());
@@ -387,6 +388,12 @@ const std::vector<int>& frame_object_candidates()
 {
     if (!frame_matches()) prepare_frame_objects();
     return frame_objects().candidates;
+}
+
+const std::vector<int>& frame_active_world_candidates()
+{
+    if (!frame_matches()) prepare_frame_objects();
+    return frame_objects().worlds;
 }
 
 const std::vector<int>& frame_draw_candidates()

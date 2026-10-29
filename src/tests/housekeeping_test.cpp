@@ -551,3 +551,28 @@ TEST_F(HousekeepingTest, SkipsDeletedObjects)
 
     delete_the_universe();
 }
+
+TEST_F(HousekeepingTest, ActiveWorldListTracksSelectionDeletionAndHostChanges)
+{
+    CandidateFrameRestore restore;
+    Star* local = make_star("Local source");
+    Star* remote = make_star("Remote source");
+    local->cenobj = local;
+    remote->cenobj = remote;
+    Planet* first = make_planet(local);
+    Planet* second = make_planet(remote);
+    mycenobj = local;
+    whereami = selected = trackidx = editidx = -1;
+    zoom = 1;
+    EXPECT_EQ(frame_active_world_candidates(), std::vector<int>({first->seqno}));
+    selected = second->seqno;
+    EXPECT_EQ(frame_active_world_candidates(), std::vector<int>({first->seqno, second->seqno}));
+    first->deleted = true;
+    invalidate_frame_objects();
+    EXPECT_EQ(frame_active_world_candidates(), std::vector<int>({second->seqno}));
+    selected = -1;
+    second->cenobj = local;
+    second->orbit->center = local;
+    second->sync_host_statistics();
+    EXPECT_EQ(frame_active_world_candidates(), std::vector<int>({second->seqno}));
+}

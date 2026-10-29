@@ -11,6 +11,7 @@ Point viewer_displacement(const Point& motion, double elapsed_seconds);
 bool planetary_system_is_active(const CelestialObject* cel);
 void invalidate_frame_objects();
 const std::vector<int>& frame_object_candidates();
+const std::vector<int>& frame_active_world_candidates();
 const std::vector<int>& frame_draw_candidates();
 const std::vector<int>& frame_bright_candidates();
 const std::vector<int>& frame_pick_candidates();

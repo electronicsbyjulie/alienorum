@@ -634,11 +634,19 @@ double eclipse_illumination(CelestialObject *cel)
 
 void refresh_eclipse_casters()
 {
-    eclipse_candidates.clear();
 #if !ALIENORUM_GPU_SPHERES
+    eclipse_candidates.clear();
     return;                     // only the GPU impostor path shades eclipses
 #else
-    for (int i : frame_object_candidates())
+    static std::vector<EclipseCandidate> scratch;
+    static std::vector<EclipseCandidate> previous;
+    static std::vector<size_t> slots;
+    static bool valid = false;
+    const bool indexed = performance_enabled(7);
+    auto& output = indexed ? scratch : eclipse_candidates;
+    output.clear();
+    const auto& candidates = indexed ? frame_active_world_candidates() : frame_object_candidates();
+    for (int i : candidates)
     {
         CelestialObject *c = cels[i];
         if (c->deleted) continue;
@@ -663,8 +671,22 @@ void refresh_eclipse_casters()
         CelestialObject *lc = c->get_light_center();
         if (!lc || lc == c) continue;
 
-        eclipse_candidates.push_back({c, lc, radius});
+        output.push_back({c, lc, radius});
     }
+
+    if (indexed)
+    {
+        bool unchanged = valid && previous.size() == scratch.size();
+        for (size_t i = 0; unchanged && i < scratch.size(); ++i)
+            unchanged = previous[i].obj == scratch[i].obj && previous[i].lightcen == scratch[i].lightcen;
+        if (unchanged)
+        {
+            for (size_t i = 0; i < scratch.size(); ++i) eclipse_candidates[slots[i]] = scratch[i];
+            return;
+        }
+        eclipse_candidates = scratch;
+    }
+    else valid = false;
 
     // Grouped by light source, so that everything downstream can take the slice belonging to one
     // star instead of walking the whole list -- see candidates_for_light(). The order within a
@@ -672,6 +694,15 @@ void refresh_eclipse_casters()
     // every consumer either takes the deepest shadow of the lot or ranks them itself.
     std::sort(eclipse_candidates.begin(), eclipse_candidates.end(),
         [](const EclipseCandidate &a, const EclipseCandidate &b) { return a.lightcen < b.lightcen; });
+    if (indexed)
+    {
+        valid = true;
+        previous = scratch;
+        slots.resize(scratch.size());
+        std::unordered_map<CelestialObject*, size_t> positions;
+        for (size_t i = 0; i < eclipse_candidates.size(); ++i) positions[eclipse_candidates[i].obj] = i;
+        for (size_t i = 0; i < scratch.size(); ++i) slots[i] = positions[scratch[i].obj];
+    }
 #endif
 }
 

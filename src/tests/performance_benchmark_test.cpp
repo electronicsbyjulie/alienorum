@@ -124,6 +124,14 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
             star->BV_color = (i % 100) / 50.0;
         }
     }
+    if (std::find(ids.begin(), ids.end(), 7) != ids.end())
+    {
+        for (int i = 0; i < 24; ++i)
+        {
+            Planet* body = make_planet(static_cast<Star*>(cels[0]), "Active eclipse body", (2 + i * .5) * AU);
+            body->orbit->inclination = i * .01;
+        }
+    }
     set(play_rise_set_sound, false);
     auto& alerts = SoundManager::get_instance();
     surface_radii.assign(ncelobjs + 32, 0);
@@ -140,6 +148,7 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
     for (int id : ids)
     {
         std::vector<std::string> scenes = id == 6 ? std::vector<std::string>{"catalog-alerts-none", "catalog-alerts-armed"}
+            : id == 7 ? std::vector<std::string>{"catalog-eclipse", "catalog-eclipse-time-jump"}
             : id <= 5 ? std::vector<std::string>{"catalog", "catalog-time-jump"}
             : id == 21 ? std::vector<std::string>{"skyline-walk", "skyline-still"}
             : id == 31 ? std::vector<std::string>{"shore-walk", "forest-refresh"}
@@ -173,7 +182,7 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
                 if (scene == "forest-refresh") world->surf_map->touch_gen();
                 freeze_surface_time();
                 ImGui::GetCurrentContext()->Time = 50 + frame_index / 30.0;
-                redo_proper_motions = scene == "catalog-time-jump";
+                redo_proper_motions = scene.find("time-jump") != std::string::npos;
                 simnow = J2000_TIME_T + 24 * oneyear + (redo_proper_motions ? frame_index * 10.0 : 0);
                 JDnow = J2000 + (simnow - J2000_TIME_T) / oneday;
                 if (scene.rfind("catalog", 0) != 0)

@@ -202,3 +202,21 @@ catalog-alerts-none: 14.813 -> 13.027 ms; paired median -12.06%; 95% interval [-
 Both workloads improve consistently. Keep P006 enabled. Checks: eight sound,
 73 serialization, 99 rendering and fourteen housekeeping passes; eight optional GPU
 comparisons skip. Make application build passes. No runtime file or save schema is added.
+
+P007 — ACTIVE-WORLD ECLIPSE COLLECTION (enabled: PERF_P007=1)
+Retain the sorted active-world membership already assembled for P002. Collect casters
+from that list instead of traversing background stars. Retain light-source ordering
+while object/source membership matches, but read radius and light source every frame;
+all positions and shadow geometry remain live. Membership changes rebuild grouping.
+The original collector/sort is retained behind PERF_P007=0. This measures the marginal
+collector change with P002 still enabled, not a second claim for P002 membership work.
+Native Intel HD 2000, 1280 x 720, 42,147 objects including 24 added active bodies.
+The first nine pairs of 24 frames were mixed/neutral despite lower medians; raw data:
+PERFORMANCE_BENCHMARK_P007_RESULTS.csv. A longer 21-pair, 48-frame confirmation uses
+PERFORMANCE_BENCHMARK_P007_CONFIRM_RESULTS.csv. No compilation ran during either test.
+catalog-eclipse: 12.826 -> 12.292 ms; paired median -5.70%; 95% interval [-9.03%, -2.00%]; maximum image/state error 0.
+catalog-eclipse-time-jump: 41.061 -> 40.712 ms; paired median -1.23%; 95% interval [-3.94%, -0.07%]; maximum image/state error 0.
+Both extended workloads improve. Functional checks cover radius edits, asteroid
+filtering, deletion, motion, companion light-source changes, selected remote systems,
+and host changes. Full rendering/housekeeping checks and the application build pass.
+Other hardware and full user scenes remain separate; these are controlled core frames.

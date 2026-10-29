@@ -4915,3 +4915,67 @@ TEST_F(RenderingRegressionTest, RetainedWaterCertificatesPreserveChangingAnimati
         EXPECT_EQ(horizon_water_stats().bounds_builds, i == 0 ? 1u : 0u);
     }
 }
+
+TEST_F(RenderingRegressionTest, EclipseCollectionRefreshesPhysicalEditsAndMembership)
+{
+#if !ALIENORUM_GPU_SPHERES
+    GTEST_SKIP() << "GPU sphere shading is disabled.";
+#endif
+    Star* source = make_star("Eclipse source");
+    source->cenobj = source;
+    source->location.local_position = Point(0, 0, 0);
+    Planet* receiver = make_planet(source, "Receiver");
+    Planet* caster = make_planet(source, "Caster");
+    receiver->location.local_position = Point(AU, 0, 0);
+    caster->location.local_position = Point(AU - 1e8, 0, 0);
+    caster->volumetric_mean_radius = 4 * earth_radius;
+    set(mycenobj, static_cast<CelestialObject*>(source));
+    set(whereami, -1);
+    set(selected, -1);
+    set(trackidx, -1);
+    set(editidx, -1);
+    invalidate_frame_objects();
+    refresh_eclipse_casters();
+    EXPECT_LT(eclipse_illumination(receiver), .01);
+    refresh_eclipse_casters();
+    EXPECT_LT(eclipse_illumination(receiver), .01);
+    caster->volumetric_mean_radius = 1;
+    refresh_eclipse_casters();
+    EXPECT_GT(eclipse_illumination(receiver), .99);
+    caster->volumetric_mean_radius = 4 * earth_radius;
+    caster->asteroid_no = 1;
+    refresh_eclipse_casters();
+    EXPECT_DOUBLE_EQ(eclipse_illumination(receiver), 1);
+    caster->asteroid_no = 0;
+    refresh_eclipse_casters();
+    EXPECT_LT(eclipse_illumination(receiver), .01);
+    caster->deleted = true;
+    invalidate_frame_objects();
+    refresh_eclipse_casters();
+    EXPECT_DOUBLE_EQ(eclipse_illumination(receiver), 1);
+    caster->deleted = false;
+    caster->location.local_position.y = 1e9;
+    invalidate_frame_objects();
+    refresh_eclipse_casters();
+    EXPECT_DOUBLE_EQ(eclipse_illumination(receiver), 1);
+    caster->location.local_position.y = 0;
+    Star* companion = make_star("Companion source");
+    companion->cenobj = companion;
+    companion->location.local_position = Point(0, 1e10, 0);
+    caster->cenobj = companion;
+    caster->orbit->center = companion;
+    caster->sync_host_statistics();
+    selected = caster->seqno;
+    refresh_eclipse_casters();
+    EXPECT_DOUBLE_EQ(eclipse_illumination(receiver), 1);
+    receiver->cenobj = companion;
+    receiver->orbit->center = companion;
+    receiver->sync_host_statistics();
+    companion->location.local_position.y = 0;
+    refresh_eclipse_casters();
+    EXPECT_LT(eclipse_illumination(receiver), .01);
+    selected = -1;
+    invalidate_frame_objects();
+    refresh_eclipse_casters();
+    EXPECT_DOUBLE_EQ(eclipse_illumination(receiver), 1);
+}
