@@ -149,7 +149,7 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
     {
         std::vector<std::string> scenes = id == 6 ? std::vector<std::string>{"catalog-alerts-none", "catalog-alerts-armed"}
             : id == 7 ? std::vector<std::string>{"catalog-eclipse", "catalog-eclipse-time-jump"}
-            : id <= 5 ? std::vector<std::string>{"catalog", "catalog-time-jump"}
+            : id <= 5 || id == 8 ? std::vector<std::string>{"catalog", "catalog-time-jump"}
             : id == 21 ? std::vector<std::string>{"skyline-walk", "skyline-still"}
             : id == 31 ? std::vector<std::string>{"shore-walk", "forest-refresh"}
             : id == 42 ? std::vector<std::string>{"forest-walk", "forest-still"}

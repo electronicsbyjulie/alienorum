@@ -220,3 +220,17 @@ Both extended workloads improve. Functional checks cover radius edits, asteroid
 filtering, deletion, motion, companion light-source changes, selected remote systems,
 and host changes. Full rendering/housekeeping checks and the application build pass.
 Other hardware and full user scenes remain separate; these are controlled core frames.
+
+P008 — CONTIGUOUS CLASS ARRAY (implemented, DISABLED: PERF_P008=0)
+The first measured field is immutable object class. Cache it with the frame registry
+and use contiguous reads in the coordinate passes, retaining direct field access as
+reference. Structural catalog invalidation rebuilds the array; mutable flags, roots,
+physical values and draw bounds remain authoritative in their existing storage.
+Native Intel HD 2000, 1280 x 720, 42,123 objects; fifteen alternating paired blocks,
+thirty-two frames per mode. Raw results: PERFORMANCE_BENCHMARK_P008_RESULTS.csv.
+catalog: 12.386 -> 12.548 ms; paired median +0.46%; 95% interval [-0.69%, +2.35%]; maximum image/state error 0.
+catalog-time-jump: 42.443 -> 41.791 ms; paired median -1.89%; 95% interval [-3.08%, +2.13%]; maximum image/state error 0.
+Both comparisons are mixed/neutral. Per the stricter policy for new proposals, keep
+this implementation disabled. No broader mirror of mutable object state is introduced.
+An explicit -DPERF_P008=1 private build can repeat the experiment. Production keeps
+its original class access and does not populate the experimental array.

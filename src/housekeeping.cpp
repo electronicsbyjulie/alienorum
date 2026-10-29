@@ -274,6 +274,7 @@ namespace
         FrameContext context;
         std::vector<int> other, all, worlds, candidates, projected, bright;
         std::vector<const CelestialObject*> hosts;
+        std::vector<cel_obj_class> classes;
         std::unordered_map<const CelestialObject*, std::vector<int>> systems;
         std::unordered_set<int> active;
         std::vector<std::pair<int, CelestialObject*>> previous;
@@ -307,6 +308,8 @@ namespace
             state.all.clear();
             state.systems.clear();
             state.hosts.assign(ncelobjs, nullptr);
+            if (performance_enabled(8)) state.classes.assign(ncelobjs, class_unknown);
+            else state.classes.clear();
             for (int index = 0; index < ncelobjs; ++index)
             {
                 auto* object = cels[index];
@@ -314,6 +317,7 @@ namespace
                 state.all.push_back(index);
                 state.hosts[index] = object->cenobj;
                 const auto cls = object->typeclass();
+                if (performance_enabled(8)) state.classes[index] = cls;
                 if (cls == class_planet || cls == class_moon) state.systems[object->cenobj].push_back(index);
                 else state.other.push_back(index);
             }
@@ -664,7 +668,7 @@ void compute_object_draw_coordinates()
         i = index;
         if (cels[i]->deleted) continue;
         const bool updated = compute_object_location(cels[i]);
-        const bool cached_visible_star = cels[i]->typeclass() == class_star &&
+        const bool cached_visible_star = (performance_enabled(8) ? objects.classes[i] : cels[i]->typeclass()) == class_star &&
             static_cast<Star*>(cels[i])->tmp_vis_flag;
         if (!updated && !cached_visible_star) continue;
 
@@ -690,7 +694,7 @@ void compute_object_draw_coordinates()
         prepare_frame_objects();
         for (int index : objects.candidates)
         {
-            const auto cls = cels[index]->typeclass();
+            const auto cls = (performance_enabled(8) ? objects.classes[index] : cels[index]->typeclass());
             if (!cels[index]->deleted && (cls == class_planet || cls == class_moon))
                 compute_object_location(cels[index]);
         }
@@ -756,7 +760,7 @@ void compute_object_draw_coordinates()
         
         // From inside a galaxy's disc, it won't do to merely project an ellipse. We wrap a band all the way round with draw_galaxy_band() instead,
         // and this is where it decides. The margin lets the band take over a little sooner, when the galaxy fills most of the view.
-        if (cels[i]->typeclass() == class_galaxy)
+        if ((performance_enabled(8) ? objects.classes[i] : cels[i]->typeclass()) == class_galaxy)
         {
             double gr = cels[i]->distance * ((Galaxy*)cels[i])->angular_diameter * 0.5;
             if (gr > 0 && cels[i]->tmprel.squared_magnitude() < gr * gr * 1.44)
@@ -767,7 +771,7 @@ void compute_object_draw_coordinates()
         
         // A galaxy's cenobj is itself. Galaxies get their own visibility test further down, on apparent magnitude, the same way
         // a star out of its visible box would.
-        if (cels[i]->typeclass() == class_star)
+        if ((performance_enabled(8) ? objects.classes[i] : cels[i]->typeclass()) == class_star)
         {
             Star* cels_i_star = ((Star*)cels[i]);
 
@@ -801,7 +805,7 @@ void compute_object_draw_coordinates()
 
         rel = to_viewer_plane(rel);
 
-        cel_obj_class icls = cels[i]->typeclass();
+        cel_obj_class icls = (performance_enabled(8) ? objects.classes[i] : cels[i]->typeclass());
         if (icls == class_planet || icls == class_moon)
         {
             vmag_cache[i] = ((Planet*)cels[i])->viewer_reflectance_magnitude(here);
