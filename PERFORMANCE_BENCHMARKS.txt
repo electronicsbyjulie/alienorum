@@ -1015,3 +1015,31 @@ All intervals cross zero. Set PERF_P090=0: no shipping speedup claim.
 Raw data: PERFORMANCE_BENCHMARK_P090_FIXED_RESULTS.csv; pilot retained separately.
 P090 shipping validation: application builds; 119 rendering checks and nineteen
 housekeeping checks pass, with eight optional GPU skips.
+
+P094 — owned background universe publication
+Parent: 66c1848. Object traversal and compact-record construction stay on the
+caller under the catalog lock. The writer receives only an owned JSON document
+and absolute path. One active job, backpressure before the next snapshot, ordered
+publication, checked flush/close and same-directory atomic replacement preserve
+the previous file on failure. Loading and shutdown drain the writer. Errors are
+reported; successful enqueue means accepted, not already on disk. Atomic rename
+is not a promise against power loss. Memory includes one full document snapshot.
+The synchronous comparison retains the original save_all stream workflow. Two
+separately compiled fixed caller paths share identical serialization object code;
+only the constant background argument differs. This avoids compiler perturbation
+in unrelated rendering code. Nine AB/BA pairs per table, four saves per sample,
+5,000 synthetic edited stars, private temporary paths, exact complete byte hashes.
+Save latency is measured to producer return; completion includes writer join.
+CPU columns are zero placeholders, not CPU observations.
+PERFORMANCE_BENCHMARK_P094_FIXED_RESULTS.csv
+  save-completion: 280.508 -> 297.486 ms; +6.08% [+4.33%, +6.93%], slower.
+  save-interactive: 280.507 -> 262.357 ms; -6.63% [-7.70%, -5.93%], faster.
+PERFORMANCE_BENCHMARK_P094_CONFIRM_RESULTS.csv
+  save-completion: 282.626 -> 296.540 ms; +5.05% [+2.32%, +6.80%], slower.
+  save-interactive: 282.625 -> 262.310 ms; -7.21% [-9.25%, -5.95%], faster.
+Keep PERF_P094=1 for its repeated interaction-latency gain. Completion costs
+5–6% more; this is an explicit responsiveness/throughput tradeoff, not an FPS
+or faster-disk claim. Snapshot construction remains the dominant stall.
+Three lifecycle checks pass: immutable edits, ordered saves, failed publication
+with prior-file preservation/recovery, bounded capture and destructor completion.
+All 73 serialization checks pass; application builds. Manual acceptance remains separate.

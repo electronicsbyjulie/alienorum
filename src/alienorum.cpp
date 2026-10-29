@@ -1292,6 +1292,8 @@ int main (int argc, char** argv)
         save_universe();
     }
 
+    Serialization::finish_file_saves();
+
     for (i=0; cels[i]; i++)
     {
         if (cels[i]->typeclass() == class_star && ((Star*)cels[i])->multisys)

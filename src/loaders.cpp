@@ -1,4 +1,5 @@
 #include "catalog_lock_trace.h"
+#include "performance_options.h"
 
 #include "loaders.h"
 #include "housekeeping.h"
@@ -593,20 +594,15 @@ bool look_for_catalogs()
 
 bool save_universe()
 {
-    fstream fs;
-    fs.open("universe.json", std::ios::out);
-    if (fs)
-    {
-        if (!Serialization::save_all(fs, cels, true)) std::cerr << "FAILED to save universe file." << std::endl;
-        fs.close();
-        return true;
-    }
-    else std::cerr << "FAILED to write universe file." << std::endl;
-    return false;
+    alienorum::CatalogLock lock(catalog_mutex);
+    const bool ok = Serialization::save_file("universe.json", cels, true, performance_enabled(94));
+    if (!ok) std::cerr << "FAILED to save universe file." << std::endl;
+    return ok;
 }
 
 bool load_universe(std::string universe_fname)          // default is on the declaration, in loaders.h
 {
+    Serialization::finish_file_saves();
     int i;
     fstream fs;
     fs.open(universe_fname.c_str(), std::ios::in);

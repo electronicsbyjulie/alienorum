@@ -16,6 +16,7 @@ from run_performance_benchmark import summarize
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--filter', default='PerformanceBenchmarkTest.PairedProductionPaths')
     parser.add_argument('--before', type=Path, required=True)
     parser.add_argument('--after', type=Path, required=True)
     parser.add_argument('--cases', default='30')
@@ -43,7 +44,7 @@ def main():
                     sample_path = Path(temporary) / f'{pair}-{mode}.csv'
                     env['ALIENORUM_PERF_OUTPUT'] = str(sample_path)
                     env['ALIENORUM_PERF_CAPTURE_PREFIX'] = str(sample_path.with_suffix('.capture'))
-                    command = [str(binary.resolve()), '--gtest_filter=PerformanceBenchmarkTest.PairedProductionPaths']
+                    command = [str(binary.resolve()), '--gtest_filter=' + args.filter]
                     result = subprocess.run(command, env=env, text=True, stdout=subprocess.PIPE,
                                             stderr=subprocess.STDOUT, timeout=3600)
                     log.write(f'PAIR {pair} MODE {mode} BINARY {binary}\n' + result.stdout + '\n')

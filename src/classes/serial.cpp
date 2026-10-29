@@ -10,6 +10,7 @@
 #include "cat.h"
 #include "serial.h"
 #include "cons.h"
+#include "../background_file.h"
 
 using namespace alienorum;
 
@@ -1122,55 +1123,94 @@ bool Serialization::save_one(std::fstream& fs, CelestialObject* cel, json& allob
     return save_object_record(cel, allobjs, serialized_object_key(cel));
 }
 
+json Serialization::snapshot(CelestialObject **cels, bool oe)
+{
+    int i;
+    json allobjs;
+    SaveContext context;
+    std::unordered_map<std::string, CelestialObject*> last_writer;
+    const auto save = [&](CelestialObject* object, bool ancestor = false)
+    {
+        if (!oe || (!ancestor && last_writer.empty()))
+        {
+            save_object_record(object, allobjs, serialized_object_key(object), &context);
+            return;
+        }
+        const std::string key = serialized_object_key(object);
+        auto previous = last_writer.find(key);
+        if (previous != last_writer.end() && previous->second == object) return;
+        save_object_record(object, allobjs, key, &context);
+        if (ancestor || previous != last_writer.end()) last_writer[key] = object;
+    };
+    for (i=0; cels[i]; i++)
+    {
+        if (cels[i]->deleted) continue;
+        if (oe && !cels[i]->user_edited && !cels[i]->user_added) continue;
+
+        save(cels[i]);
+        if (oe && cels[i]->orbit && cels[i]->orbit->center && !cels[i]->orbit->center->user_added)
+        {
+            CelestialObject *cen = cels[i]->orbit->center;
+            while (1)
+            {
+                save(cen, true);
+                if (!cen->orbit) break;
+                if (!cen->orbit->center) break;
+                cen = cen->orbit->center;
+            }
+        }
+    }
+
+    if (!allobjs.is_null()) context.header["o"] = std::move(allobjs);
+    return context.header;
+}
+
 bool Serialization::save_all(std::fstream& fs, CelestialObject **cels, bool oe)
 {
     try
     {
-        int i;
-        json allobjs;
-        SaveContext context;
-        std::unordered_map<std::string, CelestialObject*> last_writer;
-        const auto save = [&](CelestialObject* object, bool ancestor = false)
-        {
-            if (!oe || (!ancestor && last_writer.empty()))
-            {
-                save_object_record(object, allobjs, serialized_object_key(object), &context);
-                return;
-            }
-            const std::string key = serialized_object_key(object);
-            auto previous = last_writer.find(key);
-            if (previous != last_writer.end() && previous->second == object) return;
-            save_object_record(object, allobjs, key, &context);
-            if (ancestor || previous != last_writer.end()) last_writer[key] = object;
-        };
-        for (i=0; cels[i]; i++)
-        {
-            if (cels[i]->deleted) continue;
-            if (oe && !cels[i]->user_edited && !cels[i]->user_added) continue;
-
-            save(cels[i]);
-            if (oe && cels[i]->orbit && cels[i]->orbit->center && !cels[i]->orbit->center->user_added)
-            {
-                CelestialObject *cen = cels[i]->orbit->center;
-                while (1)
-                {
-                    save(cen, true);
-                    if (!cen->orbit) break;
-                    if (!cen->orbit->center) break;
-                    cen = cen->orbit->center;
-                }
-            }
-        }
-
-        if (!allobjs.is_null()) context.header["o"] = std::move(allobjs);
-        fs << std::setw(0) << context.header;
-        return true;
+        fs << std::setw(0) << snapshot(cels, oe);
+        return fs.good();
     }
     catch (...)
     {
         std::cerr << "FAILED to save universe file." << std::endl;
         return false;
     }
+}
+
+namespace
+{
+    BackgroundFile universe_writer;
+}
+
+bool Serialization::save_file(const std::string& path, CelestialObject **objects, bool oe, bool background)
+{
+    if (!background)
+    {
+        std::fstream stream(path, std::ios::out | std::ios::trunc);
+        const bool ok = stream && save_all(stream, objects, oe);
+        stream.close();
+        return ok && !stream.fail();
+    }
+    return universe_writer.submit([&]()
+    {
+        const auto destination = std::filesystem::absolute(std::filesystem::u8path(path));
+        json document = snapshot(objects, oe);
+        return [destination, document = std::move(document)]()
+        {
+            return publish_file(destination, [&](std::ostream& stream)
+            {
+                stream << std::setw(0) << document;
+                return stream.good();
+            });
+        };
+    });
+}
+
+bool Serialization::finish_file_saves()
+{
+    return universe_writer.finish();
 }
 
 namespace

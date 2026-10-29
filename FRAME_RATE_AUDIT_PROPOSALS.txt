@@ -337,7 +337,8 @@ Source: GPU initialization and lazy shader/texture paths across horizon, clouds,
 P093 | B / H / Q0 | Track GPU object lifetime and retained map budgets across galaxy travel.
 Source: map and GPU cache ownership in src/gputex.cpp and associated renderers. Repeated visits to many generated worlds may accumulate CPU maps, GPU textures, or cached layers even when no leak occurs. Inventory retained resources by owner and generation, then apply an explicit LRU or memory budget to reconstructible assets. Preserve current/selected resources and avoid eviction thrashing. Validate a repeated multi-galaxy travel loop and compare frame tails before and after memory pressure. This is a hypothesis until resource counters establish growth; do not label all cache retention a leak.
 
-P094 | B / S / Q0 | Move safe portions of saving off the interactive thread.
+[x] P094 | B / S / Q0 | Move safe portions of saving off the interactive thread.
+IMPLEMENTED: PERF_P094=1. Immutable snapshot plus bounded background encoding/atomic publication; save interaction latency improves in two fixed comparisons. Total completion is slower; this is not a steady FPS gain.
 Source: src/classes/serial.cpp, save_all. The completed compact format greatly reduces output, but a large save can still build records, write disk data, and contend for memory bandwidth. A consistent immutable snapshot followed by background encoding/writing could reduce an explicit save hitch. Validate edits during saving, error handling, replacement safety, and atomic file publication. Do not iterate mutable raw objects asynchronously without a snapshot/lifetime design. This is an interaction-stall proposal, not an assertion that universe saving runs every surface frame.
 
 P095 | C / H / Q0 | Separate snapshot encoding and ancillary file writes from presentation.
