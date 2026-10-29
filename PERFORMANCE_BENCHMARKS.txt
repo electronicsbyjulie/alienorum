@@ -234,3 +234,21 @@ Both comparisons are mixed/neutral. Per the stricter policy for new proposals, k
 this implementation disabled. No broader mirror of mutable object state is introduced.
 An explicit -DPERF_P008=1 private build can repeat the experiment. Production keeps
 its original class access and does not populate the experimental array.
+
+P012 — COHERENT SURFACE OBSERVER (implemented, DISABLED: PERF_P012=0)
+Reuse the surface-observer result only for an exact match of body identity, all body
+position/plane fields, rotation phase, latitude/longitude, radius, oblateness, irregular
+moon dimensions, and plane-update mode. Restore observer/pole outputs and view-change
+semantics. Read timeofday before matching so its internal phase remains current. Body
+and ancestor location updates still run in their original order. No approximate key,
+skipped motion update, or general raw-pointer snapshot is introduced. Existing terrain,
+scenery, cloud and water code continue to consume the authoritative observer outputs.
+Native Intel HD 2000, 1280 x 720, 42,123 objects; fifteen alternating paired blocks,
+thirty-two frames per mode. Raw results: PERFORMANCE_BENCHMARK_P012_RESULTS.csv.
+catalog-observer-still: 12.227 -> 13.017 ms; paired median +1.05%; 95% interval [-5.36%, +6.53%]; maximum image/state error 0.
+catalog-observer-walk: 11.781 -> 11.948 ms; paired median +0.81%; 95% interval [-4.64%, +6.13%]; maximum image/state error 0.
+Equality includes observer position/plane and pole-angle outputs as well as object
+state. Both timings are mixed/neutral, so the new cache stays disabled. Enabled-path
+housekeeping checks pass, including walking, time, radius and body-frame changes.
+The production fallback remains the original calculation, with rotation phase read
+once into a local value. This experiment does not establish a whole-frame speedup.

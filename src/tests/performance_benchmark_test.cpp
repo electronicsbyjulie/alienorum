@@ -149,6 +149,7 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
     {
         std::vector<std::string> scenes = id == 6 ? std::vector<std::string>{"catalog-alerts-none", "catalog-alerts-armed"}
             : id == 7 ? std::vector<std::string>{"catalog-eclipse", "catalog-eclipse-time-jump"}
+            : id == 12 ? std::vector<std::string>{"catalog-observer-still", "catalog-observer-walk"}
             : id <= 5 || id == 8 ? std::vector<std::string>{"catalog", "catalog-time-jump"}
             : id == 21 ? std::vector<std::string>{"skyline-walk", "skyline-still"}
             : id == 31 ? std::vector<std::string>{"shore-walk", "forest-refresh"}
@@ -225,6 +226,16 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
                             const auto* bytes = reinterpret_cast<const unsigned char*>(&value);
                             pixels.insert(pixels.end(), bytes, bytes + sizeof(value));
                         };
+                        if (id == 12)
+                        {
+                            for (const Point& point : {here.galactic_center, here.system_center,
+                                here.local_position, here.equatorial_plane.v})
+                            {
+                                append(point.x); append(point.y); append(point.z);
+                            }
+                            append(here.equatorial_plane.a);
+                            append(npaz); append(azimuth_correction);
+                        }
                         for (int index = 0; index < ncelobjs; ++index)
                         {
                             for (const Point& point : {cels[index]->location.galactic_center,

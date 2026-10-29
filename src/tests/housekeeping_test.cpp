@@ -576,3 +576,77 @@ TEST_F(HousekeepingTest, ActiveWorldListTracksSelectionDeletionAndHostChanges)
     second->sync_host_statistics();
     EXPECT_EQ(frame_active_world_candidates(), std::vector<int>({second->seqno}));
 }
+
+TEST_F(HousekeepingTest, SurfaceObserverRefreshesWalkingRotationShapeAndBodyFrame)
+{
+    CandidateFrameRestore frame_restore;
+    struct SurfaceRestore
+    {
+        double latitude = viewer_lat, longitude = viewer_lon, epoch = simnow;
+        double north = npaz, correction = azimuth_correction;
+        bool changed = viewchanged;
+        CelestialLocation pole = npdummy.location;
+        ~SurfaceRestore()
+        {
+            viewer_lat = latitude;
+            viewer_lon = longitude;
+            simnow = epoch;
+            npaz = north;
+            azimuth_correction = correction;
+            viewchanged = changed;
+            npdummy.location = pole;
+        }
+    } surface_restore;
+    Star* host = make_star();
+    Planet* world = make_planet(host);
+    world->sidereal_rotational_period = oneday;
+    world->location.local_position = Point(AU, 0, 0);
+    whereami = world->seqno;
+    view_mode = vm_horizon;
+    viewer_lat = .2;
+    viewer_lon = .3;
+    simnow = J2000_TIME_T;
+    set_viewer_surface_location(true);
+    CelestialLocation first = here;
+    double north = npaz;
+    here.local_position = Point(0, 0, 0);
+    npaz = 123;
+    set_viewer_surface_location(true);
+    EXPECT_TRUE(here.local_position == first.local_position);
+    EXPECT_DOUBLE_EQ(npaz, north);
+    viewer_lat += .01;
+    set_viewer_surface_location(true);
+    EXPECT_GT(here.distance_to(first), 1000);
+    first = here;
+    simnow += 100;
+    set_viewer_surface_location(true);
+    EXPECT_GT(here.distance_to(first), 1000);
+    first = here;
+    world->volumetric_mean_radius *= 1.1;
+    set_viewer_surface_location(true);
+    EXPECT_GT(here.distance_to(first), 1000);
+    first = here;
+    world->location.system_center.x += 1e10;
+    world->location.equatorial_plane.a = .4;
+    world->location.equatorial_plane.v = Point(1, 0, 0);
+    set_viewer_surface_location(true);
+    EXPECT_TRUE(here.system_center == world->location.system_center);
+    EXPECT_GT(here.distance_to(first), 1e9);
+    set_viewer_surface_location(false);
+    EXPECT_DOUBLE_EQ(here.equatorial_plane.a, world->location.equatorial_plane.a);
+    Moon* moon = new Moon();
+    moon->cenobj = host;
+    moon->sidereal_rotational_period = oneday;
+    moon->width = 20000;
+    moon->height = 10000;
+    moon->depth = 30000;
+    append_cel(moon);
+    whereami = moon->seqno;
+    set_viewer_surface_location(true);
+    first = here;
+    set_viewer_surface_location(true);
+    EXPECT_TRUE(here.local_position == first.local_position);
+    moon->height *= 2;
+    set_viewer_surface_location(true);
+    EXPECT_GT(here.distance_to(first), 100);
+}

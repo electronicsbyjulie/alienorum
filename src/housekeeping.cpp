@@ -63,6 +63,56 @@ void set_viewer_surface_location(bool also_set_plane)
     else
         equatorial_radius = cel->get_equatorial_radius();
 
+    const double rotation_phase = cel->timeofday();
+    struct SurfaceObserverContext
+    {
+        const CelestialObject* body = nullptr;
+        std::array<double, 30> key = {};
+        CelestialLocation observer, pole;
+        double north = 0, correction = 0;
+    };
+    static SurfaceObserverContext context;
+    std::array<double, 30> key = {};
+    if (performance_enabled(12))
+    {
+        const auto& location = cel->location;
+        size_t index = 0;
+        for (const Point& point : {location.galactic_center, location.system_center, location.local_position,
+            location.local_system_plane.v, location.orbital_plane.v, location.equatorial_plane.v})
+        {
+            key[index++] = point.x;
+            key[index++] = point.y;
+            key[index++] = point.z;
+        }
+        key[index++] = location.local_system_plane.a;
+        key[index++] = location.orbital_plane.a;
+        key[index++] = location.equatorial_plane.a;
+        key[index++] = viewer_lat;
+        key[index++] = viewer_lon;
+        key[index++] = rotation_phase;
+        key[index++] = obl;
+        key[index++] = equatorial_radius;
+        key[index++] = also_set_plane;
+        if (dwh)
+        {
+            key[index++] = static_cast<Moon*>(cel)->width;
+            key[index++] = static_cast<Moon*>(cel)->height;
+            key[index++] = static_cast<Moon*>(cel)->depth;
+        }
+        if (context.body == cel && context.key == key)
+        {
+            here = context.observer;
+            if (also_set_plane)
+            {
+                npdummy.location = context.pole;
+                npaz = context.north;
+                azimuth_correction = context.correction;
+            }
+            viewchanged = true;
+            return;
+        }
+    }
+
     Point cursor = Point::from_ra_dec(viewer_lon, viewer_lat, dwh ? 1 : equatorial_radius, 0);
 
     if (dwh)
@@ -72,7 +122,7 @@ void set_viewer_surface_location(bool also_set_plane)
         cursor.z *= ((Moon*)cel)->depth * .5;
     }
     else cursor.y *= obl;
-    cursor = rotate3D(cursor, center, yaxis, -cel->timeofday());
+    cursor = rotate3D(cursor, center, yaxis, -rotation_phase);
     cursor = rotate3D(cursor, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
 
     here.local_position = cel->location.local_position + cursor;
@@ -88,6 +138,19 @@ void set_viewer_surface_location(bool also_set_plane)
         azimuth_correction = -npaz;
     }
 
+    if (performance_enabled(12))
+    {
+        context.body = cel;
+        context.key = key;
+        context.observer = here;
+        if (also_set_plane)
+        {
+            context.pole = npdummy.location;
+            context.north = npaz;
+            context.correction = azimuth_correction;
+        }
+    }
+    else context.body = nullptr;
     viewchanged = true;
 }
 
