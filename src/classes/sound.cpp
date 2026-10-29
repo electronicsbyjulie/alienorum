@@ -1,3 +1,4 @@
+#include "../performance_options.h"
 #include "sound.h"
 #include "celestial.h"
 #include "misc.h"
@@ -12,6 +13,13 @@ extern std::string set_sound_path;
 
 namespace alienorum
 {
+    void invalidate_horizon_alerts()
+    {
+#if PERF_P006
+        horizon_alert_revision().fetch_add(1, std::memory_order_relaxed);
+#endif
+    }
+
     SoundManager::SoundManager()
     {
     }
@@ -233,6 +241,37 @@ namespace alienorum
         }
     }
 
+    const std::vector<CelestialObject*>& SoundManager::armed_targets()
+    {
+        const auto revision = horizon_alert_revision().load(std::memory_order_relaxed);
+        if (revision != horizon_revision || cels != horizon_array || ncelobjs != horizon_count)
+        {
+            horizon_targets.clear();
+            if (cels) for (int i = 0; i < MAX_CELOBJS && cels[i]; ++i)
+            {
+                if (cels[i]->alert_rise || cels[i]->alert_set) horizon_targets.push_back(cels[i]);
+            }
+            horizon_revision = revision;
+            horizon_array = cels;
+            horizon_count = ncelobjs;
+            ++horizon_rebuilds;
+        }
+        return horizon_targets;
+    }
+
+    template<class Callback>
+    static void visit_alert_targets(const std::vector<CelestialObject*>* targets, Callback&& callback)
+    {
+        if (targets)
+        {
+            for (CelestialObject* object : *targets) callback(object);
+        }
+        else
+        {
+            for (int i = 0; i < MAX_CELOBJS && cels[i]; ++i) callback(cels[i]);
+        }
+    }
+
     void SoundManager::reset_horizon_tracking()
     {
         horizon_tracking_active = false;
@@ -241,13 +280,11 @@ namespace alienorum
             return;
         }
 
-        for (int i = 0; i < MAX_CELOBJS && cels[i]; i++)
+        const auto* targets = performance_enabled(6) ? &armed_targets() : nullptr;
+        visit_alert_targets(targets, [](CelestialObject* object)
         {
-            if (cels[i]->alert_rise || cels[i]->alert_set)
-            {
-                cels[i]->has_prev_horizon_alt = false;
-            }
-        }
+            if (object->alert_rise || object->alert_set) object->has_prev_horizon_alt = false;
+        });
     }
 
     void SoundManager::leave_horizon()
@@ -274,41 +311,42 @@ namespace alienorum
         }
         horizon_tracking_active = true;
 
-        for (int i = 0; i < MAX_CELOBJS && cels[i]; i++)
+        const auto* targets = performance_enabled(6) ? &armed_targets() : nullptr;
+        visit_alert_targets(targets, [&](CelestialObject* object)
         {
-            if (cels[i]->deleted)
+            if (object->deleted)
             {
-                continue;
+                return;
             }
 
-            if (!cels[i]->alert_rise && !cels[i]->alert_set)
+            if (!object->alert_rise && !object->alert_set)
             {
-                continue;
+                return;
             }
 
-            double cur_alt = cels[i]->Decl_as_radians_refracted(here);
+            double cur_alt = object->Decl_as_radians_refracted(here);
 
-            if (!cels[i]->has_prev_horizon_alt)
+            if (!object->has_prev_horizon_alt)
             {
-                cels[i]->prev_horizon_alt = cur_alt;
-                cels[i]->has_prev_horizon_alt = true;
-                continue;
+                object->prev_horizon_alt = cur_alt;
+                object->has_prev_horizon_alt = true;
+                return;
             }
 
-            if (cels[i]->alert_rise && cels[i]->prev_horizon_alt <= 0.0 && cur_alt > 0.0)
+            if (object->alert_rise && object->prev_horizon_alt <= 0.0 && cur_alt > 0.0)
             {
-                play_rise_sound(cels[i]);
-                cels[i]->alert_rise = false;
+                play_rise_sound(object);
+                object->alert_rise = false;
             }
 
-            if (cels[i]->alert_set && cels[i]->prev_horizon_alt >= 0.0 && cur_alt < 0.0)
+            if (object->alert_set && object->prev_horizon_alt >= 0.0 && cur_alt < 0.0)
             {
-                play_set_sound(cels[i]);
-                cels[i]->alert_set = false;
+                play_set_sound(object);
+                object->alert_set = false;
             }
 
-            cels[i]->prev_horizon_alt = cur_alt;
-        }
+            object->prev_horizon_alt = cur_alt;
+        });
     }
 
     void SoundManager::set_rise_callback(std::function<void(CelestialObject*)> cb)

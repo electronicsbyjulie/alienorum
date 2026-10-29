@@ -188,3 +188,17 @@ an explicit Make target and is excluded from ordinary test builds/runs. To compa
 shipping-disabled implementation, add its override (for example -DPERF_P042=1) to the
 private build's SANFLAGS alongside ALIENORUM_PERFORMANCE_BENCHMARK; production defaults
 stay at 0. No benchmark executable, fixture, report, or raw CSV is a runtime dependency.
+
+P006 — ARMED-ALERT REGISTRY (enabled: PERF_P006=1)
+Flag assignments/copies and published armed objects invalidate a coalesced registry.
+Retained object references survive catalog reordering; flag clearing, destruction,
+array replacement and count changes refresh membership. Empty steady-state checks
+perform no catalog scan. Original crossing tests, history resets, muted callbacks,
+and soft-deletion behavior are preserved. The original scan remains the before path.
+Native Intel HD 2000, 1280 x 720, 42,123 objects; nine alternating paired blocks,
+twenty-four frames per mode. Raw results: PERFORMANCE_BENCHMARK_P006_RESULTS.csv.
+catalog-alerts-armed: 14.453 -> 12.907 ms; paired median -10.50%; 95% interval [-17.13%, -7.97%]; maximum image/state channel error 0.
+catalog-alerts-none: 14.813 -> 13.027 ms; paired median -12.06%; 95% interval [-18.29%, -5.68%]; maximum image/state channel error 0.
+Both workloads improve consistently. Keep P006 enabled. Checks: eight sound,
+73 serialization, 99 rendering and fourteen housekeeping passes; eight optional GPU
+comparisons skip. Make application build passes. No runtime file or save schema is added.

@@ -65,6 +65,7 @@ CelestialObject::CelestialObject()
 
 CelestialObject::~CelestialObject()
 {
+    if (alert_rise || alert_set) invalidate_horizon_alerts();
     if (cels && seqno >= 0 && seqno < ncelobjs && cels[seqno] == this) invalidate_frame_objects();
     if (merged_day_map)
     {
@@ -4415,6 +4416,7 @@ bool append_cel(CelestialObject *cel)
     ncelobjs++;
     cels[ncelobjs] = 0;
     invalidate_frame_objects();
+    if (cel->alert_rise || cel->alert_set) invalidate_horizon_alerts();
     cel->drawnx = cel->drawnxmin = cel->drawnxmax
         = cel->drawny = cel->drawnymin = cel->drawnymax = -1e9;
     if (cel->typeclass() == class_planet) static_cast<Planet*>(cel)->sync_host_statistics();

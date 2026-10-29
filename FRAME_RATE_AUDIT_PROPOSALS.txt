@@ -50,7 +50,7 @@ Source: src/housekeeping.cpp, compute_object_location around 292, calls refresh_
 [x] P005 | A / S / Q0 | Share the visible-object candidate list across drawing, glints, labels, and picking.
 Source: src/visuals.cpp around 4015 and 6314; src/inputs.cpp, identify_object_under_cursor. Several consumers independently sweep the catalog after coordinate work has already established visibility. Publish a frame-local list with projected bounds, magnitude, class, and draw eligibility. Each consumer can apply its own final filters while avoiding another global traversal. Water glints must retain very bright objects outside ordinary point-label eligibility. Picking must preserve near-object overlap ordering, and label rules must still include the five-pixel moon/companion separation and all prior filters.
 
-P006 | B / S / Q0 | Replace the rise/set alert scan with an armed-alert registry.
+[x] P006 | B / S / Q0 | Replace the rise/set alert scan with an armed-alert registry. ENABLED: PERF_P006=1; paired native medians -12.06% with no alerts and -10.50% with two armed targets.
 Source: src/classes/sound.cpp, check_rise_set_alerts around 258 and reset_horizon_tracking around 239. Every horizon frame scans all objects to discover alert flags, including scenes with no armed alerts. Track only armed rise/set targets and reset their history on relevant observer changes. Audio mute alone is not a valid shortcut because alert state and callbacks can matter independently of playback. Validate imports, favorites, toggling either alert, removal, observer changes, time reversal, and mode changes. An empty registry should make this path constant-time.
 
 P007 | B / S / Q0 | Index eclipse candidates by active system and light source.

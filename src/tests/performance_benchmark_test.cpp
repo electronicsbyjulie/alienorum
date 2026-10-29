@@ -1,6 +1,7 @@
 // Developer-only paired benchmarks; ordinary test runs skip this suite.
 #include "rendering_test.cpp"
 #include "../performance_options.h"
+#include "../classes/sound.h"
 #include <cstdlib>
 #include <iomanip>
 #include <sstream>
@@ -99,7 +100,7 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
     {
         ASSERT_GT(id, 0);
         ASSERT_LT(static_cast<size_t>(id), performance_reference.size());
-        catalog |= id <= 5;
+        catalog |= id <= 18;
     }
     if (catalog)
     {
@@ -123,6 +124,8 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
             star->BV_color = (i % 100) / 50.0;
         }
     }
+    set(play_rise_set_sound, false);
+    auto& alerts = SoundManager::get_instance();
     surface_radii.assign(ncelobjs + 32, 0);
     system_bloom.assign(ncelobjs + 32, 0);
     set(angular_radius, surface_radii.data());
@@ -136,7 +139,8 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
     const double base_latitude = 0, base_longitude = .3;
     for (int id : ids)
     {
-        std::vector<std::string> scenes = id <= 5 ? std::vector<std::string>{"catalog", "catalog-time-jump"}
+        std::vector<std::string> scenes = id == 6 ? std::vector<std::string>{"catalog-alerts-none", "catalog-alerts-armed"}
+            : id <= 5 ? std::vector<std::string>{"catalog", "catalog-time-jump"}
             : id == 21 ? std::vector<std::string>{"skyline-walk", "skyline-still"}
             : id == 31 ? std::vector<std::string>{"shore-walk", "forest-refresh"}
             : id == 42 ? std::vector<std::string>{"forest-walk", "forest-still"}
@@ -194,6 +198,7 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
                         }
                     }
                     (void)count;
+                    if (id == 6) alerts.check_rise_set_alerts();
                 }
                 else
                 {
@@ -234,6 +239,13 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
                 performance_reference.fill(false);
                 performance_reference[id] = before;
                 invalidate_frame_objects();
+                if (id == 6)
+                {
+                    const bool armed = scene == "catalog-alerts-armed";
+                    cels[0]->alert_rise = armed;
+                    cels[1]->alert_set = armed;
+                    alerts.reset_horizon_tracking();
+                }
                 frame(-2, false);
                 frame(-1, false);
             };
@@ -269,6 +281,7 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
             }
         }
     }
+    alerts.leave_horizon();
     performance_reference.fill(false);
     invalidate_frame_objects();
     ImGui::EndFrame();

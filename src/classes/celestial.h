@@ -12,6 +12,7 @@
 #include "jpeglib.h"
 #include "png.h"
 #include "point.h"
+#include "alert_flags.h"
 #include "color.h"
 
 namespace alienorum
@@ -407,8 +408,8 @@ namespace alienorum
         unsigned int fictitious_map_height = 768;            // Good enough for flying around and sun clocks but inadequate for world building.
         bool onscreen = false;
         bool label_shown = false;
-        bool alert_rise = false;
-        bool alert_set = false;
+        HorizonAlertFlag alert_rise = false;
+        HorizonAlertFlag alert_set = false;
         double prev_horizon_alt = -999.0;
         bool has_prev_horizon_alt = false;
 
