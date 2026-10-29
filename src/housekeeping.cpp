@@ -482,9 +482,12 @@ const std::vector<int>& frame_bright_candidates()
     return performance_enabled(5) && frame_objects().published ? frame_objects().bright : fallback;
 }
 
+bool picking_cpu_reference = false;
+
 const std::vector<int>& frame_pick_candidates()
 {
-    const auto& candidates = frame_draw_candidates();
+    const auto& candidates = performance_enabled(73) && !picking_cpu_reference
+        ? frame_draw_candidates() : frame_object_candidates();
     return view_mode == vm_system || view_mode == vm_sunclock ? frame_objects().all : candidates;
 }
 

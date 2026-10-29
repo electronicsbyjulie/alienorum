@@ -16,6 +16,7 @@ const std::vector<int>& frame_draw_candidates();
 const std::vector<int>& frame_orbit_candidates();
 const std::vector<int>& frame_bright_candidates();
 const std::vector<int>& frame_pick_candidates();
+extern bool picking_cpu_reference;
 bool compute_object_location(CelestialObject *cel, bool* relative_valid = nullptr);
 void compute_object_draw_coordinates();
 void set_center_objects();

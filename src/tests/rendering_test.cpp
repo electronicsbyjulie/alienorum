@@ -5581,3 +5581,96 @@ TEST_F(RenderingRegressionTest, OrbitCandidatesRefreshEachProjectionAndFallBackB
     invalidate_frame_objects();
     EXPECT_EQ(frame_orbit_candidates(), frame_object_candidates());
 }
+
+TEST_F(RenderingRegressionTest, IndexedPickingMatchesOriginalPriorityAcrossPublishedLabelsAndEdges)
+{
+    Planet* world = surface(true);
+    world->sidereal_rotational_period = oneday;
+    Star* primary = static_cast<Star*>(cels[0]);
+    primary->set_component('A', primary);
+    primary->is_faved = true;
+    Star* companion = make_star("Cursor index component");
+    companion->make_companion_of(primary, 'B');
+    companion->cenobj = primary;
+    companion->is_faved = true;
+    Moon* moon = new Moon();
+    moon->mass = earth_mass;
+    moon->volumetric_mean_radius = earth_radius * .5;
+    moon->orbit = new Orbit();
+    moon->orbit->center = world;
+    moon->orbit->semimajor_axis = 4e8;
+    moon->orbit->compute_period(moon->mass);
+    moon->cenobj = primary;
+    append_cel(moon);
+    set(selected, -1);
+    set(trackidx, -1);
+    set(is_click, false);
+    set(dragged, false);
+    set(picking_cpu_reference, false);
+    surface_magnitudes.assign(ncelobjs + 8, 10);
+    surface_radii.assign(ncelobjs + 8, 0);
+    system_bloom.assign(ncelobjs + 8, 0);
+    vmag_cache = surface_magnitudes.data();
+    set(angular_radius, surface_radii.data());
+    set(bloomrad_cache, system_bloom.data());
+    compute_object_draw_coordinates();
+    if (performance_enabled(5) && performance_enabled(73))
+    {
+        const auto& indexed = frame_pick_candidates();
+        ASSERT_NE(std::find(indexed.begin(), indexed.end(), companion->seqno), indexed.end());
+        ASSERT_NE(std::find(indexed.begin(), indexed.end(), moon->seqno), indexed.end());
+    }
+    for (int i = 0; i < ncelobjs; ++i)
+    {
+        cels[i]->drawnx = cels[i]->drawnxmin = cels[i]->drawnxmax = -1e9;
+        cels[i]->drawny = cels[i]->drawnymin = cels[i]->drawnymax = -1e9;
+    }
+    auto& io = ImGui::GetIO();
+    const auto pick = [&](bool reference, ImVec2 point, bool click)
+    {
+        selected = -1;
+        trackidx = -1;
+        picking_cpu_reference = reference;
+        is_click = click;
+        io.MousePos = point;
+        identify_object_under_cursor(io);
+        return std::make_tuple(is_an_obj_under_cursor, selected, obj_magn_under_cursor);
+    };
+    for (double separation : {0.0, 4.99, 5.0, 5.01, 20.0})
+    {
+        primary->drawnx = 50;
+        companion->drawnx = 50 + separation;
+        primary->drawny = companion->drawny = 30;
+        surface_magnitudes[moon->seqno] = 2;
+        surface_magnitudes[primary->seqno] = 4;
+        surface_magnitudes[companion->seqno] = 3;
+        for (bool bottom_right : {false, true})
+        {
+            moon->drawnx = bottom_right ? 193 : -2;
+            moon->drawny = bottom_right ? 109 : -2;
+            moon->drawnxmin = moon->drawnx - 5;
+            moon->drawnxmax = moon->drawnx + 5;
+            moon->drawnymin = moon->drawny - 5;
+            moon->drawnymax = moon->drawny + 5;
+            const ImVec2 edge = bottom_right ? ImVec2(191, 107) : ImVec2(0, 0);
+            EXPECT_EQ(std::get<0>(pick(false, edge, false)), moon->seqno);
+            for (bool click : {false, true})
+            {
+                for (ImVec2 point : {ImVec2(0, 0), ImVec2(191, 107), ImVec2(50, 30),
+                    ImVec2(50 + separation, 30), ImVec2(190, 1)})
+                {
+                    const auto expected = pick(true, point, click);
+                    EXPECT_EQ(pick(false, point, click), expected) << separation;
+                }
+            }
+        }
+    }
+    selected = -1;
+    for (ViewMode mode : {vm_sunclock, vm_system})
+    {
+        view_mode = mode;
+        std::vector<int> all;
+        for (int i = 0; i < ncelobjs; ++i) all.push_back(i);
+        EXPECT_EQ(frame_pick_candidates(), all);
+    }
+}

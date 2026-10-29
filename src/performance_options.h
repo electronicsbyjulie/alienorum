@@ -97,6 +97,9 @@
 #ifndef PERF_P049
 #define PERF_P049 1
 #endif
+#ifndef PERF_P073
+#define PERF_P073 1
+#endif
 #ifndef PERF_P068
 #define PERF_P068 1
 #endif
@@ -154,6 +157,7 @@ namespace alienorum
             case 50: compiled = PERF_P050; break;
             case 51: compiled = PERF_P051; break;
             case 52: compiled = PERF_P052; break;
+            case 73: compiled = PERF_P073; break;
             case 68: compiled = PERF_P068; break;
             case 67: compiled = PERF_P067; break;
             default: break;

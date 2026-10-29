@@ -267,7 +267,7 @@ Source: ExoConsGenerator::update_frame and draw_cons_lines around visuals.cpp 79
 
 I. UI, PICKING, ALLOCATION, AND LIVE MEMORY
 
-P073 | A / S / Q0 | Pick from the frame's projected objects instead of the entire universe.
+[x] P073 | A / S / Q0 | Pick from the frame's projected objects instead of the entire universe. IMPLEMENTED THROUGH P005; PERF_P073=1 retains indexed picking. Isolated target-picking gains 9.56%/13.06%, not additive to P005.
 Source: src/inputs.cpp, identify_object_under_cursor near the beginning of the file. A cursor can trigger a large catalog traversal even though most objects have no valid screen representation. Use a compact visible pick list, optionally binned into screen tiles. Retain the exact existing overlap/priority rules and special object handling. Validate companion and moon labels around the five-pixel threshold, labels near all viewport edges, tracked objects, and moving the pointer over UI windows. Pointer movement must not become disproportionately expensive inside fictional populations.
 
 P074 | B / S / Q0 | Cache label text metrics with all display-context inputs.

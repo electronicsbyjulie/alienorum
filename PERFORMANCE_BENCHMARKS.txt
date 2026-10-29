@@ -839,3 +839,60 @@ PERFORMANCE_BENCHMARK_FIXED_P029_CONFIRM_RESULTS.csv
   shore-walk: +0.46% [-0.80%, +6.26%], mixed/neutral; image error 0.
 P029 confirms upward/downward gains and stays enabled; walking remains neutral.
 Further compiled rechecks remain in progress.
+
+P073 — PROJECTED-OBJECT PICKING (shared implementation with P005)
+Code inspection confirms this proposal is already implemented by P005: the production
+cursor loop calls frame_pick_candidates(), which uses the frame's projected objects.
+Keep the existing hit boxes, brightness/label priority, resolved-sibling distance rule,
+tracking, click behavior and all-object system/sunclock fallbacks. Input dispatch and
+UI capture rules are unchanged. Add an independent PERF_P073 control and a reference
+selector for focused correctness checks; the default retains the previous behavior.
+Do not duplicate the index or claim an additional optimization layered on P005.
+For an isolated before/after review of that existing fix, compile the aa2aff5 reference
+source with PERF_P005=0 and compare with the indexed path (P005=1, P073=1). The benchmark
+executes coordinate projection and actual cursor picking; it omits the generic draw/
+brightness-list probes and does not draw bodies or water. Inspection confirms the
+other P005 consumers are absent from this workload, isolating the picking consumer.
+Use 42,123 synthetic objects and empty/moving/target cursor workloads. Include hovered
+object, selection and priority magnitude in captured state hashes. Compare fixed
+executables in alternating external processes, with GPU completion included.
+The new published-frame quality check compares original and indexed hit testing over
+five-pixel sibling separations, overlap, clicking and partially offscreen moon bounds;
+retain the all-object special-view lists. Existing companion-hover tests remain active.
+
+P073 FIRST FIXED PICKING COMPARISON
+Raw data: PERFORMANCE_BENCHMARK_P073_FIXED_RESULTS.csv.
+catalog-pick-empty: 11.917 -> 10.547 ms; paired median -12.64%; 95% interval [-32.51%, -3.80%]; faster; image/hover/state error 0.
+catalog-pick-moving: 11.653 -> 10.348 ms; paired median -11.70%; 95% interval [-21.20%, +0.18%]; mixed/neutral; image/hover/state error 0.
+catalog-pick-target: 11.340 -> 10.216 ms; paired median -9.56%; 95% interval [-14.93%, -7.37%]; faster; image/hover/state error 0.
+Both enabled quality checks pass, including explicit partially offscreen moon
+targets and the existing companion hover/click five-pixel matrix. Nine alternating
+pairs use twenty-four frames per block. The short pilot is a functional smoke test,
+not statistical speed evidence. Raw pilot: PERFORMANCE_BENCHMARK_P073_PILOT_RESULTS.csv.
+
+COMPILED RECHECK DETAIL P031/P039
+PERFORMANCE_BENCHMARK_FIXED_P031_RESULTS.csv
+  forest-refresh: -8.71% [-9.60%, -8.27%], faster; image/state error 0.
+  shore-walk: +0.66% [-1.34%, +2.07%], mixed/neutral; image/state error 0.
+PERFORMANCE_BENCHMARK_FIXED_P031_CONFIRM_RESULTS.csv
+  forest-refresh: -8.65% [-9.39%, -7.75%], faster; image/state error 0.
+  shore-walk: +0.56% [-0.51%, +0.84%], mixed/neutral; image/state error 0.
+PERFORMANCE_BENCHMARK_FIXED_P039_RESULTS.csv
+  forest-walk: -1.48% [-5.44%, +3.00%], mixed/neutral; image/state error 0.
+  shore-walk: -0.01% [-1.62%, +1.84%], mixed/neutral; image/state error 0.
+P031 confirms its forest material-refresh gains and stays enabled; shoreline
+timing remains neutral. P039 is neutral without a confirmed loss, so this earlier
+implementation remains enabled with its gain unproven. Further rechecks continue.
+
+P073 FIXED PICKING CONFIRMATION
+Raw data: PERFORMANCE_BENCHMARK_P073_CONFIRM_RESULTS.csv.
+catalog-pick-empty: 11.605 -> 10.418 ms; paired median -7.68%; 95% interval [-14.61%, +1.60%]; mixed/neutral; image/hover/state error 0.
+catalog-pick-moving: 11.351 -> 10.354 ms; paired median -9.76%; 95% interval [-20.68%, +2.18%]; mixed/neutral; image/hover/state error 0.
+catalog-pick-target: 11.668 -> 10.415 ms; paired median -13.06%; 95% interval [-20.68%, -4.61%]; faster; image/hover/state error 0.
+Keep PERF_P073=1 and the existing P005 picking implementation. Target-picking gains
+confirm at 9.56% and 13.06%; empty/moving-pointer gains are not both confirmed. These
+are measurements of the same P005 consumer, not an additive new application gain.
+No additional spatial bins or hit-test shortcuts are introduced. The production
+application builds; 116 rendering and eighteen housekeeping checks pass, with eight
+optional GPU skips. Both focused picking checks pass in the enabled private binary.
+No new runtime asset or installer rule is involved.

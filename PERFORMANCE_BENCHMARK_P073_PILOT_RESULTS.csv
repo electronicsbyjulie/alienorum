@@ -1,0 +1,4 @@
+proposal,workload,round,order,before_ms,after_ms,change_percent,max_channel_error,before_cpu_ms,after_cpu_ms,before_max_ms,after_max_ms
+73,catalog-pick-empty,0,AB,15.998372,10.586700375,-33.82638949138075,0,12.39485625,9.29230675,,
+73,catalog-pick-moving,0,AB,11.789413249999999,10.757905125,-8.749444125219707,0,10.473717125,9.12833425,,
+73,catalog-pick-target,0,AB,18.507294125,9.957410249999999,-46.19737395025596,0,12.567257,9.127917625,,

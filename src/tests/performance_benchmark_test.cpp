@@ -313,7 +313,7 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
     {
         ASSERT_GT(id, 0);
         ASSERT_LT(static_cast<size_t>(id), performance_reference.size());
-        catalog |= id <= 18 || id == 68;
+        catalog |= id <= 18 || id == 68 || id == 73;
     }
     if (catalog)
     {
@@ -376,6 +376,11 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
         set(sky_mag_shift, 0.0);
         ASSERT_NE(gputex_galaxy_internal(galaxy->name), 0u);
     }
+    if (std::find(ids.begin(), ids.end(), 73) != ids.end())
+    {
+        set(is_click, false);
+        set(dragged, false);
+    }
     set(play_rise_set_sound, false);
     auto& alerts = SoundManager::get_instance();
     surface_radii.assign(ncelobjs + 32, 0);
@@ -404,6 +409,7 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
             : id == 18 ? std::vector<std::string>{"catalog-lock-idle", "catalog-lock-publication"}
             : id == 13 ? std::vector<std::string>{"catalog", "catalog-walk", "catalog-time-jump"}
             : id <= 5 || id == 8 ? std::vector<std::string>{"catalog", "catalog-time-jump"}
+            : id == 73 ? std::vector<std::string>{"catalog-pick-empty", "catalog-pick-moving", "catalog-pick-target"}
             : id == 68 ? std::vector<std::string>{"catalog-orbits", "catalog-orbits-walk", "catalog-orbits-time-jump"}
             : id == 67 ? std::vector<std::string>{"galaxy-shore-walk", "galaxy-shore-still", "galaxy-shore-up", "galaxy-shore-down", "galaxy-shore-drag"}
             : id == 49 ? std::vector<std::string>{"forest-still", "forest-walk", "forest-turn", "shore-still"}
@@ -474,7 +480,7 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
                 {
                     // Exercise all three consumers, including pointer/filter traversal.
                     volatile size_t count = 0;
-                    for (const auto* list : {&frame_draw_candidates(), &frame_bright_candidates(), &frame_pick_candidates()})
+                    if (id != 73) for (const auto* list : {&frame_draw_candidates(), &frame_bright_candidates(), &frame_pick_candidates()})
                     {
                         for (int index : *list)
                         {
@@ -483,6 +489,14 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
                         }
                     }
                     (void)count;
+                    if (id == 73)
+                    {
+                        auto& io = ImGui::GetIO();
+                        io.MousePos = scene == "catalog-pick-empty" ? ImVec2(-20, -20)
+                            : scene == "catalog-pick-target" ? ImVec2(cels[0]->drawnx, cels[0]->drawny)
+                            : ImVec2((frame_index * 37 + 640) % render_width, (frame_index * 29 + 360) % render_height);
+                        identify_object_under_cursor(io);
+                    }
                     if (id == 6) alerts.check_rise_set_alerts();
                     if (id == 68)
                     {
@@ -517,6 +531,10 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
                             const auto* bytes = reinterpret_cast<const unsigned char*>(&value);
                             pixels.insert(pixels.end(), bytes, bytes + sizeof(value));
                         };
+                        if (id == 73)
+                        {
+                            append(is_an_obj_under_cursor); append(selected); append(obj_magn_under_cursor);
+                        }
                         if (id == 12)
                         {
                             for (const Point& point : {here.galactic_center, here.system_center,
