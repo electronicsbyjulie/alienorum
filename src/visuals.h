@@ -78,6 +78,7 @@
 #ifndef distant_biome_pixel_sampling
 #define distant_biome_pixel_sampling 1    // Set to 0 to restore adaptive sampling near the horizon.
 #endif
+extern bool horizon_terrain_cpu_reference;
 
 struct RockInstance
 {

@@ -44,6 +44,8 @@ namespace alienorum
         std::uint64_t world = 0;
         double radius = 0, spacing = 0;
         size_t evaluations = 0;
+        std::uint64_t generation = 0;
+        size_t patch_hits = 0;
 
         template<class Sample>
         double node(int face, std::int64_t x, std::int64_t y, const Sample &sample)
@@ -82,6 +84,13 @@ namespace alienorum
         }
 
         public:
+        struct Patch
+        {
+            std::uint64_t generation = 0;
+            int face = -1;
+            std::int64_t x = 0, y = 0;
+            double a = 0, b = 0, c = 0, d = 0;
+        };
         explicit SurfaceFieldCache(size_t maximum_tiles = 8192) : capacity(std::max<size_t>(1, maximum_tiles)) {}
         SurfaceFieldCache(const SurfaceFieldCache &) = delete;
         SurfaceFieldCache &operator=(const SurfaceFieldCache &) = delete;
@@ -97,10 +106,12 @@ namespace alienorum
             cells = std::isfinite(radius) && std::isfinite(spacing) && radius > 0 && spacing > 0
                 ? std::max<std::int64_t>(1, static_cast<std::int64_t>(ceil(2 * radius / spacing))) : 0;
             evaluations = 0;
+            ++generation;
+            patch_hits = 0;
         }
 
         template<class Sample>
-        double value(double x, double y, double z, const Sample &sample)
+        double value(double x, double y, double z, const Sample &sample, Patch* patch = nullptr)
         {
             if (!cells || !std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z)) return sample(x, y, z);
             const double position[] = {x, y, z};
@@ -115,13 +126,29 @@ namespace alienorum
             const auto ix = std::min(cells - 1, static_cast<std::int64_t>(floor(u)));
             const auto iy = std::min(cells - 1, static_cast<std::int64_t>(floor(v)));
             const double fx = u - ix, fy = v - iy;
-            const double a = node(face, ix, iy, sample), b = node(face, ix + 1, iy, sample);
-            const double c = node(face, ix, iy + 1, sample), d = node(face, ix + 1, iy + 1, sample);
+            double a, b, c, d;
+            if (patch && patch->generation == generation && patch->face == face && patch->x == ix && patch->y == iy)
+            {
+                a = patch->a;
+                b = patch->b;
+                c = patch->c;
+                d = patch->d;
+                ++patch_hits;
+            }
+            else
+            {
+                a = node(face, ix, iy, sample);
+                b = node(face, ix + 1, iy, sample);
+                c = node(face, ix, iy + 1, sample);
+                d = node(face, ix + 1, iy + 1, sample);
+                if (patch) *patch = {generation, face, ix, iy, a, b, c, d};
+            }
             return (a + fx * (b - a)) * (1 - fy) + (c + fx * (d - c)) * fy;
         }
 
         size_t sample_count() const { return evaluations; }
         size_t tile_count() const { return tiles.size(); }
+        size_t patch_hit_count() const { return patch_hits; }
     };
 }
 

@@ -21,6 +21,7 @@
 #include "../classes/surfacebiomes.h"
 #include "../classes/surfacenavigation.h"
 #include "../classes/scenerydraw.h"
+#include "../classes/surfacecache.h"
 #include "../horizon_ground_gpu.h"
 #include "../horizon_terrain_gpu.h"
 #include "../horizon_mesh_gpu.h"
@@ -259,6 +260,7 @@ class RenderingRegressionTest : public UniverseFixture
         set(horizon_ground_gpu_reference, true);
         set(horizon_terrain_gpu_reference, true);
         set(horizon_mesh_gpu_reference, true);
+        set(horizon_terrain_cpu_reference, false);
         ImGui::GetIO().DisplaySize = ImVec2(192, 108);
         ImGui::GetIO().DeltaTime = 1.0f / 60;
         ImGui_ImplOpenGL3_NewFrame();
@@ -4265,4 +4267,200 @@ TEST_F(RenderingRegressionTest, DistantWorldsSkipOrbitProjectionAndPhotometryUnt
     mycenobj = remote;
     EXPECT_TRUE(planetary_system_is_active(planet));
     EXPECT_TRUE(planetary_system_is_active(moon));
+}
+
+TEST(HorizonTerrainCpuTest, TiledDepthAndCoverageMatchScalarIncludingTies)
+{
+    uint32_t sequence = 1235741;
+    const auto random = [&]()
+    {
+        sequence = sequence * 1664525u + 1013904223u;
+        return double(sequence >> 8) / 16777216.0;
+    };
+    HorizonTerrainRaster expected, actual;
+    for (int frame = 0; frame < 4; ++frame)
+    {
+        expected.reset(97, 65);
+        actual.reset(97, 65);
+        for (int triangle = 0; triangle < 700; ++triangle)
+        {
+            ProjectedTerrainVertex vertices[3];
+            for (auto& vertex : vertices)
+            {
+                const double inverse = .001 + random() * .1;
+                vertex = {random() * 500 - 200, random() * 400 - 160,
+                    inverse, inverse * (10 + random() * 10000)};
+            }
+            for (int tie = 0; tie < 2; ++tie)
+            {
+                expected.triangle(vertices[0], vertices[1], vertices[2], false);
+                actual.triangle(vertices[0], vertices[1], vertices[2]);
+            }
+        }
+        EXPECT_EQ(actual.inverse_depths(), expected.inverse_depths());
+        EXPECT_EQ(actual.distances(), expected.distances());
+        for (int x = 0; x < 97; ++x) EXPECT_EQ(actual.top_at(x), expected.top_at(x));
+        EXPECT_GT(actual.rejected_tiles, 0u);
+        EXPECT_GT(actual.covered_tiles, 0u);
+        EXPECT_GT(actual.occluded_tiles, 0u);
+    }
+}
+
+TEST(HorizonTerrainCpuTest, RetainedStorageClearsOnReuseResizeAndDeactivation)
+{
+    HorizonTerrainRaster raster;
+    raster.reset(128, 80);
+    const auto* storage = raster.distances().data();
+    raster.store(12, 14, .1, 100);
+    EXPECT_EQ(raster.top_at(12), 14);
+    raster.deactivate();
+    EXPECT_TRUE(raster.distances().empty());
+    EXPECT_FALSE(std::isfinite(raster.distance_at(12, 14)));
+    raster.reset(128, 80);
+    EXPECT_EQ(raster.distances().data(), storage);
+    EXPECT_FALSE(std::isfinite(raster.distance_at(12, 14)));
+    EXPECT_EQ(raster.top_at(12), 80);
+    raster.reset(17, 21);
+    EXPECT_EQ(raster.distances().size(), 357u);
+    EXPECT_TRUE(std::all_of(raster.distances().begin(), raster.distances().end(), [](float value) { return value == 0; }));
+    raster.store(-1, 0, 1, 1);
+    raster.store(17, 21, 1, 1);
+    raster.reset(0, 0);
+    EXPECT_TRUE(raster.inverse_depths().empty());
+}
+
+TEST(HorizonTerrainCpuTest, SectorRejectionPreservesAllReferencePixels)
+{
+    uint32_t sequence = 787791;
+    const auto random = [&]()
+    {
+        sequence = sequence * 1664525u + 1013904223u;
+        return double(sequence >> 8) / 16777216.0;
+    };
+    size_t rejected = 0;
+    for (double magnification : {.1, 1.0, 100.0, 1000000.0})
+    {
+        HorizonTerrainRaster expected, actual;
+        expected.reset(64, 48);
+        actual.reset(64, 48);
+        for (int triangle = 0; triangle < 600; ++triangle)
+        {
+            HorizonTerrainSector first, second;
+            ProjectedTerrainVertex vertices[3];
+            for (int corner = 0; corner < 3; ++corner)
+            {
+                const double x = random() * 400 - 200, y = random() * 300 - 150;
+                const double z = random() * 550 - 50;
+                (corner == 2 ? second : first).include(x, y, z, 34 / (32 * magnification), 26 / (32 * magnification));
+                if (z > .1) vertices[corner] = {32 + x / z * magnification * 32,
+                    24 - y / z * magnification * 32, 1 / z, (100 + triangle) / z};
+            }
+            expected.triangle(vertices[0], vertices[1], vertices[2], false);
+            if (first.outside(second)) ++rejected;
+            else actual.triangle(vertices[0], vertices[1], vertices[2]);
+        }
+        EXPECT_EQ(actual.inverse_depths(), expected.inverse_depths());
+        EXPECT_EQ(actual.distances(), expected.distances());
+    }
+    EXPECT_GT(rejected, 100u);
+    HorizonTerrainSector unknown, distant;
+    unknown.include(NAN, 0, 1, 1, 1);
+    distant.include(1000, 0, 1, 1, 1);
+    EXPECT_FALSE(unknown.outside(distant));
+}
+
+TEST(HorizonTerrainCpuTest, WorldPatchesRetainExactInterpolationAcrossTravelAndInvalidation)
+{
+    SurfaceFieldCache cache(2);
+    SurfaceFieldCache::Patch patch;
+    const auto sample = [](double x, double y, double z) { return sin(x * 100) + cos(y * 70) * z; };
+    for (double radius : {100000.0, earth_radius, 10 * earth_radius})
+    {
+        for (uint64_t world : {1u, 2u, 1u})
+        {
+            cache.configure(world, radius, 128);
+            for (int frame = 0; frame < 400; ++frame)
+            {
+                const double longitude = _pi - .00002 + frame * .05 / radius;
+                const double latitude = frame < 200 ? .2 : half_pi - .00001;
+                const double x = cos(latitude) * cos(longitude), y = cos(latitude) * sin(longitude), z = sin(latitude);
+                EXPECT_DOUBLE_EQ(cache.value(x, y, z, sample, &patch), cache.value(x, y, z, sample));
+            }
+            EXPECT_GT(cache.patch_hit_count(), 200u);
+        }
+    }
+}
+
+TEST_F(RenderingRegressionTest, WaterPatchesPreserveMaterialsCoastsPolesAndSamplerEdits)
+{
+    Planet* world = surface(true);
+    SurfaceBiomes field(19);
+    SurfaceSampler::WaterPatch patch;
+    for (auto material : {SurfaceMaterial::water, SurfaceMaterial::vegetation, SurfaceMaterial::unknown})
+    {
+        delete world->surf_map;
+        world->surf_map = new BlueBiomeTestMap(material);
+        for (double temperature : {280.0, 1000.0, 280.0})
+        {
+            world->temperature = temperature;
+            for (int vegetation : {0, 1})
+            {
+                world->vegetation_r = vegetation ? 20 : 80;
+                world->vegetation_g = vegetation ? 100 : 140;
+                world->vegetation_b = vegetation ? 160 : 30;
+                SurfaceSampler sampler(world, world->surf_map, field, earth_radius, shore_displacement);
+                for (int step = 0; step < 50; ++step)
+                {
+                    const double latitude = step < 40 ? .2 + step * .1 / earth_radius : half_pi - 1e-10;
+                    const double longitude = step < 45 ? .3 : _pi - 1e-10;
+                    EXPECT_EQ(sampler.water_at(latitude, longitude, patch), sampler.water_at(latitude, longitude));
+                }
+            }
+        }
+    }
+    delete world->surf_map;
+    world->surf_map = new CoastalTestMap();
+    world->temperature = 280;
+    SurfaceSampler coast(world, world->surf_map, field, earth_radius, shore_displacement);
+    for (int step = -200; step <= 200; ++step)
+    {
+        const double latitude = step * 2.0 / earth_radius;
+        EXPECT_EQ(coast.water_at(latitude, .3, patch), coast.water_at(latitude, .3));
+    }
+}
+
+TEST_F(RenderingRegressionTest, CpuTerrainPreservesImagesWhileWalkingTurningAndSwitchingWorldParameters)
+{
+    Planet* world = surface(true);
+    for (int scene = 0; scene < 3; ++scene)
+    {
+        delete world->surf_map;
+        world->surf_map = scene == 0 ? static_cast<Map*>(new CoastalTestMap())
+            : scene == 1 ? static_cast<Map*>(new MountainBandsTestMap()) : static_cast<Map*>(new BumpySceneryTestMap());
+        world->has_water = scene < 2 ? 1 : 0;
+        world->vegetation_r = scene < 2 ? 80 : 0;
+        world->vegetation_g = scene < 2 ? 140 : 0;
+        world->vegetation_b = scene < 2 ? 30 : 0;
+        world->volumetric_mean_radius = scene == 2 ? 100000 : earth_radius;
+        for (int frame = 0; frame < 6; ++frame)
+        {
+            viewer_lat = frame == 4 ? half_pi - 1e-7 : frame * .05 / world->volumetric_mean_radius;
+            viewer_lon = frame == 5 ? _pi - 1e-7 : frame * .07 / world->volumetric_mean_radius;
+            altitude = frame == 1 ? 1.2 : frame == 2 ? -1.2 : -.15;
+            azimuth = frame * 1.3;
+            viewer_eye_height = frame == 3 ? 80 : 1.75;
+            std::vector<unsigned char> expected;
+            for (bool reference : {true, false})
+            {
+                horizon_terrain_cpu_reference = reference;
+                freeze_surface_time();
+                find_horizon();
+                draw_horizon();
+                const auto pixels = render();
+                if (reference) expected = pixels;
+                else EXPECT_EQ(image_difference(pixels, expected), 0) << "scene " << scene << ", frame " << frame;
+                ImGui::NewFrame();
+            }
+        }
+    }
 }

@@ -24,6 +24,7 @@
 #include <optional>
 
 using namespace alienorum;
+bool horizon_terrain_cpu_reference = false;
 
 double jay, appmag, bloomrad, flare, theta, lmasslim, hz_y;
 ImVec2 xycoord;
@@ -5416,7 +5417,8 @@ void draw_horizon()
         const double surface_range = sqrt(2.0 * surface_radius * surface_eye);
         const bool terrain_mesh = show_terrain && surface_biomes
             && !ocean_world && cel->type != lavaworld;
-        HorizonTerrainRaster terrain_raster;
+        static HorizonTerrainRaster terrain_raster;
+        terrain_raster.deactivate();
         const auto surface_coord = [&](double distance, double bearing)
         {
             const double arc = distance / surface_radius;
@@ -5493,13 +5495,26 @@ void draw_horizon()
             static double cached_eye_height = -1.0;
             static PerlinNoise skyline_noise;
             static SurfaceFieldCache skyline_field;
+            static std::array<SurfaceFieldCache::Patch, hznodes> skyline_patches;
+            static const auto skyline_directions = []()
+            {
+                std::array<std::array<double, 2>, hznodes> result;
+                for (int index = 0; index < hznodes; ++index)
+                {
+                    const double angle = _pi * 2 * index / hznodes;
+                    result[index] = {sin(angle), cos(angle)};
+                }
+                return result;
+            }();
             static Map *cached_bump_map = nullptr;
             static unsigned int cached_bump_generation = 0;
             static double cached_radius = 0;
+            static bool cached_cpu_reference = false;
 
             if (cached_whereami != whereami || cached_lat != viewer_lat || cached_lon != viewer_lon
                 || cached_eye_height != viewer_eye_height || cached_bump_map != cel->surf_map
-                || cached_bump_generation != (cel->surf_map ? cel->surf_map->gen : 0) || cached_radius != surface_radius)
+                || cached_bump_generation != (cel->surf_map ? cel->surf_map->gen : 0) || cached_radius != surface_radius
+                || cached_cpu_reference != horizon_terrain_cpu_reference)
             {
                 if (cached_whereami != whereami)
                 {
@@ -5526,18 +5541,19 @@ void draw_horizon()
                 const double ring_angle = std::min(0.19, 9500.0 / R_planet);
                 const double sin_lat = sin(viewer_lat), cos_lat = cos(viewer_lat);
                 const double sin_lon = sin(viewer_lon), cos_lon = cos(viewer_lon);
+                const double radial = R_planet * cos(ring_angle) / spatial_scale;
+                const double ring_distance = R_planet * sin(ring_angle);
                 cached_raw_min = 9999;
                 for (j = 0; j < hznodes; j++)
                 {
-                    double theta = _pi * 2 * j / hznodes;
-                    const double radial = R_planet * cos(ring_angle) / spatial_scale;
-                    const double north = R_planet * sin(ring_angle) * cos(theta) / spatial_scale;
-                    const double east = R_planet * sin(ring_angle) * sin(theta) / spatial_scale;
+                    const double north = ring_distance * skyline_directions[j][1] / spatial_scale;
+                    const double east = ring_distance * skyline_directions[j][0] / spatial_scale;
                     const double equatorial = radial * cos_lat - north * sin_lat;
                     const double nx = equatorial * cos_lon - east * sin_lon;
                     const double ny = equatorial * sin_lon + east * cos_lon;
                     const double nz = radial * sin_lat + north * cos_lat;
-                    cached_raw_noise[j] = .5 + .5 * skyline_field.value(nx, ny, nz, sample_skyline);
+                    cached_raw_noise[j] = .5 + .5 * skyline_field.value(nx, ny, nz, sample_skyline,
+                        horizon_terrain_cpu_reference ? nullptr : &skyline_patches[j]);
                     if (cached_raw_noise[j] < cached_raw_min)
                     {
                         cached_raw_min = cached_raw_noise[j];
@@ -5550,23 +5566,28 @@ void draw_horizon()
                 double E0 = has_bump ? cel->surf_map->elevation_at_bilinear(viewer_lat, viewer_lon) : 0.0;
                 double hz_dip = acos(R_planet / (R_planet + h_eye));
 
+                std::array<std::array<double, 3>, 8> bump_steps;
+                const double max_dist = fmin(250000.0, R_planet * 0.1);
+                for (int step = 0; step < 8; ++step)
+                {
+                    const double fraction = (step + 1.0) / 8.0;
+                    const double distance = geom_dist + (max_dist - geom_dist) * (fraction * fraction);
+                    bump_steps[step] = {distance, sin(distance / R_planet), cos(distance / R_planet)};
+                }
                 for (j = 0; j < hznodes; j++)
                 {
                     cached_bump_relief[j] = 0.0;
                     if (has_bump)
                     {
-                        double theta = _pi * 2 * j / hznodes;
                         double max_alpha = -hz_dip;
-                        double max_dist = fmin(250000.0, R_planet * 0.1);
                         for (int s_step = 1; s_step <= 8; s_step++)
                         {
-                            double frac = (double)s_step / 8.0;
-                            double s = geom_dist + (max_dist - geom_dist) * (frac * frac);
-                            double delta_sigma = s / R_planet;
-                            double sin_phi = sin(viewer_lat) * cos(delta_sigma) + cos(viewer_lat) * sin(delta_sigma) * cos(theta);
+                            const double s = bump_steps[s_step - 1][0];
+                            const double sine = bump_steps[s_step - 1][1], cosine = bump_steps[s_step - 1][2];
+                            double sin_phi = sin_lat * cosine + cos_lat * sine * skyline_directions[j][1];
                             sin_phi = fmax(-1.0, fmin(1.0, sin_phi));
                             double phi = asin(sin_phi);
-                            double d_lon = atan2(sin(theta) * sin(delta_sigma) * cos(viewer_lat), cos(delta_sigma) - sin(viewer_lat) * sin_phi);
+                            double d_lon = atan2(skyline_directions[j][0] * sine * cos_lat, cosine - sin_lat * sin_phi);
                             double lam = viewer_lon + d_lon;
                             double Es = cel->surf_map->elevation_at_bilinear(phi, lam);
                             double h_apparent = (Es - E0) - (s * s) / (2.0 * R_planet);
@@ -5590,6 +5611,7 @@ void draw_horizon()
                 cached_bump_map = cel->surf_map;
                 cached_bump_generation = cel->surf_map ? cel->surf_map->gen : 0;
                 cached_radius = surface_radius;
+                cached_cpu_reference = horizon_terrain_cpu_reference;
             }
 
             double terrain_height = dispcx * 0.08 * zoom;
@@ -5813,15 +5835,29 @@ void draw_horizon()
             #if horizon_gpu_mesh_generation
             gpu_mesh_noise = !horizon_mesh_gpu_reference && map->is_complete();
             #endif
-            auto mesh_key = std::make_tuple(whereami, viewer_lat, viewer_lon, surface_eye, surface_radius,
-                surface_lift, map->gen, p ? p->has_water : 0.0f, water_favorable,
-                p ? p->vegetation_r : 0, p ? p->vegetation_g : 0, p ? p->vegetation_b : 0, shore_displacement, gpu_mesh_noise);
+            // Keep world sampling patches independent of the observer-relative mesh geometry.
+            auto mesh_key = std::make_tuple(whereami, map, surface_radius,
+                map->gen, p ? p->has_water : 0.0f, water_favorable,
+                p ? p->vegetation_r : 0, p ? p->vegetation_g : 0, p ? p->vegetation_b : 0, shore_displacement,
+                gpu_mesh_noise, horizon_terrain_cpu_reference);
             static decltype(mesh_key) saved_mesh_key;
+            auto mesh_view = std::make_tuple(viewer_lat, viewer_lon, surface_eye, surface_lift);
+            static decltype(mesh_view) saved_mesh_view;
             static bool mesh_valid = false;
-            if (!mesh_valid || saved_mesh_key != mesh_key)
+            if (!mesh_valid || saved_mesh_key != mesh_key || saved_mesh_view != mesh_view)
             {
-                PerlinNoise relief_noise(static_cast<uint32_t>(whereami) * 2654435761u + 0xb0ad1ceau);
+                static PerlinNoise relief_noise;
+                static int relief_world = -2;
+                if (relief_world != whereami)
+                {
+                    relief_noise.reseed(static_cast<uint32_t>(whereami) * 2654435761u + 0xb0ad1ceau);
+                    relief_world = whereami;
+                }
                 static SurfaceFieldCache relief_field;
+                static std::vector<SurfaceFieldCache::Patch> relief_patches;
+                relief_patches.resize(terrain_rows * terrain_columns);
+                static std::vector<SurfaceSampler::WaterPatch> water_patches;
+                water_patches.resize(terrain_rows * terrain_columns);
                 relief_field.configure(static_cast<std::uint64_t>(whereami), surface_radius, 128.0);
                 const auto sample_relief = [&](double x, double y, double z)
                 {
@@ -5832,6 +5868,32 @@ void draw_horizon()
                 const double far_range = fmin(fmax(60000.0, surface_range * 8.0), surface_radius * 0.15);
                 const double base_elevation = map->has_bump_data()
                     ? map->elevation_at_bilinear(viewer_lat, viewer_lon) : 0.0;
+                static const auto directions = []()
+                {
+                    std::array<std::array<double, 3>, terrain_columns> result;
+                    for (int column = 0; column < terrain_columns; ++column)
+                    {
+                        const double angle = 2.0 * _pi * column / terrain_columns;
+                        result[column] = {angle, sin(angle), cos(angle)};
+                    }
+                    return result;
+                }();
+                std::array<double, terrain_rows> row_distances, row_sines, row_cosines;
+                for (int row = 0; row < terrain_rows; ++row)
+                {
+                    row_distances[row] = near_range * pow(far_range / near_range,
+                        static_cast<double>(row) / (terrain_rows - 1));
+                    row_sines[row] = sin(row_distances[row] / surface_radius);
+                    row_cosines[row] = cos(row_distances[row] / surface_radius);
+                }
+                const double latitude_sine = sin(viewer_lat), latitude_cosine = cos(viewer_lat);
+                const auto ring_coordinate = [&](int row, int column)
+                {
+                    const double sin_lat = fmax(-1.0, fmin(1.0, latitude_sine * row_cosines[row]
+                        + latitude_cosine * row_sines[row] * directions[column][2]));
+                    return std::make_pair(asin(sin_lat), viewer_lon + atan2(directions[column][1]
+                        * row_sines[row] * latitude_cosine, row_cosines[row] - latitude_sine * sin_lat));
+                };
                 mesh.resize(terrain_rows * terrain_columns);
                 std::vector<std::pair<double, double>> mesh_coordinates;
                 std::vector<double> gpu_totals;
@@ -5844,12 +5906,11 @@ void draw_horizon()
                     mesh_coordinates.reserve(mesh.size());
                     for (int row = 0; row < terrain_rows; ++row)
                     {
-                        const double distance = near_range * pow(far_range / near_range,
-                            static_cast<double>(row) / (terrain_rows - 1));
+                        const double distance = row_distances[row];
                         for (int column = 0; column < terrain_columns; ++column)
                         {
-                            const double bearing = 2.0 * _pi * column / terrain_columns;
-                            const auto coord = surface_coord(distance, bearing);
+                            const double bearing = directions[column][0];
+                            const auto coord = horizon_terrain_cpu_reference ? surface_coord(distance, bearing) : ring_coordinate(row, column);
                             mesh_coordinates.push_back(coord);
                             positions.push_back({surface_radius * cos(coord.first) * cos(coord.second) / 50000.0,
                                 surface_radius * cos(coord.first) * sin(coord.second) / 50000.0,
@@ -5868,15 +5929,16 @@ void draw_horizon()
                 std::vector<bool> row_water(terrain_columns);
                 for (int row = 0; row < terrain_rows; ++row)
                 {
-                    const double distance = near_range * pow(far_range / near_range,
-                        static_cast<double>(row) / (terrain_rows - 1));
+                    const double distance = row_distances[row];
                     const double rise = std::clamp((distance - near_range) / (1.5 * surface_range), 0.0, 1.0);
                     const double ramp = rise * rise * (3.0 - 2.0 * rise);
                     for (int column = 0; column < terrain_columns; ++column)
                     {
-                        const double bearing = 2.0 * _pi * column / terrain_columns;
+                        const double bearing = directions[column][0];
                         const size_t sample = row * terrain_columns + column;
-                        const auto coord = mesh_coordinates.empty() ? surface_coord(distance, bearing) : mesh_coordinates[sample];
+                        const auto coord = mesh_coordinates.empty()
+                            ? (horizon_terrain_cpu_reference ? surface_coord(distance, bearing) : ring_coordinate(row, column))
+                            : mesh_coordinates[sample];
                         double total = 0, weight = 0;
                         if (gpu_generated)
                         {
@@ -5886,14 +5948,16 @@ void draw_horizon()
                         else
                         {
                             total = relief_field.value(cos(coord.first) * cos(coord.second),
-                                cos(coord.first) * sin(coord.second), sin(coord.first), sample_relief);
+                                cos(coord.first) * sin(coord.second), sin(coord.first), sample_relief,
+                                horizon_terrain_cpu_reference ? nullptr : &relief_patches[sample]);
                             weight = 1;
                         }
                         const double procedural = surface_range * 0.2 * fmax(0.0, 0.15 + 0.5 * total / weight);
                         const double bump = map->has_bump_data()
                             ? fmax(0.0, map->elevation_at_bilinear(coord.first, coord.second) - base_elevation) : 0.0;
                         row_relief[column] = (procedural + bump) * ramp;
-                        row_water[column] = water_at(coord.first, coord.second);
+                        row_water[column] = horizon_terrain_cpu_reference ? water_at(coord.first, coord.second)
+                            : surface.water_at(coord.first, coord.second, water_patches[sample]);
                         HorizonTerrainVertex &vertex = mesh[row * terrain_columns + column];
                         vertex.distance = distance;
                         vertex.bearing = bearing;
@@ -5931,41 +5995,72 @@ void draw_horizon()
                     }
                 }
                 saved_mesh_key = mesh_key;
+                saved_mesh_view = mesh_view;
                 mesh_valid = true;
             }
 
             terrain_raster.reset(screen_w, static_cast<int>(dispcy * 2.0));
-            std::vector<ProjectedTerrainVertex> projected(mesh.size());
+            static std::vector<ProjectedTerrainVertex> projected;
+            projected.assign(mesh.size(), {});
+            static std::vector<std::array<double, 3>> camera_vertices;
+            camera_vertices.resize(mesh.size());
+            std::array<HorizonTerrainSector, terrain_columns> sectors;
+            std::array<bool, terrain_columns> visible_sectors;
             const double cos_alt = cos(altitude), sin_alt = sin(altitude);
-            for (size_t vertex = 0; vertex < mesh.size(); ++vertex)
+            const double horizontal = (dispcx + 2) / (zoom * dispcx);
+            const double vertical = (dispcy + 2) / (zoom * dispcx);
+            for (int column = 0; column < terrain_columns; ++column)
             {
-                const HorizonTerrainVertex &source = mesh[vertex];
-                const double bearing = source.bearing - azimuth;
-                const double x = source.distance * sin(bearing);
-                const double north = source.distance * cos(bearing);
-                const double refraction = surface_lift * fmin(1.0, source.distance / surface_range) * source.distance;
-                const double up = source.elevation - surface_eye
-                    - source.distance * source.distance / (2.0 * surface_radius) + refraction;
-                const double depth = up * sin_alt + north * cos_alt;
-                if (depth > 0.1)
+                const double bearing = mesh[column].bearing - azimuth;
+                const double sine = sin(bearing), cosine = cos(bearing);
+                for (int row = 0; row < terrain_rows; ++row)
                 {
-                    ProjectedTerrainVertex &target = projected[vertex];
-                    target.x = dispcx + x / depth * zoom * dispcx;
-                    target.y = dispcy - (up * cos_alt - north * sin_alt) / depth * zoom * dispcx;
-                    target.inverse_depth = 1.0 / depth;
-                    target.distance_over_depth = source.distance / depth;
+                    const size_t vertex = row * terrain_columns + column;
+                    const HorizonTerrainVertex &source = mesh[vertex];
+                    const double x = source.distance * sine;
+                    const double north = source.distance * cosine;
+                    const double refraction = surface_lift * fmin(1.0, source.distance / surface_range) * source.distance;
+                    const double up = source.elevation - surface_eye
+                        - source.distance * source.distance / (2.0 * surface_radius) + refraction;
+                    const double depth = up * sin_alt + north * cos_alt;
+                    const double y = up * cos_alt - north * sin_alt;
+                    camera_vertices[vertex] = {x, y, depth};
+                    sectors[column].include(x, y, depth, horizontal, vertical);
+                }
+            }
+            for (int column = 0; column < terrain_columns; ++column)
+                visible_sectors[column] = horizon_terrain_cpu_reference
+                    || !sectors[column].outside(sectors[(column + 1) % terrain_columns]);
+            for (int column = 0; column < terrain_columns; ++column)
+            {
+                if (!visible_sectors[column] && !visible_sectors[(column + terrain_columns - 1) % terrain_columns]) continue;
+                for (int row = 0; row < terrain_rows; ++row)
+                {
+                    const size_t vertex = row * terrain_columns + column;
+                    const auto &camera = camera_vertices[vertex];
+                    const double depth = camera[2];
+                    if (depth > .1)
+                    {
+                        auto &target = projected[vertex];
+                        target.x = dispcx + camera[0] / depth * zoom * dispcx;
+                        target.y = dispcy - camera[1] / depth * zoom * dispcx;
+                        target.inverse_depth = 1.0 / depth;
+                        target.distance_over_depth = mesh[vertex].distance / depth;
+                    }
                 }
             }
             bool gpu_raster = false;
             #if horizon_gpu_terrain_rasterization
             gpu_raster = !horizon_terrain_gpu_reference;
             #endif
-            std::vector<ProjectedTerrainVertex> triangles;
+            static std::vector<ProjectedTerrainVertex> triangles;
+            triangles.clear();
             if (gpu_raster) triangles.reserve((terrain_rows - 1) * terrain_columns * 6);
             for (int row = 0; row < terrain_rows - 1; ++row)
             {
                 for (int column = 0; column < terrain_columns; ++column)
                 {
+                    if (!visible_sectors[column]) continue;
                     const int next = (column + 1) % terrain_columns;
                     const auto &a = projected[row * terrain_columns + column];
                     const auto &b = projected[row * terrain_columns + next];
@@ -5974,8 +6069,8 @@ void draw_horizon()
                     if (gpu_raster) triangles.insert(triangles.end(), {a, b, c, b, d, c});
                     else
                     {
-                        terrain_raster.triangle(a, b, c);
-                        terrain_raster.triangle(b, d, c);
+                        terrain_raster.triangle(a, b, c, !horizon_terrain_cpu_reference);
+                        terrain_raster.triangle(b, d, c, !horizon_terrain_cpu_reference);
                     }
                 }
             }
@@ -5984,7 +6079,8 @@ void draw_horizon()
             {
                 for (size_t index = 0; index < triangles.size(); index += 3)
                 {
-                    terrain_raster.triangle(triangles[index], triangles[index + 1], triangles[index + 2]);
+                    terrain_raster.triangle(triangles[index], triangles[index + 1], triangles[index + 2],
+                        !horizon_terrain_cpu_reference);
                 }
             }
             for (int x = 0; x < screen_w; ++x)

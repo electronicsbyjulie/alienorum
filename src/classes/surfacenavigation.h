@@ -3,6 +3,7 @@
 
 #include "planet.h"
 #include "surfacebiomes.h"
+#include <tuple>
 
 namespace alienorum
 {
@@ -18,12 +19,20 @@ namespace alienorum
         bool water_sample(const std::pair<RGB3, SurfaceMaterial> &sample) const;
 
         public:
+        struct WaterPatch
+        {
+            using Key = std::tuple<Map*, unsigned int, Planet*, double, double, bool, bool, bool, bool, int, int, int, int>;
+            Key key;
+            double latitude = 0, longitude = 0;
+            bool attempted = false, uniform = false, value = false;
+        };
         SurfaceSampler(Planet *body, Map *surface, SurfaceBiomes &noise, double world_radius, double displacement);
         std::pair<RGB3, SurfaceMaterial> info(double latitude, double longitude);
         RGB3 color_at(double latitude, double longitude) { return info(latitude, longitude).first; }
         bool vegetation_color(const RGB3 &sample) const;
         bool vegetation_at(double latitude, double longitude);
         bool water_at(double latitude, double longitude);
+        bool water_at(double latitude, double longitude, WaterPatch& patch);
         bool base_water(unsigned long column, unsigned long row) const;
         bool water_favorable() const { return favorable; }
         bool has_biomes() const { return biomes; }

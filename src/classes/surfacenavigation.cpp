@@ -62,6 +62,40 @@ bool SurfaceSampler::water_at(double latitude, double longitude)
     return water && water_sample(info(latitude, longitude));
 }
 
+bool SurfaceSampler::water_at(double latitude, double longitude, WaterPatch& patch)
+{
+    if (!water || !map || !planet || !(radius > 0) || !std::isfinite(radius)
+        || !std::isfinite(latitude) || !std::isfinite(longitude) || fabs(latitude) > half_pi)
+        return water_at(latitude, longitude);
+    const WaterPatch::Key key = {map, map->gen, planet, radius, strength, biomes, ocean, favorable,
+        planet->has_water != 0, planet->type, planet->vegetation_r, planet->vegetation_g, planet->vegetation_b};
+    const double padding = std::min(32.0, radius * .001);
+    const double latitude_delta = sin((latitude - patch.latitude) * .5);
+    const double longitude_delta = sin((longitude - patch.longitude) * .5);
+    const double arc = padding / radius * .5;
+    const double limit = sin(arc) * sin(arc) * (1 - 1e-8);
+    const double separation = latitude_delta * latitude_delta
+        + cos(latitude) * cos(patch.latitude) * longitude_delta * longitude_delta;
+    if (patch.attempted && patch.key == key && fabs(longitude - patch.longitude) <= _pi && separation <= limit)
+    {
+        if (patch.uniform && !generating_fic_texture) return patch.value;
+        return water_at(latitude, longitude);
+    }
+    patch.key = key;
+    patch.latitude = latitude;
+    patch.longitude = longitude;
+    patch.attempted = true;
+    RGB3 color;
+    patch.uniform = !generating_fic_texture && map->color_within_cap(latitude, longitude,
+        (biomes ? bound : 0) + padding / radius, color, true);
+    if (patch.uniform)
+    {
+        patch.value = water_sample({color, map->material_at(latitude, longitude)});
+        return patch.value;
+    }
+    return water_at(latitude, longitude);
+}
+
 bool SurfaceSampler::base_water(unsigned long column, unsigned long row) const
 {
     return map && water_sample(map->surface_pixel(column, row));
