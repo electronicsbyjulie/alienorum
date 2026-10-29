@@ -369,6 +369,7 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
             : id == 18 ? std::vector<std::string>{"catalog-lock-idle", "catalog-lock-publication"}
             : id == 13 ? std::vector<std::string>{"catalog", "catalog-walk", "catalog-time-jump"}
             : id <= 5 || id == 8 ? std::vector<std::string>{"catalog", "catalog-time-jump"}
+            : id == 29 ? std::vector<std::string>{"shore-up", "shore-walk", "shore-down"}
             : id == 28 ? std::vector<std::string>{"resident-mesh-still", "resident-mesh-walk"}
             : id == 25 ? std::vector<std::string>{"shore-still", "forest-still", "shore-walk", "forest-walk"}
             : id == 21 ? std::vector<std::string>{"skyline-walk", "skyline-still"}
@@ -393,7 +394,7 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
             world->plant_trunk_height = 22.2;
             world->plant_crown_oblateness = .35;
             show_terrain = true;
-            altitude = -.15;
+            altitude = scene == "shore-up" ? .9 : scene == "shore-down" ? -.9 : -.15;
             azimuth = .7;
             zoom = 1;
             const auto frame = [&](int frame_index, bool capture)

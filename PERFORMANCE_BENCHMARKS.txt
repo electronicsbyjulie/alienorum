@@ -401,3 +401,33 @@ and scenery occlusion. Replacing them requires an integrated resident architectu
 with equivalent quality and a full-app comparison. No application FPS gain is claimed.
 An explicit -DPERF_P028=1 private build enables repeat measurements; the normal old
 horizon_gpu_mesh_generation option stays unchanged. No runtime asset is introduced.
+
+P029 — CONSERVATIVE GROUND COVERAGE BOUNDS (enabled: PERF_P029=1)
+For complete terrain maps in the same monotonic forward-ray domain used by the GPU
+painter, find each column's first base-surface pixel and combine it with the terrain
+raster's first covered pixel. Retain peaks; below-first-row holes are not filled by
+this bound. Proven all-sky frames skip ground-paint preparation, while other frames
+reuse the base boundary and reject empty patch regions. Endpoint checks avoid binary
+search for wholly covered/empty columns. Uncertain view domains use the original path.
+Horizon overlays, water and scenery retain their existing independent behavior.
+Native Intel HD 2000, 1280 x 720, local shoreline fixture. Initial nine-pair/16-frame
+results are mixed. Extended confirmation uses 21 pairs of 24 frames, alternating order
+and waiting for GPU completion; no compilation overlaps either run.
+PERFORMANCE_BENCHMARK_P029_RESULTS.csv
+  shore-down: 28.322 -> 28.324 ms; paired median -1.77%; 95% interval [-2.92%, +3.04%]; maximum image/state error 0.
+  shore-up: 10.404 -> 8.314 ms; paired median -19.81%; 95% interval [-25.55%, +11.66%]; maximum image/state error 0.
+  shore-walk: 120.132 -> 119.631 ms; paired median -0.42%; 95% interval [-1.58%, +1.69%]; maximum image/state error 0.
+PERFORMANCE_BENCHMARK_P029_CONFIRM_RESULTS.csv
+  shore-down: 28.961 -> 27.848 ms; paired median -2.04%; 95% interval [-7.60%, -0.89%]; maximum image/state error 0.
+  shore-up: 9.936 -> 7.561 ms; paired median -26.77%; 95% interval [-27.43%, -23.45%]; maximum image/state error 0.
+  shore-walk: 120.016 -> 119.875 ms; paired median -0.00%; 95% interval [-0.35%, +0.57%]; maximum image/state error 0.
+The confirmation establishes upward/downward gains, with walking effectively neutral.
+Keep P029 enabled. New exact-image checks cover all-sky and peak-bearing upward views,
+normal horizons, downward views and views outside the fast-path domain on coastline
+and small mountain worlds. Existing terrain comparisons cover further map/eye-height,
+world-size and pole changes. Other hardware/full user scenes remain separate.
+
+Reproduction note: use a fresh OBJ directory when changing SANFLAGS or compile-time
+performance overrides. Make tracks file dependencies, not changes to command-line
+compiler flags. Reusing objects built with other overrides can invalidate a comparison.
+Keep every private object on the same benchmark macro configuration.

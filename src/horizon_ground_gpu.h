@@ -24,6 +24,7 @@ namespace alienorum
         const std::vector<double> &horizon, const std::vector<int> &base_top, bool terrain);
     void queue_horizon_ground_gpu(std::vector<HorizonGroundRect> rectangles);
     void clear_horizon_ground_gpu();
+    void reset_horizon_ground_gpu_stats();
     const HorizonGroundGpuStats &horizon_ground_gpu_stats();
 
     // Runtime reference selection is for image comparisons; the compile-time

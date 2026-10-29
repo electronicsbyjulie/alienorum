@@ -6403,22 +6403,52 @@ void draw_horizon()
         }
         #endif
 
-        if (!faded && (surface_water || (surface_biomes && cel->type != lavaworld)))
+        const int ground_height = static_cast<int>(dispcy * 2.0);
+        const double top_north = cos(altitude) - dispcy / (zoom * dispcx) * sin(altitude);
+        const double bottom_north = cos(altitude) + dispcy / (zoom * dispcx) * sin(altitude);
+        const bool bounded_ground = performance_enabled(29) && !horizon_terrain_cpu_reference
+            && terrain_mesh && !faded && map && map->is_complete() && screen_w > 0 && ground_height > 0
+            && cos(altitude) >= 0 && top_north > 0 && bottom_north > 0;
+        static std::vector<int> bounded_base_top, ground_coverage_top;
+        int first_ground = ground_height;
+        if (bounded_ground)
+        {
+            bounded_base_top.resize(screen_w);
+            ground_coverage_top.resize(screen_w);
+            for (int x = 0; x < screen_w; ++x)
+            {
+                int first = 0, last = ground_height;
+                if (std::isfinite(base_distance(x + .5, .5))) last = 0;
+                else if (!std::isfinite(base_distance(x + .5, ground_height - .5))) first = last;
+                while (first < last)
+                {
+                    const int middle = (first + last) / 2;
+                    if (std::isfinite(base_distance(x + .5, middle + .5))) last = middle;
+                    else first = middle + 1;
+                }
+                bounded_base_top[x] = first;
+                ground_coverage_top[x] = std::min(first, terrain_raster.top_at(x));
+                first_ground = std::min(first_ground, ground_coverage_top[x]);
+            }
+            if (first_ground == ground_height) reset_horizon_ground_gpu_stats();
+        }
+
+        if (!faded && (surface_water || (surface_biomes && cel->type != lavaworld))
+            && (!bounded_ground || first_ground < ground_height))
         {
             ImDrawList *ground = ImGui::GetBackgroundDrawList();
             std::vector<HorizonGroundRect> gpu_rectangles;
             bool gpu_ground = false;
             #if horizon_gpu_ground_painting
-            const int ground_height = static_cast<int>(dispcy * 2.0);
             // In this domain base-surface coverage is monotonic down each column.
             // Other views retain the reference painter, including views past the nadir.
-            const double top_north = cos(altitude) - dispcy / (zoom * dispcx) * sin(altitude);
-            const double bottom_north = cos(altitude) + dispcy / (zoom * dispcx) * sin(altitude);
             if (map && map->is_complete() && cos(altitude) >= 0 && top_north > 0 && bottom_north > 0
                 && !horizon_ground_gpu_reference)
             {
-                std::vector<int> base_top(screen_w, 0);
-                if (terrain_mesh)
+                std::vector<int> local_base_top;
+                auto& base_top = bounded_ground ? bounded_base_top : local_base_top;
+                if (!bounded_ground) base_top.assign(screen_w, 0);
+                if (terrain_mesh && !bounded_ground)
                 {
                     for (int x = 0; x < screen_w; ++x)
                     {
@@ -6498,12 +6528,14 @@ void draw_horizon()
             const auto patch = [&](const auto &self, int left, int top, int right, int bottom) -> void
             {
                 double horizon_min = 1e9, horizon_max = -1e9;
+                int coverage_min = ground_height;
                 for (int x = left; x < right; ++x)
                 {
                     horizon_min = fmin(horizon_min, min_hz_y_at_x[x]);
                     horizon_max = fmax(horizon_max, min_hz_y_at_x[x]);
+                    if (bounded_ground) coverage_min = std::min(coverage_min, ground_coverage_top[x]);
                 }
-                if (bottom <= horizon_min)
+                if (bottom <= horizon_min || (bounded_ground && bottom <= coverage_min))
                 {
                     return;
                 }

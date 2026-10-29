@@ -5064,3 +5064,33 @@ TEST_F(RenderingRegressionTest, ResidentMeshStorageHasNoImplicitReadback)
     EXPECT_GT(horizon_mesh_gpu_stats().readback_bytes, 0u);
     clear_horizon_mesh_gpu();
 }
+
+TEST_F(RenderingRegressionTest, GroundBoundsPreserveSkyPeaksGapsAndDownwardViews)
+{
+    Planet* world = surface(true);
+    set(horizon_ground_gpu_reference, false);
+    for (bool mountains : {false, true})
+    {
+        delete world->surf_map;
+        world->surf_map = mountains ? static_cast<Map*>(new MountainBandsTestMap()) : static_cast<Map*>(new CoastalTestMap());
+        world->volumetric_mean_radius = mountains ? 100000 : earth_radius;
+        for (double direction : {.9, .6, .15, -.15, -.9, -1.5})
+        {
+            altitude = direction;
+            azimuth = 1.3;
+            viewer_eye_height = mountains ? 80 : 1.75;
+            std::vector<unsigned char> expected;
+            for (bool reference : {true, false})
+            {
+                horizon_terrain_cpu_reference = reference;
+                freeze_surface_time();
+                find_horizon();
+                draw_horizon();
+                auto pixels = render();
+                if (reference) expected = pixels;
+                else EXPECT_EQ(image_difference(pixels, expected), 0) << direction << ", mountains=" << mountains;
+                ImGui::NewFrame();
+            }
+        }
+    }
+}
