@@ -187,7 +187,7 @@ Keep detailed crowns/trunks for nearby plants; represent distant clusters with f
 P048 | B / S / Q1 | Reduce shadow representation complexity with distance.
 Source: scenery shadow loop around 7137. Every eligible plant/rock can produce a shadow with projection and terrain checks. Keep nearby shadows detailed, merge or simplify distant ones, and use stable transitions. Validate low-sun long shadows and coastline crossings where merged shadows could paint over water. This changes shading approximation and therefore is Q1, even if difficult to notice. Measure shadow generation and fill separately. A complete shadow-off option is P082 and is a clearer Q3 choice if the user prefers speed over that effect.
 
-P049 | B / H / Q0 | Reuse stable scenery screen geometry when only simulation time changes slightly.
+[x] P049 | B / H / Q0 | Reuse stable scenery screen geometry when only simulation time changes slightly. ENABLED: PERF_P049=1; compiled stationary-forest gains 6.00%/9.26%, moving/shoreline timing neutral.
 A stationary observer with a stationary camera may retain plant silhouettes while only light/fade terms change. Cache projected instances or vertex geometry by observer, camera, world, terrain, and plant parameters, then update colors separately where possible. Shadows have a different invalidation clock from trunks/crowns. Validate moving ground, changing refraction, eye height, time warp, and atmospheric changes. Walking invalidates projection, so this targets stationary scenes rather than promising the same gain on the user's main walking case.
 
 F. WATER AND GLINTS

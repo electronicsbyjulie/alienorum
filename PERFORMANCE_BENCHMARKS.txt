@@ -635,3 +635,79 @@ installer asset. The enabled comparison and focused test validate the candidate 
 P043 production validation: application builds; 110 rendering checks and eighteen
 housekeeping checks pass, with eight optional GPU skips. The enabled focused ordering
 check also passes. These automated checks do not replace user/hardware review.
+
+P049 — STATIONARY SCENERY PROJECTION CACHE
+Retain exact projected/sorted scenery records before crown occlusion, lighting, fades
+and shadows. Reuse only when observer/camera, viewport, body radius/eye/refraction,
+world/scenery identity, map identity/revision, biome/plant parameters, display paths
+and the full terrain-column vector match. Incomplete/unversioned maps, ongoing texture
+generation and reference frames bypass reuse. Walking naturally invalidates it.
+Storage is limited to the retained scenery population and current viewport columns;
+there are no catalog pointers in the cached records. Lighting/shadows still run live.
+The enabled regression compares exact images on cache hits and after walking, camera
+turn/pitch/zoom, eye-height, radius/oblateness, plant dimension, atmospheric-pressure,
+map revision and map replacement changes. It verifies actual hits and invalidations.
+Actual before source: 8f477ca. The baseline reuses its production objects in a separate
+object directory: production and fixed-benchmark preprocessor paths are identical in
+all application translation units; the developer benchmark TU is freshly compiled
+with fixed controls. No application source outside the options header tests those
+benchmark macros. All candidate units affected by changed headers compile consistently.
+Nine alternating external pairs measure two twenty-four-frame blocks per scene,
+including GPU completion, with exact cross-binary image hashes.
+Raw data: PERFORMANCE_BENCHMARK_P049_FIXED_RESULTS.csv.
+
+P049 FIXED RESULT
+forest-still: 28.827 -> 26.820 ms; paired median -7.36%; 95% interval [-11.66%, -6.30%]; faster; image error 0.
+forest-turn: 33.650 -> 33.167 ms; paired median -1.55%; 95% interval [-2.19%, +1.43%]; mixed/neutral; image error 0.
+forest-walk: 33.867 -> 33.815 ms; paired median +0.90%; 95% interval [-5.74%, +3.08%]; mixed/neutral; image error 0.
+shore-still: 118.108 -> 118.620 ms; paired median -0.09%; 95% interval [-0.77%, +6.77%]; mixed/neutral; image error 0.
+The first version copies records into a second vector. Stationary forest improves;
+other results are neutral. Refine it to reuse the original record vector directly,
+removing both copy operations and the second record allocation. Crown visibility
+is recomputed each frame. The following run uses that final source revision.
+
+P049 REFINED RESULT
+forest-still: 28.296 -> 27.123 ms; paired median -6.00%; 95% interval [-8.33%, -2.54%]; faster; image error 0.
+forest-turn: 33.321 -> 33.281 ms; paired median -0.64%; 95% interval [-1.27%, +1.69%]; mixed/neutral; image error 0.
+forest-walk: 33.628 -> 33.245 ms; paired median -0.28%; 95% interval [-4.11%, +2.39%]; mixed/neutral; image error 0.
+shore-still: 119.913 -> 117.899 ms; paired median -0.95%; 95% interval [-6.04%, +0.38%]; mixed/neutral; image error 0.
+The expanded enabled-path test also passes when live illumination/source direction
+changes during a cache hit, and in polar and longitude-seam views.
+
+COMPILED RECHECK DETAIL P023–P025
+P023 initial: PERFORMANCE_BENCHMARK_FIXED_P023_RESULTS.csv
+  forest-walk: -1.99% [-5.77%, +0.51%], mixed/neutral; image/state error 0.
+  shore-walk: -1.60% [-8.22%, -0.22%], faster; image/state error 0.
+P023 confirmation: PERFORMANCE_BENCHMARK_FIXED_P023_CONFIRM_RESULTS.csv
+  forest-walk: -0.16% [-2.10%, +4.83%], mixed/neutral; image/state error 0.
+  shore-walk: -0.43% [-1.64%, +0.02%], mixed/neutral; image/state error 0.
+P024 initial: PERFORMANCE_BENCHMARK_FIXED_P024_RESULTS.csv
+  forest-walk: -2.66% [-3.59%, +3.27%], mixed/neutral; image/state error 0.
+  shore-walk: -1.00% [-9.22%, +1.50%], mixed/neutral; image/state error 0.
+P025 initial: PERFORMANCE_BENCHMARK_FIXED_P025_RESULTS.csv
+  forest-still: +1.40% [-10.73%, +3.20%], mixed/neutral; image/state error 0.
+  forest-walk: -0.46% [-2.07%, +2.92%], mixed/neutral; image/state error 0.
+  shore-still: -1.16% [-4.85%, +0.92%], mixed/neutral; image/state error 0.
+  shore-walk: -0.29% [-1.37%, +0.53%], mixed/neutral; image/state error 0.
+P023 does not confirm its first shoreline gain. P024 is neutral. Both are earlier
+implementations without a confirmed loss and remain enabled. P025 remains disabled
+because the compiled comparison does not establish an improvement. Further rechecks
+remain in progress; no provisional dynamic result is treated as proof of a gain.
+
+P049 FINAL-SOURCE CONFIRMATION
+Raw data: PERFORMANCE_BENCHMARK_P049_CONFIRM_RESULTS.csv.
+forest-still: 28.867 -> 26.570 ms; paired median -9.26%; 95% interval [-14.36%, -6.26%]; faster; image error 0.
+forest-turn: 33.724 -> 32.698 ms; paired median -2.71%; 95% interval [-5.16%, +1.25%]; mixed/neutral; image error 0.
+forest-walk: 33.370 -> 33.592 ms; paired median -0.69%; 95% interval [-2.73%, +2.50%]; mixed/neutral; image error 0.
+shore-still: 118.044 -> 118.370 ms; paired median -0.26%; 95% interval [-6.08%, +2.59%]; mixed/neutral; image error 0.
+The final source confirms stationary forest gains of 6.00% and 9.26%. Other views
+are neutral in both runs; there is no established walking gain or regression. Keep
+PERF_P049=1. This targets stationary projection cost, not moving-surface performance.
+All captured images match exactly; enabled quality tests verify lighting updates on
+cache hits as well as projection invalidation. The original record vector is retained
+directly, with no second record buffer or hit/miss copy. Only current viewport-column
+validation storage is added. No new runtime asset or installer rule is involved.
+P049 production validation: application builds; 111 rendering checks and all eighteen
+housekeeping checks pass, with eight optional GPU skips. The expanded enabled-path
+projection/lighting test also passes in the private binary. Manual/hardware checks
+remain separate from these automated results.

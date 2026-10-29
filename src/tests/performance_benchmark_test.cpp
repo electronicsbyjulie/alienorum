@@ -372,6 +372,7 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
             : id == 18 ? std::vector<std::string>{"catalog-lock-idle", "catalog-lock-publication"}
             : id == 13 ? std::vector<std::string>{"catalog", "catalog-walk", "catalog-time-jump"}
             : id <= 5 || id == 8 ? std::vector<std::string>{"catalog", "catalog-time-jump"}
+            : id == 49 ? std::vector<std::string>{"forest-still", "forest-walk", "forest-turn", "shore-still"}
             : id == 43 ? std::vector<std::string>{"forest-walk", "forest-still", "forest-turn"}
             : id == 37 ? std::vector<std::string>{"shore-walk", "forest-walk", "shore-still", "shore-pole", "shore-seam"}
             : id == 36 ? std::vector<std::string>{"shore-walk", "forest-walk"}
@@ -518,6 +519,9 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
             const auto expected = frame(0, true);
             select(false);
             const auto actual = frame(0, true);
+#ifdef PERF_P049
+            if (id == 49) std::cout << "PERF scenery projection cache hits: " << scenery_projection_cache_hits() << '\n';
+#endif
 #ifdef PERF_P037
             if (id == 37) std::cout << "PERF local tile nodes: " << local_surface_tile_sample_count() << '\n';
 #endif

@@ -5303,3 +5303,87 @@ TEST(SceneryDepthOrderTest, MatchesFullSortAcrossMotionMembershipTiesAndReversal
     EXPECT_FALSE(check({{1, 1}, {1, 2}}));
     EXPECT_FALSE(check({}));
 }
+
+TEST_F(RenderingRegressionTest, StationarySceneryProjectionTracksCameraShapeMapAndPlantEdits)
+{
+    Planet* world = surface(true);
+    delete world->surf_map;
+    world->surf_map = new BlueBiomeTestMap(SurfaceMaterial::vegetation);
+    world->plant_crown_size = 5;
+    world->plant_trunk_height = 15;
+    viewer_lon = .3;
+    azimuth = .7;
+    const auto image = [&](bool reference)
+    {
+        scenery_cpu_reference = reference;
+        freeze_surface_time();
+        find_horizon();
+        draw_horizon();
+        auto result = render();
+        ImGui::NewFrame();
+        return result;
+    };
+    for (int step = 0; step < 15; ++step)
+    {
+        if (step == 1) viewer_lat += .25 / earth_radius;
+        if (step == 2) azimuth += .5;
+        if (step == 3) altitude += .2;
+        if (step == 4) zoom *= 1.5;
+        if (step == 5) viewer_eye_height += 1;
+        if (step == 6) world->volumetric_mean_radius *= .9;
+        if (step == 7) world->oblateness = .05;
+        if (step == 8) world->plant_trunk_height *= .8;
+        if (step == 9) world->plant_trunk_width *= 2;
+        if (step == 10) world->plant_crown_size *= 1.2;
+        if (step == 11) world->plant_crown_oblateness *= 1.3;
+        if (step == 12) world->ensure_atmosphere()->surface_pressure *= 1.2;
+        if (step == 13) world->surf_map->touch_gen();
+        if (step == 14)
+        {
+            delete world->surf_map;
+            world->surf_map = new BlueBiomeTestMap(SurfaceMaterial::water);
+        }
+        const auto expected = image(true);
+        EXPECT_EQ(image_difference(image(false), expected), 0) << step;
+        EXPECT_EQ(image_difference(image(false), expected), 0) << step;
+        if (performance_enabled(49))
+        {
+            EXPECT_EQ(scenery_projection_cache_hits(), 1u) << step;
+        }
+        world->surf_map->touch_gen();
+        EXPECT_EQ(image_difference(image(false), expected), 0) << step;
+        EXPECT_EQ(scenery_projection_cache_hits(), 0u) << step;
+    }
+    delete world->surf_map;
+    world->surf_map = new BlueBiomeTestMap(SurfaceMaterial::vegetation);
+    viewer_lat = 0;
+    viewer_lon = .3;
+    altitude = -.15;
+    zoom = 1;
+    luminous_flux = 8e8;
+    cels[1]->location.local_position = cels[1]->tmprel = Point(0, -1e10, 1e10);
+    const auto dark = image(true);
+    luminous_flux = 4e10;
+    cels[1]->location.local_position = cels[1]->tmprel = Point(0, 1e10, 1e10);
+    const auto bright = image(false);
+    EXPECT_FALSE(std::equal(bright.begin(), bright.end(), dark.begin()));
+    luminous_flux = 8e8;
+    cels[1]->location.local_position = cels[1]->tmprel = Point(0, -1e10, 1e10);
+    EXPECT_EQ(image_difference(image(false), dark), 0);
+    if (performance_enabled(49))
+    {
+        EXPECT_EQ(scenery_projection_cache_hits(), 1u);
+    }
+    for (const auto& position : {std::make_pair(half_pi - 1e-7, .3), std::make_pair(.3, _pi - 1e-7)})
+    {
+        viewer_lat = position.first;
+        viewer_lon = position.second;
+        const auto expected = image(true);
+        EXPECT_EQ(image_difference(image(false), expected), 0);
+        EXPECT_EQ(image_difference(image(false), expected), 0);
+        if (performance_enabled(49))
+        {
+            EXPECT_EQ(scenery_projection_cache_hits(), 1u);
+        }
+    }
+}

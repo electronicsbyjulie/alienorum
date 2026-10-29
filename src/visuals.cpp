@@ -33,6 +33,8 @@ using namespace alienorum;
 bool horizon_terrain_cpu_reference = false;
 bool scenery_cpu_reference = false;
 bool water_cpu_reference = false;
+static size_t scenery_projection_hits = 0;
+size_t scenery_projection_cache_hits() { return scenery_projection_hits; }
 static LocalSurfaceTile local_surface_tile;
 static bool local_surface_tile_active = false;
 size_t local_surface_tile_sample_count() { return local_surface_tile_active ? local_surface_tile.sample_count() : 0; }
@@ -5444,6 +5446,7 @@ void draw_horizon()
 {
     if (performance_enabled(36)) surface_prefetch.clear();
     local_surface_tile_active = false;
+    scenery_projection_hits = 0;
     water_stats = {};
     terrain_lod_stats = {};
     // Horizon
@@ -7488,7 +7491,7 @@ void draw_horizon()
                 #endif
 
                 static std::vector<RockInstance> rocks;
-                rocks.clear();
+                if (!performance_enabled(49)) rocks.clear();
                 int num_rocks = 0;
 
                 double grav = p ? p->estimate_surface_gravity() : 1;
@@ -7551,269 +7554,297 @@ void draw_horizon()
                 }
                 rocks.reserve(scenery.size());
 
-                const double bound_range = scenery_range + canopy_margin + 128;
-                const double bound_drop = bound_range * bound_range * (.5 / R_planet
-                    + fabs(horizon_lift_rad) / fmax(1.0, s_horizon));
-                const double bound_height = ROCK_MAX_SIZE * (p ? fabs(p->plant_trunk_height)
-                    + fabs(p->plant_crown_size * p->plant_crown_oblateness) : 1);
-                const auto& visible_scenery = scenery_cache.visible(azimuth, altitude,
-                    -h_eye - bound_drop - bound_height, bound_height + bound_drop, scenery_cpu_reference || !performance_enabled(39), false);
-
-                // Sedentary lifeforms when is_vegetation is true, otherwise surface rocks.
-                for (size_t index : visible_scenery)
+                auto projection_key = std::make_tuple(scenery_key, cel, map,
+                    viewer_lat, viewer_lon, azimuth, altitude, zoom, dispcx, dispcy,
+                    h_eye, R_planet, s_horizon, horizon_lift_rad, dittrsa, shore_displacement,
+                    p ? p->plant_trunk_height : 0.0, p ? p->plant_trunk_width : 0.0,
+                    p ? p->plant_crown_size : 0.0, p ? p->plant_crown_oblateness : 0.0,
+                    performance_enabled(39), performance_enabled(40), performance_enabled(41), performance_enabled(43));
+                static decltype(projection_key) saved_projection_key;
+                static bool projection_valid = false;
+                static std::vector<double> projection_columns;
+                const bool reusable_projection = performance_enabled(49) && !scenery_cpu_reference
+                    && map && map->gen && map->is_complete() && !generating_fic_texture;
+                if (reusable_projection && projection_valid && projection_key == saved_projection_key
+                    && min_hz_y_at_x == projection_columns)
                 {
-                    if (water[index] || !canopy_clear[index])
+                    num_rocks = static_cast<int>(rocks.size());
+                    ++scenery_projection_hits;
+                }
+                else
+                {
+                    rocks.clear();
+                    const double bound_range = scenery_range + canopy_margin + 128;
+                    const double bound_drop = bound_range * bound_range * (.5 / R_planet
+                        + fabs(horizon_lift_rad) / fmax(1.0, s_horizon));
+                    const double bound_height = ROCK_MAX_SIZE * (p ? fabs(p->plant_trunk_height)
+                        + fabs(p->plant_crown_size * p->plant_crown_oblateness) : 1);
+                    const auto& visible_scenery = scenery_cache.visible(azimuth, altitude,
+                        -h_eye - bound_drop - bound_height, bound_height + bound_drop, scenery_cpu_reference || !performance_enabled(39), false);
+
+                    // Sedentary lifeforms when is_vegetation is true, otherwise surface rocks.
+                    for (size_t index : visible_scenery)
                     {
-                        continue;
-                    }
-                    scenery_cache.project(index);
-                    const SurfaceScenery &object = scenery[index];
-                    const bool is_vegetation = plant[index];
-                    const double rock_aspect = (is_vegetation && p)
-                        ? (p->plant_trunk_height + p->plant_crown_size * p->plant_crown_oblateness)
-                        : (is_lava ? ROCK_ASPECT_LAVA : (is_venus ? ROCK_ASPECT_VENUS : (is_icy ? ROCK_ASPECT_ICY : ROCK_ASPECT_DEFAULT)));
-
-                    const uint32_t rhash = object.seed;
-                    double theta_world = performance_enabled(41) ? 0 : atan2(object.east, object.north);
-                    const double squared_distance = object.east * object.east + object.north * object.north;
-                    const double limit = is_vegetation ? PLANT_MAX_DIST : ROCK_MAX_DIST;
-                    if (performance_enabled(41) && !scenery_cpu_reference && (squared_distance < .0025 - 1e-12
-                        || squared_distance > limit * limit + 1e-8)) continue;
-                    const double dist_m = hypot(object.east, object.north);
-                    double dist_ratio = dist_m / ROCK_MAX_DIST;
-                    if (is_vegetation) dist_ratio *= 0.666;
-                    if (dist_m < 0.05 || dist_m >= (is_vegetation ? PLANT_MAX_DIST : ROCK_MAX_DIST))
-                    {
-                        continue;
-                    }
-
-                    double rock_size = scenery_size(rhash, ROCK_MIN_SIZE, ROCK_MAX_SIZE);
-
-                    double rw = (rock_size / dist_m) * dispcx * zoom;
-                    double rh = rw * rock_aspect;
-                    if (rw < 1.5)
-                    {
-                        continue;
-                    }
-
-                    if (performance_enabled(41)) theta_world = atan2(object.east, object.north);
-
-                    double sx = 0.0;
-                    double sy = 0.0;
-                    double crown_sx = 0.0;
-                    double crown_sy = 0.0;
-                    double crown_rx = 0.0;
-                    double crown_ry = 0.0;
-                    double trunk_w_top = 0.0;
-                    double trunk_top_x = 0.0;
-                    double trunk_top_y = 0.0;
-                    double trunk_w_base = 0.0;
-                    bool base_valid = false;
-                    bool crown_above_eye = false;
-                    double sort_dist = dist_m;
-
-                    if (is_vegetation)
-                    {
-                        double canopy_h_m = rock_size * p->plant_trunk_height;
-                        double curv_drop = (dist_m * dist_m) / (2.0 * R_planet);
-                        double y_base_world = -h_eye - curv_drop;
-                        double y_crown_world = canopy_h_m - h_eye - curv_drop;
-
-                        if (s_horizon > 0.0 && horizon_lift_rad > 0.0)
+                        if (water[index] || !canopy_clear[index])
                         {
-                            double lift = (dist_m / s_horizon) * horizon_lift_rad * dist_m;
-                            y_base_world += lift;
-                            y_crown_world += lift;
+                            continue;
                         }
+                        scenery_cache.project(index);
+                        const SurfaceScenery &object = scenery[index];
+                        const bool is_vegetation = plant[index];
+                        const double rock_aspect = (is_vegetation && p)
+                            ? (p->plant_trunk_height + p->plant_crown_size * p->plant_crown_oblateness)
+                            : (is_lava ? ROCK_ASPECT_LAVA : (is_venus ? ROCK_ASPECT_VENUS : (is_icy ? ROCK_ASPECT_ICY : ROCK_ASPECT_DEFAULT)));
 
-                        double d_az_obj = theta_world - azimuth;
-                        crown_above_eye = y_crown_world > 0.0;
-                        double sin_daz = sin(d_az_obj);
-                        double cos_daz = cos(d_az_obj);
-
-                        double x_cam = dist_m * sin_daz;
-                        double z_horiz = dist_m * cos_daz;
-
-                        double cos_alt = surface_cos_altitude();
-                        double sin_alt = surface_sin_altitude();
-
-                        double z_crown_cam = y_crown_world * sin_alt + z_horiz * cos_alt;
-                        double y_crown_cam = y_crown_world * cos_alt - z_horiz * sin_alt;
-
-                        if (z_crown_cam < 0.2)
+                        const uint32_t rhash = object.seed;
+                        double theta_world = performance_enabled(41) ? 0 : atan2(object.east, object.north);
+                        const double squared_distance = object.east * object.east + object.north * object.north;
+                        const double limit = is_vegetation ? PLANT_MAX_DIST : ROCK_MAX_DIST;
+                        if (performance_enabled(41) && !scenery_cpu_reference && (squared_distance < .0025 - 1e-12
+                            || squared_distance > limit * limit + 1e-8)) continue;
+                        const double dist_m = hypot(object.east, object.north);
+                        double dist_ratio = dist_m / ROCK_MAX_DIST;
+                        if (is_vegetation) dist_ratio *= 0.666;
+                        if (dist_m < 0.05 || dist_m >= (is_vegetation ? PLANT_MAX_DIST : ROCK_MAX_DIST))
                         {
                             continue;
                         }
 
-                        crown_sx = (x_cam / z_crown_cam) * dispcx * zoom + dispcx;
-                        crown_sy = (-y_crown_cam / z_crown_cam) * dispcx * zoom + dispcy;
+                        double rock_size = scenery_size(rhash, ROCK_MIN_SIZE, ROCK_MAX_SIZE);
 
-                        crown_rx = (rock_size * p->plant_crown_size / z_crown_cam) * dispcx * zoom;
-                        crown_rx = fmax(1.2, crown_rx);
-                        // The viewing angle belongs to this crown's sightline, independent of camera pitch.
-                        const double crown_aspect = scenery_crown_aspect(dist_m, y_crown_world,
-                            p->plant_crown_oblateness);
-                        crown_ry = fmax(1.0, crown_rx * crown_aspect);
-
-                        // Attach the trunk to the lower pole of the crown in world space.
-                        double y_top_world = y_crown_world
-                            - rock_size * p->plant_crown_size * p->plant_crown_oblateness;
-                        double z_top_cam = y_top_world * sin_alt + z_horiz * cos_alt;
-                        double y_top_cam = y_top_world * cos_alt - z_horiz * sin_alt;
-
-                        double z_base_cam = y_base_world * sin_alt + z_horiz * cos_alt;
-                        double y_base_cam = y_base_world * cos_alt - z_horiz * sin_alt;
-
-                        if (z_top_cam < 0.2 && z_base_cam >= 0.2)
+                        double rw = (rock_size / dist_m) * dispcx * zoom;
+                        double rh = rw * rock_aspect;
+                        if (rw < 1.5)
                         {
-                            double t = (0.2 - z_top_cam) / (z_base_cam - z_top_cam);
-                            y_top_cam += t * (y_base_cam - y_top_cam);
-                            z_top_cam = 0.2;
-                        }
-                        if (z_top_cam >= 0.2)
-                        {
-                            trunk_top_x = (x_cam / z_top_cam) * dispcx * zoom + dispcx;
-                            trunk_top_y = (-y_top_cam / z_top_cam) * dispcx * zoom + dispcy;
-                            trunk_w_top = (rock_size * p->plant_trunk_width / z_top_cam) * dispcx * zoom;
-                            trunk_w_top = fmax(1.0, fmin(dispcx * 0.8, trunk_w_top));
+                            continue;
                         }
 
-                        if (z_base_cam >= 0.2)
+                        if (performance_enabled(41)) theta_world = atan2(object.east, object.north);
+
+                        double sx = 0.0;
+                        double sy = 0.0;
+                        double crown_sx = 0.0;
+                        double crown_sy = 0.0;
+                        double crown_rx = 0.0;
+                        double crown_ry = 0.0;
+                        double trunk_w_top = 0.0;
+                        double trunk_top_x = 0.0;
+                        double trunk_top_y = 0.0;
+                        double trunk_w_base = 0.0;
+                        bool base_valid = false;
+                        bool crown_above_eye = false;
+                        double sort_dist = dist_m;
+
+                        if (is_vegetation)
                         {
-                            base_valid = true;
-                            sx = (x_cam / z_base_cam) * dispcx * zoom + dispcx;
-                            sy = (-y_base_cam / z_base_cam) * dispcx * zoom + dispcy;
-                            trunk_w_base = (rock_size * p->plant_trunk_width / z_base_cam) * dispcx * zoom;
+                            double canopy_h_m = rock_size * p->plant_trunk_height;
+                            double curv_drop = (dist_m * dist_m) / (2.0 * R_planet);
+                            double y_base_world = -h_eye - curv_drop;
+                            double y_crown_world = canopy_h_m - h_eye - curv_drop;
+
+                            if (s_horizon > 0.0 && horizon_lift_rad > 0.0)
+                            {
+                                double lift = (dist_m / s_horizon) * horizon_lift_rad * dist_m;
+                                y_base_world += lift;
+                                y_crown_world += lift;
+                            }
+
+                            double d_az_obj = theta_world - azimuth;
+                            crown_above_eye = y_crown_world > 0.0;
+                            double sin_daz = sin(d_az_obj);
+                            double cos_daz = cos(d_az_obj);
+
+                            double x_cam = dist_m * sin_daz;
+                            double z_horiz = dist_m * cos_daz;
+
+                            double cos_alt = surface_cos_altitude();
+                            double sin_alt = surface_sin_altitude();
+
+                            double z_crown_cam = y_crown_world * sin_alt + z_horiz * cos_alt;
+                            double y_crown_cam = y_crown_world * cos_alt - z_horiz * sin_alt;
+
+                            if (z_crown_cam < 0.2)
+                            {
+                                continue;
+                            }
+
+                            crown_sx = (x_cam / z_crown_cam) * dispcx * zoom + dispcx;
+                            crown_sy = (-y_crown_cam / z_crown_cam) * dispcx * zoom + dispcy;
+
+                            crown_rx = (rock_size * p->plant_crown_size / z_crown_cam) * dispcx * zoom;
+                            crown_rx = fmax(1.2, crown_rx);
+                            // The viewing angle belongs to this crown's sightline, independent of camera pitch.
+                            const double crown_aspect = scenery_crown_aspect(dist_m, y_crown_world,
+                                p->plant_crown_oblateness);
+                            crown_ry = fmax(1.0, crown_rx * crown_aspect);
+
+                            // Attach the trunk to the lower pole of the crown in world space.
+                            double y_top_world = y_crown_world
+                                - rock_size * p->plant_crown_size * p->plant_crown_oblateness;
+                            double z_top_cam = y_top_world * sin_alt + z_horiz * cos_alt;
+                            double y_top_cam = y_top_world * cos_alt - z_horiz * sin_alt;
+
+                            double z_base_cam = y_base_world * sin_alt + z_horiz * cos_alt;
+                            double y_base_cam = y_base_world * cos_alt - z_horiz * sin_alt;
+
+                            if (z_top_cam < 0.2 && z_base_cam >= 0.2)
+                            {
+                                double t = (0.2 - z_top_cam) / (z_base_cam - z_top_cam);
+                                y_top_cam += t * (y_base_cam - y_top_cam);
+                                z_top_cam = 0.2;
+                            }
+                            if (z_top_cam >= 0.2)
+                            {
+                                trunk_top_x = (x_cam / z_top_cam) * dispcx * zoom + dispcx;
+                                trunk_top_y = (-y_top_cam / z_top_cam) * dispcx * zoom + dispcy;
+                                trunk_w_top = (rock_size * p->plant_trunk_width / z_top_cam) * dispcx * zoom;
+                                trunk_w_top = fmax(1.0, fmin(dispcx * 0.8, trunk_w_top));
+                            }
+
+                            if (z_base_cam >= 0.2)
+                            {
+                                base_valid = true;
+                                sx = (x_cam / z_base_cam) * dispcx * zoom + dispcx;
+                                sy = (-y_base_cam / z_base_cam) * dispcx * zoom + dispcy;
+                                trunk_w_base = (rock_size * p->plant_trunk_width / z_base_cam) * dispcx * zoom;
+                            }
+                            else
+                            {
+                                base_valid = false;
+                                double t = (0.2 - z_base_cam) / (fmax(0.2, z_top_cam) - z_base_cam);
+                                double y_clip = y_base_cam + t * (y_top_cam - y_base_cam);
+                                sx = (x_cam / 0.2) * dispcx * zoom + dispcx;
+                                sy = (-y_clip / 0.2) * dispcx * zoom + dispcy;
+                                trunk_w_base = (rock_size * p->plant_trunk_width / 0.2) * dispcx * zoom;
+                            }
+                            trunk_w_base = fmax(1.0, fmin(dispcx * 1.5, trunk_w_base));
+
+                            sort_dist = z_crown_cam;
                         }
                         else
                         {
-                            base_valid = false;
-                            double t = (0.2 - z_base_cam) / (fmax(0.2, z_top_cam) - z_base_cam);
-                            double y_clip = y_base_cam + t * (y_top_cam - y_base_cam);
-                            sx = (x_cam / 0.2) * dispcx * zoom + dispcx;
-                            sy = (-y_clip / 0.2) * dispcx * zoom + dispcy;
-                            trunk_w_base = (rock_size * p->plant_trunk_width / 0.2) * dispcx * zoom;
-                        }
-                        trunk_w_base = fmax(1.0, fmin(dispcx * 1.5, trunk_w_base));
+                            double d_az_obj = theta_world - azimuth;
+                            if (cos(d_az_obj) <= 0.1)
+                            {
+                                continue;
+                            }
 
-                        sort_dist = z_crown_cam;
+                            double delta = atan(h_eye / dist_m) + (dist_m / (2.0 * R_planet));
+                            if (s_horizon > 0.0)
+                            {
+                                delta -= (dist_m / s_horizon) * horizon_lift_rad;
+                            }
+                            if (dittrsa)
+                            {
+                                delta = -delta;
+                            }
+                            Point pt_rock = rotate3D(zaxis, center, xaxis, delta);
+                            pt_rock = rotate3D(pt_rock, center, yaxis, theta_world);
+
+                            Cartesian2D cart(pt_rock, azimuth, altitude, zoom);
+                            if (cart.x <= -1e10)
+                            {
+                                continue;
+                            }
+
+                            base_valid = true;
+                            sx = cart.x * dispcx + dispcx;
+                            sy = cart.y * dispcx + dispcy;
+                            crown_sx = sx;
+                            crown_sy = sy - rh;
+                            crown_rx = rw * 0.5;
+                            crown_ry = rh;
+                            sort_dist = dist_m;
+                        }
+
+                        double min_x = fmin(sx, crown_sx) - crown_rx;
+                        double max_x = fmax(sx, crown_sx) + crown_rx;
+                        double min_y = crown_sy - crown_ry;
+                        double max_y = fmax(sy, crown_sy + crown_ry);
+
+                        if (max_x < -80.0 || min_x > dispcx * 2.0 + 80.0 || max_y < -80.0 || min_y > dispcy * 2.0 + 80.0)
+                        {
+                            continue;
+                        }
+
+                        double rock_lift_px = 0.0;
+                        if (!dittrsa && base_valid && !is_vegetation)
+                        {
+                            int ix_lookup = fmax(0, fmin(screen_w - 1, (int)round(sx)));
+                            double ground_span = sy - min_hz_y_at_x[ix_lookup];
+                            if (ground_span > 0.0)
+                            {
+                                double slope_factor = 0.45 * pow(fmin(1.0, dist_ratio), 1.2);
+                                rock_lift_px = ground_span * slope_factor;
+                                sy -= rock_lift_px;
+                                crown_sy -= rock_lift_px;
+                            }
+
+                            if (!is_vegetation && sy < min_hz_y_at_x[ix_lookup])
+                            {
+                                continue;
+                            }
+                        }
+
+                        rocks.emplace_back();
+                        #if PERF_P043
+                        rocks[num_rocks].scenery_index = index;
+                        #endif
+                        rocks[num_rocks].crown_hidden = false;
+                        rocks[num_rocks].dist = sort_dist;
+                        rocks[num_rocks].ground_dist = dist_m;
+                        rocks[num_rocks].theta = theta_world;
+                        rocks[num_rocks].screen_x = sx;
+                        rocks[num_rocks].screen_y = sy;
+                        rocks[num_rocks].crown_x = crown_sx;
+                        rocks[num_rocks].crown_y = crown_sy;
+                        rocks[num_rocks].crown_rx = crown_rx;
+                        rocks[num_rocks].crown_ry = crown_ry;
+                        rocks[num_rocks].trunk_w_top = trunk_w_top;
+                        rocks[num_rocks].trunk_top_x = trunk_top_x;
+                        rocks[num_rocks].trunk_top_y = trunk_top_y;
+                        rocks[num_rocks].trunk_w_base = trunk_w_base;
+                        rocks[num_rocks].width = rw;
+                        rocks[num_rocks].height = rh;
+                        rocks[num_rocks].size = rock_size;
+                        rocks[num_rocks].lift_px = rock_lift_px;
+                        const double fade = std::clamp((1.0 - dist_ratio) / 0.25, 0.0, 1.0);
+                        rocks[num_rocks].opacity = 1.0; // fade * fade * (3.0 - 2.0 * fade)
+                            // * std::clamp(rw - 1.5, 0.0, 1.0);
+                        rocks[num_rocks].seed_val = rhash;
+                        rocks[num_rocks].base_valid = base_valid;
+                        rocks[num_rocks].vegetation = is_vegetation;
+                        rocks[num_rocks].crown_above_eye = crown_above_eye;
+                        rocks[num_rocks].aspect = rock_aspect;
+                        rocks[num_rocks].surface_color = scenery_colors[index];
+                        num_rocks++;
+                    }
+
+                    #if PERF_P043
+                    if (performance_enabled(43) && !scenery_cpu_reference)
+                    {
+                        static SceneryDepthOrder<RockInstance> depth_order;
+                        static std::pair<int, size_t> saved_identity;
+                        const auto identity = std::make_pair(whereami, scenery_cache.generation());
+                        if (identity != saved_identity) depth_order.reset();
+                        saved_identity = identity;
+                        depth_order.sort(rocks, scenery.size());
                     }
                     else
-                    {
-                        double d_az_obj = theta_world - azimuth;
-                        if (cos(d_az_obj) <= 0.1)
-                        {
-                            continue;
-                        }
-
-                        double delta = atan(h_eye / dist_m) + (dist_m / (2.0 * R_planet));
-                        if (s_horizon > 0.0)
-                        {
-                            delta -= (dist_m / s_horizon) * horizon_lift_rad;
-                        }
-                        if (dittrsa)
-                        {
-                            delta = -delta;
-                        }
-                        Point pt_rock = rotate3D(zaxis, center, xaxis, delta);
-                        pt_rock = rotate3D(pt_rock, center, yaxis, theta_world);
-
-                        Cartesian2D cart(pt_rock, azimuth, altitude, zoom);
-                        if (cart.x <= -1e10)
-                        {
-                            continue;
-                        }
-
-                        base_valid = true;
-                        sx = cart.x * dispcx + dispcx;
-                        sy = cart.y * dispcx + dispcy;
-                        crown_sx = sx;
-                        crown_sy = sy - rh;
-                        crown_rx = rw * 0.5;
-                        crown_ry = rh;
-                        sort_dist = dist_m;
-                    }
-
-                    double min_x = fmin(sx, crown_sx) - crown_rx;
-                    double max_x = fmax(sx, crown_sx) + crown_rx;
-                    double min_y = crown_sy - crown_ry;
-                    double max_y = fmax(sy, crown_sy + crown_ry);
-
-                    if (max_x < -80.0 || min_x > dispcx * 2.0 + 80.0 || max_y < -80.0 || min_y > dispcy * 2.0 + 80.0)
-                    {
-                        continue;
-                    }
-
-                    double rock_lift_px = 0.0;
-                    if (!dittrsa && base_valid && !is_vegetation)
-                    {
-                        int ix_lookup = fmax(0, fmin(screen_w - 1, (int)round(sx)));
-                        double ground_span = sy - min_hz_y_at_x[ix_lookup];
-                        if (ground_span > 0.0)
-                        {
-                            double slope_factor = 0.45 * pow(fmin(1.0, dist_ratio), 1.2);
-                            rock_lift_px = ground_span * slope_factor;
-                            sy -= rock_lift_px;
-                            crown_sy -= rock_lift_px;
-                        }
-
-                        if (!is_vegetation && sy < min_hz_y_at_x[ix_lookup])
-                        {
-                            continue;
-                        }
-                    }
-
-                    rocks.emplace_back();
-                    #if PERF_P043
-                    rocks[num_rocks].scenery_index = index;
                     #endif
-                    rocks[num_rocks].crown_hidden = false;
-                    rocks[num_rocks].dist = sort_dist;
-                    rocks[num_rocks].ground_dist = dist_m;
-                    rocks[num_rocks].theta = theta_world;
-                    rocks[num_rocks].screen_x = sx;
-                    rocks[num_rocks].screen_y = sy;
-                    rocks[num_rocks].crown_x = crown_sx;
-                    rocks[num_rocks].crown_y = crown_sy;
-                    rocks[num_rocks].crown_rx = crown_rx;
-                    rocks[num_rocks].crown_ry = crown_ry;
-                    rocks[num_rocks].trunk_w_top = trunk_w_top;
-                    rocks[num_rocks].trunk_top_x = trunk_top_x;
-                    rocks[num_rocks].trunk_top_y = trunk_top_y;
-                    rocks[num_rocks].trunk_w_base = trunk_w_base;
-                    rocks[num_rocks].width = rw;
-                    rocks[num_rocks].height = rh;
-                    rocks[num_rocks].size = rock_size;
-                    rocks[num_rocks].lift_px = rock_lift_px;
-                    const double fade = std::clamp((1.0 - dist_ratio) / 0.25, 0.0, 1.0);
-                    rocks[num_rocks].opacity = 1.0; // fade * fade * (3.0 - 2.0 * fade)
-                        // * std::clamp(rw - 1.5, 0.0, 1.0);
-                    rocks[num_rocks].seed_val = rhash;
-                    rocks[num_rocks].base_valid = base_valid;
-                    rocks[num_rocks].vegetation = is_vegetation;
-                    rocks[num_rocks].crown_above_eye = crown_above_eye;
-                    rocks[num_rocks].aspect = rock_aspect;
-                    rocks[num_rocks].surface_color = scenery_colors[index];
-                    num_rocks++;
-                }
-
-                #if PERF_P043
-                if (performance_enabled(43) && !scenery_cpu_reference)
-                {
-                    static SceneryDepthOrder<RockInstance> depth_order;
-                    static std::pair<int, size_t> saved_identity;
-                    const auto identity = std::make_pair(whereami, scenery_cache.generation());
-                    if (identity != saved_identity) depth_order.reset();
-                    saved_identity = identity;
-                    depth_order.sort(rocks, scenery.size());
-                }
-                else
-                #endif
-                {
-                    std::sort(rocks.begin(), rocks.end(), [](const RockInstance& a, const RockInstance& b)
                     {
-                        return a.dist > b.dist;
-                    });
+                        std::sort(rocks.begin(), rocks.end(), [](const RockInstance& a, const RockInstance& b)
+                        {
+                            return a.dist > b.dist;
+                        });
+                    }
+
+                    projection_valid = reusable_projection;
+                    if (reusable_projection)
+                    {
+                        projection_columns = min_hz_y_at_x;
+                        saved_projection_key = projection_key;
+                    }
                 }
 
                 static SceneryCrownOcclusion crown_occlusion;
