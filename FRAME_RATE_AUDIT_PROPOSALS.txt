@@ -50,10 +50,10 @@ Source: src/housekeeping.cpp, compute_object_location around 292, calls refresh_
 [x] P005 | A / S / Q0 | Share the visible-object candidate list across drawing, glints, labels, and picking.
 Source: src/visuals.cpp around 4015 and 6314; src/inputs.cpp, identify_object_under_cursor. Several consumers independently sweep the catalog after coordinate work has already established visibility. Publish a frame-local list with projected bounds, magnitude, class, and draw eligibility. Each consumer can apply its own final filters while avoiding another global traversal. Water glints must retain very bright objects outside ordinary point-label eligibility. Picking must preserve near-object overlap ordering, and label rules must still include the five-pixel moon/companion separation and all prior filters.
 
-[x] P006 | B / S / Q0 | Replace the rise/set alert scan with an armed-alert registry. ENABLED: PERF_P006=1; paired native medians -12.06% with no alerts and -10.50% with two armed targets.
+[x] P006 | B / S / Q0 | Replace the rise/set alert scan with an armed-alert registry. ENABLED: PERF_P006=1; compiled confirmation medians -8.85% with no alerts and -14.15% with two armed targets.
 Source: src/classes/sound.cpp, check_rise_set_alerts around 258 and reset_horizon_tracking around 239. Every horizon frame scans all objects to discover alert flags, including scenes with no armed alerts. Track only armed rise/set targets and reset their history on relevant observer changes. Audio mute alone is not a valid shortcut because alert state and callbacks can matter independently of playback. Validate imports, favorites, toggling either alert, removal, observer changes, time reversal, and mode changes. An empty registry should make this path constant-time.
 
-[x] P007 | B / S / Q0 | Index eclipse candidates by active system and light source. ENABLED: PERF_P007=1; extended paired medians -5.70% ordinary/-1.23% time jumps.
+[x] P007 | B / S / Q0 | Index eclipse candidates by active system and light source. ENABLED: PERF_P007=1; compiled extended medians -10.01% ordinary/-3.71% time jumps.
 Source: src/visuals.cpp, refresh_eclipse_casters around 627. Collection is already once per frame, but it still begins with a full object scan and sorts the survivors. Feed it the active-system body lists, retaining asteroid and special-body rules, then retain or rebuild each light-source bucket only when membership changes. Motion still updates the geometric data. Validate moon shadows, mutual events, companion illumination, and selected remote systems. Compare actual eclipses rather than just list lengths. This proposal removes collection overhead; it does not justify changing the existing geometric rejection tests.
 
 [x] P008 | B / S / Q0 | Store hot frame fields in contiguous arrays. DISABLED: PERF_P008=0; class-array experiment shows no established gain (15 paired blocks).
@@ -123,7 +123,7 @@ Source: src/horizon_terrain_gpu.cpp and disabled option in src/visuals.h. A GPU 
 [x] P028 | B / S / Q0 | Re-evaluate GPU terrain generation without CPU round trips. PROTOTYPE IMPLEMENTED, APPLICATION DISABLED: PERF_P028=0. Resident mesh/depth prototype improves 38.72–40.17%; full application integration remains unmet.
 Source: src/horizon_mesh_gpu.cpp and the disabled generation option. If height generation moves to the GPU but CPU rasterization or scenery immediately reads it back, transfer cost can erase the gain. Evaluate an end-to-end resident mesh/depth design and compare it with retained CPU world patches. Preserve procedural seed, displacement, and plane conventions. Validate coast alignment and stable features while walking. This is an alternate architecture to P020/P024, not an extra multiplier to sum with all of them. Driver coverage and fallback remain part of acceptance.
 
-[x] P029 | B / S / Q0 | Bound the screen region that can contain ground before expensive painting. ENABLED: PERF_P029=1; extended paired medians -26.77% upward/-2.04% downward; walking neutral, exact images.
+[x] P029 | B / S / Q0 | Bound the screen region that can contain ground before expensive painting. ENABLED: PERF_P029=1; compiled confirmation medians -23.78% upward/-1.47% downward; walking neutral, exact images.
 Source: src/visuals.cpp around 6070-6250. Ground preparation searches per-column horizons and can enter per-pixel biome sampling near raised terrain or distant boundaries. Derive conservative covered spans from terrain depth and horizon envelopes first, then process only those spans. Preserve mountain peaks above the base horizon and holes between ridges. Validate looking upward, downward, and through narrow shoreline gaps. An all-sky view should avoid terrain-paint preparation where geometry proves it cannot contribute, while keeping horizon overlays that actually remain visible.
 
 [x] P030 | B / S / Q0 | Consolidate terrain curvature, refraction, and surface-distance calculations. DISABLED: PERF_P030=0; separate pre-fix/new binaries show neutral timing despite apparent runtime-switch gains.
@@ -387,7 +387,8 @@ Reduce fissure branches, glowing nodes, rock precipitation, and mineral-cloud pu
 P107 | B / S / Q0 | Index constellation sets by resolved active vantage.
 Source: draw_cons_lines around visuals.cpp 7980-8245. It traverses constellation records to resolve/identify vantages and then selects belonging sets. As fictional populations generate more vantages, keep a direct active-vantage index and resolve names only on mutation or initial load. Preserve the solar-reference alias rules and the spatial fallback tolerance. Validate nearby stars sharing or separating vantages, unknown names, and saved custom lines. This reduces collection traversal; P071 separately addresses forced stellar visibility, and P072 addresses preparation/publication. Those are distinct layers of the same subsystem.
 
-P108 | B / S / Q0 | Cache constellation label directions in their stable reference frame.
+[x] P108 | B / S / Q0 | Cache constellation label directions in their stable reference frame.
+IMPLEMENTED: PERF_P108=1. Cache bounded reference directions/centroids with exact boundary, endpoint and observer validation; preserve per-point atmospheric refraction and live edge clipping. Two fixed runs confirm 10–14% boundary-label sky gains; endpoint/shore results are neutral.
 Source: draw_cons_lines around visuals.cpp 8205. Label directions can be recomputed by summing boundary points or line endpoints, then transformed into the viewer frame. Cache the reference centroid for static boundaries and invalidate endpoint-based directions when constituent astrometry changes. Retain per-frame projection, refraction, and viewport-overlap logic. Validate the recent top/left-edge label fixes: cached direction must not revive perimeter-based disappearance or discard partially visible labels. This proposal addresses label preparation only, not a change to which constellation names are shown.
 
 P109 | C / H / Q0 | Audit input/event draining and high-rate pointer work under load.
@@ -558,7 +559,8 @@ FINAL INVENTORY AND STATUS
 
 There are 117 proposals: 24 priority A, 70 priority B, and 23 priority C. There are 85 source-anchored S entries and 32 H entries. Quality classes total 88 Q0, 16 Q1, eight Q2, and five Q3. These counts classify proposals, not proven successful optimizations. The measurements are M1-M5 and the separate completed serialization harness results.
 
-The original audit changed no production source; its deliverables were this report and PERFORMANCE_AUDIT_FAILURE_EXPLANATION.txt. Subsequent approved work implements 18 of the 117 proposals, leaving 99 open. Completed batches: P001–P005 (e0eead1, F71), P020–P024 (d7d3cc8, F72), P031 (d3c246b, F74), P039–P042 (4f1f06b, F75), and P050–P052 (1454f10, F76). Implementation details, validation results, and pending user/hardware checks are recorded in ACCEPTANCE_CRITERIA.md. The temporary instrumentation, runtime copies, and raw logs stay outside the release sources. Existing unrelated untracked project files are left in place.
+The original audit deliverables were this report and PERFORMANCE_AUDIT_FAILURE_EXPLANATION.txt. Subsequent approved work has evaluated 44 of the 117 proposals, leaving 73 unrequested proposals open. Checked entries include implemented code, disabled experiments and P028's explicitly limited GPU prototype. The 26-item implementation queue has ten enabled proposal switches and sixteen default-zero application switches. P042 is disabled after repeated losses; P052 disables its ambiguous-boundary subpath. Initial and compiled before/after evidence, acceptance checks and remaining hardware/manual limits are recorded in PERFORMANCE_BENCHMARKS.txt and ACCEPTANCE_CRITERIA.md. Unrelated untracked files remain untouched. Timings are marginal and cannot be added together.
+
 
 
 IMPLEMENTATION BENCHMARK REVIEW
@@ -588,3 +590,8 @@ PERFORMANCE_BENCHMARKS.txt supersede historical runtime-switch timings. P042
 confirms losses and stays disabled. P052 now disables ambiguous-boundary span
 preparation, while retaining independently confirmed uniform-footprint gains.
 Neutral earlier implementations remain enabled without a speedup claim.
+
+FINAL REQUESTED QUEUE STATUS
+All 26 requested proposal entries are checked and carry their implementation or
+disabled status. P028 remains a GPU prototype with application integration unmet.
+P094/P095 target interaction latency, with total save completion reported separately.

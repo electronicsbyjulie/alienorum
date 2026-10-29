@@ -27,6 +27,7 @@
 #include "../classes/rockmeshcache.h"
 #include "../classes/waveboundsoptions.h"
 #include "../classes/lavastatic.h"
+#include "../classes/constellationcache.h"
 #include "../classes/surfacecache.h"
 #include "../classes/surfaceprefetch.h"
 #include "../classes/localsurfacetile.h"
@@ -5972,4 +5973,73 @@ TEST_F(RenderingRegressionTest, LavaStaticCachesPreserveAnimationClippingAndTrav
         EXPECT_GT(lava_topology_cache().hits, 0u);
         EXPECT_GT(lava_particle_cache().hits, 0u);
     }
+}
+
+TEST_F(RenderingRegressionTest, ConstellationPreparationTracksBoundariesAstrometryAndObserver)
+{
+    auto* world = surface(true);
+    auto* first = make_star("Endpoint One");
+    auto* second = make_star("Endpoint Two");
+    first->location.local_position = Point(.2 * light_year, .3 * light_year, light_year);
+    second->location.local_position = Point(-.1 * light_year, .2 * light_year, light_year);
+    set(show_labels, true);
+    set(show_consln, false);
+    set(show_axes, false);
+    set(shortnames, false);
+    set(labels2draw, std::vector<DrawLabel>());
+    set(constellation_cache_reference, false);
+    set(constellations, std::vector<Constellation>(2));
+    for (int i = 0; i < 2; ++i)
+    {
+        auto& group = constellations[i];
+        group.name = i ? "Endpoint Group" : "Boundary Group";
+        group.abbrev = i ? "End" : "Bnd";
+        group.vantage_resolved = true;
+        group.vantage_name = "Sun";
+    }
+    for (int i = 0; i < 40; ++i)
+    {
+        ConsBoundary boundary;
+        boundary.RA = -.3 + i * .015;
+        boundary.decl = .1 + (i % 5) * .02;
+        constellations[0].bounds.push_back(boundary);
+    }
+    ConsLine line;
+    line.a = first;
+    line.b = second;
+    constellations[1].lines = {line, line};
+    set(here, CelestialLocation());
+    for (int phase = 0; phase < 12; ++phase)
+    {
+        view_mode = phase % 2 ? vm_spaceship : vm_horizon;
+        here.equatorial_plane.v = xaxis;
+        here.equatorial_plane.a = phase * .01;
+        here.local_position.x += .001 * light_year;
+        azimuth = phase * .01;
+        altitude = 0;
+        first->location.local_position.x += .002 * light_year;
+        second->deleted = phase % 3 == 0;
+        world->ensure_atmosphere()->surface_pressure = phase % 4 ? oneatm : .01 * oneatm;
+        constellations[0].bounds[0].RA += .003;
+        if (phase == 5) constellations[0].bounds.push_back({NAN, NAN});
+        if (phase == 7) std::reverse(constellations[0].bounds.begin(), constellations[0].bounds.end());
+        if (phase == 9) constellations[1].lines[1].a = nullptr;
+        const auto capture = [&](bool reference)
+        {
+            constellation_cache_reference = reference;
+            freeze_surface_time();
+            labels2draw.clear();
+            draw_cons_lines();
+            draw_cached_labels();
+            auto result = render();
+            ImGui::NewFrame();
+            return result;
+        };
+        const auto expected = capture(true);
+        EXPECT_EQ(capture(false), expected);
+        EXPECT_EQ(capture(false), expected);
+    }
+    ConstellationLabelCache bounded;
+    for (size_t i = 0; i < 1000; ++i) bounded.get(i);
+    EXPECT_LE(bounded.size(), 256u);
 }

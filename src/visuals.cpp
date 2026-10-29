@@ -20,6 +20,7 @@
 #include "classes/rockmeshcache.h"
 #include "classes/waveboundsoptions.h"
 #include "classes/lavastatic.h"
+#include "classes/constellationcache.h"
 #include "classes/surfacecache.h"
 #include "classes/surfaceprefetch.h"
 #include "classes/localsurfacetile.h"
@@ -9124,29 +9125,51 @@ void draw_cons_lines()
             if (constellations[l].vantage.squared_magnitude()) continue;
             Point direction;
             bool have_direction = false;
-            if (!constellations[l].bounds.empty())
+            const auto& group = constellations[l];
+            const bool prepared = PERF_P108 && !constellation_cache_reference
+                && group.bounds.size() <= 4096 && group.lines.size() <= 2048;
+            if (prepared)
             {
-                for (const auto &boundary : constellations[l].bounds)
+                auto& record = constellation_label_cache().get(l);
+                if (!group.bounds.empty())
                 {
-                    if (!std::isfinite(boundary.RA) || !std::isfinite(boundary.decl)) continue;
-                    Point point = to_viewer_plane(Point::from_ra_dec(boundary.RA, boundary.decl, light_year));
-                    if (airy_rock) point = refract_true_point(point);
-                    direction += point;
-                    have_direction = true;
+                    const auto& points = record.prepare(group.bounds);
+                    have_direction = !points.empty();
+                    if (!airy_rock) direction = record.boundary_direction();
+                    else for (const auto& point : points) direction += refract_true_point(to_viewer_plane(point));
+                }
+                else
+                {
+                    direction = record.endpoint_direction(group.lines, Point(here), have_direction);
+                    direction = to_viewer_plane(direction, 1);
                 }
             }
             else
             {
-                for (const auto &line : constellations[l].lines)
+                if (!constellations[l].bounds.empty())
                 {
-                    for (Star *star : {line.a, line.b})
+                    for (const auto &boundary : constellations[l].bounds)
                     {
-                        if (!star || star->deleted) continue;
-                        direction += Point(star->location) - Point(here);
+                        if (!std::isfinite(boundary.RA) || !std::isfinite(boundary.decl)) continue;
+                        Point point = to_viewer_plane(Point::from_ra_dec(boundary.RA, boundary.decl, light_year));
+                        if (airy_rock) point = refract_true_point(point);
+                        direction += point;
                         have_direction = true;
                     }
                 }
-                direction = to_viewer_plane(direction, 1);
+                else
+                {
+                    for (const auto &line : constellations[l].lines)
+                    {
+                        for (Star *star : {line.a, line.b})
+                        {
+                            if (!star || star->deleted) continue;
+                            direction += Point(star->location) - Point(here);
+                            have_direction = true;
+                        }
+                    }
+                    direction = to_viewer_plane(direction, 1);
+                }
             }
             if (!have_direction || !(direction.squared_magnitude() > 0)) continue;
             if (view_mode == vm_horizon && direction.y < 0) continue;

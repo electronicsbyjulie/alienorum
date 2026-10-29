@@ -315,7 +315,7 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
     {
         ASSERT_GT(id, 0);
         ASSERT_LT(static_cast<size_t>(id), performance_reference.size());
-        catalog |= id <= 18 || id == 68 || id == 73 || id == 77;
+        catalog |= id <= 18 || id == 68 || id == 73 || id == 77 || id == 108;
     }
     if (catalog)
     {
@@ -404,6 +404,59 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
     surface_magnitudes[1] = -20;
     Planet::reconcile_host_statistics();
     if (catalog) compute_object_draw_coordinates();
+    std::vector<Constellation> benchmark_boundaries, benchmark_endpoints;
+    if (std::find(ids.begin(), ids.end(), 108) != ids.end())
+    {
+        std::ifstream input("catalogs/CBD/bound_20.dat");
+        ASSERT_TRUE(input.good());
+        std::map<std::string, size_t> indexes;
+        std::string row;
+        size_t boundary_count = 0;
+        while (std::getline(input, row))
+        {
+            std::istringstream fields(row);
+            double ra, decl;
+            std::string abbreviation;
+            if (!(fields >> ra >> decl >> abbreviation)) continue;
+            auto found = indexes.find(abbreviation);
+            if (found == indexes.end())
+            {
+                indexes[abbreviation] = benchmark_boundaries.size();
+                Constellation group;
+                group.name = "Boundary " + abbreviation;
+                group.abbrev = abbreviation;
+                group.vantage_name = "Sun";
+                group.vantage_resolved = true;
+                benchmark_boundaries.push_back(std::move(group));
+            }
+            benchmark_boundaries[indexes[abbreviation]].bounds.push_back({ra * fiftyseventh, decl * fiftyseventh});
+            ++boundary_count;
+        }
+        ASSERT_GT(boundary_count, 10000u);
+        for (int i = 0; i < 88; ++i)
+        {
+            Constellation group;
+            group.name = "Endpoint " + std::to_string(i);
+            group.abbrev = "E" + std::to_string(i);
+            group.vantage_name = "Sun";
+            group.vantage_resolved = true;
+            for (int j = 0; j < 16; ++j)
+            {
+                ConsLine line;
+                line.a = static_cast<Star*>(cels[ncelobjs - 1 - ((i * 32 + j * 2) % 20000)]);
+                line.b = static_cast<Star*>(cels[ncelobjs - 1 - ((i * 32 + j * 2 + 1) % 20000)]);
+                group.lines.push_back(line);
+            }
+            benchmark_endpoints.push_back(std::move(group));
+        }
+        set(constellations, std::vector<Constellation>());
+        set(show_labels, true);
+        set(show_consln, false);
+        set(show_axes, false);
+        set(shortnames, true);
+        std::cout << "PERF label source: " << boundary_count << " CBD points; "
+            << benchmark_boundaries.size() << " boundary groups; 88 endpoint groups\n";
+    }
     std::unique_ptr<ResidentTerrainProbe> resident_probe;
     if (std::find(ids.begin(), ids.end(), 28) != ids.end())
     {
@@ -422,6 +475,7 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
             : id == 18 ? std::vector<std::string>{"catalog-lock-idle", "catalog-lock-publication"}
             : id == 13 ? std::vector<std::string>{"catalog", "catalog-walk", "catalog-time-jump"}
             : id <= 5 || id == 8 ? std::vector<std::string>{"catalog", "catalog-time-jump"}
+            : id == 108 ? std::vector<std::string>{"labels-sky-still", "labels-sky-turn", "shore-labels-walk", "labels-endpoints-still", "labels-endpoints-move"}
             : id == 105 ? std::vector<std::string>{"lava-still", "lava-walk", "lava-turn", "lava-time"}
             : id == 101 ? std::vector<std::string>{"rocks-still", "rocks-walk", "rocks-turn", "rocks-low-eye"}
             : id == 90 ? std::vector<std::string>{"texture-rgb-updates", "texture-bump-updates", "texture-resize", "texture-cached"}
@@ -445,6 +499,11 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
             : std::vector<std::string>{"shore-walk", "forest-walk"};
         for (const std::string& scene : scenes)
         {
+            if (id == 108)
+            {
+                constellations = scene.find("endpoints") != std::string::npos ? benchmark_endpoints : benchmark_boundaries;
+                view_mode = scene.find("shore") != std::string::npos ? vm_horizon : vm_spaceship;
+            }
             if (id == 78) world->sidereal_rotational_period = scene == "catalog-rotation-missing" ? 0 : oneday;
             if (publication) publication->active = scene == "catalog-lock-publication";
             delete world->surf_map;
@@ -477,7 +536,7 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
                 viewer_lon = scene == "shore-seam" ? _pi - 1e-6 : base_longitude;
                 if (scene.find("walk") != std::string::npos) viewer_lat += frame_index * .25 / earth_radius;
                 if (scene == "forest-refresh") world->surf_map->touch_gen();
-                if (scene == "forest-turn" || scene == "rocks-turn" || scene == "lava-turn") azimuth = .7 + frame_index * .13;
+                if (scene == "forest-turn" || scene == "rocks-turn" || scene == "lava-turn" || scene == "labels-sky-turn") azimuth = .7 + frame_index * .13;
                 freeze_surface_time();
                 ImGui::GetCurrentContext()->Time = 50 + frame_index / 30.0;
                 redo_proper_motions = scene.find("time-jump") != std::string::npos;
@@ -492,13 +551,22 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
                     cels[1]->location.local_position += ray;
                 }
                 compute_object_draw_coordinates();
+                if (id == 108 && scene == "labels-endpoints-move")
+                    cels[ncelobjs - 1]->location.local_position = Point(frame_index * .01 * light_year, .2 * light_year, 20 * light_year);
                 if (id == 67 || id == 77)
                 {
                     inside_galaxy_idx = benchmark_galaxy_index;
                     cels[benchmark_galaxy_index]->tmprel = Point(10 * light_year, 0, 0);
                     sky_mag_shift = 0;
                 }
-                if (id == 90)
+                if (id == 108)
+                {
+                    labels2draw.clear();
+                    if (scene.find("shore") != std::string::npos) draw_horizon();
+                    draw_cons_lines();
+                    draw_cached_labels();
+                }
+                else if (id == 90)
                 {
                     if (scene == "texture-resize") texture_probe->reshape(frame_index % 2 ? 1024 : 512, frame_index % 2 ? 512 : 256, frame_index);
                     else if (scene != "texture-cached") texture_probe->update(frame_index);
@@ -639,6 +707,7 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
 #ifdef PERF_P037
             if (id == 37) std::cout << "PERF local tile nodes: " << local_surface_tile_sample_count() << '\n';
 #endif
+            if (id == 108) std::cout << "PERF label cache records: " << constellation_label_cache().size() << "\n";
             if (id == 105) std::cout << "PERF lava caches: " << lava_topology_cache().hits << " topology hits; " << lava_particle_cache().hits << " particle hits\n";
             if (id == 101) std::cout << "PERF rock shapes: " << rock_mesh_cache().hits << " hits, " << rock_mesh_cache().misses << " misses\n";
             ASSERT_EQ(actual.size(), expected.size());
@@ -673,6 +742,8 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
             {
                 ASSERT_LE(maximum, id == 42 ? 2 : 0) << "P" << id << ' ' << scene;
             }
+            const int measured_frames = id == 108 && scene == "shore-labels-walk" ? std::max(4, frames / 6) : frames;
+            if (id == 108) std::cout << "PERF measured frames " << scene << ' ' << measured_frames << '\n';
             for (int round = 0; round < rounds; ++round)
             {
                 double milliseconds[2] = {}, cpu_times[2] = {}, maximum_times[2] = {};
@@ -682,16 +753,16 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
                     select(mode == 0);
                     const auto start = std::chrono::steady_clock::now();
                     const double cpu_start = cpu_milliseconds();
-                    for (int sample = 0; sample < frames; ++sample)
+                    for (int sample = 0; sample < measured_frames; ++sample)
                     {
                         const auto frame_start = (id == 36 || id == 37) ? std::chrono::steady_clock::now() : start;
                         frame(sample, false);
                         if (id == 36 || id == 37) maximum_times[mode] = std::max(maximum_times[mode],
                             std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - frame_start).count());
                     }
-                    cpu_times[mode] = (cpu_milliseconds() - cpu_start) / frames;
+                    cpu_times[mode] = (cpu_milliseconds() - cpu_start) / measured_frames;
                     milliseconds[mode] = std::chrono::duration<double, std::milli>(
-                        std::chrono::steady_clock::now() - start).count() / frames;
+                        std::chrono::steady_clock::now() - start).count() / measured_frames;
                 }
                 csv << id << ',' << scene << ',' << round << ',' << (round % 2 ? "BA" : "AB") << ','
                     << milliseconds[0] << ',' << milliseconds[1] << ','

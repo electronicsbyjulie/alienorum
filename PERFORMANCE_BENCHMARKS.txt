@@ -4,7 +4,7 @@ Status: all 27 frozen-source compiled rechecks are complete. P030 exposed
 compiler-cost bias in runtime-switch timing; compiled-path tables supersede the
 earlier dynamic numbers. P042 remains disabled. P052 now disables its repeatedly
 slower ambiguous-boundary path while retaining certified-uniform gains. New
-requested work has separate per-item evidence below; P105/P108 are still pending.
+requested work has separate per-item evidence below; all 26 entries are evaluated.
 
 Method
 Each proposal has a PERF_Pxxx compile-time switch in performance_options.h or
@@ -32,8 +32,8 @@ in FRAME_RATE_AUDIT_PROPOSALS.txt. Neutral existing results will not be called g
 Requested implementation queue, in order
 P006, P007, P008, P012, P013, P018, P025, P026, P028, P029, P030, P036, P037,
 P043, P049, P067, P068, P073, P077, P078, P090, P094, P095, P101, P105, P108.
-Each item will receive its own implementation, paired measurements, correctness checks,
-status entry, commit, and push. New changes without demonstrated improvement remain
+Each item has its own implementation/evaluation, paired measurements, correctness
+checks and status; per-item commits and pushes record the handoff. New changes without demonstrated improvement remain
 available behind a default 0 switch. A two-minute pause separates completed fixes.
 
 INITIAL COMPONENT SWEEP
@@ -1264,3 +1264,45 @@ All intervals cross zero in both tables. Set PERF_P105=0; preserve the existing
 lava renderer and retain the tested experiment without a shipping speedup claim.
 P105 shipping validation: application builds and the focused cache/animation
 check passes with the optimization disabled; the enabled private check also passed.
+
+P108 — stable constellation label preparation
+Parent: b0c1a2d. Cache finite boundary directions and their reference centroid.
+Without atmospheric refraction, retain the exact per-point transformed sum by
+viewer plane; an identity plane uses the exact reference sum. With atmosphere,
+transform/refract each cached input point every frame, preserving nonlinear
+behavior. Endpoint centroids validate pointers, deletion, current absolute
+positions and observer position before reuse; direct astrometry edits invalidate.
+Preserve duplicate endpoints, summation order, per-frame projection, text bounds,
+partial-edge clipping, label eligibility and active-vantage selection.
+A lazy index cache holds at most 256 records; groups above 4,096 boundaries or
+2,048 lines take the original path. Vector mutation/reordering is checked exactly.
+Three enabled checks pass: boundary/endpoint/observer/atmosphere mutation images,
+bounded records, and both existing perimeter/top/left-edge label regressions.
+Compile the same current visuals body with PERF_P108=0/1 and share one fixed
+harness and all other application objects. Native Intel HD2000, 1280x720, dense
+42,123-object fixture; actual local CBD input has 12,948 points in 89 groups.
+A separate 88-group fixture has sixteen endpoint lines per group. Nine AB/BA
+pairs per table, GPU completion included, exact image hashes.
+Sky/endpoint samples contain 24 frames per block. The much heavier shoreline
+case contains four, giving about 2.7 seconds per block. Counts are printed in
+raw logs. The initial cumulative moving-endpoint route was discarded; the final
+route assigns absolute frame-indexed positions. Full-frame exploratory timing
+was also superseded by the explicitly counted final runs, not used for decisions.
+PERFORMANCE_BENCHMARK_P108_FIXED_RESULTS.csv
+  labels-endpoints-move: -2.14% [-6.89%, +3.63%], mixed/neutral; exact pixels.
+  labels-endpoints-still: +1.59% [-4.60%, +2.85%], mixed/neutral; exact pixels.
+  labels-sky-still: -9.58% [-14.81%, -7.88%], faster; exact pixels.
+  labels-sky-turn: -12.09% [-18.71%, -5.21%], faster; exact pixels.
+  shore-labels-walk: +0.65% [-1.60%, +2.90%], mixed/neutral; exact pixels.
+PERFORMANCE_BENCHMARK_P108_CONFIRM_RESULTS.csv
+  labels-endpoints-move: +1.56% [-9.48%, +5.54%], mixed/neutral; exact pixels.
+  labels-endpoints-still: -0.16% [-2.14%, +3.37%], mixed/neutral; exact pixels.
+  labels-sky-still: -12.56% [-16.80%, -4.84%], faster; exact pixels.
+  labels-sky-turn: -14.48% [-17.19%, -9.16%], faster; exact pixels.
+  shore-labels-walk: +0.34% [-0.69%, +1.25%], mixed/neutral; exact pixels.
+Keep PERF_P108=1 after repeated boundary-label sky gains. Endpoint and
+shoreline intervals cross zero in both runs; no gain is claimed there. The dense
+shore fixture remains expensive overall; this change does not solve the rest
+of that frame. No laptop/Windows/manual acceptance claim follows from this GPU.
+P108 shipping validation: application builds; 123 rendering and nineteen
+housekeeping checks pass, with eight optional GPU skips.
