@@ -610,3 +610,28 @@ polar safety can bypass it. No application FPS gain is claimed for this experime
 P037 production validation: application builds; 109 rendering checks pass, eight
 optional GPU checks skip; all eighteen housekeeping checks pass. The two new tests
 also pass in the enabled private binary. Manual/hardware acceptance is not inferred.
+
+P043 — TEMPORAL SCENERY DEPTH ORDER
+Retain scenery indices in the preceding depth order, gather surviving records and new
+entrants, then repair small inversions with a bounded insertion pass. Fall back after
+four record moves per visible object, on an invalid/duplicate index, non-finite depth,
+empty history, or any equal-depth pair. The fallback sorts the untouched original
+input, preserving std::sort's existing tie behavior. World/scenery-generation changes
+clear the history. All projected geometry and live lighting remain unchanged.
+The focused test covers walking-sized perturbations, identical frames, membership
+changes, reversal, ties, reset, invalid/duplicate indices and empty lists. It passes in
+the enabled binary. Native comparisons cover forest walking, still views and fast
+camera turns. Actual before source: 2499259. Both executables use fixed controls and
+fresh affected objects. Nine alternating external pairs measure two twenty-four-frame
+blocks per scene, including GPU completion and exact cross-binary image checks.
+Raw data: PERFORMANCE_BENCHMARK_P043_FIXED_RESULTS.csv.
+forest-still: 28.371 -> 28.622 ms; paired median +1.48%; 95% interval [-4.68%, +3.85%]; mixed/neutral; image error 0.
+forest-turn: 33.127 -> 33.557 ms; paired median +0.80%; 95% interval [-0.76%, +2.44%]; mixed/neutral; image error 0.
+forest-walk: 34.297 -> 34.107 ms; paired median +0.29%; 95% interval [-5.71%, +4.19%]; mixed/neutral; image error 0.
+All three intervals cross zero. Disable PERF_P043; the disabled build also omits
+the optional record index and restores the original record layout and full sort.
+No quality reduction or additive gain is claimed. Header-only support adds no runtime
+installer asset. The enabled comparison and focused test validate the candidate path.
+P043 production validation: application builds; 110 rendering checks and eighteen
+housekeeping checks pass, with eight optional GPU skips. The enabled focused ordering
+check also passes. These automated checks do not replace user/hardware review.

@@ -16,6 +16,7 @@
 #include "classes/exocons.h"
 #include "classes/surfacescatter.h"
 #include "classes/scenerydraw.h"
+#include "classes/sceneryorder.h"
 #include "classes/surfacecache.h"
 #include "classes/surfaceprefetch.h"
 #include "classes/localsurfacetile.h"
@@ -7763,6 +7764,9 @@ void draw_horizon()
                     }
 
                     rocks.emplace_back();
+                    #if PERF_P043
+                    rocks[num_rocks].scenery_index = index;
+                    #endif
                     rocks[num_rocks].crown_hidden = false;
                     rocks[num_rocks].dist = sort_dist;
                     rocks[num_rocks].ground_dist = dist_m;
@@ -7793,10 +7797,24 @@ void draw_horizon()
                     num_rocks++;
                 }
 
-                std::sort(rocks.begin(), rocks.end(), [](const RockInstance& a, const RockInstance& b)
+                #if PERF_P043
+                if (performance_enabled(43) && !scenery_cpu_reference)
                 {
-                    return a.dist > b.dist;
-                });
+                    static SceneryDepthOrder<RockInstance> depth_order;
+                    static std::pair<int, size_t> saved_identity;
+                    const auto identity = std::make_pair(whereami, scenery_cache.generation());
+                    if (identity != saved_identity) depth_order.reset();
+                    saved_identity = identity;
+                    depth_order.sort(rocks, scenery.size());
+                }
+                else
+                #endif
+                {
+                    std::sort(rocks.begin(), rocks.end(), [](const RockInstance& a, const RockInstance& b)
+                    {
+                        return a.dist > b.dist;
+                    });
+                }
 
                 static SceneryCrownOcclusion crown_occlusion;
                 crown_occlusion.reset(screen_w, static_cast<int>(dispcy * 2));

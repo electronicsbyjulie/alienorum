@@ -2,6 +2,7 @@
 #ifndef _Visuals
 #define _Visuals
 
+#include "performance_options.h"
 #include "globals.h"
 
 #define bloom_exponent 2.5
@@ -98,6 +99,9 @@ size_t local_surface_tile_sample_count();
 
 struct RockInstance
 {
+    #if PERF_P043
+    size_t scenery_index;
+    #endif
     bool crown_hidden;
     double dist;
     double ground_dist;

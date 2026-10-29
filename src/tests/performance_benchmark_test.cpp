@@ -372,6 +372,7 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
             : id == 18 ? std::vector<std::string>{"catalog-lock-idle", "catalog-lock-publication"}
             : id == 13 ? std::vector<std::string>{"catalog", "catalog-walk", "catalog-time-jump"}
             : id <= 5 || id == 8 ? std::vector<std::string>{"catalog", "catalog-time-jump"}
+            : id == 43 ? std::vector<std::string>{"forest-walk", "forest-still", "forest-turn"}
             : id == 37 ? std::vector<std::string>{"shore-walk", "forest-walk", "shore-still", "shore-pole", "shore-seam"}
             : id == 36 ? std::vector<std::string>{"shore-walk", "forest-walk"}
             : id == 30 ? std::vector<std::string>{"shore-walk", "forest-walk", "ocean-still"}
@@ -411,6 +412,7 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
                 viewer_lon = scene == "shore-seam" ? _pi - 1e-6 : base_longitude;
                 if (scene.find("walk") != std::string::npos) viewer_lat += frame_index * .25 / earth_radius;
                 if (scene == "forest-refresh") world->surf_map->touch_gen();
+                if (scene == "forest-turn") azimuth = .7 + frame_index * .13;
                 freeze_surface_time();
                 ImGui::GetCurrentContext()->Time = 50 + frame_index / 30.0;
                 redo_proper_motions = scene.find("time-jump") != std::string::npos;

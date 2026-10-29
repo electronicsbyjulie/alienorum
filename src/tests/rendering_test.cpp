@@ -23,6 +23,7 @@
 #include "../classes/surfacebiomes.h"
 #include "../classes/surfacenavigation.h"
 #include "../classes/scenerydraw.h"
+#include "../classes/sceneryorder.h"
 #include "../classes/surfacecache.h"
 #include "../classes/surfaceprefetch.h"
 #include "../classes/localsurfacetile.h"
@@ -5264,4 +5265,41 @@ TEST_F(RenderingRegressionTest, LocalSurfaceTileRetainsExactMaterialAcrossAnAmbi
     EXPECT_FALSE(tile.matches(42, map, map->gen, radius, 1));
     const auto expected = exact.sample(coast, longitude), actual = candidate.sample(coast, longitude);
     EXPECT_EQ(actual.material, expected.material);
+}
+
+TEST(SceneryDepthOrderTest, MatchesFullSortAcrossMotionMembershipTiesAndReversals)
+{
+    struct Record { size_t scenery_index; double dist; };
+    SceneryDepthOrder<Record> order;
+    const auto check = [&](std::vector<Record> records)
+    {
+        auto expected = records;
+        std::sort(expected.begin(), expected.end(), [](const Record& a, const Record& b) { return a.dist > b.dist; });
+        const bool repaired = order.sort(records, 256);
+        EXPECT_EQ(records.size(), expected.size());
+        for (size_t i = 0; i < records.size(); ++i)
+        {
+            EXPECT_EQ(records[i].scenery_index, expected[i].scenery_index);
+            EXPECT_EQ(records[i].dist, expected[i].dist);
+        }
+        return repaired;
+    };
+    std::vector<Record> records;
+    for (size_t i = 0; i < 128; ++i) records.push_back({i, double((i * 53) % 128) + .125});
+    EXPECT_FALSE(check(records));
+    EXPECT_TRUE(check(records));
+    for (auto& record : records) record.dist += sin(record.scenery_index) * .125;
+    EXPECT_TRUE(check(records));
+    records.erase(records.begin() + 5, records.begin() + 17);
+    records.push_back({200, 35.75});
+    EXPECT_TRUE(check(records));
+    for (auto& record : records) record.dist = -record.dist;
+    EXPECT_FALSE(check(records));
+    for (auto& record : records) record.dist = 1;
+    EXPECT_FALSE(check(records));
+    order.reset();
+    EXPECT_FALSE(check(records));
+    EXPECT_FALSE(check({{300, 1}, {2, 2}}));
+    EXPECT_FALSE(check({{1, 1}, {1, 2}}));
+    EXPECT_FALSE(check({}));
 }
