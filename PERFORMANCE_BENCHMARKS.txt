@@ -1231,3 +1231,36 @@ cross zero. No shoreline improvement is claimed. Preserve all original wave
 geometry/phase/color/clipping. Existing 96 rendered coast/world/camera cases and
 cache invalidation checks pass. A focused boundary check verifies no certified
 span/land preprocessing on the ambiguous shore, with exact reference pixels.
+
+P105 — static lava topology and particle constants, disabled
+Parent: ea6a9df. The active classes/misc.h flags enable fissures, rock rain and
+other lava effects; these flags are unchanged. Earlier commentary saying they
+were disabled was incorrect. Ordinary wet-forest scenes do not enter these
+lava-only branches, but lava worlds do. This benchmark exercises the real path.
+Cache 28 seeded fissure root/trunk/branch coordinate sets by owner and exact
+range, plus 320 particle seeds/base positions/speed/drift constants by owner.
+Keep ground curvature/eye height, camera projection, branches visibility/order,
+colors, pulses, falling trajectories, sparks, clipping and lighting live. Bounded
+arrays are lazy and hold only the current key; no cache is serialized.
+Enabled helper tests cover owner/range replacement and deterministic restoration.
+Twelve rendered pose/eye-height/animation comparisons match the original exactly.
+Two independently compiled visuals variants differ only in PERF_P105=0/1 and
+share one fixed developer harness plus identical other application objects. Nine
+AB/BA pairs per table, 24-frame blocks, native Intel HD2000, GPU completion.
+Diagnostics verify actual hits in both caches. Stationary scenes both use the
+ordinary 1/30-second animation route: lava-time is a stationary repeat, not a
+separate large-time-jump case. Walking and turning are distinct routes.
+PERFORMANCE_BENCHMARK_P105_FIXED_RESULTS.csv
+  lava-still: -0.15% [-3.64%, +1.75%], mixed/neutral; exact pixels.
+  lava-time: +0.22% [-2.85%, +1.78%], mixed/neutral; exact pixels.
+  lava-turn: -0.05% [-1.38%, +2.07%], mixed/neutral; exact pixels.
+  lava-walk: -0.53% [-3.41%, +0.53%], mixed/neutral; exact pixels.
+PERFORMANCE_BENCHMARK_P105_CONFIRM_RESULTS.csv
+  lava-still: -0.91% [-3.48%, +3.53%], mixed/neutral; exact pixels.
+  lava-time: -0.12% [-2.08%, +2.14%], mixed/neutral; exact pixels.
+  lava-turn: +0.40% [-1.31%, +3.16%], mixed/neutral; exact pixels.
+  lava-walk: -1.29% [-2.75%, +2.15%], mixed/neutral; exact pixels.
+All intervals cross zero in both tables. Set PERF_P105=0; preserve the existing
+lava renderer and retain the tested experiment without a shipping speedup claim.
+P105 shipping validation: application builds and the focused cache/animation
+check passes with the optimization disabled; the enabled private check also passed.

@@ -377,7 +377,8 @@ Source: draw_planetary_rain around visuals.cpp 5055-5350. Rain can process up to
 P104 | C / S / Q2 | Offer a rain particle and streak-quality budget.
 Cap particle count below 2,400, reduce secondary streak/impact geometry, or scale density to viewport coverage. This directly changes perceived rain intensity and richness, so it is a quality option rather than an exact optimization. Preserve weather state and make the intensity display independent of the visual particle budget. Validate a downpour at multiple resolutions and a view mostly covered by terrain. A no-rain switch is already included in P084; this entry offers a less drastic intermediate setting.
 
-P105 | C / S / Q0 | Cache static lava fissure topology and particle constants.
+[x] P105 | C / S / Q0 | Cache static lava fissure topology and particle constants.
+DISABLED: PERF_P105=0. Static fissure/particle caches preserve exact active-lava images but establish no gain in two fixed native comparisons. Original lava effects remain enabled.
 Source: src/visuals.cpp around 6679-6800 and the 320-particle lava precipitation path around 7715. Stable branching topology, seed hashes, and local coordinates can be separated from animation and projection. This is unrelated to ordinary wet forest scenes but belongs in an application-wide audit. Validate unchanged lava patterns, glow, sparks, camera clipping, and travel between lava worlds. A shader/instance path can be tested independently. If the current workload never enters these compile-time/runtime branches, report their cost as zero for that workload.
 
 P106 | C / S / Q2 | Offer simpler lava and mineral-cloud effects.

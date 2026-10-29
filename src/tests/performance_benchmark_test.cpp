@@ -422,6 +422,7 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
             : id == 18 ? std::vector<std::string>{"catalog-lock-idle", "catalog-lock-publication"}
             : id == 13 ? std::vector<std::string>{"catalog", "catalog-walk", "catalog-time-jump"}
             : id <= 5 || id == 8 ? std::vector<std::string>{"catalog", "catalog-time-jump"}
+            : id == 105 ? std::vector<std::string>{"lava-still", "lava-walk", "lava-turn", "lava-time"}
             : id == 101 ? std::vector<std::string>{"rocks-still", "rocks-walk", "rocks-turn", "rocks-low-eye"}
             : id == 90 ? std::vector<std::string>{"texture-rgb-updates", "texture-bump-updates", "texture-resize", "texture-cached"}
             : id == 78 ? std::vector<std::string>{"catalog-rotation-missing", "catalog-rotation-known"}
@@ -449,10 +450,11 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
             delete world->surf_map;
             const bool skyline = scene.find("skyline") != std::string::npos;
             const bool forest = scene.find("forest") != std::string::npos;
-            const bool rocks_only = id == 101;
+            const bool rocks_only = id == 101 || id == 105;
             world->surf_map = rocks_only ? static_cast<Map*>(new BlueBiomeTestMap(SurfaceMaterial::ground)) : forest ? static_cast<Map*>(new BlueBiomeTestMap(SurfaceMaterial::vegetation))
                 : scene.find("ocean") != std::string::npos ? static_cast<Map*>(new BlueBiomeTestMap(SurfaceMaterial::water))
                 : skyline ? static_cast<Map*>(new MountainBandsTestMap()) : static_cast<Map*>(new CoastalTestMap());
+            if (id == 105) { world->type = lavaworld; world->temperature = 1900; }
             world->has_water = (skyline || rocks_only) ? 0 : 1;
             world->vegetation_r = (skyline || rocks_only) ? 0 : 80;
             world->vegetation_g = (skyline || rocks_only) ? 0 : 140;
@@ -475,7 +477,7 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
                 viewer_lon = scene == "shore-seam" ? _pi - 1e-6 : base_longitude;
                 if (scene.find("walk") != std::string::npos) viewer_lat += frame_index * .25 / earth_radius;
                 if (scene == "forest-refresh") world->surf_map->touch_gen();
-                if (scene == "forest-turn" || scene == "rocks-turn") azimuth = .7 + frame_index * .13;
+                if (scene == "forest-turn" || scene == "rocks-turn" || scene == "lava-turn") azimuth = .7 + frame_index * .13;
                 freeze_surface_time();
                 ImGui::GetCurrentContext()->Time = 50 + frame_index / 30.0;
                 redo_proper_motions = scene.find("time-jump") != std::string::npos;
@@ -637,6 +639,7 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
 #ifdef PERF_P037
             if (id == 37) std::cout << "PERF local tile nodes: " << local_surface_tile_sample_count() << '\n';
 #endif
+            if (id == 105) std::cout << "PERF lava caches: " << lava_topology_cache().hits << " topology hits; " << lava_particle_cache().hits << " particle hits\n";
             if (id == 101) std::cout << "PERF rock shapes: " << rock_mesh_cache().hits << " hits, " << rock_mesh_cache().misses << " misses\n";
             ASSERT_EQ(actual.size(), expected.size());
             std::uint64_t image_hash = 14695981039346656037ULL;

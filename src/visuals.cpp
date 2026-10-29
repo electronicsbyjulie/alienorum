@@ -19,6 +19,7 @@
 #include "classes/sceneryorder.h"
 #include "classes/rockmeshcache.h"
 #include "classes/waveboundsoptions.h"
+#include "classes/lavastatic.h"
 #include "classes/surfacecache.h"
 #include "classes/surfaceprefetch.h"
 #include "classes/localsurfacetile.h"
@@ -7396,6 +7397,8 @@ void draw_horizon()
                         double wave_t = ImGui::GetTime();
                         double s_max = (s_horizon > 0.0) ? fmin(2500.0, s_horizon) : 1500.0;
                         int num_fissure_systems = 28;
+                        const auto* cached_roots = PERF_P105 && !lava_static_reference
+                            ? &lava_topology_cache().get(whereami, s_max) : nullptr;
 
                         auto project_ground_coord = [&](double xw, double yw, double zw, ImVec2 &out_pt, double &out_depth) -> bool
                         {
@@ -7449,26 +7452,31 @@ void draw_horizon()
 
                         for (int fi = 0; fi < num_fissure_systems; fi++)
                         {
+                            const LavaRoot* root = cached_roots ? &(*cached_roots)[fi] : nullptr;
                             uint32_t fseed = (uint32_t)(whereami * 1013904223u + fi * 2246822519u + 0x8a35c);
-                            fseed = ((fseed >> 16) ^ fseed) * 0x45d9f3b;
-                            fseed = ((fseed >> 16) ^ fseed) * 0x45d9f3b;
-                            fseed = (fseed >> 16) ^ fseed;
+                            if (root) fseed = root->seed;
+                            else
+                            {
+                                fseed = ((fseed >> 16) ^ fseed) * 0x45d9f3b;
+                                fseed = ((fseed >> 16) ^ fseed) * 0x45d9f3b;
+                                fseed = (fseed >> 16) ^ fseed;
+                            }
 
                             double u_ang = (double)(fseed & 0xFFFF) / 65535.0;
                             double u_dist = (double)((fseed >> 16) & 0x7FFF) / 32767.0;
 
-                            double root_ang = u_ang * 2.0 * _pi;
-                            double root_dist = 2.2 + (s_max * 0.18) * pow(u_dist, 1.8);
-                            double root_heading = root_ang + 1.25 + ((double)((fseed >> 8) & 0xFF) / 255.0 - 0.5) * 1.6;
+                            double root_ang = root ? root->angle : u_ang * 2.0 * _pi;
+                            double root_dist = root ? 0 : 2.2 + (s_max * 0.18) * pow(u_dist, 1.8);
+                            double root_heading = root ? root->heading : root_ang + 1.25 + ((double)((fseed >> 8) & 0xFF) / 255.0 - 0.5) * 1.6;
 
-                            double seg_len_base = (1.8 + 3.2 * ((double)(fseed & 0xFF) / 255.0)) * sqrt(root_dist / 6.0);
-                            int num_trunk_segs = 14 + (int)((fseed >> 4) % 6);
+                            double seg_len_base = root ? root->segment : (1.8 + 3.2 * ((double)(fseed & 0xFF) / 255.0)) * sqrt(root_dist / 6.0);
+                            int num_trunk_segs = root ? root->count : 14 + (int)((fseed >> 4) % 6);
 
-                            double cur_xw = root_dist * sin(root_ang);
-                            double cur_zw = root_dist * cos(root_ang);
+                            double cur_xw = root ? root->x : root_dist * sin(root_ang);
+                            double cur_zw = root ? root->z : root_dist * cos(root_ang);
                             double cur_heading = root_heading;
 
-                            double cur_d = sqrt(cur_xw * cur_xw + cur_zw * cur_zw);
+                            double cur_d = root ? root->distance : sqrt(cur_xw * cur_xw + cur_zw * cur_zw);
                             double cur_yw = -h_eye - (cur_d * cur_d) / (2.0 * R_planet);
 
                             ImVec2 p_prev;
@@ -7479,9 +7487,14 @@ void draw_horizon()
 
                             for (int si = 0; si < num_trunk_segs; si++)
                             {
-                                walk_seed = ((walk_seed >> 16) ^ walk_seed) * 0x45d9f3b;
-                                walk_seed = ((walk_seed >> 16) ^ walk_seed) * 0x45d9f3b;
-                                walk_seed = (walk_seed >> 16) ^ walk_seed;
+                                const LavaStep* step = root ? &root->steps[si] : nullptr;
+                                if (step) walk_seed = step->seed;
+                                else
+                                {
+                                    walk_seed = ((walk_seed >> 16) ^ walk_seed) * 0x45d9f3b;
+                                    walk_seed = ((walk_seed >> 16) ^ walk_seed) * 0x45d9f3b;
+                                    walk_seed = (walk_seed >> 16) ^ walk_seed;
+                                }
 
                                 double u_turn = (double)(walk_seed & 0x7FFF) / 32767.0;
                                 double u_len = (double)((walk_seed >> 15) & 0x7FFF) / 32767.0;
@@ -7490,9 +7503,9 @@ void draw_horizon()
                                 cur_heading += deflection;
                                 double slen = seg_len_base * (0.65 + 0.70 * u_len);
 
-                                double next_xw = cur_xw + slen * sin(cur_heading);
-                                double next_zw = cur_zw + slen * cos(cur_heading);
-                                double next_d = sqrt(next_xw * next_xw + next_zw * next_zw);
+                                double next_xw = step ? step->x : cur_xw + slen * sin(cur_heading);
+                                double next_zw = step ? step->z : cur_zw + slen * cos(cur_heading);
+                                double next_d = step ? step->distance : sqrt(next_xw * next_xw + next_zw * next_zw);
                                 double next_yw = -h_eye - (next_d * next_d) / (2.0 * R_planet);
 
                                 ImVec2 p_next;
@@ -7533,18 +7546,23 @@ void draw_horizon()
 
                                     for (int bi = 0; bi < branch_segs; bi++)
                                     {
-                                        b_seed = ((b_seed >> 16) ^ b_seed) * 0x45d9f3b;
-                                        b_seed = ((b_seed >> 16) ^ b_seed) * 0x45d9f3b;
-                                        b_seed = (b_seed >> 16) ^ b_seed;
+                                        const LavaPoint* point = step ? &step->branch[bi] : nullptr;
+                                        if (point) b_seed = point->seed;
+                                        else
+                                        {
+                                            b_seed = ((b_seed >> 16) ^ b_seed) * 0x45d9f3b;
+                                            b_seed = ((b_seed >> 16) ^ b_seed) * 0x45d9f3b;
+                                            b_seed = (b_seed >> 16) ^ b_seed;
+                                        }
 
                                         double bu_turn = (double)(b_seed & 0x7FFF) / 32767.0;
                                         double bu_len = (double)((b_seed >> 15) & 0x7FFF) / 32767.0;
                                         branch_heading += (bu_turn - 0.5) * (70.0 * fiftyseventh);
                                         double b_slen = seg_len_base * 0.65 * (0.6 + 0.6 * bu_len);
 
-                                        double b_next_xw = b_xw + b_slen * sin(branch_heading);
-                                        double b_next_zw = b_zw + b_slen * cos(branch_heading);
-                                        double b_next_d = sqrt(b_next_xw * b_next_xw + b_next_zw * b_next_zw);
+                                        double b_next_xw = point ? point->x : b_xw + b_slen * sin(branch_heading);
+                                        double b_next_zw = point ? point->z : b_zw + b_slen * cos(branch_heading);
+                                        double b_next_d = point ? point->distance : sqrt(b_next_xw * b_next_xw + b_next_zw * b_next_zw);
                                         double b_next_yw = -h_eye - (b_next_d * b_next_d) / (2.0 * R_planet);
 
                                         ImVec2 b_next;
@@ -8613,24 +8631,31 @@ void draw_horizon()
                 double h_eye = shared_surface ? surface_eye : fmax(0.01, viewer_eye_height);
                 uint32_t rain_seed = (uint32_t)(whereami * 1013904223u + 0x5a17e);
                 int num_particles = 320;
+                const auto* cached_particles = PERF_P105 && !lava_static_reference
+                    ? &lava_particle_cache().get(whereami) : nullptr;
 
                 for (int pi = 0; pi < num_particles; pi++)
                 {
-                    uint32_t phash = rain_seed + (uint32_t)pi * 2246822519u;
-                    phash = ((phash >> 16) ^ phash) * 0x45d9f3b;
-                    phash = ((phash >> 16) ^ phash) * 0x45d9f3b;
-                    phash = (phash >> 16) ^ phash;
+                    const LavaParticle* particle = cached_particles ? &(*cached_particles)[pi] : nullptr;
+                    uint32_t phash = 0;
+                    if (!particle)
+                    {
+                        phash = rain_seed + (uint32_t)pi * 2246822519u;
+                        phash = ((phash >> 16) ^ phash) * 0x45d9f3b;
+                        phash = ((phash >> 16) ^ phash) * 0x45d9f3b;
+                        phash = (phash >> 16) ^ phash;
+                    }
 
-                    double u0 = (double)(phash & 0x3FFF) / 16383.0;
-                    double u1 = (double)((phash >> 14) & 0x3FFF) / 16383.0;
-                    double u2 = (double)((phash >> 20) & 0xFF) / 255.0;
-                    double u3 = (double)((phash >> 8) & 0xFF) / 255.0;
+                    double u0 = particle ? particle->u0 : (double)(phash & 0x3FFF) / 16383.0;
+                    double u1 = particle ? particle->u1 : (double)((phash >> 14) & 0x3FFF) / 16383.0;
+                    double u2 = particle ? particle->u2 : (double)((phash >> 20) & 0xFF) / 255.0;
+                    double u3 = particle ? particle->u3 : (double)((phash >> 8) & 0xFF) / 255.0;
 
                     // 3D cylindrical/spherical field around the observer
                     double p_theta = u0 * 2.0 * _pi;
-                    double p_dist = 1.2 + 38.0 * sqrt(u1);
+                    double p_dist = particle ? particle->distance : 1.2 + 38.0 * sqrt(u1);
 
-                    double fall_speed = 7.0 + 15.0 * u2;
+                    double fall_speed = particle ? particle->speed : 7.0 + 15.0 * u2;
                     double span_h = 28.0;
                     double y_ground = -h_eye;
                     double cur_y = y_ground + fmod(u3 * span_h - t_rain * fall_speed - y_ground, span_h);
@@ -8640,9 +8665,9 @@ void draw_horizon()
                     }
 
                     // World position including thermal updraft waver
-                    double drift_amp = 0.25 + 0.45 * u2;
-                    double xw = p_dist * sin(p_theta) + sin(t_rain * 2.2 + u0 * 6.28) * drift_amp;
-                    double zw = p_dist * cos(p_theta) + cos(t_rain * 2.2 + u0 * 6.28) * drift_amp;
+                    double drift_amp = particle ? particle->drift : 0.25 + 0.45 * u2;
+                    double xw = (particle ? particle->x : p_dist * sin(p_theta)) + sin(t_rain * 2.2 + u0 * 6.28) * drift_amp;
+                    double zw = (particle ? particle->z : p_dist * cos(p_theta)) + cos(t_rain * 2.2 + u0 * 6.28) * drift_amp;
                     double yw = cur_y;
 
                     // Transform to camera coordinates: rotates with azimuth

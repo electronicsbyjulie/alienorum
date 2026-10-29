@@ -26,6 +26,7 @@
 #include "../classes/sceneryorder.h"
 #include "../classes/rockmeshcache.h"
 #include "../classes/waveboundsoptions.h"
+#include "../classes/lavastatic.h"
 #include "../classes/surfacecache.h"
 #include "../classes/surfaceprefetch.h"
 #include "../classes/localsurfacetile.h"
@@ -5919,4 +5920,56 @@ TEST_F(RenderingRegressionTest, AmbiguousWaveFootprintsUseOriginalBoundaryPath)
     draw_horizon();
     EXPECT_EQ(render(), actual);
     ImGui::NewFrame();
+}
+
+TEST_F(RenderingRegressionTest, LavaStaticCachesPreserveAnimationClippingAndTravel)
+{
+    LavaTopologyCache topology;
+    const auto first = topology.get(2, 1200)[0].steps[7].branch[2];
+    topology.get(2, 1200);
+    EXPECT_EQ(topology.hits, 1u);
+    topology.get(3, 1200);
+    topology.get(3, 1400);
+    EXPECT_EQ(topology.builds, 3u);
+    const auto restored = topology.get(2, 1200)[0].steps[7].branch[2];
+    EXPECT_EQ(first.x, restored.x);
+    EXPECT_EQ(first.z, restored.z);
+    LavaParticleCache particles;
+    const auto particle = particles.get(2)[42];
+    particles.get(2);
+    EXPECT_EQ(particles.hits, 1u);
+    particles.get(3);
+    EXPECT_EQ(particles.get(2)[42].x, particle.x);
+    auto* world = surface(true);
+    delete world->surf_map;
+    world->surf_map = new BlueBiomeTestMap(SurfaceMaterial::ground);
+    world->type = lavaworld;
+    world->has_water = 0;
+    world->temperature = 1900;
+    world->vegetation_r = world->vegetation_g = world->vegetation_b = 0;
+    set(lava_static_reference, false);
+    for (int pose = 0; pose < 12; ++pose)
+    {
+        viewer_lat = pose * .4 / earth_radius;
+        viewer_eye_height = pose < 6 ? 1.7 : 6.0;
+        altitude = -.35 + pose * .04;
+        azimuth = pose * .6;
+        const auto capture = [&](bool reference)
+        {
+            lava_static_reference = reference;
+            freeze_surface_time();
+            ImGui::GetCurrentContext()->Time += pose * .314;
+            draw_horizon();
+            auto result = render();
+            ImGui::NewFrame();
+            return result;
+        };
+        const auto expected = capture(true);
+        EXPECT_EQ(capture(false), expected);
+    }
+    if (PERF_P105)
+    {
+        EXPECT_GT(lava_topology_cache().hits, 0u);
+        EXPECT_GT(lava_particle_cache().hits, 0u);
+    }
 }
