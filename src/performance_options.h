@@ -47,7 +47,7 @@
 #define PERF_P041 1
 #endif
 #ifndef PERF_P042
-#define PERF_P042 1
+#define PERF_P042 0
 #endif
 #ifndef PERF_P050
 #define PERF_P050 1

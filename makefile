@@ -45,7 +45,7 @@ TESTS_SRC = $(TESTS_DIR)/fictionalstars_test.cpp $(TESTS_DIR)/point_test.cpp $(T
 			$(TESTS_DIR)/planet_test.cpp $(TESTS_DIR)/moon_test.cpp $(TESTS_DIR)/comet_test.cpp \
 			$(TESTS_DIR)/satellite_test.cpp $(TESTS_DIR)/cons_test.cpp \
 			$(TESTS_DIR)/serial_test.cpp $(TESTS_DIR)/misc_test.cpp $(TESTS_DIR)/cat_test.cpp \
-			$(TESTS_DIR)/housekeeping_test.cpp $(TESTS_DIR)/sound_test.cpp $(TESTS_DIR)/rendering_test.cpp $(TESTS_DIR)/performance_benchmark_test.cpp
+			$(TESTS_DIR)/housekeeping_test.cpp $(TESTS_DIR)/sound_test.cpp $(TESTS_DIR)/rendering_test.cpp
 
 BIN = bin
 OBJ = obj
@@ -334,3 +334,13 @@ $(BIN)/audit_fictional_population: tools/audit_fictional_population.cpp $(OBJS)
 
 $(OBJINT)/scenery_gpu.o: src/scenery_gpu.cpp
 	$(CPP) src/scenery_gpu.cpp $(CPPFLAGS) -c -o $(OBJINT)/scenery_gpu.o
+
+# Explicit developer benchmark target; excluded from ordinary test builds/runs.
+$(OBJ)/tests/performance_benchmark_test.o: $(TESTS_DIR)/performance_benchmark_test.cpp
+	mkdir -p $(@D)
+	$(CPP) $< $(CPPFLAGS) -c -o $@
+
+$(BIN)/performance_benchmark_test: $(OBJ)/tests/performance_benchmark_test.o $(OBJS) | $(BIN)
+	$(CPP) $< $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $@
+
+-include $(OBJ)/tests/performance_benchmark_test.d

@@ -3,7 +3,7 @@ Alienorum / fakestars / source baseline ed050bb / 28 October 2026
 
 PURPOSE AND REVIEW CONTRACT
 
-This is a fresh source and workload audit, with particular attention to walking on vegetated wet surfaces inside large fictional populations in remote galaxies. It is deliberately broader than the previous list of 17 findings. It includes conservative optimizations, architectural changes, approximations, and explicit options for cutting visual effects. Implemented proposals carry [x] beside their IDs; unmarked entries remain open. A checkmark records implementation, while user and hardware acceptance retain their separate status in ACCEPTANCE_CRITERIA.md. A source-confirmed cost is not proof that its replacement will be faster, and the proposed benefits are not additive: several entries attack the same work from different directions.
+This is a fresh source and workload audit, with particular attention to walking on vegetated wet surfaces inside large fictional populations in remote galaxies. It is deliberately broader than the previous list of 17 findings. It includes conservative optimizations, architectural changes, approximations, and explicit options for cutting visual effects. Implemented proposals carry [x] beside their IDs; unmarked entries remain open. A checkmark records implementation; DISABLED identifies a compiled-off implementation after benchmarking. User and hardware acceptance retain their separate status in ACCEPTANCE_CRITERIA.md. A source-confirmed cost is not proof that its replacement will be faster, and the proposed benefits are not additive: several entries attack the same work from different directions.
 
 The first review priorities are eliminating whole-catalog work from local surface frames, retaining terrain work while walking, reducing the number of plant candidates reaching detailed geometry, and avoiding repeated water/coast sampling. GPU cloud costs, synchronization, and resource arrival can also dominate particular scenes. A compact save file is valuable, but it does not eliminate the live cost of 126,874 imported objects.
 
@@ -166,7 +166,7 @@ Source: SurfaceSceneryCache updates east/north coordinates for every retained ob
 [x] P041 | A / S / Q0 | Reject invisible scenery before expensive classification and projection.
 Source: src/visuals.cpp around 6880. Per-candidate work includes distance, azimuth, deterministic size, biome state, height, and crown/base projection. Move cheap conservative range/frustum tests ahead of expensive surface queries where ordering permits. Use crown/trunk/shadow bounds rather than a point-only test. Classification is already cached after the first pass, so report first-visit and warm-frame effects separately. Validate oversized nearby plants and crowns whose trunks are offscreen. Preserve the accepted line-of-sight aspect correction; camera altitude must never become a shortcut for physical crown shape.
 
-[x] P042 | A / S / Q0 | Batch plant crowns and trunks with instanced GPU geometry.
+[x] P042 | A / S / Q0 | Batch plant crowns and trunks with instanced GPU geometry. DISABLED: PERF_P042=0 after repeated native Intel HD 2000 regressions; the CPU painter remains active.
 Source: src/visuals.cpp around 7137-7350 and src/classes/scenerydraw.h. Cached unit contours remove repeated trigonometry, but each visible crown still becomes an ImGui convex path with vertex/index generation and antialiasing. Upload instance data and draw shared crown/trunk geometry, with the same LOS aspect, color, terrain depth, and ordering. Validate overlapping crowns, clipping at the near plane, curved ground, and software fallback. This could cut CPU geometry and upload bandwidth substantially, but the measured result depends on plant count and driver behavior. Do not replace crowns with camera-pitch-shaped sprites.
 
 P043 | B / S / Q0 | Exploit temporal coherence in scenery depth ordering.
@@ -554,3 +554,25 @@ FINAL INVENTORY AND STATUS
 There are 117 proposals: 24 priority A, 70 priority B, and 23 priority C. There are 85 source-anchored S entries and 32 H entries. Quality classes total 88 Q0, 16 Q1, eight Q2, and five Q3. These counts classify proposals, not proven successful optimizations. The measurements are M1-M5 and the separate completed serialization harness results.
 
 The original audit changed no production source; its deliverables were this report and PERFORMANCE_AUDIT_FAILURE_EXPLANATION.txt. Subsequent approved work implements 18 of the 117 proposals, leaving 99 open. Completed batches: P001–P005 (e0eead1, F71), P020–P024 (d7d3cc8, F72), P031 (d3c246b, F74), P039–P042 (4f1f06b, F75), and P050–P052 (1454f10, F76). Implementation details, validation results, and pending user/hardware checks are recorded in ACCEPTANCE_CRITERIA.md. The temporary instrumentation, runtime copies, and raw logs stay outside the release sources. Existing unrelated untracked project files are left in place.
+
+
+IMPLEMENTATION BENCHMARK REVIEW
+See PERFORMANCE_BENCHMARKS.txt and the paired CSV files for methods and measurements.
+All eighteen implemented proposals have independent before/after measurements. Initial
+component timings are followed by core-frame runs with coherent observer/projection state,
+plus longer alternating confirmations. Comparisons are marginal with other fixes enabled;
+shared infrastructure is not counted twice. Neutral or mixed results are not proven gains.
+P022 and P024 additionally use corrected original-projection and metadata-free scalar
+references; those reruns supersede their initial reference-path timings. P050 has a fresh
+confirmation after removing all color-cache lookup/write work from its before path.
+
+P042 is disabled by default (#define PERF_P042 0). Across the initial, core, and extended
+runs its median wall time rises in both forest workloads on the Intel HD Graphics 2000.
+The extended still-view paired median is +1.19% with a descriptive 95% bootstrap interval
+of +0.28% to +4.02%; the core walking median is +5.08%. CPU time can fall while GPU-complete
+wall time rises, so reduced CPU geometry is not accepted as a frame-rate improvement.
+Images match the CPU renderer within one channel level. The original CPU crown/trunk
+painter preserves the scene; developers can explicitly enable P042 for other GPUs.
+Other existing proposals remain enabled where results improve or are inconclusive;
+no neutral result is reported as an established speedup. The new requested queue follows
+its stricter rule: new implementations without demonstrated improvement default to 0.

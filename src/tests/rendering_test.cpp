@@ -1,3 +1,4 @@
+#include "../performance_options.h"
 #define IMGUI_DEFINE_MATH_OPERATORS
 #include <algorithm>
 #include <functional>
@@ -4588,6 +4589,9 @@ TEST_F(RenderingRegressionTest, SceneryChunkCullingPreservesWalkingAndPitchedIma
 
 TEST_F(RenderingRegressionTest, InstancedPlantsPreserveContoursTrunksAndPainterOrdering)
 {
+#if !PERF_P042
+    GTEST_SKIP() << "P042 instancing is disabled after native GPU benchmarking.";
+#endif
     for (bool antialias : {false, true})
     {
         const auto paint = [&](bool gpu)
@@ -4654,6 +4658,9 @@ TEST_F(RenderingRegressionTest, InstancedPlantsPreserveContoursTrunksAndPainterO
 
 TEST_F(RenderingRegressionTest, InstancedForestMatchesTheReferenceDuringTravelAndCameraChanges)
 {
+#if !PERF_P042
+    GTEST_SKIP() << "P042 instancing is disabled after native GPU benchmarking.";
+#endif
     ImGui::EndFrame();
     render_width = 1280;
     render_height = 720;
@@ -4859,6 +4866,10 @@ TEST_F(RenderingRegressionTest, GlintColorCachePreservesPhotometricAndWhiteDwarf
         const auto expected = render();
         ImGui::NewFrame();
         water_cpu_reference = false;
+        freeze_surface_time();
+        draw_horizon();
+        EXPECT_EQ(image_difference(render(), expected), 0) << step;
+        ImGui::NewFrame();
         freeze_surface_time();
         draw_horizon();
         const auto cached_stats = horizon_water_stats();

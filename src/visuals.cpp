@@ -5068,11 +5068,15 @@ static Color water_light_color(CelestialObject* object)
     };
     static std::unordered_map<CelestialObject*, Entry> colors;
     const auto cls = object->typeclass();
-    const bool dynamic_wd = cls == class_star && static_cast<Star*>(object)->is_white_dwarf();
-    const Key key = {cls, object->BV_color, global_brightness, bv_correction, planet_bv_correction};
-    const auto found = colors.find(object);
-    if (performance_enabled(50) && !water_cpu_reference && !dynamic_wd && found != colors.end() && found->second.key == key)
-        return found->second.color;
+    const bool cache = performance_enabled(50) && !water_cpu_reference
+        && !(cls == class_star && static_cast<Star*>(object)->is_white_dwarf());
+    Key key;
+    if (cache)
+    {
+        key = {cls, object->BV_color, global_brightness, bv_correction, planet_bv_correction};
+        const auto found = colors.find(object);
+        if (found != colors.end() && found->second.key == key) return found->second.color;
+    }
     ++water_stats.color_misses;
     const Color original = cls == class_star
         ? Color::color_from_star(0, static_cast<Star*>(object), object->BV_color)
@@ -5080,7 +5084,7 @@ static Color water_light_color(CelestialObject* object)
     const double maximum = fmax(original.red, fmax(original.green, original.blue));
     Color color(maximum > 0 ? original.red / maximum : 1,
         maximum > 0 ? original.green / maximum : 1, maximum > 0 ? original.blue / maximum : 1);
-    if (!dynamic_wd)
+    if (cache)
     {
         if (colors.size() >= 64) colors.clear();
         colors[object] = {key, color};
@@ -6034,55 +6038,80 @@ void draw_horizon()
                 mesh_valid = true;
             }
 
-            terrain_raster.reset(screen_w, static_cast<int>(dispcy * 2.0));
+            terrain_raster.reset(screen_w, static_cast<int>(dispcy * 2.0), performance_enabled(24));
             static std::vector<ProjectedTerrainVertex> projected;
             if (!performance_enabled(23)) std::vector<ProjectedTerrainVertex>().swap(projected);
             projected.assign(mesh.size(), {});
             static std::vector<std::array<double, 3>> camera_vertices;
             if (!performance_enabled(23)) std::vector<std::array<double, 3>>().swap(camera_vertices);
-            camera_vertices.resize(mesh.size());
-            std::array<HorizonTerrainSector, terrain_columns> sectors;
             std::array<bool, terrain_columns> visible_sectors;
             const double cos_alt = cos(altitude), sin_alt = sin(altitude);
-            const double horizontal = (dispcx + 2) / (zoom * dispcx);
-            const double vertical = (dispcy + 2) / (zoom * dispcx);
-            for (int column = 0; column < terrain_columns; ++column)
+            if (!performance_enabled(22) || horizon_terrain_cpu_reference)
             {
-                const double bearing = mesh[column].bearing - azimuth;
-                const double sine = sin(bearing), cosine = cos(bearing);
-                for (int row = 0; row < terrain_rows; ++row)
+                visible_sectors.fill(true);
+                for (size_t vertex = 0; vertex < mesh.size(); ++vertex)
                 {
-                    const size_t vertex = row * terrain_columns + column;
                     const HorizonTerrainVertex &source = mesh[vertex];
-                    const double x = source.distance * sine;
-                    const double north = source.distance * cosine;
+                    const double bearing = source.bearing - azimuth;
+                    const double x = source.distance * sin(bearing);
+                    const double north = source.distance * cos(bearing);
                     const double refraction = surface_lift * fmin(1.0, source.distance / surface_range) * source.distance;
                     const double up = source.elevation - surface_eye
                         - source.distance * source.distance / (2.0 * surface_radius) + refraction;
                     const double depth = up * sin_alt + north * cos_alt;
-                    const double y = up * cos_alt - north * sin_alt;
-                    camera_vertices[vertex] = {x, y, depth};
-                    sectors[column].include(x, y, depth, horizontal, vertical);
+                    if (depth > 0.1)
+                    {
+                        ProjectedTerrainVertex &target = projected[vertex];
+                        target.x = dispcx + x / depth * zoom * dispcx;
+                        target.y = dispcy - (up * cos_alt - north * sin_alt) / depth * zoom * dispcx;
+                        target.inverse_depth = 1.0 / depth;
+                        target.distance_over_depth = source.distance / depth;
+                    }
                 }
             }
-            for (int column = 0; column < terrain_columns; ++column)
-                visible_sectors[column] = horizon_terrain_cpu_reference || !performance_enabled(22)
-                    || !sectors[column].outside(sectors[(column + 1) % terrain_columns]);
-            for (int column = 0; column < terrain_columns; ++column)
+            else
             {
-                if (!visible_sectors[column] && !visible_sectors[(column + terrain_columns - 1) % terrain_columns]) continue;
-                for (int row = 0; row < terrain_rows; ++row)
+                camera_vertices.resize(mesh.size());
+                std::array<HorizonTerrainSector, terrain_columns> sectors;
+                const double horizontal = (dispcx + 2) / (zoom * dispcx);
+                const double vertical = (dispcy + 2) / (zoom * dispcx);
+                for (int column = 0; column < terrain_columns; ++column)
                 {
-                    const size_t vertex = row * terrain_columns + column;
-                    const auto &camera = camera_vertices[vertex];
-                    const double depth = camera[2];
-                    if (depth > .1)
+                    const double bearing = mesh[column].bearing - azimuth;
+                    const double sine = sin(bearing), cosine = cos(bearing);
+                    for (int row = 0; row < terrain_rows; ++row)
                     {
-                        auto &target = projected[vertex];
-                        target.x = dispcx + camera[0] / depth * zoom * dispcx;
-                        target.y = dispcy - camera[1] / depth * zoom * dispcx;
-                        target.inverse_depth = 1.0 / depth;
-                        target.distance_over_depth = mesh[vertex].distance / depth;
+                        const size_t vertex = row * terrain_columns + column;
+                        const HorizonTerrainVertex &source = mesh[vertex];
+                        const double x = source.distance * sine;
+                        const double north = source.distance * cosine;
+                        const double refraction = surface_lift * fmin(1.0, source.distance / surface_range) * source.distance;
+                        const double up = source.elevation - surface_eye
+                            - source.distance * source.distance / (2.0 * surface_radius) + refraction;
+                        const double depth = up * sin_alt + north * cos_alt;
+                        const double y = up * cos_alt - north * sin_alt;
+                        camera_vertices[vertex] = {x, y, depth};
+                        sectors[column].include(x, y, depth, horizontal, vertical);
+                    }
+                }
+                for (int column = 0; column < terrain_columns; ++column)
+                    visible_sectors[column] = !sectors[column].outside(sectors[(column + 1) % terrain_columns]);
+                for (int column = 0; column < terrain_columns; ++column)
+                {
+                    if (!visible_sectors[column] && !visible_sectors[(column + terrain_columns - 1) % terrain_columns]) continue;
+                    for (int row = 0; row < terrain_rows; ++row)
+                    {
+                        const size_t vertex = row * terrain_columns + column;
+                        const auto &camera = camera_vertices[vertex];
+                        const double depth = camera[2];
+                        if (depth > .1)
+                        {
+                            auto &target = projected[vertex];
+                            target.x = dispcx + camera[0] / depth * zoom * dispcx;
+                            target.y = dispcy - camera[1] / depth * zoom * dispcx;
+                            target.inverse_depth = 1.0 / depth;
+                            target.distance_over_depth = mesh[vertex].distance / depth;
+                        }
                     }
                 }
             }

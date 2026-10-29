@@ -58,6 +58,7 @@ namespace alienorum
     class HorizonTerrainRaster
     {
         int width = 0, height = 0;
+        bool tile_metadata = true;
         std::vector<float> inverse_depth;
         std::vector<float> surface_distance;
         std::vector<int> column_top;
@@ -110,8 +111,9 @@ namespace alienorum
         public:
         size_t rejected_tiles = 0, covered_tiles = 0, occluded_tiles = 0, occluded_triangles = 0;
         void deactivate() { width = height = 0; }
-        void reset(int w, int h)
+        void reset(int w, int h, bool tiled = true)
         {
+            tile_metadata = tiled;
             width = std::max(0, w);
             height = std::max(0, h);
             inverse_depth.assign(static_cast<size_t>(width) * height, 0);
@@ -119,7 +121,7 @@ namespace alienorum
             column_top.assign(width, height);
             rejected_tiles = covered_tiles = occluded_tiles = occluded_triangles = 0;
             depth_columns = (width + depth_tile_size - 1) / depth_tile_size;
-            const size_t tiles = static_cast<size_t>(depth_columns) * ((height + depth_tile_size - 1) / depth_tile_size);
+            const size_t tiles = tile_metadata ? static_cast<size_t>(depth_columns) * ((height + depth_tile_size - 1) / depth_tile_size) : 0;
             filled.assign(tiles, 0);
             updates.assign(tiles, 0);
             lower_depth.assign(tiles, 0);
@@ -157,7 +159,7 @@ namespace alienorum
             const size_t index = static_cast<size_t>(y) * width + x;
             if (depth > inverse_depth[index] && std::isfinite(distance) && distance > 0)
             {
-                update_depth_tile(x, y, inverse_depth[index], static_cast<float>(depth));
+                if (tile_metadata) update_depth_tile(x, y, inverse_depth[index], static_cast<float>(depth));
                 inverse_depth[index] = static_cast<float>(depth);
                 surface_distance[index] = static_cast<float>(distance);
                 column_top[x] = std::min(column_top[x], y);
@@ -167,6 +169,7 @@ namespace alienorum
         void triangle(const ProjectedTerrainVertex &a, const ProjectedTerrainVertex &b,
             const ProjectedTerrainVertex &c, bool tiled = true)
         {
+            tiled = tiled && tile_metadata;
             if (a.inverse_depth <= 0 || b.inverse_depth <= 0 || c.inverse_depth <= 0)
             {
                 return;

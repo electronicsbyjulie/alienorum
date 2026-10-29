@@ -95,7 +95,12 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
     const int frames = setting("ALIENORUM_PERF_FRAMES", 8);
     const auto ids = cases();
     bool catalog = false;
-    for (int id : ids) catalog |= id <= 5;
+    for (int id : ids)
+    {
+        ASSERT_GT(id, 0);
+        ASSERT_LT(static_cast<size_t>(id), performance_reference.size());
+        catalog |= id <= 5;
+    }
     if (catalog)
     {
         const int bodies = setting("ALIENORUM_PERF_POPULATION", 12000);

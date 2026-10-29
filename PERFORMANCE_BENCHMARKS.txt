@@ -1,6 +1,6 @@
 PER-PROPOSAL PERFORMANCE REVIEW
 
-Status: initial component sweep complete; longer core-frame confirmations are running.
+Status: independent review of all eighteen existing proposals complete. P042 is disabled by default; other inconclusive results remain labeled as such.
 
 Method
 Each proposal has a separate PERF_Pxxx compile-time switch in src/performance_options.h.
@@ -98,3 +98,93 @@ mkdir -p /tmp/alienorum-perf-objects/{internal,imgui,igfd,tests} /tmp/alienorum-
 make -j2 OBJ=/tmp/alienorum-perf-objects BIN=/tmp/alienorum-perf-bin SANFLAGS=-DALIENORUM_PERFORMANCE_BENCHMARK=1 /tmp/alienorum-perf-bin/performance_benchmark_test
 python3 tools/run_performance_benchmark.py --output /tmp/review.csv
 This uses its own hidden window and synthetic objects, not a production universe.
+
+CORE-FRAME REVIEW AND DEFAULT DECISION
+The core-frame runs add coordinate/projection processing to every horizon sample and
+record main-thread CPU time alongside GPU-complete wall time. The epoch and animation
+inputs repeat for each mode; the drawable is verified as 1280 x 720. Core runs use five
+paired blocks of eight frames; extended confirmations use nine blocks of twenty-four
+frames. Corrected raster/color confirmations use nine blocks of sixteen frames.
+
+P022's final before path is the original direct projection loop from e0eead1, without
+sector bounds or the camera scratch pass. P024's scalar before path omits tile metadata
+allocation/maintenance. The initial P022/P024 rows are superseded by the corrected raster
+run. P050's final before path omits cache lookups, inserts, and retained storage. Its later
+confirmation rows in PERFORMANCE_BENCHMARK_CONFIRM_RESULTS.csv overlap a private build
+and are rejected; only the separate fresh COLOR_RESULTS run informs its final status.
+The source list used by P050 was already provided by P005 and is not credited again.
+
+Evidence priority: corrected raster rows for P022/P024, fresh color rows for P001/P050,
+extended confirmations for P039/P042, and core-frame rows for the other proposals.
+The corrected raster run uses the local three-object fixture; the catalog/core/color runs
+also include the 42,120 synthetic remote/background objects. Each comparison retains
+identical inputs and other enabled proposals within its own run. Cross-run percentages
+are not pooled or added. Descriptive paired-median 95% bootstrap intervals use a fixed
+random seed and 4,000 resamples; zero-crossing intervals are reported as mixed/neutral.
+
+Proposal | Workload | Before ms | After ms | Paired change | Interval | Assessment
+P001 | catalog | 13.016 | 13.573 | +5.47% | [-8.51, +18.70] | mixed/neutral
+P001 | catalog-time-jump | 42.433 | 41.446 | -0.89% | [-2.84, +2.23] | mixed/neutral
+P002 | catalog | 17.725 | 12.106 | -31.32% | [-35.33, -8.95] | faster
+P002 | catalog-time-jump | 45.898 | 41.408 | -8.28% | [-15.73, -7.47] | faster
+P003 | catalog | 14.445 | 13.841 | -4.18% | [-16.03, -0.40] | faster
+P003 | catalog-time-jump | 42.259 | 42.192 | +2.04% | [-6.24, +4.74] | mixed/neutral
+P004 | catalog | 14.646 | 12.597 | -13.05% | [-24.07, -10.65] | faster
+P004 | catalog-time-jump | 44.681 | 43.757 | -4.24% | [-8.18, +4.37] | mixed/neutral
+P005 | catalog | 19.171 | 14.898 | -21.87% | [-37.92, -6.71] | faster
+P005 | catalog-time-jump | 46.264 | 42.244 | -10.29% | [-37.86, -8.01] | faster
+P020 | forest-walk | 50.517 | 43.855 | -12.24% | [-20.20, +1.93] | mixed/neutral
+P020 | shore-walk | 138.160 | 130.034 | -5.53% | [-6.58, -2.31] | faster
+P021 | skyline-still | 24.960 | 24.833 | -0.22% | [-2.96, +3.68] | mixed/neutral
+P021 | skyline-walk | 27.360 | 27.066 | +3.25% | [-15.94, +4.35] | mixed/neutral
+P022 | forest-walk | 32.715 | 32.485 | +0.69% | [-1.71, +2.27] | mixed/neutral
+P022 | shore-walk | 120.478 | 120.932 | +0.61% | [-0.52, +6.32] | mixed/neutral
+P023 | forest-walk | 45.359 | 43.784 | -3.10% | [-5.95, +15.96] | mixed/neutral
+P023 | shore-walk | 132.486 | 131.832 | -0.34% | [-1.93, +2.02] | mixed/neutral
+P024 | forest-walk | 32.459 | 32.688 | +2.69% | [-5.04, +5.22] | mixed/neutral
+P024 | shore-walk | 120.815 | 122.590 | -0.20% | [-3.86, +2.90] | mixed/neutral
+P031 | forest-refresh | 104.937 | 93.606 | -10.59% | [-12.42, -7.64] | faster
+P031 | shore-walk | 130.692 | 130.399 | -0.84% | [-4.09, +3.23] | mixed/neutral
+P039 | forest-walk | 44.919 | 45.083 | +0.47% | [-4.56, +3.65] | mixed/neutral
+P039 | shore-walk | 131.877 | 130.847 | -0.37% | [-2.58, +0.30] | mixed/neutral
+P040 | forest-walk | 44.050 | 43.924 | -0.60% | [-2.79, +10.19] | mixed/neutral
+P040 | shore-walk | 131.915 | 131.812 | -0.83% | [-5.48, +2.39] | mixed/neutral
+P041 | forest-walk | 45.246 | 44.376 | -2.91% | [-6.84, +1.81] | mixed/neutral
+P041 | shore-walk | 133.113 | 132.225 | -0.67% | [-1.22, +2.07] | mixed/neutral
+P042 | forest-still | 38.150 | 38.845 | +1.19% | [+0.28, +4.02] | slower
+P042 | forest-walk | 44.472 | 45.664 | +3.65% | [-6.77, +6.13] | mixed/neutral
+P050 | forest-walk | 43.942 | 43.869 | +0.94% | [-3.55, +5.16] | mixed/neutral
+P050 | ocean-still | 36.124 | 36.330 | -0.66% | [-1.76, +3.39] | mixed/neutral
+P050 | shore-walk | 132.344 | 131.427 | -0.79% | [-3.86, +1.59] | mixed/neutral
+P051 | forest-walk | 46.942 | 44.196 | -7.72% | [-17.74, -1.57] | faster
+P051 | ocean-still | 39.800 | 36.586 | -7.39% | [-11.91, +6.47] | mixed/neutral
+P051 | shore-walk | 138.927 | 131.599 | -5.69% | [-6.63, -3.85] | faster
+P052 | forest-walk | 49.813 | 44.665 | -8.10% | [-14.36, -6.84] | faster
+P052 | ocean-still | 41.112 | 38.043 | -7.75% | [-9.94, -7.05] | faster
+P052 | shore-walk | 130.335 | 133.971 | +1.92% | [-0.20, +5.69] | mixed/neutral
+
+Decision: #define PERF_P042 0. All three sweeps have positive median wall-time changes
+for instancing in both forest workloads. The extended still view is +1.19% with interval
+[+0.28%, +4.02%]; the core walking view is +5.08%. Reduced CPU work does not compensate
+for slower GPU-complete frames on this Intel HD 2000. The CPU painter keeps the same
+contours, trunk attachment, sightline aspect, density, shadows, and ordering. The instanced
+implementation remains available for an explicit build comparison on another GPU.
+
+No other old proposal is consistently slower across the accepted comparisons. P022/P024
+and several smaller caches are mixed/neutral; they are not established gains. P001's
+membership construction is shared with P002, so its isolated row measures the additional
+cached predicate lookup rather than deleting infrastructure another enabled fix uses.
+The new requested queue retains the stricter policy: an unproven new optimization defaults
+to 0. A zero default is a benchmark decision, not permission to remove physical data or
+relax visible behavior. Source/scene/hardware differences can change future results.
+
+Post-decision verification: 99 enabled rendering checks and all 14 housekeeping checks
+pass. Eight optional GPU checks skip, including the two now-disabled P042 comparisons.
+The pre-decision private GPU comparisons exercised P042 and stayed within one channel
+level. The application builds. User visual checks and other hardware remain separate.
+
+CMake verification also passes after the default change. The benchmark executable has
+an explicit Make target and is excluded from ordinary test builds/runs. To compare a
+shipping-disabled implementation, add its override (for example -DPERF_P042=1) to the
+private build's SANFLAGS alongside ALIENORUM_PERFORMANCE_BENCHMARK; production defaults
+stay at 0. No benchmark executable, fixture, report, or raw CSV is a runtime dependency.
