@@ -1,0 +1,100 @@
+PER-PROPOSAL PERFORMANCE REVIEW
+
+Status: initial component sweep complete; longer core-frame confirmations are running.
+
+Method
+Each proposal has a separate PERF_Pxxx compile-time switch in src/performance_options.h.
+Production builds fold these switches to constants. A private benchmark build also permits
+one reference path at a time, while keeping the other implemented proposals enabled.
+Shared infrastructure remains present where another enabled proposal relies on it.
+These are marginal before/after comparisons, not additive speedup claims.
+
+The benchmark fixes simulation epoch, animation phase, camera, world, map, and route.
+It alternates AB/BA order over repeated paired runs, excludes setup and warmup frames,
+and waits for GPU completion. Images must match exactly, except for the established
+P042 two-channel-level tolerance for CPU/GPU antialias arithmetic. GPU identity,
+viewport, sample counts, workloads, and raw per-pair timings accompany every result.
+Native hidden-window GL tests draw only into their own window; user images and layouts
+are untouched. Software-renderer results are identified explicitly and cannot establish
+performance on other GPUs. No production universe or catalog is changed.
+
+Existing proposals
+P001-P005, P020-P024, P031, P039-P042, P050-P052: initial comparisons completed; confirmations pending.
+Consistent regressions will receive a default PERF_Pxxx value of 0 and a disabled status
+in FRAME_RATE_AUDIT_PROPOSALS.txt. Neutral existing results will not be called gains.
+
+Requested implementation queue, in order
+P006, P007, P008, P012, P013, P018, P025, P026, P028, P029, P030, P036, P037,
+P043, P049, P067, P068, P073, P077, P078, P090, P094, P095, P101, P105, P108.
+Each item will receive its own implementation, paired measurements, correctness checks,
+status entry, commit, and push. New changes without demonstrated improvement remain
+available behind a default 0 switch. A two-minute pause separates completed fixes.
+
+INITIAL COMPONENT SWEEP
+Hardware: Mesa Intel(R) HD Graphics 2000 (SNB GT1), native hidden GL window.
+Viewport: 1280 x 720. Five alternating paired blocks, eight measured frames per mode.
+Synthetic catalog: 30,000 background stars, 120 remote hosts, 12,000 dormant planets,
+and the local three-object surface fixture. Catalog scenes include the coordinate pass
+and three filtered consumer traversals. Other scenes isolate horizon preparation/drawing
+and GPU completion. Core-frame confirmations also run the coordinate pass for those scenes.
+A complete application includes additional UI/background drawing and can have other costs.
+Epoch, animation phases, route and material inputs repeat between the two paths.
+All comparisons pass: exact images and catalog state, with P042 within one channel level.
+Raw pairs: PERFORMANCE_BENCHMARK_RESULTS.csv. Negative changes mean lower frame time.
+These are local marginal results; improvements cannot be added across proposals.
+No default has been disabled solely on these short initial samples.
+
+Proposal | Workload | Before ms | After ms | Median paired change
+P001 | catalog | 18.207 | 15.446 | +1.33%
+P001 | catalog-time-jump | 40.092 | 41.277 | +3.09%
+P002 | catalog | 18.538 | 13.634 | -27.41%
+P002 | catalog-time-jump | 46.281 | 41.356 | -11.25%
+P003 | catalog | 13.229 | 11.631 | -12.64%
+P003 | catalog-time-jump | 42.710 | 42.639 | -0.07%
+P004 | catalog | 16.357 | 14.132 | -15.05%
+P004 | catalog-time-jump | 43.728 | 41.054 | -6.42%
+P005 | catalog | 14.776 | 12.637 | -18.21%
+P005 | catalog-time-jump | 43.570 | 41.056 | -6.17%
+P020 | forest-walk | 41.169 | 33.699 | -18.79%
+P020 | shore-walk | 126.427 | 119.842 | -5.40%
+P021 | skyline-still | 14.045 | 14.206 | -5.67%
+P021 | skyline-walk | 14.534 | 13.416 | -9.12%
+P022 | forest-walk | 33.621 | 33.736 | -0.31%
+P022 | shore-walk | 121.841 | 121.100 | -1.40%
+P023 | forest-walk | 33.824 | 33.387 | -1.29%
+P023 | shore-walk | 120.175 | 120.139 | -0.39%
+P024 | forest-walk | 33.573 | 33.689 | +1.02%
+P024 | shore-walk | 120.356 | 120.403 | -0.34%
+P031 | forest-refresh | 89.620 | 82.685 | -8.16%
+P031 | shore-walk | 119.964 | 120.044 | -0.50%
+P039 | forest-walk | 33.694 | 33.260 | -1.59%
+P039 | shore-walk | 119.344 | 121.746 | +1.61%
+P040 | forest-walk | 33.830 | 32.675 | -2.51%
+P040 | shore-walk | 120.311 | 120.536 | +0.13%
+P041 | forest-walk | 34.311 | 33.304 | -1.25%
+P041 | shore-walk | 121.893 | 119.349 | -2.62%
+P042 | forest-still | 27.406 | 29.042 | +5.96%
+P042 | forest-walk | 32.306 | 33.437 | +5.19%
+P050 | forest-walk | 33.288 | 33.666 | +0.00%
+P050 | ocean-still | 25.372 | 25.135 | -0.93%
+P050 | shore-walk | 120.665 | 121.261 | +0.49%
+P051 | forest-walk | 37.407 | 33.388 | -11.46%
+P051 | ocean-still | 29.632 | 25.373 | -13.07%
+P051 | shore-walk | 124.905 | 120.070 | -3.97%
+P052 | forest-walk | 38.710 | 34.760 | -8.13%
+P052 | ocean-still | 30.328 | 24.964 | -17.98%
+P052 | shore-walk | 121.347 | 119.488 | -0.69%
+
+The P001/P002 membership structures overlap: the P001 comparison changes cached
+activity-predicate lookup while retaining the membership data used by P002. P005
+already supplies the bright-source list; P050 measures its additional color/storage reuse.
+Existing neutral/mixed results remain unconfirmed, rather than being labeled improvements.
+The full native correctness run passes 101 rendering checks and 14 housekeeping checks.
+Six optional terrain GPU checks remain skipped. Benchmark controls compile out of ordinary
+production paths; the mutable per-proposal controls exist only in the private benchmark build.
+
+Reproduce a private build:
+mkdir -p /tmp/alienorum-perf-objects/{internal,imgui,igfd,tests} /tmp/alienorum-perf-bin
+make -j2 OBJ=/tmp/alienorum-perf-objects BIN=/tmp/alienorum-perf-bin SANFLAGS=-DALIENORUM_PERFORMANCE_BENCHMARK=1 /tmp/alienorum-perf-bin/performance_benchmark_test
+python3 tools/run_performance_benchmark.py --output /tmp/review.csv
+This uses its own hidden window and synthetic objects, not a production universe.

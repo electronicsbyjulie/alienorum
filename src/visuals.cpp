@@ -1,3 +1,4 @@
+#include "performance_options.h"
 #include "classes/galaxygeometry.h"
 
 #include "globals.h"
@@ -5070,7 +5071,7 @@ static Color water_light_color(CelestialObject* object)
     const bool dynamic_wd = cls == class_star && static_cast<Star*>(object)->is_white_dwarf();
     const Key key = {cls, object->BV_color, global_brightness, bv_correction, planet_bv_correction};
     const auto found = colors.find(object);
-    if (!water_cpu_reference && !dynamic_wd && found != colors.end() && found->second.key == key)
+    if (performance_enabled(50) && !water_cpu_reference && !dynamic_wd && found != colors.end() && found->second.key == key)
         return found->second.color;
     ++water_stats.color_misses;
     const Color original = cls == class_star
@@ -5451,6 +5452,7 @@ void draw_horizon()
         const bool terrain_mesh = show_terrain && surface_biomes
             && !ocean_world && cel->type != lavaworld;
         static HorizonTerrainRaster terrain_raster;
+        if (!performance_enabled(23)) terrain_raster = HorizonTerrainRaster();
         terrain_raster.deactivate();
         const auto surface_coord = [&](double distance, double bearing)
         {
@@ -5547,7 +5549,7 @@ void draw_horizon()
             if (cached_whereami != whereami || cached_lat != viewer_lat || cached_lon != viewer_lon
                 || cached_eye_height != viewer_eye_height || cached_bump_map != cel->surf_map
                 || cached_bump_generation != (cel->surf_map ? cel->surf_map->gen : 0) || cached_radius != surface_radius
-                || cached_cpu_reference != horizon_terrain_cpu_reference)
+                || cached_cpu_reference != (horizon_terrain_cpu_reference || !performance_enabled(21)))
             {
                 if (cached_whereami != whereami)
                 {
@@ -5586,7 +5588,7 @@ void draw_horizon()
                     const double ny = equatorial * sin_lon + east * cos_lon;
                     const double nz = radial * sin_lat + north * cos_lat;
                     cached_raw_noise[j] = .5 + .5 * skyline_field.value(nx, ny, nz, sample_skyline,
-                        horizon_terrain_cpu_reference ? nullptr : &skyline_patches[j]);
+                        horizon_terrain_cpu_reference || !performance_enabled(21) ? nullptr : &skyline_patches[j]);
                     if (cached_raw_noise[j] < cached_raw_min)
                     {
                         cached_raw_min = cached_raw_noise[j];
@@ -5644,7 +5646,7 @@ void draw_horizon()
                 cached_bump_map = cel->surf_map;
                 cached_bump_generation = cel->surf_map ? cel->surf_map->gen : 0;
                 cached_radius = surface_radius;
-                cached_cpu_reference = horizon_terrain_cpu_reference;
+                cached_cpu_reference = horizon_terrain_cpu_reference || !performance_enabled(21);
             }
 
             double terrain_height = dispcx * 0.08 * zoom;
@@ -5872,7 +5874,7 @@ void draw_horizon()
             auto mesh_key = std::make_tuple(whereami, map, surface_radius,
                 map->gen, p ? p->has_water : 0.0f, water_favorable,
                 p ? p->vegetation_r : 0, p ? p->vegetation_g : 0, p ? p->vegetation_b : 0, shore_displacement,
-                gpu_mesh_noise, horizon_terrain_cpu_reference);
+                gpu_mesh_noise, horizon_terrain_cpu_reference, performance_enabled(20));
             static decltype(mesh_key) saved_mesh_key;
             auto mesh_view = std::make_tuple(viewer_lat, viewer_lon, surface_eye, surface_lift);
             static decltype(mesh_view) saved_mesh_view;
@@ -5943,7 +5945,7 @@ void draw_horizon()
                         for (int column = 0; column < terrain_columns; ++column)
                         {
                             const double bearing = directions[column][0];
-                            const auto coord = horizon_terrain_cpu_reference ? surface_coord(distance, bearing) : ring_coordinate(row, column);
+                            const auto coord = (horizon_terrain_cpu_reference || !performance_enabled(20)) ? surface_coord(distance, bearing) : ring_coordinate(row, column);
                             mesh_coordinates.push_back(coord);
                             positions.push_back({surface_radius * cos(coord.first) * cos(coord.second) / 50000.0,
                                 surface_radius * cos(coord.first) * sin(coord.second) / 50000.0,
@@ -5970,7 +5972,7 @@ void draw_horizon()
                         const double bearing = directions[column][0];
                         const size_t sample = row * terrain_columns + column;
                         const auto coord = mesh_coordinates.empty()
-                            ? (horizon_terrain_cpu_reference ? surface_coord(distance, bearing) : ring_coordinate(row, column))
+                            ? ((horizon_terrain_cpu_reference || !performance_enabled(20)) ? surface_coord(distance, bearing) : ring_coordinate(row, column))
                             : mesh_coordinates[sample];
                         double total = 0, weight = 0;
                         if (gpu_generated)
@@ -5982,14 +5984,14 @@ void draw_horizon()
                         {
                             total = relief_field.value(cos(coord.first) * cos(coord.second),
                                 cos(coord.first) * sin(coord.second), sin(coord.first), sample_relief,
-                                horizon_terrain_cpu_reference ? nullptr : &relief_patches[sample]);
+                                horizon_terrain_cpu_reference || !performance_enabled(20) ? nullptr : &relief_patches[sample]);
                             weight = 1;
                         }
                         const double procedural = surface_range * 0.2 * fmax(0.0, 0.15 + 0.5 * total / weight);
                         const double bump = map->has_bump_data()
                             ? fmax(0.0, map->elevation_at_bilinear(coord.first, coord.second) - base_elevation) : 0.0;
                         row_relief[column] = (procedural + bump) * ramp;
-                        row_water[column] = horizon_terrain_cpu_reference ? water_at(coord.first, coord.second)
+                        row_water[column] = (horizon_terrain_cpu_reference || !performance_enabled(20)) ? water_at(coord.first, coord.second)
                             : surface.water_at(coord.first, coord.second, water_patches[sample]);
                         HorizonTerrainVertex &vertex = mesh[row * terrain_columns + column];
                         vertex.distance = distance;
@@ -6034,8 +6036,10 @@ void draw_horizon()
 
             terrain_raster.reset(screen_w, static_cast<int>(dispcy * 2.0));
             static std::vector<ProjectedTerrainVertex> projected;
+            if (!performance_enabled(23)) std::vector<ProjectedTerrainVertex>().swap(projected);
             projected.assign(mesh.size(), {});
             static std::vector<std::array<double, 3>> camera_vertices;
+            if (!performance_enabled(23)) std::vector<std::array<double, 3>>().swap(camera_vertices);
             camera_vertices.resize(mesh.size());
             std::array<HorizonTerrainSector, terrain_columns> sectors;
             std::array<bool, terrain_columns> visible_sectors;
@@ -6062,7 +6066,7 @@ void draw_horizon()
                 }
             }
             for (int column = 0; column < terrain_columns; ++column)
-                visible_sectors[column] = horizon_terrain_cpu_reference
+                visible_sectors[column] = horizon_terrain_cpu_reference || !performance_enabled(22)
                     || !sectors[column].outside(sectors[(column + 1) % terrain_columns]);
             for (int column = 0; column < terrain_columns; ++column)
             {
@@ -6087,6 +6091,7 @@ void draw_horizon()
             gpu_raster = !horizon_terrain_gpu_reference;
             #endif
             static std::vector<ProjectedTerrainVertex> triangles;
+            if (!performance_enabled(23)) std::vector<ProjectedTerrainVertex>().swap(triangles);
             triangles.clear();
             if (gpu_raster) triangles.reserve((terrain_rows - 1) * terrain_columns * 6);
             for (int row = 0; row < terrain_rows - 1; ++row)
@@ -6102,8 +6107,8 @@ void draw_horizon()
                     if (gpu_raster) triangles.insert(triangles.end(), {a, b, c, b, d, c});
                     else
                     {
-                        terrain_raster.triangle(a, b, c, !horizon_terrain_cpu_reference);
-                        terrain_raster.triangle(b, d, c, !horizon_terrain_cpu_reference);
+                        terrain_raster.triangle(a, b, c, !horizon_terrain_cpu_reference && performance_enabled(24));
+                        terrain_raster.triangle(b, d, c, !horizon_terrain_cpu_reference && performance_enabled(24));
                     }
                 }
             }
@@ -6113,7 +6118,7 @@ void draw_horizon()
                 for (size_t index = 0; index < triangles.size(); index += 3)
                 {
                     terrain_raster.triangle(triangles[index], triangles[index + 1], triangles[index + 2],
-                        !horizon_terrain_cpu_reference);
+                        !horizon_terrain_cpu_reference && performance_enabled(24));
                 }
             }
             for (int x = 0; x < screen_w; ++x)
@@ -6410,7 +6415,9 @@ void draw_horizon()
         if (surface_water && !faded && screen_w > 0)
         {
             double wave_t = ImGui::GetTime();
-            static std::vector<GlintSource> glint_sources;
+            static std::vector<GlintSource> retained_glint_sources;
+            std::vector<GlintSource> uncached_glint_sources;
+            auto& glint_sources = performance_enabled(50) ? retained_glint_sources : uncached_glint_sources;
             glint_sources.clear();
             CelestialObject *sun_obj = mycenobj ? mycenobj : (whereami >= 0 ? cels[whereami]->get_light_center() : nullptr);
             if (sun_obj)
@@ -6579,7 +6586,8 @@ void draw_horizon()
                 surface_range, delta_far, delta_near, azimuth, altitude, zoom, dispcx, dispcy, screen_w);
             static decltype(wave_key) saved_wave_key;
             static bool wave_valid = false;
-            const bool rebuild_geometry = water_cpu_reference || !wave_valid || wave_key != saved_wave_key;
+            const bool geometry_changed = !wave_valid || wave_key != saved_wave_key;
+            const bool rebuild_geometry = water_cpu_reference || !performance_enabled(51) || geometry_changed;
             int num_wave_rows = WAVE_NUM_ROWS;
             if (rebuild_geometry)
             {
@@ -6629,11 +6637,11 @@ void draw_horizon()
             auto bounds_key = std::make_tuple(viewer_lat, viewer_lon, map, map ? map->gen : 0u,
                 map && map->is_complete(), generating_fic_texture, water_favorable, surface_biomes,
                 ocean_world, p ? p->has_water : 0.0f, cel->type, terrain_mesh, shore_displacement,
-                p ? p->vegetation_r : 0, p ? p->vegetation_g : 0, p ? p->vegetation_b : 0, water_cpu_reference);
+                p ? p->vegetation_r : 0, p ? p->vegetation_g : 0, p ? p->vegetation_b : 0, water_cpu_reference, performance_enabled(52));
             static decltype(bounds_key) saved_bounds_key;
             static std::vector<double> saved_wave_horizon;
             static unsigned int saved_clipped = 0, saved_land = 0;
-            const bool rebuild_bounds = rebuild_geometry || bounds_key != saved_bounds_key
+            const bool rebuild_bounds = geometry_changed || water_cpu_reference || bounds_key != saved_bounds_key
                 || saved_wave_horizon.size() != static_cast<size_t>(screen_w)
                 || !std::equal(saved_wave_horizon.begin(), saved_wave_horizon.end(), min_hz_y_at_x.begin());
             if (rebuild_bounds)
@@ -6645,11 +6653,16 @@ void draw_horizon()
                 const double farthest = terrain_mesh
                     ? fmin(fmax(60000.0, surface_range * 8.0), surface_radius * .15) : surface_range;
                 const double maximum_distance = 2 * std::max(surface_range, farthest);
-                const bool certify_land = !water_cpu_reference && maximum_distance <= 1e6
+                const bool certify_land = performance_enabled(52) && !water_cpu_reference && maximum_distance <= 1e6
                     && maximum_distance <= _pi * surface_radius;
                 for (auto& row : wave_rows)
                 {
                     row.spans.clear();
+                    if (!performance_enabled(52))
+                    {
+                        row.spans.push_back({0, row.points.size(), false, {}});
+                        continue;
+                    }
                     size_t first = 0;
                     while (first < row.points.size())
                     {
@@ -6732,6 +6745,12 @@ void draw_horizon()
                     for (size_t si = span.first; si < span.last; ++si)
                     {
                         const auto& sample = row.points[si];
+                        if (!performance_enabled(52) && (!sample.visible
+                            || sample.wy < min_hz_y_at_x[sample.column] - 2.0))
+                        {
+                            has_prev = false;
+                            continue;
+                        }
                         const double wx = sample.wx;
                         double wy = sample.wy;
                         const int ix_lookup = sample.column;
@@ -6758,7 +6777,12 @@ void draw_horizon()
                         {
                             const auto coord = ground_coord(wx, wy);
                             ++water_stats.samples;
-                            wave_sample = surface.sample(coord.first, coord.second);
+                            if (performance_enabled(31)) wave_sample = surface.sample(coord.first, coord.second);
+                            else
+                            {
+                                wave_sample.water = surface.water_at(coord.first, coord.second);
+                                if (wave_sample.water) wave_sample.color = surface.color_at(coord.first, coord.second);
+                            }
                         }
                         if (!wave_sample.water)
                         {
@@ -7119,7 +7143,7 @@ void draw_horizon()
                 const double scenery_range = has_plants ? std::max(PLANT_MAX_DIST, ROCK_MAX_DIST) : ROCK_MAX_DIST;
                 static SurfaceSceneryCache scenery_cache;
                 const auto &scenery = scenery_cache.update(R_planet, viewer_lat, viewer_lon,
-                    scenery_range + canopy_margin, scenery_spacing, static_cast<std::uint64_t>(whereami), false);
+                    scenery_range + canopy_margin, scenery_spacing, static_cast<std::uint64_t>(whereami), !performance_enabled(40));
                 auto scenery_key = std::make_tuple(whereami, scenery_cache.generation(), R_planet,
                     map ? map->gen : 0u, generating_fic_texture, water_favorable,
                     p ? p->has_water : 0.0f, p ? p->type : cel->type,
@@ -7139,10 +7163,19 @@ void draw_horizon()
                     {
                         scenery_cache.project(index);
                         const auto &object = scenery[index];
-                        const auto sample = surface.sample(object.latitude, object.longitude);
-                        water[index] = sample.water;
-                        plant[index] = !sample.water && sample.vegetation;
-                        scenery_colors[index] = sample.color;
+                        if (performance_enabled(31))
+                        {
+                            const auto sample = surface.sample(object.latitude, object.longitude);
+                            water[index] = sample.water;
+                            plant[index] = !sample.water && sample.vegetation;
+                            scenery_colors[index] = sample.color;
+                        }
+                        else
+                        {
+                            water[index] = surface.water_at(object.latitude, object.longitude);
+                            plant[index] = !water[index] && surface.vegetation_at(object.latitude, object.longitude);
+                            scenery_colors[index] = surface.color_at(object.latitude, object.longitude);
+                        }
                         if (plant[index]) canopy_radii[index] = crown_scale
                             * scenery_size(object.seed, ROCK_MIN_SIZE, ROCK_MAX_SIZE);
                     }
@@ -7158,7 +7191,7 @@ void draw_horizon()
                 const double bound_height = ROCK_MAX_SIZE * (p ? fabs(p->plant_trunk_height)
                     + fabs(p->plant_crown_size * p->plant_crown_oblateness) : 1);
                 const auto& visible_scenery = scenery_cache.visible(azimuth, altitude,
-                    -h_eye - bound_drop - bound_height, bound_height + bound_drop, scenery_cpu_reference, false);
+                    -h_eye - bound_drop - bound_height, bound_height + bound_drop, scenery_cpu_reference || !performance_enabled(39), false);
 
                 // Sedentary lifeforms when is_vegetation is true, otherwise surface rocks.
                 for (size_t index : visible_scenery)
@@ -7175,9 +7208,10 @@ void draw_horizon()
                         : (is_lava ? ROCK_ASPECT_LAVA : (is_venus ? ROCK_ASPECT_VENUS : (is_icy ? ROCK_ASPECT_ICY : ROCK_ASPECT_DEFAULT)));
 
                     const uint32_t rhash = object.seed;
+                    double theta_world = performance_enabled(41) ? 0 : atan2(object.east, object.north);
                     const double squared_distance = object.east * object.east + object.north * object.north;
                     const double limit = is_vegetation ? PLANT_MAX_DIST : ROCK_MAX_DIST;
-                    if (!scenery_cpu_reference && (squared_distance < .0025 - 1e-12
+                    if (performance_enabled(41) && !scenery_cpu_reference && (squared_distance < .0025 - 1e-12
                         || squared_distance > limit * limit + 1e-8)) continue;
                     const double dist_m = hypot(object.east, object.north);
                     double dist_ratio = dist_m / ROCK_MAX_DIST;
@@ -7196,7 +7230,7 @@ void draw_horizon()
                         continue;
                     }
 
-                    const double theta_world = atan2(object.east, object.north);
+                    if (performance_enabled(41)) theta_world = atan2(object.east, object.north);
 
                     double sx = 0.0;
                     double sy = 0.0;

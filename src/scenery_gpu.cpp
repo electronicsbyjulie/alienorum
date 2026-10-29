@@ -1,3 +1,4 @@
+#include "performance_options.h"
 #include "scenery_gpu.h"
 #include "SDL.h"
 #include "imgui/backends/imgui_impl_opengl3_loader.h"
@@ -181,7 +182,7 @@ void main()
         }
         batch_index = 0;
         stats = {};
-        if (scenery_gpu_reference || !SDL_GL_GetCurrentContext()) return false;
+        if (!performance_enabled(42) || scenery_gpu_reference || !SDL_GL_GetCurrentContext()) return false;
         if (context != SDL_GL_GetCurrentContext()) clear_scenery_gpu();
         context = SDL_GL_GetCurrentContext();
         if (attempted) return program != 0;

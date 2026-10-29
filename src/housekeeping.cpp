@@ -1,3 +1,4 @@
+#include "performance_options.h"
 
 #include "housekeeping.h"
 #include "inputs.h"
@@ -363,6 +364,7 @@ namespace
         state.candidates.reserve(state.other.size() + worlds.size());
         std::merge(state.other.begin(), state.other.end(), worlds.begin(), worlds.end(),
             std::back_inserter(state.candidates));
+        if (!performance_enabled(2)) state.candidates = state.all;
         state.context = frame_context();
         state.prepared = true;
         state.published = false;
@@ -390,13 +392,13 @@ const std::vector<int>& frame_object_candidates()
 const std::vector<int>& frame_draw_candidates()
 {
     const auto& fallback = frame_object_candidates();
-    return frame_objects().published ? frame_objects().projected : fallback;
+    return performance_enabled(5) && frame_objects().published ? frame_objects().projected : fallback;
 }
 
 const std::vector<int>& frame_bright_candidates()
 {
     const auto& fallback = frame_object_candidates();
-    return frame_objects().published ? frame_objects().bright : fallback;
+    return performance_enabled(5) && frame_objects().published ? frame_objects().bright : fallback;
 }
 
 const std::vector<int>& frame_pick_candidates()
@@ -409,7 +411,7 @@ bool planetary_system_is_active(const CelestialObject* cel)
 {
     const cel_obj_class cls = cel->typeclass();
     if (cls != class_planet && cls != class_moon) return true;
-    if (frame_matches() && cel->seqno >= 0 && cel->seqno < ncelobjs
+    if (performance_enabled(1) && frame_matches() && cel->seqno >= 0 && cel->seqno < ncelobjs
         && cels[cel->seqno] == cel
         && frame_objects().hosts[cel->seqno] == cel->cenobj)
         return frame_objects().active.count(cel->seqno) != 0;
@@ -586,6 +588,14 @@ void compute_object_draw_coordinates()
         ~LocationPass() { frame_location_pass = saved; }
     } location_pass;
     Planet::reconcile_host_statistics();
+    if (!performance_enabled(4))
+    {
+        for (int index = 0; index < ncelobjs; ++index)
+        {
+            if (cels[index] && !cels[index]->deleted && cels[index]->typeclass() == class_planet)
+                static_cast<Planet*>(cels[index])->refresh_host_statistics_if_changed();
+        }
+    }
     auto& objects = frame_objects();
     objects.prepared = objects.published = false;
 
@@ -721,7 +731,8 @@ void compute_object_draw_coordinates()
 
     luminous_flux = cels[1] ? 0 : 1e10;
     inside_galaxy_idx = -1;
-    for (const auto& entry : objects.previous)
+    if (!performance_enabled(3)) for (int index : objects.all) reset_projection(index, cels[index]);
+    if (performance_enabled(3)) for (const auto& entry : objects.previous)
     {
         if (entry.first >= 0 && entry.first < ncelobjs && cels[entry.first] == entry.second)
             reset_projection(entry.first, entry.second);
@@ -733,6 +744,7 @@ void compute_object_draw_coordinates()
     {
         i = index;
         if (cels[i]->deleted) continue;
+        if (!performance_enabled(2) && !planetary_system_is_active(cels[i])) continue;
         if (isnan(cels[i]->tmprel.x)) continue;
         
         // From inside a galaxy's disc, it won't do to merely project an ellipse. We wrap a band all the way round with draw_galaxy_band() instead,
@@ -763,8 +775,8 @@ void compute_object_draw_coordinates()
             }
         }
 
-        reset_projection(i, cels[i]);
-        objects.previous.emplace_back(i, cels[i]);
+        if (performance_enabled(3)) reset_projection(i, cels[i]);
+        if (performance_enabled(3)) objects.previous.emplace_back(i, cels[i]);
         objects.projected.push_back(i);
         Point rel = cels[i]->tmprel;
         double relm = rel.magnitude();
