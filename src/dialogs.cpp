@@ -3083,7 +3083,7 @@ void draw_stellar_neighborhood(ImGuiIO &io)
                 if (!std::isnan(r)) preceding_max = std::max(preceding_max, r);
                 neighbors.push_back({r, rank, i});
             }
-            std::stable_sort(neighbors.begin(), neighbors.end(), [](const auto& a, const auto& b)
+            std::stable_sort(neighbors.begin(), neighbors.end(), [](const Neighbor& a, const Neighbor& b)
             {
                 return a.rank < b.rank;
             });
