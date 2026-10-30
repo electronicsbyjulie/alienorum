@@ -720,6 +720,11 @@ TEST_F(PerformanceBenchmarkTest, PairedProductionPaths)
 #ifdef PERF_P037
             if (id == 37) std::cout << "PERF local tile nodes: " << local_surface_tile_sample_count() << '\n';
 #endif
+            if (id == 35)
+            {
+                const auto hits = surface_uniform_cache_hits();
+                std::cout << "PERF uniform cache: " << hits.first << " coarse hits; " << hits.second << " footprint hits\n";
+            }
             if (id == 108) std::cout << "PERF label cache records: " << constellation_label_cache().size() << "\n";
             if (id == 105) std::cout << "PERF lava caches: " << lava_topology_cache().hits << " topology hits; " << lava_particle_cache().hits << " particle hits\n";
             if (id == 101) std::cout << "PERF rock shapes: " << rock_mesh_cache().hits << " hits, " << rock_mesh_cache().misses << " misses\n";

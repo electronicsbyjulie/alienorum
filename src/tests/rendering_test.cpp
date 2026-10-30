@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <functional>
+#include <optional>
 #include <vector>
 #include <iostream>
 #include <chrono>
@@ -6128,4 +6129,88 @@ TEST(HorizonTerrainCpuTest, SurfaceFieldCachePreservesEvictionAndReconfiguration
         EXPECT_EQ(cache.tile_fast_hit_count(), 0u);
         EXPECT_EQ(cache.tile_count(), 0u);
     }
+}
+
+TEST_F(RenderingRegressionTest, UniformFootprintCacheTracksEditsMaterialsAndMapLifetimes)
+{
+    class CapMap : public Map
+    {
+        public:
+        explicit CapMap(bool mixed = false, bool small = false)
+        {
+            image_width = small ? 8 : 256;
+            image_height = small ? 8 : 129;
+            allocated = image_width * image_height;
+            lon_scale = image_width / (2 * _pi);
+            lat_scale = (image_height - 1) / _pi;
+            red_data = new unsigned char[allocated];
+            green_data = new unsigned char[allocated];
+            blue_data = new unsigned char[allocated];
+            std::fill(red_data, red_data + allocated, 100);
+            std::fill(green_data, green_data + allocated, 150);
+            std::fill(blue_data, blue_data + allocated, 70);
+            surface_materials.assign(allocated, SurfaceMaterial::ground);
+            if (mixed) surface_materials[idx_of(0, .3)] = SurfaceMaterial::water;
+            touch_gen();
+        }
+        void edit(bool material)
+        {
+            const auto index = idx_of(0, .3);
+            if (material) surface_materials[index] = SurfaceMaterial::water;
+            else red_data[index] = 220;
+            touch_gen();
+        }
+    };
+    set(surface_uniform_reference, false);
+    set(generating_fic_texture, false);
+    std::optional<CapMap> map;
+    for (int life = 0; life < 4; ++life)
+    {
+        map.emplace(life % 2 != 0);
+        for (int edit = 0; edit < 3; ++edit)
+        {
+            if (edit) map->edit(edit == 1);
+            for (double lat : {-.5, 0.0, .6, half_pi - .001})
+            {
+                for (double lon : {-.7, .3, _pi - .001, _pi + .001})
+                {
+                    for (double angle : {0.0, .02, .1})
+                    {
+                        for (bool equal : {false, true})
+                        {
+                            RGB3 actual(9, 8, 7), expected(9, 8, 7);
+                            surface_uniform_reference = false;
+                            const bool got = map->color_within_cap(lat, lon, angle, actual, equal);
+                            surface_uniform_reference = true;
+                            const bool want = map->color_within_cap(lat, lon, angle, expected, equal);
+                            EXPECT_EQ(got, want);
+                            EXPECT_EQ(actual.r, expected.r);
+                            EXPECT_EQ(actual.g, expected.g);
+                            EXPECT_EQ(actual.b, expected.b);
+                        }
+                    }
+                }
+            }
+        }
+        map.reset();
+    }
+    map.emplace(false);
+    surface_uniform_reference = false;
+    RGB3 color;
+    const auto before = surface_uniform_cache_hits();
+    for (int i = 0; i < 20; ++i) EXPECT_TRUE(map->color_within_cap(0, .3, .1, color, true));
+    if (PERF_P035)
+    {
+        EXPECT_GT(surface_uniform_cache_hits().second, before.second);
+    }
+    {
+        CapMap tiny(false, true);
+        const auto hits = surface_uniform_cache_hits();
+        for (int i = 0; i < 20; ++i) EXPECT_TRUE(tiny.color_within_cap(0, .3, .4, color, true));
+        EXPECT_EQ(surface_uniform_cache_hits(), hits);
+    }
+    map->edit(true);
+    EXPECT_FALSE(map->color_within_cap(0, .3, .1, color, true));
+    generating_fic_texture = true;
+    EXPECT_FALSE(map->color_within_cap(0, .3, .1, color, true));
 }

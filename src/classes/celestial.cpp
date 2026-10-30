@@ -14,6 +14,7 @@
 #include <limits>
 #include <charconv>
 #include "celestial.h"
+#include "surfaceoptions.h"
 #include "shore.h"
 #include "lavafissures.h"
 #include "wdcolor.h"
@@ -2178,17 +2179,71 @@ bool Map::create_merged_night(Map *night, Map *clouds)
     return true;
 }
 
+namespace
+{
+#if PERF_P035
+    struct UniformMemo
+    {
+        const Map* owner = nullptr;
+        unsigned int generation = 0;
+        std::uint64_t key = 0;
+        std::uint32_t value = 0;
+    };
+    thread_local std::array<UniformMemo, 64> uniform_nodes;
+    thread_local std::array<UniformMemo, 256> uniform_footprints;
+    thread_local size_t uniform_node_hits = 0, uniform_footprint_hits = 0;
+    size_t uniform_slot(const Map* owner, std::uint64_t key, size_t mask)
+    {
+        return (key ^ (key >> 11) ^ (key >> 23) ^ (reinterpret_cast<std::uintptr_t>(owner) >> 4)) & mask;
+    }
+    void forget_uniform_owner(const Map* owner)
+    {
+        for (auto& entry : uniform_nodes) if (entry.owner == owner) entry.owner = nullptr;
+        for (auto& entry : uniform_footprints) if (entry.owner == owner) entry.owner = nullptr;
+    }
+#endif
+}
+
+std::pair<size_t, size_t> alienorum::surface_uniform_cache_hits()
+{
+#if PERF_P035
+    return {uniform_node_hits, uniform_footprint_hits};
+#else
+    return {0, 0};
+#endif
+}
+
 std::uint32_t Map::uniform_region(unsigned long left, unsigned long top, int level)
 {
     const unsigned long first = top * image_width + left;
+    const std::uint64_t key = (std::uint64_t(first) << 6) | level;
+#if PERF_P035
+    UniformMemo* memo = nullptr;
+    // One 8x8 leaf or less is cheaper through the original hierarchy.
+    if (level && allocated > 64 && !surface_uniform_reference)
+    {
+        memo = &uniform_nodes[uniform_slot(this, key, uniform_nodes.size() - 1)];
+        if (memo->owner == this && memo->generation == gen && memo->key == key)
+        {
+            ++uniform_node_hits;
+            return memo->value;
+        }
+    }
+    const auto remember = [&](std::uint32_t value)
+    {
+        if (memo) *memo = {this, gen, key, value};
+        return value;
+    };
+#else
+    const auto remember = [](std::uint32_t value) { return value; };
+#endif
     const std::uint32_t material = surface_materials.size() == allocated
         ? static_cast<std::uint32_t>(surface_materials[first]) : 0;
     const std::uint32_t target = red_data[first] | (std::uint32_t(green_data[first]) << 8)
         | (std::uint32_t(blue_data[first]) << 16) | (material << 24);
     if (!level) return target;
-    const std::uint64_t key = (std::uint64_t(first) << 6) | level;
     const auto found = uniform_regions.find(key);
-    if (found != uniform_regions.end()) return found->second;
+    if (found != uniform_regions.end()) return remember(found->second);
     const unsigned long size = 1ul << level;
     const unsigned long step = level == 6 ? 8 : 1;
     std::uint32_t result = target;
@@ -2207,7 +2262,7 @@ std::uint32_t Map::uniform_region(unsigned long left, unsigned long top, int lev
     // Bound memory even after a long journey over a high-resolution world.
     if (uniform_regions.size() >= 16384) uniform_regions.clear();
     uniform_regions.emplace(key, result);
-    return result;
+    return remember(result);
 }
 
 bool Map::region_matches(unsigned long left, unsigned long top, unsigned long right, unsigned long bottom,
@@ -2259,15 +2314,39 @@ bool Map::color_within_cap(double lat, double lon, double angle, RGB3 &color, bo
         {
             uniform_regions.clear();
             uniform_region_generation = gen;
+#if PERF_P035
+            if (allocated > 64) forget_uniform_owner(this);
+#endif
         }
+#if PERF_P035
+        const std::uint64_t footprint_key = (std::uint64_t(first) << 32) | last;
+        UniformMemo* memo = nullptr;
+        if (allocated > 64 && !surface_uniform_reference)
+        {
+            memo = &uniform_footprints[uniform_slot(this, footprint_key, uniform_footprints.size() - 1)];
+            if (memo->owner == this && memo->generation == gen && memo->key == footprint_key)
+            {
+                ++uniform_footprint_hits;
+                return memo->value != 0;
+            }
+        }
+        const auto remember = [&](bool value)
+        {
+            if (memo) *memo = {this, gen, footprint_key, value ? 1u : 0u};
+            return value;
+        };
+#else
+        const auto remember = [](bool value) { return value; };
+#endif
         const std::uint32_t target = uniform_region(left, top, 0);
         for (unsigned long row = top / 64 * 64; row <= bottom; row += 64)
         {
             for (unsigned long column = left / 64 * 64; column <= right; column += 64)
             {
-                if (!region_matches(left, top, right, bottom, column, row, 6, target)) return false;
+                if (!region_matches(left, top, right, bottom, column, row, 6, target)) return remember(false);
             }
         }
+        return remember(true);
     }
     return true;
 }
