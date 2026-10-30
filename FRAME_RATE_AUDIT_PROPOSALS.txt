@@ -12,7 +12,7 @@ CURRENT-STATE MARKERS
 [PARTIAL] = active and disabled subpaths; P052 retains uniform-footprint spans and disables ambiguous-boundary spans.
 [OPEN] = this proposal is unimplemented; its expected benefit remains a hypothesis.
 
-Current totals: 27 active, 17 disabled, 1 partial, and 72 open. Markers describe build state, not a demonstrated gain in every view. Several earlier active changes have neutral or unconfirmed measurements. P028 is a disabled prototype with application integration unmet; P073 shares P005's implementation. P094/P095 improve explicit save/snapshot interaction latency, with slower completion and no steady-state FPS claim.
+Current totals: 27 active, 18 disabled, 1 partial, and 71 open. Markers describe build state, not a demonstrated gain in every view. Several earlier active changes have neutral or unconfirmed measurements. P028 is a disabled prototype with application integration unmet; P073 shares P005's implementation. P094/P095 improve explicit save/snapshot interaction latency, with slower completion and no steady-state FPS claim.
 
 The first review priorities are eliminating whole-catalog work from local surface frames, retaining terrain work while walking, reducing the number of plant candidates reaching detailed geometry, and avoiding repeated water/coast sampling. GPU cloud costs, synchronization, and resource arrival can also dominate particular scenes. A compact save file is valuable, but it does not eliminate the live cost of 126,874 imported objects.
 
@@ -144,13 +144,14 @@ D. BIOMES, COASTLINES, AND SURFACE CACHES
 Source: src/classes/surfacenavigation.cpp, SurfaceSampler::info/water_at/vegetation_at, and repeated calls in scenery/waves. A single location can trigger multiple identical coordinate displacements and map queries. Introduce a frame-local sample result that callers share rather than independently asking each question. Preserve the uniform-cap fast path and material/color fallback semantics. Validate imported maps, unknown material tags, vegetation hues, and coast detail. This is especially valuable at boundaries, where the uniform fast path cannot eliminate Perlin work.
 
 [ACTIVE] P032 | A / S / Q0 | Combine map pixel address calculation for color and material.
-RESULT: PERF_P032=1. Enabled after fixed native comparison; see PERFORMANCE_BENCHMARKS.txt for workload scope.
+RESULT: PERF_P032=1. Two fixed native comparisons confirm tagged-shore walking -2.26%/-3.65% and turning -2.86%/-2.88%, with exact images. Uniform controls remain neutral.
 Source: SurfaceSampler::info calls Map::color_at and Map::material_at after computing the same coordinates; implementations are around src/classes/celestial.cpp 2277-2312. Expose one query returning both values from the same pixel/address operation. Retain existing filtering conventions: bilinear display color must not accidentally interpolate discrete material IDs. Verify longitude wrapping, pole rows, dimensions, and generated versus imported maps. This is a small exact optimization that complements P031; it is not a reason to weaken the authoritative coast field.
 
 [OPEN] P033 | B / S / Q0 | Cache displaced biome coordinates for repeated samples in a frame or local tile.
 Source: src/classes/surfacebiomes.h and SurfaceSampler. Nonuniform boundary queries perform spherical coordinate conversion and multiple Perlin evaluations. Cache the displacement result where exact input coordinates recur, or retain a world-tile representation with exact endpoint handling. A hash lookup can cost more than a cheap uniform query, so instrument hit rates and keep the fast path first. Validate frame-to-frame camera independence and the detailed shoreline selected by Find Shore. Approximate tile interpolation belongs to Q1, not to this exact-result proposal.
 
-[OPEN] P034 | B / S / Q0 | Reduce SurfaceFieldCache bookkeeping on hot hits.
+[DISABLED] P034 | B / S / Q0 | Reduce SurfaceFieldCache bookkeeping on hot hits.
+RESULT: PERF_P034=0. All five first-run intervals cross zero. Confirmation establishes no gain and shows imported-shore walking +0.91% slower. Exact images match; retain the experiment disabled.
 Source: src/classes/surfacecache.h. A height lookup uses nearby cube-grid nodes, unordered lookup, and LRU maintenance; frequently used nodes can repeatedly splice list entries. Measure hit cost separately from Perlin misses. Possible changes are tile-local direct addressing, per-frame touch coalescing, or a clock-style eviction policy with the same capacity. Preserve bounded memory and world/spacing invalidation. Validate long walks, revisits, poles, and rapid world changes. The current cache already avoids much noise generation; a replacement must not trade that benefit for a lower hit rate.
 
 [OPEN] P035 | B / S / Q0 | Add a shared coarse material/uniformity hierarchy for all consumers.
@@ -579,7 +580,7 @@ FINAL INVENTORY AND STATUS
 
 There are 117 proposals: 24 priority A, 70 priority B, and 23 priority C. There are 85 source-anchored S entries and 32 H entries. Quality classes total 88 Q0, 16 Q1, eight Q2, and five Q3. These counts classify proposals, not proven successful optimizations. The measurements are M1-M5 and the separate completed serialization harness results.
 
-The original audit deliverables were this report and PERFORMANCE_AUDIT_FAILURE_EXPLANATION.txt. Subsequent approved work has evaluated 45 of the 117 proposals, leaving 72 unrequested proposals open. Status-marked evaluations include active code, disabled experiments and P028's explicitly limited GPU prototype. The 26-item implementation queue has ten enabled proposal switches and sixteen default-zero application switches. P042 is disabled after repeated losses; P052 disables its ambiguous-boundary subpath. Initial and compiled before/after evidence, acceptance checks and remaining hardware/manual limits are recorded in PERFORMANCE_BENCHMARKS.txt and ACCEPTANCE_CRITERIA.md. Unrelated untracked files remain untouched. Timings are marginal and cannot be added together.
+The original audit deliverables were this report and PERFORMANCE_AUDIT_FAILURE_EXPLANATION.txt. Subsequent approved work has evaluated 46 of the 117 proposals, leaving 71 unrequested proposals open. Status-marked evaluations include active code, disabled experiments and P028's explicitly limited GPU prototype. The 26-item implementation queue has ten enabled proposal switches and sixteen default-zero application switches. P042 is disabled after repeated losses; P052 disables its ambiguous-boundary subpath. Initial and compiled before/after evidence, acceptance checks and remaining hardware/manual limits are recorded in PERFORMANCE_BENCHMARKS.txt and ACCEPTANCE_CRITERIA.md. Unrelated untracked files remain untouched. Timings are marginal and cannot be added together.
 
 
 

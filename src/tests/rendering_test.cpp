@@ -6096,3 +6096,36 @@ TEST_F(RenderingRegressionTest, CombinedSurfaceAddressPreservesColorMaterialAndI
         }
     }
 }
+
+TEST(HorizonTerrainCpuTest, SurfaceFieldCachePreservesEvictionAndReconfigurationWithTileHits)
+{
+    const auto sample = [](double x, double y, double z) { return sin(x * 31) + cos(y * 17) + z * .25; };
+    for (size_t capacity : {1u, 2u, 32u})
+    {
+        SurfaceFieldCache cache(capacity);
+        for (uint64_t world : {1u, 2u, 1u})
+        {
+            cache.configure(world, earth_radius, 128);
+            EXPECT_EQ(cache.tile_fast_hit_count(), 0u);
+            for (int step = 0; step < 600; ++step)
+            {
+                const double latitude = step % 7 == 0 ? half_pi - 1e-6 : .2;
+                const double longitude = step % 11 == 0 ? _pi - 1e-7 : .3 + (step % 50) * .1 / earth_radius;
+                const double x = cos(latitude) * cos(longitude), y = cos(latitude) * sin(longitude), z = sin(latitude);
+                SurfaceFieldCache fresh(1);
+                fresh.configure(world, earth_radius, 128);
+                const double expected = fresh.value(x, y, z, sample);
+                EXPECT_DOUBLE_EQ(cache.value(x, y, z, sample), expected);
+                EXPECT_DOUBLE_EQ(cache.value(x, y, z, sample), expected);
+                EXPECT_LE(cache.tile_count(), capacity);
+            }
+            if (PERF_P034)
+            {
+                EXPECT_GT(cache.tile_fast_hit_count(), 100u);
+            }
+        }
+        cache.configure(1, earth_radius * .5, 64);
+        EXPECT_EQ(cache.tile_fast_hit_count(), 0u);
+        EXPECT_EQ(cache.tile_count(), 0u);
+    }
+}

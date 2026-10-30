@@ -1,6 +1,7 @@
 #ifndef ALIENORUM_SURFACE_CACHE_H
 #define ALIENORUM_SURFACE_CACHE_H
 
+#include "surfaceoptions.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -46,26 +47,52 @@ namespace alienorum
         size_t evaluations = 0;
         std::uint64_t generation = 0;
         size_t patch_hits = 0;
+#if PERF_P034
+        Key last_key = {};
+        Tile* last_tile = nullptr;
+        size_t tile_fast_hits = 0;
+#endif
 
         template<class Sample>
         double node(int face, std::int64_t x, std::int64_t y, const Sample &sample)
         {
             const Key key = {x / 8, y / 8, face};
-            auto found = tiles.find(key);
-            if (found == tiles.end())
+            Tile* selected = nullptr;
+#if PERF_P034
+            if (last_tile && last_key == key)
             {
-                if (tiles.size() >= capacity)
-                {
-                    tiles.erase(ages.back());
-                    ages.pop_back();
-                }
-                ages.push_front(key);
-                Tile tile;
-                tile.age = ages.begin();
-                found = tiles.emplace(key, tile).first;
+                selected = last_tile;
+                ++tile_fast_hits;
             }
-            Tile &tile = found->second;
-            ages.splice(ages.begin(), ages, tile.age);
+#endif
+            if (!selected)
+            {
+                auto found = tiles.find(key);
+                if (found == tiles.end())
+                {
+#if PERF_P034
+                    last_tile = nullptr;
+#endif
+                    if (tiles.size() >= capacity)
+                    {
+                        tiles.erase(ages.back());
+                        ages.pop_back();
+                    }
+                    ages.push_front(key);
+                    Tile tile;
+                    tile.age = ages.begin();
+                    found = tiles.emplace(key, tile).first;
+                }
+                selected = &found->second;
+#if PERF_P034
+                if (selected->age != ages.begin()) ages.splice(ages.begin(), ages, selected->age);
+                last_key = key;
+                last_tile = selected;
+#else
+                ages.splice(ages.begin(), ages, selected->age);
+#endif
+            }
+            Tile &tile = *selected;
             const unsigned index = (y % 8) * 8 + x % 8;
             const std::uint64_t mask = std::uint64_t(1) << index;
             if (!(tile.valid & mask))
@@ -98,6 +125,10 @@ namespace alienorum
         void configure(std::uint64_t identity, double world_radius, double sample_spacing)
         {
             if (cells && world == identity && radius == world_radius && spacing == sample_spacing) return;
+#if PERF_P034
+            last_tile = nullptr;
+            tile_fast_hits = 0;
+#endif
             tiles.clear();
             ages.clear();
             world = identity;
@@ -149,6 +180,14 @@ namespace alienorum
         size_t sample_count() const { return evaluations; }
         size_t tile_count() const { return tiles.size(); }
         size_t patch_hit_count() const { return patch_hits; }
+        size_t tile_fast_hit_count() const
+        {
+#if PERF_P034
+            return tile_fast_hits;
+#else
+            return 0;
+#endif
+        }
     };
 }
 
