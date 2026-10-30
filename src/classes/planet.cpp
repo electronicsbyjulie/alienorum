@@ -111,6 +111,11 @@ std::vector<std::unique_ptr<Moon>> Planet::generate_fictional_moons(std::mt19937
     double C = sqrt(A*B);
     double Hill_over_Roche = cel->Hill_sphere_radius() / cel->Roche_limit();
     double D = C * Hill_over_Roche / 500;
+    // Small planets on short orbits rarely retain satellite systems. Saturate
+    // the adjustment so massive planets on wide orbits keep their distribution.
+    const double satellite_retention = std::min(1.0,
+        std::sqrt(cel->mass / (10 * earth_mass)) * cel->orbit->period / (365.25 * oneday));
+    D *= satellite_retention;
 
     double P = 0;
     int j=1;

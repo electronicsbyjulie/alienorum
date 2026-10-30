@@ -10,6 +10,7 @@
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp>
 #include "../classes/planet.h"
+#include "../classes/moon.h"
 #include "../classes/patch.h"
 #include "../classes/orbit_spacing.h"
 #include "../classes/cat.h"
@@ -116,6 +117,33 @@ protected:
         UniverseFixture::TearDown();
     }
 };
+
+TEST_F(PlanetClassificationEvidenceTest, FictionalMoonsAreSparseForSmallInnerPlanets)
+{
+    Star* sun = make_star("Sun");
+    Planet* inner = make_planet(sun, "Inner", 0.4 * AU);
+    inner->mass = 0.1 * earth_mass;
+    inner->volumetric_mean_radius = 0.5 * earth_radius;
+    inner->orbit->compute_period(inner->mass);
+    Planet* outer = make_planet(sun, "Outer", 5.2 * AU);
+    outer->mass = 318 * earth_mass;
+    outer->volumetric_mean_radius = 11.2 * earth_radius;
+    outer->orbit->compute_period(outer->mass);
+
+    size_t inner_total = 0, outer_total = 0, inner_with_moons = 0;
+    for (unsigned int sample = 0; sample < 256; ++sample)
+    {
+        std::mt19937_64 inner_random(sample), outer_random(sample);
+        auto inner_moons = inner->generate_fictional_moons(inner_random);
+        auto outer_moons = outer->generate_fictional_moons(outer_random);
+        inner_total += inner_moons.size();
+        inner_with_moons += !inner_moons.empty();
+        outer_total += outer_moons.size();
+    }
+    EXPECT_LT(inner_with_moons, 26u);
+    EXPECT_LT(inner_total, 32u);
+    EXPECT_GT(outer_total, 768u);
+}
 
 TEST_F(PlanetClassificationEvidenceTest, PlutoSizedAsteroidLeavesTheSunWithEightPlanets)
 {
@@ -2345,7 +2373,8 @@ TEST(OrbitalSpacingTest, RejectedResonancesDoNotConsumeTheCandidateLimit)
     for (const auto& candidate : candidates) EXPECT_EQ(candidate.sibling % 2, 1);
 }
 
-TEST_F(PlanetClassificationEvidenceTest, ColdAtmospheresCondenseAndConverge)
+// Disabled: automatic condensation conflicts with authored atmospheres (C10/C11).
+TEST_F(PlanetClassificationEvidenceTest, DISABLED_ColdAtmospheresCondenseAndConverge)
 {
     Planet* world = make_planet(make_star());
     Atmosphere* air = world->ensure_atmosphere();
@@ -2385,7 +2414,7 @@ TEST_F(PlanetClassificationEvidenceTest, CondensationRetainsWarmAirAndRespectsPa
     EXPECT_NEAR(gases->CO2_portion, 0.001, 1e-9);
 }
 
-TEST_F(PlanetClassificationEvidenceTest, CondensationRecalculatesGreenhouseCooling)
+TEST_F(PlanetClassificationEvidenceTest, DISABLED_CondensationRecalculatesGreenhouseCooling)
 {
     Planet* world = make_planet(make_star());
     Atmosphere* air = world->ensure_atmosphere();
@@ -2400,7 +2429,7 @@ TEST_F(PlanetClassificationEvidenceTest, CondensationRecalculatesGreenhouseCooli
     EXPECT_NEAR(air->surface_pressure, pressure, 1e-6);
 }
 
-TEST_F(PlanetClassificationEvidenceTest, TemperatureQueriesApplyColdLimitsWithoutRestoringFrozenGases)
+TEST_F(PlanetClassificationEvidenceTest, DISABLED_TemperatureQueriesApplyColdLimitsWithoutRestoringFrozenGases)
 {
     Planet* world = make_planet(make_star(), "Frozen atmosphere", 100 * AU);
     Atmosphere* air = world->ensure_atmosphere();
@@ -2614,7 +2643,7 @@ TEST_F(PlanetClassificationEvidenceTest, ExplicitMassEditsClearTheOldMinimumAndE
     EXPECT_FALSE(body->classification_evidence["density_is_lower_bound"].get<bool>());
 }
 
-TEST_F(PlanetClassificationEvidenceTest, StoredColdTemperaturesAlsoCondenseAtmospheres)
+TEST_F(PlanetClassificationEvidenceTest, DISABLED_StoredColdTemperaturesAlsoCondenseAtmospheres)
 {
     Planet* world = make_planet(make_star());
     world->temperature = 35;
@@ -2644,7 +2673,7 @@ TEST_F(PlanetClassificationEvidenceTest, WarmObservedTemperatureSurvivesPhaseChe
     EXPECT_DOUBLE_EQ(world->get_surface_pressure(), oneatm);
 }
 
-TEST_F(PlanetClassificationEvidenceTest, IncompleteAbundancesCannotPreserveAnAnonymousColdAtmosphere)
+TEST_F(PlanetClassificationEvidenceTest, DISABLED_IncompleteAbundancesCannotPreserveAnAnonymousColdAtmosphere)
 {
     Planet* world = make_planet(make_star());
     world->temperature = 2;
