@@ -40,6 +40,8 @@ namespace alienorum
             static json expand_record(const json& record, const json& header);
             static json compact_document(json records);
             static json expand_document(json document);
+            static json output_record(json record);
+            static json expand_output_record(json record);
             static bool save_one(std::fstream &fs, CelestialObject *cel, json &allobjs);
             static json snapshot(CelestialObject **cels, bool only_edited = false);
             static bool save_file(const std::string& path, CelestialObject **cels, bool only_edited, bool background);

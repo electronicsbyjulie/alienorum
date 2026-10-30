@@ -3056,7 +3056,7 @@ void draw_stellar_neighborhood(ImGuiIO &io)
     int item_highlighted_idx = -1;
     int first_visible = -1;
     bool selected_visible = false;
-    ImGui::Text("%s", " Name                                Mag.   Sp. Type        Pl./HZ   Distance");
+    ImGui::Text("%s", " Name                                Mag.      Sp. Type     Pl./HZ   Distance");
     if (ImGui::BeginListBox("##neighblist", ImVec2(802, 16 * ImGui::GetTextLineHeightWithSpacing())))
     {
         j = 0;
@@ -3143,13 +3143,14 @@ void draw_stellar_neighborhood(ImGuiIO &io)
                 if (r)
                 {
                     m = cels[i]->viewer_magnitude(here);
-                    line << setprecision(4) << ((m>=0) ? "+" : "") << m;
+                    line << setprecision(4) << ((m>=0) ? "+" : "-") << string_format("%05.2f", fabs(m));
                 }
                 else line << "-";
                 l = line.str().size();
                 if (l < 43) line << std::string(43-l, ' ');
 
-                line << s->spectral_type;
+                const float spectral_offset = ImGui::CalcTextSize(line.str().c_str()).x;
+                line << "   " << s->spectral_type;
                 l = line.str().size();
                 if (l < 59) line << std::string(59-l, ' ');
 
@@ -3168,20 +3169,7 @@ void draw_stellar_neighborhood(ImGuiIO &io)
                 else line << setprecision(3) << (r / light_year) << " l.y.";
 
                 ImGui::PushID(i);
-                if (s->is_white_dwarf())
-                {
-                    // Swatches show hue at full brightness; stellar intensity would clip every channel to white.
-                    const RGB3 rgb = Color::rgb_from_color(Color::color_from_star(0, s, s->BV_color), -1);
-                    ImVec4 swatch(rgb.r / 255.0f, rgb.g / 255.0f, rgb.b / 255.0f, 1);
-                    float hue, saturation, value;
-                    ImGui::ColorConvertRGBtoHSV(swatch.x, swatch.y, swatch.z, hue, saturation, value);
-                    ImGui::ColorConvertHSVtoRGB(hue, std::min(1.0f, saturation * 4.0f), value,
-                        swatch.x, swatch.y, swatch.z);
-                    const float side = ImGui::GetTextLineHeight();
-                    ImGui::ColorButton("##wd_color", swatch,
-                        ImGuiColorEditFlags_NoTooltip | ImGuiColorEditFlags_NoDragDrop, ImVec2(side, side));
-                    ImGui::SameLine();
-                }
+                const ImVec2 row_origin = ImGui::GetCursorScreenPos();
                 bool is_selected = (item_selected_idx == j);
                 ImGuiSelectableFlags flags = (item_highlighted_idx == j) ? ImGuiSelectableFlags_Highlight : 0;
                 if (ImGui::Selectable(line.str().c_str(), is_selected, flags))
@@ -3189,6 +3177,21 @@ void draw_stellar_neighborhood(ImGuiIO &io)
                     item_selected_idx = j;
                     selected_visible = true;
                 }
+
+                // Drawing within reserved text space keeps every row on the same columns.
+                const RGB3 rgb = Color::rgb_from_color(Color::color_from_star(0, s, s->BV_color), -1);
+                ImVec4 swatch(rgb.r / 255.0f, rgb.g / 255.0f, rgb.b / 255.0f, 1);
+                if (s->is_white_dwarf())
+                {
+                    float hue, saturation, value;
+                    ImGui::ColorConvertRGBtoHSV(swatch.x, swatch.y, swatch.z, hue, saturation, value);
+                    ImGui::ColorConvertHSVtoRGB(hue, std::min(1.0f, saturation * 4.0f), value,
+                        swatch.x, swatch.y, swatch.z);
+                }
+                const float radius = ImGui::GetTextLineHeight() * 0.35f;
+                const ImVec2 center(row_origin.x + spectral_offset + radius,
+                    row_origin.y + ImGui::GetTextLineHeight() * 0.5f);
+                ImGui::GetWindowDrawList()->AddCircleFilled(center, radius, ImGui::ColorConvertFloat4ToU32(swatch));
 
                 ImGui::PopID();
 

@@ -1111,7 +1111,6 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
             }
         }
     }
-    Serialization::SaveContext save_context;
     const auto estimate = [&](const auto& objects)
     {
         const size_t samples = std::min(size_t(128), objects.size());
@@ -1127,8 +1126,7 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
                 ancestor = ancestor->orbit->center;
                 key = std::string(ancestor->name) + "." + key;
             }
-            const json packed = Serialization::compact_record(object->to_json(), save_context);
-            const std::string record = Serialization::expand_record(packed, save_context.header).dump(4);
+            const std::string record = Serialization::output_record(object->to_json()).dump(4);
             // Descriptive records sit one indentation level below the document root.
             bytes += record.size() + 4 * (1 + std::count(record.begin(), record.end(), '\n'))
                 + json(key).dump().size() + 4;

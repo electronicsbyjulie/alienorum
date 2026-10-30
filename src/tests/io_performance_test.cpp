@@ -67,11 +67,12 @@ TEST_F(IoPerformanceTest, UniverseFilesAreAlwaysPrettyPrinted)
             EXPECT_EQ(saved, expected);
             ASSERT_FALSE(saved.contains("v"));
             const auto& world = saved.at("Readable primary.Readable planet");
-            EXPECT_EQ(world.at("temperature"), 374.623);
+            EXPECT_EQ(world.at("temp"), 374.623);
             EXPECT_EQ(world.at("mass"), planet->mass);
-            EXPECT_EQ(world.at("atmosphere").at("composition").at("H2"), .8288);
-            EXPECT_TRUE(world.at("location").at("system_center").is_object());
-            EXPECT_TRUE(world.at("location").at("orbital_plane").is_object());
+            EXPECT_EQ(world.at("atmos").at("gases").at("H2"), .8288);
+            EXPECT_TRUE(world.at("loc").at("sys_cen").is_object());
+            const json expanded = Serialization::expand_document(saved);
+            EXPECT_TRUE(expanded.at("Readable primary.Readable planet").at("location").at("orbital_plane").is_object());
             for (const char* alias : {"M", "T", "ab", "at", "bv", "c", "dd", "l", "m", "me", "n"})
                 EXPECT_FALSE(world.contains(alias)) << alias;
         }

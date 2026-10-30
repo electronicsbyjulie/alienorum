@@ -180,6 +180,26 @@ TEST_F(FictionalStarsTest, SaveImportPreservesIdentityAfterRenamingAndAllCompani
     }
     json records;
     std::ifstream(file) >> records;
+    for (const auto& record : records)
+    {
+        EXPECT_EQ(record.at("fic"), 1);
+        EXPECT_TRUE(record.contains("absmagn"));
+        EXPECT_TRUE(record.contains("dist"));
+        EXPECT_FALSE(record.contains("space_vel"));
+        EXPECT_FALSE(record.at("stsys").contains("slot"));
+        if (record.contains("strot"))
+        {
+            EXPECT_TRUE(record.at("strot").contains("est"));
+            EXPECT_TRUE(record.at("strot").contains("incl_suppl"));
+            EXPECT_TRUE(record.at("strot").contains("node_suppl"));
+            EXPECT_FALSE(record.at("strot").contains("src"));
+        }
+        for (const char* field : {"HD", "HR", "HIP", "SAO", "SB9", "Gliese", "Flamsteed", "FlamsteedNo",
+            "Bayer", "BayerGrkno", "CCDM", "WD", "gaia_source_id", "gaia_g_magnitude", "gaia_wd_name",
+            "appmagn", "fictional_origin", "home_world", "known_poles", "rot_axis_known", "orb_cen_cds", "transparent_clouds"})
+            EXPECT_FALSE(record.contains(field)) << field;
+        if (record.contains("stmet")) EXPECT_FALSE(record.at("stmet").contains("src"));
+    }
     records = Serialization::expand_document(std::move(records));
     ASSERT_EQ(records.size(), 120u);
     set_center_objects();
@@ -191,7 +211,12 @@ TEST_F(FictionalStarsTest, SaveImportPreservesIdentityAfterRenamingAndAllCompani
     }
     EXPECT_EQ(cels[1], anchor);
     EXPECT_STREQ(anchor->name, "A renamed destination");
-    EXPECT_EQ(anchor->location.to_json(), original);
+    Point original_center;
+    original_center.from_json(original.at("system_center"));
+    EXPECT_NEAR((anchor->location.system_center-original_center).magnitude(), 0, 1e-6);
+    json actual_location = anchor->location.to_json();
+    actual_location["system_center"] = original.at("system_center");
+    EXPECT_EQ(actual_location, original);
     for (int i = 1; cels[i]; ++i)
     {
         Star* star = static_cast<Star*>(cels[i]);
@@ -408,7 +433,7 @@ TEST_F(FictionalStarsTest, FreshUniverseReloadRetainsSyntheticPhysicsWithoutSour
     ASSERT_TRUE(Serialization::load_all(input, cels, MAX_CELOBJS));
     EXPECT_EQ(ncelobjs, 81);
     ASSERT_EQ(favestars.size(), 1u);
-    EXPECT_TRUE(favestars.front()->fictional_origin.at("anchor"));
+    EXPECT_EQ(favestars.front()->fictional_origin.at("id"), expected.front().at("fictional_origin").at("id"));
     for (const auto& record : expected)
     {
         Star* restored = nullptr;

@@ -406,7 +406,8 @@ bool Star::is_white_dwarf() const
 bool Star::resolve_wd_color(Color &linear_rgb, std::string *source)
 {
     if (source) source->clear();
-    if (apply_published_wd_color())
+    if (apply_published_wd_color()
+        || (is_white_dwarf() && !fictional_origin.is_object() && wd_color_valid && !wd_color_source.empty()))
     {
         linear_rgb = wd_linear_from_srgb((uint32_t(wd_color_red) << 16) |
             (uint32_t(wd_color_green) << 8) | wd_color_blue);
@@ -1768,6 +1769,8 @@ bool Star::from_json(const json& j)
     stellar_rotation = j.contains("stellar_rotation") && j["stellar_rotation"].is_object()
         ? j["stellar_rotation"] : json(nullptr);
     fictional_origin = j.value("fictional_origin", json(nullptr));
+    const bool fictional_marker = j.value("fic", 0) == 1;
+    if (fictional_marker && !fictional_origin.is_object()) fictional_origin = json::object();
     has_fictional_motion = false;
     if (fictional_origin.is_object() && fictional_origin.contains("motion"))
     {
@@ -1788,14 +1791,30 @@ bool Star::from_json(const json& j)
     if (fictional_origin.is_object()) is_faved = j.value("is_faved", false);
     stellar_system = j.value("stellar_system", json(nullptr));
     if (stellar_system.is_object()) has_custom_name = true;
+    if (stellar_system.is_object() && !stellar_system.contains("slot"))
+    {
+        const std::string designation = j.value("!origname", std::string(name));
+        const char component = orbit && !designation.empty() && designation.back() >= 'A' && designation.back() <= 'Z'
+            ? designation.back() : 'A';
+        stellar_system["slot"] = int(component);
+    }
+    if (fictional_marker && !fictional_origin.contains("id"))
+    {
+        const std::string designation = j.value("!origname", std::string(name));
+        const std::string id = stellar_system.is_object() && stellar_system.contains("system") && stellar_system.contains("slot")
+            ? stellar_system.at("system").get<std::string>() + ":" + char(stellar_system.at("slot").get<int>())
+            : "catalog:" + designation;
+        fictional_origin["id"] = id;
+        fictional_origin["designation"] = designation;
+    }
     // Explicit flags keep a saved display fallback from becoming a measured pole.
+    if (fictional_marker) known_poles = rot_axis_known = false;
     try { j.at("known_poles").get_to(known_poles); } catch (...) { ; }
     try { j.at("lock_equatorial_plane").get_to(lock_equatorial_plane); } catch (...) { ; }
     try { j.at("lock_system_plane").get_to(lock_system_plane); } catch (...) { ; }
     try { j.at("rot_axis_known").get_to(rot_axis_known); } catch (...) { ; }
     try { rot_heliocen_incl = j.at("rot_heliocen_incl").get<double>() * fiftyseventh; } catch (...) { ; }
     try { rot_heliocen_node = j.at("rot_heliocen_node").get<double>() * fiftyseventh; } catch (...) { ; }
-    if (fictional_origin.is_object()) known_poles = rot_axis_known = false;
     metallicity = metallicity_error_upper = metallicity_error_lower = NAN;
     metallicity_ratio.clear();
     metallicity_source.clear();
@@ -1939,6 +1958,42 @@ bool Star::from_json(const json& j)
     } catch (...) { ; }
     try { j.at("BayerGrkno").get_to(BayerGrkno); } catch (...) { ; }
     try { j.at("FlamsteedNo").get_to(FlamsteedNo); } catch (...) { ; }
+    if (fictional_marker)
+    {
+        if (metallicity_source.empty() && std::isfinite(metallicity)) metallicity_source = "fictional population model v1";
+        if (stellar_rotation.is_object() && !stellar_rotation.contains("source")) stellar_rotation["source"] = "fictional population model v1";
+        if (!has_fictional_motion)
+        {
+            if (j.contains("space_velocity") && j["space_velocity"].is_object())
+            {
+                Point velocity;
+                velocity.from_json(j["space_velocity"]);
+                set_fictional_motion(velocity);
+            }
+            else
+            {
+                const Point radial(-sin(right_ascension)*cos(declination), sin(declination), cos(right_ascension)*cos(declination));
+                const Point east(-cos(right_ascension), 0, -sin(right_ascension));
+                const Point north(sin(right_ascension)*sin(declination), cos(declination), -cos(right_ascension)*sin(declination));
+                set_fictional_motion(radial*radial_velocity + east*(proper_motion_RA*distance*cos(declination))
+                    + north*(proper_motion_decl*distance));
+            }
+        }
+        if (is_white_dwarf() && wd_color_valid)
+        {
+            std::string template_source = wd_color_source;
+            const std::string suffix = "_fictional_template_approx";
+            if (template_source.size() >= suffix.size()
+                && template_source.compare(template_source.size()-suffix.size(), suffix.size(), suffix) == 0)
+                template_source.resize(template_source.size()-suffix.size());
+            fictional_origin["white_dwarf_atmosphere"] =
+            {
+                {"srgb", (uint32_t(wd_color_red) << 16) | (uint32_t(wd_color_green) << 8) | wd_color_blue},
+                {"template_temperature_k", temperature}, {"template_spectral_type", spectral_type},
+                {"template_source", template_source}
+            };
+        }
+    }
     restore_fictional_motion(*this);
     return true;
 }

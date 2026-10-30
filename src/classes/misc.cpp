@@ -14,6 +14,7 @@
 #include <curl/curl.h>
 #include <archive.h>
 #include <archive_entry.h>
+#include <stdexcept>
 #include "misc.h"
 using namespace alienorum;
 

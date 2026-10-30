@@ -915,6 +915,214 @@ TEST_F(SerializationTest, OldFileStatingZeroPrecessionLoadsAsZero)
 // Saving only what was edited
 // =====================================================================
 
+TEST_F(SerializationTest, UniverseOutputOmitsGeneratedCatalogDefaultsAndProvenance)
+{
+    Star* generated = make_star("Generated remote star");
+    generated->user_added = true;
+    generated->HD = 123;
+    strcpy(generated->Gliese, "Stale ID");
+    generated->gaia_g_magnitude = 5;
+    generated->fictional_origin = {{"id", "test:1:A"}, {"batch", {{"large_payload", "not for output"}}}};
+    generated->stellar_system = {{"system", "test:1"}, {"slot", 65}, {"label", generated->name}};
+    generated->metallicity = .123456;
+    generated->metallicity_ratio = "[Fe/H]";
+    generated->metallicity_source = "fictional population model v1";
+    generated->stellar_rotation = {{"estimated", true}, {"inclination_supplied", false},
+        {"node_supplied", false}, {"source", "fictional population model v1"}};
+    generated->home_world = true;
+    const std::string path = temp_universe("output_contract");
+    json document;
+    for (bool background : {false, true})
+    {
+        ASSERT_TRUE(Serialization::save_file(path, cels, true, background));
+        ASSERT_TRUE(Serialization::finish_file_saves());
+        { std::ifstream input(path); input >> document; }
+        const json& saved = document.at("Generated remote star");
+        EXPECT_EQ(saved.at("fic"), 1);
+        EXPECT_TRUE(saved.contains("absmagn"));
+        EXPECT_TRUE(saved.contains("dist"));
+        EXPECT_TRUE(saved.contains("sptyp"));
+        EXPECT_TRUE(saved.contains("cls"));
+        EXPECT_TRUE(saved.at("loc").at("sys_cen").contains("x"));
+        EXPECT_EQ(saved.at("strot"), (json{{"est", true}, {"incl_suppl", false}, {"node_suppl", false}}));
+        EXPECT_FALSE(saved.at("stsys").contains("slot"));
+        for (const char* field : {"HD", "HR", "HIP", "SAO", "SB9", "WD", "Bayer", "BayerGrkno", "Flamsteed",
+            "FlamsteedNo", "Gliese", "CCDM", "cons", "Bonn_survey", "Bonn_survey_sign", "Bonn_survey_declination",
+            "Bonn_survey_sequential", "fictional_origin", "appmagn", "appmagn_est", "home_world", "known_poles",
+            "rot_axis_known", "is_faved", "space_vel", "space_velocity", "orb_cen_cds", "transparent_clouds", "absolute_magnitude", "distance", "M", "T", "l", "m", "n"})
+            EXPECT_FALSE(saved.contains(field)) << field;
+        for (const auto& field : saved.items())
+        {
+            EXPECT_NE(field.key().substr(0, 5), "gaia_") << field.key();
+            EXPECT_NE(field.key().substr(0, 3), "wd_") << field.key();
+        }
+        EXPECT_FALSE(saved.at("stmet").contains("src"));
+        EXPECT_EQ(saved.at("stmet").at("value_dex"), .123);
+        EXPECT_EQ(document.dump().find("fictional population model v1"), std::string::npos);
+    }
+    delete_the_universe();
+    ASSERT_TRUE(load_file("output_contract"));
+    Star* restored = static_cast<Star*>(find_loaded("Generated remote star"));
+    ASSERT_NE(restored, nullptr);
+    EXPECT_EQ(restored->HD, 0u);
+    EXPECT_STREQ(restored->Gliese, "");
+    EXPECT_TRUE(restored->fictional_origin.is_object());
+    EXPECT_EQ(restored->fictional_origin.at("id"), "test:1:A");
+    EXPECT_EQ(restored->metallicity_source, "fictional population model v1");
+    EXPECT_FALSE(restored->known_poles);
+    delete_the_universe();
+    std::remove(path.c_str());
+}
+
+TEST_F(SerializationTest, UniverseLocationOmitsOnlyZeroOffsetsAndIdenticalPlanes)
+{
+    Star* star = make_star("Location checks");
+    star->user_edited = true;
+    const std::string path = temp_universe("location_defaults");
+    for (bool zero_position : {false, true})
+    {
+        for (bool same_orbit : {false, true})
+        {
+            for (bool same_equator : {false, true})
+            {
+                star->location.local_position = Point(zero_position ? 0 : 1e-100, 0, 0);
+                star->location.local_system_plane.v = Point(0, 1, 0);
+                star->location.local_system_plane.a = .25;
+                star->location.orbital_plane = star->location.local_system_plane;
+                if (!same_orbit) star->location.orbital_plane.a = .5;
+                star->location.equatorial_plane = star->location.orbital_plane;
+                if (!same_equator) star->location.equatorial_plane.a = .75;
+                const json original = star->location.to_json();
+                for (bool background : {false, true})
+                {
+                    ASSERT_TRUE(Serialization::save_file(path, cels, true, background));
+                    ASSERT_TRUE(Serialization::finish_file_saves());
+                    json document;
+                    { std::ifstream input(path); input >> document; }
+                    const auto& location = document.at("Location checks").at("loc");
+                    EXPECT_EQ(location.contains("loc_pos"), !zero_position);
+                    EXPECT_EQ(location.contains("orb_pln"), !same_orbit);
+                    EXPECT_EQ(location.contains("eq_pln"), !same_equator);
+                    const json expanded = Serialization::expand_document(document);
+                    EXPECT_EQ(expanded.at("Location checks").at("location"), original);
+                    CelestialLocation restored;
+                    ASSERT_TRUE(restored.from_json(expanded.at("Location checks").at("location")));
+                    EXPECT_EQ(restored.local_position.to_json(), star->location.local_position.to_json());
+                    EXPECT_NEAR(restored.orbital_plane.a, star->location.orbital_plane.a, 1e-14);
+                    EXPECT_NEAR(restored.equatorial_plane.a, star->location.equatorial_plane.a, 1e-14);
+                }
+            }
+        }
+    }
+    delete_the_universe();
+    std::remove(path.c_str());
+}
+
+TEST_F(SerializationTest, UniverseWritesFavoriteFlagOnlyWhenTrue)
+{
+    Star* star = make_star("Favorite flag");
+    star->user_added = true;
+    star->fictional_origin = json::object();
+    const std::string path = temp_universe("favorite_flag");
+    for (bool favorite : {false, true})
+    {
+        star->is_faved = favorite;
+        for (bool background : {false, true})
+        {
+            ASSERT_TRUE(Serialization::save_file(path, cels, true, background));
+            ASSERT_TRUE(Serialization::finish_file_saves());
+            json document;
+            { std::ifstream input(path); input >> document; }
+            const auto& saved = document.at("Favorite flag");
+            EXPECT_EQ(saved.contains("is_faved"), favorite);
+            if (favorite) EXPECT_EQ(saved.at("is_faved"), true);
+        }
+    }
+    delete_the_universe();
+    std::remove(path.c_str());
+}
+
+TEST_F(SerializationTest, MinimalFictionalMarkerRetainsWhiteDwarfColorAndPhysicalMotion)
+{
+    Star* star = make_star("Generated white dwarf");
+    star->user_added = true;
+    strcpy(star->spectral_type, "DC6");
+    star->temperature = 5000;
+    star->fictional_origin = {{"white_dwarf_atmosphere",
+        {{"srgb", uint32_t(0x33cc77)}, {"template_temperature_k", 5000},
+            {"template_spectral_type", "DC6"}, {"template_source", "SavedWD"}}}};
+    star->stellar_system = {{"system", "saved:1"}, {"slot", 65}, {"label", star->name}};
+    star->location.system_center = Point(1e15, 2e15, 3e15);
+    const Point velocity(1234.567891234567, -6789.123456789123, .000000123456789);
+    star->set_fictional_motion(velocity);
+    Color expected;
+    ASSERT_TRUE(star->resolve_wd_color(expected));
+    const std::string path = temp_universe("minimal_wd");
+    ASSERT_TRUE(Serialization::save_file(path, cels, true, false));
+    json saved;
+    { std::ifstream input(path); input >> saved; }
+    EXPECT_EQ(saved.at("Generated white dwarf").at("fic"), 1);
+    EXPECT_FALSE(saved.at("Generated white dwarf").contains("fictional_origin"));
+    EXPECT_FALSE(saved.at("Generated white dwarf").contains("space_vel"));
+    delete_the_universe();
+    ASSERT_TRUE(load_file("minimal_wd"));
+    Star* restored = static_cast<Star*>(find_loaded("Generated white dwarf"));
+    ASSERT_NE(restored, nullptr);
+    EXPECT_NEAR((restored->fictional_space_velocity-velocity).magnitude(), 0, 1e-9);
+    Color actual;
+    ASSERT_TRUE(restored->resolve_wd_color(actual));
+    EXPECT_DOUBLE_EQ(actual.red, expected.red);
+    EXPECT_DOUBLE_EQ(actual.green, expected.green);
+    EXPECT_DOUBLE_EQ(actual.blue, expected.blue);
+    restored->temperature += 100;
+    EXPECT_FALSE(restored->resolve_wd_color(actual));
+    delete_the_universe();
+    std::remove(path.c_str());
+}
+
+TEST_F(SerializationTest, UniverseOutputKeepsRealCatalogValuesAndOmitsUnsetGaiaFields)
+{
+    Star* catalog = make_star("Catalog star");
+    catalog->HD = 123;
+    catalog->apparent_magnitude = 0;
+    catalog->gaia_g_magnitude = 0;
+    json output = Serialization::output_record(catalog->to_json());
+    EXPECT_EQ(output.at("HD"), 123);
+    EXPECT_EQ(output.at("appmagn"), 0);
+    for (const char* field : {"HR", "HIP", "SAO", "SB9", "BayerGrkno", "FlamsteedNo", "gaia_source_id", "gaia_g_magnitude", "gaia_wd_name"})
+        EXPECT_FALSE(output.contains(field)) << field;
+    catalog->gaia_source_id = 1234567890123456789ULL;
+    catalog->known_poles = catalog->rot_axis_known = true;
+    catalog->orbit_center_codes = {"Sun"};
+    output = Serialization::output_record(catalog->to_json());
+    EXPECT_EQ(output.at("gaia_source_id"), 1234567890123456789ULL);
+    EXPECT_EQ(output.at("gaia_g_magnitude"), 0);
+    EXPECT_EQ(output.at("known_poles"), true);
+    EXPECT_EQ(output.at("rot_axis_known"), true);
+    EXPECT_EQ(output.at("orb_cen_cds"), json::array({"Sun"}));
+    delete_the_universe();
+}
+
+TEST_F(SerializationTest, UniverseCloudAndWhiteDwarfFieldsRespectObjectClass)
+{
+    Star* star = make_star();
+    Planet* world = make_planet(star);
+    world->transparent_clouds = true;
+    world->type = rocky;
+    EXPECT_TRUE(Serialization::output_record(world->to_json()).contains("transparent_clouds"));
+    for (cel_obj_type type : {gas_giant, ice_giant, hot_jupiter, clearskies})
+    {
+        world->type = type;
+        EXPECT_FALSE(Serialization::output_record(world->to_json()).contains("transparent_clouds"));
+    }
+    json ordinary = Serialization::output_record(star->to_json());
+    EXPECT_FALSE(ordinary.contains("wd_temp_src"));
+    EXPECT_FALSE(ordinary.contains("transparent_clouds"));
+    strcpy(star->spectral_type, "DA6");
+    EXPECT_TRUE(Serialization::output_record(star->to_json()).contains("wd_temp_src"));
+    delete_the_universe();
+}
+
 TEST_F(SerializationTest, CompactDefaultsClearCatalogValuesAndKeepMeaningfulZeros)
 {
     Star* host = make_star("Compact Primary");
@@ -932,18 +1140,16 @@ TEST_F(SerializationTest, CompactDefaultsClearCatalogValuesAndKeepMeaningfulZero
     output.close();
     json readable;
     { std::ifstream input(path); input >> readable; }
-    ASSERT_TRUE(readable.at("Compact Primary").contains("absolute_magnitude"));
-    const json packed = Serialization::compact_document(readable);
-    ASSERT_EQ(packed.at("v"), 2);
-    const auto& saved = packed.at("o").at("Compact Primary");
+    ASSERT_TRUE(readable.at("Compact Primary").contains("absmagn"));
+    const auto& saved = readable.at("Compact Primary");
     EXPECT_FALSE(saved.contains("HD"));
     EXPECT_FALSE(saved.contains("WD"));
-    EXPECT_FALSE(saved.contains("tc"));
+    EXPECT_FALSE(saved.contains("transparent_clouds"));
     EXPECT_FALSE(saved.contains("known_poles"));
-    EXPECT_EQ(saved.at("V"), 0);
-    EXPECT_EQ(saved.at("BayerGrkno"), 0);
-    EXPECT_FALSE(packed.at("o").at("Compact Primary.Compact Planet").at("sc").get<bool>());
-    EXPECT_EQ(packed.dump().find("diagnostic_only"), std::string::npos);
+    EXPECT_EQ(saved.at("appmagn"), 0);
+    EXPECT_FALSE(saved.contains("BayerGrkno"));
+    EXPECT_FALSE(readable.at("Compact Primary.Compact Planet").at("static_clouds").get<bool>());
+    EXPECT_EQ(readable.dump().find("diagnostic_only"), std::string::npos);
     host->HD = 123;
     host->known_poles = true;
     host->apparent_magnitude = 6;
@@ -1131,7 +1337,8 @@ TEST_F(SerializationTest, StreamedSaveMatchesFormattedDocumentBytes)
         output.close();
         std::ifstream input(path, std::ios::binary);
         const std::string bytes((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
-        EXPECT_EQ(bytes, Serialization::expand_document(Serialization::compact_document(reference)).dump(4));
+        for (auto& record : reference) record = Serialization::output_record(std::move(record));
+        EXPECT_EQ(bytes, reference.dump(4));
         std::remove(path.c_str());
     }
     delete_the_universe();
@@ -1188,7 +1395,8 @@ TEST_F(SerializationTest, SharedAncestorsRetainLastWriterBehaviorForDuplicateKey
     ASSERT_TRUE(Serialization::save_one(output, second, reference));
     ASSERT_TRUE(Serialization::save_all(output, cels, true));
     output.close();
-    EXPECT_EQ(read_file("shared_ancestors"), Serialization::expand_document(Serialization::compact_document(reference)));
+    for (auto& record : reference) record = Serialization::output_record(std::move(record));
+    EXPECT_EQ(read_file("shared_ancestors"), Serialization::expand_document(reference));
     EXPECT_EQ(reference.size(), 4u);
     std::remove(path.c_str());
     delete_the_universe();
@@ -1222,7 +1430,8 @@ TEST_F(SerializationTest, DISABLED_SharedAncestorSaveTimings)
     ASSERT_TRUE(Serialization::save_all(output, cels, true));
     output.close();
     const double optimized = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now()-start).count();
-    EXPECT_EQ(read_file("ancestor_timings"), Serialization::expand_document(Serialization::compact_document(reference)));
+    for (auto& record : reference) record = Serialization::output_record(std::move(record));
+    EXPECT_EQ(read_file("ancestor_timings"), Serialization::expand_document(reference));
     std::cout << "Shared ancestor save ms: reference=" << baseline << " optimized=" << optimized << '\n';
     std::remove(path.c_str());
     delete_the_universe();

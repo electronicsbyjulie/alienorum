@@ -12,6 +12,7 @@
 #include "cat.h"
 #include "serial.h"
 #include "cons.h"
+#include "wdcolor.h"
 #include "../background_file.h"
 
 using namespace alienorum;
@@ -708,6 +709,73 @@ static std::string serialized_object_key(CelestialObject* cel)
 namespace
 {
     using SaveNames = std::vector<std::pair<std::string, std::string>>;
+    json readable_aliases(json value, bool expand)
+    {
+        static const SaveNames names =
+        {
+            {"absolute_magnitude", "absmagn"}, {"apparent_magnitude", "appmagn"},
+            {"apparent_magnitude_estimated", "appmagn_est"}, {"distance", "dist"},
+            {"distance_known", "dist_knwn"}, {"declination", "decl"}, {"right_ascension", "RA"},
+            {"proper_motion_RA", "pmRA"}, {"proper_motion_decl", "pmdec"}, {"radial_velocity", "radvel"},
+            {"space_velocity", "space_vel"},
+            {"parallax", "plx"}, {"epoch", "epch"}, {"equinox", "eqnx"},
+            {"temperature", "temp"}, {"typeclass", "cls"}, {"type", "typ"},
+            {"spectral_type", "sptyp"}, {"location", "loc"}, {"orbit", "orb"},
+            {"system_center", "sys_cen"}, {"galactic_center", "gal_cen"},
+            {"local_position", "loc_pos"}, {"local_system_plane", "loc_sys_pln"},
+            {"orbital_plane", "orb_pln"}, {"equatorial_plane", "eq_pln"},
+            {"center_name", "cen_name"}, {"semimajor_axis", "semimaj_axis"},
+            {"period", "per"}, {"eccentricity", "ecc"}, {"inclination", "incl"},
+            {"ascending_node", "asc_node"}, {"arg_periapsis", "arg_peri"},
+            {"mean_anomaly", "mean_anom"}, {"heliocentric_inclination", "heliocen_incl"},
+            {"heliocentric_node", "heliocen_node"}, {"sidereal_rotational_period", "sider_rot_per"},
+            {"volumetric_mean_radius", "vol_mean_rad"}, {"obliquity", "oblq"},
+            {"oblateness", "oblt"}, {"precession", "prec"}, {"lon_J2000_offset", "lon_J2000_offst"},
+            {"orbit_center_codes", "orb_cen_cds"}, {"map_inverted", "map_inv"},
+            {"fictitious_map_height", "fic_map_ht"}, {"stellar_metallicity", "stmet"},
+            {"stellar_rotation", "strot"}, {"stellar_system", "stsys"},
+            {"estimated", "est"}, {"inclination_supplied", "incl_suppl"}, {"node_supplied", "node_suppl"},
+            {"stellar_abundances", "st_abund"}, {"system", "sys"},
+            {"atmosphere", "atmos"}, {"composition", "gases"}, {"surface_pressure", "surf_pressure"},
+            {"mass_evidence", "mass_evid"}, {"radius_evidence", "rad_evid"},
+            {"catalog_designation", "cat_desig"}, {"display_designation", "disp_desig"},
+            {"wd_temperature_source", "wd_temp_src"}, {"wd_color_source", "wd_color_src"},
+            {"wd_color_revision", "wd_color_rev"}, {"error_upper_dex", "err_up_dex"},
+            {"error_lower_dex", "err_lo_dex"},
+            {"source", "src"}, {"constellation", "cons"}, {"is_orbit_multiple", "is_orb_mult"},
+            {"has_planets", "has_plnts"}, {"has_hz_planets", "has_hz_plnts"},
+            {"lock_equatorial_plane", "lock_eq_pln"}, {"lock_system_plane", "lock_sys_pln"},
+            {"plant_trunk_height", "plant_trunk_ht"}, {"plant_crown_oblateness", "plant_crown_oblt"},
+            {"a", "angle"}, {"v", "axis"}
+        };
+        static const std::map<std::string, std::string> forward(names.begin(), names.end());
+        static const auto reverse = []()
+        {
+            std::map<std::string, std::string> result;
+            for (const auto& pair : names) result.emplace(pair.second, pair.first);
+            return result;
+        }();
+        if (value.is_array())
+        {
+            for (auto& item : value) item = readable_aliases(std::move(item), expand);
+            return value;
+        }
+        if (!value.is_object()) return value;
+        const auto& aliases = expand ? reverse : forward;
+        json result = json::object();
+        for (auto& item : value.items())
+        {
+            std::string key = item.key();
+            const bool literal = expand && !key.empty() && key.front() == '~';
+            const auto alias = aliases.find(key);
+            if (literal) key.erase(0, 1);
+            else if (alias != aliases.end()) key = alias->second;
+            else if (!expand && ((!key.empty() && key.front() == '~') || reverse.count(key))) key = "~" + key;
+            result[key] = readable_aliases(std::move(item.value()), expand);
+        }
+        return result;
+    }
+
     const SaveNames& save_names()
     {
         static const SaveNames names =
@@ -1083,9 +1151,143 @@ json Serialization::compact_document(json records)
     return std::move(context.header);
 }
 
+json Serialization::output_record(json record)
+{
+    const int cls = record.at("typeclass").get<int>();
+    const bool stellar = cls == class_star;
+    const bool fictional = stellar && (record.value("fic", 0) == 1
+        || (record.contains("fictional_origin") && record["fictional_origin"].is_object()));
+    save_precision(record);
+    record.erase("home_world");
+    record.erase("space_velocity");
+    record.erase("classification_evidence");
+    if (record.contains("location") && record["location"].is_object())
+    {
+        auto& location = record["location"];
+        const json zero = {{"x", 0}, {"y", 0}, {"z", 0}};
+        if (location.contains("local_position") && location["local_position"] == zero) location.erase("local_position");
+        // Compare the planes before removing either link in the inheritance chain.
+        if (location.contains("equatorial_plane") && location.contains("orbital_plane")
+            && location["equatorial_plane"] == location["orbital_plane"]) location.erase("equatorial_plane");
+        if (location.contains("orbital_plane") && location.contains("local_system_plane")
+            && location["orbital_plane"] == location["local_system_plane"]) location.erase("orbital_plane");
+    }
+    if (record.contains("stellar_system") && record["stellar_system"].is_object()) record["stellar_system"].erase("slot");
+    for (const char* key : {"known_poles", "rot_axis_known", "is_faved"})
+        if (!record.value(key, false)) record.erase(key);
+    if (record.contains("orbit_center_codes") && record["orbit_center_codes"].empty()) record.erase("orbit_center_codes");
+    if ((cls != class_planet && cls != class_moon)
+        || uses_gaseous_map(static_cast<cel_obj_type>(record.value("type", 0)))) record.erase("transparent_clouds");
+    if (stellar)
+    {
+        const std::string spectral = record.value("spectral_type", std::string());
+        const bool wd = (!spectral.empty() && spectral.front() == 'D') || spectral.compare(0, 2, "WD") == 0
+            || !record.value("WD", std::string()).empty() || !record.value("gaia_wd_name", std::string()).empty();
+        const auto blank = [&](const char* key)
+        {
+            auto field = record.find(key);
+            if (field == record.end()) return true;
+            if (field->is_string()) return field->get_ref<const std::string&>().find_first_not_of(" \t\r\n") == std::string::npos;
+            return field->is_null() || (field->is_number() && field->get<double>() <= 0);
+        };
+        for (const char* key : {"HD", "HR", "HIP", "SAO", "SB9", "CCDM", "WD", "Bayer", "Flamsteed",
+            "Gliese", "FlamsteedNo", "GouldNo", "Gouldcons", "constellation", "catalog_aliases"})
+            if (fictional || blank(key)) record.erase(key);
+        if (fictional || record.value("BayerGrkno", -1) < 0
+            || (blank("Bayer") && blank("constellation"))) record.erase("BayerGrkno");
+        if (fictional || blank("Bonn_survey") || blank("Bonn_survey_sequential"))
+            for (const char* key : {"Bonn_survey", "Bonn_survey_sign", "Bonn_survey_declination", "Bonn_survey_sequential"}) record.erase(key);
+        const bool gaia = !fictional && record.value("gaia_source_id", uint64_t(0)) != 0;
+        for (auto field = record.begin(); field != record.end();)
+        {
+            const bool gaia_field = field.key().compare(0, 5, "gaia_") == 0;
+            const bool wd_field = field.key().compare(0, 3, "wd_") == 0 || field.key() == "WD" || field.key() == "gaia_wd_name";
+            if ((!gaia && gaia_field) || (!wd && wd_field)) field = record.erase(field);
+            else ++field;
+        }
+        if (wd && record.contains("wd_color_profile"))
+        {
+            const auto& profile = record["wd_color_profile"];
+            if (fictional && profile.value("available", false) && profile.contains("linear_rgb"))
+            {
+                const auto& linear = profile.at("linear_rgb");
+                const RGB3 rgb = wd_srgb_from_linear(Color(linear.at(0).get<double>(), linear.at(1).get<double>(), linear.at(2).get<double>()));
+                record["wd_color_valid"] = true;
+                record["wd_color_rgb"] = {rgb.r, rgb.g, rgb.b};
+                record["wd_color_source"] = profile.value("source", std::string());
+            }
+        }
+        record.erase("wd_color_profile");
+        if (fictional || record.value("user_added", false))
+        {
+            record.erase("apparent_magnitude");
+            record.erase("apparent_magnitude_estimated");
+        }
+        if (fictional)
+        {
+            record["fic"] = 1;
+            const auto& origin = record["fictional_origin"];
+            if (origin.is_object() && origin.contains("designation") && origin["designation"].is_string()
+                && !origin["designation"].get_ref<const std::string&>().empty()) record["!origname"] = origin["designation"];
+            if (origin.is_object() && origin.contains("motion") && origin["motion"].is_object()
+                && origin["motion"].contains("epoch_position_m") && record.contains("location"))
+            {
+                record["location"]["system_center"] = origin["motion"]["epoch_position_m"];
+            }
+            if (record.contains("stellar_metallicity") && record["stellar_metallicity"].is_object())
+            {
+                auto& metal = record["stellar_metallicity"];
+                if (metal.value("source", std::string()) == "fictional population model v1") metal.erase("source");
+                metal.erase("error_upper_dex");
+                metal.erase("error_lower_dex");
+                if (metal.contains("value_dex") && metal["value_dex"].is_number())
+                    metal["value_dex"] = std::round(metal["value_dex"].get<double>() * 1000) / 1000;
+            }
+            if (record.contains("stellar_rotation") && record["stellar_rotation"].is_object())
+            {
+                auto& rotation = record["stellar_rotation"];
+                if (rotation.value("source", std::string()).compare(0, 26, "fictional population model") == 0)
+                    rotation.erase("source");
+            }
+        }
+    }
+    record.erase("fictional_origin");
+    return readable_aliases(std::move(record), false);
+}
+
+json Serialization::expand_output_record(json record)
+{
+    // The class key distinguishes this format from descriptive legacy object records.
+    if (!record.is_object() || !record.contains("cls") || record.contains("typeclass")) return record;
+    record = readable_aliases(std::move(record), true);
+    if (record.contains("location") && record["location"].is_object())
+    {
+        auto& location = record["location"];
+        if (!location.contains("local_position")) location["local_position"] = {{"x", 0}, {"y", 0}, {"z", 0}};
+        if (!location.contains("orbital_plane") && location.contains("local_system_plane"))
+            location["orbital_plane"] = location["local_system_plane"];
+        if (!location.contains("equatorial_plane") && location.contains("orbital_plane"))
+            location["equatorial_plane"] = location["orbital_plane"];
+    }
+    if (record.value("typeclass", 0) == class_star)
+    {
+        const json defaults = save_defaults(class_star);
+        for (const char* key : {"HD", "HR", "HIP", "SAO", "SB9", "CCDM", "WD", "Bayer", "Flamsteed", "Gliese",
+            "BayerGrkno", "FlamsteedNo", "constellation", "Bonn_survey", "Bonn_survey_sign", "Bonn_survey_declination",
+            "Bonn_survey_sequential", "gaia_source_id", "gaia_wd_name", "gaia_g_magnitude", "known_poles", "rot_axis_known"})
+            if (!record.contains(key) && defaults.contains(key)) record[key] = defaults[key];
+    }
+    return record;
+}
+
 json Serialization::expand_document(json document)
 {
-    if (!compact_save(document)) return document;
+    if (!compact_save(document))
+    {
+        if (document.is_object())
+            for (auto& record : document) record = expand_output_record(std::move(record));
+        return document;
+    }
     validate_save_header(document);
     json records = json::object();
     for (auto item = document["o"].begin(); item != document["o"].end(); ++item)
@@ -1144,19 +1346,21 @@ json Serialization::snapshot(CelestialObject **cels, bool oe)
 {
     int i;
     json allobjs;
-    SaveContext context;
     std::unordered_map<std::string, CelestialObject*> last_writer;
     const auto save = [&](CelestialObject* object, bool ancestor = false)
     {
         if (!oe || (!ancestor && last_writer.empty()))
         {
-            save_object_record(object, allobjs, serialized_object_key(object), &context);
+            const std::string key = serialized_object_key(object);
+            save_object_record(object, allobjs, key);
+            allobjs[key] = output_record(std::move(allobjs[key]));
             return;
         }
         const std::string key = serialized_object_key(object);
         auto previous = last_writer.find(key);
         if (previous != last_writer.end() && previous->second == object) return;
-        save_object_record(object, allobjs, key, &context);
+        save_object_record(object, allobjs, key);
+        allobjs[key] = output_record(std::move(allobjs[key]));
         if (ancestor || previous != last_writer.end()) last_writer[key] = object;
     };
     for (i=0; cels[i]; i++)
@@ -1178,10 +1382,7 @@ json Serialization::snapshot(CelestialObject **cels, bool oe)
         }
     }
 
-    if (!allobjs.is_null()) context.header["o"] = std::move(allobjs);
-    // Shared defaults and aliases remain an internal representation and legacy input format.
-    // Universe files expose complete descriptive records and inline spatial values.
-    return expand_document(std::move(context.header));
+    return allobjs;
 }
 
 bool Serialization::save_all(std::fstream& fs, CelestialObject **cels, bool oe)
@@ -1324,7 +1525,7 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
         // Parse every record before changing live objects. Their addresses remain stable on merge.
         for (const auto& record : records.items())
         {
-            json data = compact ? expand_record(record.value(), allobj) : record.value();
+            json data = compact ? expand_record(record.value(), allobj) : expand_output_record(record.value());
             if (!data.is_object() || !data.contains("!name") || !data.at("!name").is_string()
                 || !data.contains("typeclass") || !data.at("typeclass").is_number_integer())
                 throw std::runtime_error("Object record requires a name and an integer class");
@@ -1358,7 +1559,8 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
                 if (origin.is_object() && origin.contains("id"))
                 {
                     if (!imported_fictional_ids.insert(origin.at("id")).second)
-                        throw std::runtime_error("Duplicate fictional identity in universe file");
+                        throw std::runtime_error("Duplicate fictional identity in universe file: "
+                            + origin.at("id").get<std::string>() + " (" + name + ")");
                     const auto fictional = fictional_ids.find(origin.at("id"));
                     if (fictional == fictional_ids.end() && match != identities.end())
                         throw std::runtime_error("Fictional designation is already in use by a different object");

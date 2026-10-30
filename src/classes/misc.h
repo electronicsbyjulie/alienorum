@@ -3,6 +3,8 @@
 #define _AlienorumMisc
 
 #include <string>
+#include <cstdio>
+#include <stdexcept>
 #include <vector>
 #include <queue>
 #include <ctime>
@@ -273,6 +275,19 @@ int grkno_from_abbrev(const char *abbrev);
 
 std::string radians_to_hms(double r);
 std::string radians_to_degms(double r);
+
+template<typename ... Args>
+std::string string_format( const std::string& format, Args ... args );
+
+template<typename... Args>
+std::string string_format(const std::string& format, Args... args)
+{
+    const int length = std::snprintf(nullptr, 0, format.c_str(), args...);
+    if (length < 0) throw std::runtime_error("Error during formatting.");
+    std::vector<char> buffer(static_cast<size_t>(length) + 1);
+    std::snprintf(buffer.data(), buffer.size(), format.c_str(), args...);
+    return std::string(buffer.data(), static_cast<size_t>(length));
+}
 
 double atmospheric_tau(double normalized_pressure,
     double co2_fraction,        // Carbon dioxide
