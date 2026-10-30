@@ -1,6 +1,7 @@
 #include "../performance_options.h"
 #include "localsurfacetile.h"
 #include "surfacenavigation.h"
+#include "surfaceoptions.h"
 #include <queue>
 #include <limits>
 
@@ -38,6 +39,7 @@ std::pair<RGB3, SurfaceMaterial> SurfaceSampler::info(double latitude, double lo
         latitude = coord.first;
         longitude = coord.second;
     }
+    if (PERF_P032) return map->surface_at(latitude, longitude);
     return {map->color_at(latitude, longitude), map->material_at(latitude, longitude)};
 }
 

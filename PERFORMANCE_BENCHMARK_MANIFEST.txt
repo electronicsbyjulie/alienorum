@@ -2233,3 +2233,47 @@ PERFORMANCE_BENCHMARK_RESULTS.csv
   "source_diff": " makefile             |  2 +-\n src/housekeeping.cpp | 24 +++++++++++----\n src/scenery_gpu.cpp  |  3 +-\n src/visuals.cpp      | 86 +++++++++++++++++++++++++++++++++++-----------------\n 4 files changed, 80 insertions(+), 35 deletions(-)\n"
 }
 
+
+SURFACE BATCH P032
+PERFORMANCE_BENCHMARK_P032_SURFACE_FIXED_RESULTS.csv
+  raw_sha256: d197d182e44f18a9c33e3d86d96a3c089a7ebf8c1cb9b0be829e64cdcb386295
+{
+  "binary_sha256": {
+    "after": "7138c0463b28777c9243b39cadf6f06f75d67a10603dcf8e195287feb6ccaefd",
+    "before": "c03251590293b679d61ce7dc233844c47b6f3d6eb74b90d287cac90b6654c812"
+  },
+  "display": ":0.0",
+  "elapsed_seconds": 340.0556364059448,
+  "parameters": {
+    "after": "/tmp/surface-p032-after",
+    "before": "/tmp/surface-p032-before",
+    "cases": "32",
+    "filter": "PerformanceBenchmarkTest.PairedProductionPaths",
+    "frames": 16,
+    "output": "PERFORMANCE_BENCHMARK_P032_SURFACE_FIXED_RESULTS.csv",
+    "rounds": 9
+  },
+  "requested_depth_bits": "default",
+  "source_commit": "8eb505640fab64d07cb1222d0b5a86e981cc595b"
+}
+PERFORMANCE_BENCHMARK_P032_SURFACE_CONFIRM_RESULTS.csv
+  raw_sha256: afe4ba641898d18943167a6ba5ac395374a32e767f4fe22d84e3b07141a29e8b
+{
+  "binary_sha256": {
+    "after": "7138c0463b28777c9243b39cadf6f06f75d67a10603dcf8e195287feb6ccaefd",
+    "before": "c03251590293b679d61ce7dc233844c47b6f3d6eb74b90d287cac90b6654c812"
+  },
+  "display": ":0.0",
+  "elapsed_seconds": 337.50375032424927,
+  "parameters": {
+    "after": "/tmp/surface-p032-after",
+    "before": "/tmp/surface-p032-before",
+    "cases": "32",
+    "filter": "PerformanceBenchmarkTest.PairedProductionPaths",
+    "frames": 16,
+    "output": "PERFORMANCE_BENCHMARK_P032_SURFACE_CONFIRM_RESULTS.csv",
+    "rounds": 9
+  },
+  "requested_depth_bits": "default",
+  "source_commit": "8eb505640fab64d07cb1222d0b5a86e981cc595b"
+}

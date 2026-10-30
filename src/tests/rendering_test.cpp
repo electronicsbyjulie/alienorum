@@ -22,6 +22,7 @@
 #include "../classes/clouds_gpu.h"
 #include "../classes/surfacebiomes.h"
 #include "../classes/surfacenavigation.h"
+#include "../classes/surfaceoptions.h"
 #include "../classes/scenerydraw.h"
 #include "../classes/sceneryorder.h"
 #include "../classes/rockmeshcache.h"
@@ -6042,4 +6043,56 @@ TEST_F(RenderingRegressionTest, ConstellationPreparationTracksBoundariesAstromet
     ConstellationLabelCache bounded;
     for (size_t i = 0; i < 1000; ++i) bounded.get(i);
     EXPECT_LE(bounded.size(), 256u);
+}
+
+TEST_F(RenderingRegressionTest, CombinedSurfaceAddressPreservesColorMaterialAndIncompleteStates)
+{
+    class PixelMap : public Map
+    {
+        public:
+        PixelMap()
+        {
+            image_width = 7;
+            image_height = 5;
+            allocated = image_width * image_height;
+            lon_scale = image_width / (2 * _pi);
+            lat_scale = (image_height - 1) / _pi;
+            red_data = new unsigned char[allocated];
+            green_data = new unsigned char[allocated];
+            blue_data = new unsigned char[allocated];
+            for (size_t i = 0; i < allocated; ++i)
+            {
+                red_data[i] = i * 7;
+                green_data[i] = 255 - i * 5;
+                blue_data[i] = i * 3;
+                surface_materials.push_back(static_cast<SurfaceMaterial>(i % 4));
+            }
+            touch_gen();
+        }
+        void untag() { surface_materials.clear(); }
+        void partial() { delete[] green_data; green_data = nullptr; }
+        void empty() { lat_scale = 0; allocated = 0; }
+    } map;
+    set(generating_fic_texture, false);
+    for (int state = 0; state < 6; ++state)
+    {
+        if (state == 1) map.gen = 0;
+        if (state == 2) { map.touch_gen(); map.untag(); }
+        if (state == 3) generating_fic_texture = true;
+        if (state == 4) map.partial();
+        if (state == 5) { generating_fic_texture = false; map.empty(); }
+        for (double lat : {-_pi, -half_pi, -.2, 0.0, .3, half_pi, _pi, double(NAN), double(INFINITY)})
+        {
+            for (double lon : {-4 * _pi, -_pi, -.01, 0.0, _pi, 4 * _pi, double(NAN), double(INFINITY)})
+            {
+                const auto color = map.color_at(lat, lon);
+                const auto material = map.material_at(lat, lon);
+                const auto combined = map.surface_at(lat, lon);
+                EXPECT_EQ(combined.first.r, color.r);
+                EXPECT_EQ(combined.first.g, color.g);
+                EXPECT_EQ(combined.first.b, color.b);
+                EXPECT_EQ(combined.second, material);
+            }
+        }
+    }
 }

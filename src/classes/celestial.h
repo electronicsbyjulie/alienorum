@@ -280,6 +280,7 @@ namespace alienorum
         void _map_resample_bump_regen_rocky(CelestialObject *cel);
 
         RGB3 color_at(double latitude, double longitude);
+        std::pair<RGB3, SurfaceMaterial> surface_at(double latitude, double longitude);
         std::pair<RGB3, SurfaceMaterial> surface_pixel(unsigned long column, unsigned long row) const;
         std::array<double, 4> surface_pixel_bounds(unsigned long column, unsigned long row) const;
         SurfaceMaterial material_at(double latitude, double longitude);

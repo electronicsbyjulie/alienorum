@@ -2327,6 +2327,23 @@ RGB3 Map::color_at(double lat, double lon)
     return result;
 }
 
+std::pair<RGB3, SurfaceMaterial> Map::surface_at(double latitude, double longitude)
+{
+    RGB3 color(255, 255, 255);
+    if (generating_fic_texture && (!has_rgb_data() || !allocated))
+        return {color, SurfaceMaterial::unknown};
+    const unsigned int index = idx_of(latitude, longitude);
+    if (index == idx_not_ready || !allocated) return {color, SurfaceMaterial::unknown};
+    const unsigned long color_index = std::min<unsigned long>(index, allocated - 1);
+    color = RGB3(red_data ? red_data[color_index] : 255,
+        green_data ? green_data[color_index] : 255, blue_data ? blue_data[color_index] : 255);
+    SurfaceMaterial material = SurfaceMaterial::unknown;
+    if (!generating_fic_texture && is_complete() && surface_materials.size() == allocated
+        && std::isfinite(latitude) && std::isfinite(longitude) && index < surface_materials.size())
+        material = surface_materials[index];
+    return {color, material};
+}
+
 RGB3 Map::color_at_bilinear(double lat, double lon) const
 {
     if (!is_complete() || !image_width || allocated < image_width * image_height
