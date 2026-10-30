@@ -930,8 +930,10 @@ TEST_F(SerializationTest, CompactDefaultsClearCatalogValuesAndKeepMeaningfulZero
     std::fstream output(path, std::ios::out | std::ios::trunc);
     ASSERT_TRUE(Serialization::save_all(output, cels, true));
     output.close();
-    json packed;
-    { std::ifstream input(path); input >> packed; }
+    json readable;
+    { std::ifstream input(path); input >> readable; }
+    ASSERT_TRUE(readable.at("Compact Primary").contains("absolute_magnitude"));
+    const json packed = Serialization::compact_document(readable);
     ASSERT_EQ(packed.at("v"), 2);
     const auto& saved = packed.at("o").at("Compact Primary");
     EXPECT_FALSE(saved.contains("HD"));
@@ -996,7 +998,7 @@ TEST_F(SerializationTest, CompactFictionalRecordsShareBatchesAndRetainPhysicalSt
     EXPECT_EQ(expanded.at("fictional_origin").at("id"), original.at("fictional_origin").at("id"));
     EXPECT_EQ(expanded.at("fictional_origin").at("batch"), original.at("fictional_origin").at("batch"));
     EXPECT_EQ(expanded.at("stellar_system"), original.at("stellar_system"));
-    EXPECT_NEAR(expanded.at("stellar_metallicity").at("value_dex").get<double>(), star->metallicity, .00005);
+    EXPECT_NEAR(expanded.at("stellar_metallicity").at("value_dex").get<double>(), star->metallicity, .0005);
     Star restored;
     ASSERT_TRUE(restored.from_json(expanded));
     EXPECT_TRUE(restored.has_fictional_motion);
@@ -1056,6 +1058,61 @@ TEST_F(SerializationTest, CompactHeaderFailuresAreTransactional)
     delete_the_universe();
 }
 
+TEST_F(SerializationTest, UniverseAtmosphericGasesUseFourSignificantFigures)
+{
+    Planet* planet = make_planet(make_star());
+    json record = planet->to_json();
+    const json gases =
+    {
+        {"H2", .123456789}, {"He", .987654321}, {"N2", .7654321}, {"O2", .2098765},
+        {"O3", 1.234567e-12}, {"CO2", .0004123456}, {"CH4", 1.234567e-310},
+        {"SO2", 9.99999e-5}, {"H2O", .001234567}, {"H2S", 1.234567e-100},
+        {"HCN", .000099994}, {"NH3", .000099996}, {"C2H6", .00000001234567},
+        {"N2O", .999999}, {"CO", 0.0}, {"Ar", 1.0}
+    };
+    const json expected =
+    {
+        {"H2", .1235}, {"He", .9877}, {"N2", .7654}, {"O2", .2099},
+        {"O3", 1.235e-12}, {"CO2", .0004123}, {"CH4", 1.235e-310},
+        {"SO2", .0001}, {"H2O", .001235}, {"H2S", 1.235e-100},
+        {"HCN", .00009999}, {"NH3", .0001}, {"C2H6", .00000001235},
+        {"N2O", 1.0}, {"CO", 0.0}, {"Ar", 1.0}
+    };
+    record["atmosphere"] = {{"surface_pressure", 123456.789123}, {"composition", gases}};
+    for (int cls : {int(class_planet), int(class_moon)})
+    {
+        record["typeclass"] = cls;
+        const json saved = Serialization::expand_document(Serialization::compact_document({{"world", record}}));
+        EXPECT_EQ(saved.at("world").at("atmosphere").at("composition"), expected);
+        EXPECT_EQ(saved.at("world").at("atmosphere").at("surface_pressure"), record.at("atmosphere").at("surface_pressure"));
+        EXPECT_EQ(record.at("atmosphere").at("composition"), gases);
+    }
+    delete_the_universe();
+}
+
+TEST_F(SerializationTest, UniverseFixedPrecisionUsesThreeDecimalPlaces)
+{
+    Star* star = make_star();
+    json record = star->to_json();
+    record["absolute_magnitude"] = 4.87654321;
+    record["BV_color"] = -.1234567;
+    record["temperature"] = 5772.123456;
+    record["albedo"] = .1234567;
+    record["has_water"] = 1.234567e-8;
+    record["mass"] = 1.234567890123456e30;
+    record["sidereal_rotational_period"] = 123456.789123456;
+    const json saved = Serialization::expand_document(Serialization::compact_document({{"star", record}})).at("star");
+    EXPECT_EQ(saved.at("absolute_magnitude"), 4.877);
+    EXPECT_EQ(saved.at("BV_color"), -.123);
+    EXPECT_EQ(saved.at("temperature"), 5772.123);
+    EXPECT_EQ(saved.at("albedo"), .123);
+    EXPECT_EQ(saved.at("has_water"), 1.235e-8);
+    EXPECT_EQ(saved.at("mass"), record.at("mass"));
+    EXPECT_EQ(saved.at("sidereal_rotational_period"), record.at("sidereal_rotational_period"));
+    EXPECT_EQ(saved.at("location"), record.at("location"));
+    delete_the_universe();
+}
+
 TEST_F(SerializationTest, StreamedSaveMatchesFormattedDocumentBytes)
 {
     Star* host = make_star("Streaming primary");
@@ -1074,7 +1131,7 @@ TEST_F(SerializationTest, StreamedSaveMatchesFormattedDocumentBytes)
         output.close();
         std::ifstream input(path, std::ios::binary);
         const std::string bytes((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
-        EXPECT_EQ(bytes, Serialization::compact_document(reference).dump(4));
+        EXPECT_EQ(bytes, Serialization::expand_document(Serialization::compact_document(reference)).dump(4));
         std::remove(path.c_str());
     }
     delete_the_universe();

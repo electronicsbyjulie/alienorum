@@ -1116,7 +1116,6 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
     {
         const size_t samples = std::min(size_t(128), objects.size());
         if (!samples) return size_t(0);
-        const size_t previous_frames = save_context.header.contains("p") ? save_context.header["p"].dump(4).size() : 2;
         size_t bytes = 0;
         for (size_t sample = 0; sample < samples; ++sample)
         {
@@ -1128,21 +1127,17 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
                 ancestor = ancestor->orbit->center;
                 key = std::string(ancestor->name) + "." + key;
             }
-            const std::string record = Serialization::compact_record(object->to_json(), save_context).dump(4);
-            // Records sit two indentation levels below the document root.
-            bytes += record.size() + 8 * (1 + std::count(record.begin(), record.end(), '\n'))
+            const json packed = Serialization::compact_record(object->to_json(), save_context);
+            const std::string record = Serialization::expand_record(packed, save_context.header).dump(4);
+            // Descriptive records sit one indentation level below the document root.
+            bytes += record.size() + 4 * (1 + std::count(record.begin(), record.end(), '\n'))
                 + json(key).dump().size() + 4;
         }
-        const size_t frames = save_context.header.contains("p") ? save_context.header["p"].dump(4).size() : 2;
-        return (bytes + frames - previous_frames) * objects.size() / samples;
+        return bytes * objects.size() / samples;
     };
     result.estimated_save_bytes = estimate(result.stars);
     result.estimated_save_bytes += estimate(result.worlds);
-    if (save_context.header.is_object())
-    {
-        save_context.header.erase("p");
-        result.estimated_save_bytes += save_context.header.dump(4).size();
-    }
+    result.estimated_save_bytes += 4;
     result.elapsed_seconds = std::chrono::duration<double>(std::chrono::steady_clock::now()-start).count();
     return result;
 }

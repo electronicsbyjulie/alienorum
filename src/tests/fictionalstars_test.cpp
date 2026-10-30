@@ -421,7 +421,7 @@ TEST_F(FictionalStarsTest, FreshUniverseReloadRetainsSyntheticPhysicsWithoutSour
         EXPECT_EQ(restored->location.galactic_center.to_json(), record.at("location").at("galactic_center"));
         EXPECT_NEAR(restored->location.equatorial_plane.a*fiftyseven,
             record.at("location").at("equatorial_plane").at("a").get<double>(), 1e-10);
-        EXPECT_NEAR(restored->absolute_magnitude, record.at("absolute_magnitude").get<double>(), .00005);
+        EXPECT_NEAR(restored->absolute_magnitude, record.at("absolute_magnitude").get<double>(), .0005);
         EXPECT_DOUBLE_EQ(restored->mass, record.at("mass"));
         const auto system_id = record.at("stellar_system").at("system");
         int members = 0;

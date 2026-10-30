@@ -48,7 +48,10 @@ TEST_F(IoPerformanceTest, UniverseFilesAreAlwaysPrettyPrinted)
 {
     auto* star = make_star("Readable primary");
     star->user_added = true;
-    make_planet(star, "Readable planet")->user_edited = true;
+    auto* planet = make_planet(star, "Readable planet");
+    planet->user_edited = true;
+    planet->temperature = 374.6229;
+    planet->ensure_atmosphere()->ensure_composition()->H2_portion = .8287942118018351;
     for (bool edited : {false, true})
     {
         const auto expected = Serialization::snapshot(cels, edited);
@@ -60,7 +63,17 @@ TEST_F(IoPerformanceTest, UniverseFilesAreAlwaysPrettyPrinted)
             const auto bytes = contents(path);
             EXPECT_EQ(bytes, expected.dump(4));
             EXPECT_NE(bytes.find("\n    \""), std::string::npos);
-            EXPECT_EQ(json::parse(bytes), expected);
+            const json saved = json::parse(bytes);
+            EXPECT_EQ(saved, expected);
+            ASSERT_FALSE(saved.contains("v"));
+            const auto& world = saved.at("Readable primary.Readable planet");
+            EXPECT_EQ(world.at("temperature"), 374.623);
+            EXPECT_EQ(world.at("mass"), planet->mass);
+            EXPECT_EQ(world.at("atmosphere").at("composition").at("H2"), .8288);
+            EXPECT_TRUE(world.at("location").at("system_center").is_object());
+            EXPECT_TRUE(world.at("location").at("orbital_plane").is_object());
+            for (const char* alias : {"M", "T", "ab", "at", "bv", "c", "dd", "l", "m", "me", "n"})
+                EXPECT_FALSE(world.contains(alias)) << alias;
         }
     }
 }

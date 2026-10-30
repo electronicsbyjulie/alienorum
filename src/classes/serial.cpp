@@ -7,6 +7,8 @@
 #include <memory>
 #include <tuple>
 #include <iomanip>
+#include <locale>
+#include <sstream>
 #include "cat.h"
 #include "serial.h"
 #include "cons.h"
@@ -839,9 +841,24 @@ namespace
             const double original = value->get<double>();
             if (!std::isfinite(original) || std::abs(original) > 1e12) continue;
             // Keep tiny nonzero quantities instead of rounding them to zero.
-            const double scale = original && std::abs(original) < .0001
-                ? std::pow(10.0, 3 - std::floor(std::log10(std::abs(original)))) : 10000;
+            const double scale = original && std::abs(original) < .001
+                ? std::pow(10.0, 3 - std::floor(std::log10(std::abs(original)))) : 1000;
             if (std::isfinite(scale) && std::isfinite(original * scale)) *value = std::round(original * scale) / scale;
+        }
+        auto atmosphere = record.find("atmosphere");
+        if (atmosphere == record.end() || !atmosphere->is_object()) return;
+        auto composition = atmosphere->find("composition");
+        if (composition == atmosphere->end() || !composition->is_object()) return;
+        for (auto& gas : *composition)
+        {
+            if (!gas.is_number()) continue;
+            const double original = gas.get<double>();
+            if (!std::isfinite(original) || original == 0) continue;
+            // Decimal formatting also handles trace fractions below the normal double range.
+            std::ostringstream rounded;
+            rounded.imbue(std::locale::classic());
+            rounded << std::scientific << std::setprecision(3) << original;
+            gas = json::parse(rounded.str());
         }
     }
 
@@ -930,7 +947,7 @@ json Serialization::compact_record(json record, SaveContext& context)
             const std::string ratio = metal.value("ratio", std::string());
             if (ratio == "[Fe/H]" || ratio == "[M/H]") metal["ratio"] = ratio == "[Fe/H]" ? 1 : 2;
             if (metal.contains("value_dex") && metal["value_dex"].is_number())
-                metal["value_dex"] = std::round(metal["value_dex"].get<double>() * 10000) / 10000;
+                metal["value_dex"] = std::round(metal["value_dex"].get<double>() * 1000) / 1000;
         }
     }
     if (record.contains("stellar_metallicity") && record["stellar_metallicity"].is_object())
@@ -1162,7 +1179,9 @@ json Serialization::snapshot(CelestialObject **cels, bool oe)
     }
 
     if (!allobjs.is_null()) context.header["o"] = std::move(allobjs);
-    return std::move(context.header);
+    // Shared defaults and aliases remain an internal representation and legacy input format.
+    // Universe files expose complete descriptive records and inline spatial values.
+    return expand_document(std::move(context.header));
 }
 
 bool Serialization::save_all(std::fstream& fs, CelestialObject **cels, bool oe)
