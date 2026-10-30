@@ -32,3 +32,4 @@ src/include/EasyBMP
 src/tests/__pycache__
 summary
 views
+*.csv
