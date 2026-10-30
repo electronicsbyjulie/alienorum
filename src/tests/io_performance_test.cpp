@@ -44,6 +44,27 @@ class IoPerformanceTest : public UniverseFixture
     }
 };
 
+TEST_F(IoPerformanceTest, UniverseFilesAreAlwaysPrettyPrinted)
+{
+    auto* star = make_star("Readable primary");
+    star->user_added = true;
+    make_planet(star, "Readable planet")->user_edited = true;
+    for (bool edited : {false, true})
+    {
+        const auto expected = Serialization::snapshot(cels, edited);
+        for (bool background : {false, true})
+        {
+            const auto path = directory / "readable.json";
+            ASSERT_TRUE(Serialization::save_file(path.string(), cels, edited, background));
+            ASSERT_TRUE(Serialization::finish_file_saves());
+            const auto bytes = contents(path);
+            EXPECT_EQ(bytes, expected.dump(4));
+            EXPECT_NE(bytes.find("\n    \""), std::string::npos);
+            EXPECT_EQ(json::parse(bytes), expected);
+        }
+    }
+}
+
 TEST_F(IoPerformanceTest, SaveSnapshotOwnsDataAndPublishesInOrder)
 {
     auto* star = make_star();
@@ -56,10 +77,10 @@ TEST_F(IoPerformanceTest, SaveSnapshotOwnsDataAndPublishesInOrder)
     ASSERT_TRUE(Serialization::finish_file_saves());
     EXPECT_EQ(contents(path), expected);
     ASSERT_TRUE(Serialization::save_file(path.string(), cels, true, true));
-    const auto second = Serialization::snapshot(cels, true).dump();
+    const auto second = Serialization::snapshot(cels, true).dump(4);
     star->temperature += 100;
     ASSERT_TRUE(Serialization::save_file(path.string(), cels, true, true));
-    const auto third = Serialization::snapshot(cels, true).dump();
+    const auto third = Serialization::snapshot(cels, true).dump(4);
     EXPECT_NE(second, third);
     ASSERT_TRUE(Serialization::finish_file_saves());
     EXPECT_EQ(contents(path), third);
@@ -80,7 +101,7 @@ TEST_F(IoPerformanceTest, FailedPublicationPreservesPriorFileAndWorkerRecovers)
     EXPECT_FALSE(Serialization::finish_file_saves());
     ASSERT_TRUE(Serialization::save_file(path.string(), cels, true, true));
     ASSERT_TRUE(Serialization::finish_file_saves());
-    EXPECT_EQ(contents(path), Serialization::snapshot(cels, true).dump());
+    EXPECT_EQ(contents(path), Serialization::snapshot(cels, true).dump(4));
 }
 
 TEST_F(IoPerformanceTest, OwnedQueueWaitsBeforeCapturingAndJoinsAtDestruction)
@@ -159,7 +180,7 @@ TEST_F(IoPerformanceTest, PairedProductionPaths)
     const auto bytes = contents(path);
     if (!png_case)
     {
-        ASSERT_EQ(bytes, Serialization::snapshot(cels, true).dump());
+        ASSERT_EQ(bytes, Serialization::snapshot(cels, true).dump(4));
     }
     std::ofstream csv(output);
     csv << "proposal,workload,round,order,before_ms,after_ms,change_percent,max_channel_error,before_cpu_ms,after_cpu_ms,before_max_ms,after_max_ms\n";

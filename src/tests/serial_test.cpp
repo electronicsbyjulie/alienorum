@@ -1074,7 +1074,7 @@ TEST_F(SerializationTest, StreamedSaveMatchesFormattedDocumentBytes)
         output.close();
         std::ifstream input(path, std::ios::binary);
         const std::string bytes((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
-        EXPECT_EQ(bytes, Serialization::compact_document(reference).dump());
+        EXPECT_EQ(bytes, Serialization::compact_document(reference).dump(4));
         std::remove(path.c_str());
     }
     delete_the_universe();

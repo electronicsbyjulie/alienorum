@@ -1169,7 +1169,7 @@ bool Serialization::save_all(std::fstream& fs, CelestialObject **cels, bool oe)
 {
     try
     {
-        fs << std::setw(0) << snapshot(cels, oe);
+        fs << std::setw(4) << snapshot(cels, oe);
         return fs.good();
     }
     catch (...)
@@ -1201,7 +1201,7 @@ bool Serialization::save_file(const std::string& path, CelestialObject **objects
         {
             return publish_file(destination, [&](std::ostream& stream)
             {
-                stream << std::setw(0) << document;
+                stream << std::setw(4) << document;
                 return stream.good();
             });
         };

@@ -390,22 +390,18 @@ std::string alienorum::fictional_population_id()
     return out.str();
 }
 
-int alienorum::fictional_next_number()
+std::vector<std::string> alienorum::fictional_reserved_names()
 {
-    int highest = 0;
+    std::vector<std::string> names;
     for (int i = 0; cels && cels[i]; ++i)
     {
-        int number = 0;
-        if (sscanf(cels[i]->name, "F-%d", &number) == 1) highest = std::max(highest, number);
-        if (sscanf(cels[i]->origname.c_str(), "F-%d", &number) == 1) highest = std::max(highest, number);
-        if (cels[i]->typeclass() == class_star)
-        {
-            const auto& origin = static_cast<Star*>(cels[i])->fictional_origin;
-            if (origin.is_object() && sscanf(origin.value("designation", "").c_str(), "F-%d", &number) == 1)
-                highest = std::max(highest, number);
-        }
+        names.emplace_back(cels[i]->name);
+        names.push_back(cels[i]->origname);
+        if (cels[i]->typeclass() != class_star) continue;
+        const auto& origin = static_cast<Star*>(cels[i])->fictional_origin;
+        if (origin.is_object()) names.push_back(origin.value("designation", ""));
     }
-    return highest+1;
+    return names;
 }
 
 std::string alienorum::fictional_region_id()
@@ -566,6 +562,12 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
 {
     FictionalBatch result;
     const auto start = std::chrono::steady_clock::now();
+    if (region.catalog_prefix.empty() || region.catalog_prefix.size() > 8
+        || region.catalog_prefix.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789") != std::string::npos)
+    {
+        result.error = "Choose a catalog prefix of 1-8 letters or digits.";
+        return result;
+    }
     if (region.star_count < 1 || region.star_count >= MAX_CELOBJS || !(region.radius_ly > 0)
         || !std::isfinite(region.minimum_spacing_ly) || region.minimum_spacing_ly < 1 || region.minimum_spacing_ly > 5
         || !std::isfinite(region.radius_ly) || region.radius_ly > 1000 || !galaxy.inside(region.center_ly)
@@ -583,7 +585,27 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
     }
     std::mt19937_64 positions(region.seed), properties(region.seed ^ 0x853c49e6748fea9bULL),
         planes(region.seed ^ 0xda3e39cb94b95bdbULL), multiples(region.seed ^ 0x9e3779b97f4a7c15ULL),
-        motions(region.seed ^ 0x4b38d2e6a97c015fULL);
+        motions(region.seed ^ 0x4b38d2e6a97c015fULL), catalog(region.seed ^ 0x69a7c43b125de80fULL);
+    // An indexed occupancy array covers existing aliases and every staged system.
+    constexpr int catalog_capacity = 999999;
+    std::vector<bool> used_numbers(catalog_capacity + 1, false);
+    int available_numbers = catalog_capacity;
+    const std::string catalog_start = region.catalog_prefix + "-";
+    for (const std::string& name : region.reserved_names)
+    {
+        if (name.compare(0, catalog_start.size(), catalog_start) != 0) continue;
+        size_t end = catalog_start.size();
+        int number = 0;
+        while (end < name.size() && name[end] >= '0' && name[end] <= '9')
+        {
+            number = number * 10 + name[end++] - '0';
+            if (number > catalog_capacity) break;
+        }
+        if (end == catalog_start.size() || (end != name.size() && name[end] != ' ')
+            || number < 1 || number > catalog_capacity || used_numbers[number]) continue;
+        used_numbers[number] = true;
+        --available_numbers;
+    }
     // Procedural priors, not measured rotation curves for individual galaxies.
     const double speed_scale = galaxy_speed_scale(galaxy);
     const auto disk_velocity = [&](Point p, double age)
@@ -598,7 +620,8 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
     const std::string region_identity = region.identity.empty()
         ? galaxy.key + ":" + region.region_id + ":" + std::to_string(region.seed) : region.identity;
     result.provenance = {{"version", 3}, {"id", region_identity}, {"minimum_spacing_ly", region.minimum_spacing_ly}, {"galaxy", galaxy.key}, {"region", region.region_id},
-        {"seed", region.seed}, {"center_ly", region.center_ly.to_json()}, {"radius_ly", region.radius_ly},
+        {"seed", region.seed}, {"catalog_prefix", region.catalog_prefix}, {"catalog_numbering", "random_unique_v1"},
+        {"center_ly", region.center_ly.to_json()}, {"radius_ly", region.radius_ly},
         {"requested_stars", region.star_count}, {"spacing_model", "independent_1_5ly_pair_max"},
         {"population_reference", "CNS5_Golovin_2023_Mamajek_local_density_Solar_catalog"}, {"source_image", galaxy.image.path}, {"source_hash", galaxy.image.hash},
         {"image_encoding", "display_sRGB_approximation"}, {"model", "image_prior_disk_spheroid_v3"},
@@ -834,6 +857,15 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
         Star* root = primary.get();
         Rotation system_plane = isotropic(planes);
         double inner_sma = std::max((0.2 + pow(uniform(multiples), 2)*60)*AU, root->volumetric_mean_radius*20);
+        if (!available_numbers)
+        {
+            result.error = "No unused catalog numbers remain for this prefix. Choose another prefix.";
+            return result;
+        }
+        int catalog_number = std::uniform_int_distribution<int>(1, catalog_capacity)(catalog);
+        while (used_numbers[catalog_number]) catalog_number = catalog_number % catalog_capacity + 1;
+        used_numbers[catalog_number] = true;
+        --available_numbers;
         for (int member = 0; member < member_count; ++member)
         {
             std::unique_ptr<Star> star = member == 0 ? std::move(primary) : std::make_unique<Star>();
@@ -844,7 +876,7 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
 
             }
             std::ostringstream short_name;
-            short_name << "F-" << std::setw(6) << std::setfill('0') << region.first_number+system_number-1;
+            short_name << catalog_start << std::setw(6) << std::setfill('0') << catalog_number;
             if (member) short_name << ' ' << char('A'+member);
             const std::string name = short_name.str();
             snprintf(star->name, sizeof(star->name), "%s", name.c_str());
@@ -1084,7 +1116,7 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
     {
         const size_t samples = std::min(size_t(128), objects.size());
         if (!samples) return size_t(0);
-        const size_t previous_frames = save_context.header.contains("p") ? save_context.header["p"].dump().size() : 2;
+        const size_t previous_frames = save_context.header.contains("p") ? save_context.header["p"].dump(4).size() : 2;
         size_t bytes = 0;
         for (size_t sample = 0; sample < samples; ++sample)
         {
@@ -1096,9 +1128,12 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
                 ancestor = ancestor->orbit->center;
                 key = std::string(ancestor->name) + "." + key;
             }
-            bytes += Serialization::compact_record(object->to_json(), save_context).dump().size() + json(key).dump().size() + 2;
+            const std::string record = Serialization::compact_record(object->to_json(), save_context).dump(4);
+            // Records sit two indentation levels below the document root.
+            bytes += record.size() + 8 * (1 + std::count(record.begin(), record.end(), '\n'))
+                + json(key).dump().size() + 4;
         }
-        const size_t frames = save_context.header.contains("p") ? save_context.header["p"].dump().size() : 2;
+        const size_t frames = save_context.header.contains("p") ? save_context.header["p"].dump(4).size() : 2;
         return (bytes + frames - previous_frames) * objects.size() / samples;
     };
     result.estimated_save_bytes = estimate(result.stars);
@@ -1106,7 +1141,7 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
     if (save_context.header.is_object())
     {
         save_context.header.erase("p");
-        result.estimated_save_bytes += save_context.header.dump().size();
+        result.estimated_save_bytes += save_context.header.dump(4).size();
     }
     result.elapsed_seconds = std::chrono::duration<double>(std::chrono::steady_clock::now()-start).count();
     return result;
@@ -1126,7 +1161,8 @@ bool FictionalBatch::install(std::string& message)
     }
     ExoConsGenerator::reset();
     alienorum::CatalogLock lock(catalog_mutex);
-    std::set<std::string> names, identities;
+    const auto reserved = fictional_reserved_names();
+    std::set<std::string> names(reserved.begin(), reserved.end()), identities;
     for (int i = 0; cels[i]; ++i)
     {
         names.insert(cels[i]->name);
@@ -1170,7 +1206,9 @@ bool FictionalBatch::install(std::string& message)
         }
     }
     for (const auto& star : stars)
-        if (!names.insert(star->name).second || !identities.insert(star->fictional_origin.at("id")).second)
+        if (!names.insert(star->name).second
+            || (star->origname != star->name && !names.insert(star->origname).second)
+            || !identities.insert(star->fictional_origin.at("id")).second)
         {
             message = "This region identity or designation already exists. Start a new region preview.";
             return false;

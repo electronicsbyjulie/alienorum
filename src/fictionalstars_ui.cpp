@@ -21,6 +21,7 @@ namespace
         int galaxy_index = -1;
         FictionalGalaxy galaxy;
         FictionalRegion region;
+        char catalog_prefix[9] = "F";
         FictionalBatch batch;
         std::future<FictionalBatch> worker;
         std::atomic<bool> cancel{false};
@@ -156,10 +157,17 @@ namespace
         }
     }
 
+    int filter_catalog_prefix(ImGuiInputTextCallbackData* data)
+    {
+        const unsigned int c = data->EventChar;
+        return !((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9'));
+    }
+
     void draw_region_footer()
     {
         const bool can_generate = dialog.galaxy_index >= 0 && dialog.galaxy.inside(dialog.region.center_ly)
-            && ncelobjs < MAX_CELOBJS-1 && !dialog.region.region_id.empty();
+            && ncelobjs < MAX_CELOBJS-1 && !dialog.region.region_id.empty()
+            && !dialog.region.catalog_prefix.empty();
         ImGui::BeginDisabled(dialog.running || !can_generate);
         if (ImGui::Button("Generate Preview"))
         {
@@ -167,9 +175,7 @@ namespace
             dialog.cancel.store(false);
             dialog.progress.store(0);
             const FictionalGalaxy galaxy = dialog.galaxy;
-            dialog.region.first_number = fictional_next_number();
-            dialog.region.reserved_names.clear();
-            for (int i = 0; cels[i]; ++i) dialog.region.reserved_names.emplace_back(cels[i]->name);
+            dialog.region.reserved_names = fictional_reserved_names();
             const FictionalRegion region = dialog.region;
             dialog.worker = std::async(std::launch::async, [galaxy, region]()
             {
@@ -561,6 +567,13 @@ void draw_fictional_region()
     ImGui::PushItemWidth(input_width);
     changed = ImGui::InputDouble("Region radius (ly)", &dialog.region.radius_ly, 10, 100, "%.0f");
     changed |= ImGui::InputInt("Star count (including companions)", &dialog.region.star_count, 100, 1000);
+    if (ImGui::InputText("Catalog prefix", dialog.catalog_prefix, sizeof(dialog.catalog_prefix),
+        ImGuiInputTextFlags_CallbackCharFilter, filter_catalog_prefix))
+    {
+        dialog.region.catalog_prefix = dialog.catalog_prefix;
+        changed = true;
+    }
+    ImGui::TextWrapped("1-8 letters or digits; catalog numbers are random and unique per prefix.");
     ImGui::TextWrapped("Minimum spacing varies between systems: 1-5 light years.");
     const int available = std::max(0, MAX_CELOBJS-ncelobjs-1);
     dialog.region.star_count = std::clamp(dialog.region.star_count, 1, std::max(1, available));

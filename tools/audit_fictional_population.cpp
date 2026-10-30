@@ -194,8 +194,7 @@ int main(int argc, char** argv)
     region.region_id = "237R";
     region.seed = argc > 2 ? std::stoull(argv[2]) : 7519;
     region.center_subtype = 4;
-    region.first_number = fictional_next_number();
-    for (int i = 0; cels[i]; ++i) region.reserved_names.emplace_back(cels[i]->name);
+    region.reserved_names = fictional_reserved_names();
     const int center_index = ncelobjs;
     auto batch = generate_fictional_stars(galaxy, region);
     std::string message;

@@ -50,7 +50,7 @@ namespace alienorum
         Point center_ly;
         double radius_ly = 1000;
         int star_count = 10000;
-        int first_number = 1;
+        std::string catalog_prefix = "F";
         double minimum_spacing_ly = 1;
         int center_subtype = 6;
         uint64_t seed = 1;
@@ -78,7 +78,7 @@ namespace alienorum
 
     void generate_fictional_white_dwarf(Star& star, double age_gyr, std::mt19937_64& random);
     void restore_fictional_motion(Star& star);
-    int fictional_next_number();
+    std::vector<std::string> fictional_reserved_names();
     std::string fictional_region_id();
     std::string fictional_population_id();
     const char* fictional_center_type(int index);

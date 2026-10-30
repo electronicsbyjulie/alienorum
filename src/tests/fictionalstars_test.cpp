@@ -71,8 +71,8 @@ TEST_F(FictionalStarsTest, PreviewIsDeterministicAndDoesNotAlterTheUniverse)
     ASSERT_EQ(first.stars.size(), 500u);
     ASSERT_EQ(second.stars.size(), first.stars.size());
     EXPECT_EQ(ncelobjs, 1);
-    EXPECT_STREQ(first.stars.front()->origname.c_str(), "F-000001");
-    EXPECT_STREQ(first.stars[1]->origname.c_str(), "F-000002");
+    EXPECT_EQ(first.stars.front()->origname.substr(0, 2), "F-");
+    EXPECT_NE(first.stars.front()->origname, "F-000001");
     std::set<std::string> identities;
     for (size_t i = 0; i < first.stars.size(); ++i)
     {
@@ -229,8 +229,11 @@ TEST_F(FictionalStarsTest, OverlappingRegionsWithDifferentIdentitiesAreAllowed)
 {
     auto first = generate_fictional_stars(model, region);
     region.region_id = "ROVERLAP";
-    region.first_number = 501;
-    for (const auto& star : first.stars) region.reserved_names.emplace_back(star->name);
+    for (const auto& star : first.stars)
+    {
+        region.reserved_names.emplace_back(star->name);
+        region.reserved_names.push_back(star->origname);
+    }
     auto other = generate_fictional_stars(model, region);
     std::string message;
     ASSERT_TRUE(first.install(message));
@@ -718,14 +721,18 @@ TEST_F(FictionalStarsTest, CompanionDesignationsShareTheirPrimarySystemNumber)
     auto batch = generate_fictional_stars(model, region);
     ASSERT_TRUE(batch.error.empty());
     int number = 0, companions = 0;
+    std::set<int> catalog_numbers;
     for (const auto& star : batch.stars)
     {
         if (!star->orbit)
         {
             ++number;
-            char expected[40];
-            snprintf(expected, sizeof(expected), "F-%06d", number);
-            EXPECT_EQ(star->origname, expected);
+            ASSERT_EQ(star->origname.substr(0, 2), "F-");
+            ASSERT_EQ(star->origname.size(), 8u);
+            const int catalog_number = std::stoi(star->origname.substr(2));
+            EXPECT_GT(catalog_number, 0);
+            EXPECT_LE(catalog_number, 999999);
+            EXPECT_TRUE(catalog_numbers.insert(catalog_number).second);
         }
         else
         {
@@ -739,13 +746,77 @@ TEST_F(FictionalStarsTest, CompanionDesignationsShareTheirPrimarySystemNumber)
     EXPECT_EQ(number, batch.systems);
 }
 
+TEST_F(FictionalStarsTest, CatalogPrefixAcceptsEightAlphanumericCharactersAndRejectsInvalidValues)
+{
+    region.star_count = 20;
+    auto reference = generate_fictional_stars(model, region);
+    ASSERT_TRUE(reference.error.empty()) << reference.error;
+    for (const std::string prefix : {"A1b2C3d4", "7", "stars"})
+    {
+        region.catalog_prefix = prefix;
+        auto batch = generate_fictional_stars(model, region);
+        ASSERT_TRUE(batch.error.empty()) << batch.error;
+        EXPECT_EQ(batch.provenance.at("catalog_prefix"), prefix);
+        ASSERT_EQ(batch.stars.size(), reference.stars.size());
+        for (size_t i = 0; i < batch.stars.size(); ++i)
+        {
+            EXPECT_EQ(batch.stars[i]->origname.substr(0, prefix.size() + 1), prefix + "-");
+            EXPECT_EQ(batch.stars[i]->mass, reference.stars[i]->mass);
+            EXPECT_EQ(batch.stars[i]->temperature, reference.stars[i]->temperature);
+            EXPECT_EQ(batch.stars[i]->location.system_center.to_json(), reference.stars[i]->location.system_center.to_json());
+            EXPECT_EQ(batch.stars[i]->fictional_space_velocity.to_json(), reference.stars[i]->fictional_space_velocity.to_json());
+        }
+    }
+    for (const std::string prefix : {"", "ABCDEFGHI", "A-B", "A B", "A_B", "A!"})
+    {
+        region.catalog_prefix = prefix;
+        auto batch = generate_fictional_stars(model, region);
+        EXPECT_FALSE(batch.error.empty()) << prefix;
+        EXPECT_TRUE(batch.stars.empty());
+    }
+}
+
+TEST_F(FictionalStarsTest, RandomCatalogNumbersAvoidRenamedStarsAndSavedAliases)
+{
+    region.catalog_prefix = "Test1234";
+    auto first = generate_fictional_stars(model, region);
+    ASSERT_TRUE(first.error.empty()) << first.error;
+    std::set<std::string> original_systems;
+    for (const auto& star : first.stars)
+        original_systems.insert(star->origname.substr(0, 15));
+    const std::string first_designation = first.stars.front()->origname;
+    std::string message;
+    ASSERT_TRUE(first.install(message)) << message;
+    region.reserved_names = fictional_reserved_names();
+    EXPECT_NE(std::find(region.reserved_names.begin(), region.reserved_names.end(), first_designation),
+        region.reserved_names.end());
+    region.region_id = "NEXT";
+    auto second = generate_fictional_stars(model, region);
+    ASSERT_TRUE(second.error.empty()) << second.error;
+    for (const auto& star : second.stars)
+        EXPECT_FALSE(original_systems.count(star->origname.substr(0, 15)));
+    ASSERT_TRUE(second.install(message)) << message;
+}
+
+TEST_F(FictionalStarsTest, InstallingPreviewRejectsCatalogAliasAssignedAfterGeneration)
+{
+    auto batch = generate_fictional_stars(model, region);
+    ASSERT_TRUE(batch.error.empty()) << batch.error;
+    Star* existing = make_star("Renamed existing star");
+    existing->fictional_origin = {{"designation", batch.stars.front()->origname}};
+    const int before = ncelobjs;
+    std::string message;
+    EXPECT_FALSE(batch.install(message));
+    EXPECT_EQ(ncelobjs, before);
+}
+
 TEST_F(FictionalStarsTest, NamePoolNamesTheCenterAndTwoHundredBrightestStars)
 {
     region.star_count = 1000;
     auto batch = generate_fictional_stars(model, region);
     ASSERT_TRUE(batch.error.empty()) << batch.error;
     ASSERT_TRUE(batch.stars.front()->fictional_origin.contains("proper_name"));
-    EXPECT_EQ(batch.stars.front()->origname, "F-000001");
+    EXPECT_EQ(batch.stars.front()->origname.substr(0, 2), "F-");
     std::vector<std::pair<double, const Star*>> ordered;
     int named = 0;
     std::set<std::string> names;
