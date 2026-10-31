@@ -32,7 +32,7 @@ namespace alienorum
 
     inline std::mutex universe_save_activity_mutex;
     inline std::weak_ptr<UniverseSaveActivity> displayed_universe_save;
-    inline thread_local std::shared_ptr<UniverseSaveActivity> current_universe_save;
+    extern thread_local std::shared_ptr<UniverseSaveActivity> current_universe_save;
 
     struct UniverseSaveProgressScope
     {

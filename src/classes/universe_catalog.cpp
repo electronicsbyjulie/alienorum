@@ -22,6 +22,11 @@
 using namespace alienorum;
 namespace fs = std::filesystem;
 
+namespace alienorum
+{
+    thread_local std::shared_ptr<UniverseSaveActivity> current_universe_save;
+}
+
 namespace
 {
     using Repairs = std::map<fs::path, fs::path>;
