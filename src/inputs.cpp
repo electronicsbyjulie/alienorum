@@ -1,4 +1,5 @@
 #include "catalog_lock_trace.h"
+#include <random>
 #define IMGUI_DEFINE_MATH_OPERATORS
 
 #include "globals.h"
@@ -816,7 +817,8 @@ void process_key_cmd_char(char c)
         case 'u':
         if (view_mode == vm_horizon)
         {
-            view_mode = whereami >= 0 ? vm_system : vm_spaceship;
+            static std::mt19937 view_random{std::random_device{}()};
+            view_mode = std::bernoulli_distribution(0.5)(view_random) ? vm_system : vm_spaceship;
             viewchanged = true;
         }
         save_universe(true);
