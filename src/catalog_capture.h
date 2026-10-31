@@ -1,6 +1,7 @@
 #ifndef ALIENORUM_CATALOG_CAPTURE_H
 #define ALIENORUM_CATALOG_CAPTURE_H
 
+#include "universe_save_progress.h"
 #include <chrono>
 #include <functional>
 #include <future>
@@ -40,9 +41,18 @@ namespace alienorum
             }
             while (result.wait_for(std::chrono::microseconds(0)) != std::future_status::ready)
             {
-                if (!assist()) std::this_thread::sleep_for(std::chrono::microseconds(100));
-                else std::this_thread::yield();
+                if (!assist())
+                {
+                    if (current_universe_save) current_universe_save->waiting_for_catalog = true;
+                    std::this_thread::sleep_for(std::chrono::microseconds(100));
+                }
+                else
+                {
+                    if (current_universe_save) current_universe_save->waiting_for_catalog = false;
+                    std::this_thread::yield();
+                }
             }
+            if (current_universe_save) current_universe_save->waiting_for_catalog = false;
             result.get();
         }
     };

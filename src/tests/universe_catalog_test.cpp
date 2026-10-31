@@ -258,6 +258,46 @@ TEST_F(UniverseCatalogTest, LegacySplitLocalEditsLoadAndSaveInline)
     EXPECT_EQ(read_bytes("MilkyWay.Edited.Sun.json"), original);
 }
 
+TEST_F(UniverseCatalogTest, MeasuredProgressCountsObjectsAndPreservesPrettyJson)
+{
+    populate();
+    auto* host = find("FIC-100001");
+    for (int i = 0; i < 128; ++i)
+    {
+        const std::string name = "Unedited star " + std::to_string(i);
+        make_star(name.c_str());
+    }
+    for (int i = 0; i < 1000; ++i)
+    {
+        const std::string name = "Progress world " + std::to_string(i);
+        auto* planet = make_planet(host, name.c_str());
+        planet->user_added = true;
+        planet->cloud_map_url = u8"Clouds \"Étoile\"\nsecond line";
+    }
+    const auto path = (directory / "universe.json").string();
+    ASSERT_TRUE(Serialization::save_region_files(path, cels, true, true, true));
+    bool measured = false;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(20);
+    while (auto progress = universe_save_progress())
+    {
+        EXPECT_LE(progress->completed, progress->total);
+        EXPECT_GE(progress->elapsed_seconds, 0);
+        if (progress->total > 0) measured = true;
+        if (progress->step == "Reading and preparing objects") EXPECT_EQ(progress->total, 1004u);
+        if (std::chrono::steady_clock::now() > deadline) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    ASSERT_TRUE(Serialization::finish_file_saves());
+    EXPECT_TRUE(measured);
+    for (const std::string& name : {std::string("universe.json"), stem + ".json"})
+    {
+        EXPECT_EQ(read_bytes(name), read_json(name).dump(4));
+    }
+    const std::string original = read_bytes(stem + ".json");
+    save(true);
+    EXPECT_EQ(read_bytes(stem + ".json.bak"), original);
+}
+
 TEST_F(UniverseCatalogTest, SplitsAddedStarsAndKeepsEditedCatalogStarsInJson)
 {
     populate();

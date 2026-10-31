@@ -1456,6 +1456,7 @@ json Serialization::snapshot(CelestialObject **cels, bool oe, const SnapshotObse
         });
         // Normalize detached JSON after releasing the catalog lock.
         for (const auto& key : captured_keys) allobjs[key] = output_record(std::move(allobjs[key]));
+        save_progress_advance();
     }
 
     return allobjs;

@@ -4024,18 +4024,31 @@ void draw_comet_window(ImGuiIO & io)
 
 void draw_universe_save_progress(ImGuiIO &io)
 {
-    const auto phase = alienorum::universe_save_phase();
-    if (!phase) return;
+    const auto progress = alienorum::universe_save_progress();
+    if (!progress) return;
 
     ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.9f),
         ImGuiCond_Appearing, ImVec2(0.5f, 1.0f));
     bool open = true;
     ImGui::Begin("Saving the universe...", &open, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse
         | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav);
-    ImGui::TextUnformatted(*phase == alienorum::UniverseSavePhase::preparing
+    ImGui::TextUnformatted(progress->phase == alienorum::UniverseSavePhase::preparing
         ? "Preparing to save..." : "Saving universe...");
-    // File sizes vary widely, so animate activity without inventing a percentage.
-    ImGui::ProgressBar(-float(ImGui::GetTime()), ImVec2(380, 0), "");
+    ImGui::TextUnformatted(progress->step.c_str());
+    if (!progress->file.empty()) ImGui::TextUnformatted(progress->file.c_str());
+    const float fraction = progress->total ? float(double(progress->completed) / progress->total) : 0;
+    ImGui::ProgressBar(fraction, ImVec2(420, 0), progress->total ? nullptr : "");
+    if (progress->total)
+    {
+        ImGui::Text("%llu / %llu %s", static_cast<unsigned long long>(progress->completed),
+            static_cast<unsigned long long>(progress->total), progress->unit.c_str());
+    }
+    ImGui::Text("Elapsed: %.1f s", progress->elapsed_seconds);
+    if (progress->waiting_for_catalog) ImGui::TextUnformatted("Waiting for catalog access between frames");
+    if (progress->stalled_seconds >= 2)
+    {
+        ImGui::Text("Last progress: %.1f s ago", progress->stalled_seconds);
+    }
     const ImVec2 pos = ImGui::GetWindowPos(), size = ImGui::GetWindowSize();
     ImGui::End();
     if (!open) alienorum::dismiss_universe_save_progress();

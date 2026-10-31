@@ -5,6 +5,7 @@
 #include "../catalog_capture.h"
 #include "../universe_save_progress.h"
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cctype>
 #include <cstdint>
@@ -29,10 +30,20 @@ namespace
     auto region_capture = std::make_shared<CatalogCapture>();
     BackgroundFile region_writer;
 
-    std::string digest(const std::string& bytes)
+    std::string digest(const std::string& bytes, bool report = false)
     {
         uint64_t value = 14695981039346656037ull;
-        for (unsigned char byte : bytes) value = (value ^ byte) * 1099511628211ull;
+        size_t counted = 0;
+        for (unsigned char byte : bytes)
+        {
+            value = (value ^ byte) * 1099511628211ull;
+            if (report && ++counted == 65536)
+            {
+                save_progress_advance(counted);
+                counted = 0;
+            }
+        }
+        if (report && counted) save_progress_advance(counted);
         std::ostringstream result;
         result << std::hex << std::setw(16) << std::setfill('0') << value;
         return result.str();
@@ -177,17 +188,37 @@ namespace
         static std::atomic<uint64_t> sequence{0};
         batch.generation = std::to_string(std::chrono::steady_clock::now().time_since_epoch().count())
             + "-" + std::to_string(sequence.fetch_add(1));
-        std::vector<CelestialObject*> members;
+        save_progress_step(UniverseSavePhase::preparing, "Scanning catalog", 0, "objects");
+        std::vector<CelestialObject*> members, candidates;
         capture_access([&]()
         {
             for (int i = 0; objects[i]; ++i) members.push_back(objects[i]);
         });
+        save_progress_step(UniverseSavePhase::preparing, "Scanning catalog", members.size(), "objects");
+        for (size_t offset = 0; offset < members.size(); offset += 1024)
+        {
+            const size_t end = std::min(members.size(), offset + 1024);
+            capture_access([&]()
+            {
+                for (size_t i = offset; i < end; ++i)
+                {
+                    CelestialObject* object = members[i];
+                    if (!object->deleted && (!only_edited || object->user_added || object->user_edited))
+                    {
+                        candidates.push_back(object);
+                    }
+                }
+            });
+            save_progress_advance(end - offset);
+        }
         members.push_back(nullptr);
         objects = members.data();
+        save_progress_step(UniverseSavePhase::preparing, "Reading and preparing objects", candidates.size(), "objects");
+        candidates.push_back(nullptr);
         std::unordered_map<std::string, std::vector<CelestialObject*>> world_ancestors;
         std::unordered_map<CelestialObject*, std::string> membership;
         std::map<std::string, std::pair<std::string, StarRow>> stars;
-        json records = Serialization::snapshot(objects, only_edited, [&](CelestialObject* object, const std::string& key)
+        json records = Serialization::snapshot(candidates.data(), only_edited, [&](CelestialObject* object, const std::string& key)
         {
             if (object->typeclass() == class_star && object->user_added)
             {
@@ -270,6 +301,7 @@ namespace
                 ancestor = ancestor->orbit ? ancestor->orbit->center : nullptr;
             }
         });
+        save_progress_step(UniverseSavePhase::preparing, "Grouping saved objects", records.size(), "objects");
         for (auto& [key, entry] : stars)
         {
             auto& [group, row] = entry;
@@ -284,6 +316,7 @@ namespace
             }
             row.record = std::move(record);
             batch.regions[group].stars.push_back(std::move(row));
+            save_progress_advance();
         }
         for (auto& item : records.items())
         {
@@ -301,11 +334,17 @@ namespace
             }
             Region& region = batch.regions[group];
             region.objects[item.key()] = std::move(item.value());
+            save_progress_advance();
         }
+        save_progress_step(UniverseSavePhase::preparing, "Sorting regions and checking filenames", batch.regions.size(), "regions");
         std::set<std::string> filenames;
         for (auto& [identity, region] : batch.regions)
         {
-            if (region.stars.empty()) continue;
+            if (region.stars.empty())
+            {
+                save_progress_advance();
+                continue;
+            }
             std::sort(region.stars.begin(), region.stars.end(), [](const StarRow& a, const StarRow& b)
             {
                 return std::tie(a.center_rank, a.system_order, a.key) < std::tie(b.center_rank, b.system_order, b.key);
@@ -316,6 +355,7 @@ namespace
             std::string folded = region.basename;
             std::transform(folded.begin(), folded.end(), folded.begin(), [](unsigned char c) { return std::tolower(c); });
             if (!filenames.insert(folded).second) throw std::runtime_error("Two regions have the same output filename");
+            save_progress_advance();
         }
         return batch;
     }
@@ -415,6 +455,7 @@ namespace
             if (formatted.orbit && !row.parent_id.empty()) formatted.orbit->center = &parent_columns;
             const std::string line = CatalogReader::format_condensed_star_line(&formatted, false);
             output << line << " FIC2 " << std::quoted(compact_star_state(row, line, header).dump()) << '\n';
+            save_progress_advance();
         }
         return output.str();
     }
@@ -435,6 +476,61 @@ namespace
 #endif
     }
 
+    void write_bytes_progress(std::ostream& output, const std::string& bytes)
+    {
+        for (size_t offset = 0; offset < bytes.size(); offset += 65536)
+        {
+            const size_t count = std::min<size_t>(65536, bytes.size() - offset);
+            output.write(bytes.data() + offset, count);
+            if (!output) throw std::runtime_error("Cannot write universe output");
+            save_progress_advance(count);
+        }
+    }
+
+    void copy_bytes_progress(std::istream& input, std::ostream& output)
+    {
+        std::array<char, 65536> buffer;
+        while (input)
+        {
+            input.read(buffer.data(), buffer.size());
+            const auto count = input.gcount();
+            if (count > 0)
+            {
+                output.write(buffer.data(), count);
+                if (!output) throw std::runtime_error("Cannot copy universe output");
+                save_progress_advance(count);
+            }
+        }
+        if (input.bad() || !input.eof()) throw std::runtime_error("Cannot read universe output");
+    }
+
+    void write_json_progress(std::ostream& output, const json& document)
+    {
+        // Serialize one root record at a time with the same four-space layout.
+        // This bounds temporary memory and reports progress during large JSON files.
+        output << '{';
+        bool first = true;
+        for (const auto& item : document.items())
+        {
+            if (!first) output << ',';
+            first = false;
+            output << "\n    " << json(item.key()).dump() << ": ";
+            const std::string record = item.value().dump(4);
+            size_t start = 0, end;
+            while ((end = record.find('\n', start)) != std::string::npos)
+            {
+                output.write(record.data() + start, end - start + 1);
+                output << "    ";
+                start = end + 1;
+            }
+            output.write(record.data() + start, record.size() - start);
+            if (!output) throw std::runtime_error("Cannot write universe JSON");
+            save_progress_advance();
+        }
+        if (!first) output << '\n';
+        output << '}';
+    }
+
     bool publish_batch(SaveBatch batch)
     {
         std::vector<StagedFile> files;
@@ -450,9 +546,11 @@ namespace
             std::ofstream output(file.temporary, std::ios::binary | std::ios::trunc);
             if (!output) throw std::runtime_error("Cannot stage universe output");
             write(output);
+            save_progress_step(UniverseSavePhase::saving, "Flushing file", 1, "files", destination.filename().u8string());
             output.flush();
             output.close();
             if (!output) throw std::runtime_error("Cannot finish universe output");
+            save_progress_advance();
         };
         try
         {
@@ -461,11 +559,13 @@ namespace
                 std::lock_guard<std::mutex> lock(repair_mutex);
                 for (const auto& [destination, source] : recovered_files[batch.index.parent_path()])
                 {
+                    save_progress_step(UniverseSavePhase::saving, "Restoring committed file", fs::file_size(source),
+                        "bytes", destination.filename().u8string());
                     if (!publish_file(destination, [&](std::ostream& output)
                     {
                         std::ifstream input(source, std::ios::binary);
                         if (!input) return false;
-                        output << input.rdbuf();
+                        copy_bytes_progress(input, output);
                         return !input.bad() && output.good();
                     })) throw std::runtime_error("Cannot restore a recovered universe companion");
                 }
@@ -478,20 +578,30 @@ namespace
             {
                 if (region.stars.empty())
                 {
-                    index.update(std::move(region.objects));
+                    save_progress_step(UniverseSavePhase::saving, "Collecting local edits", region.objects.size(), "records");
+                    for (auto& item : region.objects.items())
+                    {
+                        index[item.key()] = std::move(item.value());
+                        save_progress_advance();
+                    }
                     continue;
                 }
                 region.objects["$region"] = {{"version", 1}, {"generation", batch.generation}};
                 if (!region.stars.empty())
                 {
-                    const std::string bytes = catalog_bytes(batch, region);
                     const std::string name = region.basename + ".dat";
-                    stage(directory / name, [&](std::ostream& output) { output << bytes; });
+                    save_progress_step(UniverseSavePhase::saving, "Formatting star catalog", region.stars.size(), "stars", name);
+                    const std::string bytes = catalog_bytes(batch, region);
+                    save_progress_step(UniverseSavePhase::saving, "Writing star catalog", bytes.size(), "bytes", name);
+                    stage(directory / name, [&](std::ostream& output) { write_bytes_progress(output, bytes); });
+                    save_progress_step(UniverseSavePhase::saving, "Checksumming star catalog", bytes.size(), "bytes", name);
+                    const std::string hash = digest(bytes, true);
                     region.objects["$stellar_catalog"] = {{"version", 1}, {"generation", batch.generation},
-                        {"file", name}, {"hash", digest(bytes)}, {"count", region.stars.size()}};
+                        {"file", name}, {"hash", hash}, {"count", region.stars.size()}};
                 }
                 const std::string name = region.basename + ".json";
-                stage(directory / name, [&](std::ostream& output) { output << std::setw(4) << region.objects; });
+                save_progress_step(UniverseSavePhase::saving, "Writing JSON", region.objects.size(), "records", name);
+                stage(directory / name, [&](std::ostream& output) { write_json_progress(output, region.objects); });
                 parts.push_back(name);
             }
             if (!parts.empty())
@@ -499,17 +609,33 @@ namespace
                 // Version 2 stores local edits beside the generated-region references.
                 index["$universe"] = {{"version", 2}, {"generation", batch.generation}, {"parts", std::move(parts)}};
             }
-            stage(batch.index, [&](std::ostream& output) { output << std::setw(4) << index; });
+            save_progress_step(UniverseSavePhase::saving, "Writing JSON", index.size(), "records", batch.index.filename().u8string());
+            stage(batch.index, [&](std::ostream& output) { write_json_progress(output, index); });
             // Stage the entire batch before replacing any file; publish the index last.
             for (auto& file : files)
             {
                 file.existed = fs::exists(file.destination);
-                if (file.existed) fs::copy_file(file.destination, file.backup, fs::copy_options::overwrite_existing);
+                if (file.existed)
+                {
+                    save_progress_step(UniverseSavePhase::saving, "Backing up file", fs::file_size(file.destination),
+                        "bytes", file.destination.filename().u8string());
+                    std::ifstream input(file.destination, std::ios::binary);
+                    std::ofstream output(file.backup, std::ios::binary | std::ios::trunc);
+                    if (!input || !output) throw std::runtime_error("Cannot open universe backup");
+                    copy_bytes_progress(input, output);
+                    save_progress_step(UniverseSavePhase::saving, "Flushing backup", 1, "files", file.backup.filename().u8string());
+                    output.flush();
+                    output.close();
+                    if (!output) throw std::runtime_error("Cannot finish universe backup");
+                    save_progress_advance();
+                }
             }
+            save_progress_step(UniverseSavePhase::saving, "Publishing files", files.size(), "files");
             for (auto& file : files)
             {
                 replace_file(file.temporary, file.destination);
                 file.committed = true;
+                save_progress_advance();
             }
             return true;
         }
@@ -768,8 +894,8 @@ bool Serialization::save_region_files(const std::string& path, CelestialObject**
         auto activity = begin_universe_save_activity(show_progress);
         const auto save = [path, objects, only_edited, activity]()
         {
+            UniverseSaveProgressScope progress(activity);
             SaveBatch batch = capture(path, objects, only_edited);
-            if (activity) activity->phase = UniverseSavePhase::saving;
             return publish_batch(std::move(batch));
         };
         if (!background)
