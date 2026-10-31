@@ -28,6 +28,12 @@ namespace alienorum
         return activity;
     }
 
+    inline void dismiss_universe_save_progress()
+    {
+        std::lock_guard<std::mutex> lock(universe_save_activity_mutex);
+        displayed_universe_save.reset();
+    }
+
     inline std::optional<UniverseSavePhase> universe_save_phase()
     {
         std::lock_guard<std::mutex> lock(universe_save_activity_mutex);

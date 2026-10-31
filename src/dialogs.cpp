@@ -4029,7 +4029,8 @@ void draw_universe_save_progress(ImGuiIO &io)
 
     ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.9f),
         ImGuiCond_Appearing, ImVec2(0.5f, 1.0f));
-    ImGui::Begin("Universe save", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse
+    bool open = true;
+    ImGui::Begin("Universe save", &open, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse
         | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav);
     ImGui::TextUnformatted(*phase == alienorum::UniverseSavePhase::preparing
         ? "Preparing to save..." : "Saving universe...");
@@ -4037,6 +4038,7 @@ void draw_universe_save_progress(ImGuiIO &io)
     ImGui::ProgressBar(-float(ImGui::GetTime()), ImVec2(380, 0), "");
     const ImVec2 pos = ImGui::GetWindowPos(), size = ImGui::GetWindowSize();
     ImGui::End();
+    if (!open) alienorum::dismiss_universe_save_progress();
     if (io.MousePos.x >= pos.x && io.MousePos.y >= pos.y
         && io.MousePos.x < pos.x + size.x && io.MousePos.y < pos.y + size.y)
     {
