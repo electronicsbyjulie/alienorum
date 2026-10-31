@@ -813,7 +813,14 @@ void process_key_cmd_char(char c)
         break;
 
         case 'T': trackidx = -1; break;
-        case 'u': save_universe(true); break;
+        case 'u':
+        if (view_mode == vm_horizon)
+        {
+            view_mode = whereami >= 0 ? vm_system : vm_spaceship;
+            viewchanged = true;
+        }
+        save_universe(true);
+        break;
 
         case 'U':
         save_viewer_latlon = true;
