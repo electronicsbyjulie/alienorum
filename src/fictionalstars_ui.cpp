@@ -510,6 +510,8 @@ void draw_fictional_region()
                 && (filter.empty() || stellar_alias_key(cels[i]->name).find(filter) != std::string::npos)) matches.push_back(i);
         ImGuiListClipper clipper;
         clipper.Begin(matches.size());
+        const auto selected = std::find(matches.begin(), matches.end(), dialog.galaxy_index);
+        if (selected != matches.end()) clipper.IncludeItemByIndex(int(selected - matches.begin()));
         while (clipper.Step())
             for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row)
             {
@@ -518,6 +520,7 @@ void draw_fictional_region()
                 const std::string label = "    "+std::string(cels[index]->name);
                 ImGui::PushID(index);
                 if (ImGui::Selectable(label.c_str(), dialog.galaxy_index == index)) dialog.choose(index);
+                if (dialog.galaxy_index == index) ImGui::SetItemDefaultFocus();
                 if (dialog.has_photo(cels[index]->name)) draw_photo_icon(position);
                 ImGui::PopID();
             }
