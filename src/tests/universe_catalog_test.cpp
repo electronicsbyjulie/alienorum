@@ -205,12 +205,65 @@ TEST_F(UniverseCatalogTest, FailedInteractiveSaveClosesProgress)
     EXPECT_FALSE(universe_save_phase().has_value());
 }
 
+TEST_F(UniverseCatalogTest, LocalEditsStayInIndependentRenamedUniverses)
+{
+    auto* saturn = make_planet(static_cast<Star*>(cels[0]), "Saturn");
+    saturn->user_edited = true;
+    saturn->mass = 5.68317e29;
+    saturn->volumetric_mean_radius = 582320202.98;
+    save(true);
+    const auto first = read_json("universe.json");
+    EXPECT_FALSE(first.contains("$universe"));
+    EXPECT_TRUE(first.contains("Sun.Saturn"));
+    EXPECT_FALSE(fs::exists(directory / "MilkyWay.Edited.Sun.json"));
+    fs::rename(directory / "universe.json", directory / "StarTrek.json");
+    const std::string preserved = read_bytes("StarTrek.json");
+    saturn->mass = 5.68317e26;
+    saturn->volumetric_mean_radius = 58232020.298;
+    save();
+    fs::rename(directory / "universe.json", directory / "Futurama.json");
+    EXPECT_EQ(read_bytes("StarTrek.json"), preserved);
+    delete_the_universe();
+    make_star("Sun");
+    ASSERT_TRUE(Serialization::load_file((directory / "StarTrek.json").string(), cels, MAX_CELOBJS));
+    auto* restored = cels[1];
+    EXPECT_STREQ(restored->name, "Saturn");
+    EXPECT_DOUBLE_EQ(restored->mass, 5.68317e29);
+    EXPECT_DOUBLE_EQ(restored->volumetric_mean_radius, 582320202.98);
+    ASSERT_TRUE(Serialization::load_file((directory / "Futurama.json").string(), cels, MAX_CELOBJS));
+    EXPECT_DOUBLE_EQ(restored->mass, 5.68317e26);
+    save();
+    EXPECT_EQ(read_bytes("StarTrek.json"), preserved);
+}
+
+TEST_F(UniverseCatalogTest, LegacySplitLocalEditsLoadAndSaveInline)
+{
+    auto* star = make_star("Legacy edited star");
+    star->user_edited = true;
+    star->temperature = 4321;
+    json edits = Serialization::snapshot(cels, true);
+    edits["$region"] = {{"version", 1}, {"generation", "legacy-test"}};
+    { std::ofstream output(directory / "MilkyWay.Edited.Sun.json"); output << edits; }
+    const std::string original = read_bytes("MilkyWay.Edited.Sun.json");
+    const json index = {{"$universe", {{"version", 1}, {"generation", "legacy-test"},
+        {"parts", {"MilkyWay.Edited.Sun.json"}}}}};
+    { std::ofstream output(directory / "old-index.json"); output << index; }
+    delete_the_universe();
+    make_star("Sun");
+    ASSERT_TRUE(Serialization::load_file((directory / "old-index.json").string(), cels, MAX_CELOBJS));
+    ASSERT_NE(find("Legacy edited star"), nullptr);
+    save(true);
+    EXPECT_TRUE(read_json("universe.json").contains("Legacy edited star"));
+    EXPECT_FALSE(read_json("universe.json").contains("$universe"));
+    EXPECT_EQ(read_bytes("MilkyWay.Edited.Sun.json"), original);
+}
+
 TEST_F(UniverseCatalogTest, SplitsAddedStarsAndKeepsEditedCatalogStarsInJson)
 {
     populate();
     save();
     const auto index = read_json("universe.json");
-    ASSERT_EQ(index.at("$universe").at("parts").size(), 2u);
+    ASSERT_EQ(index.at("$universe").at("parts").size(), 1u);
     const auto worlds = read_json(stem + ".json");
     EXPECT_TRUE(worlds.contains("FIC-100001.Test world"));
     for (const auto& item : worlds.items())
@@ -220,7 +273,8 @@ TEST_F(UniverseCatalogTest, SplitsAddedStarsAndKeepsEditedCatalogStarsInJson)
             EXPECT_NE(item.value().at("cls"), class_star);
         }
     }
-    const auto edits = read_json("MilkyWay.Edited.Sun.json");
+    const auto& edits = index;
+    EXPECT_FALSE(fs::exists(directory / "MilkyWay.Edited.Sun.json"));
     ASSERT_TRUE(edits.contains("Edited catalog star"));
     EXPECT_FALSE(edits.at("Edited catalog star").at("user_added"));
     const std::string bytes = read_bytes(stem + ".dat");
@@ -414,7 +468,7 @@ TEST_F(UniverseCatalogTest, MultipleGalaxiesRestoreThroughOneIndex)
     other->stellar_system["system"] = "population:other:0";
     other->set_fictional_motion(Point(1, 2, 3));
     save();
-    EXPECT_EQ(read_json("universe.json").at("$universe").at("parts").size(), 3u);
+    EXPECT_EQ(read_json("universe.json").at("$universe").at("parts").size(), 2u);
     EXPECT_TRUE(fs::exists(directory / "NGC1300.FIC.OtherCenter.dat"));
     delete_the_universe();
     make_star("Sun");

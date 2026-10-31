@@ -178,11 +178,9 @@ namespace
         batch.generation = std::to_string(std::chrono::steady_clock::now().time_since_epoch().count())
             + "-" + std::to_string(sequence.fetch_add(1));
         std::vector<CelestialObject*> members;
-        std::string root_name;
         capture_access([&]()
         {
             for (int i = 0; objects[i]; ++i) members.push_back(objects[i]);
-            root_name = objects[0] ? objects[0]->name : "Sun";
         });
         members.push_back(nullptr);
         objects = members.data();
@@ -307,20 +305,14 @@ namespace
         std::set<std::string> filenames;
         for (auto& [identity, region] : batch.regions)
         {
-            if (region.stars.empty())
+            if (region.stars.empty()) continue;
+            std::sort(region.stars.begin(), region.stars.end(), [](const StarRow& a, const StarRow& b)
             {
-                region.basename = "MilkyWay.Edited." + Serialization::filename_part(root_name);
-            }
-            else
-            {
-                std::sort(region.stars.begin(), region.stars.end(), [](const StarRow& a, const StarRow& b)
-                {
-                    return std::tie(a.center_rank, a.system_order, a.key) < std::tie(b.center_rank, b.system_order, b.key);
-                });
-                region.basename = Serialization::filename_part(region.galaxy.at("name").get<std::string>()) + "."
-                    + Serialization::filename_part(region.prefix) + "."
-                    + Serialization::filename_part(region.stars.front().record.at("!name").get<std::string>());
-            }
+                return std::tie(a.center_rank, a.system_order, a.key) < std::tie(b.center_rank, b.system_order, b.key);
+            });
+            region.basename = Serialization::filename_part(region.galaxy.at("name").get<std::string>()) + "."
+                + Serialization::filename_part(region.prefix) + "."
+                + Serialization::filename_part(region.stars.front().record.at("!name").get<std::string>());
             std::string folded = region.basename;
             std::transform(folded.begin(), folded.end(), folded.begin(), [](unsigned char c) { return std::tolower(c); });
             if (!filenames.insert(folded).second) throw std::runtime_error("Two regions have the same output filename");
@@ -480,9 +472,15 @@ namespace
                 recovered_files.erase(batch.index.parent_path());
             }
             const fs::path directory = batch.index.parent_path();
-            json index = {{"$universe", {{"version", 1}, {"generation", batch.generation}, {"parts", json::array()}}}};
+            json index = json::object();
+            json parts = json::array();
             for (auto& [identity, region] : batch.regions)
             {
+                if (region.stars.empty())
+                {
+                    index.update(std::move(region.objects));
+                    continue;
+                }
                 region.objects["$region"] = {{"version", 1}, {"generation", batch.generation}};
                 if (!region.stars.empty())
                 {
@@ -494,7 +492,12 @@ namespace
                 }
                 const std::string name = region.basename + ".json";
                 stage(directory / name, [&](std::ostream& output) { output << std::setw(4) << region.objects; });
-                index["$universe"]["parts"].push_back(name);
+                parts.push_back(name);
+            }
+            if (!parts.empty())
+            {
+                // Version 2 stores local edits beside the generated-region references.
+                index["$universe"] = {{"version", 2}, {"generation", batch.generation}, {"parts", std::move(parts)}};
             }
             stage(batch.index, [&](std::ostream& output) { output << std::setw(4) << index; });
             // Stage the entire batch before replacing any file; publish the index last.
@@ -820,9 +823,11 @@ bool Serialization::load_file(const std::string& filename, CelestialObject** obj
             if (document.contains("$universe"))
             {
                 const auto& manifest = document.at("$universe");
-                if (manifest.at("version") != 1) throw std::runtime_error("Unknown universe index format");
+                const int version = manifest.at("version").get<int>();
+                if (version != 1 && version != 2) throw std::runtime_error("Unknown universe index format");
                 const std::string generation = manifest.at("generation");
-                records = json::object();
+                records = version == 2 ? document : json::object();
+                records.erase("$universe");
                 for (const auto& part : manifest.at("parts"))
                     merge_records(records, read_part(companion(path.parent_path(), part.get<std::string>()), generation, selected));
             }

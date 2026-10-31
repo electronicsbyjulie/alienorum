@@ -158,20 +158,17 @@ Alienorum has a feature that generates fictional stars, and optionally planets a
 You can also edit the universe JSON files to modify other parameters not included in the window. Just make sure the file is still valid JSON after any edits. There are third party apps that will check a .json file to make sure it's
 valid and find any errors.
 
-IMPORTANT: After loading a universe with F4, subsequently saving your changes with U will not overwrite the external file; it will save to universe.json. Make sure to either copy your changes to the external JSON file or back up your old file and rename universe.json to the working filename.
+IMPORTANT: If you edit existing objects and/or add objects to existing stars, then press U, your changes will be saved to universe.json ***irrespective of the original filename***. That means if you make edits, then save, then rename your universe.json to something else, you can load the file in a new session, but any further edits will still be saved to universe.json, ***not to your renamed file***. It's different if the saved universe contains generated stars; those and their planets get saved to files with pre-selected names; pressing U *does* overwrite those files.
 
 
 ## Editing user.json
 
-In the project root folder is a file called `user.json`, a standard JSON-formatted settings file. If you don't see this file, press Shift+U from the Alienorum app window
-and the app will create the file. You can edit it in a normal text editor as long as the format stays valid JSON. For best results, paste the edited file contents into a 
-JSON validator or ask an AI to check the syntax.
+In the project root folder is a file called `user.json`, a standard JSON-formatted settings file. If you don't see this file, press Shift+U from the Alienorum app window and the app will create the file. You can edit it in a normal text editor as long as the format stays valid JSON. For best results, paste the edited file contents into a JSON validator or ask an AI to check the syntax.
 
 
 ### Setting Your Latitude/Longitude
 
-The default lat/lon coordinates are those for Babylon, where archaeological evidence exists for astronomical knowledge in ancient times. To set your own location as the default, create a file in the alienorum root folder called `user.json`
-and add the following lines, changing the numbers to your own location:
+The default lat/lon coordinates are those for Babylon, where archaeological evidence exists for astronomical knowledge in ancient times. To set your own location as the default, create a file in the alienorum root folder called `user.json` and add the following lines, changing the numbers to your own location:
 
 ```
 {
