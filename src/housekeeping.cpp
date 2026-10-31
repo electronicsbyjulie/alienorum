@@ -180,8 +180,11 @@ void set_viewer_location_and_plane()
         if (vplane_mode == vplane_local && cels[whereami]->orbit->center)
         {
             here = cels[whereami]->location;
-            Point me = cels[whereami]->location;
-            Point zenith = satview_upsidedown ? (Point(cels[whereami]->orbit->center->location) - me) : (me - cels[whereami]->orbit->center->location);
+            // Cancel shared coordinate origins before converting to meters.
+            // Absolute galactic positions lose the precision of a satellite orbit.
+            CelestialLocation relative = cels[whereami]->location - cels[whereami]->orbit->center->location;
+            Point zenith(relative);
+            if (satview_upsidedown) zenith *= -1;
             here.equatorial_plane = align_points_3d(zenith, yaxis, center);
             viewchanged = true;
             return;
