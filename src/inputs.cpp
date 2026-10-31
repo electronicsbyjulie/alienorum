@@ -307,7 +307,7 @@ void show_menu()
         {
             mouse_over_menu = true;
             if (ImGui::MenuItem("Save Snapshot", "F12")) { process_key_F12(); menu_clicked = true; }
-            if (ImGui::MenuItem("Write universe.json", "U")) { process_key_cmd_char('u'); menu_clicked = true; }
+            if (ImGui::MenuItem("Save universe files", "U")) { process_key_cmd_char('u'); menu_clicked = true; }
             if (ImGui::MenuItem("Load Universe...", "F4")) { process_key_F4(); menu_clicked = true; }
             if (ImGui::MenuItem("Import SSC Add-On...", "F6")) { process_key_F6(); menu_clicked = true; }
             if (ImGui::MenuItem("Overwrite Map Files On Import", nullptr, &last_ssc_import.overwrite_maps)) menu_clicked = true;
@@ -1466,7 +1466,7 @@ void process_key_F4()
 {
     IGFD::FileDialogConfig config;
     config.path = ".";
-    ImGuiFileDialog::Instance()->OpenDialog("ChooseFileDlgKey", "Choose File", ".json", config);
+    ImGuiFileDialog::Instance()->OpenDialog("ChooseFileDlgKey", "Choose File", "Universe files{.json,.dat}", config);
     fdlg_shown = true;
 }
 

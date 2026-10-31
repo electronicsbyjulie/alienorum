@@ -620,7 +620,7 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
     const std::string region_identity = region.identity.empty()
         ? galaxy.key + ":" + region.region_id + ":" + std::to_string(region.seed) : region.identity;
     result.provenance = {{"version", 3}, {"id", region_identity}, {"minimum_spacing_ly", region.minimum_spacing_ly}, {"galaxy", galaxy.key}, {"region", region.region_id},
-        {"seed", region.seed}, {"catalog_prefix", region.catalog_prefix}, {"catalog_numbering", "random_unique_v1"},
+        {"seed", region.seed}, {"galaxy_name", galaxy.name}, {"catalog_prefix", region.catalog_prefix}, {"catalog_numbering", "random_unique_v1"},
         {"center_ly", region.center_ly.to_json()}, {"radius_ly", region.radius_ly},
         {"requested_stars", region.star_count}, {"spacing_model", "independent_1_5ly_pair_max"},
         {"population_reference", "CNS5_Golovin_2023_Mamajek_local_density_Solar_catalog"}, {"source_image", galaxy.image.path}, {"source_hash", galaxy.image.hash},

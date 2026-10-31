@@ -38,13 +38,13 @@ CLASSES_SRC = $(CLASSES_DIR)/fictionalstars.cpp $(CLASSES_DIR)/point.cpp $(CLASS
             $(CLASSES_DIR)/chemistry.cpp \
             $(CLASSES_DIR)/stellar_catalogs.cpp $(CLASSES_DIR)/surfacenavigation.cpp \
             $(CLASSES_DIR)/misc.cpp $(CLASSES_DIR)/planet.cpp $(CLASSES_DIR)/moon.cpp $(CLASSES_DIR)/galaxy.cpp $(CLASSES_DIR)/comet.cpp \
-			$(CLASSES_DIR)/serial.cpp $(CLASSES_DIR)/noise.cpp $(CLASSES_DIR)/satellite.cpp $(CLASSES_DIR)/shore.cpp $(CLASSES_DIR)/patch.cpp \
+			$(CLASSES_DIR)/serial.cpp $(CLASSES_DIR)/universe_catalog.cpp $(CLASSES_DIR)/noise.cpp $(CLASSES_DIR)/satellite.cpp $(CLASSES_DIR)/shore.cpp $(CLASSES_DIR)/patch.cpp \
 			$(CLASSES_DIR)/cons.cpp $(CLASSES_DIR)/sscimport.cpp $(CLASSES_DIR)/exocons.cpp $(CLASSES_DIR)/sound.cpp
 TESTS_SRC = $(TESTS_DIR)/fictionalstars_test.cpp $(TESTS_DIR)/point_test.cpp $(TESTS_DIR)/color_test.cpp \
 			$(TESTS_DIR)/celestial_test.cpp $(TESTS_DIR)/galaxy_test.cpp $(TESTS_DIR)/star_test.cpp \
 			$(TESTS_DIR)/planet_test.cpp $(TESTS_DIR)/moon_test.cpp $(TESTS_DIR)/comet_test.cpp \
 			$(TESTS_DIR)/satellite_test.cpp $(TESTS_DIR)/cons_test.cpp \
-			$(TESTS_DIR)/serial_test.cpp $(TESTS_DIR)/misc_test.cpp $(TESTS_DIR)/cat_test.cpp \
+			$(TESTS_DIR)/serial_test.cpp $(TESTS_DIR)/universe_catalog_test.cpp $(TESTS_DIR)/misc_test.cpp $(TESTS_DIR)/cat_test.cpp \
 			$(TESTS_DIR)/housekeeping_test.cpp $(TESTS_DIR)/io_performance_test.cpp $(TESTS_DIR)/sound_test.cpp $(TESTS_DIR)/rendering_test.cpp
 
 BIN = bin
@@ -209,6 +209,9 @@ $(OBJINT)/color.o: $(CLASSES_DIR)/color.cpp
 	$(CPP) $(CLASSES_DIR)/color.cpp $(CPPFLAGS) -c -o $(OBJINT)/color.o
 
 $(OBJINT)/fictionalstars.o: $(CLASSES_DIR)/fictionalstars.cpp
+	$(CPP) $< $(CPPFLAGS) -c -o $@
+
+$(OBJINT)/universe_catalog.o: $(CLASSES_DIR)/universe_catalog.cpp
 	$(CPP) $< $(CPPFLAGS) -c -o $@
 
 $(OBJINT)/point.o: $(CLASSES_DIR)/point.cpp

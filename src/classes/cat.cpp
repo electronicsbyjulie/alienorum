@@ -6037,6 +6037,11 @@ static std::string baked_star_link_key(const json& key)
 void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
 {
     if (s->fictional_origin.is_object()) return;
+    fputs(format_condensed_star_line(s).c_str(), fp);
+}
+
+std::string alienorum::CatalogReader::format_condensed_star_line(Star* s, bool extensions)
+{
     // These one-based ranges match read_condensed_star_cat(); SC2 fixes the metadata tail too.
     std::string line(655, ' ');
     const auto put = [&](size_t first, size_t last, const std::string &value)
@@ -6136,9 +6141,18 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
     put(558, 560, std::to_string(s->wd_color_red));
     put(562, 564, std::to_string(s->wd_color_green));
     put(566, 568, std::to_string(s->wd_color_blue));
-    put(570, 601, s->wd_color_source);
-    put(603, 634, s->wd_temperature_source);
+    const auto provenance_column = [extensions](const std::string& value)
+    {
+        if (extensions || value.size() <= 32) return value;
+        size_t end = 32;
+        while (end && (static_cast<unsigned char>(value[end]) & 0xc0) == 0x80) --end;
+        return value.substr(0, end);
+    };
+    // User catalogs preserve complete provenance in their exact-state extension.
+    put(570, 601, provenance_column(s->wd_color_source));
+    put(603, 634, provenance_column(s->wd_temperature_source));
     put(636, 655, std::to_string(s->wd_color_revision));
+    if (!extensions) return line;
     const auto link_key = [](const Star* object)
     {
         if (cels && object->seqno >= 0 && object->seqno < MAX_CELOBJS && cels[object->seqno] == object)
@@ -6216,7 +6230,7 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
         line += aliases.str();
     }
     line += '\n';
-    fputs(line.c_str(), fp);
+    return line;
 }
 
 int alienorum::CatalogReader::write_condensed_star_cat(ConsBins cb)

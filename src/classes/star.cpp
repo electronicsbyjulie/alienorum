@@ -1696,6 +1696,12 @@ json Star::to_json()
     if (stellar_abundances.is_object() && !stellar_abundances.empty()) towrite["stellar_abundances"] = stellar_abundances;
     if (stellar_rotation.is_object()) towrite["stellar_rotation"] = stellar_rotation;
     if (stellar_system.is_object()) towrite["stellar_system"] = stellar_system;
+    if (catalog_frame.is_object()) towrite["catalog_frame"] = catalog_frame;
+    if (has_fictional_motion && !fictional_origin.is_object())
+    {
+        towrite["catalog_motion"] = {{"epoch_position_m", fictional_epoch_position.to_json()},
+            {"velocity_m_s", fictional_space_velocity.to_json()}};
+    }
     if (fictional_origin.is_object())
     {
         towrite["fictional_origin"] = fictional_origin;
@@ -1772,9 +1778,9 @@ bool Star::from_json(const json& j)
     const bool fictional_marker = j.value("fic", 0) == 1;
     if (fictional_marker && !fictional_origin.is_object()) fictional_origin = json::object();
     has_fictional_motion = false;
-    if (fictional_origin.is_object() && fictional_origin.contains("motion"))
+    if (j.contains("catalog_motion") || (fictional_origin.is_object() && fictional_origin.contains("motion")))
     {
-        const auto& motion = fictional_origin.at("motion");
+        const auto& motion = j.contains("catalog_motion") ? j.at("catalog_motion") : fictional_origin.at("motion");
         const auto read_point = [&](const char* key, Point& point)
         {
             if (!motion.is_object() || !motion.contains(key) || !motion.at(key).is_object()) return false;
@@ -1790,6 +1796,7 @@ bool Star::from_json(const json& j)
     }
     if (fictional_origin.is_object()) is_faved = j.value("is_faved", false);
     stellar_system = j.value("stellar_system", json(nullptr));
+    catalog_frame = j.value("catalog_frame", json(nullptr));
     if (stellar_system.is_object()) has_custom_name = true;
     if (stellar_system.is_object() && !stellar_system.contains("slot"))
     {

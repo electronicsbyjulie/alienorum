@@ -28,6 +28,7 @@ namespace alienorum
         json stellar_abundances = nullptr;
         json stellar_rotation = nullptr;             // Period provenance and supplied/assumed pole fields.
         json fictional_origin = nullptr;           // Stable fictional identity and generation provenance.
+        json catalog_frame = nullptr;                // Region identity and coordinate origin for split saves.
         json stellar_system = nullptr;               // Physical system, published label, and orbit provenance.
         json chemistry_diagnostics() const;
         bool calibrated_iron_abundance(double& value, double& uncertainty) const;

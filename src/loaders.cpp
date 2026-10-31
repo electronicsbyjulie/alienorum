@@ -671,7 +671,7 @@ bool look_for_catalogs()
 bool save_universe()
 {
     alienorum::CatalogLock lock(catalog_mutex);
-    const bool ok = Serialization::save_file("universe.json", cels, true, performance_enabled(94));
+    const bool ok = Serialization::save_region_files("universe.json", cels, true, performance_enabled(94));
     if (!ok) std::cerr << "FAILED to save universe file." << std::endl;
     return ok;
 }
@@ -680,16 +680,13 @@ bool load_universe(std::string universe_fname)          // default is on the dec
 {
     Serialization::finish_file_saves();
     int i;
-    fstream fs;
-    fs.open(universe_fname.c_str(), std::ios::in);
-    if (fs)
+    if (file_exists(universe_fname.c_str()))
     {
         mtx.lock();
         loading_msg = "Loading Universe file...";
         mtx.unlock();
-        if (Serialization::load_all(fs, cels, MAX_CELOBJS))
+        if (Serialization::load_file(universe_fname, cels, MAX_CELOBJS))
         {
-            fs.close();
             CatalogReader::apply_local_catalog_metadata(cels);
             for (i=0; cels[i]; i++) if (cels[i]->home_world)
             {
@@ -718,7 +715,6 @@ bool load_universe(std::string universe_fname)          // default is on the dec
         }
         else
         {
-            fs.close();
             return false;
         }
     }

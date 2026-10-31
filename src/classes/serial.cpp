@@ -18,6 +18,7 @@
 
 using namespace alienorum;
 
+
 static bool is_alpha3(const char* s)
 {
     return isalpha((unsigned char)s[0]) && isalpha((unsigned char)s[1]) && isalpha((unsigned char)s[2]);
@@ -1486,7 +1487,9 @@ bool Serialization::save_file(const std::string& path, CelestialObject **objects
 
 bool Serialization::finish_file_saves()
 {
-    return universe_writer.finish();
+    const bool universe_ok = universe_writer.finish();
+    const bool regions_ok = finish_region_saves();
+    return universe_ok && regions_ok;
 }
 
 namespace
@@ -1537,9 +1540,22 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
 {
     try
     {
+        json document;
+        fs >> document;
+        return load_document(std::move(document), cels, max, aua);
+    }
+    catch (const std::exception& error)
+    {
+        std::cerr << "Universe import failed: " << error.what() << std::endl;
+        return false;
+    }
+}
+
+bool Serialization::load_document(json allobj, CelestialObject **cels, unsigned int max, bool aua)
+{
+    try
+    {
         if (!cels || !max) throw std::runtime_error("Invalid universe storage");
-        json allobj;
-        fs >> allobj;
         // Older empty saves contain null instead of an empty object.
         if (allobj.is_null()) return true;
         if (!allobj.is_object()) throw std::runtime_error("Universe root must be an object");
