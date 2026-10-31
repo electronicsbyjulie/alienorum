@@ -1019,7 +1019,10 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
             if (star->multisys) staged_members[star->multisys].push_back(star.get());
         }
         for (size_t i = hosts.size(); i > 1; --i) std::swap(hosts[i-1], hosts[random()%i]);
-        const int target = int(std::lround(result.stars.size()*0.333));
+        Star* center_star = result.stars.front().get();
+        const auto center_position = std::find(hosts.begin(), hosts.end(), center_star);
+        std::rotate(hosts.begin(), center_position, center_position + 1);
+        const int target = std::max(1, int(std::lround(result.stars.size()*0.333)));
         const auto draw = [&]() { return double(random() >> 11)*0x1.0p-53; };
         for (Star* host : hosts)
         {
@@ -1097,7 +1100,13 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
                 planet->update_location(simnow);
                 planets.push_back(std::move(planet));
             }
-            if (int(planets.size()) != count) continue;
+            if (host == center_star && planets.empty())
+            {
+                result.error = "The center star has no stable planetary orbit.";
+                return result;
+            }
+            // Keep the center's safe planets even if the full draw exceeds the outer limit.
+            if (host != center_star && int(planets.size()) != count) continue;
             ++result.planet_hosts;
             for (auto& planet : planets)
             {

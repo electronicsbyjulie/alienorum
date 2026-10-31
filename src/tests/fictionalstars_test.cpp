@@ -1289,3 +1289,39 @@ TEST_F(FictionalStarsTest, MoonOptionLeavesThePlanetPopulationUnchanged)
     EXPECT_EQ(stars_only.planets, 0);
     EXPECT_EQ(stars_only.moons, 0);
 }
+
+TEST_F(FictionalStarsTest, PlanetaryHostSelectionAlwaysIncludesTheCenterStar)
+{
+    struct Sample
+    {
+        int count;
+        uint64_t seed;
+        int subtype;
+    };
+    for (const auto sample : {Sample{1, 1, 0}, Sample{2, 7519, 7}, Sample{30, 42, 14}, Sample{100, 123, 6}})
+    {
+        region.star_count = sample.count;
+        region.seed = sample.seed;
+        region.center_subtype = sample.subtype;
+        region.planetary_systems = true;
+        auto batch = generate_fictional_stars(model, region);
+        ASSERT_TRUE(batch.error.empty()) << batch.error;
+        ASSERT_FALSE(batch.stars.empty());
+        const Star* anchor = batch.stars.front().get();
+        ASSERT_TRUE(anchor->fictional_origin.at("anchor").get<bool>());
+        ASSERT_FALSE(batch.worlds.empty());
+        EXPECT_EQ(batch.worlds.front()->orbit->center, anchor);
+        int planets = 0;
+        for (const auto& world : batch.worlds)
+        {
+            if (world->typeclass() != class_planet || world->orbit->center != anchor) continue;
+            ++planets;
+            EXPECT_LE(world->orbit->semimajor_axis * (1 + world->orbit->eccentricity), 500 * AU);
+            EXPECT_GT(world->orbit->semimajor_axis * (1 - world->orbit->eccentricity), anchor->volumetric_mean_radius * 7);
+        }
+        EXPECT_GE(planets, 3);
+        EXPECT_LE(planets, 10);
+        EXPECT_GE(batch.planet_hosts, 1);
+        EXPECT_LE(batch.planet_hosts, std::max(1, int(std::lround(sample.count * .333))));
+    }
+}
