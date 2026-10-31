@@ -2,6 +2,7 @@
 #define _AlienorumSerialization
 
 #include <fstream>
+#include <functional>
 #include <map>
 #include <unordered_map>
 #include "galaxy.h"
@@ -44,7 +45,8 @@ namespace alienorum
             static json output_record(json record);
             static json expand_output_record(json record);
             static bool save_one(std::fstream &fs, CelestialObject *cel, json &allobjs);
-            static json snapshot(CelestialObject **cels, bool only_edited = false);
+            using SnapshotObserver = std::function<void(CelestialObject*, const std::string&)>;
+            static json snapshot(CelestialObject **cels, bool only_edited = false, const SnapshotObserver& observer = {});
             static bool save_file(const std::string& path, CelestialObject **cels, bool only_edited, bool background);
             static bool finish_file_saves();
             // Named region pairs share one index and are validated before import.

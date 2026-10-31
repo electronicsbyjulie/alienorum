@@ -1,4 +1,5 @@
 #include <filesystem>
+#include "../catalog_capture.h"
 #include <chrono>
 #include <fstream>
 #include <iomanip>
@@ -111,6 +112,62 @@ class UniverseCatalogTest : public UniverseFixture
         ASSERT_TRUE(Serialization::finish_file_saves());
     }
 };
+
+TEST_F(UniverseCatalogTest, BackgroundCaptureReturnsDuringFrameAndCanFinishInsideItsLock)
+{
+    populate();
+    std::lock_guard<std::recursive_mutex> frame(catalog_mutex);
+    ASSERT_TRUE(Serialization::save_region_files((directory / "universe.json").string(), cels, true, true));
+    // The worker cannot read the catalog while this frame owns its lock.
+    EXPECT_FALSE(fs::exists(directory / "universe.json"));
+    ASSERT_TRUE(Serialization::finish_file_saves());
+    EXPECT_TRUE(read_json(stem + ".json").contains("FIC-100001.Test world"));
+    EXPECT_TRUE(fs::exists(directory / (stem + ".dat")));
+}
+
+TEST_F(UniverseCatalogTest, RepeatedBackgroundRequestsQueueTheLatestDestination)
+{
+    populate();
+    std::lock_guard<std::recursive_mutex> frame(catalog_mutex);
+    const std::string first = (directory / "first.json").string();
+    const std::string middle = (directory / "middle.json").string();
+    const std::string latest = (directory / "latest.json").string();
+    ASSERT_TRUE(Serialization::save_region_files(first, cels, true, true));
+    ASSERT_TRUE(Serialization::save_region_files(middle, cels, true, true));
+    ASSERT_TRUE(Serialization::save_region_files(latest, cels, true, true));
+    ASSERT_TRUE(Serialization::finish_file_saves());
+    EXPECT_TRUE(fs::exists(first));
+    EXPECT_TRUE(fs::exists(latest));
+    EXPECT_FALSE(fs::exists(middle));
+}
+
+TEST_F(UniverseCatalogTest, LoadingWaitsForBackgroundCaptureInsideFrameLock)
+{
+    populate();
+    std::lock_guard<std::recursive_mutex> frame(catalog_mutex);
+    const std::string path = (directory / "universe.json").string();
+    ASSERT_TRUE(Serialization::save_region_files(path, cels, true, true));
+    ASSERT_TRUE(Serialization::load_file(path, cels, MAX_CELOBJS));
+    EXPECT_NE(find("FIC-100001"), nullptr);
+}
+
+TEST(CatalogCaptureTest, WorkRunsBetweenFramesAndExceptionsReachTheWorker)
+{
+    CatalogCapture capture;
+    std::unique_lock<std::recursive_mutex> frame(catalog_mutex);
+    std::atomic<bool> started{false}, touched{false};
+    auto work = std::async(std::launch::async, [&]()
+    {
+        started = true;
+        capture.access([&]() { touched = true; });
+        capture.access([]() { throw std::runtime_error("capture test"); });
+    });
+    while (!started) std::this_thread::yield();
+    EXPECT_FALSE(touched.load());
+    frame.unlock();
+    EXPECT_THROW(work.get(), std::runtime_error);
+    EXPECT_TRUE(touched.load());
+}
 
 TEST_F(UniverseCatalogTest, SplitsAddedStarsAndKeepsEditedCatalogStarsInJson)
 {

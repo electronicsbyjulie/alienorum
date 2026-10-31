@@ -15,6 +15,7 @@
 #include "cons.h"
 #include "wdcolor.h"
 #include "../background_file.h"
+#include "../catalog_capture.h"
 
 using namespace alienorum;
 
@@ -886,16 +887,25 @@ namespace
 
     json save_defaults(int object_class)
     {
-        switch (object_class)
+        thread_local std::map<int, json> defaults;
+        auto found = defaults.find(object_class);
+        if (found != defaults.end()) return found->second;
+        json value;
+        capture_access([&]()
         {
-            case class_star: { Star object; return object.to_json(); }
-            case class_planet: { Planet object; return object.to_json(); }
-            case class_moon: { Moon object; return object.to_json(); }
-            case class_galaxy: { Galaxy object; return object.to_json(); }
-            case class_comet: { Comet object; return object.to_json(); }
-            case class_satellite: { Satellite object; return object.to_json(); }
-            default: throw std::runtime_error("Unknown save class");
-        }
+            switch (object_class)
+            {
+                case class_star: { Star object; value = object.to_json(); break; }
+                case class_planet: { Planet object; value = object.to_json(); break; }
+                case class_moon: { Moon object; value = object.to_json(); break; }
+                case class_galaxy: { Galaxy object; value = object.to_json(); break; }
+                case class_comet: { Comet object; value = object.to_json(); break; }
+                case class_satellite: { Satellite object; value = object.to_json(); break; }
+                default: throw std::runtime_error("Unknown save class");
+            }
+        });
+        defaults.emplace(object_class, value);
+        return value;
     }
 
     bool same_saved_plane(const json& left, const json& right)
@@ -1399,44 +1409,53 @@ bool Serialization::save_one(std::fstream& fs, CelestialObject* cel, json& allob
     return save_object_record(cel, allobjs, serialized_object_key(cel));
 }
 
-json Serialization::snapshot(CelestialObject **cels, bool oe)
+json Serialization::snapshot(CelestialObject **cels, bool oe, const SnapshotObserver& observer)
 {
     int i;
     json allobjs;
     std::unordered_map<std::string, CelestialObject*> last_writer;
+    std::set<std::string> captured_keys;
     const auto save = [&](CelestialObject* object, bool ancestor = false)
     {
         if (!oe || (!ancestor && last_writer.empty()))
         {
             const std::string key = serialized_object_key(object);
             save_object_record(object, allobjs, key);
-            allobjs[key] = output_record(std::move(allobjs[key]));
+            captured_keys.insert(key);
+            if (observer) observer(object, key);
             return;
         }
         const std::string key = serialized_object_key(object);
         auto previous = last_writer.find(key);
         if (previous != last_writer.end() && previous->second == object) return;
         save_object_record(object, allobjs, key);
-        allobjs[key] = output_record(std::move(allobjs[key]));
+        captured_keys.insert(key);
+        if (observer) observer(object, key);
         if (ancestor || previous != last_writer.end()) last_writer[key] = object;
     };
-    for (i=0; cels[i]; i++)
+    for (i = 0; cels[i]; ++i)
     {
-        if (cels[i]->deleted) continue;
-        if (oe && !cels[i]->user_edited && !cels[i]->user_added) continue;
-
-        save(cels[i]);
-        if (oe && cels[i]->orbit && cels[i]->orbit->center && !cels[i]->orbit->center->user_added)
+        captured_keys.clear();
+        capture_access([&]()
         {
-            CelestialObject *cen = cels[i]->orbit->center;
-            while (1)
+            if (cels[i]->deleted) return;
+            if (oe && !cels[i]->user_edited && !cels[i]->user_added) return;
+
+            save(cels[i]);
+            if (oe && cels[i]->orbit && cels[i]->orbit->center && !cels[i]->orbit->center->user_added)
             {
-                save(cen, true);
-                if (!cen->orbit) break;
-                if (!cen->orbit->center) break;
-                cen = cen->orbit->center;
+                CelestialObject *cen = cels[i]->orbit->center;
+                while (1)
+                {
+                    save(cen, true);
+                    if (!cen->orbit) break;
+                    if (!cen->orbit->center) break;
+                    cen = cen->orbit->center;
+                }
             }
-        }
+        });
+        // Normalize detached JSON after releasing the catalog lock.
+        for (const auto& key : captured_keys) allobjs[key] = output_record(std::move(allobjs[key]));
     }
 
     return allobjs;

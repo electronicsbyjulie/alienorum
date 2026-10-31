@@ -1,5 +1,6 @@
 #include "performance_options.h"
 #include "classes/galaxygeometry.h"
+#include "classes/serial.h"
 
 #include "globals.h"
 #include "visuals.h"
@@ -1317,6 +1318,7 @@ static std::vector<CelestialObject*> released_objects;
 
 void release_universe_objects()
 {
+    Serialization::finish_file_saves();
     // Collected before the caller unlinks them -- afterwards there is no way left to find them.
     for (int i = 1; cels[i] && i < MAX_CELOBJS; i++)
         if (cels[i] != cels[0]) released_objects.push_back(cels[i]);

@@ -27,6 +27,9 @@ namespace alienorum
     {
         std::mutex mutex;
         std::future<bool> pending;
+        std::mutex queue_mutex;
+        std::function<bool()> queued;
+        bool running = false;
         bool finish_locked()
         {
             if (!pending.valid()) return true;
@@ -52,6 +55,51 @@ namespace alienorum
                 return true;
             }
             catch (...) { return false; }
+        }
+        // Coalesce repeated requests into one follow-up containing the latest state.
+        template<class Task> bool submit_latest(Task task)
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            std::lock_guard<std::mutex> queue_lock(queue_mutex);
+            if (running)
+            {
+                queued = std::move(task);
+                return true;
+            }
+            finish_locked();
+            running = true;
+            try
+            {
+                pending = std::async(std::launch::async, [this, task = std::function<bool()>(std::move(task))]() mutable
+                {
+                    bool ok = true;
+                    while (task)
+                    {
+                        try { if (!task()) ok = false; }
+                        catch (...) { ok = false; }
+                        std::lock_guard<std::mutex> queue_lock(queue_mutex);
+                        task = std::move(queued);
+                        queued = {};
+                        if (!task) running = false;
+                    }
+                    return ok;
+                });
+                return true;
+            }
+            catch (...)
+            {
+                running = false;
+                return false;
+            }
+        }
+        template<class Assist> bool finish_with(Assist assist)
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            while (pending.valid() && pending.wait_for(std::chrono::milliseconds(1)) != std::future_status::ready)
+            {
+                assist();
+            }
+            return finish_locked();
         }
         bool finish()
         {

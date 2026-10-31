@@ -2,6 +2,7 @@
 #include "cat.h"
 #include "stellar_row.h"
 #include "../background_file.h"
+#include "../catalog_capture.h"
 #include <algorithm>
 #include <atomic>
 #include <cctype>
@@ -24,6 +25,7 @@ namespace
     using Repairs = std::map<fs::path, fs::path>;
     std::mutex repair_mutex;
     std::map<fs::path, Repairs> recovered_files;
+    auto region_capture = std::make_shared<CatalogCapture>();
     BackgroundFile region_writer;
 
     std::string digest(const std::string& bytes)
@@ -174,104 +176,130 @@ namespace
         static std::atomic<uint64_t> sequence{0};
         batch.generation = std::to_string(std::chrono::steady_clock::now().time_since_epoch().count())
             + "-" + std::to_string(sequence.fetch_add(1));
-        json records = Serialization::snapshot(objects, only_edited);
-        std::unordered_map<CelestialObject*, std::string> membership;
-        for (int i = 0; objects[i]; ++i)
+        std::vector<CelestialObject*> members;
+        std::string root_name;
+        capture_access([&]()
         {
-            CelestialObject* object = objects[i];
-            if (object->deleted || object->typeclass() != class_star || !object->user_added) continue;
-            Star& star = *static_cast<Star*>(object);
-            const std::string key = object_key(object);
-            if (!records.contains(key)) continue;
-            const std::string identity = population(star);
-            const std::string group = identity + "@" + star.location.galactic_center.to_json().dump();
-            auto [entry, inserted] = batch.regions.try_emplace(group);
-            Region& region = entry->second;
-            if (inserted)
+            for (int i = 0; objects[i]; ++i) members.push_back(objects[i]);
+            root_name = objects[0] ? objects[0]->name : "Sun";
+        });
+        members.push_back(nullptr);
+        objects = members.data();
+        std::unordered_map<std::string, std::vector<CelestialObject*>> world_ancestors;
+        std::unordered_map<CelestialObject*, std::string> membership;
+        std::map<std::string, std::pair<std::string, StarRow>> stars;
+        json records = Serialization::snapshot(objects, only_edited, [&](CelestialObject* object, const std::string& key)
+        {
+            if (object->typeclass() == class_star && object->user_added)
             {
-                region.identity = identity;
-                region.prefix = prefix(star);
-                region.galaxy = galaxy_frame(star, objects);
-                if (star.fictional_origin.is_object()) region.batch = star.fictional_origin.value("batch", json());
-            }
-            StarRow row;
-            row.key = key;
-            if (star.orbit && star.orbit->center && star.orbit->center->typeclass() == class_star)
-            {
-                const Star* parent = static_cast<Star*>(star.orbit->center);
-                row.parent_id = parent->user_added ? "U" + digest(object_key(star.orbit->center)).substr(0, 13) : parent->alienorumid;
-            }
-            row.record = std::move(records[key]);
-            row.record.erase("catalog_frame");
-            records.erase(key);
-            if (star.catalog_frame.is_object() && star.catalog_frame.value("anchor", false)) row.center_rank = 0;
-            if (star.fictional_origin.is_object())
-            {
-                row.origin = star.fictional_origin;
-                row.origin.erase("batch");
-                row.origin.erase("motion");
-                if (row.origin.value("anchor", false)) row.center_rank = 0;
-                else if (row.origin.value("system_index", -1) == 0 && !star.orbit) row.center_rank = 1;
-            }
-            if (!star.orbit)
-            {
-                row.center_rank = std::min(row.center_rank, 2);
-                if (star.stellar_system.is_object())
+                Star& star = *static_cast<Star*>(object);
+                const std::string identity = population(star);
+                const std::string group = identity + "@" + star.location.galactic_center.to_json().dump();
+                auto [entry, inserted] = batch.regions.try_emplace(group);
+                Region& region = entry->second;
+                if (inserted)
                 {
-                    const std::string system = star.stellar_system.value("system", std::string());
-                    const auto colon = system.rfind(':');
-                    if (colon != std::string::npos)
+                    region.identity = identity;
+                    region.prefix = prefix(star);
+                    region.galaxy = galaxy_frame(star, objects);
+                    if (star.fictional_origin.is_object()) region.batch = star.fictional_origin.value("batch", json());
+                }
+                StarRow row;
+                row.key = key;
+                if (star.orbit && star.orbit->center && star.orbit->center->typeclass() == class_star)
+                {
+                    const Star* parent = static_cast<Star*>(star.orbit->center);
+                    row.parent_id = parent->user_added ? "U" + digest(object_key(star.orbit->center)).substr(0, 13) : parent->alienorumid;
+                }
+                if (star.catalog_frame.is_object() && star.catalog_frame.value("anchor", false)) row.center_rank = 0;
+                if (star.fictional_origin.is_object())
+                {
+                    row.origin = star.fictional_origin;
+                    row.origin.erase("batch");
+                    row.origin.erase("motion");
+                    if (row.origin.value("anchor", false)) row.center_rank = 0;
+                    else if (row.origin.value("system_index", -1) == 0 && !star.orbit) row.center_rank = 1;
+                }
+                if (!star.orbit)
+                {
+                    row.center_rank = std::min(row.center_rank, 2);
+                    if (star.stellar_system.is_object())
                     {
-                        try
+                        const std::string system = star.stellar_system.value("system", std::string());
+                        const auto colon = system.rfind(':');
+                        if (colon != std::string::npos)
                         {
-                            size_t consumed = 0;
-                            const int order = std::stoi(system.substr(colon + 1), &consumed);
-                            if (order >= 0 && consumed == system.size() - colon - 1) row.system_order = order;
+                            try
+                            {
+                                size_t consumed = 0;
+                                const int order = std::stoi(system.substr(colon + 1), &consumed);
+                                if (order >= 0 && consumed == system.size() - colon - 1) row.system_order = order;
+                            }
+                            catch (const std::exception&) { }
                         }
-                        catch (const std::exception&) { }
                     }
                 }
+                row.moving = star.has_fictional_motion;
+                row.velocity = star.fictional_space_velocity;
+                if (row.moving) row.record["loc"]["sys_cen"] = star.fictional_epoch_position.to_json();
+                else if (!(star.location.galactic_center == Point(0, 0, 0)))
+                {
+                    const double ra = star.right_ascension, dec = star.declination;
+                    const Point radial(-sin(ra) * cos(dec), sin(dec), cos(ra) * cos(dec));
+                    const Point east(-cos(ra), 0, -sin(ra));
+                    const Point north(sin(ra) * sin(dec), cos(dec), -cos(ra) * sin(dec));
+                    row.velocity = radial * star.radial_velocity + east * (star.proper_motion_RA * star.distance * cos(dec))
+                        + north * (star.proper_motion_decl * star.distance);
+                    row.moving = true;
+                    row.record["epch"] = J2000 + (simnow - J2000_TIME_T) / oneday;
+                }
+                stars[key] = {group, std::move(row)};
+                membership[object] = group;
+                return;
             }
-            row.moving = star.has_fictional_motion;
-            row.velocity = star.fictional_space_velocity;
-            row.record.erase("catalog_motion");
-            if (row.moving) row.record["loc"]["sys_cen"] = star.fictional_epoch_position.to_json();
-            else if (!(star.location.galactic_center == Point(0, 0, 0)))
-            {
-                const double ra = star.right_ascension, dec = star.declination;
-                const Point radial(-sin(ra) * cos(dec), sin(dec), cos(ra) * cos(dec));
-                const Point east(-cos(ra), 0, -sin(ra));
-                const Point north(sin(ra) * sin(dec), cos(dec), -cos(ra) * sin(dec));
-                row.velocity = radial * star.radial_velocity + east * (star.proper_motion_RA * star.distance * cos(dec))
-                    + north * (star.proper_motion_decl * star.distance);
-                row.moving = true;
-                row.record["epch"] = J2000 + (simnow - J2000_TIME_T) / oneday;
-            }
-            region.stars.push_back(std::move(row));
-            membership[object] = group;
-        }
-        std::unordered_map<std::string, std::string> world_regions;
-        for (int i = 0; objects[i]; ++i)
-        {
-            CelestialObject* object = objects[i];
-            if (object->deleted || object->typeclass() == class_star) continue;
+            if (object->typeclass() == class_star) return;
+            auto& ancestors = world_ancestors[key];
+            ancestors.clear();
             CelestialObject* ancestor = object;
             std::unordered_set<CelestialObject*> visited;
             while (ancestor && visited.insert(ancestor).second)
             {
-                auto found = membership.find(ancestor);
-                if (found != membership.end())
+                if (ancestor->typeclass() == class_star && ancestor->user_added)
                 {
-                    world_regions[object_key(object)] = found->second;
-                    break;
+                    ancestors.push_back(ancestor);
                 }
                 ancestor = ancestor->orbit ? ancestor->orbit->center : nullptr;
             }
+        });
+        for (auto& [key, entry] : stars)
+        {
+            auto& [group, row] = entry;
+            json record = std::move(records.at(key));
+            records.erase(key);
+            record.erase("catalog_frame");
+            record.erase("catalog_motion");
+            for (auto& override : row.record.items())
+            {
+                if (override.key() == "loc") record["loc"]["sys_cen"] = std::move(override.value()["sys_cen"]);
+                else record[override.key()] = std::move(override.value());
+            }
+            row.record = std::move(record);
+            batch.regions[group].stars.push_back(std::move(row));
         }
         for (auto& item : records.items())
         {
-            const auto found = world_regions.find(item.key());
-            const std::string group = found == world_regions.end() ? std::string() : found->second;
+            std::string group;
+            const auto found = world_ancestors.find(item.key());
+            if (found != world_ancestors.end())
+            {
+                for (CelestialObject* ancestor : found->second)
+                {
+                    const auto member = membership.find(ancestor);
+                    if (member == membership.end()) continue;
+                    group = member->second;
+                    break;
+                }
+            }
             Region& region = batch.regions[group];
             region.objects[item.key()] = std::move(item.value());
         }
@@ -280,7 +308,7 @@ namespace
         {
             if (region.stars.empty())
             {
-                region.basename = "MilkyWay.Edited." + Serialization::filename_part(objects[0] ? objects[0]->name : "Sun");
+                region.basename = "MilkyWay.Edited." + Serialization::filename_part(root_name);
             }
             else
             {
@@ -735,14 +763,24 @@ bool Serialization::save_region_files(const std::string& path, CelestialObject**
         if (!objects || !objects[0]) throw std::runtime_error("No universe to save");
         if (!background)
         {
-            region_writer.finish();
+            finish_region_saves();
             return publish_batch(capture(path, objects, only_edited));
         }
-        return region_writer.submit([&]()
+        const bool accepted = region_writer.submit_latest([path, objects, only_edited]()
         {
-            SaveBatch batch = capture(path, objects, only_edited);
-            return [batch = std::move(batch)]() mutable { return publish_batch(std::move(batch)); };
+            struct Scope
+            {
+                Scope() { catalog_capture = region_capture.get(); }
+                ~Scope() { catalog_capture = nullptr; }
+            } scope;
+            try { return publish_batch(capture(path, objects, only_edited)); }
+            catch (const std::exception& error)
+            {
+                std::cerr << "Universe save failed: " << error.what() << std::endl;
+                return false;
+            }
         });
+        return accepted;
     }
     catch (const std::exception& error)
     {
@@ -753,7 +791,7 @@ bool Serialization::save_region_files(const std::string& path, CelestialObject**
 
 bool Serialization::finish_region_saves()
 {
-    return region_writer.finish();
+    return region_writer.finish_with([]() { region_capture->assist(); });
 }
 
 bool Serialization::load_file(const std::string& filename, CelestialObject** objects, unsigned int max, bool as_user_added)
