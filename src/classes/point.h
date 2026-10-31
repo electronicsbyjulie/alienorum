@@ -43,17 +43,17 @@ namespace alienorum
         Point(double x, double y, double z);
         Point(CelestialLocation& cel);
         Point(Cartesian2D cart, double distance, double azimuth, double altitude, double zoom);
-        Point operator+(Point other);
+        Point operator+(Point other) const;
         Point& operator+=(Point other);
-        Point operator-(Point other);
+        Point operator-(Point other) const;
         Point& operator-=(Point other);
-        Point operator*(double multiplier);
+        Point operator*(double multiplier) const;
         Point& operator*=(double multiplier);
         double distance_to(Point other) const;
         double magnitude() const;
         double squared_magnitude() const;
         void scale(double new_magn);
-        json to_json();
+        json to_json() const;
         bool from_json(json j);
 
         static Point from_ra_dec(double right_ascension, double declination, double distance, double node = 0);
@@ -109,6 +109,7 @@ namespace alienorum
         Rotation equatorial_plane;                          // Also used for viewer plane in space and horizon plane in horizon mode.
         double distance_to(CelestialLocation other);
         double squared_distance_to(CelestialLocation other);
+        void rebase_system(const CelestialLocation& frame);
         CelestialLocation operator-(CelestialLocation other);
         CelestialLocation& operator-=(CelestialLocation other);
         json to_json();

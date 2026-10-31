@@ -36,7 +36,7 @@ namespace alienorum
         Rotation get_Laplace_plane();
         void update_location(double tmnow);
         json to_json();
-        bool from_json(json j);
+        bool from_json(const json& j);
 
         OrbitType orbit_type = ot_Laplace;
     };

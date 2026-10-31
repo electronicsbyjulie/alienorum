@@ -1080,7 +1080,8 @@ namespace alienorum
                 {
                     continue;
                 }
-                double cos_separation = cos(separation_fraction * el.len_deg * fiftyseventh);
+                const double cos_separation = separation_fraction == 0.5 ? el.cos_half_len
+                    : cos(separation_fraction * el.len_deg * fiftyseventh);
                 if (sa_new)
                 {
                     if ((dot_product(el.ua, ua) > cos_separation)

@@ -1,9 +1,14 @@
+#include "catalog_lock_trace.h"
+#include <random>
+#define IMGUI_DEFINE_MATH_OPERATORS
 
 #include "globals.h"
+#include "fictionalstars_ui.h"
 #include "misc.h"
 #include "loaders.h"
 #include "housekeeping.h"
 #include "inputs.h"
+#include "imgui_internal.h"
 #include "visuals.h"
 #include "classes/sscimport.h"
 #include "classes/exocons.h"
@@ -82,8 +87,9 @@ void identify_object_under_cursor(ImGuiIO& io)
     {
         is_an_obj_under_cursor = system_target(trackidx);
     }
-    else for (i=0; cels[i] && i<MAX_CELOBJS; i++)
+    else for (int index : frame_pick_candidates())
     {
+        i = index;
         if ((i == whereami) && (view_mode != vm_system)) continue;
         if (cels[i]->deleted) continue;
         if (lsysonly && cels[i]->cenobj != mycenobj) continue;
@@ -302,7 +308,7 @@ void show_menu()
         {
             mouse_over_menu = true;
             if (ImGui::MenuItem("Save Snapshot", "F12")) { process_key_F12(); menu_clicked = true; }
-            if (ImGui::MenuItem("Write universe.json", "U")) { process_key_cmd_char('u'); menu_clicked = true; }
+            if (ImGui::MenuItem("Save universe files", "U")) { process_key_cmd_char('u'); menu_clicked = true; }
             if (ImGui::MenuItem("Load Universe...", "F4")) { process_key_F4(); menu_clicked = true; }
             if (ImGui::MenuItem("Import SSC Add-On...", "F6")) { process_key_F6(); menu_clicked = true; }
             if (ImGui::MenuItem("Overwrite Map Files On Import", nullptr, &last_ssc_import.overwrite_maps)) menu_clicked = true;
@@ -384,6 +390,7 @@ void show_menu()
                 menu_clicked = true;
             }
             ImGui::Separator();
+            if (ImGui::MenuItem("Populate Region...", "Ctrl+P")) { open_fictional_region(); menu_clicked = true; }
             if (ImGui::MenuItem("Add Object...", "Shift+A")) { process_key_cmd_char('A'); menu_clicked = true; }
             if (ImGui::MenuItem("Add Satellite...", "^")) { process_key_cmd_char('^'); menu_clicked = true; }
             if (ImGui::MenuItem("Add Asteroid...", ".")) { process_key_cmd_char('.'); menu_clicked = true; }
@@ -735,6 +742,7 @@ void process_key_cmd_char(char c)
             viewer_dst = selected_locale->dst_rule;
             viewer_locale = selected_locale->name;
             view_mode = vm_horizon;
+            show_localsys = true;
         }
         else break;
 
@@ -807,7 +815,15 @@ void process_key_cmd_char(char c)
         break;
 
         case 'T': trackidx = -1; break;
-        case 'u': save_universe(); break;
+        case 'u':
+        if (view_mode == vm_horizon)
+        {
+            static std::mt19937 view_random{std::random_device{}()};
+            view_mode = std::bernoulli_distribution(0.5)(view_random) ? vm_system : vm_spaceship;
+            viewchanged = true;
+        }
+        save_universe(true);
+        break;
 
         case 'U':
         save_viewer_latlon = true;
@@ -983,6 +999,7 @@ void process_key_cmd_char(char c)
             if (cls == class_planet || cls == class_moon)
             {
                 view_mode = vm_horizon;
+                show_localsys = true;
                 viewchanged = true;
                 altitude = _pi / 10;
             }
@@ -1123,6 +1140,7 @@ void process_key_cmd_ctrl_char(char c)
         break;
         case 'D': label_favestars = !label_favestars; break;
 
+        case 'p': open_fictional_region(); break;
         case 'e': vplane_mode = vplane_ecliptic; break;
         case 'f': activate_find_shore(); break;
         case 'g': vplane_mode = vplane_galactic; break;
@@ -1180,26 +1198,14 @@ void process_key_cmd_ctrl_char(char c)
 }
 
 double steering_rate, walk_speed;
+bool keyboard_edit_field_active()
+{
+    return ImGui::GetCurrentContext() && ImGui::GetInputTextState(ImGui::GetActiveID()) != nullptr;
+}
+
 void process_keyboard_commands(ImGuiIO& io)
 {
-    int i;
-    for (i = 0; i < io.InputQueueCharacters.Size; i++)
-    {
-        timeout_ms = 5;
-        ImWchar c = io.InputQueueCharacters[i];
-        if (keyprobe) std::cout << "Key press: " << c << std::endl;         // Output the ASCII value.
-        process_key_cmd_char(c);
-    }
-
-    steering_rate = _pi/16/zoom;
-    walk_speed = 4 * frame_dur;                              // a fast run
-    if (ImGui::IsKeyDown(ImGuiKey_LeftArrow) && !is_mouse_over_window) process_key_arrowleft();
-    if (ImGui::IsKeyDown(ImGuiKey_RightArrow) && !is_mouse_over_window) process_key_arrowright();
-    if (ImGui::IsKeyDown(ImGuiKey_UpArrow) && !is_mouse_over_window) process_key_arrowup();
-    if (ImGui::IsKeyDown(ImGuiKey_DownArrow) && !is_mouse_over_window) process_key_arrowdn();
-    if (ImGui::IsKeyDown(ImGuiKey_Delete) && !is_mouse_over_window) process_key_delete();
-    if (ImGui::IsKeyDown(ImGuiKey_End) && !is_mouse_over_window) process_key_end();
-    if (ImGui::IsKeyDown(ImGuiKey_Home) && !is_mouse_over_window) process_key_home();
+    editing = keyboard_edit_field_active();
     if (ImGui::IsKeyPressed(ImGuiKey_F1)) process_key_F1();
     if (ImGui::IsKeyPressed(ImGuiKey_F2)) process_key_F2();
     if (ImGui::IsKeyPressed(ImGuiKey_F3, false)) process_key_F3();
@@ -1221,6 +1227,27 @@ void process_keyboard_commands(ImGuiIO& io)
     if (ImGui::IsKeyPressed(ImGuiKey_F9)) process_key_F9();
     if (ImGui::IsKeyPressed(ImGuiKey_F10)) process_key_F10();
     if (ImGui::IsKeyPressed(ImGuiKey_F12, false)) process_key_F12();
+    if (editing) return;
+
+    int i;
+    for (i = 0; i < io.InputQueueCharacters.Size; i++)
+    {
+        timeout_ms = 5;
+        ImWchar c = io.InputQueueCharacters[i];
+        if (keyprobe) std::cout << "Key press: " << c << std::endl;         // Output the ASCII value.
+        process_key_cmd_char(c);
+    }
+
+    steering_rate = _pi/16/zoom;
+    walk_speed = 4 * frame_dur;                              // a fast run
+    if (ImGui::IsKeyDown(ImGuiKey_LeftArrow)) process_key_arrowleft();
+    if (ImGui::IsKeyDown(ImGuiKey_RightArrow)) process_key_arrowright();
+    if (ImGui::IsKeyDown(ImGuiKey_UpArrow)) process_key_arrowup();
+    if (ImGui::IsKeyDown(ImGuiKey_DownArrow)) process_key_arrowdn();
+    if (ImGui::IsKeyDown(ImGuiKey_Delete)) process_key_delete();
+    if (ImGui::IsKeyDown(ImGuiKey_End)) process_key_end();
+    if (ImGui::IsKeyDown(ImGuiKey_Home)) process_key_home();
+
 
     if (io.KeyCtrl)
     {
@@ -1302,7 +1329,7 @@ void process_key_arrowright()
 
 void process_key_delete()
 {
-    std::lock_guard<std::recursive_mutex> catalog_lock(catalog_mutex);
+    alienorum::CatalogLock catalog_lock(catalog_mutex, alienorum::CatalogLockSite::input);
     const int target = selected > 0 ? selected : trackidx;
     if (!cels || target <= 0 || target >= ncelobjs || !cels[target]) return;
     CelestialObject* object = cels[target];
@@ -1338,6 +1365,7 @@ void process_key_delete()
             if (hipcache && star->HIP > 0 && star->HIP <= MAX_HIP && hipcache[star->HIP] == star) hipcache[star->HIP] = nullptr;
         }
     }
+    invalidate_frame_objects();
     if (parent && parent->deleted) parent = nullptr;
     const auto is_removed = [](int index)
     {
@@ -1449,7 +1477,7 @@ void process_key_F4()
 {
     IGFD::FileDialogConfig config;
     config.path = ".";
-    ImGuiFileDialog::Instance()->OpenDialog("ChooseFileDlgKey", "Choose File", ".json", config);
+    ImGuiFileDialog::Instance()->OpenDialog("ChooseFileDlgKey", "Choose File", "Universe files{.json,.dat}", config);
     fdlg_shown = true;
 }
 

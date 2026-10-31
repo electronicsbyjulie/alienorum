@@ -45,6 +45,7 @@ ephemerides/Sun.Saturn.txt.gz
 ephemerides/Sun.Uranus.txt.gz
 ephemerides/Sun.Venus.txt.gz
 exoname.dat
+galaxies/faceon/framing.dat
 galaxies/faceon/ESO_383-087.jpg
 galaxies/faceon/HolmII.jpg
 galaxies/faceon/IC_1459.jpg
@@ -448,6 +449,7 @@ galaxies/internal/SMC.jpg
 galaxies/internal/Sculptor.jpg
 galaxies/internal/WLM.jpg
 locales.json
+object_name_pool.dat
 maps/Charon_surf.jpg
 maps/Earth_bump.png
 maps/Earth_surf.jpg

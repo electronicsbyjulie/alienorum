@@ -8,9 +8,80 @@
 #include "../classes/planet.h"
 #include "../classes/satellite.h"
 #include "universe_fixture.h"
+#include "../housekeeping.h"
 
 using namespace alienorum;
 using json = nlohmann::json;
+
+class SatelliteViewerPlaneTest : public UniverseFixture
+{
+    protected:
+    const int saved_where = whereami;
+    const ViewMode saved_mode = view_mode;
+    const ViewerPlaneMode saved_plane = vplane_mode;
+    const CelestialLocation saved_here = here;
+    const bool saved_inverted = satview_upsidedown, saved_changed = viewchanged;
+
+    void TearDown() override
+    {
+        whereami = -1;
+        for (int i = 0; cels[i]; ++i)
+        {
+            if (cels[i]->typeclass() != class_satellite) continue;
+            delete cels[i]->orbit;
+            cels[i]->orbit = nullptr;
+        }
+        delete_the_universe();
+        whereami = saved_where;
+        view_mode = saved_mode;
+        vplane_mode = saved_plane;
+        here = saved_here;
+        satview_upsidedown = saved_inverted;
+        viewchanged = saved_changed;
+        UniverseFixture::TearDown();
+    }
+};
+
+TEST_F(SatelliteViewerPlaneTest, EsusSatelliteUpStaysAccurateAtGalacticDistances)
+{
+    auto* host = make_planet(make_star("Esus"), "Esus e");
+    auto* satellite = new Satellite();
+    strcpy(satellite->name, "scrisumiiouelor");
+    satellite->orbit = new Orbit();
+    satellite->orbit->center = host;
+    ASSERT_TRUE(append_cel(satellite));
+    whereami = satellite->seqno;
+    vplane_mode = vplane_local;
+    const Point host_local(-60987591692.4603, 20004314288.43489, -150399184629.94974);
+    const Point saved_satellite(-60990281010.74737, 19999570701.534767, -150403900295.20905);
+    const Point initial_radial = saved_satellite - host_local;
+    for (bool inverted : {false, true})
+    {
+        satview_upsidedown = inverted;
+        for (bool distant : {false, true})
+        {
+            host->location.galactic_center = distant ? Point(1.4141746374029638, -.4166599158977142, .6970997186990577) : Point();
+            host->location.system_center = distant ? Point(3.1559711293162844e18, 8.767235288236061e18, 9.050110633097912e18) : Point();
+            for (int frame = 0; frame < 128; ++frame)
+            {
+                const Point radial = rotate3D(initial_radial, center, yaxis, frame * .05);
+                host->location.local_position = host_local + Point(frame * 12345.0, frame * 6789.0, frame * -23456.0);
+                satellite->location = host->location;
+                satellite->location.local_position += radial;
+                view_mode = vm_spaceship;
+                set_viewer_location_and_plane();
+                Point expected = radial * (inverted ? -1 : 1);
+                expected.scale(1);
+                const Point up = rotate3D(expected, center, here.equatorial_plane.v, here.equatorial_plane.a);
+                EXPECT_NEAR(up.x, 0, 1e-9) << "frame " << frame;
+                EXPECT_NEAR(up.y, 1, 1e-9) << "frame " << frame;
+                EXPECT_NEAR(up.z, 0, 1e-9) << "frame " << frame;
+                EXPECT_EQ(here.galactic_center.to_json(), satellite->location.galactic_center.to_json());
+                EXPECT_EQ(here.system_center.to_json(), satellite->location.system_center.to_json());
+            }
+        }
+    }
+}
 
 class SatelliteCsvTest : public UniverseFixture
 {

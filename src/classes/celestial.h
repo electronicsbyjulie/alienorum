@@ -12,6 +12,7 @@
 #include "jpeglib.h"
 #include "png.h"
 #include "point.h"
+#include "alert_flags.h"
 #include "color.h"
 
 namespace alienorum
@@ -279,6 +280,7 @@ namespace alienorum
         void _map_resample_bump_regen_rocky(CelestialObject *cel);
 
         RGB3 color_at(double latitude, double longitude);
+        std::pair<RGB3, SurfaceMaterial> surface_at(double latitude, double longitude);
         std::pair<RGB3, SurfaceMaterial> surface_pixel(unsigned long column, unsigned long row) const;
         std::array<double, 4> surface_pixel_bounds(unsigned long column, unsigned long row) const;
         SurfaceMaterial material_at(double latitude, double longitude);
@@ -404,11 +406,12 @@ namespace alienorum
         bool locales_loaded = false;
         float drawnx=-1e9, drawny=-1e9, drawnxmin=-1e9, drawnxmax=-1e9, drawnymin=-1e9, drawnymax=-1e9;
         bool looked_for_maps = false, ignore_map_files = false;
+        bool missing_rotation_reported = false;           // Transient diagnostic latch; never serialized.
         unsigned int fictitious_map_height = 768;            // Good enough for flying around and sun clocks but inadequate for world building.
         bool onscreen = false;
         bool label_shown = false;
-        bool alert_rise = false;
-        bool alert_set = false;
+        HorizonAlertFlag alert_rise = false;
+        HorizonAlertFlag alert_set = false;
         double prev_horizon_alt = -999.0;
         bool has_prev_horizon_alt = false;
 
@@ -450,7 +453,7 @@ namespace alienorum
         double Hill_sphere_radius();
         double Roche_limit(CelestialObject *orbiter = nullptr);
         json to_json();
-        bool from_json(json j);
+        bool from_json(const json& j);
         void mark_all_maps_for_regen();
         void generate_water_clouds();
 
@@ -472,6 +475,7 @@ extern CelestialObject **cels, *mycenobj;
 extern std::vector<std::vector<CelestialObject*>> first_letter_index;
 extern std::map<std::string,std::vector<CelestialObject*>> constellation_index;
 bool append_cel(CelestialObject* cel);          // maintain indices; false if the array is full
+void invalidate_frame_objects();
 
 Point to_viewer_plane(Point pt, int sign = 1);
 

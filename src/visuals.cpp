@@ -1,3 +1,6 @@
+#include "performance_options.h"
+#include "classes/galaxygeometry.h"
+#include "classes/serial.h"
 
 #include "globals.h"
 #include "visuals.h"
@@ -7,21 +10,53 @@
 #include "gputex.h"
 #include "sunclock_gpu.h"
 #include "horizon_ground_gpu.h"
+#include "scenery_gpu.h"
 #include "horizon_terrain_gpu.h"
 #include "horizon_mesh_gpu.h"
 #include "classes/clouds_gpu.h"
 #include "classes/exocons.h"
 #include "classes/surfacescatter.h"
 #include "classes/scenerydraw.h"
+#include "classes/sceneryorder.h"
+#include "classes/rockmeshcache.h"
+#include "classes/waveboundsoptions.h"
+#include "classes/lavastatic.h"
+#include "classes/constellationcache.h"
 #include "classes/surfacecache.h"
+#include "classes/surfaceprefetch.h"
+#include "classes/localsurfacetile.h"
+#include "classes/horizonbackground.h"
+#include "classes/framescratch.h"
 #include "classes/surfacebiomes.h"
 #include "classes/surfacenavigation.h"
 #include "classes/horizonterrain.h"
 #include "classes/wdcolor.h"
 #include "classes/wdlimb.h"
 #include <tuple>
+#include <optional>
+#include <unordered_map>
 
 using namespace alienorum;
+bool horizon_terrain_cpu_reference = false;
+bool horizon_background_cpu_reference = false;
+bool scenery_cpu_reference = false;
+bool water_cpu_reference = false;
+static size_t scenery_projection_hits = 0;
+size_t scenery_projection_cache_hits() { return scenery_projection_hits; }
+static LocalSurfaceTile local_surface_tile;
+static bool local_surface_tile_active = false;
+size_t local_surface_tile_sample_count() { return local_surface_tile_active ? local_surface_tile.sample_count() : 0; }
+static SurfacePrefetchQueue surface_prefetch;
+bool surface_prefetch_pending() { return performance_enabled(36) && surface_prefetch.queued(); }
+size_t prefetch_surface_tiles(double milliseconds)
+{
+    if (!(milliseconds > 0) || !std::isfinite(milliseconds)) return 0;
+    return performance_enabled(36) ? surface_prefetch.run_for(std::min(SURFACE_PREFETCH_BUDGET_MS, milliseconds)) : 0;
+}
+static HorizonWaterStats water_stats;
+static HorizonTerrainLodStats terrain_lod_stats;
+const HorizonTerrainLodStats& horizon_terrain_lod_stats() { return terrain_lod_stats; }
+const HorizonWaterStats& horizon_water_stats() { return water_stats; }
 
 double jay, appmag, bloomrad, flare, theta, lmasslim, hz_y;
 ImVec2 xycoord;
@@ -52,9 +87,15 @@ static bool projected_position_available(float x, float y)
         && !(x == -1e9f && y == -1e9f) && !(x < -1e28f && y < -1e28f);
 }
 
+static bool is_observing_object(const CelestialObject* object)
+{
+    return view_mode != vm_system && cels && whereami >= 0 && whereami < ncelobjs
+        && object == cels[whereami];
+}
+
 static bool exclude_observing_object(CelestialObject *object)
 {
-    if (view_mode == vm_system || whereami < 0 || !cels || object != cels[whereami]) return false;
+    if (!is_observing_object(object)) return false;
     object->onscreen = false;
     object->label_shown = false;
     object->drawnx = object->drawny = object->drawnxmin = object->drawnxmax
@@ -62,25 +103,39 @@ static bool exclude_observing_object(CelestialObject *object)
     return true;
 }
 
+static bool label_screen_position(const CelestialObject* object, double& x, double& y)
+{
+    x = object->drawnx;
+    y = object->drawny;
+    if (std::isfinite(x) && std::isfinite(y) && x > -1e8 && y > -1e8) return true;
+    if (view_mode == vm_system || !object->tmprel.squared_magnitude()) return false;
+    Point rel = to_viewer_plane(object->tmprel);
+    if (view_mode == vm_horizon && whereami > 0 && uses_rocky_map(cels[whereami]->type)
+        && static_cast<Planet*>(cels[whereami])->get_surface_pressure()) rel = refract_true_point(rel);
+    Cartesian2D projected(rel, azimuth + azimuth_correction, altitude, zoom);
+    if (projected.x < -1e4 || projected.y < -1e4) return false;
+    x = dispcx + projected.x*dispcx;
+    y = dispcy + projected.y*dispcx;
+    return std::isfinite(x) && std::isfinite(y);
+}
+
+static std::optional<bool> label_pair_resolved(const CelestialObject* object, const CelestialObject* parent)
+{
+    // The observing body has no sky dot with which another object's label could merge.
+    if (is_observing_object(object) || is_observing_object(parent)) return true;
+    double x, y, parent_x, parent_y;
+    if (!label_screen_position(object, x, y) || !label_screen_position(parent, parent_x, parent_y))
+        return std::nullopt;
+    const double dx = x-parent_x, dy = y-parent_y;
+    return dx*dx+dy*dy >= 25.0;
+}
+
 static bool moon_label_separated(const CelestialObject* object)
 {
     if (object->typeclass() != class_moon) return true;
     const CelestialObject* parent = object->orbit ? object->orbit->center : nullptr;
     if (!parent || parent->deleted) return false;
-    double parent_x = parent->drawnx, parent_y = parent->drawny;
-    if (!std::isfinite(parent_x) || !std::isfinite(parent_y) || parent_x <= -1e8 || parent_y <= -1e8)
-    {
-        if (view_mode == vm_system || !parent->tmprel.squared_magnitude()) return false;
-        Point rel = to_viewer_plane(parent->tmprel);
-        if (view_mode == vm_horizon && whereami > 0 && uses_rocky_map(cels[whereami]->type) &&
-            static_cast<Planet*>(cels[whereami])->get_surface_pressure()) rel = refract_true_point(rel);
-        Cartesian2D projected(rel, azimuth + azimuth_correction, altitude, zoom);
-        if (projected.x < -1e4 || projected.y < -1e4) return false;
-        parent_x = dispcx + projected.x * dispcx;
-        parent_y = dispcy + projected.y * dispcx;
-    }
-    const double dx = object->drawnx - parent_x, dy = object->drawny - parent_y;
-    return std::isfinite(dx) && std::isfinite(dy) && dx * dx + dy * dy >= 25.0;
+    return label_pair_resolved(object, parent).value_or(false);
 }
 
 Star* stellar_display_target(Star* component)
@@ -88,22 +143,6 @@ Star* stellar_display_target(Star* component)
     if (!component || !component->multisys) return component;
     Star* primary = component->multisys->get_member('A');
     if (!primary || primary->deleted) return component;
-    const auto position = [](const Star* object, double& x, double& y)
-    {
-        x = object->drawnx;
-        y = object->drawny;
-        if (std::isfinite(x) && std::isfinite(y) && x > -1e8 && y > -1e8) return true;
-        // A magnitude-filtered primary can still represent an unresolved brighter companion.
-        if (view_mode == vm_system || !object->tmprel.squared_magnitude()) return false;
-        Point rel = to_viewer_plane(object->tmprel);
-        if (view_mode == vm_horizon && whereami > 0 && uses_rocky_map(cels[whereami]->type) &&
-            static_cast<Planet*>(cels[whereami])->get_surface_pressure()) rel = refract_true_point(rel);
-        Cartesian2D projected(rel, azimuth + azimuth_correction, altitude, zoom);
-        if (projected.x < -1e4 || projected.y < -1e4) return false;
-        x = dispcx + projected.x * dispcx;
-        y = dispcy + projected.y * dispcx;
-        return std::isfinite(x) && std::isfinite(y);
-    };
     Star* target = component;
     // Follow physical parents so an unresolved inner pair can retain its resolved outer identity.
     for (int depth = 0; target != primary && depth < 26; ++depth)
@@ -114,12 +153,8 @@ Star* stellar_display_target(Star* component)
             Star* center_star = static_cast<Star*>(target->orbit->center);
             if (center_star->multisys == component->multisys) parent = center_star;
         }
-        if (parent == target || parent->deleted ||
-            (view_mode != vm_system && whereami >= 0 && parent == cels[whereami])) return target;
-        double x, y, parent_x, parent_y;
-        if (!position(target, x, y) || !position(parent, parent_x, parent_y)) return target;
-        const double dx = x - parent_x, dy = y - parent_y;
-        if (dx * dx + dy * dy >= 25.0) return target;
+        if (parent == target || parent->deleted) return target;
+        if (label_pair_resolved(target, parent).value_or(true)) return target;
         target = parent;
     }
     return target;
@@ -624,11 +659,19 @@ double eclipse_illumination(CelestialObject *cel)
 
 void refresh_eclipse_casters()
 {
-    eclipse_candidates.clear();
 #if !ALIENORUM_GPU_SPHERES
+    eclipse_candidates.clear();
     return;                     // only the GPU impostor path shades eclipses
 #else
-    for (int i = 0; cels[i] && i < MAX_CELOBJS; i++)
+    static std::vector<EclipseCandidate> scratch;
+    static std::vector<EclipseCandidate> previous;
+    static std::vector<size_t> slots;
+    static bool valid = false;
+    const bool indexed = performance_enabled(7);
+    auto& output = indexed ? scratch : eclipse_candidates;
+    output.clear();
+    const auto& candidates = indexed ? frame_active_world_candidates() : frame_object_candidates();
+    for (int i : candidates)
     {
         CelestialObject *c = cels[i];
         if (c->deleted) continue;
@@ -640,6 +683,7 @@ void refresh_eclipse_casters()
         // size: an object a few meters across casts a shadow a few meters across, which is
         // below one pixel from any distance the body it orbits is still on screen.
         if (cls != class_planet && cls != class_moon) continue;
+        if (!planetary_system_is_active(c)) continue;
 
         // Minor planets are skipped for both reasons at once -- an asteroid's shadow is never
         // resolvable, and astorb can load hundreds of thousands of them, which is exactly the
@@ -652,8 +696,22 @@ void refresh_eclipse_casters()
         CelestialObject *lc = c->get_light_center();
         if (!lc || lc == c) continue;
 
-        eclipse_candidates.push_back({c, lc, radius});
+        output.push_back({c, lc, radius});
     }
+
+    if (indexed)
+    {
+        bool unchanged = valid && previous.size() == scratch.size();
+        for (size_t i = 0; unchanged && i < scratch.size(); ++i)
+            unchanged = previous[i].obj == scratch[i].obj && previous[i].lightcen == scratch[i].lightcen;
+        if (unchanged)
+        {
+            for (size_t i = 0; i < scratch.size(); ++i) eclipse_candidates[slots[i]] = scratch[i];
+            return;
+        }
+        eclipse_candidates = scratch;
+    }
+    else valid = false;
 
     // Grouped by light source, so that everything downstream can take the slice belonging to one
     // star instead of walking the whole list -- see candidates_for_light(). The order within a
@@ -661,6 +719,15 @@ void refresh_eclipse_casters()
     // every consumer either takes the deepest shadow of the lot or ranks them itself.
     std::sort(eclipse_candidates.begin(), eclipse_candidates.end(),
         [](const EclipseCandidate &a, const EclipseCandidate &b) { return a.lightcen < b.lightcen; });
+    if (indexed)
+    {
+        valid = true;
+        previous = scratch;
+        slots.resize(scratch.size());
+        std::unordered_map<CelestialObject*, size_t> positions;
+        for (size_t i = 0; i < eclipse_candidates.size(); ++i) positions[eclipse_candidates[i].obj] = i;
+        for (size_t i = 0; i < scratch.size(); ++i) slots[i] = positions[scratch[i].obj];
+    }
 #endif
 }
 
@@ -1251,6 +1318,7 @@ static std::vector<CelestialObject*> released_objects;
 
 void release_universe_objects()
 {
+    Serialization::finish_file_saves();
     // Collected before the caller unlinks them -- afterwards there is no way left to find them.
     for (int i = 1; cels[i] && i < MAX_CELOBJS; i++)
         if (cels[i] != cels[0]) released_objects.push_back(cels[i]);
@@ -1361,17 +1429,15 @@ int draw_sphere(CelestialObject* cel, double arad)
             {
                 if (cls == class_star)
                 {
-                    whereami = selected = trackidx = -1;
-                    viewer_locale = "";
-                    here = cels[0]->location;
-                    here.local_position.y -= AU;
-                    velocity = Point(0,0,0);
-                    // Take ownership of everything about to be unlinked, and drop every cached
-                    // pointer into it, before the wipe below makes it unreachable. The wipe
-                    // itself, and everything else this branch does, is unchanged -- see
-                    // release_universe_objects() for why the actual freeing happens later.
-                    release_universe_objects();
-                    memset( &cels[1], 0, (MAX_CELOBJS-2) * sizeof(CelestialObject*) );
+                    // Arriving inside a star must not erase the saved universe.
+                    whereami = cel->seqno;
+                    selected = trackidx = -1;
+                    mycenobj = cel->cenobj ? cel->cenobj : cel;
+                    viewer_locale.clear();
+                    velocity = center;
+                    here = cel->location;
+                    set_viewer_location_and_plane();
+                    viewchanged = true;
                     return 0;
                 }
                 else if (cls == class_satellite)
@@ -1417,6 +1483,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                     viewer_locale = "";
                     velocity = Point(0, 0, 0);
                     view_mode = vm_horizon;
+                    show_localsys = true;
                     altitude = 0;
                     trackidx = -1;
                     set_viewer_surface_location(true);
@@ -2408,7 +2475,7 @@ static double galaxy_surface_intensity(double f, double t, double T, bool barred
 static double draw_galaxy(CelestialObject* cel, double appmag)
 {
     Galaxy *g = (Galaxy*)cel;
-    if (g->angular_diameter <= 0)
+    if (!(g->volumetric_mean_radius > 0) && !(g->angular_diameter > 0 && cel->distance > 0))
     {
         return 0;
     }
@@ -2418,7 +2485,8 @@ static double draw_galaxy(CelestialObject* cel, double appmag)
     }
     bool airy_rock = view_mode == vm_horizon && whereami > 0 && uses_rocky_map(cels[whereami]->type) && ((Planet*)cels[whereami])->get_surface_pressure();
 
-    g->volumetric_mean_radius = cel->distance * g->angular_diameter * 0.5;
+    if (!(g->volumetric_mean_radius > 0))
+        g->volumetric_mean_radius = cel->distance * g->angular_diameter * 0.5;
     if (!(g->volumetric_mean_radius > 0))
     {
         return 0;
@@ -2428,50 +2496,10 @@ static double draw_galaxy(CelestialObject* cel, double appmag)
 
     Point los = cel->tmprel;
     double los_len = los.magnitude();
-    Point vhat_view = (los_len > 0) ? (los * (1.0 / los_len)) : Point(0, 0, 1);
 
-    // Observer sky tangent plane basis:
-    // vhat_view points from observer to galaxy center.
-    // E_sky points towards local East (increasing RA).
-    // N_sky points towards local North (increasing Declination).
-    Point E_sky = compute_normal(center, vhat_view, yaxis);
-    double e_len = E_sky.magnitude();
-    if (e_len > 1e-6)
-    {
-        E_sky = E_sky * (1.0 / e_len);
-    }
-    else
-    {
-        E_sky = Point(1, 0, 0);
-    }
-    Point N_sky = compute_normal(center, E_sky, vhat_view);
-    double n_len = N_sky.magnitude();
-    if (n_len > 1e-6)
-    {
-        N_sky = N_sky * (1.0 / n_len);
-    }
-    else
-    {
-        N_sky = Point(0, 1, 0);
-    }
-
-    double pa = g->position_angle;
-    double incl = g->inclination + _pi;
-
-    // Major axis direction on the sky from North through East
-    Point u_maj = N_sky * cos(pa) + E_sky * sin(pa);
-    u_maj.scale(1.0);
-
-    Point u_perp = compute_normal(center, vhat_view, u_maj);
-    u_perp.scale(1.0);
-
-    // In mesh UV space, u runs horizontally (0 left to 1 right), v runs vertically (0 top to 1 bottom).
-    // In astronomical images, left is East, right is West, top is North, bottom is South.
-    // e1 and e2 correspond to +u (West) and +v (South).
-    Point e1 = u_maj * -1.0;
-    Point e2 = (u_perp * cos(incl) + vhat_view * sin(incl)) * -1.0;
-    e1.scale(1.0);
-    e2.scale(1.0);
+    const auto axes = galaxy_disk_axes(*g);
+    const Point e1 = axes.first;
+    const Point e2 = axes.second;
 
     Point pole = compute_normal(center, e1, e2);
     pole.scale(1.0);
@@ -2627,9 +2655,15 @@ static double draw_galaxy(CelestialObject* cel, double appmag)
         return 0;
     }
 
+    if (performance_enabled(67)) dl->PushClipRect(ImVec2(0, 0), ImVec2(dispcx * 2, horizon_background_clip_y()), true);
     GLuint tex_id = gputex_galaxy_faceon(cel->name);
     if (tex_id)
     {
+        const ImVec4 crop = gputex_galaxy_faceon_crop(cel->name);
+        const auto texture_uv = [&](float u, float v)
+        {
+            return ImVec2((u-crop.x)/crop.z, (v-crop.y)/crop.w);
+        };
         dl->PushTexture((ImTextureID)(intptr_t)tex_id);
         dl->PrimReserve(nring * nvalid * 6, nring * nvalid * 4);
         int alpha_val = (int)fmin(255.0, fmax(0.0, peak));
@@ -2655,10 +2689,10 @@ static double draw_galaxy(CelestialObject* cel, double appmag)
                 double t0 = s * (_pi * 2.0 / nseg);
                 double t1 = s1 * (_pi * 2.0 / nseg);
 
-                ImVec2 uv_a0((float)(0.5 + 0.5 * f0 * cos(t0)), (float)(0.5 + 0.5 * f0 * sin(t0)));
-                ImVec2 uv_a1((float)(0.5 + 0.5 * f0 * cos(t1)), (float)(0.5 + 0.5 * f0 * sin(t1)));
-                ImVec2 uv_b1((float)(0.5 + 0.5 * f1 * cos(t1)), (float)(0.5 + 0.5 * f1 * sin(t1)));
-                ImVec2 uv_b0((float)(0.5 + 0.5 * f1 * cos(t0)), (float)(0.5 + 0.5 * f1 * sin(t0)));
+                ImVec2 uv_a0 = texture_uv((float)(0.5 + 0.5 * f0 * cos(t0)), (float)(0.5 + 0.5 * f0 * sin(t0)));
+                ImVec2 uv_a1 = texture_uv((float)(0.5 + 0.5 * f0 * cos(t1)), (float)(0.5 + 0.5 * f0 * sin(t1)));
+                ImVec2 uv_b1 = texture_uv((float)(0.5 + 0.5 * f1 * cos(t1)), (float)(0.5 + 0.5 * f1 * sin(t1)));
+                ImVec2 uv_b0 = texture_uv((float)(0.5 + 0.5 * f1 * cos(t0)), (float)(0.5 + 0.5 * f1 * sin(t0)));
 
                 unsigned int base = dl->_VtxCurrentIdx;
                 dl->PrimWriteVtx(a0, uv_a0, vcol);
@@ -2724,6 +2758,8 @@ static double draw_galaxy(CelestialObject* cel, double appmag)
         }
         #undef galaxy_vtx_col
     }
+
+    if (performance_enabled(67)) dl->PopClipRect();
 
     // The catalog can distinguish the visible optical body from its full mesh extent.
     double vis_fraction = g->label_radius_fraction;
@@ -3201,7 +3237,7 @@ bool draw_single_object(int i)
     cels[i]->label_shown = false;
     bool obj_is_localsys = (cels[i]->cenobj == mycenobj);
     if (!show_localsys && obj_is_localsys) return false;
-    
+
     int j;
     double coma_px = 0;
     cel_obj_class cls = cels[i]->typeclass();
@@ -3333,7 +3369,7 @@ bool draw_single_object(int i)
         }
         discinstead[i] = false;
         if (!cels[1]) return false;
-        
+
         if (selected == i)
         {
             xycoord = ImVec2(cels[i]->drawnx, cels[i]->drawny);
@@ -3357,7 +3393,7 @@ bool draw_single_object(int i)
             col.red = effect*0.5*col.green + effect1*col.red;
             col.blue = effect*col.green + effect1*col.blue;
         }
-        
+
         if (flare)
         {
             draw_flare(flare, col, vmag_cache[i], 0);
@@ -3405,7 +3441,7 @@ bool draw_single_object(int i)
             if (lpxval < 0.03) break;
         }
         bloomrad_cache[i] = fmin(1.414, bloomrad);
-        
+
         double divisor = 1.0 / fmax(.00392, fmin(col.red, col.blue));
         col.red *= divisor; col.green *= divisor; col.blue *= divisor;
         int n = circradii.size();
@@ -3424,7 +3460,7 @@ bool draw_single_object(int i)
             if (rgb.r == 255 && rgb.b == 255) break;
         }
     }
-    
+
     // A comet drawn as a comet is far larger than the condensation the point path just finished
     // with, and the label and the selection ring belong outside the coma rather than buried in it.
     // The cache goes with it so the layering in draw_objects() puts a comet in front of the field
@@ -3439,7 +3475,7 @@ bool draw_single_object(int i)
         xycoord = ImVec2(cels[i]->drawnx, cels[i]->drawny);
         ImGui::GetBackgroundDrawList()->AddCircle(xycoord, bloomrad+2, rgba_apply_redlight(global_style.selected_color), 0, 2);
     }
-    
+
 
     labels_step:
     Star *s = cls == class_star ? static_cast<Star*>(cels[i]) : nullptr;
@@ -3666,7 +3702,10 @@ void draw_galaxy_band()
         bool valid;
     };
 
-    std::vector<BandVertex> grid((N_lon + 1) * (N_lat + 1));
+    static FrameScratch<BandVertex> band_grid;
+    std::vector<BandVertex> local_grid;
+    auto& grid = frame_scratch_enabled() ? band_grid.acquire(inside_galaxy_idx, dispcx * 2, dispcy * 2) : local_grid;
+    grid.resize((N_lon + 1) * (N_lat + 1));
 
     double az = azimuth + azimuth_correction;
     double alt = altitude;
@@ -3774,6 +3813,8 @@ void draw_galaxy_band()
 
     float dispw = dispcx * 2.0f;
     float disph = dispcy * 2.0f;
+    const float background_bottom = performance_enabled(67) ? horizon_background_clip_y() : disph;
+    if (performance_enabled(67)) list->PushClipRect(ImVec2(0, 0), ImVec2(dispw, background_bottom), true);
 
     for (int j = 0; j < N_lat; j++)
     {
@@ -3901,7 +3942,7 @@ void draw_galaxy_band()
                 float min_y = std::min({v00.pos.y, v10.pos.y, v11.pos.y, v01.pos.y});
                 float max_y = std::max({v00.pos.y, v10.pos.y, v11.pos.y, v01.pos.y});
 
-                if (max_x < 0.0f || min_x > dispw || max_y < 0.0f || min_y > disph)
+                if (max_x < 0.0f || min_x > dispw || max_y < 0.0f || min_y > background_bottom)
                 {
                     continue;
                 }
@@ -3922,6 +3963,7 @@ void draw_galaxy_band()
         }
     }
 
+    if (performance_enabled(67)) list->PopClipRect();
     list->PopTexture();
 }
 
@@ -3942,7 +3984,10 @@ void draw_objects()
     double step, dispw = dispcx*2, disph = dispcy*2;
     double orbseg = 81;
     lmasslim = lbllsys_mass_lim*1000;
-    std::vector<std::pair<double, CelestialObject*>> to_draw_layered;
+    static FrameScratch<std::pair<double, CelestialObject*>> layered_scratch;
+    std::vector<std::pair<double, CelestialObject*>> local_layered;
+    auto& to_draw_layered = frame_scratch_enabled()
+        ? layered_scratch.acquire(reinterpret_cast<uintptr_t>(mycenobj), dispcx * 2, dispcy * 2) : local_layered;
     global_magshift = -log(global_brightness) * invlogmagnbase;
     myeq = (whereami >= 0) ? cels[whereami]->equinox_RA : 0;
 
@@ -3961,12 +4006,13 @@ void draw_objects()
 
     // Once per frame, ahead of any disc: every disc drawn below asks this list who might be
     // The eclipse caster list every disc below consults is rebuilt earlier than this, at the top
-    // of compute_object_draw_coordinates(), because the sky's own brightness depends on it too
+    // of the projection pass in compute_object_draw_coordinates(), because sky brightness depends on it too
     // and is settled before any of this runs. See refresh_eclipse_casters() near draw_sphere_gpu().
 
     // Orbits
-    if (show_orbits && show_localsys) for (i=0; cels[i] && i<MAX_CELOBJS; i++)
+    if (show_orbits && show_localsys) for (int index : frame_orbit_candidates())
     {
+        i = index;
         if (cels[i]->deleted) continue;
         if (!cels[i]->orbit) continue;
         if (cels[i]->cenobj != mycenobj && (whereami<0 || cels[i]->orbit->center != cels[whereami])) continue;
@@ -4045,9 +4091,11 @@ void draw_objects()
     // Grid and backdrop labels belong behind celestial objects.
     draw_cached_labels();
     // Collect visible objects before painting either their discs or labels.
-    for (pass=0; pass<=1; pass++) for (i=0; cels[i] && i<MAX_CELOBJS; i++)
+    for (pass=0; pass<=1; pass++) for (int index : frame_draw_candidates())
     {
+        i = index;
         if (cels[i]->deleted) continue;
+        if (!planetary_system_is_active(cels[i])) continue;
         cels[i]->drawnxmin = cels[i]->drawnxmax = cels[i]->drawnymin = cels[i]->drawnymax = -1e9;
         if (exclude_observing_object(cels[i])) continue;
 
@@ -4229,7 +4277,12 @@ void draw_system_view()
         // dry run - find planetary system scaling
         double sdrad = display_radius(s, solar_radius, dispcy/std::max(2, num_stars), 20.0);
         double cursor = s->drawnx + sdrad + padding;
-        std::vector<int> plcenx, plxrad;
+        static FrameScratch<int> planet_centers_scratch, planet_radii_scratch;
+        std::vector<int> local_plcenx, local_plxrad;
+        auto& plcenx = frame_scratch_enabled()
+            ? planet_centers_scratch.acquire(reinterpret_cast<uintptr_t>(mycenobj), dispcx * 2, dispcy * 2) : local_plcenx;
+        auto& plxrad = frame_scratch_enabled()
+            ? planet_radii_scratch.acquire(reinterpret_cast<uintptr_t>(mycenobj), dispcx * 2, dispcy * 2) : local_plxrad;
         int first_hz_planet = 99999, last_hz_planet = -1;
 
         for (j=num_stars; j<n; j++)
@@ -4512,7 +4565,7 @@ ImVec2 sc_drawcoords(CelestialObject *obj, CelestialObject *cel, bool update_dra
     double lat = fmod(find_angle(sqrt(relloc.x*relloc.x+relloc.z*relloc.z), relloc.y) - altitude, _pi*2);
     if (lat < -half_pi) lat += _pi*2;
     if (lat >  half_pi) lat -= _pi*2;
- 
+
     int dx = dispcx + lon/sclk_scale;
     int dy = dispcy - lat/sclk_scale;
 
@@ -5004,6 +5057,60 @@ void draw_sunclock()
 #define hznodes 8192
 bool draw_marker[hznodes];
 double hz_dx[hznodes], hz_dy[hznodes];
+namespace
+{
+    struct BackgroundHorizonPose
+    {
+        CelestialObject* world = nullptr;
+        Map* map = nullptr;
+        unsigned int generation = 0;
+        int index = -1, type = -1;
+        std::array<double, 12> values = {};
+        bool operator==(const BackgroundHorizonPose& other) const
+        {
+            return world == other.world && map == other.map && generation == other.generation
+                && index == other.index && type == other.type && values == other.values;
+        }
+    };
+    BackgroundHorizonPose background_horizon_pose;
+    int background_horizon_frame = -1;
+    uint64_t background_horizon_revision = 0;
+    BackgroundHorizonPose background_pose(CelestialObject* body, double radius, double lift)
+    {
+        return {body, body->surf_map, body->surf_map ? body->surf_map->gen : 0u, whereami, body->type,
+            {viewer_lat, viewer_lon, azimuth, altitude, zoom, dispcx, dispcy,
+                fmax(.01, viewer_eye_height), radius, lift, shore_displacement, body->oblateness}};
+    }
+}
+float horizon_background_clip_y()
+{
+    const float height = dispcy * 2;
+    if (!performance_enabled(67) || horizon_background_cpu_reference || view_mode != vm_horizon || whereami < 0 || whereami >= ncelobjs
+        || !show_terrain || dragging || background_horizon_frame != ImGui::GetFrameCount()) return height;
+    CelestialObject* body = cels[whereami];
+    if (!body || body->deleted || uses_gaseous_map(body->type) || body->type == lavaworld
+        || (body->typeclass() != class_planet && body->typeclass() != class_moon)) return height;
+    auto* planet = static_cast<Planet*>(body);
+    Map* map = body->surf_map;
+    if (!map || !map->gen || !map->is_complete() || generating_fic_texture) return height;
+    double radius = body->get_equatorial_radius();
+    if (!(radius > 0)) radius = body->volumetric_mean_radius;
+    if (!(radius > 0)) return height;
+    const double lift = planet->atmospheric_horizon_lift();
+    if (!(background_pose(body, radius, lift) == background_horizon_pose)) return height;
+    SurfaceBiomes field(static_cast<uint32_t>(whereami));
+    SurfaceSampler surface(planet, map, field, radius, shore_displacement);
+    if (!surface.has_biomes() || surface.ocean_world()) return height;
+    static uint64_t saved_revision = 0;
+    static float saved_bottom = 0;
+    if (saved_revision != background_horizon_revision)
+    {
+        saved_bottom = opaque_background_bottom(hz_dx, hz_dy, hznodes, static_cast<int>(dispcx * 2),
+            static_cast<int>(height), radius, fmax(.01, viewer_eye_height), lift, altitude, zoom * dispcx);
+        saved_revision = background_horizon_revision;
+    }
+    return saved_bottom;
+}
 static double horizon_noise_value(PerlinNoise &noise, double x, double y, double z, int octaves)
 {
     double total = 0, amplitude = 1, frequency = 1, weight = 0;
@@ -5019,6 +5126,8 @@ static double horizon_noise_value(PerlinNoise &noise, double x, double y, double
 
 void find_horizon()
 {
+    background_horizon_frame = -1;
+    ++background_horizon_revision;
     hz_y = dispcy*29;
     // whereami >= 0, not just view_mode: nothing keeps the two in step. process_key_cmd_char()
     // sets whereami to -1 on 'w' (warp) and on '+' from a standing start, neither of which
@@ -5066,6 +5175,8 @@ void find_horizon()
             if (draw_marker[j] && hz_y > dispcy*2) hz_y = fmax(hz_y, hz_dy[j]);
             theta += step;
         }
+        background_horizon_pose = background_pose(cel, R, horizon_lift_rad);
+        background_horizon_frame = ImGui::GetFrameCount();
     }
 }
 
@@ -5079,6 +5190,40 @@ struct GlintSource
     double g;
     double b;
 };
+
+static Color water_light_color(CelestialObject* object)
+{
+    using Key = std::tuple<int, double, double, double, double>;
+    struct Entry
+    {
+        Key key;
+        Color color;
+    };
+    static std::unordered_map<CelestialObject*, Entry> colors;
+    const auto cls = object->typeclass();
+    const bool cache = performance_enabled(50) && !water_cpu_reference
+        && !(cls == class_star && static_cast<Star*>(object)->is_white_dwarf());
+    Key key;
+    if (cache)
+    {
+        key = {cls, object->BV_color, global_brightness, bv_correction, planet_bv_correction};
+        const auto found = colors.find(object);
+        if (found != colors.end() && found->second.key == key) return found->second.color;
+    }
+    ++water_stats.color_misses;
+    const Color original = cls == class_star
+        ? Color::color_from_star(0, static_cast<Star*>(object), object->BV_color)
+        : Color::color_from_magnitude_indices(0, object->BV_color + planet_bv_correction);
+    const double maximum = fmax(original.red, fmax(original.green, original.blue));
+    Color color(maximum > 0 ? original.red / maximum : 1,
+        maximum > 0 ? original.green / maximum : 1, maximum > 0 ? original.blue / maximum : 1);
+    if (cache)
+    {
+        if (colors.size() >= 64) colors.clear();
+        colors[object] = {key, color};
+    }
+    return color;
+}
 
 #if planetary_rain
 static CloudRainCover overhead_rain_cover;
@@ -5384,6 +5529,11 @@ void draw_local_rings()
 
 void draw_horizon()
 {
+    if (performance_enabled(36)) surface_prefetch.clear();
+    local_surface_tile_active = false;
+    scenery_projection_hits = 0;
+    water_stats = {};
+    terrain_lod_stats = {};
     // Horizon
     // TODO: Generate a fictitious skyline.
     // See find_horizon() for why the whereami test has to be here as well as the view_mode one.
@@ -5395,7 +5545,7 @@ void draw_horizon()
         cel_obj_class cls = cel->typeclass();
         Planet *p = (cls == class_planet || cls == class_moon) ? (Planet*)cel : nullptr;
         bool gaseous = uses_gaseous_map(cel->type);
-    
+
         spawn_texture_load(cel);
 
         double is_day = fmin(1, luminous_flux*2.5e-11 + starlight);
@@ -5428,10 +5578,6 @@ void draw_horizon()
             return surface.color_at(latitude, longitude);
         };
         RGB3 rgb = surface_sample(viewer_lat, viewer_lon);
-        const auto vegetation_at = [&](double latitude, double longitude)
-        {
-            return surface.vegetation_at(latitude, longitude);
-        };
         const bool ocean_world = surface.ocean_world();
         const bool surface_water = surface.has_surface_water();
         const auto water_at = [&](double latitude, double longitude)
@@ -5444,32 +5590,99 @@ void draw_horizon()
         // Keep terrain sampling on the geometric horizon ring, with visual lift in projection.
         // Enlarging this ring inflates relief and separates the sea mesh from the horizon.
         const double surface_range = sqrt(2.0 * surface_radius * surface_eye);
+        struct HorizonSurfaceContext
+        {
+            double cos_alt, sin_alt, cos_lat, sin_lat, focal, curvature;
+        };
+        const bool shared_surface = performance_enabled(30) && !horizon_terrain_cpu_reference;
+        const HorizonSurfaceContext surface_context = shared_surface
+            ? HorizonSurfaceContext{cos(altitude), sin(altitude), cos(viewer_lat), sin(viewer_lat),
+                zoom * dispcx, .5 / surface_radius - surface_lift / surface_range}
+            : HorizonSurfaceContext{};
+        const auto surface_cos_altitude = [&]() { return shared_surface ? surface_context.cos_alt : cos(altitude); };
+        const auto surface_sin_altitude = [&]() { return shared_surface ? surface_context.sin_alt : sin(altitude); };
+        const auto surface_cos_latitude = [&]() { return shared_surface ? surface_context.cos_lat : cos(viewer_lat); };
+        const auto surface_sin_latitude = [&]() { return shared_surface ? surface_context.sin_lat : sin(viewer_lat); };
+        const auto surface_focal = [&]() { return shared_surface ? surface_context.focal : zoom * dispcx; };
+        const auto surface_curvature = [&]()
+        {
+            return shared_surface ? surface_context.curvature : .5 / surface_radius - surface_lift / surface_range;
+        };
         const bool terrain_mesh = show_terrain && surface_biomes
             && !ocean_world && cel->type != lavaworld;
-        HorizonTerrainRaster terrain_raster;
+        struct PrefetchRoute
+        {
+            CelestialObject* body = nullptr;
+            Map* map = nullptr;
+            unsigned int generation = 0;
+            double latitude = 0, longitude = 0, radius = 0, last_latitude_step = 0, last_longitude_step = 0;
+            size_t cursor = 0;
+        };
+        static PrefetchRoute prefetch_route;
+        bool prefetch_walking = false;
+        double predicted_latitude = viewer_lat, predicted_longitude = viewer_lon;
+        if (performance_enabled(36) && performance_enabled(20) && !horizon_terrain_cpu_reference && terrain_mesh)
+        {
+            const double dlat = viewer_lat - prefetch_route.latitude;
+            const double dlon = std::remainder(viewer_lon - prefetch_route.longitude, 2 * _pi);
+            const double distance = surface_radius * hypot(dlat, cos(viewer_lat) * dlon);
+            const bool same = prefetch_route.body == cel && prefetch_route.map == map
+                && prefetch_route.generation == map->gen && prefetch_route.radius == surface_radius;
+            prefetch_walking = same && distance > 1e-6 && distance <= 5 && fabs(dlat) < .01 && fabs(dlon) < .01;
+            if (!prefetch_walking || dlat * prefetch_route.last_latitude_step + dlon * prefetch_route.last_longitude_step < 0)
+                prefetch_route.cursor = 0;
+            if (prefetch_walking)
+            {
+                predicted_latitude += dlat * 4;
+                predicted_longitude += dlon * 4;
+                if (predicted_latitude > half_pi)
+                {
+                    predicted_latitude = _pi - predicted_latitude;
+                    predicted_longitude += _pi;
+                }
+                else if (predicted_latitude < -half_pi)
+                {
+                    predicted_latitude = -_pi - predicted_latitude;
+                    predicted_longitude += _pi;
+                }
+                predicted_longitude = std::remainder(predicted_longitude, 2 * _pi);
+            }
+            prefetch_route.body = cel;
+            prefetch_route.map = map;
+            prefetch_route.generation = map->gen;
+            prefetch_route.radius = surface_radius;
+            prefetch_route.latitude = viewer_lat;
+            prefetch_route.longitude = viewer_lon;
+            prefetch_route.last_latitude_step = dlat;
+            prefetch_route.last_longitude_step = dlon;
+        }
+        static HorizonTerrainRaster terrain_raster;
+        if (!performance_enabled(23)) terrain_raster = HorizonTerrainRaster();
+        terrain_raster.deactivate();
         const auto surface_coord = [&](double distance, double bearing)
         {
             const double arc = distance / surface_radius;
-            const double sin_lat = fmax(-1.0, fmin(1.0, sin(viewer_lat) * cos(arc)
-                + cos(viewer_lat) * sin(arc) * cos(bearing)));
+            const double sin_lat = fmax(-1.0, fmin(1.0, surface_sin_latitude() * cos(arc)
+                + surface_cos_latitude() * sin(arc) * cos(bearing)));
             const double latitude = asin(sin_lat);
-            const double longitude = viewer_lon + atan2(sin(bearing) * sin(arc) * cos(viewer_lat),
-                cos(arc) - sin(viewer_lat) * sin_lat);
+            const double longitude = viewer_lon + atan2(sin(bearing) * sin(arc) * surface_cos_latitude(),
+                cos(arc) - surface_sin_latitude() * sin_lat);
             return std::make_pair(latitude, longitude);
         };
         // The sea stays on the curved base surface; raised terrain has its own depth.
         const auto base_distance = [&](double screen_x, double screen_y)
         {
-            const double x = (screen_x - dispcx) / (zoom * dispcx);
-            const double y = (dispcy - screen_y) / (zoom * dispcx);
-            const double north = cos(altitude) - y * sin(altitude);
-            const double up = y * cos(altitude) + sin(altitude);
+            const double x = (screen_x - dispcx) / surface_focal();
+            const double y = (dispcy - screen_y) / surface_focal();
+            const double north = surface_cos_altitude() - y * surface_sin_altitude();
+            const double up = y * surface_cos_altitude() + surface_sin_altitude();
             const double slope = -up / fmax(1e-12, hypot(x, north));
-            const double curvature = 0.5 / surface_radius - surface_lift / surface_range;
+            const double curvature = surface_curvature();
             const double discriminant = slope * slope - 4.0 * curvature * surface_eye;
-            if (discriminant >= 0 && slope + sqrt(discriminant) > 0)
+            const double root = shared_surface && discriminant >= 0 ? sqrt(discriminant) : 0;
+            if (discriminant >= 0 && slope + (shared_surface ? root : sqrt(discriminant)) > 0)
             {
-                const double distance = 2.0 * surface_eye / (slope + sqrt(discriminant));
+                const double distance = 2.0 * surface_eye / (slope + (shared_surface ? root : sqrt(discriminant)));
                 if (distance <= surface_range)
                 {
                     return distance;
@@ -5489,13 +5702,29 @@ void draw_horizon()
         };
         const auto ground_coord = [&](double screen_x, double screen_y)
         {
-            const double x = (screen_x - dispcx) / (zoom * dispcx);
-            const double y = (dispcy - screen_y) / (zoom * dispcx);
-            const double north = cos(altitude) - y * sin(altitude);
+            const double x = (screen_x - dispcx) / surface_focal();
+            const double y = (dispcy - screen_y) / surface_focal();
+            const double north = surface_cos_altitude() - y * surface_sin_altitude();
             const double depth = visible_distance(screen_x, screen_y);
             const double distance = std::isfinite(depth) ? depth : surface_range;
             return surface_coord(distance, azimuth + atan2(x, north));
         };
+
+        if (performance_enabled(37) && !horizon_terrain_cpu_reference && surface.has_biomes() && map && map->is_complete())
+        {
+            const double hint_distance = base_distance(dispcx, dispcy * 1.9);
+            if (std::isfinite(hint_distance))
+            {
+                const auto hint = surface_coord(hint_distance, azimuth);
+                const double maximum_error = .25 * surface_eye / std::max(1.0, zoom * dispcx);
+                if (local_surface_tile.configure(static_cast<uint32_t>(whereami), map, map->gen, surface_radius,
+                    hint.first, hint.second, shore_displacement, maximum_error))
+                {
+                    surface.use_local_tile(local_surface_tile);
+                    local_surface_tile_active = true;
+                }
+            }
+        }
 
         rgb.r = fmin(255, is_day*rgb.r);
         rgb.g = fmin(255, is_day*rgb.g);
@@ -5523,19 +5752,32 @@ void draw_horizon()
             static double cached_eye_height = -1.0;
             static PerlinNoise skyline_noise;
             static SurfaceFieldCache skyline_field;
+            static std::array<SurfaceFieldCache::Patch, hznodes> skyline_patches;
+            static const auto skyline_directions = []()
+            {
+                std::array<std::array<double, 2>, hznodes> result;
+                for (int index = 0; index < hznodes; ++index)
+                {
+                    const double angle = _pi * 2 * index / hznodes;
+                    result[index] = {sin(angle), cos(angle)};
+                }
+                return result;
+            }();
             static Map *cached_bump_map = nullptr;
             static unsigned int cached_bump_generation = 0;
             static double cached_radius = 0;
+            static bool cached_cpu_reference = false;
 
             if (cached_whereami != whereami || cached_lat != viewer_lat || cached_lon != viewer_lon
                 || cached_eye_height != viewer_eye_height || cached_bump_map != cel->surf_map
-                || cached_bump_generation != (cel->surf_map ? cel->surf_map->gen : 0) || cached_radius != surface_radius)
+                || cached_bump_generation != (cel->surf_map ? cel->surf_map->gen : 0) || cached_radius != surface_radius
+                || cached_cpu_reference != (horizon_terrain_cpu_reference || !performance_enabled(21)))
             {
                 if (cached_whereami != whereami)
                 {
                     skyline_noise.reseed(static_cast<uint32_t>(whereami) * 2654435761u + 0xb0ad1ceau);
                 }
-                double R_planet = cel->get_equatorial_radius();
+                double R_planet = shared_surface ? surface_radius : cel->get_equatorial_radius();
                 if (R_planet <= 0)
                 {
                     R_planet = cel->volumetric_mean_radius;
@@ -5554,20 +5796,21 @@ void draw_horizon()
                     return horizon_noise_value(skyline_noise, x * scale, y * scale, z * scale, 29);
                 };
                 const double ring_angle = std::min(0.19, 9500.0 / R_planet);
-                const double sin_lat = sin(viewer_lat), cos_lat = cos(viewer_lat);
+                const double sin_lat = surface_sin_latitude(), cos_lat = surface_cos_latitude();
                 const double sin_lon = sin(viewer_lon), cos_lon = cos(viewer_lon);
+                const double radial = R_planet * cos(ring_angle) / spatial_scale;
+                const double ring_distance = R_planet * sin(ring_angle);
                 cached_raw_min = 9999;
                 for (j = 0; j < hznodes; j++)
                 {
-                    double theta = _pi * 2 * j / hznodes;
-                    const double radial = R_planet * cos(ring_angle) / spatial_scale;
-                    const double north = R_planet * sin(ring_angle) * cos(theta) / spatial_scale;
-                    const double east = R_planet * sin(ring_angle) * sin(theta) / spatial_scale;
+                    const double north = ring_distance * skyline_directions[j][1] / spatial_scale;
+                    const double east = ring_distance * skyline_directions[j][0] / spatial_scale;
                     const double equatorial = radial * cos_lat - north * sin_lat;
                     const double nx = equatorial * cos_lon - east * sin_lon;
                     const double ny = equatorial * sin_lon + east * cos_lon;
                     const double nz = radial * sin_lat + north * cos_lat;
-                    cached_raw_noise[j] = .5 + .5 * skyline_field.value(nx, ny, nz, sample_skyline);
+                    cached_raw_noise[j] = .5 + .5 * skyline_field.value(nx, ny, nz, sample_skyline,
+                        horizon_terrain_cpu_reference || !performance_enabled(21) ? nullptr : &skyline_patches[j]);
                     if (cached_raw_noise[j] < cached_raw_min)
                     {
                         cached_raw_min = cached_raw_noise[j];
@@ -5575,28 +5818,33 @@ void draw_horizon()
                 }
 
                 bool has_bump = (cel->surf_map && cel->surf_map->has_bump_data());
-                double h_eye = fmax(0.01, viewer_eye_height);
+                double h_eye = shared_surface ? surface_eye : fmax(0.01, viewer_eye_height);
                 double geom_dist = sqrt(2.0 * R_planet * h_eye);
                 double E0 = has_bump ? cel->surf_map->elevation_at_bilinear(viewer_lat, viewer_lon) : 0.0;
                 double hz_dip = acos(R_planet / (R_planet + h_eye));
 
+                std::array<std::array<double, 3>, 8> bump_steps;
+                const double max_dist = fmin(250000.0, R_planet * 0.1);
+                for (int step = 0; step < 8; ++step)
+                {
+                    const double fraction = (step + 1.0) / 8.0;
+                    const double distance = geom_dist + (max_dist - geom_dist) * (fraction * fraction);
+                    bump_steps[step] = {distance, sin(distance / R_planet), cos(distance / R_planet)};
+                }
                 for (j = 0; j < hznodes; j++)
                 {
                     cached_bump_relief[j] = 0.0;
                     if (has_bump)
                     {
-                        double theta = _pi * 2 * j / hznodes;
                         double max_alpha = -hz_dip;
-                        double max_dist = fmin(250000.0, R_planet * 0.1);
                         for (int s_step = 1; s_step <= 8; s_step++)
                         {
-                            double frac = (double)s_step / 8.0;
-                            double s = geom_dist + (max_dist - geom_dist) * (frac * frac);
-                            double delta_sigma = s / R_planet;
-                            double sin_phi = sin(viewer_lat) * cos(delta_sigma) + cos(viewer_lat) * sin(delta_sigma) * cos(theta);
+                            const double s = bump_steps[s_step - 1][0];
+                            const double sine = bump_steps[s_step - 1][1], cosine = bump_steps[s_step - 1][2];
+                            double sin_phi = sin_lat * cosine + cos_lat * sine * skyline_directions[j][1];
                             sin_phi = fmax(-1.0, fmin(1.0, sin_phi));
                             double phi = asin(sin_phi);
-                            double d_lon = atan2(sin(theta) * sin(delta_sigma) * cos(viewer_lat), cos(delta_sigma) - sin(viewer_lat) * sin_phi);
+                            double d_lon = atan2(skyline_directions[j][0] * sine * cos_lat, cosine - sin_lat * sin_phi);
                             double lam = viewer_lon + d_lon;
                             double Es = cel->surf_map->elevation_at_bilinear(phi, lam);
                             double h_apparent = (Es - E0) - (s * s) / (2.0 * R_planet);
@@ -5620,11 +5868,20 @@ void draw_horizon()
                 cached_bump_map = cel->surf_map;
                 cached_bump_generation = cel->surf_map ? cel->surf_map->gen : 0;
                 cached_radius = surface_radius;
+                cached_cpu_reference = horizon_terrain_cpu_reference || !performance_enabled(21);
             }
 
             double terrain_height = dispcx * 0.08 * zoom;
-            std::vector<double> coastal_relief(hznodes);
-            std::vector<bool> coastal_water(hznodes, false);
+            static FrameScratch<double> coastal_relief_scratch;
+            static FrameScratch<bool> coastal_water_scratch;
+            std::vector<double> local_coastal_relief;
+            std::vector<bool> local_coastal_water;
+            auto& coastal_relief = frame_scratch_enabled()
+                ? coastal_relief_scratch.acquire(whereami, dispcx * 2, dispcy * 2) : local_coastal_relief;
+            auto& coastal_water = frame_scratch_enabled()
+                ? coastal_water_scratch.acquire(whereami, dispcx * 2, dispcy * 2) : local_coastal_water;
+            coastal_relief.resize(hznodes);
+            coastal_water.assign(hznodes, false);
             for (j = 0; j < hznodes; j++)
             {
                 double bump_px = cached_bump_relief[j] * dispcx * zoom;
@@ -5690,7 +5947,7 @@ void draw_horizon()
         }
         #endif
 
-        if (faded) 
+        if (faded)
         {
             const double bluing = 0.9;
             const int fadelength = 250 * zoom, fader = (1.0 - bluing)*rgb.r, fadeg = (1.0 - 0.5*bluing)*rgb.g;
@@ -5725,7 +5982,7 @@ void draw_horizon()
                     points[1] = ImVec2(0, hz_y);
                     points[2] = ImVec2(0, hz_y+2);
                     points[3] = ImVec2(dispcx*2, hz_y1+2);
-                
+
                     ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(points, 4, fadecol);
 
                     hz_y += 1;
@@ -5748,8 +6005,24 @@ void draw_horizon()
         }
         else
         {
+            int prior_horizon = -1;
             for (j = 0; j <= hznodes; j++)
             {
+                if (performance_enabled(26) && !horizon_terrain_cpu_reference && prior_horizon >= 0
+                    && altitude <= fiftyseventh * 40)
+                {
+                    for (int end = std::min(j + 7, hznodes); end > j; --end)
+                    {
+                        const double first_x = hz_dx[prior_horizon % hznodes], last_x = hz_dx[end % hznodes];
+                        const bool offscreen = fmax(first_x, last_x) < -3 || fmin(first_x, last_x) > dispcx * 2 + 3;
+                        if (offscreen && horizon_segment_within(hz_dx, hzheight, hznodes, prior_horizon, end))
+                        {
+                            terrain_lod_stats.horizon_segments_removed += end - j;
+                            j = end;
+                            break;
+                        }
+                    }
+                }
                 if (hz_dx[j%hznodes] > -1e5 && hzheight[j%hznodes] > -1e5)
                 {
                     j1 = j%hznodes;
@@ -5773,6 +6046,7 @@ void draw_horizon()
                     _skip_hz_element:
                     hz_fx = hz_dx[j1];
                     hz_fy = hzheight[j1];
+                    prior_horizon = j;
                 }
             }
         }
@@ -5780,7 +6054,13 @@ void draw_horizon()
         // Measure visible horizon line screen bounds and per-column horizon heights
         double min_hz_y = full_ground_view ? 0 : 1e9;
         int screen_w = (int)(dispcx * 2.0);
-        std::vector<double> min_hz_y_at_x(screen_w > 0 ? screen_w : 1, min_hz_y);
+        static std::vector<double> retained_horizon_columns;
+        std::vector<double> temporary_horizon_columns;
+        static FrameScratch<double> horizon_columns_scratch;
+        auto& min_hz_y_at_x = frame_scratch_enabled()
+            ? horizon_columns_scratch.acquire(whereami, screen_w, dispcy * 2)
+            : ((performance_enabled(25) && !horizon_terrain_cpu_reference) ? retained_horizon_columns : temporary_horizon_columns);
+        min_hz_y_at_x.assign(screen_w > 0 ? screen_w : 1, min_hz_y);
 
         for (j = 0; j < hznodes; j++)
         {
@@ -5832,26 +6112,55 @@ void draw_horizon()
         }
 
         #if distant_biome_pixel_sampling
-        const std::vector<double> base_horizon_y_at_x = min_hz_y_at_x;
+        static std::vector<double> retained_base_columns;
+        std::vector<double> temporary_base_columns;
+        static FrameScratch<double> base_columns_scratch;
+        auto& base_horizon_y_at_x = frame_scratch_enabled()
+            ? base_columns_scratch.acquire(whereami, screen_w, dispcy * 2)
+            : ((performance_enabled(25) && !horizon_terrain_cpu_reference) ? retained_base_columns : temporary_base_columns);
+        base_horizon_y_at_x = min_hz_y_at_x;
         #endif
         if (terrain_mesh)
         {
             constexpr int terrain_columns = 512;
             constexpr int terrain_rows = 40;
             static std::vector<HorizonTerrainVertex> mesh;
+            static std::vector<double> terrain_up;
+            struct AdaptiveTerrainPatch
+            {
+                int row, column;
+                bool uniform = false;
+                TerrainLodError error;
+            };
+            static std::vector<AdaptiveTerrainPatch> adaptive_patches;
             bool gpu_mesh_noise = false;
             #if horizon_gpu_mesh_generation
             gpu_mesh_noise = !horizon_mesh_gpu_reference && map->is_complete();
             #endif
-            auto mesh_key = std::make_tuple(whereami, viewer_lat, viewer_lon, surface_eye, surface_radius,
-                surface_lift, map->gen, p ? p->has_water : 0.0f, water_favorable,
-                p ? p->vegetation_r : 0, p ? p->vegetation_g : 0, p ? p->vegetation_b : 0, shore_displacement, gpu_mesh_noise);
+            // Keep world sampling patches independent of the observer-relative mesh geometry.
+            auto mesh_key = std::make_tuple(whereami, map, surface_radius,
+                map->gen, p ? p->has_water : 0.0f, water_favorable,
+                p ? p->vegetation_r : 0, p ? p->vegetation_g : 0, p ? p->vegetation_b : 0, shore_displacement,
+                gpu_mesh_noise, horizon_terrain_cpu_reference, performance_enabled(20), (performance_enabled(25) && !horizon_terrain_cpu_reference),
+                performance_enabled(26) && !horizon_terrain_cpu_reference);
             static decltype(mesh_key) saved_mesh_key;
+            auto mesh_view = std::make_tuple(viewer_lat, viewer_lon, surface_eye, surface_lift);
+            static decltype(mesh_view) saved_mesh_view;
             static bool mesh_valid = false;
-            if (!mesh_valid || saved_mesh_key != mesh_key)
+            if (!mesh_valid || saved_mesh_key != mesh_key || saved_mesh_view != mesh_view)
             {
-                PerlinNoise relief_noise(static_cast<uint32_t>(whereami) * 2654435761u + 0xb0ad1ceau);
+                static PerlinNoise relief_noise;
+                static int relief_world = -2;
+                if (relief_world != whereami)
+                {
+                    relief_noise.reseed(static_cast<uint32_t>(whereami) * 2654435761u + 0xb0ad1ceau);
+                    relief_world = whereami;
+                }
                 static SurfaceFieldCache relief_field;
+                static std::vector<SurfaceFieldCache::Patch> relief_patches;
+                relief_patches.resize(terrain_rows * terrain_columns);
+                static std::vector<SurfaceSampler::WaterPatch> water_patches;
+                water_patches.resize(terrain_rows * terrain_columns);
                 relief_field.configure(static_cast<std::uint64_t>(whereami), surface_radius, 128.0);
                 const auto sample_relief = [&](double x, double y, double z)
                 {
@@ -5862,6 +6171,32 @@ void draw_horizon()
                 const double far_range = fmin(fmax(60000.0, surface_range * 8.0), surface_radius * 0.15);
                 const double base_elevation = map->has_bump_data()
                     ? map->elevation_at_bilinear(viewer_lat, viewer_lon) : 0.0;
+                static const auto directions = []()
+                {
+                    std::array<std::array<double, 3>, terrain_columns> result;
+                    for (int column = 0; column < terrain_columns; ++column)
+                    {
+                        const double angle = 2.0 * _pi * column / terrain_columns;
+                        result[column] = {angle, sin(angle), cos(angle)};
+                    }
+                    return result;
+                }();
+                std::array<double, terrain_rows> row_distances, row_sines, row_cosines;
+                for (int row = 0; row < terrain_rows; ++row)
+                {
+                    row_distances[row] = near_range * pow(far_range / near_range,
+                        static_cast<double>(row) / (terrain_rows - 1));
+                    row_sines[row] = sin(row_distances[row] / surface_radius);
+                    row_cosines[row] = cos(row_distances[row] / surface_radius);
+                }
+                const double latitude_sine = surface_sin_latitude(), latitude_cosine = surface_cos_latitude();
+                const auto ring_coordinate = [&](int row, int column)
+                {
+                    const double sin_lat = fmax(-1.0, fmin(1.0, latitude_sine * row_cosines[row]
+                        + latitude_cosine * row_sines[row] * directions[column][2]));
+                    return std::make_pair(asin(sin_lat), viewer_lon + atan2(directions[column][1]
+                        * row_sines[row] * latitude_cosine, row_cosines[row] - latitude_sine * sin_lat));
+                };
                 mesh.resize(terrain_rows * terrain_columns);
                 std::vector<std::pair<double, double>> mesh_coordinates;
                 std::vector<double> gpu_totals;
@@ -5874,12 +6209,11 @@ void draw_horizon()
                     mesh_coordinates.reserve(mesh.size());
                     for (int row = 0; row < terrain_rows; ++row)
                     {
-                        const double distance = near_range * pow(far_range / near_range,
-                            static_cast<double>(row) / (terrain_rows - 1));
+                        const double distance = row_distances[row];
                         for (int column = 0; column < terrain_columns; ++column)
                         {
-                            const double bearing = 2.0 * _pi * column / terrain_columns;
-                            const auto coord = surface_coord(distance, bearing);
+                            const double bearing = directions[column][0];
+                            const auto coord = (horizon_terrain_cpu_reference || !performance_enabled(20)) ? surface_coord(distance, bearing) : ring_coordinate(row, column);
                             mesh_coordinates.push_back(coord);
                             positions.push_back({surface_radius * cos(coord.first) * cos(coord.second) / 50000.0,
                                 surface_radius * cos(coord.first) * sin(coord.second) / 50000.0,
@@ -5894,19 +6228,28 @@ void draw_horizon()
                     }
                     gpu_generated = generate_horizon_mesh_gpu(positions, relief_noise, gpu_totals);
                 }
-                std::vector<double> row_relief(terrain_columns);
-                std::vector<bool> row_water(terrain_columns);
+                static FrameScratch<double> row_relief_scratch;
+                static FrameScratch<bool> row_water_scratch;
+                std::vector<double> local_row_relief;
+                std::vector<bool> local_row_water;
+                auto& row_relief = frame_scratch_enabled()
+                    ? row_relief_scratch.acquire(whereami, dispcx * 2, dispcy * 2) : local_row_relief;
+                auto& row_water = frame_scratch_enabled()
+                    ? row_water_scratch.acquire(whereami, dispcx * 2, dispcy * 2) : local_row_water;
+                row_relief.resize(terrain_columns);
+                row_water.resize(terrain_columns);
                 for (int row = 0; row < terrain_rows; ++row)
                 {
-                    const double distance = near_range * pow(far_range / near_range,
-                        static_cast<double>(row) / (terrain_rows - 1));
+                    const double distance = row_distances[row];
                     const double rise = std::clamp((distance - near_range) / (1.5 * surface_range), 0.0, 1.0);
                     const double ramp = rise * rise * (3.0 - 2.0 * rise);
                     for (int column = 0; column < terrain_columns; ++column)
                     {
-                        const double bearing = 2.0 * _pi * column / terrain_columns;
+                        const double bearing = directions[column][0];
                         const size_t sample = row * terrain_columns + column;
-                        const auto coord = mesh_coordinates.empty() ? surface_coord(distance, bearing) : mesh_coordinates[sample];
+                        const auto coord = mesh_coordinates.empty()
+                            ? ((horizon_terrain_cpu_reference || !performance_enabled(20)) ? surface_coord(distance, bearing) : ring_coordinate(row, column))
+                            : mesh_coordinates[sample];
                         double total = 0, weight = 0;
                         if (gpu_generated)
                         {
@@ -5916,14 +6259,16 @@ void draw_horizon()
                         else
                         {
                             total = relief_field.value(cos(coord.first) * cos(coord.second),
-                                cos(coord.first) * sin(coord.second), sin(coord.first), sample_relief);
+                                cos(coord.first) * sin(coord.second), sin(coord.first), sample_relief,
+                                horizon_terrain_cpu_reference || !performance_enabled(20) ? nullptr : &relief_patches[sample]);
                             weight = 1;
                         }
                         const double procedural = surface_range * 0.2 * fmax(0.0, 0.15 + 0.5 * total / weight);
                         const double bump = map->has_bump_data()
                             ? fmax(0.0, map->elevation_at_bilinear(coord.first, coord.second) - base_elevation) : 0.0;
                         row_relief[column] = (procedural + bump) * ramp;
-                        row_water[column] = water_at(coord.first, coord.second);
+                        row_water[column] = (horizon_terrain_cpu_reference || !performance_enabled(20)) ? water_at(coord.first, coord.second)
+                            : surface.water_at(coord.first, coord.second, water_patches[sample]);
                         HorizonTerrainVertex &vertex = mesh[row * terrain_columns + column];
                         vertex.distance = distance;
                         vertex.bearing = bearing;
@@ -5960,42 +6305,244 @@ void draw_horizon()
                             + (next.distance - vertex.distance) * coastal_slope);
                     }
                 }
+                if ((performance_enabled(25) && !horizon_terrain_cpu_reference))
+                {
+                    terrain_up.resize(mesh.size());
+                    for (size_t vertex = 0; vertex < mesh.size(); ++vertex)
+                    {
+                        const auto& source = mesh[vertex];
+                        const double refraction = surface_lift * fmin(1.0, source.distance / surface_range) * source.distance;
+                        terrain_up[vertex] = source.elevation - surface_eye
+                            - source.distance * source.distance / (2.0 * surface_radius) + refraction;
+                    }
+                }
+                adaptive_patches.clear();
+                if (performance_enabled(26) && !horizon_terrain_cpu_reference)
+                {
+                    for (int row = 0; row + 4 < terrain_rows; row += 4)
+                    {
+                        for (int column = 0; column < terrain_columns; column += 2)
+                        {
+                            AdaptiveTerrainPatch patch{row, column, false, {}};
+                            const double middle_distance = row_distances[row + 2];
+                            const double middle_bearing = directions[(column + 1) % terrain_columns][0];
+                            const auto coordinate = surface_coord(middle_distance, middle_bearing);
+                            const double radial_bound = fmax(middle_distance - row_distances[row],
+                                row_distances[row + 4] - middle_distance);
+                            const double angle_bound = (radial_bound + row_distances[row + 4] * 2 * _pi / terrain_columns)
+                                / surface_radius;
+                            SurfaceSampler::Sample material;
+                            patch.uniform = surface.uniform_sample(coordinate.first, coordinate.second, angle_bound, material)
+                                && !material.water;
+                            if (patch.uniform)
+                            {
+                                std::array<std::array<double, 4>, 15> points;
+                                for (int dr = 0; dr <= 4; ++dr)
+                                {
+                                    for (int dc = 0; dc <= 2; ++dc)
+                                    {
+                                        const int sector = (column + dc) % terrain_columns;
+                                        const auto& source = mesh[(row + dr) * terrain_columns + sector];
+                                        const double refraction = surface_lift * fmin(1.0, source.distance / surface_range) * source.distance;
+                                        const double up = source.elevation - surface_eye
+                                            - source.distance * source.distance / (2.0 * surface_radius) + refraction;
+                                        points[dr * 3 + dc] = {source.distance * directions[sector][1],
+                                            source.distance * directions[sector][2], up, source.distance};
+                                    }
+                                }
+                                patch.error.prepare(points);
+                            }
+                            adaptive_patches.push_back(patch);
+                        }
+                    }
+                }
+                if (performance_enabled(36) && prefetch_walking)
+                {
+                    const int slot = whereami;
+                    CelestialObject* const body = cel;
+                    Map* const source_map = map;
+                    const unsigned int generation = map->gen;
+                    const double origin_latitude = viewer_lat, origin_longitude = viewer_lon;
+                    const double origin_azimuth = azimuth, original_eye = viewer_eye_height;
+                    const auto original_type = cel->type;
+                    const double original_radius = cel->volumetric_mean_radius, original_oblateness = cel->oblateness;
+                    const double radius = surface_radius;
+                    const int facing = (static_cast<int>(std::llround(azimuth * terrain_columns / (2 * _pi)))
+                        % terrain_columns + terrain_columns) % terrain_columns;
+                    auto* field = &relief_field;
+                    auto* noise = &relief_noise;
+                    surface_prefetch.schedule([=]()
+                    {
+                        return view_mode == vm_horizon && cels && whereami == slot && slot >= 0 && slot < ncelobjs && cels[slot] == body
+                            && !body->deleted && body->surf_map == source_map && source_map && source_map->gen == generation
+                            && viewer_lat == origin_latitude && viewer_lon == origin_longitude
+                            && azimuth == origin_azimuth && viewer_eye_height == original_eye && body->type == original_type
+                            && body->volumetric_mean_radius == original_radius && body->oblateness == original_oblateness;
+                    }, [=]() mutable
+                    {
+                        const size_t cursor = prefetch_route.cursor;
+                        prefetch_route.cursor = (cursor + 1) % (terrain_rows * terrain_columns);
+                        const int row = cursor / terrain_columns, offset = cursor % terrain_columns;
+                        const int delta = offset & 1 ? -(offset + 1) / 2 : offset / 2;
+                        const int column = (facing + delta + terrain_columns) % terrain_columns;
+                        const double bearing = 2 * _pi * column / terrain_columns;
+                        const double arc = row_distances[row] / radius;
+                        const double sine = std::clamp(sin(predicted_latitude) * cos(arc)
+                            + cos(predicted_latitude) * sin(arc) * cos(bearing), -1.0, 1.0);
+                        const double latitude = asin(sine);
+                        const double longitude = predicted_longitude + atan2(sin(bearing) * sin(arc) * cos(predicted_latitude),
+                            cos(arc) - sin(predicted_latitude) * sine);
+                        const auto sample = [=](double x, double y, double z)
+                        {
+                            const double scale = radius / 50000.0;
+                            return horizon_noise_value(*noise, x * scale, y * scale, z * scale, 12);
+                        };
+                        field->value(cos(latitude) * cos(longitude), cos(latitude) * sin(longitude), sin(latitude), sample);
+                        return true;
+                    });
+                }
                 saved_mesh_key = mesh_key;
+                saved_mesh_view = mesh_view;
                 mesh_valid = true;
             }
 
-            terrain_raster.reset(screen_w, static_cast<int>(dispcy * 2.0));
-            std::vector<ProjectedTerrainVertex> projected(mesh.size());
-            const double cos_alt = cos(altitude), sin_alt = sin(altitude);
-            for (size_t vertex = 0; vertex < mesh.size(); ++vertex)
+            terrain_raster.reset(screen_w, static_cast<int>(dispcy * 2.0), performance_enabled(24));
+            static std::vector<ProjectedTerrainVertex> projected;
+            if (!performance_enabled(23)) std::vector<ProjectedTerrainVertex>().swap(projected);
+            projected.assign(mesh.size(), {});
+            static std::vector<std::array<double, 3>> camera_vertices;
+            if (!performance_enabled(23)) std::vector<std::array<double, 3>>().swap(camera_vertices);
+            std::array<bool, terrain_columns> visible_sectors;
+            const double cos_alt = surface_cos_altitude(), sin_alt = surface_sin_altitude();
+            if (!performance_enabled(22) || horizon_terrain_cpu_reference)
             {
-                const HorizonTerrainVertex &source = mesh[vertex];
-                const double bearing = source.bearing - azimuth;
-                const double x = source.distance * sin(bearing);
-                const double north = source.distance * cos(bearing);
-                const double refraction = surface_lift * fmin(1.0, source.distance / surface_range) * source.distance;
-                const double up = source.elevation - surface_eye
-                    - source.distance * source.distance / (2.0 * surface_radius) + refraction;
-                const double depth = up * sin_alt + north * cos_alt;
-                if (depth > 0.1)
+                visible_sectors.fill(true);
+                for (size_t vertex = 0; vertex < mesh.size(); ++vertex)
                 {
-                    ProjectedTerrainVertex &target = projected[vertex];
-                    target.x = dispcx + x / depth * zoom * dispcx;
-                    target.y = dispcy - (up * cos_alt - north * sin_alt) / depth * zoom * dispcx;
-                    target.inverse_depth = 1.0 / depth;
-                    target.distance_over_depth = source.distance / depth;
+                    const HorizonTerrainVertex &source = mesh[vertex];
+                    const double bearing = source.bearing - azimuth;
+                    const double x = source.distance * sin(bearing);
+                    const double north = source.distance * cos(bearing);
+                    double up;
+                    if ((performance_enabled(25) && !horizon_terrain_cpu_reference)) up = terrain_up[vertex];
+                    else
+                    {
+                        const double refraction = surface_lift * fmin(1.0, source.distance / surface_range) * source.distance;
+                        up = source.elevation - surface_eye
+                            - source.distance * source.distance / (2.0 * surface_radius) + refraction;
+                    }
+                    const double depth = up * sin_alt + north * cos_alt;
+                    if (depth > 0.1)
+                    {
+                        ProjectedTerrainVertex &target = projected[vertex];
+                        target.x = dispcx + x / depth * zoom * dispcx;
+                        target.y = dispcy - (up * cos_alt - north * sin_alt) / depth * zoom * dispcx;
+                        target.inverse_depth = 1.0 / depth;
+                        target.distance_over_depth = source.distance / depth;
+                    }
+                }
+            }
+            else
+            {
+                camera_vertices.resize(mesh.size());
+                std::array<HorizonTerrainSector, terrain_columns> sectors;
+                const double horizontal = (dispcx + 2) / surface_focal();
+                const double vertical = (dispcy + 2) / surface_focal();
+                for (int column = 0; column < terrain_columns; ++column)
+                {
+                    const double bearing = mesh[column].bearing - azimuth;
+                    const double sine = sin(bearing), cosine = cos(bearing);
+                    for (int row = 0; row < terrain_rows; ++row)
+                    {
+                        const size_t vertex = row * terrain_columns + column;
+                        const HorizonTerrainVertex &source = mesh[vertex];
+                        const double x = source.distance * sine;
+                        const double north = source.distance * cosine;
+                        double up;
+                        if ((performance_enabled(25) && !horizon_terrain_cpu_reference)) up = terrain_up[vertex];
+                        else
+                        {
+                            const double refraction = surface_lift * fmin(1.0, source.distance / surface_range) * source.distance;
+                            up = source.elevation - surface_eye
+                                - source.distance * source.distance / (2.0 * surface_radius) + refraction;
+                        }
+                        const double depth = up * sin_alt + north * cos_alt;
+                        const double y = up * cos_alt - north * sin_alt;
+                        camera_vertices[vertex] = {x, y, depth};
+                        sectors[column].include(x, y, depth, horizontal, vertical);
+                    }
+                }
+                for (int column = 0; column < terrain_columns; ++column)
+                    visible_sectors[column] = !sectors[column].outside(sectors[(column + 1) % terrain_columns]);
+                for (int column = 0; column < terrain_columns; ++column)
+                {
+                    if (!visible_sectors[column] && !visible_sectors[(column + terrain_columns - 1) % terrain_columns]) continue;
+                    for (int row = 0; row < terrain_rows; ++row)
+                    {
+                        const size_t vertex = row * terrain_columns + column;
+                        const auto &camera = camera_vertices[vertex];
+                        const double depth = camera[2];
+                        if (depth > .1)
+                        {
+                            auto &target = projected[vertex];
+                            target.x = dispcx + camera[0] / depth * zoom * dispcx;
+                            target.y = dispcy - camera[1] / depth * zoom * dispcx;
+                            target.inverse_depth = 1.0 / depth;
+                            target.distance_over_depth = mesh[vertex].distance / depth;
+                        }
+                    }
                 }
             }
             bool gpu_raster = false;
             #if horizon_gpu_terrain_rasterization
             gpu_raster = !horizon_terrain_gpu_reference;
             #endif
-            std::vector<ProjectedTerrainVertex> triangles;
+            static std::vector<ProjectedTerrainVertex> triangles;
+            if (!performance_enabled(23)) std::vector<ProjectedTerrainVertex>().swap(triangles);
+            triangles.clear();
             if (gpu_raster) triangles.reserve((terrain_rows - 1) * terrain_columns * 6);
+            static std::vector<unsigned char> adaptive_cells;
+            const bool adaptive = performance_enabled(26) && !horizon_terrain_cpu_reference
+                && performance_enabled(22) && !gpu_raster;
+            if (adaptive)
+            {
+                adaptive_cells.assign((terrain_rows - 1) * terrain_columns, 0);
+                terrain_lod_stats.patches = adaptive_patches.size();
+                for (const auto& patch : adaptive_patches)
+                {
+                    if (!patch.uniform || !visible_sectors[patch.column]
+                        || !visible_sectors[(patch.column + 1) % terrain_columns]) continue;
+                    double minimum_depth = std::numeric_limits<double>::infinity();
+                    for (int dr = 0; dr <= 4; ++dr)
+                        for (int dc = 0; dc <= 2; ++dc)
+                            minimum_depth = fmin(minimum_depth, camera_vertices[(patch.row + dr) * terrain_columns
+                                + (patch.column + dc) % terrain_columns][2]);
+                    if (!patch.error.within(zoom * dispcx, sin_alt, minimum_depth)) continue;
+                    ++terrain_lod_stats.accepted_patches;
+                    terrain_lod_stats.triangles_removed += 4;
+                    constexpr int boundary[12][2] = {{0, 0}, {0, 1}, {0, 2}, {1, 2}, {2, 2}, {3, 2},
+                        {4, 2}, {4, 1}, {4, 0}, {3, 0}, {2, 0}, {1, 0}};
+                    const auto vertex = [&](int row, int column) -> const ProjectedTerrainVertex&
+                    {
+                        return projected[(patch.row + row) * terrain_columns + (patch.column + column) % terrain_columns];
+                    };
+                    const auto& middle = vertex(2, 1);
+                    for (int edge = 0; edge < 12; ++edge)
+                    {
+                        const auto& a = vertex(boundary[edge][0], boundary[edge][1]);
+                        const auto& b = vertex(boundary[(edge + 1) % 12][0], boundary[(edge + 1) % 12][1]);
+                        terrain_raster.triangle(a, b, middle, performance_enabled(24));
+                    }
+                    for (int dr = 0; dr < 4; ++dr)
+                        for (int dc = 0; dc < 2; ++dc)
+                            adaptive_cells[(patch.row + dr) * terrain_columns + (patch.column + dc) % terrain_columns] = 1;
+                }
+            }
             for (int row = 0; row < terrain_rows - 1; ++row)
             {
                 for (int column = 0; column < terrain_columns; ++column)
                 {
+                    if (!visible_sectors[column] || (adaptive && adaptive_cells[row * terrain_columns + column])) continue;
                     const int next = (column + 1) % terrain_columns;
                     const auto &a = projected[row * terrain_columns + column];
                     const auto &b = projected[row * terrain_columns + next];
@@ -6004,8 +6551,8 @@ void draw_horizon()
                     if (gpu_raster) triangles.insert(triangles.end(), {a, b, c, b, d, c});
                     else
                     {
-                        terrain_raster.triangle(a, b, c);
-                        terrain_raster.triangle(b, d, c);
+                        terrain_raster.triangle(a, b, c, !horizon_terrain_cpu_reference && performance_enabled(24));
+                        terrain_raster.triangle(b, d, c, !horizon_terrain_cpu_reference && performance_enabled(24));
                     }
                 }
             }
@@ -6014,7 +6561,8 @@ void draw_horizon()
             {
                 for (size_t index = 0; index < triangles.size(); index += 3)
                 {
-                    terrain_raster.triangle(triangles[index], triangles[index + 1], triangles[index + 2]);
+                    terrain_raster.triangle(triangles[index], triangles[index + 1], triangles[index + 2],
+                        !horizon_terrain_cpu_reference && performance_enabled(24));
                 }
             }
             for (int x = 0; x < screen_w; ++x)
@@ -6106,22 +6654,52 @@ void draw_horizon()
         }
         #endif
 
-        if (!faded && (surface_water || (surface_biomes && cel->type != lavaworld)))
+        const int ground_height = static_cast<int>(dispcy * 2.0);
+        const double top_north = surface_cos_altitude() - dispcy / surface_focal() * surface_sin_altitude();
+        const double bottom_north = surface_cos_altitude() + dispcy / surface_focal() * surface_sin_altitude();
+        const bool bounded_ground = performance_enabled(29) && !horizon_terrain_cpu_reference
+            && terrain_mesh && !faded && map && map->is_complete() && screen_w > 0 && ground_height > 0
+            && surface_cos_altitude() >= 0 && top_north > 0 && bottom_north > 0;
+        static std::vector<int> bounded_base_top, ground_coverage_top;
+        int first_ground = ground_height;
+        if (bounded_ground)
+        {
+            bounded_base_top.resize(screen_w);
+            ground_coverage_top.resize(screen_w);
+            for (int x = 0; x < screen_w; ++x)
+            {
+                int first = 0, last = ground_height;
+                if (std::isfinite(base_distance(x + .5, .5))) last = 0;
+                else if (!std::isfinite(base_distance(x + .5, ground_height - .5))) first = last;
+                while (first < last)
+                {
+                    const int middle = (first + last) / 2;
+                    if (std::isfinite(base_distance(x + .5, middle + .5))) last = middle;
+                    else first = middle + 1;
+                }
+                bounded_base_top[x] = first;
+                ground_coverage_top[x] = std::min(first, terrain_raster.top_at(x));
+                first_ground = std::min(first_ground, ground_coverage_top[x]);
+            }
+            if (first_ground == ground_height) reset_horizon_ground_gpu_stats();
+        }
+
+        if (!faded && (surface_water || (surface_biomes && cel->type != lavaworld))
+            && (!bounded_ground || first_ground < ground_height))
         {
             ImDrawList *ground = ImGui::GetBackgroundDrawList();
             std::vector<HorizonGroundRect> gpu_rectangles;
             bool gpu_ground = false;
             #if horizon_gpu_ground_painting
-            const int ground_height = static_cast<int>(dispcy * 2.0);
             // In this domain base-surface coverage is monotonic down each column.
             // Other views retain the reference painter, including views past the nadir.
-            const double top_north = cos(altitude) - dispcy / (zoom * dispcx) * sin(altitude);
-            const double bottom_north = cos(altitude) + dispcy / (zoom * dispcx) * sin(altitude);
-            if (map && map->is_complete() && cos(altitude) >= 0 && top_north > 0 && bottom_north > 0
+            if (map && map->is_complete() && surface_cos_altitude() >= 0 && top_north > 0 && bottom_north > 0
                 && !horizon_ground_gpu_reference)
             {
-                std::vector<int> base_top(screen_w, 0);
-                if (terrain_mesh)
+                std::vector<int> local_base_top;
+                auto& base_top = bounded_ground ? bounded_base_top : local_base_top;
+                if (!bounded_ground) base_top.assign(screen_w, 0);
+                if (terrain_mesh && !bounded_ground)
                 {
                     for (int x = 0; x < screen_w; ++x)
                     {
@@ -6170,8 +6748,8 @@ void draw_horizon()
                 {
                     for (double y : {top + 0.5, bottom - 0.5})
                     {
-                        const double north = cos(altitude) - (dispcy - y) / (zoom * dispcx) * sin(altitude);
-                        const double bearing = atan2((x - dispcx) / (zoom * dispcx), north);
+                        const double north = surface_cos_altitude() - (dispcy - y) / surface_focal() * surface_sin_altitude();
+                        const double bearing = atan2((x - dispcx) / surface_focal(), north);
                         low_bearing = fmin(low_bearing, bearing);
                         high_bearing = fmax(high_bearing, bearing);
                     }
@@ -6201,12 +6779,14 @@ void draw_horizon()
             const auto patch = [&](const auto &self, int left, int top, int right, int bottom) -> void
             {
                 double horizon_min = 1e9, horizon_max = -1e9;
+                int coverage_min = ground_height;
                 for (int x = left; x < right; ++x)
                 {
                     horizon_min = fmin(horizon_min, min_hz_y_at_x[x]);
                     horizon_max = fmax(horizon_max, min_hz_y_at_x[x]);
+                    if (bounded_ground) coverage_min = std::min(coverage_min, ground_coverage_top[x]);
                 }
-                if (bottom <= horizon_min)
+                if (bottom <= horizon_min || (bounded_ground && bottom <= coverage_min))
                 {
                     return;
                 }
@@ -6308,10 +6888,13 @@ void draw_horizon()
             if (gpu_ground) queue_horizon_ground_gpu(std::move(gpu_rectangles));
         }
 
-        if (surface_water && !faded)
+        if (surface_water && !faded && screen_w > 0)
         {
             double wave_t = ImGui::GetTime();
-            std::vector<GlintSource> glint_sources;
+            static std::vector<GlintSource> retained_glint_sources;
+            std::vector<GlintSource> uncached_glint_sources;
+            auto& glint_sources = performance_enabled(50) ? retained_glint_sources : uncached_glint_sources;
+            glint_sources.clear();
             CelestialObject *sun_obj = mycenobj ? mycenobj : (whereami >= 0 ? cels[whereami]->get_light_center() : nullptr);
             if (sun_obj)
             {
@@ -6343,7 +6926,7 @@ void draw_horizon()
                 }
             }
 
-            for (int ci = 0; cels[ci] && ci < MAX_CELOBJS; ci++)
+            for (int ci : frame_bright_candidates())
             {
                 if (cels[ci]->deleted || ci == whereami || cels[ci] == sun_obj)
                 {
@@ -6386,14 +6969,10 @@ void draw_horizon()
                     low_factor = (WAVE_GLINT_LOW_SUN_ELEV - elev) / WAVE_GLINT_LOW_SUN_ELEV * 2.0;
                 }
 
-                cel_obj_class obj_cls = cels[ci]->typeclass();
-                Color objcol = obj_cls == class_star
-                    ? Color::color_from_star(0, (Star*)cels[ci], cels[ci]->BV_color)
-                    : Color::color_from_magnitude_indices(0, cels[ci]->BV_color + planet_bv_correction);
-                double max_comp = fmax(objcol.red, fmax(objcol.green, objcol.blue));
-                double br = (max_comp > 0.0) ? (objcol.red / max_comp) : 1.0;
-                double bg = (max_comp > 0.0) ? (objcol.green / max_comp) : 1.0;
-                double bb = (max_comp > 0.0) ? (objcol.blue / max_comp) : 1.0;
+                const Color objcol = water_light_color(cels[ci]);
+                double br = objcol.red;
+                double bg = objcol.green;
+                double bb = objcol.blue;
 
                 double warm_r = fmin(255.0, br * 180.0 + 50.0 * low_factor);
                 double warm_g = fmax(0.0, bg * 160.0 - 10.0 * low_factor);
@@ -6431,7 +7010,7 @@ void draw_horizon()
                 }
             }
 
-            double R_planet = cel->get_equatorial_radius();
+            double R_planet = shared_surface ? surface_radius : cel->get_equatorial_radius();
             if (R_planet <= 0)
             {
                 R_planet = cel->volumetric_mean_radius;
@@ -6445,10 +7024,10 @@ void draw_horizon()
             if ((cel->typeclass() == class_planet || cel->typeclass() == class_moon) && !uses_gaseous_map(cel->type))
             {
                 p = (Planet*)cel;
-                horizon_lift_rad = p->atmospheric_horizon_lift();
+                horizon_lift_rad = shared_surface ? surface_lift : p->atmospheric_horizon_lift();
             }
 
-            double h_eye = fmax(0.01, viewer_eye_height);
+            double h_eye = shared_surface ? surface_eye : fmax(0.01, viewer_eye_height);
             double horizon_dip_rad = (R_planet > 0) ? acos(R_planet / (R_planet + h_eye)) : 0.0;
             double net_horizon_angle = horizon_lift_rad - horizon_dip_rad;
             double delta_horizon = -net_horizon_angle;
@@ -6460,133 +7039,298 @@ void draw_horizon()
                 delta_far = delta_near - 0.001;
             }
 
-            int num_wave_rows = WAVE_NUM_ROWS;
-            for (int wr_i = 1; wr_i <= num_wave_rows; wr_i++)
+            struct WavePoint
             {
-                double u = (num_wave_rows > 1)
-                    ? (wr_i - 1.0 + WAVE_PERSPECTIVE_OFFSET) / (num_wave_rows - 1.0 + WAVE_PERSPECTIVE_OFFSET)
-                    : 1.0;
-                double blend = pow(1.0 - u, WAVE_PERSPECTIVE_EXP);
-                double delta = delta_far + (delta_near - delta_far) * blend;
-                const double slope = tan(delta);
-                const double curvature = 0.5 / surface_radius - surface_lift / surface_range;
-                const double root = sqrt(fmax(0.0, slope * slope - 4.0 * curvature * surface_eye));
-                const double dist_m = slope + root > 0
-                    ? fmin(surface_range, 2.0 * surface_eye / (slope + root)) : surface_range;
+                double wx = 0, wy = 0, u_world = 0, v_world = 0, amplitude = 0;
+                int column = 0;
+                bool visible = false;
+            };
+            struct WaveSpan
+            {
+                size_t first, last;
+                bool uniform = false;
+                SurfaceSampler::Sample value;
+            };
+            struct WaveRow
+            {
+                double distance = 0;
+                std::vector<WavePoint> points;
+                std::vector<WaveSpan> spans;
+            };
+            static std::vector<WaveRow> wave_rows;
+            auto wave_key = std::make_tuple(whereami, R_planet, surface_radius, surface_eye, surface_lift,
+                surface_range, delta_far, delta_near, azimuth, altitude, zoom, dispcx, dispcy, screen_w);
+            static decltype(wave_key) saved_wave_key;
+            static bool wave_valid = false;
+            const bool geometry_changed = !wave_valid || wave_key != saved_wave_key;
+            const bool rebuild_geometry = water_cpu_reference || !performance_enabled(51) || geometry_changed;
+            int num_wave_rows = WAVE_NUM_ROWS;
+            if (rebuild_geometry)
+            {
+                ++water_stats.geometry_builds;
+                wave_rows.resize(num_wave_rows);
+                for (int wr_i = 1; wr_i <= num_wave_rows; ++wr_i)
+                {
+                    WaveRow& row = wave_rows[wr_i - 1];
+                    double u = (num_wave_rows > 1)
+                        ? (wr_i - 1.0 + WAVE_PERSPECTIVE_OFFSET) / (num_wave_rows - 1.0 + WAVE_PERSPECTIVE_OFFSET)
+                        : 1.0;
+                    double blend = pow(1.0 - u, WAVE_PERSPECTIVE_EXP);
+                    double delta = delta_far + (delta_near - delta_far) * blend;
+                    const double slope = tan(delta);
+                    const double curvature = surface_curvature();
+                    const double root = sqrt(fmax(0.0, slope * slope - 4.0 * curvature * surface_eye));
+                    row.distance = slope + root > 0
+                        ? fmin(surface_range, 2.0 * surface_eye / (slope + root)) : surface_range;
+                    const int num_steps = WAVE_STEPS_PER_ROW;
+                    const double step_angle = (0.9 / fmax(0.3, zoom)) / (double)num_steps;
+                    const double row_offset = (wr_i % 2 == 1) ? (0.5 * step_angle) : 0.0;
+                    row.points.resize(num_steps * 2 + 1);
+                    for (int si = -num_steps; si <= num_steps; ++si)
+                    {
+                        WavePoint& sample = row.points[si + num_steps];
+                        const double th_rel = si * step_angle + row_offset;
+                        const double th_world = azimuth + th_rel;
+                        Point pt_w = rotate3D(zaxis, center, xaxis, delta);
+                        pt_w = rotate3D(pt_w, center, yaxis, th_world);
+                        Cartesian2D cart(pt_w, azimuth, altitude, zoom);
+                        sample.wx = cart.x * dispcx + dispcx;
+                        sample.wy = cart.y * dispcx + dispcy;
+                        sample.visible = cart.x >= -1e10 && sample.wx >= -20 && sample.wx <= dispcx * 2 + 20
+                            && sample.wy >= -20 && sample.wy <= dispcy * 2 + 20;
+                        sample.column = sample.visible
+                            ? static_cast<int>(std::clamp(round(sample.wx), 0.0, double(screen_w - 1))) : 0;
+                        sample.u_world = row.distance * sin(th_world);
+                        sample.v_world = row.distance * cos(th_world);
+                        sample.amplitude = fmax(0.5, fmin(4.5,
+                            (0.04 / fmax(1.0, row.distance * 0.1)) * dispcx * zoom));
+                    }
+                }
+                saved_wave_key = wave_key;
+                wave_valid = true;
+            }
 
-                int num_steps = WAVE_STEPS_PER_ROW;
-                double step_angle = (0.9 / fmax(0.3, zoom)) / (double)num_steps;
-                double row_offset = (wr_i % 2 == 1) ? (0.5 * step_angle) : 0.0;
+            auto bounds_key = std::make_tuple(viewer_lat, viewer_lon, map, map ? map->gen : 0u,
+                map && map->is_complete(), generating_fic_texture, water_favorable, surface_biomes,
+                ocean_world, p ? p->has_water : 0.0f, cel->type, terrain_mesh, shore_displacement,
+                p ? p->vegetation_r : 0, p ? p->vegetation_g : 0, p ? p->vegetation_b : 0, water_cpu_reference, bool(PERF_P052_WAVES && performance_enabled(52)));
+            static decltype(bounds_key) saved_bounds_key;
+            static std::vector<double> saved_wave_horizon;
+            static bool wave_bounds_active = false;
+            static unsigned int saved_clipped = 0, saved_land = 0;
+            const bool rebuild_bounds = geometry_changed || water_cpu_reference || bounds_key != saved_bounds_key
+                || saved_wave_horizon.size() != static_cast<size_t>(screen_w)
+                || !std::equal(saved_wave_horizon.begin(), saved_wave_horizon.end(), min_hz_y_at_x.begin());
+            if (rebuild_bounds)
+            {
+                ++water_stats.bounds_builds;
+                saved_clipped = saved_land = 0;
+                // Surface coordinates use the base intersection or the mesh's radial distance.
+                // Double its farthest row to cover the CPU raster tolerance; larger domains retain all spans.
+                const double farthest = terrain_mesh
+                    ? fmin(fmax(60000.0, surface_range * 8.0), surface_radius * .15) : surface_range;
+                const double maximum_distance = 2 * std::max(surface_range, farthest);
+                SurfaceSampler::Sample footprint;
+                wave_bounds_active = PERF_P052_WAVES && performance_enabled(52)
+                    && (PERF_P052_BOUNDARY || surface.uniform_sample(viewer_lat, viewer_lon,
+                        maximum_distance / surface_radius + 1e-10, footprint));
+                const bool certify_land = wave_bounds_active && !water_cpu_reference && maximum_distance <= 1e6
+                    && maximum_distance <= _pi * surface_radius;
+                for (auto& row : wave_rows)
+                {
+                    row.spans.clear();
+                    if (!wave_bounds_active)
+                    {
+                        row.spans.push_back({0, row.points.size(), false, {}});
+                        continue;
+                    }
+                    size_t first = 0;
+                    while (first < row.points.size())
+                    {
+                        const auto eligible = [&](size_t i)
+                        {
+                            const auto& point = row.points[i];
+                            return point.visible && point.wy >= min_hz_y_at_x[point.column] - 2.0;
+                        };
+                        if (!eligible(first))
+                        {
+                            ++saved_clipped;
+                            ++first;
+                            continue;
+                        }
+                        size_t last = first + 1;
+                        while (last < row.points.size() && last - first < 16 && eligible(last)) ++last;
+                        bool land = false, uniform = false;
+                        SurfaceSampler::Sample value;
+                        if (certify_land)
+                        {
+                            double left = 1e100, right = -1e100, top = 1e100, bottom = -1e100;
+                            for (size_t i = first; i < last; ++i)
+                            {
+                                const auto& point = row.points[i];
+                                const double point_bottom = std::max(point.wy + point.amplitude, min_hz_y_at_x[point.column]);
+                                const double point_top = std::min(point.wy - point.amplitude, min_hz_y_at_x[point.column]);
+                                // Connecting endpoints are stored as floats by ImGui.
+                                const double guard = 16 * 1.1920929e-7
+                                    * (1 + fabs(point.wx) + fabs(point_top) + fabs(point_bottom) + dispcx + dispcy);
+                                left = std::min(left, point.wx - guard);
+                                right = std::max(right, point.wx + guard);
+                                top = std::min(top, point_top - guard);
+                                bottom = std::max(bottom, point_bottom + guard);
+                            }
+                            double low = _pi, high = -_pi;
+                            const double north_top = surface_cos_altitude() - (dispcy - top) / surface_focal() * surface_sin_altitude();
+                            const double north_bottom = surface_cos_altitude() - (dispcy - bottom) / surface_focal() * surface_sin_altitude();
+                            bool certain = !(left <= dispcx && right >= dispcx
+                                && std::min(north_top, north_bottom) <= 0 && std::max(north_top, north_bottom) >= 0);
+                            for (double sx : {left, right})
+                            {
+                                for (double north : {north_top, north_bottom})
+                                {
+                                    const double bearing = atan2((sx - dispcx) / surface_focal(), north);
+                                    low = std::min(low, bearing);
+                                    high = std::max(high, bearing);
+                                    certain &= std::isfinite(bearing);
+                                }
+                            }
+                            if (certain && high - low < half_pi)
+                            {
+                                const auto middle = surface_coord(maximum_distance * .5, azimuth + (low + high) * .5);
+                                const double angle = maximum_distance * (.5 + (high - low) * .5) / surface_radius + 1e-10;
+                                uniform = surface.uniform_sample(middle.first, middle.second, angle, value);
+                                land = uniform && !value.water;
+                            }
+                        }
+                        if (land) saved_land += last - first;
+                        else if (!uniform && !row.spans.empty() && !row.spans.back().uniform
+                            && row.spans.back().last == first) row.spans.back().last = last;
+                        else row.spans.push_back({first, last, uniform, value});
+                        first = last;
+                    }
+                }
+                saved_bounds_key = bounds_key;
+                saved_wave_horizon = min_hz_y_at_x;
+            }
+            water_stats.clipped_points = saved_clipped;
+            water_stats.land_points = saved_land;
+            for (const auto& row : wave_rows)
+            {
+                const double dist_m = row.distance;
                 ImVec2 prev_pt;
                 bool has_prev = false;
-
-                for (int si = -num_steps; si <= num_steps; si++)
+                size_t previous_end = 0;
+                for (const auto& span : row.spans)
                 {
-                    double th_rel = si * step_angle + row_offset;
-                    double th_world = azimuth + th_rel;
-
-                    Point pt_w = rotate3D(zaxis, center, xaxis, delta);
-                    pt_w = rotate3D(pt_w, center, yaxis, th_world);
-                    Cartesian2D cart(pt_w, azimuth, altitude, zoom);
-
-                    if (cart.x < -1e10)
+                    if (span.first != previous_end) has_prev = false;
+                    previous_end = span.last;
+                    for (size_t si = span.first; si < span.last; ++si)
                     {
-                        has_prev = false;
-                        continue;
-                    }
-
-                    double wx = cart.x * dispcx + dispcx;
-                    double wy = cart.y * dispcx + dispcy;
-
-                    if (wx < -20.0 || wx > dispcx * 2 + 20.0 || wy < -20.0 || wy > dispcy * 2 + 20.0)
-                    {
-                        has_prev = false;
-                        continue;
-                    }
-
-                    int ix_lookup = fmax(0, fmin(screen_w - 1, (int)round(wx)));
-                    if (wy < min_hz_y_at_x[ix_lookup] - 2.0)
-                    {
-                        has_prev = false;
-                        continue;
-                    }
-
-                    double u_world = dist_m * sin(th_world);
-                    double v_world = dist_m * cos(th_world);
-
-                    double phi1 = 0.6 * u_world + 0.3 * v_world - 2.4 * wave_t;
-                    double phi2 = -0.3 * u_world + 0.7 * v_world - 1.8 * wave_t;
-                    double wave_val = 0.6 * sin(phi1) + 0.4 * sin(phi2);
-
-                    double amp_px = fmax(0.5, fmin(4.5, (0.04 / fmax(1.0, dist_m * 0.1)) * dispcx * zoom));
-                    wy += wave_val * amp_px;
-                    if (wy < min_hz_y_at_x[ix_lookup])
-                    {
-                        wy = min_hz_y_at_x[ix_lookup];
-                    }
-
-                    const auto coord = ground_coord(wx, wy);
-                    if (!water_at(coord.first, coord.second))
-                    {
-                        has_prev = false;
-                        continue;
-                    }
-                    const RGB3 wave_rgb = surface_sample(coord.first, coord.second);
-
-                    ImVec2 cur_pt(wx, wy);
-
-                    // When light sources are low on the horizon, expand glint reflections
-                    double min_crest = 0.25 - 0.20 * fmin(2.0, max_low_factor);
-                    if (has_prev && wave_val > min_crest)
-                    {
-                        const auto midpoint = ground_coord((wx + prev_pt.x) * 0.5, (wy + prev_pt.y) * 0.5);
-                        if (!water_at(midpoint.first, midpoint.second))
+                        const auto& sample = row.points[si];
+                        if (!wave_bounds_active && (!sample.visible
+                            || sample.wy < min_hz_y_at_x[sample.column] - 2.0))
                         {
                             has_prev = false;
                             continue;
                         }
-                        double crest_fac = (wave_val - min_crest) / (1.0 - min_crest);
-                        int cr = fmin(255.0, is_day * wave_rgb.r * 0.5 + 40.0 * crest_fac);
-                        int cg = fmin(255.0, is_day * wave_rgb.g * 0.7 + 60.0 * crest_fac);
-                        int cb = fmin(255.0, is_day * wave_rgb.b * 0.95 + 75.0 * crest_fac);
-                        int ca = (int)(90.0 + 130.0 * crest_fac);
+                        const double wx = sample.wx;
+                        double wy = sample.wy;
+                        const int ix_lookup = sample.column;
+                        const double u_world = sample.u_world;
+                        const double v_world = sample.v_world;
+                        double phi1 = 0.6 * u_world + 0.3 * v_world - 2.4 * wave_t;
+                        double phi2 = -0.3 * u_world + 0.7 * v_world - 1.8 * wave_t;
+                        double wave_val = 0.6 * sin(phi1) + 0.4 * sin(phi2);
 
-                        if (!glint_sources.empty())
+                        double amp_px = sample.amplitude;
+                        wy += wave_val * amp_px;
+                        if (wy < min_hz_y_at_x[ix_lookup])
                         {
-                            double sparkle1 = 0.5 + 0.5 * sin(12.0 * u_world - 5.0 * wave_t);
-                            double sparkle2 = 0.5 + 0.5 * sin(24.0 * u_world + 7.0 * v_world - 8.0 * wave_t);
-                            double sparkle = 0.6 * sparkle1 + 0.4 * sparkle2;
+                            wy = min_hz_y_at_x[ix_lookup];
+                        }
 
-                            for (const auto &gsrc : glint_sources)
+                        SurfaceSampler::Sample wave_sample;
+                        if (span.uniform)
+                        {
+                            wave_sample = span.value;
+                            ++water_stats.uniform_water_points;
+                        }
+                        else
+                        {
+                            const auto coord = ground_coord(wx, wy);
+                            ++water_stats.samples;
+                            if (performance_enabled(31)) wave_sample = surface.sample(coord.first, coord.second);
+                            else
                             {
-                                double dx_src = fabs(wx - gsrc.screen_x);
-                                double base_w = dispcx * fmax(0.04, fmin(0.20, 0.06 + 0.3 / fmax(1.0, dist_m * 0.1)));
-                                double glint_w = base_w * (1.0 + 1.2 * gsrc.low_factor);
-                                if (dx_src < glint_w * 2.5)
-                                {
-                                    double g_factor = exp(-pow(dx_src / glint_w, 2.0));
-                                    double sparkle_thresh = 0.50 - 0.25 * gsrc.low_factor;
-                                    if (sparkle > sparkle_thresh)
-                                    {
-                                        double low_boost = 1.0 + 0.8 * gsrc.low_factor;
-                                        double sp_int = (sparkle - sparkle_thresh) / (1.0 - sparkle_thresh);
+                                wave_sample.water = surface.water_at(coord.first, coord.second);
+                                if (wave_sample.water) wave_sample.color = surface.color_at(coord.first, coord.second);
+                            }
+                        }
+                        if (!wave_sample.water)
+                        {
+                            has_prev = false;
+                            continue;
+                        }
+                        const RGB3 wave_rgb = wave_sample.color;
 
-                                        cr = fmin(255.0, cr + g_factor * gsrc.r * sp_int * low_boost * gsrc.intensity);
-                                        cg = fmin(255.0, cg + g_factor * gsrc.g * sp_int * low_boost * gsrc.intensity);
-                                        cb = fmin(255.0, cb + g_factor * gsrc.b * sp_int * low_boost * gsrc.intensity);
-                                        ca = fmin(255.0, ca + g_factor * 130.0 * low_boost * gsrc.intensity);
+                        ImVec2 cur_pt(wx, wy);
+
+                        // When light sources are low on the horizon, expand glint reflections
+                        double min_crest = 0.25 - 0.20 * fmin(2.0, max_low_factor);
+                        if (has_prev && wave_val > min_crest)
+                        {
+                            if (!span.uniform || si == span.first)
+                            {
+                                const auto midpoint = ground_coord((wx + prev_pt.x) * 0.5, (wy + prev_pt.y) * 0.5);
+                                ++water_stats.samples;
+                                if (!water_at(midpoint.first, midpoint.second))
+                                {
+                                    has_prev = false;
+                                    continue;
+                                }
+                            }
+                            double crest_fac = (wave_val - min_crest) / (1.0 - min_crest);
+                            int cr = fmin(255.0, is_day * wave_rgb.r * 0.5 + 40.0 * crest_fac);
+                            int cg = fmin(255.0, is_day * wave_rgb.g * 0.7 + 60.0 * crest_fac);
+                            int cb = fmin(255.0, is_day * wave_rgb.b * 0.95 + 75.0 * crest_fac);
+                            int ca = (int)(90.0 + 130.0 * crest_fac);
+
+                            if (!glint_sources.empty())
+                            {
+                                double sparkle1 = 0.5 + 0.5 * sin(12.0 * u_world - 5.0 * wave_t);
+                                double sparkle2 = 0.5 + 0.5 * sin(24.0 * u_world + 7.0 * v_world - 8.0 * wave_t);
+                                double sparkle = 0.6 * sparkle1 + 0.4 * sparkle2;
+
+                                for (const auto &gsrc : glint_sources)
+                                {
+                                    double dx_src = fabs(wx - gsrc.screen_x);
+                                    double base_w = dispcx * fmax(0.04, fmin(0.20, 0.06 + 0.3 / fmax(1.0, dist_m * 0.1)));
+                                    double glint_w = base_w * (1.0 + 1.2 * gsrc.low_factor);
+                                    if (dx_src < glint_w * 2.5)
+                                    {
+                                        double g_factor = exp(-pow(dx_src / glint_w, 2.0));
+                                        double sparkle_thresh = 0.50 - 0.25 * gsrc.low_factor;
+                                        if (sparkle > sparkle_thresh)
+                                        {
+                                            double low_boost = 1.0 + 0.8 * gsrc.low_factor;
+                                            double sp_int = (sparkle - sparkle_thresh) / (1.0 - sparkle_thresh);
+
+                                            cr = fmin(255.0, cr + g_factor * gsrc.r * sp_int * low_boost * gsrc.intensity);
+                                            cg = fmin(255.0, cg + g_factor * gsrc.g * sp_int * low_boost * gsrc.intensity);
+                                            cb = fmin(255.0, cb + g_factor * gsrc.b * sp_int * low_boost * gsrc.intensity);
+                                            ca = fmin(255.0, ca + g_factor * 130.0 * low_boost * gsrc.intensity);
+                                        }
                                     }
                                 }
                             }
+
+                            ImU32 w_col = rgba_apply_redlight(IM_COL32(cr, cg, cb, ca));
+                            float line_th = fmax(1.0f, (float)(1.5 / fmax(1.0, dist_m * 0.1)));
+                            ImGui::GetBackgroundDrawList()->AddLine(prev_pt, cur_pt, w_col, line_th);
                         }
 
-                        ImU32 w_col = rgba_apply_redlight(IM_COL32(cr, cg, cb, ca));
-                        float line_th = fmax(1.0f, (float)(1.5 / fmax(1.0, dist_m * 0.1)));
-                        ImGui::GetBackgroundDrawList()->AddLine(prev_pt, cur_pt, w_col, line_th);
+                        prev_pt = cur_pt;
+                        has_prev = (wave_val > min_crest * 0.8);
                     }
-
-                    prev_pt = cur_pt;
-                    has_prev = (wave_val > min_crest * 0.8);
                 }
             }
 
@@ -6620,8 +7364,8 @@ void draw_horizon()
                 sun_az_world = atan2(sun_horiz.x, sun_horiz.z);
             }
 
-            double h_eye = fmax(0.01, viewer_eye_height);
-            double R_planet = cel->get_equatorial_radius();
+            double h_eye = shared_surface ? surface_eye : fmax(0.01, viewer_eye_height);
+            double R_planet = shared_surface ? surface_radius : cel->get_equatorial_radius();
             if (R_planet <= 0)
             {
                 R_planet = cel->volumetric_mean_radius;
@@ -6635,10 +7379,10 @@ void draw_horizon()
             if ((cel->typeclass() == class_planet || cel->typeclass() == class_moon) && !uses_gaseous_map(cel->type))
             {
                 p = (Planet*)cel;
-                horizon_lift_rad = p->atmospheric_horizon_lift();
+                horizon_lift_rad = shared_surface ? surface_lift : p->atmospheric_horizon_lift();
             }
 
-            double s_horizon = sqrt(2.0 * R_planet * h_eye);
+            double s_horizon = shared_surface ? surface_range : sqrt(2.0 * R_planet * h_eye);
             if (horizon_lift_rad > 0.0)
             {
                 s_horizon += R_planet * sin(horizon_lift_rad);
@@ -6657,6 +7401,8 @@ void draw_horizon()
                         double wave_t = ImGui::GetTime();
                         double s_max = (s_horizon > 0.0) ? fmin(2500.0, s_horizon) : 1500.0;
                         int num_fissure_systems = 28;
+                        const auto* cached_roots = PERF_P105 && !lava_static_reference
+                            ? &lava_topology_cache().get(whereami, s_max) : nullptr;
 
                         auto project_ground_coord = [&](double xw, double yw, double zw, ImVec2 &out_pt, double &out_depth) -> bool
                         {
@@ -6681,8 +7427,8 @@ void draw_horizon()
                             double zc = d_horiz * cos(d_az);
                             double yc = yw;
 
-                            double yc_rot = yc * cos(altitude) - zc * sin(altitude);
-                            double zc_rot = yc * sin(altitude) + zc * cos(altitude);
+                            double yc_rot = yc * surface_cos_altitude() - zc * surface_sin_altitude();
+                            double zc_rot = yc * surface_sin_altitude() + zc * surface_cos_altitude();
 
                             if (zc_rot <= 0.35 || zc <= 0.1)
                             {
@@ -6710,26 +7456,31 @@ void draw_horizon()
 
                         for (int fi = 0; fi < num_fissure_systems; fi++)
                         {
+                            const LavaRoot* root = cached_roots ? &(*cached_roots)[fi] : nullptr;
                             uint32_t fseed = (uint32_t)(whereami * 1013904223u + fi * 2246822519u + 0x8a35c);
-                            fseed = ((fseed >> 16) ^ fseed) * 0x45d9f3b;
-                            fseed = ((fseed >> 16) ^ fseed) * 0x45d9f3b;
-                            fseed = (fseed >> 16) ^ fseed;
+                            if (root) fseed = root->seed;
+                            else
+                            {
+                                fseed = ((fseed >> 16) ^ fseed) * 0x45d9f3b;
+                                fseed = ((fseed >> 16) ^ fseed) * 0x45d9f3b;
+                                fseed = (fseed >> 16) ^ fseed;
+                            }
 
                             double u_ang = (double)(fseed & 0xFFFF) / 65535.0;
                             double u_dist = (double)((fseed >> 16) & 0x7FFF) / 32767.0;
 
-                            double root_ang = u_ang * 2.0 * _pi;
-                            double root_dist = 2.2 + (s_max * 0.18) * pow(u_dist, 1.8);
-                            double root_heading = root_ang + 1.25 + ((double)((fseed >> 8) & 0xFF) / 255.0 - 0.5) * 1.6;
+                            double root_ang = root ? root->angle : u_ang * 2.0 * _pi;
+                            double root_dist = root ? 0 : 2.2 + (s_max * 0.18) * pow(u_dist, 1.8);
+                            double root_heading = root ? root->heading : root_ang + 1.25 + ((double)((fseed >> 8) & 0xFF) / 255.0 - 0.5) * 1.6;
 
-                            double seg_len_base = (1.8 + 3.2 * ((double)(fseed & 0xFF) / 255.0)) * sqrt(root_dist / 6.0);
-                            int num_trunk_segs = 14 + (int)((fseed >> 4) % 6);
+                            double seg_len_base = root ? root->segment : (1.8 + 3.2 * ((double)(fseed & 0xFF) / 255.0)) * sqrt(root_dist / 6.0);
+                            int num_trunk_segs = root ? root->count : 14 + (int)((fseed >> 4) % 6);
 
-                            double cur_xw = root_dist * sin(root_ang);
-                            double cur_zw = root_dist * cos(root_ang);
+                            double cur_xw = root ? root->x : root_dist * sin(root_ang);
+                            double cur_zw = root ? root->z : root_dist * cos(root_ang);
                             double cur_heading = root_heading;
 
-                            double cur_d = sqrt(cur_xw * cur_xw + cur_zw * cur_zw);
+                            double cur_d = root ? root->distance : sqrt(cur_xw * cur_xw + cur_zw * cur_zw);
                             double cur_yw = -h_eye - (cur_d * cur_d) / (2.0 * R_planet);
 
                             ImVec2 p_prev;
@@ -6740,9 +7491,14 @@ void draw_horizon()
 
                             for (int si = 0; si < num_trunk_segs; si++)
                             {
-                                walk_seed = ((walk_seed >> 16) ^ walk_seed) * 0x45d9f3b;
-                                walk_seed = ((walk_seed >> 16) ^ walk_seed) * 0x45d9f3b;
-                                walk_seed = (walk_seed >> 16) ^ walk_seed;
+                                const LavaStep* step = root ? &root->steps[si] : nullptr;
+                                if (step) walk_seed = step->seed;
+                                else
+                                {
+                                    walk_seed = ((walk_seed >> 16) ^ walk_seed) * 0x45d9f3b;
+                                    walk_seed = ((walk_seed >> 16) ^ walk_seed) * 0x45d9f3b;
+                                    walk_seed = (walk_seed >> 16) ^ walk_seed;
+                                }
 
                                 double u_turn = (double)(walk_seed & 0x7FFF) / 32767.0;
                                 double u_len = (double)((walk_seed >> 15) & 0x7FFF) / 32767.0;
@@ -6751,9 +7507,9 @@ void draw_horizon()
                                 cur_heading += deflection;
                                 double slen = seg_len_base * (0.65 + 0.70 * u_len);
 
-                                double next_xw = cur_xw + slen * sin(cur_heading);
-                                double next_zw = cur_zw + slen * cos(cur_heading);
-                                double next_d = sqrt(next_xw * next_xw + next_zw * next_zw);
+                                double next_xw = step ? step->x : cur_xw + slen * sin(cur_heading);
+                                double next_zw = step ? step->z : cur_zw + slen * cos(cur_heading);
+                                double next_d = step ? step->distance : sqrt(next_xw * next_xw + next_zw * next_zw);
                                 double next_yw = -h_eye - (next_d * next_d) / (2.0 * R_planet);
 
                                 ImVec2 p_next;
@@ -6794,18 +7550,23 @@ void draw_horizon()
 
                                     for (int bi = 0; bi < branch_segs; bi++)
                                     {
-                                        b_seed = ((b_seed >> 16) ^ b_seed) * 0x45d9f3b;
-                                        b_seed = ((b_seed >> 16) ^ b_seed) * 0x45d9f3b;
-                                        b_seed = (b_seed >> 16) ^ b_seed;
+                                        const LavaPoint* point = step ? &step->branch[bi] : nullptr;
+                                        if (point) b_seed = point->seed;
+                                        else
+                                        {
+                                            b_seed = ((b_seed >> 16) ^ b_seed) * 0x45d9f3b;
+                                            b_seed = ((b_seed >> 16) ^ b_seed) * 0x45d9f3b;
+                                            b_seed = (b_seed >> 16) ^ b_seed;
+                                        }
 
                                         double bu_turn = (double)(b_seed & 0x7FFF) / 32767.0;
                                         double bu_len = (double)((b_seed >> 15) & 0x7FFF) / 32767.0;
                                         branch_heading += (bu_turn - 0.5) * (70.0 * fiftyseventh);
                                         double b_slen = seg_len_base * 0.65 * (0.6 + 0.6 * bu_len);
 
-                                        double b_next_xw = b_xw + b_slen * sin(branch_heading);
-                                        double b_next_zw = b_zw + b_slen * cos(branch_heading);
-                                        double b_next_d = sqrt(b_next_xw * b_next_xw + b_next_zw * b_next_zw);
+                                        double b_next_xw = point ? point->x : b_xw + b_slen * sin(branch_heading);
+                                        double b_next_zw = point ? point->z : b_zw + b_slen * cos(branch_heading);
+                                        double b_next_d = point ? point->distance : sqrt(b_next_xw * b_next_xw + b_next_zw * b_next_zw);
                                         double b_next_yw = -h_eye - (b_next_d * b_next_d) / (2.0 * R_planet);
 
                                         ImVec2 b_next;
@@ -6859,7 +7620,7 @@ void draw_horizon()
                 #endif
 
                 static std::vector<RockInstance> rocks;
-                rocks.clear();
+                if (!performance_enabled(49)) rocks.clear();
                 int num_rocks = 0;
 
                 double grav = p ? p->estimate_surface_gravity() : 1;
@@ -6880,7 +7641,7 @@ void draw_horizon()
                 const double scenery_range = has_plants ? std::max(PLANT_MAX_DIST, ROCK_MAX_DIST) : ROCK_MAX_DIST;
                 static SurfaceSceneryCache scenery_cache;
                 const auto &scenery = scenery_cache.update(R_planet, viewer_lat, viewer_lon,
-                    scenery_range + canopy_margin, scenery_spacing, static_cast<std::uint64_t>(whereami));
+                    scenery_range + canopy_margin, scenery_spacing, static_cast<std::uint64_t>(whereami), !performance_enabled(40));
                 auto scenery_key = std::make_tuple(whereami, scenery_cache.generation(), R_planet,
                     map ? map->gen : 0u, generating_fic_texture, water_favorable,
                     p ? p->has_water : 0.0f, p ? p->type : cel->type,
@@ -6895,13 +7656,28 @@ void draw_horizon()
                     plant.assign(scenery.size(), false);
                     water.assign(scenery.size(), false);
                     scenery_colors.resize(scenery.size());
-                    std::vector<double> canopy_radii(scenery.size(), 0);
+                    static FrameScratch<double> canopy_scratch;
+                    std::vector<double> local_canopy_radii;
+                    auto& canopy_radii = frame_scratch_enabled()
+                        ? canopy_scratch.acquire(whereami, dispcx * 2, dispcy * 2) : local_canopy_radii;
+                    canopy_radii.assign(scenery.size(), 0);
                     for (size_t index = 0; index < scenery.size(); index++)
                     {
+                        scenery_cache.project(index);
                         const auto &object = scenery[index];
-                        water[index] = water_at(object.latitude, object.longitude);
-                        plant[index] = !water[index] && vegetation_at(object.latitude, object.longitude);
-                        scenery_colors[index] = surface_sample(object.latitude, object.longitude);
+                        if (performance_enabled(31))
+                        {
+                            const auto sample = surface.sample(object.latitude, object.longitude);
+                            water[index] = sample.water;
+                            plant[index] = !sample.water && sample.vegetation;
+                            scenery_colors[index] = sample.color;
+                        }
+                        else
+                        {
+                            water[index] = surface.water_at(object.latitude, object.longitude);
+                            plant[index] = !water[index] && surface.vegetation_at(object.latitude, object.longitude);
+                            scenery_colors[index] = surface.color_at(object.latitude, object.longitude);
+                        }
                         if (plant[index]) canopy_radii[index] = crown_scale
                             * scenery_size(object.seed, ROCK_MIN_SIZE, ROCK_MAX_SIZE);
                     }
@@ -6911,238 +7687,298 @@ void draw_horizon()
                 }
                 rocks.reserve(scenery.size());
 
-                // Sedentary lifeforms when is_vegetation is true, otherwise surface rocks.
-                for (size_t index = 0; index < scenery.size(); index++)
+                auto projection_key = std::make_tuple(scenery_key, cel, map,
+                    viewer_lat, viewer_lon, azimuth, altitude, zoom, dispcx, dispcy,
+                    h_eye, R_planet, s_horizon, horizon_lift_rad, dittrsa, shore_displacement,
+                    p ? p->plant_trunk_height : 0.0, p ? p->plant_trunk_width : 0.0,
+                    p ? p->plant_crown_size : 0.0, p ? p->plant_crown_oblateness : 0.0,
+                    performance_enabled(39), performance_enabled(40), performance_enabled(41), performance_enabled(43));
+                static decltype(projection_key) saved_projection_key;
+                static bool projection_valid = false;
+                static std::vector<double> projection_columns;
+                const bool reusable_projection = performance_enabled(49) && !scenery_cpu_reference
+                    && map && map->gen && map->is_complete() && !generating_fic_texture;
+                if (reusable_projection && projection_valid && projection_key == saved_projection_key
+                    && min_hz_y_at_x == projection_columns)
                 {
-                    const SurfaceScenery &object = scenery[index];
-                    if (water[index] || !canopy_clear[index])
+                    num_rocks = static_cast<int>(rocks.size());
+                    ++scenery_projection_hits;
+                }
+                else
+                {
+                    rocks.clear();
+                    const double bound_range = scenery_range + canopy_margin + 128;
+                    const double bound_drop = bound_range * bound_range * (.5 / R_planet
+                        + fabs(horizon_lift_rad) / fmax(1.0, s_horizon));
+                    const double bound_height = ROCK_MAX_SIZE * (p ? fabs(p->plant_trunk_height)
+                        + fabs(p->plant_crown_size * p->plant_crown_oblateness) : 1);
+                    const auto& visible_scenery = scenery_cache.visible(azimuth, altitude,
+                        -h_eye - bound_drop - bound_height, bound_height + bound_drop, scenery_cpu_reference || !performance_enabled(39), false);
+
+                    // Sedentary lifeforms when is_vegetation is true, otherwise surface rocks.
+                    for (size_t index : visible_scenery)
                     {
-                        continue;
-                    }
-                    const bool is_vegetation = plant[index];
-                    const double rock_aspect = (is_vegetation && p)
-                        ? (p->plant_trunk_height + p->plant_crown_size * p->plant_crown_oblateness)
-                        : (is_lava ? ROCK_ASPECT_LAVA : (is_venus ? ROCK_ASPECT_VENUS : (is_icy ? ROCK_ASPECT_ICY : ROCK_ASPECT_DEFAULT)));
-
-                    const uint32_t rhash = object.seed;
-                    const double theta_world = atan2(object.east, object.north);
-                    const double dist_m = hypot(object.east, object.north);
-                    double dist_ratio = dist_m / ROCK_MAX_DIST;
-                    if (is_vegetation) dist_ratio *= 0.666;
-                    if (dist_m < 0.05 || dist_m >= (is_vegetation ? PLANT_MAX_DIST : ROCK_MAX_DIST))
-                    {
-                        continue;
-                    }
-
-                    double rock_size = scenery_size(rhash, ROCK_MIN_SIZE, ROCK_MAX_SIZE);
-
-                    double rw = (rock_size / dist_m) * dispcx * zoom;
-                    double rh = rw * rock_aspect;
-                    if (rw < 1.5)
-                    {
-                        continue;
-                    }
-
-                    double sx = 0.0;
-                    double sy = 0.0;
-                    double crown_sx = 0.0;
-                    double crown_sy = 0.0;
-                    double crown_rx = 0.0;
-                    double crown_ry = 0.0;
-                    double trunk_w_top = 0.0;
-                    double trunk_top_x = 0.0;
-                    double trunk_top_y = 0.0;
-                    double trunk_w_base = 0.0;
-                    bool base_valid = false;
-                    bool crown_above_eye = false;
-                    double sort_dist = dist_m;
-
-                    if (is_vegetation)
-                    {
-                        double canopy_h_m = rock_size * p->plant_trunk_height;
-                        double curv_drop = (dist_m * dist_m) / (2.0 * R_planet);
-                        double y_base_world = -h_eye - curv_drop;
-                        double y_crown_world = canopy_h_m - h_eye - curv_drop;
-
-                        if (s_horizon > 0.0 && horizon_lift_rad > 0.0)
+                        if (water[index] || !canopy_clear[index])
                         {
-                            double lift = (dist_m / s_horizon) * horizon_lift_rad * dist_m;
-                            y_base_world += lift;
-                            y_crown_world += lift;
+                            continue;
                         }
+                        scenery_cache.project(index);
+                        const SurfaceScenery &object = scenery[index];
+                        const bool is_vegetation = plant[index];
+                        const double rock_aspect = (is_vegetation && p)
+                            ? (p->plant_trunk_height + p->plant_crown_size * p->plant_crown_oblateness)
+                            : (is_lava ? ROCK_ASPECT_LAVA : (is_venus ? ROCK_ASPECT_VENUS : (is_icy ? ROCK_ASPECT_ICY : ROCK_ASPECT_DEFAULT)));
 
-                        double d_az_obj = theta_world - azimuth;
-                        crown_above_eye = y_crown_world > 0.0;
-                        double sin_daz = sin(d_az_obj);
-                        double cos_daz = cos(d_az_obj);
-
-                        double x_cam = dist_m * sin_daz;
-                        double z_horiz = dist_m * cos_daz;
-
-                        double cos_alt = cos(altitude);
-                        double sin_alt = sin(altitude);
-
-                        double z_crown_cam = y_crown_world * sin_alt + z_horiz * cos_alt;
-                        double y_crown_cam = y_crown_world * cos_alt - z_horiz * sin_alt;
-
-                        if (z_crown_cam < 0.2)
+                        const uint32_t rhash = object.seed;
+                        double theta_world = performance_enabled(41) ? 0 : atan2(object.east, object.north);
+                        const double squared_distance = object.east * object.east + object.north * object.north;
+                        const double limit = is_vegetation ? PLANT_MAX_DIST : ROCK_MAX_DIST;
+                        if (performance_enabled(41) && !scenery_cpu_reference && (squared_distance < .0025 - 1e-12
+                            || squared_distance > limit * limit + 1e-8)) continue;
+                        const double dist_m = hypot(object.east, object.north);
+                        double dist_ratio = dist_m / ROCK_MAX_DIST;
+                        if (is_vegetation) dist_ratio *= 0.666;
+                        if (dist_m < 0.05 || dist_m >= (is_vegetation ? PLANT_MAX_DIST : ROCK_MAX_DIST))
                         {
                             continue;
                         }
 
-                        crown_sx = (x_cam / z_crown_cam) * dispcx * zoom + dispcx;
-                        crown_sy = (-y_crown_cam / z_crown_cam) * dispcx * zoom + dispcy;
+                        double rock_size = scenery_size(rhash, ROCK_MIN_SIZE, ROCK_MAX_SIZE);
 
-                        crown_rx = (rock_size * p->plant_crown_size / z_crown_cam) * dispcx * zoom;
-                        crown_rx = fmax(1.2, crown_rx);
-                        // Project the oblate crown from an ellipse at the horizon to a circle overhead.
-                        double crown_aspect = sqrt(p->plant_crown_oblateness * p->plant_crown_oblateness
-                            * cos_alt * cos_alt + sin_alt * sin_alt);
-                        crown_ry = fmax(1.0, crown_rx * crown_aspect);
-
-                        // Attach the trunk to the lower pole of the crown in world space.
-                        double y_top_world = y_crown_world
-                            - rock_size * p->plant_crown_size * p->plant_crown_oblateness;
-                        double z_top_cam = y_top_world * sin_alt + z_horiz * cos_alt;
-                        double y_top_cam = y_top_world * cos_alt - z_horiz * sin_alt;
-
-                        double z_base_cam = y_base_world * sin_alt + z_horiz * cos_alt;
-                        double y_base_cam = y_base_world * cos_alt - z_horiz * sin_alt;
-
-                        if (z_top_cam < 0.2 && z_base_cam >= 0.2)
+                        double rw = (rock_size / dist_m) * dispcx * zoom;
+                        double rh = rw * rock_aspect;
+                        if (rw < 1.5)
                         {
-                            double t = (0.2 - z_top_cam) / (z_base_cam - z_top_cam);
-                            y_top_cam += t * (y_base_cam - y_top_cam);
-                            z_top_cam = 0.2;
-                        }
-                        if (z_top_cam >= 0.2)
-                        {
-                            trunk_top_x = (x_cam / z_top_cam) * dispcx * zoom + dispcx;
-                            trunk_top_y = (-y_top_cam / z_top_cam) * dispcx * zoom + dispcy;
-                            trunk_w_top = (rock_size * p->plant_trunk_width / z_top_cam) * dispcx * zoom;
-                            trunk_w_top = fmax(1.0, fmin(dispcx * 0.8, trunk_w_top));
+                            continue;
                         }
 
-                        if (z_base_cam >= 0.2)
+                        if (performance_enabled(41)) theta_world = atan2(object.east, object.north);
+
+                        double sx = 0.0;
+                        double sy = 0.0;
+                        double crown_sx = 0.0;
+                        double crown_sy = 0.0;
+                        double crown_rx = 0.0;
+                        double crown_ry = 0.0;
+                        double trunk_w_top = 0.0;
+                        double trunk_top_x = 0.0;
+                        double trunk_top_y = 0.0;
+                        double trunk_w_base = 0.0;
+                        bool base_valid = false;
+                        bool crown_above_eye = false;
+                        double sort_dist = dist_m;
+
+                        if (is_vegetation)
                         {
-                            base_valid = true;
-                            sx = (x_cam / z_base_cam) * dispcx * zoom + dispcx;
-                            sy = (-y_base_cam / z_base_cam) * dispcx * zoom + dispcy;
-                            trunk_w_base = (rock_size * p->plant_trunk_width / z_base_cam) * dispcx * zoom;
+                            double canopy_h_m = rock_size * p->plant_trunk_height;
+                            double curv_drop = (dist_m * dist_m) / (2.0 * R_planet);
+                            double y_base_world = -h_eye - curv_drop;
+                            double y_crown_world = canopy_h_m - h_eye - curv_drop;
+
+                            if (s_horizon > 0.0 && horizon_lift_rad > 0.0)
+                            {
+                                double lift = (dist_m / s_horizon) * horizon_lift_rad * dist_m;
+                                y_base_world += lift;
+                                y_crown_world += lift;
+                            }
+
+                            double d_az_obj = theta_world - azimuth;
+                            crown_above_eye = y_crown_world > 0.0;
+                            double sin_daz = sin(d_az_obj);
+                            double cos_daz = cos(d_az_obj);
+
+                            double x_cam = dist_m * sin_daz;
+                            double z_horiz = dist_m * cos_daz;
+
+                            double cos_alt = surface_cos_altitude();
+                            double sin_alt = surface_sin_altitude();
+
+                            double z_crown_cam = y_crown_world * sin_alt + z_horiz * cos_alt;
+                            double y_crown_cam = y_crown_world * cos_alt - z_horiz * sin_alt;
+
+                            if (z_crown_cam < 0.2)
+                            {
+                                continue;
+                            }
+
+                            crown_sx = (x_cam / z_crown_cam) * dispcx * zoom + dispcx;
+                            crown_sy = (-y_crown_cam / z_crown_cam) * dispcx * zoom + dispcy;
+
+                            crown_rx = (rock_size * p->plant_crown_size / z_crown_cam) * dispcx * zoom;
+                            crown_rx = fmax(1.2, crown_rx);
+                            // The viewing angle belongs to this crown's sightline, independent of camera pitch.
+                            const double crown_aspect = scenery_crown_aspect(dist_m, y_crown_world,
+                                p->plant_crown_oblateness);
+                            crown_ry = fmax(1.0, crown_rx * crown_aspect);
+
+                            // Attach the trunk to the lower pole of the crown in world space.
+                            double y_top_world = y_crown_world
+                                - rock_size * p->plant_crown_size * p->plant_crown_oblateness;
+                            double z_top_cam = y_top_world * sin_alt + z_horiz * cos_alt;
+                            double y_top_cam = y_top_world * cos_alt - z_horiz * sin_alt;
+
+                            double z_base_cam = y_base_world * sin_alt + z_horiz * cos_alt;
+                            double y_base_cam = y_base_world * cos_alt - z_horiz * sin_alt;
+
+                            if (z_top_cam < 0.2 && z_base_cam >= 0.2)
+                            {
+                                double t = (0.2 - z_top_cam) / (z_base_cam - z_top_cam);
+                                y_top_cam += t * (y_base_cam - y_top_cam);
+                                z_top_cam = 0.2;
+                            }
+                            if (z_top_cam >= 0.2)
+                            {
+                                trunk_top_x = (x_cam / z_top_cam) * dispcx * zoom + dispcx;
+                                trunk_top_y = (-y_top_cam / z_top_cam) * dispcx * zoom + dispcy;
+                                trunk_w_top = (rock_size * p->plant_trunk_width / z_top_cam) * dispcx * zoom;
+                                trunk_w_top = fmax(1.0, fmin(dispcx * 0.8, trunk_w_top));
+                            }
+
+                            if (z_base_cam >= 0.2)
+                            {
+                                base_valid = true;
+                                sx = (x_cam / z_base_cam) * dispcx * zoom + dispcx;
+                                sy = (-y_base_cam / z_base_cam) * dispcx * zoom + dispcy;
+                                trunk_w_base = (rock_size * p->plant_trunk_width / z_base_cam) * dispcx * zoom;
+                            }
+                            else
+                            {
+                                base_valid = false;
+                                double t = (0.2 - z_base_cam) / (fmax(0.2, z_top_cam) - z_base_cam);
+                                double y_clip = y_base_cam + t * (y_top_cam - y_base_cam);
+                                sx = (x_cam / 0.2) * dispcx * zoom + dispcx;
+                                sy = (-y_clip / 0.2) * dispcx * zoom + dispcy;
+                                trunk_w_base = (rock_size * p->plant_trunk_width / 0.2) * dispcx * zoom;
+                            }
+                            trunk_w_base = fmax(1.0, fmin(dispcx * 1.5, trunk_w_base));
+
+                            sort_dist = z_crown_cam;
                         }
                         else
                         {
-                            base_valid = false;
-                            double t = (0.2 - z_base_cam) / (fmax(0.2, z_top_cam) - z_base_cam);
-                            double y_clip = y_base_cam + t * (y_top_cam - y_base_cam);
-                            sx = (x_cam / 0.2) * dispcx * zoom + dispcx;
-                            sy = (-y_clip / 0.2) * dispcx * zoom + dispcy;
-                            trunk_w_base = (rock_size * p->plant_trunk_width / 0.2) * dispcx * zoom;
-                        }
-                        trunk_w_base = fmax(1.0, fmin(dispcx * 1.5, trunk_w_base));
+                            double d_az_obj = theta_world - azimuth;
+                            if (cos(d_az_obj) <= 0.1)
+                            {
+                                continue;
+                            }
 
-                        sort_dist = z_crown_cam;
+                            double delta = atan(h_eye / dist_m) + (dist_m / (2.0 * R_planet));
+                            if (s_horizon > 0.0)
+                            {
+                                delta -= (dist_m / s_horizon) * horizon_lift_rad;
+                            }
+                            if (dittrsa)
+                            {
+                                delta = -delta;
+                            }
+                            Point pt_rock = rotate3D(zaxis, center, xaxis, delta);
+                            pt_rock = rotate3D(pt_rock, center, yaxis, theta_world);
+
+                            Cartesian2D cart(pt_rock, azimuth, altitude, zoom);
+                            if (cart.x <= -1e10)
+                            {
+                                continue;
+                            }
+
+                            base_valid = true;
+                            sx = cart.x * dispcx + dispcx;
+                            sy = cart.y * dispcx + dispcy;
+                            crown_sx = sx;
+                            crown_sy = sy - rh;
+                            crown_rx = rw * 0.5;
+                            crown_ry = rh;
+                            sort_dist = dist_m;
+                        }
+
+                        double min_x = fmin(sx, crown_sx) - crown_rx;
+                        double max_x = fmax(sx, crown_sx) + crown_rx;
+                        double min_y = crown_sy - crown_ry;
+                        double max_y = fmax(sy, crown_sy + crown_ry);
+
+                        if (max_x < -80.0 || min_x > dispcx * 2.0 + 80.0 || max_y < -80.0 || min_y > dispcy * 2.0 + 80.0)
+                        {
+                            continue;
+                        }
+
+                        double rock_lift_px = 0.0;
+                        if (!dittrsa && base_valid && !is_vegetation)
+                        {
+                            int ix_lookup = fmax(0, fmin(screen_w - 1, (int)round(sx)));
+                            double ground_span = sy - min_hz_y_at_x[ix_lookup];
+                            if (ground_span > 0.0)
+                            {
+                                double slope_factor = 0.45 * pow(fmin(1.0, dist_ratio), 1.2);
+                                rock_lift_px = ground_span * slope_factor;
+                                sy -= rock_lift_px;
+                                crown_sy -= rock_lift_px;
+                            }
+
+                            if (!is_vegetation && sy < min_hz_y_at_x[ix_lookup])
+                            {
+                                continue;
+                            }
+                        }
+
+                        rocks.emplace_back();
+                        #if PERF_P043
+                        rocks[num_rocks].scenery_index = index;
+                        #endif
+                        rocks[num_rocks].crown_hidden = false;
+                        rocks[num_rocks].dist = sort_dist;
+                        rocks[num_rocks].ground_dist = dist_m;
+                        rocks[num_rocks].theta = theta_world;
+                        rocks[num_rocks].screen_x = sx;
+                        rocks[num_rocks].screen_y = sy;
+                        rocks[num_rocks].crown_x = crown_sx;
+                        rocks[num_rocks].crown_y = crown_sy;
+                        rocks[num_rocks].crown_rx = crown_rx;
+                        rocks[num_rocks].crown_ry = crown_ry;
+                        rocks[num_rocks].trunk_w_top = trunk_w_top;
+                        rocks[num_rocks].trunk_top_x = trunk_top_x;
+                        rocks[num_rocks].trunk_top_y = trunk_top_y;
+                        rocks[num_rocks].trunk_w_base = trunk_w_base;
+                        rocks[num_rocks].width = rw;
+                        rocks[num_rocks].height = rh;
+                        rocks[num_rocks].size = rock_size;
+                        rocks[num_rocks].lift_px = rock_lift_px;
+                        const double fade = std::clamp((1.0 - dist_ratio) / 0.25, 0.0, 1.0);
+                        rocks[num_rocks].opacity = 1.0; // fade * fade * (3.0 - 2.0 * fade)
+                            // * std::clamp(rw - 1.5, 0.0, 1.0);
+                        rocks[num_rocks].seed_val = rhash;
+                        rocks[num_rocks].base_valid = base_valid;
+                        rocks[num_rocks].vegetation = is_vegetation;
+                        rocks[num_rocks].crown_above_eye = crown_above_eye;
+                        rocks[num_rocks].aspect = rock_aspect;
+                        rocks[num_rocks].surface_color = scenery_colors[index];
+                        num_rocks++;
+                    }
+
+                    #if PERF_P043
+                    if (performance_enabled(43) && !scenery_cpu_reference)
+                    {
+                        static SceneryDepthOrder<RockInstance> depth_order;
+                        static std::pair<int, size_t> saved_identity;
+                        const auto identity = std::make_pair(whereami, scenery_cache.generation());
+                        if (identity != saved_identity) depth_order.reset();
+                        saved_identity = identity;
+                        depth_order.sort(rocks, scenery.size());
                     }
                     else
+                    #endif
                     {
-                        double d_az_obj = theta_world - azimuth;
-                        if (cos(d_az_obj) <= 0.1)
+                        std::sort(rocks.begin(), rocks.end(), [](const RockInstance& a, const RockInstance& b)
                         {
-                            continue;
-                        }
-
-                        double delta = atan(h_eye / dist_m) + (dist_m / (2.0 * R_planet));
-                        if (s_horizon > 0.0)
-                        {
-                            delta -= (dist_m / s_horizon) * horizon_lift_rad;
-                        }
-                        if (dittrsa)
-                        {
-                            delta = -delta;
-                        }
-                        Point pt_rock = rotate3D(zaxis, center, xaxis, delta);
-                        pt_rock = rotate3D(pt_rock, center, yaxis, theta_world);
-
-                        Cartesian2D cart(pt_rock, azimuth, altitude, zoom);
-                        if (cart.x <= -1e10)
-                        {
-                            continue;
-                        }
-
-                        base_valid = true;
-                        sx = cart.x * dispcx + dispcx;
-                        sy = cart.y * dispcx + dispcy;
-                        crown_sx = sx;
-                        crown_sy = sy - rh;
-                        crown_rx = rw * 0.5;
-                        crown_ry = rh;
-                        sort_dist = dist_m;
+                            return a.dist > b.dist;
+                        });
                     }
 
-                    double min_x = fmin(sx, crown_sx) - crown_rx;
-                    double max_x = fmax(sx, crown_sx) + crown_rx;
-                    double min_y = crown_sy - crown_ry;
-                    double max_y = fmax(sy, crown_sy + crown_ry);
-
-                    if (max_x < -80.0 || min_x > dispcx * 2.0 + 80.0 || max_y < -80.0 || min_y > dispcy * 2.0 + 80.0)
+                    projection_valid = reusable_projection;
+                    if (reusable_projection)
                     {
-                        continue;
+                        projection_columns = min_hz_y_at_x;
+                        saved_projection_key = projection_key;
                     }
-
-                    double rock_lift_px = 0.0;
-                    if (!dittrsa && base_valid && !is_vegetation)
-                    {
-                        int ix_lookup = fmax(0, fmin(screen_w - 1, (int)round(sx)));
-                        double ground_span = sy - min_hz_y_at_x[ix_lookup];
-                        if (ground_span > 0.0)
-                        {
-                            double slope_factor = 0.45 * pow(fmin(1.0, dist_ratio), 1.2);
-                            rock_lift_px = ground_span * slope_factor;
-                            sy -= rock_lift_px;
-                            crown_sy -= rock_lift_px;
-                        }
-
-                        if (!is_vegetation && sy < min_hz_y_at_x[ix_lookup])
-                        {
-                            continue;
-                        }
-                    }
-
-                    rocks.emplace_back();
-                    rocks[num_rocks].crown_hidden = false;
-                    rocks[num_rocks].dist = sort_dist;
-                    rocks[num_rocks].ground_dist = dist_m;
-                    rocks[num_rocks].theta = theta_world;
-                    rocks[num_rocks].screen_x = sx;
-                    rocks[num_rocks].screen_y = sy;
-                    rocks[num_rocks].crown_x = crown_sx;
-                    rocks[num_rocks].crown_y = crown_sy;
-                    rocks[num_rocks].crown_rx = crown_rx;
-                    rocks[num_rocks].crown_ry = crown_ry;
-                    rocks[num_rocks].trunk_w_top = trunk_w_top;
-                    rocks[num_rocks].trunk_top_x = trunk_top_x;
-                    rocks[num_rocks].trunk_top_y = trunk_top_y;
-                    rocks[num_rocks].trunk_w_base = trunk_w_base;
-                    rocks[num_rocks].width = rw;
-                    rocks[num_rocks].height = rh;
-                    rocks[num_rocks].size = rock_size;
-                    rocks[num_rocks].lift_px = rock_lift_px;
-                    const double fade = std::clamp((1.0 - dist_ratio) / 0.25, 0.0, 1.0);
-                    rocks[num_rocks].opacity = 1.0; // fade * fade * (3.0 - 2.0 * fade)
-                        // * std::clamp(rw - 1.5, 0.0, 1.0);
-                    rocks[num_rocks].seed_val = rhash;
-                    rocks[num_rocks].base_valid = base_valid;
-                    rocks[num_rocks].vegetation = is_vegetation;
-                    rocks[num_rocks].crown_above_eye = crown_above_eye;
-                    rocks[num_rocks].aspect = rock_aspect;
-                    rocks[num_rocks].surface_color = scenery_colors[index];
-                    num_rocks++;
                 }
-
-                std::sort(rocks.begin(), rocks.end(), [](const RockInstance& a, const RockInstance& b)
-                {
-                    return a.dist > b.dist;
-                });
 
                 static SceneryCrownOcclusion crown_occlusion;
                 crown_occlusion.reset(screen_w, static_cast<int>(dispcy * 2));
@@ -7165,8 +8001,8 @@ void draw_horizon()
 
                 if (has_sun_shadow)
                 {
-                    double cos_alt = cos(altitude);
-                    double sin_alt = sin(altitude);
+                    double cos_alt = surface_cos_altitude();
+                    double sin_alt = surface_sin_altitude();
                     double cos_az = cos(azimuth);
                     double sin_az = sin(azimuth);
 
@@ -7267,6 +8103,7 @@ void draw_horizon()
                     }
                 }
 
+                const bool gpu_plants = prepare_scenery_gpu();
                 ImDrawList *scenery_draw_list = ImGui::GetBackgroundDrawList();
                 auto fade_scenery = [&](int first_vertex, double opacity)
                 {
@@ -7291,6 +8128,7 @@ void draw_horizon()
                     double rw = rk.width;
                     double rh = rk.height;
 
+                    if (gpu_plants && !is_vegetation) flush_scenery_gpu();
                     if (rw < ROCK_PEBBLE_THRESH)
                     {
                         if (is_vegetation && rk.crown_hidden) continue;
@@ -7325,7 +8163,15 @@ void draw_horizon()
                         ImU32 peb_col = rgba_apply_redlight(IM_COL32(pr, pg, pb, 255));
                         double px = is_vegetation ? rk.crown_x : rx;
                         double py = is_vegetation ? rk.crown_y : (ry - rh * 0.5);
-                        ImGui::GetBackgroundDrawList()->AddCircleFilled(ImVec2(px, py), rw * 0.5f, peb_col);
+                        if (gpu_plants && is_vegetation)
+                        {
+                            SceneryPlantGpu plant;
+                            plant.crown = ImVec4(px, py, rw * .5f, rw * .5f);
+                            plant.crown_color = peb_col;
+                            plant.trunk_visible = 0;
+                            add_scenery_plant_gpu(plant, true, true);
+                        }
+                        else ImGui::GetBackgroundDrawList()->AddCircleFilled(ImVec2(px, py), rw * 0.5f, peb_col);
                         fade_scenery(first_vertex, rk.opacity);
                         continue;
                     }
@@ -7384,9 +8230,24 @@ void draw_horizon()
                         int cg = fmin(255.0, veg_base.g * tint_factor * crown_light);
                         int cb = fmin(255.0, veg_base.b * tint_factor * crown_light);
                         ImU32 crown_col = rgba_apply_redlight(IM_COL32(cr, cg, cb, 255));
+                        SceneryPlantGpu gpu_plant;
+                        gpu_plant.crown = ImVec4(cx, cy, crown_rx, crown_ry);
+                        gpu_plant.crown_color = crown_col;
+                        gpu_plant.trunk_color = trunk_col;
+                        if (rk.opacity < 1)
+                        {
+                            for (ImU32* color : {&gpu_plant.crown_color, &gpu_plant.trunk_color})
+                            {
+                                const ImU32 alpha = static_cast<ImU32>(((*color & IM_COL32_A_MASK)
+                                    >> IM_COL32_A_SHIFT) * rk.opacity);
+                                *color = (*color & ~IM_COL32_A_MASK) | (alpha << IM_COL32_A_SHIFT);
+                            }
+                        }
+                        gpu_plant.crown_visible = rk.crown_hidden ? 0 : 1;
+                        gpu_plant.trunk_visible = 0;
                         const auto draw_crown = [&]()
                         {
-                            if (rk.crown_hidden) return;
+                            if (rk.crown_hidden || gpu_plants) return;
                             draw_scenery_crown(scenery_draw_list,
                                 ImVec2(cx, cy),
                                 ImVec2((float)crown_rx, (float)crown_ry),
@@ -7408,10 +8269,17 @@ void draw_horizon()
                             trunk_pts[1] = ImVec2(top_x - nx * trunk_w_top * 0.38, top_y - ny * trunk_w_top * 0.38);
                             trunk_pts[2] = ImVec2(top_x + nx * trunk_w_top * 0.38, top_y + ny * trunk_w_top * 0.38);
                             trunk_pts[3] = ImVec2(bx + nx * trunk_w_bot * 0.50, by + ny * trunk_w_bot * 0.50);
-                            ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(trunk_pts, 4, trunk_col);
+                            if (gpu_plants)
+                            {
+                                std::copy(trunk_pts, trunk_pts + 4, gpu_plant.trunk);
+                                gpu_plant.trunk_visible = 1;
+                            }
+                            else ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(trunk_pts, 4, trunk_col);
                         }
 
                         if (!rk.crown_above_eye) draw_crown();
+                        if (gpu_plants && (gpu_plant.crown_visible || gpu_plant.trunk_visible))
+                            add_scenery_plant_gpu(gpu_plant, rk.crown_above_eye);
                     }
                     else if (is_venus)
                     {
@@ -7455,6 +8323,8 @@ void draw_horizon()
                         double sun_mult = is_moon ? 2.0 : (is_mars ? 1.5 : (is_icy ? 1.6 : 1.4));
                         double amb_mult = is_moon ? 0.35 : 0.55;
 
+                        const bool cached_shape = PERF_P101 && !rock_mesh_reference;
+                        const RockShape* shape = cached_shape ? &rock_mesh_cache().get(rk.seed_val) : nullptr;
                         // Derive pseudo-random vertex offsets deterministically from rock seed
                         uint32_t sh = rk.seed_val;
                         auto next_rnd = [&sh]() -> double
@@ -7509,19 +8379,19 @@ void draw_horizon()
                             {5, 15, 25}, {1, 18, 15}, {15, 18, 25},{5, 25, 23}
                         };
 
-                        double yaw = next_rnd() * 2.0 * _pi;
-                        double cos_y = cos(yaw);
-                        double sin_y = sin(yaw);
+                        double yaw = cached_shape ? 0 : next_rnd() * 2.0 * _pi;
+                        double cos_y = cached_shape ? shape->cos_y : cos(yaw);
+                        double sin_y = cached_shape ? shape->sin_y : sin(yaw);
 
-                        double scale_x = rw * 0.5 * (0.88 + 0.24 * next_rnd());
-                        double scale_z = rw * 0.5 * (0.78 + 0.30 * next_rnd());
-                        double scale_y = rh * (0.92 + 0.16 * next_rnd());
+                        double scale_x = cached_shape ? rw * 0.5 * shape->scale_x : rw * 0.5 * (0.88 + 0.24 * next_rnd());
+                        double scale_z = cached_shape ? rw * 0.5 * shape->scale_z : rw * 0.5 * (0.78 + 0.30 * next_rnd());
+                        double scale_y = cached_shape ? rh * shape->scale_y : rh * (0.92 + 0.16 * next_rnd());
 
-                        double apex_shift_x = (next_rnd() - 0.5) * 0.35;
-                        double apex_shift_z = (next_rnd() - 0.5) * 0.35;
+                        double apex_shift_x = cached_shape ? 0 : (next_rnd() - 0.5) * 0.35;
+                        double apex_shift_z = cached_shape ? 0 : (next_rnd() - 0.5) * 0.35;
 
-                        double tilt_x = (next_rnd() - 0.5) * 0.12;
-                        double tilt_z = (next_rnd() - 0.5) * 0.12;
+                        double tilt_x = cached_shape ? shape->tilt_x : (next_rnd() - 0.5) * 0.12;
+                        double tilt_z = cached_shape ? shape->tilt_z : (next_rnd() - 0.5) * 0.12;
 
                         // Viewer depression angle looking down at ground at rock distance
                         double alpha = atan2(h_eye, rk.ground_dist);
@@ -7542,7 +8412,7 @@ void draw_horizon()
                             sun_cam_z /= sun_cam_len;
                         }
 
-                        double jagg = ROCK_JAGGEDNESS * (0.85 + 0.30 * next_rnd());
+                        double jagg = cached_shape ? 0 : ROCK_JAGGEDNESS * (0.85 + 0.30 * next_rnd());
 
                         struct CamVertex
                         {
@@ -7556,25 +8426,36 @@ void draw_horizon()
 
                         for (int vi = 0; vi < 26; vi++)
                         {
-                            uint32_t vsh = (rk.seed_val ^ ((uint32_t)vi * 0x9e3779b9u));
-                            vsh = ((vsh >> 16) ^ vsh) * 0x45d9f3b;
-                            vsh = ((vsh >> 16) ^ vsh) * 0x45d9f3b;
-                            vsh = (vsh >> 16) ^ vsh;
-                            double vrnd = (double)(vsh & 0xFFFF) / 65535.0;
-
-                            double disp = 1.0 + jagg * (vrnd - 0.5);
-                            double vx = rock_dome_verts[vi][0] * disp;
-                            double vy = rock_dome_verts[vi][1] * disp;
-                            double vz = rock_dome_verts[vi][2] * disp;
-
-                            if (vi == 0)
+                            double vx, vy, vz;
+                            if (cached_shape)
                             {
-                                vx += apex_shift_x;
-                                vz += apex_shift_z;
+                                vx = shape->vertices[vi][0];
+                                vy = shape->vertices[vi][1];
+                                vz = shape->vertices[vi][2];
                             }
-                            else if (rock_dome_verts[vi][1] < 0.05f)
+                            else
                             {
-                                vy = 0.0;
+                                uint32_t vsh = (rk.seed_val ^ ((uint32_t)vi * 0x9e3779b9u));
+                                vsh = ((vsh >> 16) ^ vsh) * 0x45d9f3b;
+                                vsh = ((vsh >> 16) ^ vsh) * 0x45d9f3b;
+                                vsh = (vsh >> 16) ^ vsh;
+                                double vrnd = (double)(vsh & 0xFFFF) / 65535.0;
+
+                                double disp = 1.0 + jagg * (vrnd - 0.5);
+                                vx = rock_dome_verts[vi][0] * disp;
+                                vy = rock_dome_verts[vi][1] * disp;
+                                vz = rock_dome_verts[vi][2] * disp;
+
+                                if (vi == 0)
+                                {
+                                    vx += apex_shift_x;
+                                    vz += apex_shift_z;
+                                }
+                                else if (rock_dome_verts[vi][1] < 0.05f)
+                                {
+                                    vy = 0.0;
+                                }
+
                             }
 
                             // Rotate around Y axis (yaw) and scale
@@ -7717,6 +8598,7 @@ void draw_horizon()
                     }
                     fade_scenery(first_vertex, rk.opacity);
                 }
+                if (gpu_plants) flush_scenery_gpu();
             }
         }
 
@@ -7750,27 +8632,34 @@ void draw_horizon()
             if (p && p->type == lavaworld)
             {
                 double t_rain = ImGui::GetTime();
-                double h_eye = fmax(0.01, viewer_eye_height);
+                double h_eye = shared_surface ? surface_eye : fmax(0.01, viewer_eye_height);
                 uint32_t rain_seed = (uint32_t)(whereami * 1013904223u + 0x5a17e);
                 int num_particles = 320;
+                const auto* cached_particles = PERF_P105 && !lava_static_reference
+                    ? &lava_particle_cache().get(whereami) : nullptr;
 
                 for (int pi = 0; pi < num_particles; pi++)
                 {
-                    uint32_t phash = rain_seed + (uint32_t)pi * 2246822519u;
-                    phash = ((phash >> 16) ^ phash) * 0x45d9f3b;
-                    phash = ((phash >> 16) ^ phash) * 0x45d9f3b;
-                    phash = (phash >> 16) ^ phash;
+                    const LavaParticle* particle = cached_particles ? &(*cached_particles)[pi] : nullptr;
+                    uint32_t phash = 0;
+                    if (!particle)
+                    {
+                        phash = rain_seed + (uint32_t)pi * 2246822519u;
+                        phash = ((phash >> 16) ^ phash) * 0x45d9f3b;
+                        phash = ((phash >> 16) ^ phash) * 0x45d9f3b;
+                        phash = (phash >> 16) ^ phash;
+                    }
 
-                    double u0 = (double)(phash & 0x3FFF) / 16383.0;
-                    double u1 = (double)((phash >> 14) & 0x3FFF) / 16383.0;
-                    double u2 = (double)((phash >> 20) & 0xFF) / 255.0;
-                    double u3 = (double)((phash >> 8) & 0xFF) / 255.0;
+                    double u0 = particle ? particle->u0 : (double)(phash & 0x3FFF) / 16383.0;
+                    double u1 = particle ? particle->u1 : (double)((phash >> 14) & 0x3FFF) / 16383.0;
+                    double u2 = particle ? particle->u2 : (double)((phash >> 20) & 0xFF) / 255.0;
+                    double u3 = particle ? particle->u3 : (double)((phash >> 8) & 0xFF) / 255.0;
 
                     // 3D cylindrical/spherical field around the observer
                     double p_theta = u0 * 2.0 * _pi;
-                    double p_dist = 1.2 + 38.0 * sqrt(u1);
+                    double p_dist = particle ? particle->distance : 1.2 + 38.0 * sqrt(u1);
 
-                    double fall_speed = 7.0 + 15.0 * u2;
+                    double fall_speed = particle ? particle->speed : 7.0 + 15.0 * u2;
                     double span_h = 28.0;
                     double y_ground = -h_eye;
                     double cur_y = y_ground + fmod(u3 * span_h - t_rain * fall_speed - y_ground, span_h);
@@ -7780,9 +8669,9 @@ void draw_horizon()
                     }
 
                     // World position including thermal updraft waver
-                    double drift_amp = 0.25 + 0.45 * u2;
-                    double xw = p_dist * sin(p_theta) + sin(t_rain * 2.2 + u0 * 6.28) * drift_amp;
-                    double zw = p_dist * cos(p_theta) + cos(t_rain * 2.2 + u0 * 6.28) * drift_amp;
+                    double drift_amp = particle ? particle->drift : 0.25 + 0.45 * u2;
+                    double xw = (particle ? particle->x : p_dist * sin(p_theta)) + sin(t_rain * 2.2 + u0 * 6.28) * drift_amp;
+                    double zw = (particle ? particle->z : p_dist * cos(p_theta)) + cos(t_rain * 2.2 + u0 * 6.28) * drift_amp;
                     double yw = cur_y;
 
                     // Transform to camera coordinates: rotates with azimuth
@@ -7808,8 +8697,8 @@ void draw_horizon()
                     double yc = yw;
 
                     // Pitch with camera altitude
-                    double yc_rot = yc * cos(altitude) - zc * sin(altitude);
-                    double zc_rot = yc * sin(altitude) + zc * cos(altitude);
+                    double yc_rot = yc * surface_cos_altitude() - zc * surface_sin_altitude();
+                    double zc_rot = yc * surface_sin_altitude() + zc * surface_cos_altitude();
 
                     if (zc_rot <= 0.35 || zc <= 0.1)
                     {
@@ -7828,8 +8717,8 @@ void draw_horizon()
                     // Perspective streak tail
                     double streak_dt = 0.038;
                     double yw_tail = yw + fall_speed * streak_dt;
-                    double yc_tail_rot = yw_tail * cos(altitude) - zc * sin(altitude);
-                    double zc_tail_rot = yw_tail * sin(altitude) + zc * cos(altitude);
+                    double yc_tail_rot = yw_tail * surface_cos_altitude() - zc * surface_sin_altitude();
+                    double zc_tail_rot = yw_tail * surface_sin_altitude() + zc * surface_cos_altitude();
 
                     if (zc_tail_rot <= 0.30)
                     {
@@ -8239,29 +9128,51 @@ void draw_cons_lines()
             if (constellations[l].vantage.squared_magnitude()) continue;
             Point direction;
             bool have_direction = false;
-            if (!constellations[l].bounds.empty())
+            const auto& group = constellations[l];
+            const bool prepared = PERF_P108 && !constellation_cache_reference
+                && group.bounds.size() <= 4096 && group.lines.size() <= 2048;
+            if (prepared)
             {
-                for (const auto &boundary : constellations[l].bounds)
+                auto& record = constellation_label_cache().get(l);
+                if (!group.bounds.empty())
                 {
-                    if (!std::isfinite(boundary.RA) || !std::isfinite(boundary.decl)) continue;
-                    Point point = to_viewer_plane(Point::from_ra_dec(boundary.RA, boundary.decl, light_year));
-                    if (airy_rock) point = refract_true_point(point);
-                    direction += point;
-                    have_direction = true;
+                    const auto& points = record.prepare(group.bounds);
+                    have_direction = !points.empty();
+                    if (!airy_rock) direction = record.boundary_direction();
+                    else for (const auto& point : points) direction += refract_true_point(to_viewer_plane(point));
+                }
+                else
+                {
+                    direction = record.endpoint_direction(group.lines, Point(here), have_direction);
+                    direction = to_viewer_plane(direction, 1);
                 }
             }
             else
             {
-                for (const auto &line : constellations[l].lines)
+                if (!constellations[l].bounds.empty())
                 {
-                    for (Star *star : {line.a, line.b})
+                    for (const auto &boundary : constellations[l].bounds)
                     {
-                        if (!star || star->deleted) continue;
-                        direction += Point(star->location) - Point(here);
+                        if (!std::isfinite(boundary.RA) || !std::isfinite(boundary.decl)) continue;
+                        Point point = to_viewer_plane(Point::from_ra_dec(boundary.RA, boundary.decl, light_year));
+                        if (airy_rock) point = refract_true_point(point);
+                        direction += point;
                         have_direction = true;
                     }
                 }
-                direction = to_viewer_plane(direction, 1);
+                else
+                {
+                    for (const auto &line : constellations[l].lines)
+                    {
+                        for (Star *star : {line.a, line.b})
+                        {
+                            if (!star || star->deleted) continue;
+                            direction += Point(star->location) - Point(here);
+                            have_direction = true;
+                        }
+                    }
+                    direction = to_viewer_plane(direction, 1);
+                }
             }
             if (!have_direction || !(direction.squared_magnitude() > 0)) continue;
             if (view_mode == vm_horizon && direction.y < 0) continue;
@@ -8541,36 +9452,36 @@ static void draw_lavaworld_rock_clouds(Planet *p)
     }
 }
 
-void draw_cloudy_sky()
+bool draw_cloudy_sky()
 {
     #if planetary_rain
     overhead_rain_cover = CloudRainCover();
     #endif
     if (!show_clouds)
     {
-        return;
+        return false;
     }
     if (view_mode != vm_horizon)
     {
-        return;
+        return false;
     }
 
     // See find_horizon(): horizon mode does not imply a world underfoot.
     if (whereami < 0)
     {
-        return;
+        return false;
     }
     CelestialObject *cel = cels[whereami];
     if (!cel)
     {
-        return;
+        return false;
     }
     cel_obj_class cls = cel->typeclass();
     Planet *p = (cls == class_planet || cls == class_moon) ? (Planet*)cel : nullptr;
 
     if (!p)
     {
-        return;
+        return false;
     }
 
     #if lavaworld_rock_clouds
@@ -8579,18 +9490,18 @@ void draw_cloudy_sky()
         if (p && p->type == lavaworld)
         {
             draw_lavaworld_rock_clouds(p);
-            return;
+            return false;
         }
     }
     #endif
 
     if (!cel->cloud_map || !cel->cloud_map->is_complete())
     {
-        return;
+        return false;
     }
     if (uses_gaseous_map(cel->type))
     {
-        return;
+        return false;
     }
 
     double planet_radius = cel->get_equatorial_radius();
@@ -8601,7 +9512,7 @@ void draw_cloudy_sky()
     if (!(planet_radius > 0) || !std::isfinite(planet_radius)
         || !(zoom > 0) || !std::isfinite(zoom) || dispcx <= 0 || dispcy <= 0)
     {
-        return;
+        return false;
     }
 
     // The CPU supplies only camera/lighting constants and a cached refraction
@@ -8673,6 +9584,7 @@ void draw_cloudy_sky()
     // Match the apparent ground boundary in find_horizon(), before cloud-ray refraction.
     const double horizon_dip = acos(std::clamp(planet_radius / observer, 0.0, 1.0));
     in.world[3] = (float)sin(p->atmospheric_horizon_lift() - horizon_dip);
+    in.world[8] = dragging ? 0.0f : 1.0f;
     in.light[0] = (float)daylight;
     in.light[1] = (float)(std::clamp(cumulus_day_swing * pow(daylight, cumulus_day_exponent), 0.0, 1.0) * cumulus_day_maximum);
     in.light[2] = p->overcast ? 1.0f : 0.0f;
@@ -8708,5 +9620,7 @@ void draw_cloudy_sky()
         #if planetary_rain
         overhead_rain_cover = cloud_rain_cover();
         #endif
+        return true;
     }
+    return false;
 }

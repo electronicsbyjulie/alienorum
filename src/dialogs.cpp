@@ -1,3 +1,5 @@
+#include "classes/planetnames.h"
+#include <tuple>
 
 // shlwapi.h must be included before any project header pulls in `using namespace std`
 // (see globals.h) -- shlwapi.h's own transitive COM headers declare an unqualified
@@ -14,6 +16,7 @@
 #endif
 
 #include "dialogs.h"
+#include "universe_save_progress.h"
 #include "inputs.h"
 #include "loaders.h"
 #include "housekeeping.h"
@@ -819,7 +822,8 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
             ImGui::Text("RA:       %s", cels[i]->RA_as_hms(here, myeq).c_str());
             ImGui::Text("Decl:     %s", cels[i]->Decl_as_degms(here).c_str());
 
-            if (cels[i]->known_poles)
+            if (cels[i]->known_poles || (cels[i]->typeclass() == class_star &&
+                static_cast<Star*>(cels[i])->fictional_origin.is_object()))
             {
                 Point pole = rotate3D(yaxis, center, cels[i]->location.equatorial_plane.v, cels[i]->location.equatorial_plane.a);
                 double poleRA = std::fmod(find_angle(pole.z, -pole.x) - myeq + azimuth_correction + _pi, _pi*2),
@@ -835,6 +839,7 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
                 poleDecl = find_angle(sqrt(pole.x*pole.x+pole.z*pole.z), pole.y);
                 while (poleDecl > half_pi) poleDecl -= _pi*2;
 
+                if (!cels[i]->known_poles) ImGui::TextUnformatted("Fictional rotation pole");
                 ImGui::Text("PoleRA:   %s", radians_to_hms(poleRA).c_str());
                 ImGui::Text("PoleDecl: %s", radians_to_degms(poleDecl).c_str());
 
@@ -1191,7 +1196,11 @@ void draw_addcel_window(ImGuiIO& io)
 
             if (cel)
             {
-                strcpy(cel->name, "new");
+                const std::string initial_name = cls == class_star && cel->typeclass() == class_planet
+                    ? next_planet_name(*cels[addcenidx], cels) : "new";
+                snprintf(cel->name, sizeof(cel->name), "%s", initial_name.c_str());
+                if (cls == class_star && cel->typeclass() == class_planet)
+                    static_cast<Planet*>(cel)->display_designation = initial_name;
                 cel->namelen = strlen(cel->name);
                 cel->user_added = true;
                 cels[addcenidx]->distance_known = true;
@@ -1265,6 +1274,9 @@ void draw_objedit_window(ImGuiIO& io)
     CelestialObject *cel = cels[editidx];
     WaterCoverageEditor &water_editor = surface_editors[cel->seqno];
     Orbit *orb = cel->orbit;
+    const auto structure_before = std::make_tuple(orb, orb ? orb->center : nullptr,
+        orb ? orb->semimajor_axis : 0, orb ? orb->eccentricity : 0, cel->cenobj, cel->deleted);
+    const auto statistics_before = std::make_tuple(cel->mass, cel->temperature, cel->absolute_magnitude);
 
     ImGui::Begin("Edit Object", &objedtwnd, 0);
 
@@ -1493,7 +1505,7 @@ void draw_objedit_window(ImGuiIO& io)
             {
                 cel->obliquity = edit_eqincl * fiftyseventh;
                 cel->lock_equatorial_plane = false;
-                cel->known_poles = true;
+                cel->known_poles = !(tc == class_star && static_cast<Star*>(cel)->fictional_origin.is_object());
                 cel->user_edited = true;
                 viewchanged = true;
                 if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
@@ -1517,7 +1529,7 @@ void draw_objedit_window(ImGuiIO& io)
             {
                 cel->equinox = edit_equinox * fiftyseventh;
                 cel->lock_equatorial_plane = false;
-                cel->known_poles = true;
+                cel->known_poles = !(tc == class_star && static_cast<Star*>(cel)->fictional_origin.is_object());
                 cel->user_edited = true;
                 viewchanged = true;
                 if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
@@ -2724,6 +2736,15 @@ void draw_objedit_window(ImGuiIO& io)
     ImVec2 pos = ImGui::GetWindowPos(), siz = ImGui::GetWindowSize();
     ImGui::End();
 
+    const auto structure_after = std::make_tuple(cel->orbit, cel->orbit ? cel->orbit->center : nullptr,
+        cel->orbit ? cel->orbit->semimajor_axis : 0, cel->orbit ? cel->orbit->eccentricity : 0, cel->cenobj, cel->deleted);
+    if (structure_before != structure_after) invalidate_frame_objects();
+    if (structure_before != structure_after
+        || statistics_before != std::make_tuple(cel->mass, cel->temperature, cel->absolute_magnitude))
+    {
+        Planet::mark_host_statistics_dirty(cel);
+        Planet::reconcile_host_statistics();
+    }
     last_edit_idx = editidx;
 
     if (io.MousePos.x >= pos.x && io.MousePos.y >= pos.y
@@ -2966,110 +2987,13 @@ void draw_system_explorer(ImGuiIO& io)
             {
                 cel->rnd_seed = 0;          // force rerandomization.
                 ((Planet*)cel)->vegetation_r = ((Planet*)cel)->vegetation_g = ((Planet*)cel)->vegetation_b = 0;
-                double A = sqrt(cel->orbit->period / oneday) / 4;
-                double B = sqrt(cel->mass / earth_mass);
-                double C = sqrt(A*B);
-                double Hill_over_Roche = cel->Hill_sphere_radius() / cel->Roche_limit();
-                double D = C * Hill_over_Roche / 500;
-                /*int n = round(frand(0.1, 1) * C);*/
-
-                double P = 0;
-                int j=1;
-                for (i=0; i<20; i++)
+                std::mt19937_64 random(std::random_device{}());
+                for (auto& moon : static_cast<Planet*>(cel)->generate_fictional_moons(random))
                 {
-                    Moon *m = new Moon();
-                    std::string mname = std::string(cel->name) + std::string(" ") + Roman(j);
-                    strcpy(m->name, mname.c_str());
-                    m->namelen = strlen(m->name);
-                    m->user_added = true;
-                    m->user_edited = true;
-                    m->mass = pow(frand(0, 1), 4) * cel->mass / 4000;
-                    m->volumetric_mean_radius = pow(m->mass / earth_mass, 1.0/3.0) * frand(0.9, 1.5) * earth_radius;
-                    m->albedo = frand(0.1, 0.6);
-                    m->BV_color = frand(0.8, 1.8);
-                    m->cenobj = cel->cenobj;
-                    m->epoch = J2000;
-                    m->equinox = frand(0, _pi*2);
-                    m->major_moon = true;
-                    m->orbit = new Orbit();
-                    m->orbit->center = cel;
-                    m->orbit->arg_periapsis = frand(0, _pi*2);
-                    m->orbit->ascending_node = frand(0, _pi*2);
-                    m->orbit->eccentricity = pow(frand(0, 0.1), 10);
-                    m->orbit->epoch = J2000;
-                    m->orbit->mean_anomaly = frand(0, _pi*2);
-                    if (!P)
-                    {
-                        // First fictional moon of the planet. Base the SMA off the Roche limit and rings.
-                        double inner_bound = m->minimum_safe_pericenter();
-                        if (((Planet*)cel)->ring_radius > inner_bound)
-                        {
-                            inner_bound = ((Planet*)cel)->ring_radius;
-                        }
-                        double A = inner_bound * (1.1 + pow(frand(0, 1), 4) * 20);
-                        m->orbit->semimajor_axis = A;
-                        m->orbit->compute_period(m->mass);
-                        lsyscache.clear();
-                    }
-                    else
-                    {
-                        // Base the SMA off the previous moon.
-                        m->orbit->period = frand(1.8, 2.2) * P;
-                        m->orbit->compute_semimajor_axis(m->mass);
-                        lsyscache.clear();
-                    }
-
-                    double Roche_dist = m->orbit->semimajor_axis / cel->Roche_limit(m);
-                    double tidal_modifier = fmin(1.0, fmax(0.0, (Roche_dist - 1.0) / 10.0));        // 0 at Roche limit for perfect tidal alignment.
-                    m->orbit->inclination = pow(frand(0, 1), 4) * 0.2 * half_pi * tidal_modifier;
-                    if (frand(0,1) < 0.03) m->orbit->inclination = _pi - m->orbit->inclination;
-                    m->obliquity = pow(frand(0, 1), 10) * half_pi * tidal_modifier;
-
-                    if (frand(0,1) > D)
-                    {
-                        P = m->orbit->period;
-                        delete m->orbit;
-                        m->orbit = nullptr;
-                        delete m;
-                        continue;
-                    }
-
-                    if (m->orbit->semimajor_axis > ((Planet*)cel)->Hill_sphere_radius())
-                    {
-                        delete m->orbit;
-                        m->orbit = nullptr;
-                        delete m;
-                        break;
-                    }
-                    m->estimate_rotation();
-                    if (!m->sidereal_rotational_period) m->sidereal_rotational_period = oneday;
-                    m->classify();
-                    m->enforce_orbit_clearance();
-                    if (m->orbit->semimajor_axis * (1 + m->orbit->eccentricity) > cel->Hill_sphere_radius())
-                    {
-                        delete m;
-                        break;
-                    }
-                    double disc_area = pow(m->volumetric_mean_radius / earth_radius, 2);
-                    m->absolute_magnitude = earth_absmag - log(disc_area * m->albedo / earth_albedo) / log(magnbase);
-                    m->apply_cosmic_shoreline();
-
-                    m->enforce_orbit_clearance();
-                    if (m->orbit->semimajor_axis * (1 + m->orbit->eccentricity) > cel->Hill_sphere_radius())
-                    {
-                        delete m;
-                        break;
-                    }
-
-                    m->update_location(simnow);
-                    if (!append_cel(m))
-                    {
-                        delete m;               // ~Moon takes the orbit with it
-                        break;
-                    }
-                    P = m->orbit->period;
-                    j++;
+                    if (!append_cel(moon.get())) break;
+                    moon.release();
                 }
+                lsyscache.clear();
             }
         }
     }
@@ -3133,7 +3057,7 @@ void draw_stellar_neighborhood(ImGuiIO &io)
     int item_highlighted_idx = -1;
     int first_visible = -1;
     bool selected_visible = false;
-    ImGui::Text("%s", " Name                                Mag.   Sp. Type        Pl./HZ   Distance");
+    ImGui::Text("%s", " Name                                Mag.      Sp. Type     Pl./HZ   Distance");
     if (ImGui::BeginListBox("##neighblist", ImVec2(802, 16 * ImGui::GetTextLineHeightWithSpacing())))
     {
         j = 0;
@@ -3141,6 +3065,13 @@ void draw_stellar_neighborhood(ImGuiIO &io)
         {
             neighb_celids.clear();
             neighb_celr.clear();
+            struct Neighbor
+            {
+                double distance, rank;
+                int index;
+            };
+            std::vector<Neighbor> neighbors;
+            double preceding_max = -INFINITY;
             for (i=0; cels[i]; i++)
             {
                 if (cels[i]->deleted) continue;
@@ -3148,37 +3079,31 @@ void draw_stellar_neighborhood(ImGuiIO &io)
                 if (cls != class_star) continue;
                 r = cels[i]->tmprel.magnitude();
                 if (r > neighb_rthresh) continue;
-
-                l = neighb_celids.size();
-                if (!l)
-                {
-                    neighb_celids.push_back(i);
-                    neighb_celr.push_back(r);
-                }
-                else
-                {
-                    bool inserted = false;
-                    for (j=0; !inserted && j<l; j++)
-                    {
-                        if (neighb_celr[j] > r)
-                        {
-                            neighb_celids.insert(neighb_celids.begin()+j, i);
-                            neighb_celr.insert(neighb_celr.begin()+j, r);
-                            inserted = true;
-                        }
-                    }
-                    if (!inserted)
-                    {
-                        neighb_celids.push_back(i);
-                        neighb_celr.push_back(r);
-                    }
-                }
+                // Legacy insertion leaves an unknown distance after the preceding maximum.
+                const double rank = std::isnan(r) ? preceding_max : r;
+                if (!std::isnan(r)) preceding_max = std::max(preceding_max, r);
+                neighbors.push_back({r, rank, i});
             }
-            
+            std::stable_sort(neighbors.begin(), neighbors.end(), [](const Neighbor& a, const Neighbor& b)
+            {
+                return a.rank < b.rank;
+            });
+            neighb_celids.reserve(neighbors.size());
+            neighb_celr.reserve(neighbors.size());
+            for (const auto& neighbor : neighbors)
+            {
+                neighb_celr.push_back(neighbor.distance);
+                neighb_celids.push_back(neighbor.index);
+            }
+
             lneighbly = neighbly;
         }
 
         n = neighb_celids.size();
+        static std::vector<int> filtered_neighbors;
+        filtered_neighbors.clear();
+        filtered_neighbors.reserve(n);
+        int selected_row = -1;
         for (j=0; j<n; j++)
         {
             i = neighb_celids[j];
@@ -3192,69 +3117,89 @@ void draw_stellar_neighborhood(ImGuiIO &io)
             else if (onlyplt && (s->has_planets < minpl)) continue;
             if (onlyknp && !s->known_poles) continue;
             if (first_visible < 0) first_visible = j;
-            if (item_selected_idx == j) selected_visible = true;
-
-            stringstream line;
-            line << cels[i]->name;
-            l = line.str().size();
-            if (l < 36) line << std::string(36-l, ' ');
-
-            r = cels[i]->tmprel.magnitude();
-            if (r)
+            if (item_selected_idx == j)
             {
-                m = cels[i]->viewer_magnitude(here);
-                line << setprecision(4) << ((m>=0) ? "+" : "") << m;
+                selected_visible = true;
+                selected_row = static_cast<int>(filtered_neighbors.size());
             }
-            else line << "-";
-            l = line.str().size();
-            if (l < 43) line << std::string(43-l, ' ');
-
-            line << s->spectral_type;
-            l = line.str().size();
-            if (l < 59) line << std::string(59-l, ' ');
-
-            if (s->has_planets)
+            filtered_neighbors.push_back(j);
+        }
+        ImGuiListClipper clipper;
+        clipper.Begin(static_cast<int>(filtered_neighbors.size()));
+        if (selected_row >= 0) clipper.IncludeItemByIndex(selected_row);
+        while (clipper.Step())
+        {
+            for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row)
             {
-                line << s->has_planets;
-                line << "/";
-                if (s->has_hz_planets) line << s->has_hz_planets;
+                j = filtered_neighbors[row];
+                i = neighb_celids[j];
+                Star* s = static_cast<Star*>(cels[i]);
+
+                stringstream line;
+                line << cels[i]->name;
+                l = line.str().size();
+                if (l < 36) line << std::string(36-l, ' ');
+
+                r = cels[i]->tmprel.magnitude();
+                if (r)
+                {
+                    m = cels[i]->viewer_magnitude(here);
+                    line << setprecision(4) << ((m>=0) ? "+" : "-") << string_format("%05.2f", fabs(m));
+                }
                 else line << "-";
-            }
-            l = line.str().size();
-            if (l < 68) line << std::string(68-l, ' ');
+                l = line.str().size();
+                if (l < 43) line << std::string(43-l, ' ');
 
-            if (r < 0.1*AU) line << setprecision(3) << (r / 1000) << " km";
-            else if (r < 0.1 * light_year) line << setprecision(3) << (r / AU) << " A.U.";
-            else line << setprecision(3) << (r / light_year) << " l.y.";
+                const float spectral_offset = ImGui::CalcTextSize(line.str().c_str()).x;
+                line << "   " << s->spectral_type;
+                l = line.str().size();
+                if (l < 59) line << std::string(59-l, ' ');
 
-            ImGui::PushID(i);
-            if (s->is_white_dwarf())
-            {
-                // Swatches show hue at full brightness; stellar intensity would clip every channel to white.
+                if (s->has_planets)
+                {
+                    line << s->has_planets;
+                    line << "/";
+                    if (s->has_hz_planets) line << s->has_hz_planets;
+                    else line << "-";
+                }
+                l = line.str().size();
+                if (l < 68) line << std::string(68-l, ' ');
+
+                if (r < 0.1*AU) line << setprecision(3) << (r / 1000) << " km";
+                else if (r < 0.1 * light_year) line << setprecision(3) << (r / AU) << " A.U.";
+                else line << setprecision(3) << (r / light_year) << " l.y.";
+
+                ImGui::PushID(i);
+                const ImVec2 row_origin = ImGui::GetCursorScreenPos();
+                bool is_selected = (item_selected_idx == j);
+                ImGuiSelectableFlags flags = (item_highlighted_idx == j) ? ImGuiSelectableFlags_Highlight : 0;
+                if (ImGui::Selectable(line.str().c_str(), is_selected, flags))
+                {
+                    item_selected_idx = j;
+                    selected_visible = true;
+                }
+
+                // Drawing within reserved text space keeps every row on the same columns.
                 const RGB3 rgb = Color::rgb_from_color(Color::color_from_star(0, s, s->BV_color), -1);
                 ImVec4 swatch(rgb.r / 255.0f, rgb.g / 255.0f, rgb.b / 255.0f, 1);
-                float hue, saturation, value;
-                ImGui::ColorConvertRGBtoHSV(swatch.x, swatch.y, swatch.z, hue, saturation, value);
-                ImGui::ColorConvertHSVtoRGB(hue, std::min(1.0f, saturation * 4.0f), value,
-                    swatch.x, swatch.y, swatch.z);
-                const float side = ImGui::GetTextLineHeight();
-                ImGui::ColorButton("##wd_color", swatch,
-                    ImGuiColorEditFlags_NoTooltip | ImGuiColorEditFlags_NoDragDrop, ImVec2(side, side));
-                ImGui::SameLine();
-            }
-            bool is_selected = (item_selected_idx == j);
-            ImGuiSelectableFlags flags = (item_highlighted_idx == j) ? ImGuiSelectableFlags_Highlight : 0;
-            if (ImGui::Selectable(line.str().c_str(), is_selected, flags))
-            {
-                item_selected_idx = j;
-                selected_visible = true;
-            }
+                if (s->is_white_dwarf())
+                {
+                    float hue, saturation, value;
+                    ImGui::ColorConvertRGBtoHSV(swatch.x, swatch.y, swatch.z, hue, saturation, value);
+                    ImGui::ColorConvertHSVtoRGB(hue, std::min(1.0f, saturation * 4.0f), value,
+                        swatch.x, swatch.y, swatch.z);
+                }
+                const float radius = ImGui::GetTextLineHeight() * 0.35f;
+                const ImVec2 center(row_origin.x + spectral_offset + radius,
+                    row_origin.y + ImGui::GetTextLineHeight() * 0.5f);
+                ImGui::GetWindowDrawList()->AddCircleFilled(center, radius, ImGui::ColorConvertFloat4ToU32(swatch));
 
-            ImGui::PopID();
+                ImGui::PopID();
 
-            // Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
-            if (is_selected)
-                ImGui::SetItemDefaultFocus();
+                // Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
+                if (is_selected)
+                    ImGui::SetItemDefaultFocus();
+            }
         }
         ImGui::EndListBox();
     }
@@ -4075,6 +4020,43 @@ void draw_comet_window(ImGuiIO & io)
     // Code to ensure mouse interacts with window and not viewport.
     if (io.MousePos.x >= cpos.x && io.MousePos.y >= cpos.y && io.MousePos.x < (cpos.x+csiz.x) && io.MousePos.y < (cpos.y+csiz.y))
         is_mouse_over_window = true;
+}
+
+void draw_universe_save_progress(ImGuiIO &io)
+{
+    const auto progress = alienorum::universe_save_progress();
+    if (!progress) return;
+
+    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.9f),
+        ImGuiCond_Appearing, ImVec2(0.5f, 1.0f));
+    bool open = true;
+    ImGui::Begin("Saving the universe...", &open, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse
+        | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav);
+    ImGui::TextUnformatted(progress->phase == alienorum::UniverseSavePhase::preparing
+        ? "Preparing to save..." : "Saving universe...");
+    ImGui::TextUnformatted(progress->step.c_str());
+    if (!progress->file.empty()) ImGui::TextUnformatted(progress->file.c_str());
+    const float fraction = progress->total ? float(double(progress->completed) / progress->total) : 0;
+    ImGui::ProgressBar(fraction, ImVec2(420, 0), progress->total ? nullptr : "");
+    if (progress->total)
+    {
+        ImGui::Text("%llu / %llu %s", static_cast<unsigned long long>(progress->completed),
+            static_cast<unsigned long long>(progress->total), progress->unit.c_str());
+    }
+    ImGui::Text("Elapsed: %.1f s", progress->elapsed_seconds);
+    if (progress->waiting_for_catalog) ImGui::TextUnformatted("Waiting for catalog access between frames");
+    if (progress->stalled_seconds >= 2)
+    {
+        ImGui::Text("Last progress: %.1f s ago", progress->stalled_seconds);
+    }
+    const ImVec2 pos = ImGui::GetWindowPos(), size = ImGui::GetWindowSize();
+    ImGui::End();
+    if (!open) alienorum::dismiss_universe_save_progress();
+    if (io.MousePos.x >= pos.x && io.MousePos.y >= pos.y
+        && io.MousePos.x < pos.x + size.x && io.MousePos.y < pos.y + size.y)
+    {
+        is_mouse_over_window = true;
+    }
 }
 
 void draw_exoplanet_load_window(ImGuiIO &io)

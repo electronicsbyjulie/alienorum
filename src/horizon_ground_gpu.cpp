@@ -268,5 +268,6 @@ void main()
         draw->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
     }
 
+    void reset_horizon_ground_gpu_stats() { stats = {}; }
     const HorizonGroundGpuStats &horizon_ground_gpu_stats() { return stats; }
 }

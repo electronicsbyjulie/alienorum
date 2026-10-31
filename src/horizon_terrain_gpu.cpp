@@ -11,6 +11,7 @@ namespace alienorum
     static HorizonTerrainGpuStats stats;
     static SDL_GLContext context = nullptr;
     static GLuint program = 0, vao = 0, framebuffer = 0;
+    static GLint tile_columns_location = -1;
     static std::array<GLuint, 4> textures = {};
     static bool attempted = false;
     static constexpr int tile_width = 8, tile_height = 2;
@@ -139,6 +140,7 @@ void main()
         }
         context = nullptr;
         program = vao = framebuffer = 0;
+        tile_columns_location = -1;
         textures = {};
         attempted = false;
         stats = {};
@@ -184,6 +186,7 @@ void main()
         if (vertex) glDeleteShader(vertex);
         if (fragment) glDeleteShader(fragment);
         if (!program) return false;
+        tile_columns_location = glGetUniformLocation(program, "uTileColumns");
         GLint previous_program;
         glGetIntegerv(GL_CURRENT_PROGRAM, &previous_program);
         glUseProgram(program);
@@ -386,7 +389,7 @@ void main()
             if (check_framebuffer(framebuffer_target) != 0x8CD5) return false;
             glViewport(0, 0, crop_width, crop_height);
             glUseProgram(program);
-            glUniform1i(glGetUniformLocation(program, "uTileColumns"), columns);
+            glUniform1i(tile_columns_location, columns);
             glBindVertexArray(vao);
             draw_arrays(GL_TRIANGLES, 0, 3);
             glReadPixels(0, 0, crop_width, crop_height, rg_format, GL_FLOAT, selected.data());

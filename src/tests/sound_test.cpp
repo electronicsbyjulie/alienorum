@@ -1,9 +1,12 @@
+#include "../performance_options.h"
+#include <memory>
 #include <gtest/gtest.h>
 #include <fstream>
 #include <nlohmann/json.hpp>
 #include <SDL2/SDL.h>
 #include "../classes/sound.h"
 #include "../classes/celestial.h"
+#include "../classes/planet.h"
 #include "../classes/misc.h"
 #include "../globals.h"
 
@@ -27,6 +30,79 @@ protected:
         SoundManager::get_instance().reset_horizon_tracking();
     }
 };
+
+TEST_F(SoundTest, HorizonTransitionsResetHistoryOnceAndRearmingStartsFresh)
+{
+    Planet observer;
+    CelestialObject target;
+    CelestialObject* objects[] = {&observer, &target, nullptr};
+    struct RestoreContext
+    {
+        CelestialObject** objects = cels;
+        CelestialLocation position = here;
+        ViewMode mode = view_mode;
+        int place = whereami, count = ncelobjs;
+        double latitude = viewer_lat, longitude = viewer_lon;
+        bool sound = play_rise_set_sound;
+        ~RestoreContext()
+        {
+            SoundManager::get_instance().reset_horizon_tracking();
+            cels = objects;
+            here = position;
+            view_mode = mode;
+            whereami = place;
+            ncelobjs = count;
+            viewer_lat = latitude;
+            viewer_lon = longitude;
+            play_rise_set_sound = sound;
+        }
+    } restore;
+    cels = objects;
+    ncelobjs = 2;
+    whereami = 0;
+    here = observer.location;
+    here.equatorial_plane.a = 0;
+    viewer_lat = viewer_lon = 0;
+    play_rise_set_sound = false;
+    target.location.local_position = Point(0, AU, AU);
+    target.alert_rise = true;
+    auto& manager = SoundManager::get_instance();
+    int rises = 0;
+    manager.set_rise_callback([&](CelestialObject*) { ++rises; });
+    manager.reset_horizon_tracking();
+    target.has_prev_horizon_alt = true;
+    manager.leave_horizon();
+    EXPECT_TRUE(target.has_prev_horizon_alt);
+    manager.reset_horizon_tracking();
+    EXPECT_FALSE(target.has_prev_horizon_alt);
+    view_mode = vm_horizon;
+    manager.check_rise_set_alerts();
+    EXPECT_TRUE(target.has_prev_horizon_alt);
+    manager.leave_horizon();
+    EXPECT_FALSE(target.has_prev_horizon_alt);
+    target.has_prev_horizon_alt = true;
+    target.prev_horizon_alt = -1;
+    view_mode = vm_spaceship;
+    manager.leave_horizon();
+    EXPECT_TRUE(target.has_prev_horizon_alt);
+    view_mode = vm_horizon;
+    manager.check_rise_set_alerts();
+    EXPECT_EQ(rises, 0);
+    EXPECT_TRUE(target.alert_rise);
+    target.prev_horizon_alt = -1;
+    manager.check_rise_set_alerts();
+    EXPECT_EQ(rises, 1);
+    target.alert_rise = true;
+    target.prev_horizon_alt = -1;
+    viewer_lat += 0.02;
+    manager.check_rise_set_alerts();
+    EXPECT_EQ(rises, 1);
+    manager.leave_horizon();
+    EXPECT_FALSE(target.has_prev_horizon_alt);
+    target.has_prev_horizon_alt = true;
+    manager.reset_horizon_tracking();
+    EXPECT_FALSE(target.has_prev_horizon_alt);
+}
 
 TEST_F(SoundTest, SoundFilesExistAndValidHeader)
 {
@@ -289,4 +365,99 @@ TEST_F(SoundTest, IndependentRiseAndSetAlerts)
     EXPECT_EQ(rise_fired, 1);
     EXPECT_FALSE(test_obj.alert_rise);
     EXPECT_FALSE(test_obj.alert_set);
+}
+
+TEST_F(SoundTest, ArmedRegistryTracksFlagCopiesReplacementAndDeletion)
+{
+#if !PERF_P006
+    GTEST_SKIP() << "P006 registry is disabled.";
+#endif
+    Planet observer;
+    auto first = std::make_unique<CelestialObject>();
+    auto second = std::make_unique<CelestialObject>();
+    CelestialObject* objects[] = {&observer, first.get(), second.get(), nullptr};
+    struct Restore
+    {
+        CelestialObject** array = cels;
+        CelestialLocation position = here;
+        ViewMode mode = view_mode;
+        int count = ncelobjs, place = whereami;
+        double latitude = viewer_lat, longitude = viewer_lon;
+        bool sound = play_rise_set_sound;
+        ~Restore()
+        {
+            auto& manager = SoundManager::get_instance();
+            manager.set_rise_callback(nullptr);
+            manager.set_set_callback(nullptr);
+            manager.leave_horizon();
+            cels = array;
+            here = position;
+            view_mode = mode;
+            ncelobjs = count;
+            whereami = place;
+            viewer_lat = latitude;
+            viewer_lon = longitude;
+            play_rise_set_sound = sound;
+        }
+    } restore;
+    cels = objects;
+    ncelobjs = 3;
+    whereami = 0;
+    view_mode = vm_horizon;
+    viewer_lat = viewer_lon = 0;
+    here = observer.location;
+    here.equatorial_plane.a = 0;
+    play_rise_set_sound = false;
+    first->location.local_position = Point(0, AU, AU);
+    second->location.local_position = Point(0, -AU, AU);
+    auto& manager = SoundManager::get_instance();
+    manager.reset_horizon_tracking();
+    manager.check_rise_set_alerts();
+    const auto empty_rebuilds = manager.horizon_alert_rebuilds();
+    for (int i = 0; i < 100; ++i) manager.check_rise_set_alerts();
+    EXPECT_EQ(manager.horizon_alert_rebuilds(), empty_rebuilds);
+    EXPECT_EQ(manager.horizon_alert_count(), 0u);
+    first->alert_rise = true;
+    second->alert_set = true;
+    manager.check_rise_set_alerts();
+    EXPECT_EQ(manager.horizon_alert_count(), 2u);
+    const auto armed_rebuilds = manager.horizon_alert_rebuilds();
+    for (int i = 0; i < 100; ++i) manager.check_rise_set_alerts();
+    EXPECT_EQ(manager.horizon_alert_rebuilds(), armed_rebuilds);
+    first->alert_rise = false;
+    manager.check_rise_set_alerts();
+    EXPECT_EQ(manager.horizon_alert_count(), 1u);
+    std::swap(objects[1], objects[2]);
+    second->has_prev_horizon_alt = false;
+    manager.check_rise_set_alerts();
+    EXPECT_TRUE(second->has_prev_horizon_alt);
+    std::swap(objects[1], objects[2]);
+    first->alert_rise = second->alert_set;
+    json encoded = first->alert_rise;
+    EXPECT_TRUE(encoded.get<bool>());
+    manager.check_rise_set_alerts();
+    EXPECT_EQ(manager.horizon_alert_count(), 2u);
+    int sets = 0;
+    manager.set_set_callback([&](CelestialObject*) { ++sets; });
+    second->deleted = true;
+    second->prev_horizon_alt = 1;
+    manager.check_rise_set_alerts();
+    EXPECT_EQ(sets, 0);
+    second->deleted = false;
+    manager.check_rise_set_alerts();
+    EXPECT_EQ(sets, 1);
+    manager.check_rise_set_alerts();
+    EXPECT_EQ(manager.horizon_alert_count(), 1u);
+    objects[1] = second.get();
+    objects[2] = nullptr;
+    ncelobjs = 2;
+    first.reset();
+    manager.check_rise_set_alerts();
+    EXPECT_EQ(manager.horizon_alert_count(), 0u);
+    second = std::make_unique<CelestialObject>();
+    second->location.local_position = Point(0, AU, AU);
+    second->alert_rise = true;
+    objects[1] = second.get();
+    manager.check_rise_set_alerts();
+    EXPECT_EQ(manager.horizon_alert_count(), 1u);
 }

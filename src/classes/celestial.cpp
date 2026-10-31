@@ -14,6 +14,7 @@
 #include <limits>
 #include <charconv>
 #include "celestial.h"
+#include "surfaceoptions.h"
 #include "shore.h"
 #include "lavafissures.h"
 #include "wdcolor.h"
@@ -65,6 +66,8 @@ CelestialObject::CelestialObject()
 
 CelestialObject::~CelestialObject()
 {
+    if (alert_rise || alert_set) invalidate_horizon_alerts();
+    if (cels && seqno >= 0 && seqno < ncelobjs && cels[seqno] == this) invalidate_frame_objects();
     if (merged_day_map)
     {
         delete merged_day_map;
@@ -419,8 +422,18 @@ void alienorum::Orbit::interpolate_osculating_e(double for_epoch, double &n, dou
     effe = coeff0 * osculating[j].T_periapsis + coeff1 * T_peri_j1;
 }
 
+static void notify_orbit_statistics(CelestialObject* object)
+{
+    if (!object || object->seqno < 0) return;
+    std::lock_guard<std::recursive_mutex> lock(catalog_mutex);
+    if (!cels || object->seqno >= ncelobjs || cels[object->seqno] != object) return;
+    invalidate_frame_objects();
+    Planet::mark_host_statistics_dirty(object);
+}
+
 void Orbit::compute_period(double mm)
 {
+    notify_orbit_statistics(center);
     if (!center) return;
     if (is_open()) { period = 0; return; }               // Nothing to compute: it never comes back.
     if (!center->mass)
@@ -473,6 +486,7 @@ void Orbit::compute_period(double mm)
 
 void Orbit::compute_semimajor_axis(double mm)
 {
+    notify_orbit_statistics(center);
     if (!center) return;
     if (!period) return;
     if (is_open()) return;                               // An open orbit's scale is its perihelion, set where it is read.
@@ -775,8 +789,13 @@ json CelestialObject::to_json()
     return towrite;
 }
 
-bool CelestialObject::from_json(json j)
+bool CelestialObject::from_json(const json& j)
 {
+    if (cels && seqno >= 0 && seqno < ncelobjs && cels[seqno] == this)
+    {
+        invalidate_frame_objects();
+        Planet::mark_host_statistics_dirty(this);
+    }
     home_world = j.value("home_world", false);
     map_inverted = j.value("map_inverted", false);
     rnd_seed = j.value("rnd_seed", 0);
@@ -806,7 +825,7 @@ bool CelestialObject::from_json(json j)
     } catch (...) { ; }
     try
     {
-        json j1 = j.at("location");
+        const json& j1 = j.at("location");
         location.from_json(j1);
     } catch (...) { ; }
     try { j.at("lon_J2000_offset").get_to(lon_J2000_offset); lon_J2000_offset *= fiftyseventh; } catch (...) { ; }
@@ -814,7 +833,7 @@ bool CelestialObject::from_json(json j)
     try { j.at("oblateness").get_to(oblateness); } catch (...) { ; }
     try
     {
-        json j1 = j.at("orbit");
+        const json& j1 = j.at("orbit");
         if (orbit) delete orbit;
         orbit = new Orbit();
         orbit->from_json(j1);
@@ -827,7 +846,20 @@ bool CelestialObject::from_json(json j)
     } catch (...) { ; }
     try { j.at("RI_color").get_to(RI_color); } catch (...) { ; }
     try { j.at("right_ascension").get_to(right_ascension); right_ascension *= fiftyseventh; } catch (...) { ; }
-    try { j.at("sidereal_rotational_period").get_to(sidereal_rotational_period); sidereal_rotational_period *= oneday; } catch (...) { ; }
+    try
+    {
+        const auto& rotation = j.at("sidereal_rotational_period");
+        if (rotation == "tidal")
+        {
+            if (orbit && orbit->period > 0) sidereal_rotational_period = orbit->period;
+        }
+        else
+        {
+            rotation.get_to(sidereal_rotational_period);
+            sidereal_rotational_period *= oneday;
+        }
+    }
+    catch (...) { ; }
     // A stated temperature stands: the derivations above return it unchanged rather than working
     // one out, which is the point of saving it -- a body whose temperature was measured, edited by
     // hand, or arrived at through a chain this session will not repeat comes back with it intact.
@@ -842,8 +874,8 @@ bool CelestialObject::from_json(json j)
 
     // Blanks to copy-paste when adding a field here or to another class's from_json():
     //   plain:      try { j.at("").get_to(); } catch (...) { ; }
-    //   object:     try { json j1 = j.at(""); .from_json(j1); } catch (...) { ; }
-    //   object ptr: try { json j1 = j.at(""); = new (); ->from_json(j1); } catch (...) { ; }
+    //   object:     try { const json& j1 = j.at(""); .from_json(j1); } catch (...) { ; }
+    //   object ptr: try { const json& j1 = j.at(""); = new (); ->from_json(j1); } catch (...) { ; }
     //   char[]:     try { std::string s; j.at("").get_to(s); strcpy(, s.c_str()); } catch (...) { ; }
     // TODO: Convert the char[] fields back to std::strings.
 
@@ -2160,17 +2192,71 @@ bool Map::create_merged_night(Map *night, Map *clouds)
     return true;
 }
 
+namespace
+{
+#if PERF_P035
+    struct UniformMemo
+    {
+        const Map* owner = nullptr;
+        unsigned int generation = 0;
+        std::uint64_t key = 0;
+        std::uint32_t value = 0;
+    };
+    thread_local std::array<UniformMemo, 64> uniform_nodes;
+    thread_local std::array<UniformMemo, 256> uniform_footprints;
+    thread_local size_t uniform_node_hits = 0, uniform_footprint_hits = 0;
+    size_t uniform_slot(const Map* owner, std::uint64_t key, size_t mask)
+    {
+        return (key ^ (key >> 11) ^ (key >> 23) ^ (reinterpret_cast<std::uintptr_t>(owner) >> 4)) & mask;
+    }
+    void forget_uniform_owner(const Map* owner)
+    {
+        for (auto& entry : uniform_nodes) if (entry.owner == owner) entry.owner = nullptr;
+        for (auto& entry : uniform_footprints) if (entry.owner == owner) entry.owner = nullptr;
+    }
+#endif
+}
+
+std::pair<size_t, size_t> alienorum::surface_uniform_cache_hits()
+{
+#if PERF_P035
+    return {uniform_node_hits, uniform_footprint_hits};
+#else
+    return {0, 0};
+#endif
+}
+
 std::uint32_t Map::uniform_region(unsigned long left, unsigned long top, int level)
 {
     const unsigned long first = top * image_width + left;
+    const std::uint64_t key = (std::uint64_t(first) << 6) | level;
+#if PERF_P035
+    UniformMemo* memo = nullptr;
+    // One 8x8 leaf or less is cheaper through the original hierarchy.
+    if (level && allocated > 64 && !surface_uniform_reference)
+    {
+        memo = &uniform_nodes[uniform_slot(this, key, uniform_nodes.size() - 1)];
+        if (memo->owner == this && memo->generation == gen && memo->key == key)
+        {
+            ++uniform_node_hits;
+            return memo->value;
+        }
+    }
+    const auto remember = [&](std::uint32_t value)
+    {
+        if (memo) *memo = {this, gen, key, value};
+        return value;
+    };
+#else
+    const auto remember = [](std::uint32_t value) { return value; };
+#endif
     const std::uint32_t material = surface_materials.size() == allocated
         ? static_cast<std::uint32_t>(surface_materials[first]) : 0;
     const std::uint32_t target = red_data[first] | (std::uint32_t(green_data[first]) << 8)
         | (std::uint32_t(blue_data[first]) << 16) | (material << 24);
     if (!level) return target;
-    const std::uint64_t key = (std::uint64_t(first) << 6) | level;
     const auto found = uniform_regions.find(key);
-    if (found != uniform_regions.end()) return found->second;
+    if (found != uniform_regions.end()) return remember(found->second);
     const unsigned long size = 1ul << level;
     const unsigned long step = level == 6 ? 8 : 1;
     std::uint32_t result = target;
@@ -2189,7 +2275,7 @@ std::uint32_t Map::uniform_region(unsigned long left, unsigned long top, int lev
     // Bound memory even after a long journey over a high-resolution world.
     if (uniform_regions.size() >= 16384) uniform_regions.clear();
     uniform_regions.emplace(key, result);
-    return result;
+    return remember(result);
 }
 
 bool Map::region_matches(unsigned long left, unsigned long top, unsigned long right, unsigned long bottom,
@@ -2241,15 +2327,39 @@ bool Map::color_within_cap(double lat, double lon, double angle, RGB3 &color, bo
         {
             uniform_regions.clear();
             uniform_region_generation = gen;
+#if PERF_P035
+            if (allocated > 64) forget_uniform_owner(this);
+#endif
         }
+#if PERF_P035
+        const std::uint64_t footprint_key = (std::uint64_t(first) << 32) | last;
+        UniformMemo* memo = nullptr;
+        if (allocated > 64 && !surface_uniform_reference)
+        {
+            memo = &uniform_footprints[uniform_slot(this, footprint_key, uniform_footprints.size() - 1)];
+            if (memo->owner == this && memo->generation == gen && memo->key == footprint_key)
+            {
+                ++uniform_footprint_hits;
+                return memo->value != 0;
+            }
+        }
+        const auto remember = [&](bool value)
+        {
+            if (memo) *memo = {this, gen, footprint_key, value ? 1u : 0u};
+            return value;
+        };
+#else
+        const auto remember = [](bool value) { return value; };
+#endif
         const std::uint32_t target = uniform_region(left, top, 0);
         for (unsigned long row = top / 64 * 64; row <= bottom; row += 64)
         {
             for (unsigned long column = left / 64 * 64; column <= right; column += 64)
             {
-                if (!region_matches(left, top, right, bottom, column, row, 6, target)) return false;
+                if (!region_matches(left, top, right, bottom, column, row, 6, target)) return remember(false);
             }
         }
+        return remember(true);
     }
     return true;
 }
@@ -2307,6 +2417,23 @@ RGB3 Map::color_at(double lat, double lon)
         result.b = blue_data  ? blue_data[idx]  : 255;
     }
     return result;
+}
+
+std::pair<RGB3, SurfaceMaterial> Map::surface_at(double latitude, double longitude)
+{
+    RGB3 color(255, 255, 255);
+    if (generating_fic_texture && (!has_rgb_data() || !allocated))
+        return {color, SurfaceMaterial::unknown};
+    const unsigned int index = idx_of(latitude, longitude);
+    if (index == idx_not_ready || !allocated) return {color, SurfaceMaterial::unknown};
+    const unsigned long color_index = std::min<unsigned long>(index, allocated - 1);
+    color = RGB3(red_data ? red_data[color_index] : 255,
+        green_data ? green_data[color_index] : 255, blue_data ? blue_data[color_index] : 255);
+    SurfaceMaterial material = SurfaceMaterial::unknown;
+    if (!generating_fic_texture && is_complete() && surface_materials.size() == allocated
+        && std::isfinite(latitude) && std::isfinite(longitude) && index < surface_materials.size())
+        material = surface_materials[index];
+    return {color, material};
 }
 
 RGB3 Map::color_at_bilinear(double lat, double lon) const
@@ -4397,6 +4524,10 @@ bool append_cel(CelestialObject *cel)
     cel->seqno = ncelobjs;
     ncelobjs++;
     cels[ncelobjs] = 0;
+    invalidate_frame_objects();
+    if (cel->alert_rise || cel->alert_set) invalidate_horizon_alerts();
+    cel->drawnx = cel->drawnxmin = cel->drawnxmax
+        = cel->drawny = cel->drawnymin = cel->drawnymax = -1e9;
     if (cel->typeclass() == class_planet) static_cast<Planet*>(cel)->sync_host_statistics();
     return true;
 }

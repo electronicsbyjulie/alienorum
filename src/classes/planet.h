@@ -6,6 +6,8 @@
 #include "climate.h"
 #include <functional>
 #include <mutex>
+#include <memory>
+#include <random>
 
 // Not sure about this number at all.
 #define phase_exponent 1.319507911
@@ -13,6 +15,7 @@
 namespace alienorum
 {
     class Star;
+    class Moon;
     enum class PlanetMeasurement
     {
         unknown, observed, minimum, estimated
@@ -79,6 +82,7 @@ namespace alienorum
         void apply_cosmic_shoreline();
         bool estimate_habitability();
         void set_color_from_type(bool HZ);
+        std::vector<std::unique_ptr<Moon>> generate_fictional_moons(std::mt19937_64& random);
         void classify();
         void classify(bool HZ, bool mass_and_rad_known = false, bool color_known = false);
                                                             // set the type, e.g. for exoplanets
@@ -96,7 +100,10 @@ namespace alienorum
         void estimate_albedo_and_absmagn();                 // if not known, e.g. exoplanets
         void update_location(double tmnow);                 // Only applicable if we have an orbit; otherwise just return.
         void sync_host_statistics();
+        void refresh_host_statistics_if_changed();
         static void rebuild_host_statistics();
+        static void mark_host_statistics_dirty(CelestialObject* object);
+        static void reconcile_host_statistics();
         bool counts_for_host_statistics() const;
         double est_bolometric_flux(double t_eff = 0);
         double estimate_bond_albedo();                      // for want of an actual parameter.
@@ -118,7 +125,7 @@ namespace alienorum
         ~Planet() { if (orbit) delete orbit; if (atm) delete atm; }
 
         json to_json();
-        bool from_json(json j);
+        bool from_json(const json& j);
 
         bool guess_has_rings();
         void generate_ring_parameters(bool guarantee_rings = false);        // e.g. if we have a map file

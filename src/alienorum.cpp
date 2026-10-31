@@ -1,3 +1,6 @@
+#include "catalog_lock_trace.h"
+#include "snapshot_io.h"
+#include "fictionalstars_ui.h"
 
 #define _CRT_SECURE_NO_WARNINGS
 #define STB_IMAGE_IMPLEMENTATION
@@ -20,6 +23,7 @@
 #include "visuals.h"
 #include "sphere_impostor.h"
 #include "horizon_ground_gpu.h"
+#include "scenery_gpu.h"
 #include "horizon_terrain_gpu.h"
 #include "horizon_mesh_gpu.h"
 #include "classes/sscimport.h"
@@ -108,72 +112,15 @@ bool LoadTextureFromFile(const char* file_name, GLuint* out_texture, int* out_wi
 }
 // End ImGui Example Code
 
-// Writes the just-rendered back buffer out as a PNG (same libpng plumbing as Map::save_to_png,
-// but sourced from glReadPixels). GL's row 0 is the bottom of the image, so rows go out in
-// reverse to come out right-side up.
+// Capture stays on the GL thread; the worker owns only RGB pixels and its path.
 bool save_snapshot_png(const std::string& filename, int width, int height)
 {
     if (width <= 0 || height <= 0) return false;
-
     establish_project_root();
-
-    std::vector<unsigned char> pixels(width * height * 3);
+    std::vector<unsigned char> pixels(size_t(width) * height * 3);
     glPixelStorei(GL_PACK_ALIGNMENT, 1);
     glReadPixels(0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, pixels.data());
-
-    FILE *fp = fopen(filename.c_str(), "wb");
-    if (!fp)
-    {
-        std::cerr << "Failed to open " << filename << " for writing." << std::endl;
-        return false;
-    }
-
-    png_structp png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
-    if (!png_ptr)
-    {
-        fclose(fp);
-        return false;
-    }
-
-    png_infop info_ptr = png_create_info_struct(png_ptr);
-    if (!info_ptr)
-    {
-        png_destroy_write_struct(&png_ptr, NULL);
-        fclose(fp);
-        return false;
-    }
-
-    if (setjmp(png_jmpbuf(png_ptr)))
-    {
-        png_destroy_write_struct(&png_ptr, &info_ptr);
-        fclose(fp);
-        return false;
-    }
-
-    png_init_io(png_ptr, fp);
-    png_set_IHDR(
-        png_ptr,
-        info_ptr,
-        width,
-        height,
-        8,                          // 8 bits per channel
-        PNG_COLOR_TYPE_RGB,
-        PNG_INTERLACE_NONE,
-        PNG_COMPRESSION_TYPE_DEFAULT,
-        PNG_FILTER_TYPE_DEFAULT
-    );
-
-    std::vector<png_bytep> row_pointers(height);
-    for (int y = 0; y < height; y++)
-        row_pointers[y] = &pixels[(size_t)(height - 1 - y) * width * 3];
-
-    png_write_info(png_ptr, info_ptr);
-    png_write_image(png_ptr, row_pointers.data());
-    png_write_end(png_ptr, NULL);
-
-    png_destroy_write_struct(&png_ptr, &info_ptr);
-    fclose(fp);
-    return true;
+    return alienorum::save_snapshot_pixels(filename, width, height, std::move(pixels));
 }
 
 int main (int argc, char** argv)
@@ -455,6 +402,13 @@ int main (int argc, char** argv)
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO(); (void)io;
+    std::filesystem::path layout_path;
+    if (PERF_P095 && io.IniFilename)
+    {
+        layout_path = std::filesystem::absolute(std::filesystem::u8path(io.IniFilename));
+        ImGui::LoadIniSettingsFromDisk(io.IniFilename);
+        io.IniFilename = nullptr;
+    }
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
 
@@ -545,9 +499,9 @@ int main (int argc, char** argv)
     ImVec2 last_click_pos;
     while (!done)
     {
-        std::unique_lock<std::recursive_mutex> catalog_lock(catalog_mutex);
+        alienorum::CatalogLock catalog_lock(catalog_mutex, alienorum::CatalogLockSite::frame);
         const bool loading_frame = splash;
-        auto frame_began = std::chrono::high_resolution_clock::now();
+        auto frame_began = std::chrono::steady_clock::now();
         if (hide_mouse && (!is_mouse_over_window || dragging) && !splash
             && !ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopup))
         {
@@ -730,7 +684,7 @@ int main (int argc, char** argv)
             {
                 sky_grad.clear();
                 sky_mag_shift = 0;
-                SoundManager::get_instance().reset_horizon_tracking();
+                SoundManager::get_instance().leave_horizon();
             }
 
             bool earth_clouds_shown = false;
@@ -750,10 +704,13 @@ int main (int argc, char** argv)
                 if (show_consln) draw_cons_lines();
                 draw_objects();
                 draw_local_rings();
-                draw_cloudy_sky();
+                const bool local_clouds_shown = draw_cloudy_sky();
+                if (local_clouds_shown && whereami == iamhome && iamhome >= 0 && cels[iamhome]
+                    && cels[iamhome]->has_eumetsat_clouds()) earth_clouds_shown = true;
                 draw_horizon();
 
-                if ((show_clouds) && ((whereami != iamhome || view_mode == vm_system)))
+                if (show_clouds && (view_mode == vm_system || !dragging) && iamhome >= 0
+                    && (whereami != iamhome || view_mode == vm_system))
                 {
                     CelestialObject *c = cels[iamhome];
                     if (c)
@@ -767,6 +724,8 @@ int main (int argc, char** argv)
                 }
                 draw_cached_labels();
             }
+
+            if (earth_clouds_shown) refresh_earth_clouds();
 
             txtyscale = ImGui::GetTextLineHeightWithSpacing() * 1.116;
             txtycompact = ImGui::GetTextLineHeight();
@@ -790,6 +749,7 @@ int main (int argc, char** argv)
             if (objedtwnd) draw_objedit_window(io);
             if (explorer) draw_system_explorer(io);
             if (addcelwnd) draw_addcel_window(io);
+            draw_fictional_region();
             if (astwnd) draw_ast_window(io);
             if (cometwnd) draw_comet_window(io);
             if (satwnd) draw_sat_window(io);
@@ -798,6 +758,7 @@ int main (int argc, char** argv)
             if (show_favestars) draw_favestars_window(io);
             draw_ssc_import_window(io);
             draw_exoplanet_load_window(io);
+            draw_universe_save_progress(io);
 
             if (just_clicked_menu)
             {
@@ -833,6 +794,7 @@ int main (int argc, char** argv)
                 viewer_tz  = 0;
                 viewer_dst = dst_none;
                 view_mode = vm_horizon;
+                show_localsys = true;
                 zoom = 1;
                 global_brightness = default_brightness;
             }
@@ -855,9 +817,7 @@ int main (int argc, char** argv)
             // Positioning updates
             vm = velocity.magnitude();
             vmfr = vm * target_frame_rate;
-            Point vdil = velocity;
-            if (vmfr < speed_of_light) vdil.scale(vdil.magnitude() / compute_time_dilation(vmfr));
-            here.local_position += vdil;
+            here.local_position += viewer_displacement(velocity, frame_dur);
             azimuth += spin;
 
             // Slow down to avoid zipping past tracked object
@@ -1015,8 +975,7 @@ int main (int argc, char** argv)
             }
 
             // Keyboard commands
-            if (ImGui::IsAnyItemActive()) editing = true;
-            if (!editing) process_keyboard_commands(io);
+            process_keyboard_commands(io);
 
             if (ImGuiFileDialog::Instance()->Display("ChooseFileDlgKey", ImGuiWindowFlags_NoCollapse, ImVec2(720, 480)))
             {
@@ -1083,7 +1042,7 @@ int main (int argc, char** argv)
 
             was_mouse_down = is_mouse_down;
         }
-        if (argsfs || ImGui::IsKeyPressed(ImGuiKey_F11))
+        if (argsfs || ImGui::IsKeyPressed(ImGuiKey_F11, false))
         {
             process_key_F11();
             argsfs = false;
@@ -1126,6 +1085,14 @@ int main (int argc, char** argv)
         glClearColor(background.x * background.w, background.y * background.w, background.z * background.w, background.w);
         glClear(GL_COLOR_BUFFER_BIT);
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        if (PERF_P095 && !layout_path.empty() && io.WantSaveIniSettings)
+        {
+            size_t size = 0;
+            const char* text = ImGui::SaveIniSettingsToMemory(&size);
+            if (!alienorum::save_layout_text(layout_path, std::string(text, size)))
+                std::cerr << "Failed to queue window layout." << std::endl;
+            io.WantSaveIniSettings = false;
+        }
         if (take_snapshot)
         {
             if (loading_frame) catalog_lock.lock();
@@ -1171,7 +1138,7 @@ int main (int argc, char** argv)
                 << ".png";
 
             if (save_snapshot_png(shnapsot_fname.str(), (int)io.DisplaySize.x, (int)io.DisplaySize.y))
-                std::cout << "Saved " << shnapsot_fname.str() << " (" << (int)io.DisplaySize.x << "x" << (int)io.DisplaySize.y << ")" << std::endl;
+                std::cout << (PERF_P095 ? "Snapshot queued: " : "Saved ") << shnapsot_fname.str() << " (" << (int)io.DisplaySize.x << "x" << (int)io.DisplaySize.y << ")" << std::endl;
             else
                 std::cerr << "Failed to save " << shnapsot_fname.str() << " to disk." << std::endl;
             take_snapshot = false;
@@ -1198,9 +1165,20 @@ int main (int argc, char** argv)
                 if (timeout_ms > 67) timeout_ms = 67;
             }
 
-            catalog_lock.unlock();
-            std::this_thread::sleep_for(std::chrono::milliseconds(timeout_ms));
-            catalog_lock.lock();
+            if (alienorum::performance_enabled(36) && view_mode == vm_horizon)
+            {
+                const auto idle_end = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+                prefetch_surface_tiles(SURFACE_PREFETCH_BUDGET_MS);
+                catalog_lock.unlock();
+                std::this_thread::sleep_until(idle_end);
+                catalog_lock.lock();
+            }
+            else
+            {
+                catalog_lock.unlock();
+                std::this_thread::sleep_for(std::chrono::milliseconds(timeout_ms));
+                catalog_lock.lock();
+            }
 
             hide_mouse = !splash && !fdlg_shown
                 && !mouse_over_menu
@@ -1214,12 +1192,11 @@ int main (int argc, char** argv)
             searched = false;
             PrevDispSize = io.DisplaySize;
 
-            auto frame_finished = std::chrono::high_resolution_clock::now();
-            auto frame_elapsed = std::chrono::duration_cast<std::chrono::microseconds>(frame_finished - frame_began);
-            frame_dur = frame_elapsed.count() * 1e-6;
+            const auto frame_deadline = frame_began + std::chrono::duration<double>(1.0/target_frame_rate);
             catalog_lock.unlock();
-            std::this_thread::sleep_for(std::chrono::duration<double, std::micro>(66666 - frame_dur * 1e6));
+            std::this_thread::sleep_until(frame_deadline);
             catalog_lock.lock();
+            frame_dur = std::chrono::duration<double>(std::chrono::steady_clock::now()-frame_began).count();
             if (frame_dur < best_frame_dur) best_frame_dur = frame_dur;
             io.DeltaTime = frame_dur;
             is_click = is_dbl_click = false;
@@ -1271,6 +1248,7 @@ int main (int argc, char** argv)
     {
         exoplanet_load_thread.join();
     }
+    close_fictional_region();
     alienorum::ExoConsGenerator::reset();
 
     wait_for_texture_tasks();
@@ -1279,6 +1257,8 @@ int main (int argc, char** argv)
     {
         save_universe();
     }
+
+    Serialization::finish_file_saves();
 
     for (i=0; cels[i]; i++)
     {
@@ -1303,9 +1283,18 @@ int main (int argc, char** argv)
     if (hdcache) delete[] hdcache;
     if (hipcache) delete[] hipcache;
 
+    alienorum::clear_scenery_gpu();
     alienorum::clear_horizon_ground_gpu();
     alienorum::clear_horizon_terrain_gpu();
     alienorum::clear_horizon_mesh_gpu();
+    alienorum::snapshot_writer().finish();
+    if (PERF_P095 && !layout_path.empty())
+    {
+        size_t size = 0;
+        const char* text = ImGui::SaveIniSettingsToMemory(&size);
+        alienorum::save_layout_text(layout_path, std::string(text, size));
+    }
+    alienorum::layout_writer().finish();
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplSDL2_Shutdown();
     ImGui::DestroyContext();
@@ -1314,5 +1303,6 @@ int main (int argc, char** argv)
     SDL_DestroyWindow(window);
     SoundManager::get_instance().close_audio();
     SDL_Quit();
+    alienorum::print_catalog_lock_trace(std::cout);
     return 0;
 }

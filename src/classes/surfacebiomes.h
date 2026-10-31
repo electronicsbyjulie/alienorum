@@ -2,6 +2,7 @@
 #define _AlienorumSurfaceBiomes
 
 #include <cmath>
+#include <array>
 #include <cstdint>
 #include <utility>
 #include <vector>
@@ -28,11 +29,31 @@ namespace alienorum
             }
         }
 
+        uint32_t world_id() const { return world; }
+        inline static constexpr std::array<double, 2> scales = {160.0, 36.0};
+        inline static constexpr std::array<double, 2> amplitudes = {32.0, 6.0};
+        static double maximum_displacement(double strength)
+        {
+            return sqrt(3.0) * 2 * (amplitudes[0] + amplitudes[1]) * fabs(strength);
+        }
+        static double gradient_bound(double strength)
+        {
+            double sum = 0;
+            for (size_t octave = 0; octave < scales.size(); ++octave) sum += amplitudes[octave] / scales[octave];
+            return 9 * sum * fabs(strength);
+        }
+        static double hessian_bound(double strength)
+        {
+            double sum = 0;
+            for (size_t octave = 0; octave < scales.size(); ++octave)
+                sum += amplitudes[octave] / (scales[octave] * scales[octave]);
+            return 40 * sum * fabs(strength);
+        }
         static double angular_bound(double radius, double strength = 1.0)
         {
             // Each gradient is bounded by two; interpolation is a convex combination.
             // Both octaves together displace each Cartesian component by at most 76 m.
-            const double displacement = sqrt(3.0) * 76.0 * fabs(strength);
+            const double displacement = maximum_displacement(strength);
             if (!(radius > displacement)) return 4.0;
             return asin(displacement / radius) + 1.0e-12;
         }
@@ -50,8 +71,8 @@ namespace alienorum
             // Cartesian displacement stays continuous at the date line and poles.
             for (int octave = 0; octave < 2; ++octave)
             {
-                const double scale = octave == 0 ? 160.0 : 36.0;
-                const double amplitude = (octave == 0 ? 32.0 : 6.0) * strength;
+                const double scale = scales[octave];
+                const double amplitude = amplitudes[octave] * strength;
                 const double nx = x / scale, ny = y / scale, nz = z / scale;
                 dx += amplitude * noise.noise(nx + 19.3, ny + 7.1, nz + 31.7);
                 dy += amplitude * noise.noise(nx + 43.1, ny + 53.7, nz + 11.9);

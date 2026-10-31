@@ -3,9 +3,12 @@
 
 #include "planet.h"
 #include "surfacebiomes.h"
+#include <tuple>
 
 namespace alienorum
 {
+    class LocalSurfaceTile;
+
     // One material interpretation for horizon painting, scenery, and navigation.
     class SurfaceSampler
     {
@@ -14,16 +17,34 @@ namespace alienorum
         SurfaceBiomes &field;
         double radius, strength, bound;
         bool favorable, biomes, ocean, water;
+        LocalSurfaceTile* local_tile = nullptr;
 
         bool water_sample(const std::pair<RGB3, SurfaceMaterial> &sample) const;
 
         public:
+        struct Sample
+        {
+            RGB3 color;
+            SurfaceMaterial material = SurfaceMaterial::unknown;
+            bool water = false, vegetation = false;
+        };
+        struct WaterPatch
+        {
+            using Key = std::tuple<Map*, unsigned int, Planet*, double, double, bool, bool, bool, bool, int, int, int, int>;
+            Key key;
+            double latitude = 0, longitude = 0;
+            bool attempted = false, uniform = false, value = false;
+        };
         SurfaceSampler(Planet *body, Map *surface, SurfaceBiomes &noise, double world_radius, double displacement);
+        void use_local_tile(LocalSurfaceTile& tile) { local_tile = &tile; }
         std::pair<RGB3, SurfaceMaterial> info(double latitude, double longitude);
+        Sample sample(double latitude, double longitude);
+        bool uniform_sample(double latitude, double longitude, double angle, Sample& result);
         RGB3 color_at(double latitude, double longitude) { return info(latitude, longitude).first; }
         bool vegetation_color(const RGB3 &sample) const;
         bool vegetation_at(double latitude, double longitude);
         bool water_at(double latitude, double longitude);
+        bool water_at(double latitude, double longitude, WaterPatch& patch);
         bool base_water(unsigned long column, unsigned long row) const;
         bool water_favorable() const { return favorable; }
         bool has_biomes() const { return biomes; }

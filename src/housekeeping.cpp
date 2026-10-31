@@ -1,7 +1,15 @@
+#include "performance_options.h"
 
 #include "housekeeping.h"
 #include "inputs.h"
 #include "visuals.h"        // eclipse_obscuration(): an eclipse dims the daylight computed here
+#include <cstdint>
+#include <unordered_set>
+#include <unordered_map>
+#include <tuple>
+#include <array>
+#include <atomic>
+#include <iterator>
 
 using namespace alienorum;
 
@@ -13,6 +21,14 @@ void refresh_star_visibilities()
         if (cels[i]->deleted) continue;
         if (cels[i]->typeclass() == class_star) ((Star*)cels[i])->is_really_truly_in_visible_box(here);
     }
+}
+
+Point viewer_displacement(const Point& motion, double elapsed_seconds)
+{
+    const double speed = motion.magnitude()*target_frame_rate;
+    Point displacement = motion;
+    if (speed < speed_of_light) displacement.scale(displacement.magnitude()/compute_time_dilation(speed));
+    return displacement*(elapsed_seconds*target_frame_rate);
 }
 
 void set_viewer_surface_location(bool also_set_plane)
@@ -33,7 +49,17 @@ void set_viewer_surface_location(bool also_set_plane)
     // where it started, which is the sensible reading of "no rotation" and what the rest of this
     // function then works from.
     if (!cel->sidereal_rotational_period)
-        std::cerr << "Warning: " << cel->name << " has no rotation period; treating it as fixed." << std::endl;
+    {
+        if (!performance_enabled(78) || !cel->missing_rotation_reported)
+        {
+            std::cerr << "Warning: " << cel->name << " has no rotation period; treating it as fixed." << std::endl;
+            if (performance_enabled(78)) cel->missing_rotation_reported = true;
+        }
+    }
+    else if (performance_enabled(78) && cel->missing_rotation_reported)
+    {
+        cel->missing_rotation_reported = false;
+    }
 
     bool dwh = false;
     if (cel->typeclass() == class_moon)
@@ -47,6 +73,56 @@ void set_viewer_surface_location(bool also_set_plane)
     else
         equatorial_radius = cel->get_equatorial_radius();
 
+    const double rotation_phase = cel->timeofday();
+    struct SurfaceObserverContext
+    {
+        const CelestialObject* body = nullptr;
+        std::array<double, 30> key = {};
+        CelestialLocation observer, pole;
+        double north = 0, correction = 0;
+    };
+    static SurfaceObserverContext context;
+    std::array<double, 30> key = {};
+    if (performance_enabled(12))
+    {
+        const auto& location = cel->location;
+        size_t index = 0;
+        for (const Point& point : {location.galactic_center, location.system_center, location.local_position,
+            location.local_system_plane.v, location.orbital_plane.v, location.equatorial_plane.v})
+        {
+            key[index++] = point.x;
+            key[index++] = point.y;
+            key[index++] = point.z;
+        }
+        key[index++] = location.local_system_plane.a;
+        key[index++] = location.orbital_plane.a;
+        key[index++] = location.equatorial_plane.a;
+        key[index++] = viewer_lat;
+        key[index++] = viewer_lon;
+        key[index++] = rotation_phase;
+        key[index++] = obl;
+        key[index++] = equatorial_radius;
+        key[index++] = also_set_plane;
+        if (dwh)
+        {
+            key[index++] = static_cast<Moon*>(cel)->width;
+            key[index++] = static_cast<Moon*>(cel)->height;
+            key[index++] = static_cast<Moon*>(cel)->depth;
+        }
+        if (context.body == cel && context.key == key)
+        {
+            here = context.observer;
+            if (also_set_plane)
+            {
+                npdummy.location = context.pole;
+                npaz = context.north;
+                azimuth_correction = context.correction;
+            }
+            viewchanged = true;
+            return;
+        }
+    }
+
     Point cursor = Point::from_ra_dec(viewer_lon, viewer_lat, dwh ? 1 : equatorial_radius, 0);
 
     if (dwh)
@@ -56,7 +132,7 @@ void set_viewer_surface_location(bool also_set_plane)
         cursor.z *= ((Moon*)cel)->depth * .5;
     }
     else cursor.y *= obl;
-    cursor = rotate3D(cursor, center, yaxis, -cel->timeofday());
+    cursor = rotate3D(cursor, center, yaxis, -rotation_phase);
     cursor = rotate3D(cursor, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
 
     here.local_position = cel->location.local_position + cursor;
@@ -72,6 +148,19 @@ void set_viewer_surface_location(bool also_set_plane)
         azimuth_correction = -npaz;
     }
 
+    if (performance_enabled(12))
+    {
+        context.body = cel;
+        context.key = key;
+        context.observer = here;
+        if (also_set_plane)
+        {
+            context.pole = npdummy.location;
+            context.north = npaz;
+            context.correction = azimuth_correction;
+        }
+    }
+    else context.body = nullptr;
     viewchanged = true;
 }
 
@@ -91,8 +180,11 @@ void set_viewer_location_and_plane()
         if (vplane_mode == vplane_local && cels[whereami]->orbit->center)
         {
             here = cels[whereami]->location;
-            Point me = cels[whereami]->location;
-            Point zenith = satview_upsidedown ? (Point(cels[whereami]->orbit->center->location) - me) : (me - cels[whereami]->orbit->center->location);
+            // Cancel shared coordinate origins before converting to meters.
+            // Absolute galactic positions lose the precision of a satellite orbit.
+            CelestialLocation relative = cels[whereami]->location - cels[whereami]->orbit->center->location;
+            Point zenith(relative);
+            if (satview_upsidedown) zenith *= -1;
             here.equatorial_plane = align_points_3d(zenith, yaxis, center);
             viewchanged = true;
             return;
@@ -161,6 +253,43 @@ void set_viewer_location_and_plane()
 }
 
 double dispw, disph, celmasslim;
+namespace
+{
+    struct StellarUpdateStamp
+    {
+        Star* star = nullptr;
+        CelestialObject* center = nullptr;
+        double epoch = 0;
+        uint64_t generation = 0;
+    };
+    struct StellarUpdateFrame;
+    thread_local std::vector<StellarUpdateStamp> stellar_update_stamps;
+    thread_local uint64_t stellar_update_generation = 0;
+    thread_local StellarUpdateFrame* stellar_update_frame = nullptr;
+
+    struct StellarUpdateFrame
+    {
+        uint64_t generation;
+        StellarUpdateFrame* previous;
+
+        StellarUpdateFrame() : generation(++stellar_update_generation), previous(stellar_update_frame)
+        {
+            if (!generation)
+            {
+                for (auto& stamp : stellar_update_stamps) stamp.generation = 0;
+                generation = ++stellar_update_generation;
+            }
+            stellar_update_stamps.resize(ncelobjs);
+            stellar_update_frame = this;
+        }
+
+        ~StellarUpdateFrame()
+        {
+            stellar_update_frame = previous;
+        }
+    };
+}
+
 static bool update_stellar_lineage(Star *member, double epoch, double orbital_epoch)
 {
     Star *lineage[26];
@@ -180,15 +309,248 @@ static bool update_stellar_lineage(Star *member, double epoch, double orbital_ep
     {
         Star *ancestor = lineage[--count];
         // Catalog astrometry already represents received light at its reference epoch.
-        ancestor->update_location(ancestor->orbit ? orbital_epoch : epoch);
+        const double update_epoch = ancestor->orbit ? orbital_epoch : epoch;
+        StellarUpdateStamp* stamp = nullptr;
+        // Independent astrometry is reusable; orbital members retain parent-state updates.
+        // Variable brightness also depends on viewer-relative state, so always update it.
+        if (stellar_update_frame && !ancestor->orbit && !ancestor->variability_period && !ancestor->deleted
+            && ancestor->volumetric_mean_radius > 0 && std::isfinite(ancestor->volumetric_mean_radius)
+            && ancestor->seqno >= 0 && ancestor->seqno < static_cast<int>(stellar_update_stamps.size())
+            && cels[ancestor->seqno] == ancestor)
+            stamp = &stellar_update_stamps[ancestor->seqno];
+        const bool reused = stamp && stamp->generation == stellar_update_frame->generation
+            && stamp->star == ancestor && stamp->epoch == update_epoch && stamp->center == mycenobj;
+        if (!reused)
+        {
+            ancestor->update_location(update_epoch);
+            if (stamp)
+            {
+                stamp->star = ancestor;
+                stamp->center = mycenobj;
+                stamp->epoch = update_epoch;
+                stamp->generation = stellar_update_frame->generation;
+            }
+        }
         CelestialLocation relative = ancestor->location - here;
         ancestor->tmprel = Point(relative);
     }
     return true;
 }
 
-bool compute_object_location(CelestialObject* cel)
+namespace
 {
+    using FrameContext = std::tuple<CelestialObject*, int, int, int, int, double, double, ViewMode,
+        std::array<double, 9>>;
+    struct FrameObjects
+    {
+        std::atomic<bool> dirty{true};
+        bool prepared = false, published = false, initialize_projection = true, orbits_ready = false;
+        CelestialObject** array = nullptr;
+        int count = -1;
+        FrameContext context;
+        std::vector<int> other, all, worlds, candidates, projected, bright, orbits;
+        std::vector<const CelestialObject*> hosts;
+        std::vector<cel_obj_class> classes;
+        std::unordered_map<const CelestialObject*, std::vector<int>> systems;
+        std::unordered_set<int> active;
+        std::vector<std::pair<int, CelestialObject*>> previous;
+    };
+    FrameObjects& frame_objects()
+    {
+        // The registry also serves catalog teardown during process shutdown.
+        static FrameObjects* state = new FrameObjects;
+        return *state;
+    }
+    bool frame_location_pass = false;
+    FrameContext frame_context()
+    {
+        return {mycenobj, whereami, selected, trackidx, editidx, zoom, dispcx, view_mode,
+            {here.galactic_center.x, here.galactic_center.y, here.galactic_center.z,
+                here.system_center.x, here.system_center.y, here.system_center.z,
+                here.local_position.x, here.local_position.y, here.local_position.z}};
+    }
+    bool frame_matches()
+    {
+        const auto& state = frame_objects();
+        return state.prepared && !state.dirty && state.array == cels && state.count == ncelobjs
+            && state.context == frame_context();
+    }
+    void prepare_frame_objects()
+    {
+        auto& state = frame_objects();
+        if (state.dirty || state.array != cels || state.count != ncelobjs)
+        {
+            state.other.clear();
+            state.all.clear();
+            state.systems.clear();
+            state.hosts.assign(ncelobjs, nullptr);
+            if (performance_enabled(8)) state.classes.assign(ncelobjs, class_unknown);
+            else state.classes.clear();
+            for (int index = 0; index < ncelobjs; ++index)
+            {
+                auto* object = cels[index];
+                if (!object) continue;
+                state.all.push_back(index);
+                state.hosts[index] = object->cenobj;
+                const auto cls = object->typeclass();
+                if (performance_enabled(8)) state.classes[index] = cls;
+                if (cls == class_planet || cls == class_moon) state.systems[object->cenobj].push_back(index);
+                else state.other.push_back(index);
+            }
+            state.array = cels;
+            state.count = ncelobjs;
+            state.dirty = false;
+            state.initialize_projection = true;
+        }
+        state.active.clear();
+        const auto include_system = [&](const CelestialObject* root)
+        {
+            const auto found = state.systems.find(root);
+            if (found != state.systems.end())
+                for (int index : found->second) if (!cels[index]->deleted) state.active.insert(index);
+        };
+        include_system(mycenobj);
+        for (int index : {whereami, selected, trackidx, editidx})
+        {
+            if (index < 0 || index >= ncelobjs || !cels[index] || cels[index]->deleted) continue;
+            const auto* target = cels[index];
+            const auto cls = target->typeclass();
+            if (cls == class_planet || cls == class_moon) state.active.insert(index);
+            const auto* root = target->cenobj ? target->cenobj : target;
+            if (cls == class_planet || cls == class_moon) include_system(root);
+            else if (cls == class_star && zoom > 1)
+            {
+                const auto found = state.systems.find(root);
+                if (found == state.systems.end()) continue;
+                const double distance = CelestialLocation(root->location).distance_to(here);
+                for (int child : found->second)
+                {
+                    if (cels[child]->deleted || !cels[child]->cenobj || state.active.count(child)) continue;
+                    double extent = 0;
+                    const CelestialObject* cursor = cels[child];
+                    for (int depth = 0; cursor && cursor->orbit && depth < 32; ++depth)
+                    {
+                        extent += cursor->orbit->semimajor_axis * (1 + cursor->orbit->eccentricity);
+                        cursor = cursor->orbit->center;
+                        if (cursor && cursor->typeclass() == class_star) break;
+                    }
+                    if (extent * zoom * dispcx >= std::max(1.0, distance)) state.active.insert(child);
+                }
+            }
+        }
+        auto& worlds = state.worlds;
+        worlds.assign(state.active.begin(), state.active.end());
+        std::sort(worlds.begin(), worlds.end());
+        state.candidates.clear();
+        state.candidates.reserve(state.other.size() + worlds.size());
+        std::merge(state.other.begin(), state.other.end(), worlds.begin(), worlds.end(),
+            std::back_inserter(state.candidates));
+        if (!performance_enabled(2)) state.candidates = state.all;
+        state.context = frame_context();
+        state.prepared = true;
+        state.published = false;
+    }
+    void reset_projection(int index, CelestialObject* object)
+    {
+        if (vmag_cache) vmag_cache[index] = 999;
+        object->drawnx = object->drawnxmin = object->drawnxmax
+            = object->drawny = object->drawnymin = object->drawnymax = -1e9;
+        object->onscreen = object->label_shown = false;
+    }
+}
+
+void invalidate_frame_objects()
+{
+    frame_objects().dirty = true;
+}
+
+const std::vector<int>& frame_object_candidates()
+{
+    if (!frame_matches()) prepare_frame_objects();
+    return frame_objects().candidates;
+}
+
+const std::vector<int>& frame_active_world_candidates()
+{
+    if (!frame_matches()) prepare_frame_objects();
+    return frame_objects().worlds;
+}
+
+const std::vector<int>& frame_draw_candidates()
+{
+    const auto& fallback = frame_object_candidates();
+    return performance_enabled(5) && frame_objects().published ? frame_objects().projected : fallback;
+}
+
+const std::vector<int>& frame_orbit_candidates()
+{
+    const auto& fallback = frame_object_candidates();
+    const auto& state = frame_objects();
+    return performance_enabled(68) && state.published && state.orbits_ready ? state.orbits : fallback;
+}
+
+const std::vector<int>& frame_bright_candidates()
+{
+    const auto& fallback = frame_object_candidates();
+    return performance_enabled(5) && frame_objects().published ? frame_objects().bright : fallback;
+}
+
+bool picking_cpu_reference = false;
+
+const std::vector<int>& frame_pick_candidates()
+{
+    const auto& candidates = performance_enabled(73) && !picking_cpu_reference
+        ? frame_draw_candidates() : frame_object_candidates();
+    return view_mode == vm_system || view_mode == vm_sunclock ? frame_objects().all : candidates;
+}
+
+bool planetary_system_is_active(const CelestialObject* cel)
+{
+    const cel_obj_class cls = cel->typeclass();
+    if (cls != class_planet && cls != class_moon) return true;
+    if (performance_enabled(1) && frame_matches() && cel->seqno >= 0 && cel->seqno < ncelobjs
+        && cels[cel->seqno] == cel
+        && frame_objects().hosts[cel->seqno] == cel->cenobj)
+        return frame_objects().active.count(cel->seqno) != 0;
+    if (cel->cenobj == mycenobj) return true;
+    for (int index : {whereami, selected, trackidx, editidx})
+    {
+        if (index < 0 || index >= ncelobjs || !cels[index] || cels[index]->deleted) continue;
+        const CelestialObject* target = cels[index];
+        if (target == cel) return true;
+        const CelestialObject* target_system = target->cenobj ? target->cenobj : target;
+        if (!cel->cenobj || target_system != cel->cenobj) continue;
+        if (target->typeclass() == class_planet || target->typeclass() == class_moon) return true;
+        if (target->typeclass() != class_star || !(zoom > 1)) continue;
+        // A selected/ tracked stellar system becomes relevant when its orbits resolve on screen.
+        double extent = 0;
+        const CelestialObject* cursor = cel;
+        for (int depth = 0; cursor && cursor->orbit && depth < 32; ++depth)
+        {
+            extent += cursor->orbit->semimajor_axis*(1+cursor->orbit->eccentricity);
+            cursor = cursor->orbit->center;
+            if (cursor && cursor->typeclass() == class_star) break;
+        }
+        const double distance = cel->cenobj->location.distance_to(here);
+        if (extent*zoom*dispcx >= std::max(1.0, distance)) return true;
+    }
+    return false;
+}
+
+bool compute_object_location(CelestialObject* cel, bool* relative_valid)
+{
+    const auto mark_relative = [&](bool valid)
+    {
+        if (performance_enabled(13) && relative_valid) *relative_valid = valid;
+    };
+    mark_relative(false);
+    if (!frame_location_pass && cel->typeclass() == class_planet)
+        static_cast<Planet*>(cel)->refresh_host_statistics_if_changed();
+    if (!planetary_system_is_active(cel))
+    {
+        cel->drawnx = cel->drawny = -1e9;
+        return false;
+    }
     bool star_in_box;
     int i = cel->seqno;
     const bool system_object = view_mode == vm_system && mycenobj &&
@@ -196,6 +558,7 @@ bool compute_object_location(CelestialObject* cel)
 
     CelestialLocation tmp = cel->location - here;
     cel->tmprel = Point(tmp);
+    mark_relative(true);
     double viewer_distance = cel->tmprel.magnitude();
     double light_travel_time = system_object ? 0 : viewer_distance / speed_of_light;
     double AU_zoomed_squared = AU*AU*zoom*zoom;
@@ -244,9 +607,11 @@ bool compute_object_location(CelestialObject* cel)
             }
         }
 
+        mark_relative(false);
         if (!update_stellar_lineage(static_cast<Star*>(cel), simnow, simnow - light_travel_time)) return false;
         tmp = cel->location - here;
         cel->tmprel = Point(tmp);
+        mark_relative(true);
         if (!system_object && i > 0 && whereami >= 0 && cel->tmprel.magnitude() < cels[whereami]->volumetric_mean_radius)
         {
             cel->drawnx = cel->drawny = -1e9;
@@ -255,17 +620,11 @@ bool compute_object_location(CelestialObject* cel)
         break;
 
         case class_planet:
-        static_cast<Planet*>(cel)->sync_host_statistics();
         if (i > 0)
         {
             if (!system_object && i!=selected && i!=trackidx && i!=editidx && i!=whereami)
             {
-                if (cel->cenobj!=mycenobj)
-                {
-                    cel->drawnx = cel->drawny = -1e9;
-                    return false;
-                }
-                else if (cel->orbit &&
+                if (cel->cenobj == mycenobj && cel->orbit &&
                     (
                         ((cel->mass < celmasslim)
                         && (cel->tmprel.squared_magnitude() > AU_zoomed_squared)
@@ -283,6 +642,7 @@ bool compute_object_location(CelestialObject* cel)
                 }
             }
         }
+        mark_relative(false);
         ((Planet*)cel)->update_location(simnow - light_travel_time);
         break;
 
@@ -291,12 +651,7 @@ bool compute_object_location(CelestialObject* cel)
         {
             if (!system_object && i!=selected && i!=trackidx && i!=editidx && i!=whereami)
             {
-                if (cel->cenobj!=mycenobj)
-                {
-                    cel->drawnx = cel->drawny = -1e9;
-                    return false;
-                }
-                else if (cel->orbit &&
+                if (cel->cenobj == mycenobj && cel->orbit &&
                     (
                             ((cel->mass >= celmasslim)
                         && (cel->tmprel.squared_magnitude() > AU_zoomed_squared)
@@ -310,14 +665,17 @@ bool compute_object_location(CelestialObject* cel)
                 }
             }
         }
+        mark_relative(false);
         ((Moon*)cel)->update_location(simnow - light_travel_time);
         break;
 
         case class_comet:
+        mark_relative(false);
         ((Comet*)cel)->update_location(simnow - light_travel_time);
         break;
 
         case class_satellite:
+        mark_relative(false);
         ((Satellite*)cel)->update_location(simnow - light_travel_time);
 
         default:
@@ -331,6 +689,24 @@ void compute_object_draw_coordinates()
 {
     num_stars_in_box = 0;
     if (!ncelobjs) return;
+    StellarUpdateFrame update_frame;
+    struct LocationPass
+    {
+        bool saved = frame_location_pass;
+        LocationPass() { frame_location_pass = true; }
+        ~LocationPass() { frame_location_pass = saved; }
+    } location_pass;
+    Planet::reconcile_host_statistics();
+    if (!performance_enabled(4))
+    {
+        for (int index = 0; index < ncelobjs; ++index)
+        {
+            if (cels[index] && !cels[index]->deleted && cels[index]->typeclass() == class_planet)
+                static_cast<Planet*>(cels[index])->refresh_host_statistics_if_changed();
+        }
+    }
+    auto& objects = frame_objects();
+    objects.prepared = objects.published = false;
 
     if (redo_proper_motions)
     {
@@ -348,7 +724,6 @@ void compute_object_draw_coordinates()
     disph = dispcy*2;
     celmasslim = lbllsys_mass_lim * 1000;
 
-    refresh_eclipse_casters();
     eclipsed_light = nullptr;
     eclipsed_fraction = 0;
     if (whereami >= 0) mycenobj = cels[whereami]->cenobj;
@@ -379,13 +754,28 @@ void compute_object_draw_coordinates()
 
     if (redo_proper_motions) refresh_star_visibilities();
 
-    for (i=0; cels[i] && i<MAX_CELOBJS; i++)
+    prepare_frame_objects();
+    if (objects.initialize_projection)
     {
+        for (int index : objects.all) reset_projection(index, cels[index]);
+        objects.initialize_projection = false;
+    }
+    CelestialObject* initial_center = mycenobj;
+    for (int index : objects.candidates)
+    {
+        i = index;
         if (cels[i]->deleted) continue;
-        if (!compute_object_location(cels[i])) continue;
+        bool relative_valid = false;
+        const bool updated = compute_object_location(cels[i], performance_enabled(13) ? &relative_valid : nullptr);
+        const bool cached_visible_star = (performance_enabled(8) ? objects.classes[i] : cels[i]->typeclass()) == class_star &&
+            static_cast<Star*>(cels[i])->tmp_vis_flag;
+        if (!updated && !cached_visible_star) continue;
 
-        CelestialLocation tmp = cels[i]->location - here;
-        cels[i]->tmprel = Point(tmp);                           // fix race condition: tmprel must come AFTER tmp, not before.
+        if (!relative_valid)
+        {
+            CelestialLocation tmp = cels[i]->location - here;
+            cels[i]->tmprel = Point(tmp);
+        }
 
         // If entering a new star system, change allegiance to new center object.
         if (whereami < 0 && cels[i]->type == star
@@ -395,17 +785,31 @@ void compute_object_draw_coordinates()
             && cels[i]->tmprel.squared_magnitude() < mycenobj_distsq)
         {
             mycenobj = cels[i]->cenobj;
-            CelestialLocation was_here = here;
-            here.galactic_center = cels[i]->location.galactic_center;           // TODO:
-            here.system_center = cels[i]->location.system_center;
-            here.local_position = Point(was_here) - here.system_center;
+            mycenobj_distsq = cels[i]->tmprel.squared_magnitude();
+            mycenobj_dist = sqrt(mycenobj_distsq);
+            here.rebase_system(mycenobj->location);
         }
     }
 
+    if (initial_center != mycenobj)
+    {
+        prepare_frame_objects();
+        for (int index : objects.candidates)
+        {
+            const auto cls = (performance_enabled(8) ? objects.classes[index] : cels[index]->typeclass());
+            if (!cels[index]->deleted && (cls == class_planet || cls == class_moon))
+                compute_object_location(cels[index]);
+        }
+    }
+    Planet::reconcile_host_statistics();
     if (mycenobj)
     {
-        here.system_center = mycenobj->location.system_center;
-        here.galactic_center = mycenobj->location.galactic_center;
+        if (whereami < 0) here.rebase_system(mycenobj->location);
+        else
+        {
+            here.system_center = mycenobj->location.system_center;
+            here.galactic_center = mycenobj->location.galactic_center;
+        }
 
         static CelestialObject *llmycen = nullptr;
         if (llmycen != mycenobj)
@@ -431,6 +835,8 @@ void compute_object_draw_coordinates()
         }
     }
 
+    if (!frame_matches()) prepare_frame_objects();
+    refresh_eclipse_casters();
     set_viewer_location_and_plane();
     if (trackidx >= 0) center_tracked();
 
@@ -438,18 +844,30 @@ void compute_object_draw_coordinates()
 
     luminous_flux = cels[1] ? 0 : 1e10;
     inside_galaxy_idx = -1;
-    for (i=0; cels[i] && i<MAX_CELOBJS; i++)
+    if (!performance_enabled(3)) for (int index : objects.all) reset_projection(index, cels[index]);
+    if (performance_enabled(3)) for (const auto& entry : objects.previous)
     {
-
-        vmag_cache[i] = 999;                    // in case we bail early, so coming back into view later doesn't flare way too bright
+        if (entry.first >= 0 && entry.first < ncelobjs && cels[entry.first] == entry.second)
+            reset_projection(entry.first, entry.second);
+    }
+    objects.previous.clear();
+    objects.projected.clear();
+    objects.bright.clear();
+    const bool collect_orbits = performance_enabled(68) && show_orbits && show_localsys;
+    objects.orbits_ready = collect_orbits;
+    if (collect_orbits) objects.orbits.clear();
+    for (int index : objects.candidates)
+    {
+        i = index;
         if (cels[i]->deleted) continue;
-        cels[i]->drawnx = cels[i]->drawnxmin = cels[i]->drawnxmax
-            = cels[i]->drawny = cels[i]->drawnymin = cels[i]->drawnymax = -1e9;
+        // Orbit lines can remain visible when their bodies fail later projection filters.
+        if (collect_orbits && cels[i]->orbit) objects.orbits.push_back(i);
+        if (!performance_enabled(2) && !planetary_system_is_active(cels[i])) continue;
         if (isnan(cels[i]->tmprel.x)) continue;
         
         // From inside a galaxy's disc, it won't do to merely project an ellipse. We wrap a band all the way round with draw_galaxy_band() instead,
         // and this is where it decides. The margin lets the band take over a little sooner, when the galaxy fills most of the view.
-        if (cels[i]->typeclass() == class_galaxy)
+        if ((performance_enabled(8) ? objects.classes[i] : cels[i]->typeclass()) == class_galaxy)
         {
             double gr = cels[i]->distance * ((Galaxy*)cels[i])->angular_diameter * 0.5;
             if (gr > 0 && cels[i]->tmprel.squared_magnitude() < gr * gr * 1.44)
@@ -460,7 +878,7 @@ void compute_object_draw_coordinates()
         
         // A galaxy's cenobj is itself. Galaxies get their own visibility test further down, on apparent magnitude, the same way
         // a star out of its visible box would.
-        if (cels[i]->typeclass() == class_star)
+        if ((performance_enabled(8) ? objects.classes[i] : cels[i]->typeclass()) == class_star)
         {
             Star* cels_i_star = ((Star*)cels[i]);
 
@@ -475,6 +893,9 @@ void compute_object_draw_coordinates()
             }
         }
 
+        if (performance_enabled(3)) reset_projection(i, cels[i]);
+        if (performance_enabled(3)) objects.previous.emplace_back(i, cels[i]);
+        objects.projected.push_back(i);
         Point rel = cels[i]->tmprel;
         double relm = rel.magnitude();
 
@@ -491,7 +912,7 @@ void compute_object_draw_coordinates()
 
         rel = to_viewer_plane(rel);
 
-        cel_obj_class icls = cels[i]->typeclass();
+        cel_obj_class icls = (performance_enabled(8) ? objects.classes[i] : cels[i]->typeclass());
         if (icls == class_planet || icls == class_moon)
         {
             vmag_cache[i] = ((Planet*)cels[i])->viewer_reflectance_magnitude(here);
@@ -502,6 +923,7 @@ void compute_object_draw_coordinates()
         else if (icls == class_comet) vmag_cache[i] = ((Comet*)cels[i])->viewer_comet_magnitude(here);
         else vmag_cache[i] = cels[i]->viewer_magnitude(here);
 
+        if (!(vmag_cache[i] > -1.5)) objects.bright.push_back(i);
         double brght;
 
         if (view_mode == vm_horizon)
@@ -557,6 +979,9 @@ void compute_object_draw_coordinates()
         if (dy < 0 || dy >= disph) continue;
     }
 
+    objects.context = frame_context();
+    objects.published = true;
+    Planet::reconcile_host_statistics();
     redo_proper_motions = false;
 }
 
@@ -674,7 +1099,7 @@ void set_center_objects()
         {
             Star *s = (Star*)cels[i];
             s->update_location(simnow);
-            if (s->orbit && s->orbit->center && s->orbit->center->typeclass() == class_star &&
+            if (!s->fictional_origin.is_object() && s->orbit && s->orbit->center && s->orbit->center->typeclass() == class_star &&
                 std::isfinite(s->apparent_magnitude) && s->apparent_magnitude >= -40 && s->apparent_magnitude < 99)
             {
                 // Bound companions use the adopted system distance, rather than an independent
@@ -736,6 +1161,7 @@ void set_center_objects()
         if (cels[i]->orbit && cels[i]->orbit->center) cels[i]->origcenname = cels[i]->orbit->center->name;
     }
 
+    invalidate_frame_objects();
     Planet::rebuild_host_statistics();
     ((Star*)cels[0])->make_universally_visible();
 

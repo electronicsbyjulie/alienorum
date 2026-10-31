@@ -2,6 +2,7 @@
 #ifndef _Visuals
 #define _Visuals
 
+#include "performance_options.h"
 #include "globals.h"
 
 #define bloom_exponent 2.5
@@ -78,9 +79,31 @@
 #ifndef distant_biome_pixel_sampling
 #define distant_biome_pixel_sampling 1    // Set to 0 to restore adaptive sampling near the horizon.
 #endif
+extern bool horizon_terrain_cpu_reference;
+extern bool horizon_background_cpu_reference;
+extern bool scenery_cpu_reference;
+extern bool water_cpu_reference;
+struct HorizonWaterStats
+{
+    unsigned int geometry_builds = 0, bounds_builds = 0, samples = 0;
+    unsigned int clipped_points = 0, land_points = 0, uniform_water_points = 0, color_misses = 0;
+};
+const HorizonWaterStats& horizon_water_stats();
+struct HorizonTerrainLodStats
+{
+    unsigned int patches = 0, accepted_patches = 0, triangles_removed = 0, horizon_segments_removed = 0;
+};
+const HorizonTerrainLodStats& horizon_terrain_lod_stats();
+size_t prefetch_surface_tiles(double milliseconds);
+bool surface_prefetch_pending();
+size_t local_surface_tile_sample_count();
+size_t scenery_projection_cache_hits();
 
 struct RockInstance
 {
+    #if PERF_P043
+    size_t scenery_index;
+    #endif
     bool crown_hidden;
     double dist;
     double ground_dist;
@@ -121,6 +144,7 @@ void draw_objects();
 void draw_system_view();
 void draw_sunclock();
 void find_horizon();
+float horizon_background_clip_y();
 void draw_local_rings();
 void draw_horizon();
 void draw_sky_gradient();
@@ -128,7 +152,7 @@ void draw_cons_lines();
 void draw_cached_labels();
 void draw_mouse_cursor(ImGuiIO &io);
 
-void draw_cloudy_sky();
+bool draw_cloudy_sky();
 
 // Unlinking the universe (the star-collision branch of draw_sphere()) hands the objects to the
 // first of these; the second actually frees them, and has to be called once a frame from the main

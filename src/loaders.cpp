@@ -1,3 +1,5 @@
+#include "catalog_lock_trace.h"
+#include "performance_options.h"
 
 #include "loaders.h"
 #include "housekeeping.h"
@@ -6,6 +8,11 @@
 #include <unordered_map>
 #include <string_view>
 #include <condition_variable>
+#include <deque>
+#include <thread>
+#include <algorithm>
+#include <exception>
+#include <memory>
 
 using namespace alienorum;
 
@@ -27,6 +34,81 @@ namespace
         }
     };
 
+    class TextureWorkerPool
+    {
+        std::condition_variable available;
+        std::deque<std::function<void()>> tasks;
+        std::vector<std::thread> workers;
+        bool stopping = false;
+
+        void run()
+        {
+            while (true)
+            {
+                std::function<void()> task;
+                {
+                    std::unique_lock<std::mutex> lock(texture_tasks_mutex);
+                    available.wait(lock, [&]() { return stopping || !tasks.empty(); });
+                    if (tasks.empty() && stopping) return;
+                    task = std::move(tasks.front());
+                    tasks.pop_front();
+                }
+                TextureLoadTicket ticket;
+                try
+                {
+                    task();
+                }
+                catch (const std::exception& error)
+                {
+                    std::cerr << "Texture task failed: " << error.what() << std::endl;
+                }
+                catch (...)
+                {
+                    std::cerr << "Texture task failed with an unknown exception." << std::endl;
+                }
+                task = {};
+            }
+        }
+
+        public:
+        ~TextureWorkerPool()
+        {
+            {
+                std::lock_guard<std::mutex> lock(texture_tasks_mutex);
+                stopping = true;
+                available.notify_all();
+            }
+            for (auto& worker : workers) worker.join();
+        }
+
+        bool submit(std::function<void()> task)
+        {
+            std::lock_guard<std::mutex> lock(texture_tasks_mutex);
+            if (stopping || abort_load.load()) return false;
+            if (workers.empty())
+            {
+                const unsigned limit = std::max(1u, std::min(4u, std::thread::hardware_concurrency()/2));
+                workers.reserve(limit);
+                for (unsigned index = 0; index < limit; ++index)
+                {
+                    try
+                    {
+                        workers.emplace_back([this]() { run(); });
+                    }
+                    catch (...)
+                    {
+                        if (workers.empty()) throw;
+                        break;
+                    }
+                }
+            }
+            tasks.push_back(std::move(task));
+            ++texture_loads_pending;
+            available.notify_one();
+            return true;
+        }
+    };
+
     struct BatchSatTicket
     {
         ~BatchSatTicket() { batch_sats_running = false; }
@@ -35,31 +117,89 @@ namespace
 
 bool spawn_texture_task(std::function<void()> task)
 {
-    std::lock_guard<std::mutex> lock(texture_tasks_mutex);
-    if (abort_load.load()) return false;
-    texture_loads_pending++;
-    try
-    {
-        std::thread([task = std::move(task)]() mutable
-        {
-            TextureLoadTicket ticket;
-            task();
-            task = {};
-        }).detach();
-    }
-    catch (...)
-    {
-        texture_loads_pending--;
-        texture_tasks_finished.notify_all();
-        throw;
-    }
-    return true;
+    static TextureWorkerPool pool;
+    return pool.submit(std::move(task));
 }
 
 void wait_for_texture_tasks()
 {
     std::unique_lock<std::mutex> lock(texture_tasks_mutex);
     texture_tasks_finished.wait(lock, []() { return texture_loads_pending.load() == 0; });
+}
+
+// Called under the catalog lock on the rendering thread.
+void refresh_earth_clouds()
+{
+    struct RefreshState
+    {
+        std::mutex mutex;
+        bool active = false;
+        std::unique_ptr<Map> ready;
+        std::chrono::steady_clock::time_point next{};
+    };
+    static RefreshState state;
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (state.active || abort_load.load()) return;
+    if (texture_loads_pending.load() != 0) return;
+
+    const auto now = std::chrono::steady_clock::now();
+    if (!state.ready && now < state.next) return;
+    Planet* earth = nullptr;
+    for (int i = 0; cels[i]; ++i)
+    {
+        if (!cels[i]->deleted && cels[i]->typeclass() == class_planet && !strcmp(cels[i]->name, "Earth"))
+        {
+            earth = static_cast<Planet*>(cels[i]);
+            break;
+        }
+    }
+    if (!earth)
+    {
+        state.next = now + std::chrono::seconds(30);
+        return;
+    }
+    if (state.ready)
+    {
+        state.ready->set_owner(earth);
+        delete earth->cloud_map;
+        earth->cloud_map = state.ready.release();
+        earth->has_real_maps = true;
+        viewchanged = true;
+    }
+    if (now < state.next) return;
+    state.next = now + std::chrono::seconds(30);
+    if (radio_silence || earth->static_clouds || earth->cloud_map_url.empty()) return;
+    const auto url = earth->cloud_map_url;
+    const bool png = url.size() >= 4 && !strcasecmp(url.substr(url.size() - 4).c_str(), ".png");
+    const std::string path = std::string("maps") + _FSSTR + "Earth_clouds" + (png ? ".png" : ".jpg");
+    state.active = true;
+    try
+    {
+        if (!spawn_texture_task([url, path, png, earth]()
+        {
+            std::unique_ptr<Map> map;
+            try
+            {
+                if (check_and_download_clouds(url, path))
+                {
+                    map = std::make_unique<Map>(earth);
+                    const bool loaded = png ? map->load_from_png(path) : map->load_from_jpeg(path);
+                    if (!loaded || !map->is_complete()) map.reset();
+                }
+            }
+            catch (...)
+            {
+                map.reset();
+            }
+            std::lock_guard<std::mutex> result_guard(state.mutex);
+            state.ready = std::move(map);
+            state.active = false;
+        })) state.active = false;
+    }
+    catch (...)
+    {
+        state.active = false;
+    }
 }
 
 void spawn_texture_load(CelestialObject *cel)
@@ -528,33 +668,25 @@ bool look_for_catalogs()
     return catalogs_found;
 }
 
-bool save_universe()
+bool save_universe(bool show_progress)
 {
-    fstream fs;
-    fs.open("universe.json", std::ios::out);
-    if (fs)
-    {
-        if (!Serialization::save_all(fs, cels, true)) std::cerr << "FAILED to save universe file." << std::endl;
-        fs.close();
-        return true;
-    }
-    else std::cerr << "FAILED to write universe file." << std::endl;
-    return false;
+    alienorum::CatalogLock lock(catalog_mutex);
+    const bool ok = Serialization::save_region_files("universe.json", cels, true, performance_enabled(94), show_progress);
+    if (!ok) std::cerr << "FAILED to save universe file." << std::endl;
+    return ok;
 }
 
 bool load_universe(std::string universe_fname)          // default is on the declaration, in loaders.h
 {
+    Serialization::finish_file_saves();
     int i;
-    fstream fs;
-    fs.open(universe_fname.c_str(), std::ios::in);
-    if (fs)
+    if (file_exists(universe_fname.c_str()))
     {
         mtx.lock();
         loading_msg = "Loading Universe file...";
         mtx.unlock();
-        if (Serialization::load_all(fs, cels, MAX_CELOBJS))
+        if (Serialization::load_file(universe_fname, cels, MAX_CELOBJS))
         {
-            fs.close();
             CatalogReader::apply_local_catalog_metadata(cels);
             for (i=0; cels[i]; i++) if (cels[i]->home_world)
             {
@@ -583,7 +715,6 @@ bool load_universe(std::string universe_fname)          // default is on the dec
         }
         else
         {
-            fs.close();
             return false;
         }
     }
@@ -812,7 +943,8 @@ void load_catalogs()
     if (!magnitude_test)                    // If magnitude test, cut out all the slow loading stuff and streamline.
     {
         #if _USE_CCDM
-        if (have_CCDM)
+        // Companion links, positions, and orbital elements are restored from the in-house catalog.
+        if (have_CCDM && !ihsc)
         {
             mtx.lock();
             loading_msg = std::string("Loading Catalogue of the Components of Double and Multiple Stars...");
@@ -1803,10 +1935,10 @@ void load_exoplanets_worker()
         int nexo = cr.load_exoplanets_from_tap();
         if (!nexo)
         {
-            std::lock_guard<std::recursive_mutex> catalog_lock(catalog_mutex);
+            alienorum::CatalogLock catalog_lock(catalog_mutex);
             nexo = cr.read_exoplanets_catalog(cels, MAX_CELOBJS);
         }
-        std::lock_guard<std::recursive_mutex> catalog_lock(catalog_mutex);
+        alienorum::CatalogLock catalog_lock(catalog_mutex);
         if (nexo)
         {
             have_exo = true;

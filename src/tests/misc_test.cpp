@@ -1121,3 +1121,43 @@ TEST(NoiseTest, RidgedFbmIsBoundedAndRepeatable)
         EXPECT_LE(std::fabs(v), 4.0) << " at " << x;
     }
 }
+
+TEST(SurfaceSceneryCacheTest, RearChunksPreserveFrontCandidatesAndExactWalkingTransforms)
+{
+    SurfaceSceneryCache cache;
+    const double radius = 6371000;
+    const auto initial = cache.update(radius, .3, _pi, 1000, 12, 42, false);
+    const auto generation = cache.generation();
+    for (int step = 0; step < 8; ++step)
+    {
+        const double lat = .3 + step * .5 / radius, lon = _pi + step * .3 / radius;
+        const auto& objects = cache.update(radius, lat, lon, 1000, 12, 42, false);
+        ASSERT_EQ(cache.generation(), generation);
+        ASSERT_EQ(objects.size(), initial.size());
+        const auto visible = cache.visible(0, 0, -10, 100);
+        EXPECT_LT(visible.size(), objects.size());
+        const auto all = cache.visible(0, 0, -10, 100, true);
+        std::vector<bool> included(objects.size(), false);
+        for (size_t i : visible) included[i] = true;
+        for (size_t i : all)
+        {
+            EXPECT_EQ(objects[i].position, initial[i].position);
+            if (objects[i].north >= 0)
+            {
+                EXPECT_TRUE(included[i]);
+            }
+            const double observer[] = {cos(lat) * cos(lon), cos(lat) * sin(lon), sin(lat)};
+            const double east[] = {-sin(lon), cos(lon), 0};
+            const double north[] = {-sin(lat) * cos(lon), -sin(lat) * sin(lon), cos(lat)};
+            double expected_east = 0, expected_north = 0;
+            for (int axis = 0; axis < 3; ++axis)
+            {
+                const double offset = radius * (objects[i].position[axis] - observer[axis]);
+                expected_east += offset * east[axis];
+                expected_north += offset * north[axis];
+            }
+            EXPECT_DOUBLE_EQ(objects[i].east, expected_east);
+            EXPECT_DOUBLE_EQ(objects[i].north, expected_north);
+        }
+    }
+}

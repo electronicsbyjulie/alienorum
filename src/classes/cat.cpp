@@ -1,3 +1,4 @@
+#include "../catalog_lock_trace.h"
 
 #include <string>
 #include <vector>
@@ -1021,7 +1022,7 @@ bool CatalogReader::load_Hipparcos_orbit_line(const char* buffer, CelestialObjec
     s->equinox = 0;
 
     s->distance_known = true;
-    s->apparent_magnitude = 11;         // placeholder
+    // Orbital elements supply no visual photometry; preserve measured or unknown V.
     if (s->absolute_magnitude > 1e28)
     {
         s->absolute_magnitude = A->absolute_magnitude + 1;      // garbage number
@@ -3766,7 +3767,7 @@ void CatalogReader::reconcile_exoplanet_inclinations(
 void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>& planet_celids,
     const ExactStarSearchIndex *lookup)
 {
-    std::lock_guard<std::recursive_mutex> catalog_lock(catalog_mutex);
+    alienorum::CatalogLock catalog_lock(catalog_mutex);
     std::unique_ptr<ExactStarSearchIndex> local_lookup;
     if (!lookup)
     {
@@ -4936,7 +4937,7 @@ static void apply_rotation_fallback(Star* object, CelestialObject* observer)
 
 int CatalogReader::read_stellar_rotation_catalog(CelestialObject** objects)
 {
-    std::lock_guard<std::recursive_mutex> catalog_lock(catalog_mutex);
+    alienorum::CatalogLock catalog_lock(catalog_mutex);
     std::ifstream input("catalogs/StellarRotation/catalog.dat");
     if (!input || !objects || !objects[0]) return 0;
     // Wright et al. 2011, CDS J/ApJ/743/48: enrich exact, unambiguous identities only.
@@ -5073,7 +5074,7 @@ static void calibrate_stellar_system_photometry(const json& system, const std::m
 
 int CatalogReader::read_stellar_systems(CelestialObject** objects)
 {
-    std::lock_guard<std::recursive_mutex> catalog_lock(catalog_mutex);
+    alienorum::CatalogLock catalog_lock(catalog_mutex);
     const json catalog = stellar_system_catalog();
     if (!catalog.contains("systems")) return 0;
     int count = 0;
@@ -5233,7 +5234,7 @@ int CatalogReader::read_stellar_systems(CelestialObject** objects)
 
 int CatalogReader::read_star_orbits_dat(CelestialObject **cels, int first_host)
 {
-    std::lock_guard<std::recursive_mutex> catalog_lock(catalog_mutex);
+    alienorum::CatalogLock catalog_lock(catalog_mutex);
     if (!first_host) read_stellar_systems(cels);
     std::string path = "catalogs" _FILESLASH "star_orbits.dat";
     char buffer[1024];
@@ -6035,6 +6036,12 @@ static std::string baked_star_link_key(const json& key)
 
 void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
 {
+    if (s->fictional_origin.is_object()) return;
+    fputs(format_condensed_star_line(s).c_str(), fp);
+}
+
+std::string alienorum::CatalogReader::format_condensed_star_line(Star* s, bool extensions)
+{
     // These one-based ranges match read_condensed_star_cat(); SC2 fixes the metadata tail too.
     std::string line(655, ' ');
     const auto put = [&](size_t first, size_t last, const std::string &value)
@@ -6134,9 +6141,18 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
     put(558, 560, std::to_string(s->wd_color_red));
     put(562, 564, std::to_string(s->wd_color_green));
     put(566, 568, std::to_string(s->wd_color_blue));
-    put(570, 601, s->wd_color_source);
-    put(603, 634, s->wd_temperature_source);
+    const auto provenance_column = [extensions](const std::string& value)
+    {
+        if (extensions || value.size() <= 32) return value;
+        size_t end = 32;
+        while (end && (static_cast<unsigned char>(value[end]) & 0xc0) == 0x80) --end;
+        return value.substr(0, end);
+    };
+    // User catalogs preserve complete provenance in their exact-state extension.
+    put(570, 601, provenance_column(s->wd_color_source));
+    put(603, 634, provenance_column(s->wd_temperature_source));
     put(636, 655, std::to_string(s->wd_color_revision));
+    if (!extensions) return line;
     const auto link_key = [](const Star* object)
     {
         if (cels && object->seqno >= 0 && object->seqno < MAX_CELOBJS && cels[object->seqno] == object)
@@ -6214,7 +6230,7 @@ void alienorum::CatalogReader::write_condensed_star_cat_line(FILE *fp, Star *s)
         line += aliases.str();
     }
     line += '\n';
-    fputs(line.c_str(), fp);
+    return line;
 }
 
 int alienorum::CatalogReader::write_condensed_star_cat(ConsBins cb)
@@ -6226,7 +6242,14 @@ int alienorum::CatalogReader::write_condensed_star_cat(ConsBins cb)
     if (fp)
     {
         fprintf(fp, "# ORBITS1 %s\n", star_orbits_signature().c_str());
-        write_condensed_star_cat_line(fp, (Star*)cels[0]);
+        std::unordered_set<Star*> recorded;
+        const auto record = [&](Star* object)
+        {
+            if (!object || object->fictional_origin.is_object() || !recorded.insert(object).second) return;
+            write_condensed_star_cat_line(fp, object);
+            ++written;
+        };
+        record(static_cast<Star*>(cels[0]));
 
         for (const auto& [cs, val1] : cb)
         {
@@ -6242,10 +6265,10 @@ int alienorum::CatalogReader::write_condensed_star_cat(ConsBins cb)
                             for (c = 'A'; c <= 'Z'; c++)
                             {
                                 Star *B = val3[i]->multisys->get_member(c);
-                                if (B && B->get_component() == c) write_condensed_star_cat_line(fp, B);
+                                if (B && B->get_component() == c) record(B);
                             }
                         }
-                        else write_condensed_star_cat_line(fp, val3[i]);
+                        else record(val3[i]);
 
                         if (frand(0,1) < 0.1)
                         {
@@ -6260,6 +6283,11 @@ int alienorum::CatalogReader::write_condensed_star_cat(ConsBins cb)
             }
         }
 
+        // Keep stars outside the numbered bins or the current component slots too.
+        for (int index = 0; cels[index]; ++index)
+        {
+            if (cels[index]->typeclass() == class_star) record(static_cast<Star*>(cels[index]));
+        }
         fclose(fp);
 
         #ifndef _WIN32
@@ -7742,7 +7770,7 @@ Star* CatalogReader::resolve_saved_host(const std::string& name, unsigned int ma
 Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_starsonly, bool* was_new,
     ExactStarSearchIndex *lookup)
 {
-    std::lock_guard<std::recursive_mutex> catalog_lock(catalog_mutex);
+    alienorum::CatalogLock catalog_lock(catalog_mutex);
     *was_new = false;
     std::string hostname = row.hostname;
     // Resolve identities through source identifiers and the shared catalog index.
@@ -8078,7 +8106,7 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
 
 bool CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, std::map<int, std::vector<int>>& planet_celids, unsigned int& result)
 {
-    std::lock_guard<std::recursive_mutex> catalog_lock(catalog_mutex);
+    alienorum::CatalogLock catalog_lock(catalog_mutex);
     // 2. Instantiate and fill target Planet properties
     Planet* new_planet = new Planet();
     new_planet->catalog_designation = row.pl_name;
@@ -8801,7 +8829,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
     static bool loaded_starsonly = false;
     ExactStarSearchIndex host_lookup = []()
     {
-        std::lock_guard<std::recursive_mutex> catalog_lock(catalog_mutex);
+        alienorum::CatalogLock catalog_lock(catalog_mutex);
         return ExactStarSearchIndex();
     }();
 
@@ -8872,7 +8900,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
 
             while (exorow_read_line(fp, row))
             {
-                std::lock_guard<std::recursive_mutex> catalog_lock(catalog_mutex);
+                alienorum::CatalogLock catalog_lock(catalog_mutex);
                 if (abort_load)
                 {
                     break;
@@ -9445,7 +9473,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
 
     for (const auto& jrow : planets_array)
     {
-        std::lock_guard<std::recursive_mutex> catalog_lock(catalog_mutex);
+        alienorum::CatalogLock catalog_lock(catalog_mutex);
         if (abort_load)
         {
             break;
@@ -9559,7 +9587,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
     // Recover identified hosts after the ordinary star pass, before committing its cache.
     for (ExoRow& row : deferred_hosts)
     {
-        std::lock_guard<std::recursive_mutex> catalog_lock(catalog_mutex);
+        alienorum::CatalogLock catalog_lock(catalog_mutex);
         if (abort_load || ncelobjs >= MAX_CELOBJS)
         {
             break;

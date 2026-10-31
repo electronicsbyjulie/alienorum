@@ -43,7 +43,7 @@ Point::Point(CelestialLocation &cel)
     *this = cel.local_position + cel.system_center + cel.galactic_center * light_year * 1e+6;
 }
 
-Point Point::operator+(Point other)
+Point Point::operator+(Point other) const
 {
     return Point(x+other.x, y+other.y, z+other.z);
 }
@@ -56,7 +56,7 @@ Point &Point::operator+=(Point other)
     return *this;
 }
 
-Point Point::operator-(const Point other)
+Point Point::operator-(const Point other) const
 {
     return Point(x-other.x, y-other.y, z-other.z);
 }
@@ -69,7 +69,7 @@ Point &Point::operator-=(Point other)
     return *this;
 }
 
-Point Point::operator*(double multiplier)
+Point Point::operator*(double multiplier) const
 {
     return Point(x*multiplier, y*multiplier, z*multiplier);
 }
@@ -229,7 +229,7 @@ void Point::scale(double new_magn)
     z *= multiplier;
 }
 
-json Point::to_json()
+json Point::to_json() const
 {
     return {{"x", x}, {"y", y}, {"z", z}};
 }
@@ -653,6 +653,14 @@ double CelestialLocation::squared_distance_to(CelestialLocation other)
     return relloc.squared_magnitude();
 }
 
+void CelestialLocation::rebase_system(const CelestialLocation& frame)
+{
+    local_position += (galactic_center-frame.galactic_center)*(1e6*light_year)
+        + (system_center-frame.system_center);
+    galactic_center = frame.galactic_center;
+    system_center = frame.system_center;
+}
+
 CelestialLocation CelestialLocation::operator-(CelestialLocation other)             // it sure is nice that this fuction does its job!
 {
     CelestialLocation result = *this;
@@ -705,11 +713,13 @@ bool CelestialLocation::from_json(json j)
         json j1 = j.at("local_system_plane");
         local_system_plane.from_json(j1);
     } catch (...) { ; }
+    orbital_plane = local_system_plane;
     try
     {
         json j1 = j.at("orbital_plane");
         orbital_plane.from_json(j1);
     } catch (...) { ; }
+    equatorial_plane = orbital_plane;
     try
     {
         json j1 = j.at("equatorial_plane");

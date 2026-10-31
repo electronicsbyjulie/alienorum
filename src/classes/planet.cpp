@@ -1,3 +1,4 @@
+#include "../catalog_lock_trace.h"
 #include <iostream>
 #include <cmath>
 #include <cctype>
@@ -5,6 +6,10 @@
 #include <random>
 #include <algorithm>
 #include <set>
+#include <array>
+#include <cstdint>
+#include <cstring>
+#include <unordered_map>
 
 #include "planet.h"
 #include "moon.h"
@@ -90,6 +95,138 @@ bool alienorum::render_saved_planet(CelestialObject* object,
     } textures(source, copy.get());
     render(copy.get());
     return true;
+}
+
+std::vector<std::unique_ptr<Moon>> Planet::generate_fictional_moons(std::mt19937_64& random)
+{
+    std::vector<std::unique_ptr<Moon>> moons;
+    Planet* cel = this;
+    if (!orbit || !orbit->center || !(mass > 0) || !(orbit->period > 0)) return moons;
+    const auto draw = [&](double low, double high)
+    {
+        return low+(high-low)*double(random() >> 11)*0x1.0p-53;
+    };
+    double A = sqrt(cel->orbit->period / oneday) / 4;
+    double B = sqrt(cel->mass / earth_mass);
+    double C = sqrt(A*B);
+    double Hill_over_Roche = cel->Hill_sphere_radius() / cel->Roche_limit();
+    double D = C * Hill_over_Roche / 500;
+    // Small planets on short orbits rarely retain satellite systems. Saturate
+    // the adjustment so massive planets on wide orbits keep their distribution.
+    const double satellite_retention = std::min(1.0,
+        std::sqrt(cel->mass / (10 * earth_mass)) * cel->orbit->period / (365.25 * oneday));
+    D *= satellite_retention;
+
+    double P = 0;
+    int j=1;
+    for (int i=0; i<20; i++)
+    {
+        Moon *m = new Moon();
+        m->rnd_seed = int(random() & 0x7fffffff) | 1;
+        m->rng.seed(m->rnd_seed);
+        std::string mname = std::string(cel->name) + std::string(" ") + Roman(j);
+        snprintf(m->name, sizeof(m->name), "%s", mname.c_str());
+        m->namelen = strlen(m->name);
+        m->user_added = true;
+        m->user_edited = true;
+        m->mass = pow(draw(0, 1), 4) * cel->mass / 4000;
+        m->volumetric_mean_radius = pow(m->mass / earth_mass, 1.0/3.0) * draw(0.9, 1.5) * earth_radius;
+        m->albedo = draw(0.1, 0.6);
+        m->BV_color = draw(0.8, 1.8);
+        m->cenobj = cel->cenobj;
+        m->epoch = J2000;
+        m->equinox = draw(0, _pi*2);
+        m->major_moon = true;
+        m->orbit = new Orbit();
+        m->orbit->center = cel;
+        m->orbit->arg_periapsis = draw(0, _pi*2);
+        m->orbit->ascending_node = draw(0, _pi*2);
+        m->orbit->eccentricity = pow(draw(0, 0.1), 10);
+        m->orbit->epoch = J2000;
+        m->orbit->mean_anomaly = draw(0, _pi*2);
+        if (!P)
+        {
+            // First fictional moon of the planet. Base the SMA off the Roche limit and rings.
+            double inner_bound = m->minimum_safe_pericenter();
+            if (cel->ring_radius > inner_bound)
+            {
+                inner_bound = cel->ring_radius;
+            }
+            double A = inner_bound * (1.1 + pow(draw(0, 1), 4) * 20);
+            m->orbit->semimajor_axis = A;
+            m->orbit->compute_period(m->mass);
+
+        }
+        else
+        {
+            // Base the SMA off the previous moon.
+            m->orbit->period = draw(1.8, 2.2) * P;
+            m->orbit->compute_semimajor_axis(m->mass);
+
+        }
+
+        double Roche_dist = m->orbit->semimajor_axis / cel->Roche_limit(m);
+        double tidal_modifier = fmin(1.0, fmax(0.0, (Roche_dist - 1.0) / 10.0));        // 0 at Roche limit for perfect tidal alignment.
+        m->orbit->inclination = pow(draw(0, 1), 4) * 0.2 * half_pi * tidal_modifier;
+        if (draw(0,1) < 0.03) m->orbit->inclination = _pi - m->orbit->inclination;
+        m->obliquity = pow(draw(0, 1), 10) * half_pi * tidal_modifier;
+
+        if (draw(0,1) > D)
+        {
+            P = m->orbit->period;
+            delete m->orbit;
+            m->orbit = nullptr;
+            delete m;
+            continue;
+        }
+
+        if (m->orbit->semimajor_axis > (0.3*cel->Hill_sphere_radius()))
+        {
+            delete m->orbit;
+            m->orbit = nullptr;
+            delete m;
+            break;
+        }
+        m->estimate_rotation();
+        if (!m->sidereal_rotational_period) m->sidereal_rotational_period = oneday;
+        m->classify();
+        m->enforce_orbit_clearance();
+        if (m->orbit->semimajor_axis * (1 + m->orbit->eccentricity) > 0.3*cel->Hill_sphere_radius())
+        {
+            delete m;
+            break;
+        }
+        double disc_area = pow(m->volumetric_mean_radius / earth_radius, 2);
+        m->absolute_magnitude = earth_absmag - log(disc_area * m->albedo / earth_albedo) / log(magnbase);
+        m->apply_cosmic_shoreline();
+
+        m->enforce_orbit_clearance();
+        if (m->orbit->semimajor_axis * (1 + m->orbit->eccentricity) > 0.3*cel->Hill_sphere_radius())
+        {
+            delete m;
+            break;
+        }
+
+        if (!moons.empty())
+        {
+            const Moon& previous = *moons.back();
+            const double h = 5*std::cbrt((m->mass+previous.mass)/(3*cel->mass));
+            const double ratio = (1+previous.orbit->eccentricity+h)/(1-m->orbit->eccentricity-h);
+            m->orbit->semimajor_axis = std::max(m->orbit->semimajor_axis, previous.orbit->semimajor_axis*ratio*1.05);
+            m->orbit->compute_period(m->mass);
+            if (m->orbit->semimajor_axis*(1+m->orbit->eccentricity) > 0.3*cel->Hill_sphere_radius())
+            {
+                delete m;
+                break;
+            }
+        }
+        m->distance_known = true;
+        m->update_location(simnow);
+        moons.emplace_back(m);
+        P = m->orbit->period;
+        j++;
+    }
+    return moons;
 }
 
 void Planet::refresh_host_display_designation()
@@ -819,7 +956,59 @@ void Planet::estimate_albedo_and_absmagn()
 void Planet::update_location(double tmnow)
 {
     if (orbit) update_orbit_location(tmnow);
-    sync_host_statistics();
+    refresh_host_statistics_if_changed();
+}
+
+namespace
+{
+    std::unordered_map<int, Planet*>& dirty_planet_statistics()
+    {
+        static std::unordered_map<int, Planet*> pending;
+        return pending;
+    }
+    std::unordered_map<int, Star*>& dirty_host_statistics()
+    {
+        static std::unordered_map<int, Star*> pending;
+        return pending;
+    }
+}
+
+void Planet::mark_host_statistics_dirty(CelestialObject* object)
+{
+    if (!object || !cels || object->seqno < 0 || object->seqno >= ncelobjs
+        || cels[object->seqno] != object) return;
+    alienorum::CatalogLock lock(catalog_mutex);
+    if (object->typeclass() == class_planet)
+        dirty_planet_statistics()[object->seqno] = static_cast<Planet*>(object);
+    CelestialObject* light = object->typeclass() == class_star ? object : object->get_light_center();
+    if (!light || light->typeclass() != class_star) return;
+    if (light->seqno >= 0 && light->seqno < ncelobjs && cels[light->seqno] == light)
+        dirty_host_statistics()[light->seqno] = static_cast<Star*>(light);
+}
+
+void Planet::reconcile_host_statistics()
+{
+    alienorum::CatalogLock lock(catalog_mutex);
+    auto hosts = std::move(dirty_host_statistics());
+    dirty_host_statistics().clear();
+    for (const auto& entry : hosts)
+    {
+        if (!cels || entry.first < 0 || entry.first >= ncelobjs || cels[entry.first] != entry.second
+            || cels[entry.first]->typeclass() != class_star) continue;
+        for (int index : entry.second->pl_indices)
+        {
+            if (index >= 0 && index < ncelobjs && cels[index] && cels[index]->typeclass() == class_planet)
+                dirty_planet_statistics()[index] = static_cast<Planet*>(cels[index]);
+        }
+    }
+    auto pending = std::move(dirty_planet_statistics());
+    dirty_planet_statistics().clear();
+    for (const auto& entry : pending)
+    {
+        if (cels && entry.first >= 0 && entry.first < ncelobjs && cels[entry.first] == entry.second
+            && cels[entry.first]->typeclass() == class_planet)
+            entry.second->sync_host_statistics();
+    }
 }
 
 bool Planet::counts_for_host_statistics() const
@@ -829,12 +1018,33 @@ bool Planet::counts_for_host_statistics() const
         && (!std::isfinite(mass) || mass <= 0 || mass >= planet_count_mass_cutoff);
 }
 
+void Planet::refresh_host_statistics_if_changed()
+{
+    if (typeclass() != class_planet || !cels || seqno < 0 || seqno >= ncelobjs || cels[seqno] != this) return;
+    if (deleted || !counts_for_host_statistics())
+    {
+        if (statistics_host) sync_host_statistics();
+        return;
+    }
+    if (statistics_host && statistics_host_index >= 0 && statistics_host_index < ncelobjs
+        && cels[statistics_host_index] == statistics_host && !statistics_host->deleted
+        && orbit && orbit->center == statistics_host
+        && cached_hz_host == statistics_host && cached_in_cons_hz == orbit->semimajor_axis
+        && cached_hz_stellar_sma == orbit->semimajor_axis && cached_hz_mass == mass
+        && cached_hz_temperature == statistics_host->temperature
+        && cached_hz_magnitude == statistics_host->absolute_magnitude
+        && statistics_hz == cache_in_cons_hz && !statistics_host->pl_indices.empty()
+        && statistics_host->has_planets == static_cast<int>(statistics_host->pl_indices.size())) return;
+    sync_host_statistics();
+}
+
 void Planet::sync_host_statistics()
 {
     if (typeclass() != class_planet || !cels || seqno < 0 || seqno >= ncelobjs || cels[seqno] != this) return;
-    std::lock_guard<std::recursive_mutex> lock(catalog_mutex);
+    alienorum::CatalogLock lock(catalog_mutex);
     CelestialObject* light = !deleted && counts_for_host_statistics() ? get_light_center() : nullptr;
     Star* host = light && !light->deleted && light->typeclass() == class_star ? static_cast<Star*>(light) : nullptr;
+    if (statistics_host != host) invalidate_frame_objects();
     if (statistics_host != host && statistics_host_index >= 0 && statistics_host_index < ncelobjs
         && cels[statistics_host_index] == statistics_host)
     {
@@ -855,7 +1065,10 @@ void Planet::sync_host_statistics()
 
 void Planet::rebuild_host_statistics()
 {
-    std::lock_guard<std::recursive_mutex> lock(catalog_mutex);
+    alienorum::CatalogLock lock(catalog_mutex);
+    dirty_planet_statistics().clear();
+    invalidate_frame_objects();
+    dirty_host_statistics().clear();
     if (!cels) return;
     int count = 0;
     while (count < MAX_CELOBJS && cels[count]) ++count;
@@ -905,9 +1118,59 @@ double Planet::est_bolometric_flux(double t_eff)
 double Planet::estimate_bond_albedo()
 {
     #if 1
-    LocalPatchPredictor model;
-    model.load_data(dataset_bond_albedines);
-    return fmax(0, fmin(1, model.predict(BV_color, albedo)));
+    struct Entry
+    {
+        uint64_t color = 0, geometric = 0, revision = 0;
+        double result = 0;
+    };
+    struct Cache
+    {
+        std::vector<LocalPatchPoint> source;
+        LocalPatchPredictor prototype;
+        std::array<Entry, 256> entries{};
+        uint64_t revision = 0;
+        bool source_valid = false;
+    };
+    static thread_local Cache cache;
+    bool source_matches = cache.source_valid && cache.source.size() == dataset_bond_albedines.size();
+    for (size_t index = 0; source_matches && index < cache.source.size(); ++index)
+    {
+        const auto& a = cache.source[index];
+        const auto& b = dataset_bond_albedines[index];
+        source_matches = a.a == b.a && a.b == b.b && a.c == b.c;
+    }
+    if (!source_matches)
+    {
+        cache.source_valid = false;
+        cache.source = dataset_bond_albedines;
+        cache.prototype.load_data(dataset_bond_albedines);
+        if (!++cache.revision)
+        {
+            for (auto& entry : cache.entries) entry.revision = 0;
+            cache.revision = 1;
+        }
+        cache.source_valid = true;
+    }
+    Entry* entry = nullptr;
+    uint64_t color = 0, geometric = 0;
+    static_assert(sizeof(double) == sizeof(uint64_t), "Bond cache requires 64-bit doubles.");
+    if (std::isfinite(BV_color) && std::isfinite(albedo))
+    {
+        std::memcpy(&color, &BV_color, sizeof(color));
+        std::memcpy(&geometric, &albedo, sizeof(geometric));
+        uint64_t hash = color ^ (geometric + 0x9e3779b97f4a7c15ULL + (color << 6) + (color >> 2));
+        hash = (hash ^ (hash >> 30))*0xbf58476d1ce4e5b9ULL;
+        hash = (hash ^ (hash >> 27))*0x94d049bb133111ebULL;
+        hash ^= hash >> 31;
+        entry = &cache.entries[hash%cache.entries.size()];
+        if (entry->revision == cache.revision && entry->color == color && entry->geometric == geometric)
+            return entry->result;
+    }
+    // Copy the unsorted prototype so every miss retains the original interpolation order.
+    LocalPatchPredictor model = cache.prototype;
+    const double result = fmax(0, fmin(1, model.predict(BV_color, albedo)));
+    if (entry) *entry = {color, geometric, cache.revision, result};
+    return result;
     #else
     if (albedo > 0.65) return 1.0 - (1.0 - albedo) * 0.77;              // Venus
     return albedo / 1.46;                                               // typical value
@@ -1473,6 +1736,7 @@ bool Atmosphere::from_json(json j)
 json Planet::to_json()
 {
     json towrite = CelestialObject::to_json();
+    towrite["lock_system_plane"] = lock_system_plane;
     towrite["mass_evidence"] = static_cast<int>(mass_evidence);
     towrite["radius_evidence"] = static_cast<int>(radius_evidence);
     if (std::isfinite(mass_error_upper)) towrite["mass_error_upper"] = mass_error_upper;
@@ -1533,10 +1797,11 @@ json Planet::to_json()
     return towrite;
 }
 
-bool Planet::from_json(json j)
+bool Planet::from_json(const json& j)
 {
     temperature = 0;
     CelestialObject::from_json(j);
+    lock_system_plane = j.value("lock_system_plane", false);
     preserve_loaded_parameters = true;
     // Optional zero-valued fields are omitted by older saves; a reload must clear stale values.
     albedo = msini = J2 = ring_radius = ring_inner_radius = ring_mean_opacity = 0;
@@ -1601,7 +1866,7 @@ bool Planet::from_json(json j)
     // below by leaving atm non-null.
     try
     {
-        json ja = j.at("atmosphere");
+        const json& ja = j.at("atmosphere");
         if (ja.is_object()) ensure_atmosphere()->from_json(ja);
     }
     catch (...) { ; }

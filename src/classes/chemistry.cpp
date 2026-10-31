@@ -81,10 +81,16 @@ namespace
 
 bool Star::calibrated_iron_abundance(double& value, double& uncertainty) const
 {
-    if (metallicity_ratio != "[Fe/H]" || !std::isfinite(metallicity) ||
-        !std::isfinite(metallicity_error_upper) || !std::isfinite(metallicity_error_lower) ||
-        metallicity_source.empty() || metallicity_source.rfind("XHIP V/137D C", 0) == 0) return false;
+    if (metallicity_ratio != "[Fe/H]" || !std::isfinite(metallicity)) return false;
     value = metallicity;
+    if (fictional_origin.is_object())
+    {
+        // A generated abundance is an assigned physical value, without observational error bars.
+        uncertainty = 0;
+        return true;
+    }
+    if (!std::isfinite(metallicity_error_upper) || !std::isfinite(metallicity_error_lower) ||
+        metallicity_source.empty() || metallicity_source.rfind("XHIP V/137D C", 0) == 0) return false;
     uncertainty = fmax(fabs(metallicity_error_upper), fabs(metallicity_error_lower));
     return true;
 }

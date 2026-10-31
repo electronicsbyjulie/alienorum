@@ -7,6 +7,9 @@
 #include <iomanip>
 #include <set>
 #include <vector>
+#include <stdexcept>
+#include <memory>
+#include <thread>
 #include <gtest/gtest.h>
 #include "../classes/cat.h"
 #include "../classes/cons.h"
@@ -579,6 +582,73 @@ TEST(TextureTaskTest, ShutdownWaitsBeyondFiveSecondsAndRejectsNewWork)
     EXPECT_EQ(status, std::future_status::timeout);
     EXPECT_FALSE(finished_before_release);
     EXPECT_TRUE(finished.load());
+    EXPECT_EQ(texture_loads_pending.load(), 0);
+}
+
+TEST(TextureTaskTest, BurstConcurrencyIsBoundedAndAcceptedJobsSurviveCancellation)
+{
+    wait_for_texture_tasks();
+    struct RestoreAbort
+    {
+        bool value = abort_load.load();
+        ~RestoreAbort() { abort_load = value; }
+    } restore;
+    struct Counters
+    {
+        std::atomic<int> running{0}, peak{0}, completed{0};
+        std::atomic<bool> signaled{false};
+    };
+    auto counters = std::make_shared<Counters>();
+    auto started = std::make_shared<std::promise<void>>();
+    auto first = started->get_future();
+    std::promise<void> release;
+    auto gate = release.get_future().share();
+    abort_load = false;
+    for (int index = 0; index < 16; ++index)
+    {
+        EXPECT_TRUE(spawn_texture_task([counters, started, gate]()
+        {
+            const int active = ++counters->running;
+            int previous = counters->peak.load();
+            while (previous < active && !counters->peak.compare_exchange_weak(previous, active)) {}
+            if (!counters->signaled.exchange(true)) started->set_value();
+            gate.wait();
+            --counters->running;
+            ++counters->completed;
+        }));
+    }
+    EXPECT_EQ(first.wait_for(std::chrono::seconds(2)), std::future_status::ready);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    EXPECT_EQ(texture_loads_pending.load(), 16);
+    EXPECT_GE(counters->peak.load(), 1);
+    EXPECT_LE(counters->peak.load(), 4);
+    abort_load = true;
+    EXPECT_FALSE(spawn_texture_task([]() {}));
+    release.set_value();
+    wait_for_texture_tasks();
+    EXPECT_EQ(counters->completed.load(), 16);
+    EXPECT_EQ(counters->running.load(), 0);
+    EXPECT_EQ(texture_loads_pending.load(), 0);
+    std::cout << "Texture peak concurrency: " << counters->peak.load() << " for 16 jobs.\n";
+}
+
+TEST(TextureTaskTest, FailedTasksReleaseTheirTicketsAndWorkersContinue)
+{
+    wait_for_texture_tasks();
+    struct RestoreAbort
+    {
+        bool value = abort_load.load();
+        ~RestoreAbort() { abort_load = value; }
+    } restore;
+    abort_load = false;
+    auto completed = std::make_shared<std::atomic<bool>>(false);
+    testing::internal::CaptureStderr();
+    EXPECT_TRUE(spawn_texture_task([]() { throw std::runtime_error("Synthetic texture failure"); }));
+    EXPECT_TRUE(spawn_texture_task([completed]() { *completed = true; }));
+    wait_for_texture_tasks();
+    const std::string diagnostic = testing::internal::GetCapturedStderr();
+    EXPECT_NE(diagnostic.find("Synthetic texture failure"), std::string::npos);
+    EXPECT_TRUE(completed->load());
     EXPECT_EQ(texture_loads_pending.load(), 0);
 }
 
@@ -4118,6 +4188,83 @@ TEST_F(CatalogParsingTest, HipparcosBinaryAtlasAndCompanionSharePlanes)
 
 
 
+TEST_F(CatalogParsingTest, SourceCatalogWritesUnbinnedStarsExactlyOnce)
+{
+    struct RestoreDirectory
+    {
+        std::filesystem::path original, temporary;
+        ~RestoreDirectory()
+        {
+            std::filesystem::current_path(original);
+            std::filesystem::remove_all(temporary);
+        }
+    } restore{std::filesystem::current_path(), std::filesystem::temp_directory_path() /
+        ("alienorum_catalog_writer_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()))};
+    std::filesystem::create_directories(restore.temporary / "catalogs");
+    std::filesystem::current_path(restore.temporary);
+    Star* primary = make_star("Writer Primary");
+    primary->set_component('A', primary);
+    Star* companion = make_star("Writer Companion");
+    companion->make_companion_of(primary, 'B');
+    make_star("Writer Unbinned");
+    Star* fictional = make_star("Writer Fictional");
+    fictional->fictional_origin = {{"test", true}};
+    Constellation constellation;
+    ConsBins bins;
+    bins[&constellation][4]['y'] = {primary, primary};
+    CatalogReader reader;
+    EXPECT_EQ(reader.write_condensed_star_cat(bins), 4);
+    std::ifstream input("catalogs/soles_alienorum.dat");
+    std::map<std::string, int> names;
+    std::string line;
+    while (std::getline(input, line))
+    {
+        if (!line.empty() && line[0] != '#') ++names[trim(line.substr(15, 39))];
+    }
+    EXPECT_EQ(names.size(), 4u);
+    EXPECT_EQ(names["Sol"], 1);
+    EXPECT_EQ(names["Writer Primary"], 1);
+    EXPECT_EQ(names["Writer Companion"], 1);
+    EXPECT_EQ(names["Writer Unbinned"], 1);
+    EXPECT_EQ(names.count("Writer Fictional"), 0u);
+    delete_the_universe();
+}
+
+TEST_F(CatalogParsingTest, HipparcosOrbitPreservesMeasuredAndUnknownPhotometry)
+{
+    CatalogReader reader;
+    Star* primary = make_star("Photometry A");
+    primary->HIP = 12345;
+    primary->distance = 20 * parsec;
+    primary->distance_known = true;
+    primary->absolute_magnitude = 4;
+    Star* companion = make_star("Photometry B");
+    companion->make_companion_of(primary, 'B');
+    const double unknown = companion->apparent_magnitude;
+    std::string row = hip_atlas_orbit;
+    row.replace(0, 6, " 12345");
+    Star** saved = hipcache;
+    std::vector<Star*> cache(MAX_HIP + 1, nullptr);
+    cache[12345] = primary;
+    hipcache = cache.data();
+    struct Restore
+    {
+        Star** value;
+        ~Restore() { hipcache = value; }
+    } restore{saved};
+    int offset = ncelobjs;
+    for (double magnitude : {8.0, 0.0, unknown})
+    {
+        companion->apparent_magnitude = magnitude;
+        companion->absolute_magnitude = -3.5;
+        EXPECT_TRUE(reader.load_Hipparcos_orbit_line(row.c_str(), cels, MAX_CELOBJS, offset));
+        EXPECT_EQ(companion->apparent_magnitude, magnitude);
+        EXPECT_DOUBLE_EQ(companion->absolute_magnitude, -3.5);
+        EXPECT_EQ(primary->multisys->get_member('B'), companion);
+    }
+    delete_the_universe();
+}
+
 class CatalogPhotometryRegressionTest : public UniverseFixture {};
 
 TEST_F(CatalogPhotometryRegressionTest, EarthViewNeverGreatlyOutshinesCatalogPhotometry)
@@ -4140,8 +4287,9 @@ TEST_F(CatalogPhotometryRegressionTest, EarthViewNeverGreatlyOutshinesCatalogPho
             simnow = time;
             radio_silence = offline;
         }
-    } restore;
+    };
     std::vector<Star*> hd(MAX_HD + 1, nullptr), hip(MAX_HIP + 1, nullptr);
+    RestoreCatalogState restore;
     hdcache = hd.data();
     hipcache = hip.data();
     dmcache.clear();

@@ -1,3 +1,5 @@
+#include "performance_options.h"
+#include "classes/galaxyimage.h"
 
 #include <unordered_map>
 #include <unordered_set>
@@ -11,6 +13,9 @@ using namespace alienorum;
 
 namespace alienorum
 {
+    static GpuTexUploadStats upload_stats;
+    GpuTexUploadStats gputex_upload_stats() { return upload_stats; }
+    void reset_gputex_upload_stats() { upload_stats = {}; }
     // glGenerateMipmap is core since GL 3.0 but predates this file's SDL_opengl.h -- the
     // legacy header sphere_impostor.cpp's own comment describes avoiding (imgui's bundled GL
     // loader would clash with SDL_opengl.h's typedefs in the same translation unit). On Windows
@@ -28,6 +33,10 @@ namespace alienorum
     {
         GLuint tex = 0;
         unsigned int gen = 0;
+        #if PERF_P090
+        GLsizei width = 0, height = 0;
+        GLenum format = 0;
+        #endif
     };
 
     // Only ever touched from the main/render thread.
@@ -101,7 +110,27 @@ namespace alienorum
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);          // longitude wraps
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);   // latitude does not
         glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, (GLsizei)w, (GLsizei)h, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());
+        bool reuse_storage = false;
+        #if PERF_P090
+        reuse_storage = performance_enabled(90) && entry.tex && w > 0 && h > 0
+            && entry.width == static_cast<GLsizei>(w)
+            && entry.height == static_cast<GLsizei>(h) && entry.format == GL_RGBA;
+        #endif
+        if (reuse_storage)
+        {
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, (GLsizei)w, (GLsizei)h, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());
+            ++upload_stats.updates;
+        }
+        else
+        {
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, (GLsizei)w, (GLsizei)h, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());
+            ++upload_stats.allocations;
+        }
+        #if PERF_P090
+        entry.width = w;
+        entry.height = h;
+        entry.format = GL_RGBA;
+        #endif
         gputex_generate_mipmap(GL_TEXTURE_2D);
 
         entry.gen = map->gen;
@@ -160,7 +189,27 @@ namespace alienorum
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);          // longitude wraps
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);   // latitude does not
         glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, (GLsizei)w, (GLsizei)h, 0, GL_RED, GL_FLOAT, bump.data());
+        bool reuse_storage = false;
+        #if PERF_P090
+        reuse_storage = performance_enabled(90) && entry.tex && w > 0 && h > 0
+            && entry.width == static_cast<GLsizei>(w)
+            && entry.height == static_cast<GLsizei>(h) && entry.format == GL_R32F;
+        #endif
+        if (reuse_storage)
+        {
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, (GLsizei)w, (GLsizei)h, GL_RED, GL_FLOAT, bump.data());
+            ++upload_stats.updates;
+        }
+        else
+        {
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, (GLsizei)w, (GLsizei)h, 0, GL_RED, GL_FLOAT, bump.data());
+            ++upload_stats.allocations;
+        }
+        #if PERF_P090
+        entry.width = w;
+        entry.height = h;
+        entry.format = GL_R32F;
+        #endif
         gputex_generate_mipmap(GL_TEXTURE_2D);
 
         entry.gen = map->gen;
@@ -351,6 +400,12 @@ namespace alienorum
     }
 
     static std::unordered_map<std::string, GLuint> galaxy_faceon_cache;
+    static std::unordered_map<std::string, ImVec4> galaxy_faceon_crops;
+    ImVec4 gputex_galaxy_faceon_crop(const std::string& name)
+    {
+        const auto found = galaxy_faceon_crops.find(name);
+        return found == galaxy_faceon_crops.end() ? ImVec4(0, 0, 1, 1) : found->second;
+    }
     static std::unordered_set<std::string> galaxy_faceon_missing;
 
     GLuint gputex_galaxy_faceon(const std::string &name)
@@ -397,6 +452,22 @@ namespace alienorum
             return 0;
         }
 
+        const auto measured = galaxy_measured_frame(path);
+        const SDL_Rect bounds = measured ? SDL_Rect{0, 0, rgba_surf->w, rgba_surf->h} : galaxy_image_bounds(*rgba_surf);
+        const auto frame = measured.value_or(std::array<double, 4>{0, 0, 1, 1});
+        const ImVec4 crop(frame[0]+double(bounds.x)/rgba_surf->w*frame[2],
+            frame[1]+double(bounds.y)/rgba_surf->h*frame[3],
+            double(bounds.w)/rgba_surf->w*frame[2], double(bounds.h)/rgba_surf->h*frame[3]);
+        SDL_Surface* cropped = SDL_CreateRGBSurfaceWithFormat(0, bounds.w, bounds.h, 32, SDL_PIXELFORMAT_RGBA32);
+        if (!cropped)
+        {
+            SDL_FreeSurface(rgba_surf);
+            return 0;
+        }
+        SDL_SetSurfaceBlendMode(rgba_surf, SDL_BLENDMODE_NONE);
+        SDL_BlitSurface(rgba_surf, &bounds, cropped, nullptr);
+        SDL_FreeSurface(rgba_surf);
+        rgba_surf = cropped;
         int w = rgba_surf->w;
         int h = rgba_surf->h;
         unsigned char* data = (unsigned char*)rgba_surf->pixels;
@@ -456,7 +527,12 @@ namespace alienorum
                 prepared_rgba[p * 4 + 0] = (unsigned char)std::min(255, (int)(r * 255.0f / max_val));
                 prepared_rgba[p * 4 + 1] = (unsigned char)std::min(255, (int)(g * 255.0f / max_val));
                 prepared_rgba[p * 4 + 2] = (unsigned char)std::min(255, (int)(b * 255.0f / max_val));
-                prepared_rgba[p * 4 + 3] = (unsigned char)max_val;
+                // ImGui's clamp-to-edge sampler repeats the outer texels beyond the UV bounds.
+                // A transparent outer row and a two-pixel fade keep that extension invisible.
+                const int x = int(p % w), y = int(p / w);
+                const int edge = std::min({x, y, w-1-x, h-1-y});
+                const double fade = std::min(1.0, edge/2.0);
+                prepared_rgba[p * 4 + 3] = (unsigned char)(max_val*fade);
             }
         }
 
@@ -465,8 +541,8 @@ namespace alienorum
         glBindTexture(GL_TEXTURE_2D, tex);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
         glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, (GLsizei)w, (GLsizei)h, 0, GL_RGBA, GL_UNSIGNED_BYTE, prepared_rgba.data());
         gputex_generate_mipmap(GL_TEXTURE_2D);
@@ -474,6 +550,7 @@ namespace alienorum
         SDL_FreeSurface(rgba_surf);
 
         galaxy_faceon_cache[name] = tex;
+        galaxy_faceon_crops[name] = crop;
         return tex;
     }
 
@@ -638,6 +715,7 @@ namespace alienorum
             }
         }
         galaxy_faceon_cache.clear();
+        galaxy_faceon_crops.clear();
         galaxy_faceon_missing.clear();
 
         for (auto &[name, pair] : galaxy_internal_cache)

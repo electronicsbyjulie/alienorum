@@ -200,7 +200,9 @@ void main()
     float delta = uWorld[0].z;
     // Ground uses an apparent horizon, including its atmospheric bowl lift.
     // Refraction changes the cloud lookup ray, not this screen-space boundary.
-    if (delta > 0.0 && apparent_y < uWorld[0].w)
+    // Cover the filtering footprint beneath opaque ground when enlarging the cloud layer.
+    float horizon_guard = uWorld[2].x > 0.5 ? 2.0 * fwidth(apparent_y) + 4.7683716e-7 : 0.0;
+    if (delta > 0.0 && apparent_y < uWorld[0].w - horizon_guard)
     {
         discard;
     }
@@ -527,6 +529,24 @@ void main()
     static GLint s_aPosLoc = -1, s_aXYLoc = -1;
     static GLint s_uCameraLoc = -1, s_uWorldLoc = -1, s_uLightLoc = -1;
     static GLint s_uCloudMapLoc = -1, s_uRefractionLoc = -1;
+    static GLint s_uTileColumnsLoc = -1;
+    struct CloudProgramLocations
+    {
+        GLint camera = -1, world = -1, light = -1;
+        GLint cloud_map = -1, refraction = -1, position = -1, xy = -1;
+
+        void load(GLuint program)
+        {
+            camera = glGetUniformLocation(program, "uCamera");
+            world = glGetUniformLocation(program, "uWorld");
+            light = glGetUniformLocation(program, "uLight");
+            cloud_map = glGetUniformLocation(program, "uCloudMap");
+            refraction = glGetUniformLocation(program, "uRefraction");
+            position = glGetAttribLocation(program, "aPos");
+            xy = glGetAttribLocation(program, "aXY");
+        }
+    };
+    static CloudProgramLocations s_reference_locations, s_rain_locations;
     // The bundled loader has no framebuffer API; resolve these core GL 3.0
     // functions through SDL, matching the application's other extension calls.
     using GenFramebuffersFn = void (APIENTRY *)(GLsizei, GLuint*);
@@ -552,6 +572,7 @@ void main()
     static GLuint s_geometry_program = 0, s_geometry_texture = 0;
     static GLuint s_cell_texture = 0, s_tile_texture = 0, s_geometry_framebuffer = 0;
     static GLint s_geometry_pos = -1, s_geometry_xy = -1;
+    static GLint s_geometry_world = -1, s_geometry_light = -1;
     static CloudSkyGpuParams s_geometry_params =
     {
     };
@@ -730,9 +751,10 @@ void main()
             }
             else
             {
+                s_reference_locations.load(s_reference_program);
                 glUseProgram(s_reference_program);
-                glUniform1i(glGetUniformLocation(s_reference_program, "uCloudMap"), 0);
-                glUniform1i(glGetUniformLocation(s_reference_program, "uRefraction"), 1);
+                glUniform1i(s_reference_locations.cloud_map, 0);
+                glUniform1i(s_reference_locations.refraction, 1);
             }
             glDeleteShader(reference_fs);
         }
@@ -751,6 +773,10 @@ void main()
             {
                 glDeleteProgram(s_rain_program);
                 s_rain_program = 0;
+            }
+            else
+            {
+                s_rain_locations.load(s_rain_program);
             }
             glDeleteShader(rain_fs);
         }
@@ -772,6 +798,7 @@ void main()
 
         s_uCloudMapLoc   = glGetUniformLocation(s_program, "uCloudMap");
         s_uRefractionLoc = glGetUniformLocation(s_program, "uRefraction");
+        s_uTileColumnsLoc = glGetUniformLocation(s_program, "uTileColumns");
 
         glUseProgram(s_program);
         glUniform1i(s_uCloudMapLoc, 0);
@@ -906,6 +933,8 @@ void main()
                     s_geometry_pos = glGetAttribLocation(s_geometry_program, "aPos");
                     // Geometry generation uses gl_FragCoord rather than vXY.
                     s_geometry_xy = glGetAttribLocation(s_geometry_program, "aXY");
+                    s_geometry_world = glGetUniformLocation(s_geometry_program, "uWorld");
+                    s_geometry_light = glGetUniformLocation(s_geometry_program, "uLight");
                     glUseProgram(s_geometry_program);
                     glUniform1i(glGetUniformLocation(s_geometry_program, "uCloudMap"), 0);
                     glUniform1i(glGetUniformLocation(s_geometry_program, "uClusterCells"), 2);
@@ -1101,8 +1130,8 @@ void main()
             glViewport(0, 0, 302, (int)s_cells.size());
             glDisable(GL_BLEND);
             glUseProgram(s_geometry_program);
-            glUniformMatrix4fv(glGetUniformLocation(s_geometry_program, "uWorld"), 1, GL_FALSE, p.world);
-            glUniformMatrix4fv(glGetUniformLocation(s_geometry_program, "uLight"), 1, GL_FALSE, p.light);
+            glUniformMatrix4fv(s_geometry_world, 1, GL_FALSE, p.world);
+            glUniformMatrix4fv(s_geometry_light, 1, GL_FALSE, p.light);
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, p.texture);
             draw_quad(p, s_geometry_pos, s_geometry_xy);
@@ -1331,11 +1360,11 @@ void main()
             glUseProgram(program);
             if (geometry)
             {
-                glUniform1i(glGetUniformLocation(program, "uTileColumns"), (render_width + 31) / 32);
+                glUniform1i(s_uTileColumnsLoc, (render_width + 31) / 32);
             }
-            glUniformMatrix4fv(geometry ? s_uCameraLoc : glGetUniformLocation(program, "uCamera"), 1, GL_FALSE, p.camera);
-            glUniformMatrix4fv(geometry ? s_uWorldLoc : glGetUniformLocation(program, "uWorld"), 1, GL_FALSE, world);
-            glUniformMatrix4fv(geometry ? s_uLightLoc : glGetUniformLocation(program, "uLight"), 1, GL_FALSE, p.light);
+            glUniformMatrix4fv(geometry ? s_uCameraLoc : s_reference_locations.camera, 1, GL_FALSE, p.camera);
+            glUniformMatrix4fv(geometry ? s_uWorldLoc : s_reference_locations.world, 1, GL_FALSE, world);
+            glUniformMatrix4fv(geometry ? s_uLightLoc : s_reference_locations.light, 1, GL_FALSE, p.light);
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, p.texture);
             glActiveTexture(GL_TEXTURE0 + 1);
@@ -1345,8 +1374,8 @@ void main()
             glActiveTexture(GL_TEXTURE0 + 3);
             glBindTexture(GL_TEXTURE_2D, s_tile_texture);
             CloudTimer *timer = begin_cloud_timer(1);
-            draw_quad(p, geometry ? s_aPosLoc : glGetAttribLocation(program, "aPos"),
-                geometry ? s_aXYLoc : glGetAttribLocation(program, "aXY"));
+            draw_quad(p, geometry ? s_aPosLoc : s_reference_locations.position,
+                geometry ? s_aXYLoc : s_reference_locations.xy);
             end_cloud_timer(timer);
             if (cached)
             {
@@ -1454,15 +1483,15 @@ void main()
             glClearColor(0, 0, 0, 0);
             glClear(GL_COLOR_BUFFER_BIT);
             glUseProgram(s_rain_program);
-            glUniformMatrix4fv(glGetUniformLocation(s_rain_program, "uCamera"), 1, GL_FALSE, p.camera);
-            glUniformMatrix4fv(glGetUniformLocation(s_rain_program, "uWorld"), 1, GL_FALSE, p.world);
-            glUniformMatrix4fv(glGetUniformLocation(s_rain_program, "uLight"), 1, GL_FALSE, p.light);
-            glUniform1i(glGetUniformLocation(s_rain_program, "uCloudMap"), 0);
-            glUniform1i(glGetUniformLocation(s_rain_program, "uRefraction"), 1);
+            glUniformMatrix4fv(s_rain_locations.camera, 1, GL_FALSE, p.camera);
+            glUniformMatrix4fv(s_rain_locations.world, 1, GL_FALSE, p.world);
+            glUniformMatrix4fv(s_rain_locations.light, 1, GL_FALSE, p.light);
+            glUniform1i(s_rain_locations.cloud_map, 0);
+            glUniform1i(s_rain_locations.refraction, 1);
             glBindTexture(GL_TEXTURE_2D, p.texture);
             glActiveTexture(GL_TEXTURE0 + 1);
             glBindTexture(GL_TEXTURE_2D, s_refraction);
-            draw_quad(p, glGetAttribLocation(s_rain_program, "aPos"), glGetAttribLocation(s_rain_program, "aXY"));
+            draw_quad(p, s_rain_locations.position, s_rain_locations.xy);
             float cover[4] = {};
             glPixelStorei(0x0D02 /* GL_PACK_ROW_LENGTH */, 0);
             glReadPixels(0, 0, 1, 1, GL_RGBA, GL_FLOAT, cover);

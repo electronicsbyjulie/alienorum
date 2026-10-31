@@ -1,4 +1,7 @@
+#include "../performance_options.h"
+#include "localsurfacetile.h"
 #include "surfacenavigation.h"
+#include "surfaceoptions.h"
 #include <queue>
 #include <limits>
 
@@ -23,10 +26,20 @@ std::pair<RGB3, SurfaceMaterial> SurfaceSampler::info(double latitude, double lo
         RGB3 uniform;
         if (map->color_within_cap(latitude, longitude, bound, uniform, true))
             return {uniform, map->material_at(latitude, longitude)};
+        if (performance_enabled(37) && local_tile && local_tile->matches(field.world_id(), map, map->gen, radius, strength))
+        {
+            std::pair<double, double> approximate;
+            double error_angle = 0;
+            RGB3 certified;
+            if (local_tile->coordinates(field, latitude, longitude, approximate, error_angle)
+                && map->color_within_cap(approximate.first, approximate.second, error_angle, certified, true))
+                return {certified, map->material_at(approximate.first, approximate.second)};
+        }
         const auto coord = field.coordinates(radius, latitude, longitude, strength);
         latitude = coord.first;
         longitude = coord.second;
     }
+    if (PERF_P032) return map->surface_at(latitude, longitude);
     return {map->color_at(latitude, longitude), map->material_at(latitude, longitude)};
 }
 
@@ -48,6 +61,25 @@ bool SurfaceSampler::vegetation_at(double latitude, double longitude)
         : sample.second == SurfaceMaterial::vegetation;
 }
 
+SurfaceSampler::Sample SurfaceSampler::sample(double latitude, double longitude)
+{
+    const auto value = info(latitude, longitude);
+    const bool vegetation = value.second == SurfaceMaterial::unknown
+        ? vegetation_color(value.first) : value.second == SurfaceMaterial::vegetation;
+    return {value.first, value.second, water_sample(value), vegetation};
+}
+
+bool SurfaceSampler::uniform_sample(double latitude, double longitude, double angle, Sample& result)
+{
+    RGB3 color;
+    if (!map || !map->is_complete() || generating_fic_texture || !std::isfinite(angle) || angle < 0
+        || !map->color_within_cap(latitude, longitude, angle + (biomes ? bound : 0), color, true)) return false;
+    const auto value = std::make_pair(color, map->material_at(latitude, longitude));
+    result = {color, value.second, water_sample(value), value.second == SurfaceMaterial::unknown
+        ? vegetation_color(color) : value.second == SurfaceMaterial::vegetation};
+    return true;
+}
+
 bool SurfaceSampler::water_sample(const std::pair<RGB3, SurfaceMaterial> &sample) const
 {
     if (!water) return false;
@@ -60,6 +92,40 @@ bool SurfaceSampler::water_sample(const std::pair<RGB3, SurfaceMaterial> &sample
 bool SurfaceSampler::water_at(double latitude, double longitude)
 {
     return water && water_sample(info(latitude, longitude));
+}
+
+bool SurfaceSampler::water_at(double latitude, double longitude, WaterPatch& patch)
+{
+    if (!water || !map || !planet || !(radius > 0) || !std::isfinite(radius)
+        || !std::isfinite(latitude) || !std::isfinite(longitude) || fabs(latitude) > half_pi)
+        return water_at(latitude, longitude);
+    const WaterPatch::Key key = {map, map->gen, planet, radius, strength, biomes, ocean, favorable,
+        planet->has_water != 0, planet->type, planet->vegetation_r, planet->vegetation_g, planet->vegetation_b};
+    const double padding = std::min(32.0, radius * .001);
+    const double latitude_delta = sin((latitude - patch.latitude) * .5);
+    const double longitude_delta = sin((longitude - patch.longitude) * .5);
+    const double arc = padding / radius * .5;
+    const double limit = sin(arc) * sin(arc) * (1 - 1e-8);
+    const double separation = latitude_delta * latitude_delta
+        + cos(latitude) * cos(patch.latitude) * longitude_delta * longitude_delta;
+    if (patch.attempted && patch.key == key && fabs(longitude - patch.longitude) <= _pi && separation <= limit)
+    {
+        if (patch.uniform && !generating_fic_texture) return patch.value;
+        return water_at(latitude, longitude);
+    }
+    patch.key = key;
+    patch.latitude = latitude;
+    patch.longitude = longitude;
+    patch.attempted = true;
+    RGB3 color;
+    patch.uniform = !generating_fic_texture && map->color_within_cap(latitude, longitude,
+        (biomes ? bound : 0) + padding / radius, color, true);
+    if (patch.uniform)
+    {
+        patch.value = water_sample({color, map->material_at(latitude, longitude)});
+        return patch.value;
+    }
+    return water_at(latitude, longitude);
 }
 
 bool SurfaceSampler::base_water(unsigned long column, unsigned long row) const

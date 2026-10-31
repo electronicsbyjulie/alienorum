@@ -33,21 +33,19 @@ MSYS2 (Run in MINGW64 environment):
 * Automatic downloading and use of professional star catalogs;
 * Spaceflight feature with time dilation and warp speed capability;
 * View space from any vantage point;
-* Time travel (in-universe only) - set the view for any date by stepping forward/backward;
+* Ability to select an individual object and teleport to its position;
+* Time travel (in-universe only) - set the view for any date by stepping forward/backward in steps from a minute to a millennium;
 * Information shown when hovering over a celestial object, including names, coordinates, distance, and magnitude;
 * Asteroids and comets;
 * Realtime satellite positions;
 * Exoplanets including fictional texture maps, atmospheres, and rings;
 * Customizable texture generation for fictional world building;
-* Ability to select an individual star/planet/moon/satellite and teleport to its position;
+* Ability to add fictional planets, moons, and spacecraft, including an orbital resonance calculator;
+* Generation of stars and planets in remote parts of the galaxy and in other galaxies;
 * Stellar proper motions, orbits, and variability;
 * Unified star catalog with an internal star designation system based on magnitude and color;
-* Universe saved to portable, customizable JSON file, allowing defining your own planets/stars;
-* Custom texture map generation;
+* Each edited universe is saved to a portable JSON file that can be edited to customize each object;
 * More coming soon...
-
-Internal AlienorumIDs for stars from magnitude 8 and dimmer should be considered temporary and subject to change.
-These IDs can be identified by the letter T before the number at the end.
 
 
 ## Initial Run
@@ -145,6 +143,8 @@ Alienorum auto-downloads satellite data from CelesTrak (https://celestrak.org/).
 
 To edit a celestial object, select it and press Shift+E. An edit window will appear at lower right, offering several object properties that can be set in-program. All changes will take effect right away.
 
+Use **Ctrl+P** or **Object > Populate Region…** to generate a fictional stellar neighborhood in the current galaxy. The dialog offers four-character sector codes and a minimum system spacing of 1–5 light years (default 2). Close companions within a system retain their orbital separation.
+
 To add a new object, first select its center of orbit and then press Shift+A. A dialog will ask what kind of object to create. Currently, only Star, Planet, and Moon will work. After clicking Go, the new object will be added with a few default parameters and you will see an edit window to fill in all its other properties.
 
 Alienorum generates fictitious texture maps of objects that don't have a map file in the `maps/` folder. While editing, you can save, refresh, and regenerate these fictitious maps. Save creates file with the object's name in `maps/`, and refresh reloads the existing file or creates a new texture if the file is absent. The regenerate button creates a high resolution texture, never the same as the existing texture, but suitable for world building (10000 x 5000 pixels). This will take a moment to complete so be sure to let it finish before saving or retrying.
@@ -153,23 +153,22 @@ To export your objects you've created or modified, press U. To load them again n
 
 Any object properties not included in the edit window can be edited in the .json file.
 
+Alienorum has a feature that generates fictional stars, and optionally planets and moons, about a random or user-specified center point in any galaxy. By default, it will generate 10,000 stars in a 1,000 light-year radius of the selected point in space, with planets around 10% of the stars, including a single sunlike center star system with planets. This generates a large number of objects, so saving it means creating a lerge JSON file, typically more than 50 MB. Some text editors have difficulty with files this big, but a quick internet search reveals several dedicated JSON editors that can handle large files and allow you to edit them. Generated stars will be written to a .dat file as this is a more compact format. If sharing a universe of generated fictional stars, be sure to share both the .json file and the .dat file.
+
 You can also edit the universe JSON files to modify other parameters not included in the window. Just make sure the file is still valid JSON after any edits. There are third party apps that will check a .json file to make sure it's
 valid and find any errors.
 
-IMPORTANT: After loading a universe with F4, subsequently saving your changes with U will not overwrite the external file; it will save to universe.json. Make sure to either copy your changes to the external JSON file or back up your old file and rename universe.json to the working filename. It's also a good idea to check universe.json to make sure it has all the custom celestial objects.
+IMPORTANT: If you edit existing objects and/or add objects to existing stars, then press U, your changes will be saved to universe.json ***irrespective of the original filename***. That means if you make edits, then save, then rename your universe.json to something else, you can load the file in a new session, but any further edits will still be saved to universe.json, ***not to your renamed file***. It's different if the saved universe contains generated stars; those and their planets get saved to files with pre-selected names; pressing U *does* overwrite those files.
 
 
 ## Editing user.json
 
-In the project root folder is a file called `user.json`, a standard JSON-formatted settings file. If you don't see this file, press Shift+U from the Alienorum app window
-and the app will create the file. You can edit it in a normal text editor as long as the format stays valid JSON. For best results, paste the edited file contents into a 
-JSON validator or ask an AI to check the syntax.
+In the project root folder is a file called `user.json`, a standard JSON-formatted settings file. If you don't see this file, press Shift+U from the Alienorum app window and the app will create the file. You can edit it in a normal text editor as long as the format stays valid JSON. For best results, paste the edited file contents into a JSON validator or ask an AI to check the syntax.
 
 
 ### Setting Your Latitude/Longitude
 
-The default lat/lon coordinates are those for Babylon, where archaeological evidence exists for astronomical knowledge in ancient times. To set your own location as the default, create a file in the alienorum root folder called `user.json`
-and add the following lines, changing the numbers to your own location:
+The default lat/lon coordinates are those for Babylon, where archaeological evidence exists for astronomical knowledge in ancient times. To set your own location as the default, create a file in the alienorum root folder called `user.json` and add the following lines, changing the numbers to your own location:
 
 ```
 {

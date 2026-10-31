@@ -17,6 +17,9 @@ namespace alienorum
         double proper_motion_RA = 0;                // radians / second
         double proper_motion_decl = 0;              // radians / second
         double radial_velocity = 0;                 // meters / second
+        bool has_fictional_motion = false;
+        Point fictional_epoch_position, fictional_space_velocity;
+        void set_fictional_motion(Point space_velocity);
         double apparent_magnitude = 1e29;           // visual/550nm
         double parallax = 0;                        // radians
         double metallicity = NAN;                  // dex relative to solar, on metallicity_ratio's scale
@@ -24,6 +27,8 @@ namespace alienorum
         std::string metallicity_ratio, metallicity_source;
         json stellar_abundances = nullptr;
         json stellar_rotation = nullptr;             // Period provenance and supplied/assumed pole fields.
+        json fictional_origin = nullptr;           // Stable fictional identity and generation provenance.
+        json catalog_frame = nullptr;                // Region identity and coordinate origin for split saves.
         json stellar_system = nullptr;               // Physical system, published label, and orbit provenance.
         json chemistry_diagnostics() const;
         bool calibrated_iron_abundance(double& value, double& uncertainty) const;
@@ -76,6 +81,7 @@ namespace alienorum
         bool has_custom_name = false;
         int has_planets = 0;
         int has_hz_planets = 0;
+        double planet_statistics_temperature = NAN, planet_statistics_magnitude = NAN;
         std::vector<int> pl_indices;
         void refresh_planet_statistics();
         bool tmp_vis_flag = false;                  // Used only for rendering.
@@ -148,7 +154,7 @@ namespace alienorum
         void gotta_be_named_something();
         void assign_identifier_name();       // Custom name > Bayer > Flamsteed > GJ > Gould > HD > HIP > other identifiers.
         json to_json();
-        bool from_json(json j);
+        bool from_json(const json& j);
         void make_companion_of(Star* primary, char comp = 'B');
 
     protected:

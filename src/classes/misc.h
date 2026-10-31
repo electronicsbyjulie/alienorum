@@ -3,6 +3,8 @@
 #define _AlienorumMisc
 
 #include <string>
+#include <cstdio>
+#include <stdexcept>
 #include <vector>
 #include <queue>
 #include <ctime>
@@ -117,8 +119,8 @@ using json = nlohmann::json;
 #define ecliptic_north_RA_J2000 (18.00 * 15 * fiftyseventh)
 #define ecliptic_north_Decl_J2000 ((66.0 + 33.0 / 60 + 38.55 / 3600) * fiftyseventh)
 
-#define MAX_CELOBJS 524288
-#define MAX_SPLASH_STARS 5381
+#define MAX_CELOBJS 1048576
+#define MAX_SPLASH_STARS 8135
 #define MAX_HD 359083
 #define MAX_HIP 120416
 #define _USE_CCDM 1
@@ -273,6 +275,19 @@ int grkno_from_abbrev(const char *abbrev);
 
 std::string radians_to_hms(double r);
 std::string radians_to_degms(double r);
+
+template<typename ... Args>
+std::string string_format( const std::string& format, Args ... args );
+
+template<typename... Args>
+std::string string_format(const std::string& format, Args... args)
+{
+    const int length = std::snprintf(nullptr, 0, format.c_str(), args...);
+    if (length < 0) throw std::runtime_error("Error during formatting.");
+    std::vector<char> buffer(static_cast<size_t>(length) + 1);
+    std::snprintf(buffer.data(), buffer.size(), format.c_str(), args...);
+    return std::string(buffer.data(), static_cast<size_t>(length));
+}
 
 double atmospheric_tau(double normalized_pressure,
     double co2_fraction,        // Carbon dioxide

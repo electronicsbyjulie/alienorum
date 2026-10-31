@@ -102,6 +102,7 @@ namespace alienorum
         std::string get_condensed_starcat_name();
         int write_condensed_star_cat(ConsBins cb);
         int read_condensed_star_cat();
+        static std::string format_condensed_star_line(Star* star, bool extensions = true);
         bool bake_condensed_star_orbits();
         static inline bool condensed_star_orbits_loaded = false;
         static void read_field_onebased(const char* buffer, size_t start, int end, char* out);

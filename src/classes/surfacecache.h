@@ -1,6 +1,7 @@
 #ifndef ALIENORUM_SURFACE_CACHE_H
 #define ALIENORUM_SURFACE_CACHE_H
 
+#include "surfaceoptions.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -44,26 +45,54 @@ namespace alienorum
         std::uint64_t world = 0;
         double radius = 0, spacing = 0;
         size_t evaluations = 0;
+        std::uint64_t generation = 0;
+        size_t patch_hits = 0;
+#if PERF_P034
+        Key last_key = {};
+        Tile* last_tile = nullptr;
+        size_t tile_fast_hits = 0;
+#endif
 
         template<class Sample>
         double node(int face, std::int64_t x, std::int64_t y, const Sample &sample)
         {
             const Key key = {x / 8, y / 8, face};
-            auto found = tiles.find(key);
-            if (found == tiles.end())
+            Tile* selected = nullptr;
+#if PERF_P034
+            if (last_tile && last_key == key)
             {
-                if (tiles.size() >= capacity)
-                {
-                    tiles.erase(ages.back());
-                    ages.pop_back();
-                }
-                ages.push_front(key);
-                Tile tile;
-                tile.age = ages.begin();
-                found = tiles.emplace(key, tile).first;
+                selected = last_tile;
+                ++tile_fast_hits;
             }
-            Tile &tile = found->second;
-            ages.splice(ages.begin(), ages, tile.age);
+#endif
+            if (!selected)
+            {
+                auto found = tiles.find(key);
+                if (found == tiles.end())
+                {
+#if PERF_P034
+                    last_tile = nullptr;
+#endif
+                    if (tiles.size() >= capacity)
+                    {
+                        tiles.erase(ages.back());
+                        ages.pop_back();
+                    }
+                    ages.push_front(key);
+                    Tile tile;
+                    tile.age = ages.begin();
+                    found = tiles.emplace(key, tile).first;
+                }
+                selected = &found->second;
+#if PERF_P034
+                if (selected->age != ages.begin()) ages.splice(ages.begin(), ages, selected->age);
+                last_key = key;
+                last_tile = selected;
+#else
+                ages.splice(ages.begin(), ages, selected->age);
+#endif
+            }
+            Tile &tile = *selected;
             const unsigned index = (y % 8) * 8 + x % 8;
             const std::uint64_t mask = std::uint64_t(1) << index;
             if (!(tile.valid & mask))
@@ -82,6 +111,13 @@ namespace alienorum
         }
 
         public:
+        struct Patch
+        {
+            std::uint64_t generation = 0;
+            int face = -1;
+            std::int64_t x = 0, y = 0;
+            double a = 0, b = 0, c = 0, d = 0;
+        };
         explicit SurfaceFieldCache(size_t maximum_tiles = 8192) : capacity(std::max<size_t>(1, maximum_tiles)) {}
         SurfaceFieldCache(const SurfaceFieldCache &) = delete;
         SurfaceFieldCache &operator=(const SurfaceFieldCache &) = delete;
@@ -89,6 +125,10 @@ namespace alienorum
         void configure(std::uint64_t identity, double world_radius, double sample_spacing)
         {
             if (cells && world == identity && radius == world_radius && spacing == sample_spacing) return;
+#if PERF_P034
+            last_tile = nullptr;
+            tile_fast_hits = 0;
+#endif
             tiles.clear();
             ages.clear();
             world = identity;
@@ -97,10 +137,12 @@ namespace alienorum
             cells = std::isfinite(radius) && std::isfinite(spacing) && radius > 0 && spacing > 0
                 ? std::max<std::int64_t>(1, static_cast<std::int64_t>(ceil(2 * radius / spacing))) : 0;
             evaluations = 0;
+            ++generation;
+            patch_hits = 0;
         }
 
         template<class Sample>
-        double value(double x, double y, double z, const Sample &sample)
+        double value(double x, double y, double z, const Sample &sample, Patch* patch = nullptr)
         {
             if (!cells || !std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z)) return sample(x, y, z);
             const double position[] = {x, y, z};
@@ -115,13 +157,37 @@ namespace alienorum
             const auto ix = std::min(cells - 1, static_cast<std::int64_t>(floor(u)));
             const auto iy = std::min(cells - 1, static_cast<std::int64_t>(floor(v)));
             const double fx = u - ix, fy = v - iy;
-            const double a = node(face, ix, iy, sample), b = node(face, ix + 1, iy, sample);
-            const double c = node(face, ix, iy + 1, sample), d = node(face, ix + 1, iy + 1, sample);
+            double a, b, c, d;
+            if (patch && patch->generation == generation && patch->face == face && patch->x == ix && patch->y == iy)
+            {
+                a = patch->a;
+                b = patch->b;
+                c = patch->c;
+                d = patch->d;
+                ++patch_hits;
+            }
+            else
+            {
+                a = node(face, ix, iy, sample);
+                b = node(face, ix + 1, iy, sample);
+                c = node(face, ix, iy + 1, sample);
+                d = node(face, ix + 1, iy + 1, sample);
+                if (patch) *patch = {generation, face, ix, iy, a, b, c, d};
+            }
             return (a + fx * (b - a)) * (1 - fy) + (c + fx * (d - c)) * fy;
         }
 
         size_t sample_count() const { return evaluations; }
         size_t tile_count() const { return tiles.size(); }
+        size_t patch_hit_count() const { return patch_hits; }
+        size_t tile_fast_hit_count() const
+        {
+#if PERF_P034
+            return tile_fast_hits;
+#else
+            return 0;
+#endif
+        }
     };
 }
 

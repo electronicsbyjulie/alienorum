@@ -10,6 +10,13 @@
 
 namespace alienorum
 {
+    inline double scenery_crown_aspect(double horizontal_distance, double relative_height, double oblateness)
+    {
+        const double range = std::hypot(horizontal_distance, relative_height);
+        return range > 0 ? std::hypot(oblateness * horizontal_distance, relative_height) / range
+            : std::abs(oblateness);
+    }
+
     class SceneryCrownOcclusion
     {
         static constexpr int cell_size = 4;

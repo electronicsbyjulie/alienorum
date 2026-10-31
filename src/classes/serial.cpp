@@ -1,14 +1,24 @@
 
 #include <iostream>
+#include <algorithm>
+#include <cmath>
 #include <cctype>
 #include <set>
 #include <memory>
 #include <tuple>
+#include <iomanip>
+#include <locale>
+#include <sstream>
+#include <limits>
 #include "cat.h"
 #include "serial.h"
 #include "cons.h"
+#include "wdcolor.h"
+#include "../background_file.h"
+#include "../catalog_capture.h"
 
 using namespace alienorum;
+
 
 static bool is_alpha3(const char* s)
 {
@@ -686,12 +696,9 @@ int find_object(const char *term, bool stars, double limit, int distance, const 
     return result;
 }
 
-bool Serialization::save_one(std::fstream& fs, CelestialObject *cel, json &allobjs)
+static std::string serialized_object_key(CelestialObject* cel)
 {
-    Star *s;
-
-    std::string key = "";
-    key = std::string(cel->name);
+    std::string key = cel->name;
     CelestialObject *cursor = cel;
     int depth = 0;
     while (cursor->orbit && cursor->orbit->center && depth++ < 100)
@@ -699,6 +706,665 @@ bool Serialization::save_one(std::fstream& fs, CelestialObject *cel, json &allob
         cursor = cursor->orbit->center;
         key = std::string(cursor->name) + std::string(".") + key;
     }
+    return key;
+}
+
+namespace
+{
+    using SaveNames = std::vector<std::pair<std::string, std::string>>;
+    json readable_aliases(json value, bool expand)
+    {
+        static const SaveNames names =
+        {
+            {"absolute_magnitude", "absmagn"}, {"apparent_magnitude", "appmagn"},
+            {"apparent_magnitude_estimated", "appmagn_est"}, {"distance", "dist"},
+            {"distance_known", "dist_knwn"}, {"declination", "decl"}, {"right_ascension", "RA"},
+            {"proper_motion_RA", "pmRA"}, {"proper_motion_decl", "pmdec"}, {"radial_velocity", "radvel"},
+            {"space_velocity", "space_vel"},
+            {"parallax", "plx"}, {"epoch", "epch"}, {"equinox", "eqnx"},
+            {"temperature", "temp"}, {"typeclass", "cls"}, {"type", "typ"},
+            {"spectral_type", "sptyp"}, {"location", "loc"}, {"orbit", "orb"},
+            {"system_center", "sys_cen"}, {"galactic_center", "gal_cen"},
+            {"local_position", "loc_pos"}, {"local_system_plane", "loc_sys_pln"},
+            {"orbital_plane", "orb_pln"}, {"equatorial_plane", "eq_pln"},
+            {"center_name", "cen_name"}, {"semimajor_axis", "semimaj_axis"},
+            {"period", "per"}, {"eccentricity", "ecc"}, {"inclination", "incl"},
+            {"ascending_node", "asc_node"}, {"arg_periapsis", "arg_peri"},
+            {"mean_anomaly", "mean_anom"}, {"heliocentric_inclination", "heliocen_incl"},
+            {"heliocentric_node", "heliocen_node"}, {"sidereal_rotational_period", "sider_rot_per"},
+            {"volumetric_mean_radius", "vol_mean_rad"}, {"obliquity", "oblq"},
+            {"oblateness", "oblt"}, {"precession", "prec"}, {"lon_J2000_offset", "lon_J2000_offst"},
+            {"orbit_center_codes", "orb_cen_cds"}, {"map_inverted", "map_inv"},
+            {"fictitious_map_height", "fic_map_ht"}, {"stellar_metallicity", "stmet"},
+            {"stellar_rotation", "strot"}, {"stellar_system", "stsys"},
+            {"estimated", "est"}, {"inclination_supplied", "incl_suppl"}, {"node_supplied", "node_suppl"},
+            {"stellar_abundances", "st_abund"}, {"system", "sys"},
+            {"atmosphere", "atmos"}, {"composition", "gases"}, {"surface_pressure", "surf_pressure"},
+            {"mass_evidence", "mass_evid"}, {"radius_evidence", "rad_evid"},
+            {"catalog_designation", "cat_desig"}, {"display_designation", "disp_desig"},
+            {"wd_temperature_source", "wd_temp_src"}, {"wd_color_source", "wd_color_src"},
+            {"wd_color_revision", "wd_color_rev"}, {"error_upper_dex", "err_up_dex"},
+            {"error_lower_dex", "err_lo_dex"},
+            {"source", "src"}, {"constellation", "cons"}, {"is_orbit_multiple", "is_orb_mult"},
+            {"has_planets", "has_plnts"}, {"has_hz_planets", "has_hz_plnts"},
+            {"lock_equatorial_plane", "lock_eq_pln"}, {"lock_system_plane", "lock_sys_pln"},
+            {"plant_trunk_height", "plant_trunk_ht"}, {"plant_crown_oblateness", "plant_crown_oblt"},
+            {"a", "angle"}, {"v", "axis"}
+        };
+        static const std::map<std::string, std::string> forward(names.begin(), names.end());
+        static const auto reverse = []()
+        {
+            std::map<std::string, std::string> result;
+            for (const auto& pair : names) result.emplace(pair.second, pair.first);
+            return result;
+        }();
+        if (value.is_array())
+        {
+            for (auto& item : value) item = readable_aliases(std::move(item), expand);
+            return value;
+        }
+        if (!value.is_object()) return value;
+        const auto& aliases = expand ? reverse : forward;
+        json result = json::object();
+        for (auto& item : value.items())
+        {
+            std::string key = item.key();
+            const bool literal = expand && !key.empty() && key.front() == '~';
+            const auto alias = aliases.find(key);
+            if (literal) key.erase(0, 1);
+            else if (alias != aliases.end()) key = alias->second;
+            else if (!expand && ((!key.empty() && key.front() == '~') || reverse.count(key))) key = "~" + key;
+            result[key] = readable_aliases(std::move(item.value()), expand);
+        }
+        return result;
+    }
+
+    const SaveNames& save_names()
+    {
+        static const SaveNames names =
+        {
+            {"!name", "n"}, {"!origname", "on"}, {"!origcenname", "oc"},
+            {"typeclass", "c"}, {"type", "t"}, {"location", "l"}, {"orbit", "o"},
+            {"mass", "m"}, {"volumetric_mean_radius", "r"}, {"temperature", "T"},
+            {"absolute_magnitude", "M"}, {"apparent_magnitude", "V"},
+            {"BV_color", "bv"}, {"UB_color", "ub"}, {"RI_color", "ri"}, {"VR_color", "vr"},
+            {"right_ascension", "ra"}, {"declination", "de"}, {"distance", "d"},
+            {"distance_known", "dk"}, {"epoch", "e"}, {"user_added", "ua"},
+            {"sidereal_rotational_period", "rot"}, {"obliquity", "ob"}, {"equinox", "eq"},
+            {"lock_system_plane", "ls"}, {"lock_equatorial_plane", "le"},
+            {"rnd_seed", "rs"}, {"transparent_clouds", "tc"}, {"albedo", "ab"},
+            {"atmosphere", "at"}, {"surface_pressure", "p"}, {"composition", "cp"},
+            {"pressure_supplied", "ps"}, {"static_clouds", "sc"}, {"has_water", "w"},
+            {"value_dex", "val"}, {"ratio", "rt"}, {"source", "src"},
+            {"error_upper_dex", "eu"}, {"error_lower_dex", "el"},
+            {"stellar_metallicity", "z"}, {"fictional_origin", "f"}, {"stellar_system", "sy"},
+            {"galactic_center", "gc"}, {"system_center", "s"}, {"local_position", "p3"},
+            {"local_system_plane", "sp"}, {"orbital_plane", "op"}, {"equatorial_plane", "ep"},
+            {"center_name", "cn"}, {"semimajor_axis", "sma"}, {"period", "P"},
+            {"eccentricity", "ec"}, {"inclination", "i"}, {"ascending_node", "an"},
+            {"arg_periapsis", "ap"}, {"mean_anomaly", "ma"},
+            {"heliocentric_inclination", "hi"}, {"heliocentric_node", "hn"},
+            {"mass_evidence", "me"}, {"radius_evidence", "re"},
+            {"catalog_designation", "cd"}, {"display_designation", "dd"},
+            {"batch", "b"}, {"component", "co"}, {"system_index", "si"},
+            {"minimum_spacing_ly", "ms"}, {"age_gyr", "age"}, {"disk_position_ly", "dp"},
+            {"designation", "dn"}, {"proper_name", "pn"}, {"anchor", "ac"},
+            {"motion", "mv"}, {"epoch_position_m", "p0"}, {"velocity_m_s", "vel"}
+        };
+        return names;
+    }
+
+    bool save_point_key(const std::string& key)
+    {
+        static const std::set<std::string> keys = {"galactic_center", "system_center", "local_position", "v",
+            "center_ly", "disk_position_ly", "epoch_position_m", "velocity_m_s", "origin_mly", "east", "height_axis", "south"};
+        return keys.count(key);
+    }
+
+    json save_aliases(json value, bool expand)
+    {
+        if (value.is_array())
+        {
+            for (auto& item : value) item = save_aliases(std::move(item), expand);
+            return value;
+        }
+        if (!value.is_object()) return value;
+        static const std::map<std::string, std::string> forward(save_names().begin(), save_names().end());
+        static const auto reverse = []()
+        {
+            std::map<std::string, std::string> result;
+            for (const auto& pair : save_names()) result.emplace(pair.second, pair.first);
+            return result;
+        }();
+        const auto& names = expand ? reverse : forward;
+        json result = json::object();
+        for (auto item = value.begin(); item != value.end(); ++item)
+        {
+            std::string key = item.key();
+            const auto found = names.find(key);
+            const bool literal = expand && !key.empty() && key[0] == '~';
+            if (literal) key.erase(0, 1);
+            else if (found != names.end()) key = found->second;
+            else if (!expand && ((!key.empty() && key[0] == '~') || reverse.count(key))) key = "~" + key;
+            if (!expand && save_point_key(item.key()) && item.value().is_array()) key = "~" + item.key();
+            const std::string& physical_key = expand ? key : item.key();
+            if (!expand && save_point_key(physical_key) && item.value().is_object()
+                && item.value().size() == 3 && item.value().contains("x") && item.value().contains("y") && item.value().contains("z"))
+                result[key] = {item.value()["x"], item.value()["y"], item.value()["z"]};
+            else if (expand && !literal && save_point_key(physical_key) && item.value().is_array() && item.value().size() == 3)
+                result[key] = {{"x", item.value()[0]}, {"y", item.value()[1]}, {"z", item.value()[2]}};
+            else result[key] = save_aliases(std::move(item.value()), expand);
+        }
+        return result;
+    }
+
+    void save_prune(json& value, const json& defaults)
+    {
+        if (!value.is_object() || !defaults.is_object()) return;
+        for (auto item = value.begin(); item != value.end();)
+        {
+            auto match = defaults.find(item.key());
+            if (match == defaults.end()) { ++item; continue; }
+            if (item.value().is_object() && match->is_object() && !save_point_key(item.key()))
+            {
+                save_prune(item.value(), *match);
+                if (item.value().empty()) { item = value.erase(item); continue; }
+            }
+            else if (item.value() == *match) { item = value.erase(item); continue; }
+            ++item;
+        }
+    }
+
+    void save_merge(json& value, const json& defaults)
+    {
+        for (auto item = defaults.begin(); item != defaults.end(); ++item)
+        {
+            if (!value.contains(item.key())) value[item.key()] = item.value();
+            else if (value[item.key()].is_object() && item.value().is_object())
+                save_merge(value[item.key()], item.value());
+        }
+    }
+
+    json save_defaults(int object_class)
+    {
+        thread_local std::map<int, json> defaults;
+        auto found = defaults.find(object_class);
+        if (found != defaults.end()) return found->second;
+        json value;
+        capture_access([&]()
+        {
+            switch (object_class)
+            {
+                case class_star: { Star object; value = object.to_json(); break; }
+                case class_planet: { Planet object; value = object.to_json(); break; }
+                case class_moon: { Moon object; value = object.to_json(); break; }
+                case class_galaxy: { Galaxy object; value = object.to_json(); break; }
+                case class_comet: { Comet object; value = object.to_json(); break; }
+                case class_satellite: { Satellite object; value = object.to_json(); break; }
+                default: throw std::runtime_error("Unknown save class");
+            }
+        });
+        defaults.emplace(object_class, value);
+        return value;
+    }
+
+    bool same_saved_plane(const json& left, const json& right)
+    {
+        if (left == right) return true;
+        if (!left.is_object() || !right.is_object()) return false;
+        Rotation a, b;
+        if (!a.from_json(left) || !b.from_json(right)) return false;
+        constexpr double tolerance = 8 * std::numeric_limits<double>::epsilon();
+        if (!std::isfinite(a.a) || !std::isfinite(b.a)
+            || std::abs(a.a - b.a) > tolerance * std::max(std::abs(a.a), std::abs(b.a))) return false;
+        const double length_a = std::hypot(a.v.x, a.v.y, a.v.z);
+        const double length_b = std::hypot(b.v.x, b.v.y, b.v.z);
+        if (!(length_a > 0) || !(length_b > 0)
+            || !std::isfinite(length_a) || !std::isfinite(length_b)) return false;
+        // Axis length does not affect rotation; allow only floating-point roundoff.
+        return std::abs(a.v.x / length_a - b.v.x / length_b) <= tolerance
+            && std::abs(a.v.y / length_a - b.v.y / length_b) <= tolerance
+            && std::abs(a.v.z / length_a - b.v.z / length_b) <= tolerance;
+    }
+
+    void save_precision(json& record)
+    {
+        // Coordinates, planes, motion, epochs, and orbital/rotation periods retain every digit.
+        for (const char* key : {"absolute_magnitude", "apparent_magnitude", "BV_color", "UB_color",
+            "RI_color", "VR_color", "temperature", "albedo", "oblateness", "opposition_surge",
+            "has_water", "ring_mean_opacity", "plant_trunk_height", "plant_trunk_width",
+            "plant_crown_size", "plant_crown_oblateness"})
+        {
+            auto value = record.find(key);
+            if (value == record.end() || !value->is_number_float()) continue;
+            const double original = value->get<double>();
+            if (!std::isfinite(original) || std::abs(original) > 1e12) continue;
+            // Keep tiny nonzero quantities instead of rounding them to zero.
+            const double scale = original && std::abs(original) < .001
+                ? std::pow(10.0, 3 - std::floor(std::log10(std::abs(original)))) : 1000;
+            if (std::isfinite(scale) && std::isfinite(original * scale)) *value = std::round(original * scale) / scale;
+        }
+        auto atmosphere = record.find("atmosphere");
+        if (atmosphere == record.end() || !atmosphere->is_object()) return;
+        auto composition = atmosphere->find("composition");
+        if (composition == atmosphere->end() || !composition->is_object()) return;
+        for (auto& gas : *composition)
+        {
+            if (!gas.is_number()) continue;
+            const double original = gas.get<double>();
+            if (!std::isfinite(original) || original == 0) continue;
+            // Decimal formatting also handles trace fractions below the normal double range.
+            std::ostringstream rounded;
+            rounded.imbue(std::locale::classic());
+            rounded << std::scientific << std::setprecision(3) << original;
+            gas = json::parse(rounded.str());
+        }
+    }
+
+    bool compact_save(const json& document)
+    {
+        return document.is_object() && document.contains("v") && document.at("v").is_number_integer();
+    }
+
+    void validate_save_header(const json& document)
+    {
+        if (document.at("v") != 2 || !document.contains("d") || !document.at("d").is_object()
+            || !document.contains("b") || !document.at("b").is_array()
+            || !document.contains("o") || !document.at("o").is_object())
+            throw std::runtime_error("Invalid compact universe header");
+    }
+}
+
+json Serialization::compact_record(json record, SaveContext& context)
+{
+    json& header = context.header;
+    const int cls = record.at("typeclass").get<int>();
+    const std::string cls_key = std::to_string(cls);
+    if (!header.contains("v")) header = {{"v", 2}, {"d", json::object()}, {"b", json::array()}};
+    if (!header.at("d").contains(cls_key))
+    {
+        json defaults = save_defaults(cls);
+        for (const char* key : {"user_added", "distance_known", "lock_system_plane"})
+            if (record.contains(key)) defaults[key] = record[key];
+        if (record.contains("location") && record["location"].is_object()
+            && record["location"].contains("galactic_center"))
+            defaults["location"]["galactic_center"] = record["location"]["galactic_center"];
+        if (cls == class_planet || cls == class_moon)
+            defaults["atmosphere"] = {{"pressure_supplied", false}, {"surface_pressure", 0.0}};
+        header["d"][cls_key] = std::move(defaults);
+    }
+    if ((cls == class_planet || cls == class_moon) && !record.contains("atmosphere")) record["atmosphere"] = nullptr;
+    record.erase("classification_evidence"); // Derived diagnostic output, never an input to classification.
+    record.erase("wd_color_profile");       // Derived from the retained WD color/atmosphere inputs.
+    if (record.value("!origname", std::string()) == record.value("!name", std::string())) record.erase("!origname");
+    if (record.contains("orbit") && record.value("!origcenname", std::string())
+        == record["orbit"].value("center_name", std::string())) record.erase("!origcenname");
+    const bool fictional = cls == class_star && record.contains("fictional_origin") && record["fictional_origin"].is_object();
+    if (cls == class_star)
+    {
+        record.erase("transparent_clouds");
+        record.erase("fictitious_map_height");
+    }
+    if (fictional)
+    {
+        auto& origin = record["fictional_origin"];
+        record["fic"] = 1;
+        if (!record.value("is_faved", false)) record.erase("is_faved");
+        if (origin.contains("motion") && origin["motion"].is_object())
+        {
+            auto& motion = origin["motion"];
+            if (motion.value("model", std::string()) == "galactic_velocity_ellipsoid_v1") motion.erase("model");
+            if (motion.value("reference", std::string()) == "stationary_galaxy_center") motion.erase("reference");
+        }
+        if (origin.contains("batch") && origin["batch"].is_object())
+        {
+            auto& batches = header["b"];
+            auto found = std::find(batches.begin(), batches.end(), origin["batch"]);
+            if (found == batches.end())
+            {
+                batches.push_back(origin["batch"]);
+                origin["batch"] = batches.size() - 1;
+            }
+            else origin["batch"] = std::distance(batches.begin(), found);
+        }
+        const std::string id = origin.value("id", std::string());
+        const auto colon = id.rfind(':');
+        if (colon != std::string::npos && origin.contains("component") && record.contains("stellar_system"))
+        {
+            const json implied = {{"system", id.substr(0, colon)}, {"slot", origin["component"]}, {"label", record.at("!name")}};
+            if (record["stellar_system"] == implied) record.erase("stellar_system");
+        }
+        if (origin.value("designation", std::string()) == record.at("!name")) origin.erase("designation");
+        for (const char* key : {"anchor", "cluster"})
+            if (origin.contains(key) && (origin[key] == false || origin[key] == 0)) origin.erase(key);
+        if (record.contains("stellar_metallicity"))
+        {
+            auto& metal = record["stellar_metallicity"];
+            metal.erase("error_upper_dex");
+            metal.erase("error_lower_dex");
+            if (metal.value("source", std::string()) == "fictional population model v1") metal.erase("source");
+            const std::string ratio = metal.value("ratio", std::string());
+            if (ratio == "[Fe/H]" || ratio == "[M/H]") metal["ratio"] = ratio == "[Fe/H]" ? 1 : 2;
+            if (metal.contains("value_dex") && metal["value_dex"].is_number())
+                metal["value_dex"] = std::round(metal["value_dex"].get<double>() * 1000) / 1000;
+        }
+    }
+    if (record.contains("stellar_metallicity") && record["stellar_metallicity"].is_object())
+    {
+        auto& metal = record["stellar_metallicity"];
+        const std::string ratio = metal.value("ratio", json()).is_string()
+            ? metal["ratio"].get<std::string>() : std::string();
+        if (ratio == "[Fe/H]" || ratio == "[M/H]") metal["ratio"] = ratio == "[Fe/H]" ? 1 : 2;
+        for (const char* key : {"error_upper_dex", "error_lower_dex", "ratio", "source"})
+            if (metal.contains(key) && (metal[key].is_null() || metal[key] == "")) metal.erase(key);
+    }
+    if (record.contains("orbit") && record["orbit"].is_object())
+    {
+        if (!header.contains("q")) { Orbit defaults; header["q"] = defaults.to_json(); }
+        save_prune(record["orbit"], header["q"]);
+    }
+    save_precision(record);
+    save_prune(record, header["d"][cls_key]);
+    record["typeclass"] = cls;
+    json packed = save_aliases(std::move(record), false);
+    if (packed.contains("l") && packed["l"].is_object())
+    {
+        for (const char* key : {"gc", "s", "sp", "op", "ep"})
+        {
+            auto value = packed["l"].find(key);
+            if (value == packed["l"].end() || (!value->is_object() && !value->is_array())) continue;
+            if (!header.contains("p")) header["p"] = json::array();
+            const std::string signature = value->dump();
+            auto found = context.frames.find(signature);
+            if (found == context.frames.end())
+            {
+                const size_t index = header["p"].size();
+                context.frames.emplace(signature, index);
+                header["p"].push_back(std::move(*value));
+                *value = index;
+            }
+            else *value = found->second;
+        }
+    }
+    return packed;
+}
+
+json Serialization::expand_record(const json& packed, const json& header)
+{
+    if (!packed.is_object()) throw std::runtime_error("Invalid compact universe record");
+    json resolved = packed;
+    if (resolved.contains("l") && resolved["l"].is_object())
+    {
+        for (const char* key : {"gc", "s", "sp", "op", "ep"})
+        {
+            auto value = resolved["l"].find(key);
+            if (value == resolved["l"].end() || !value->is_number_integer()) continue;
+            const auto index = value->get<int64_t>();
+            if (!header.contains("p") || !header["p"].is_array() || index < 0
+                || static_cast<uint64_t>(index) >= header["p"].size())
+                throw std::runtime_error("Invalid spatial frame reference");
+            *value = header["p"].at(static_cast<size_t>(index));
+            if (!value->is_object() && !value->is_array()) throw std::runtime_error("Invalid spatial frame");
+        }
+    }
+    json record = save_aliases(std::move(resolved), true);
+    const int cls = record.at("typeclass").get<int>();
+    const auto& defaults = header.at("d").at(std::to_string(cls));
+    if (!defaults.is_object() || defaults.value("typeclass", -1) != cls)
+        throw std::runtime_error("Invalid class defaults");
+    save_merge(record, defaults);
+    if (record.contains("orbit") && record["orbit"].is_object() && header.contains("q"))
+    {
+        if (!header["q"].is_object()) throw std::runtime_error("Invalid orbit defaults");
+        save_merge(record["orbit"], header["q"]);
+    }
+    if (record.value("!origname", std::string()).empty()) record["!origname"] = record.at("!name");
+    if (record.contains("orbit") && record.value("!origcenname", std::string()).empty())
+        record["!origcenname"] = record["orbit"].value("center_name", std::string());
+    if (record.value("fic", 0) == 1)
+    {
+        auto& origin = record["fictional_origin"];
+        if (!origin.is_object()) throw std::runtime_error("Invalid fictional origin");
+        if (origin.contains("batch") && origin["batch"].is_number_integer())
+        {
+            const auto index = origin["batch"].get<int64_t>();
+            if (index < 0 || static_cast<uint64_t>(index) >= header.at("b").size())
+                throw std::runtime_error("Invalid fictional batch reference");
+            origin["batch"] = header.at("b").at(static_cast<size_t>(index));
+        }
+        if (origin.contains("motion") && origin["motion"].is_object())
+        {
+            auto& motion = origin["motion"];
+            if (!motion.contains("model")) motion["model"] = "galactic_velocity_ellipsoid_v1";
+            if (!motion.contains("reference")) motion["reference"] = "stationary_galaxy_center";
+        }
+        if (!origin.contains("anchor")) origin["anchor"] = false;
+        if (!origin.contains("cluster")) origin["cluster"] = 0;
+        if (!origin.contains("designation")) origin["designation"] = record.at("!name");
+        const std::string id = origin.value("id", std::string());
+        const auto colon = id.rfind(':');
+        if (!record.contains("stellar_system") && colon != std::string::npos && origin.contains("component"))
+            record["stellar_system"] = {{"system", id.substr(0, colon)}, {"slot", origin["component"]}, {"label", record.at("!name")}};
+        if (record.contains("stellar_metallicity"))
+        {
+            auto& metal = record["stellar_metallicity"];
+            if (metal.contains("ratio") && metal["ratio"].is_number_integer())
+            {
+                const int code = metal["ratio"].get<int>();
+                if (code != 1 && code != 2) throw std::runtime_error("Unknown metallicity ratio code");
+                metal["ratio"] = code == 1 ? "[Fe/H]" : "[M/H]";
+            }
+            if (!metal.contains("source")) metal["source"] = "fictional population model v1";
+        }
+        record.erase("fic");
+    }
+    if (record.contains("stellar_metallicity") && record["stellar_metallicity"].is_object())
+    {
+        auto& metal = record["stellar_metallicity"];
+        if (metal.contains("ratio") && metal["ratio"].is_number_integer())
+        {
+            const int code = metal["ratio"].get<int>();
+            if (code != 1 && code != 2) throw std::runtime_error("Unknown metallicity ratio code");
+            metal["ratio"] = code == 1 ? "[Fe/H]" : "[M/H]";
+        }
+    }
+    return record;
+}
+
+json Serialization::compact_document(json records)
+{
+    if (records.is_null()) return records;
+    SaveContext context;
+    for (auto& record : records) record = compact_record(std::move(record), context);
+    json& header = context.header;
+    if (header.is_null()) header = {{"v", 2}, {"d", json::object()}, {"b", json::array()}};
+    header["o"] = std::move(records);
+    return std::move(context.header);
+}
+
+json Serialization::output_record(json record)
+{
+    const int cls = record.at("typeclass").get<int>();
+    const bool stellar = cls == class_star;
+    const bool fictional = stellar && (record.value("fic", 0) == 1
+        || (record.contains("fictional_origin") && record["fictional_origin"].is_object()));
+    save_precision(record);
+    record.erase("home_world");
+    record.erase("space_velocity");
+    record.erase("classification_evidence");
+    for (const char* key : {"precession", "RI_color", "VR_color", "equinox", "oblateness", "parallax", "rnd_seed"})
+    {
+        if (record.value(key, 0.0) == 0) record.erase(key);
+    }
+    if (cls == class_planet || cls == class_moon)
+    {
+        const bool water = record.value("has_water", 0.0) != 0;
+        for (const char* key : {"vegetation_r", "vegetation_g", "vegetation_b",
+            "plant_trunk_height", "plant_trunk_width", "plant_crown_size", "plant_crown_oblateness"})
+        {
+            if (!water || record.value(key, 0.0) == 0) record.erase(key);
+        }
+    }
+    if (record.contains("orbit") && record["orbit"].is_object()
+        && record["orbit"].value("period", 0.0) > 0
+        && record.contains("sidereal_rotational_period")
+        && record["sidereal_rotational_period"] == record["orbit"]["period"])
+    {
+        record["sidereal_rotational_period"] = "tidal";
+    }
+    if (record.contains("location") && record["location"].is_object())
+    {
+        auto& location = record["location"];
+        const json zero = {{"x", 0}, {"y", 0}, {"z", 0}};
+        if (location.contains("local_position") && location["local_position"] == zero) location.erase("local_position");
+        // Compare the planes before removing either link in the inheritance chain.
+        if (location.contains("equatorial_plane") && location.contains("orbital_plane")
+            && same_saved_plane(location["equatorial_plane"], location["orbital_plane"])) location.erase("equatorial_plane");
+        if (location.contains("orbital_plane") && location.contains("local_system_plane")
+            && same_saved_plane(location["orbital_plane"], location["local_system_plane"])) location.erase("orbital_plane");
+    }
+    if (record.contains("stellar_system") && record["stellar_system"].is_object()) record["stellar_system"].erase("slot");
+    for (const char* key : {"known_poles", "rot_axis_known", "is_faved"})
+        if (!record.value(key, false)) record.erase(key);
+    if (record.contains("orbit_center_codes") && record["orbit_center_codes"].empty()) record.erase("orbit_center_codes");
+    if ((cls != class_planet && cls != class_moon)
+        || uses_gaseous_map(static_cast<cel_obj_type>(record.value("type", 0)))) record.erase("transparent_clouds");
+    if (stellar)
+    {
+        const std::string spectral = record.value("spectral_type", std::string());
+        const bool wd = (!spectral.empty() && spectral.front() == 'D') || spectral.compare(0, 2, "WD") == 0
+            || !record.value("WD", std::string()).empty() || !record.value("gaia_wd_name", std::string()).empty();
+        const auto blank = [&](const char* key)
+        {
+            auto field = record.find(key);
+            if (field == record.end()) return true;
+            if (field->is_string()) return field->get_ref<const std::string&>().find_first_not_of(" \t\r\n") == std::string::npos;
+            return field->is_null() || (field->is_number() && field->get<double>() <= 0);
+        };
+        for (const char* key : {"HD", "HR", "HIP", "SAO", "SB9", "CCDM", "WD", "Bayer", "Flamsteed",
+            "Gliese", "FlamsteedNo", "GouldNo", "Gouldcons", "constellation", "catalog_aliases"})
+            if (fictional || blank(key)) record.erase(key);
+        if (fictional || record.value("BayerGrkno", -1) < 0
+            || (blank("Bayer") && blank("constellation"))) record.erase("BayerGrkno");
+        if (fictional || blank("Bonn_survey") || blank("Bonn_survey_sequential"))
+            for (const char* key : {"Bonn_survey", "Bonn_survey_sign", "Bonn_survey_declination", "Bonn_survey_sequential"}) record.erase(key);
+        const bool gaia = !fictional && record.value("gaia_source_id", uint64_t(0)) != 0;
+        for (auto field = record.begin(); field != record.end();)
+        {
+            const bool gaia_field = field.key().compare(0, 5, "gaia_") == 0;
+            const bool wd_field = field.key().compare(0, 3, "wd_") == 0 || field.key() == "WD" || field.key() == "gaia_wd_name";
+            if ((!gaia && gaia_field) || (!wd && wd_field)) field = record.erase(field);
+            else ++field;
+        }
+        if (wd && record.contains("wd_color_profile"))
+        {
+            const auto& profile = record["wd_color_profile"];
+            if (fictional && profile.value("available", false) && profile.contains("linear_rgb"))
+            {
+                const auto& linear = profile.at("linear_rgb");
+                const RGB3 rgb = wd_srgb_from_linear(Color(linear.at(0).get<double>(), linear.at(1).get<double>(), linear.at(2).get<double>()));
+                record["wd_color_valid"] = true;
+                record["wd_color_rgb"] = {rgb.r, rgb.g, rgb.b};
+                record["wd_color_source"] = profile.value("source", std::string());
+            }
+        }
+        record.erase("wd_color_profile");
+        if (fictional || record.value("user_added", false))
+        {
+            record.erase("apparent_magnitude");
+            record.erase("apparent_magnitude_estimated");
+        }
+        if (fictional)
+        {
+            record["fic"] = 1;
+            record.erase("rot_heliocen_incl");
+            record.erase("rot_heliocen_node");
+            const auto& origin = record["fictional_origin"];
+            if (origin.is_object() && origin.contains("designation") && origin["designation"].is_string()
+                && !origin["designation"].get_ref<const std::string&>().empty()) record["!origname"] = origin["designation"];
+            if (origin.is_object() && origin.contains("motion") && origin["motion"].is_object()
+                && origin["motion"].contains("epoch_position_m") && record.contains("location"))
+            {
+                record["location"]["system_center"] = origin["motion"]["epoch_position_m"];
+            }
+            if (record.contains("stellar_metallicity") && record["stellar_metallicity"].is_object())
+            {
+                auto& metal = record["stellar_metallicity"];
+                if (metal.value("source", std::string()) == "fictional population model v1") metal.erase("source");
+                metal.erase("error_upper_dex");
+                metal.erase("error_lower_dex");
+                if (metal.contains("value_dex") && metal["value_dex"].is_number())
+                    metal["value_dex"] = std::round(metal["value_dex"].get<double>() * 1000) / 1000;
+            }
+            if (record.contains("stellar_rotation") && record["stellar_rotation"].is_object())
+            {
+                auto& rotation = record["stellar_rotation"];
+                if (rotation.value("source", std::string()).compare(0, 26, "fictional population model") == 0)
+                    rotation.erase("source");
+            }
+        }
+    }
+    record.erase("fictional_origin");
+    return readable_aliases(std::move(record), false);
+}
+
+json Serialization::expand_output_record(json record)
+{
+    // The class key distinguishes this format from descriptive legacy object records.
+    if (!record.is_object() || !record.contains("cls") || record.contains("typeclass")) return record;
+    record = readable_aliases(std::move(record), true);
+    for (const char* key : {"precession", "RI_color", "VR_color", "equinox", "oblateness", "rnd_seed"})
+    {
+        if (!record.contains(key)) record[key] = 0;
+    }
+    const int cls = record.value("typeclass", 0);
+    if (cls == class_planet || cls == class_moon)
+    {
+        for (const char* key : {"vegetation_r", "vegetation_g", "vegetation_b",
+            "plant_trunk_height", "plant_trunk_width", "plant_crown_size", "plant_crown_oblateness"})
+        {
+            if (!record.contains(key)) record[key] = 0;
+        }
+    }
+    if (record.contains("location") && record["location"].is_object())
+    {
+        auto& location = record["location"];
+        if (!location.contains("local_position")) location["local_position"] = {{"x", 0}, {"y", 0}, {"z", 0}};
+        if (!location.contains("orbital_plane") && location.contains("local_system_plane"))
+            location["orbital_plane"] = location["local_system_plane"];
+        if (!location.contains("equatorial_plane") && location.contains("orbital_plane"))
+            location["equatorial_plane"] = location["orbital_plane"];
+    }
+    if (record.value("typeclass", 0) == class_star)
+    {
+        if (!record.contains("parallax")) record["parallax"] = 0;
+        const json defaults = save_defaults(class_star);
+        for (const char* key : {"HD", "HR", "HIP", "SAO", "SB9", "CCDM", "WD", "Bayer", "Flamsteed", "Gliese",
+            "BayerGrkno", "FlamsteedNo", "constellation", "Bonn_survey", "Bonn_survey_sign", "Bonn_survey_declination",
+            "Bonn_survey_sequential", "gaia_source_id", "gaia_wd_name", "gaia_g_magnitude", "known_poles", "rot_axis_known"})
+            if (!record.contains(key) && defaults.contains(key)) record[key] = defaults[key];
+    }
+    return record;
+}
+
+json Serialization::expand_document(json document)
+{
+    if (!compact_save(document))
+    {
+        if (document.is_object())
+            for (auto& record : document) record = expand_output_record(std::move(record));
+        return document;
+    }
+    validate_save_header(document);
+    json records = json::object();
+    for (auto item = document["o"].begin(); item != document["o"].end(); ++item)
+        records[item.key()] = expand_record(item.value(), document);
+    return records;
+}
+
+static bool save_object_record(CelestialObject* cel, json& allobjs, const std::string& key, Serialization::SaveContext* context = nullptr)
+{
+    Star *s;
 
     const char* l = key.c_str();
 
@@ -734,42 +1400,116 @@ bool Serialization::save_one(std::fstream& fs, CelestialObject *cel, json &allob
         std::cerr << "Attempted to save CelestialObject " << cel->name << " of blank or unknown type class." << std::endl;
     }
 
+    if (context) allobjs[key] = Serialization::compact_record(std::move(allobjs[key]), *context);
     return true;
+}
+
+bool Serialization::save_one(std::fstream& fs, CelestialObject* cel, json& allobjs)
+{
+    return save_object_record(cel, allobjs, serialized_object_key(cel));
+}
+
+json Serialization::snapshot(CelestialObject **cels, bool oe, const SnapshotObserver& observer)
+{
+    int i;
+    json allobjs;
+    std::unordered_map<std::string, CelestialObject*> last_writer;
+    std::set<std::string> captured_keys;
+    const auto save = [&](CelestialObject* object, bool ancestor = false)
+    {
+        if (!oe || (!ancestor && last_writer.empty()))
+        {
+            const std::string key = serialized_object_key(object);
+            save_object_record(object, allobjs, key);
+            captured_keys.insert(key);
+            if (observer) observer(object, key);
+            return;
+        }
+        const std::string key = serialized_object_key(object);
+        auto previous = last_writer.find(key);
+        if (previous != last_writer.end() && previous->second == object) return;
+        save_object_record(object, allobjs, key);
+        captured_keys.insert(key);
+        if (observer) observer(object, key);
+        if (ancestor || previous != last_writer.end()) last_writer[key] = object;
+    };
+    for (i = 0; cels[i]; ++i)
+    {
+        captured_keys.clear();
+        capture_access([&]()
+        {
+            if (cels[i]->deleted) return;
+            if (oe && !cels[i]->user_edited && !cels[i]->user_added) return;
+
+            save(cels[i]);
+            if (oe && cels[i]->orbit && cels[i]->orbit->center && !cels[i]->orbit->center->user_added)
+            {
+                CelestialObject *cen = cels[i]->orbit->center;
+                while (1)
+                {
+                    save(cen, true);
+                    if (!cen->orbit) break;
+                    if (!cen->orbit->center) break;
+                    cen = cen->orbit->center;
+                }
+            }
+        });
+        // Normalize detached JSON after releasing the catalog lock.
+        for (const auto& key : captured_keys) allobjs[key] = output_record(std::move(allobjs[key]));
+        save_progress_advance();
+    }
+
+    return allobjs;
 }
 
 bool Serialization::save_all(std::fstream& fs, CelestialObject **cels, bool oe)
 {
     try
     {
-        int i;
-        json allobjs;
-        for (i=0; cels[i]; i++)
-        {
-            if (cels[i]->deleted) continue;
-            if (oe && !cels[i]->user_edited) continue;
-
-            save_one(fs, cels[i], allobjs);
-            if (oe && cels[i]->orbit && cels[i]->orbit->center && !cels[i]->orbit->center->user_added)
-            {
-                CelestialObject *cen = cels[i]->orbit->center;
-                while (1)
-                {
-                    save_one(fs, cen, allobjs);
-                    if (!cen->orbit) break;
-                    if (!cen->orbit->center) break;
-                    cen = cen->orbit->center;
-                }
-            }
-        }
-
-        fs << allobjs.dump(4);
-        return true;
+        fs << std::setw(4) << snapshot(cels, oe);
+        return fs.good();
     }
     catch (...)
     {
         std::cerr << "FAILED to save universe file." << std::endl;
         return false;
     }
+}
+
+namespace
+{
+    BackgroundFile universe_writer;
+}
+
+bool Serialization::save_file(const std::string& path, CelestialObject **objects, bool oe, bool background)
+{
+    if (!background)
+    {
+        std::fstream stream(path, std::ios::out | std::ios::trunc);
+        const bool ok = stream && save_all(stream, objects, oe);
+        stream.close();
+        return ok && !stream.fail();
+    }
+    return universe_writer.submit([&]()
+    {
+        const auto destination = std::filesystem::absolute(std::filesystem::u8path(path));
+        json document = snapshot(objects, oe);
+        return [destination, document = std::move(document)]()
+        {
+            return publish_file(destination, [&](std::ostream& stream)
+            {
+                stream << std::setw(4) << document;
+                return stream.good();
+            });
+        };
+    });
+}
+
+bool Serialization::finish_file_saves()
+{
+    const bool universe_ok = universe_writer.finish();
+    const bool regions_ok = finish_region_saves();
+    return universe_ok && regions_ok;
 }
 
 namespace
@@ -820,12 +1560,28 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
 {
     try
     {
+        json document;
+        fs >> document;
+        return load_document(std::move(document), cels, max, aua);
+    }
+    catch (const std::exception& error)
+    {
+        std::cerr << "Universe import failed: " << error.what() << std::endl;
+        return false;
+    }
+}
+
+bool Serialization::load_document(json allobj, CelestialObject **cels, unsigned int max, bool aua)
+{
+    try
+    {
         if (!cels || !max) throw std::runtime_error("Invalid universe storage");
-        json allobj;
-        fs >> allobj;
         // Older empty saves contain null instead of an empty object.
         if (allobj.is_null()) return true;
         if (!allobj.is_object()) throw std::runtime_error("Universe root must be an object");
+        const bool compact = compact_save(allobj);
+        if (compact) validate_save_header(allobj);
+        json& records = compact ? allobj.at("o") : allobj;
         unsigned int count = 0;
         while (count < max && cels[count]) ++count;
         if (count == max) throw std::runtime_error("Universe storage has no terminating slot");
@@ -840,19 +1596,28 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
             int index = -1;
         };
         std::vector<PendingRecord> pending;
+        pending.reserve(records.size());
         using Identity = std::tuple<cel_obj_class, std::string, std::string>;
         std::map<Identity, CelestialObject*> identities;
         for (unsigned int i = 0; i < count; ++i)
             identities.emplace(Identity(cels[i]->typeclass(), cels[i]->origname, cels[i]->origcenname), cels[i]);
+        std::map<std::string, CelestialObject*> fictional_ids;
+        for (unsigned int i = 0; i < count; ++i)
+        {
+            if (cels[i]->typeclass() != class_star) continue;
+            const auto& origin = static_cast<Star*>(cels[i])->fictional_origin;
+            if (origin.is_object() && origin.contains("id")) fictional_ids[origin.at("id")] = cels[i];
+        }
         std::map<CelestialObject*, int> existing_indices;
         for (unsigned int i = 0; i < count; ++i) existing_indices[cels[i]] = i;
+        std::set<std::string> imported_fictional_ids;
         std::set<CelestialObject*> replacements;
         unsigned int additions = 0;
 
         // Parse every record before changing live objects. Their addresses remain stable on merge.
-        for (const auto& record : allobj.items())
+        for (const auto& record : records.items())
         {
-            const json& data = record.value();
+            json data = compact ? expand_record(record.value(), allobj) : expand_output_record(record.value());
             if (!data.is_object() || !data.contains("!name") || !data.at("!name").is_string()
                 || !data.contains("typeclass") || !data.at("typeclass").is_number_integer())
                 throw std::runtime_error("Object record requires a name and an integer class");
@@ -862,7 +1627,6 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
             if (data.contains("orbit") && !data.at("orbit").is_object())
                 throw std::runtime_error("Orbit must be an object");
             PendingRecord entry;
-            entry.data = data;
             entry.parsed = make_universe_object(data.at("typeclass").get<int>());
             if (!read_universe_record(entry.parsed.get(), data))
                 throw std::runtime_error("Invalid object record");
@@ -877,17 +1641,38 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
             const std::string original = data.value("!origname", name);
             const std::string center_name = data.value("!origcenname",
                 entry.parsed->orbit ? entry.parsed->orbit->center_name : std::string());
-            entry.data["!origname"] = entry.parsed->origname = original;
-            entry.data["!origcenname"] = entry.parsed->origcenname = center_name;
+            entry.parsed->origname = original;
+            entry.parsed->origcenname = center_name;
             const auto match = identities.find(Identity(cls, original, center_name));
             entry.target = match == identities.end() ? entry.parsed.get() : match->second;
+            if (cls == class_star)
+            {
+                const auto& origin = static_cast<Star*>(entry.parsed.get())->fictional_origin;
+                if (origin.is_object() && origin.contains("id"))
+                {
+                    if (!imported_fictional_ids.insert(origin.at("id")).second)
+                        throw std::runtime_error("Duplicate fictional identity in universe file: "
+                            + origin.at("id").get<std::string>() + " (" + name + ")");
+                    const auto fictional = fictional_ids.find(origin.at("id"));
+                    if (fictional == fictional_ids.end() && match != identities.end())
+                        throw std::runtime_error("Fictional designation is already in use by a different object");
+                    entry.target = fictional == fictional_ids.end() ? entry.parsed.get() : fictional->second;
+                }
+            }
             if (entry.target != entry.parsed.get())
             {
                 if (!replacements.insert(entry.target).second)
                     throw std::runtime_error("Multiple records replace the same object");
                 entry.index = existing_indices.at(entry.target);
+                data["!origname"] = original;
+                data["!origcenname"] = center_name;
+                entry.data = std::move(data);
             }
-            else ++additions;
+            else
+            {
+                ++additions;
+                entry.data = nullptr;
+            }
             pending.push_back(std::move(entry));
         }
         if (additions >= max - count) throw std::runtime_error("Universe object limit exceeded");
@@ -1010,7 +1795,8 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
                 Star* member = static_cast<Star*>(object);
                 Star* root = static_cast<Star*>(object->cenobj);
                 if (member->stellar_system.is_object() && root->stellar_system.is_object() &&
-                    member->stellar_system.at("system") == root->stellar_system.at("system"))
+                    member->stellar_system.at("system") == root->stellar_system.at("system") &&
+                    (!member->fictional_origin.is_object() || member != root || root->multisys))
                 {
                     if (!root->multisys)
                     {
@@ -1045,16 +1831,27 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
             for (auto it = path.rbegin(); it != path.rend(); ++it)
             {
                 object = *it;
+                const bool generated_frame = object->cenobj && object->cenobj->typeclass() == class_star
+                    && static_cast<Star*>(object->cenobj)->has_fictional_motion;
+                const double update_time = generated_frame ? simnow : J2000_TIME_T;
                 switch (object->typeclass())
                 {
-                    case class_star: static_cast<Star*>(object)->update_location(J2000_TIME_T); break;
+                    case class_star: static_cast<Star*>(object)->update_location(update_time); break;
 
-                    case class_planet: static_cast<Planet*>(object)->update_location(J2000_TIME_T); break;
+                    case class_planet: static_cast<Planet*>(object)->update_location(update_time); break;
 
-                    case class_moon: static_cast<Moon*>(object)->update_location(J2000_TIME_T); break;
+                    case class_moon: static_cast<Moon*>(object)->update_location(update_time); break;
                     default: break;
                 }
             }
+        }
+        for (int index : loaded)
+        {
+            if (cels[index]->typeclass() != class_star) continue;
+            Star* star = static_cast<Star*>(cels[index]);
+            if (!star->fictional_origin.is_object()) continue;
+            favestars.erase(std::remove(favestars.begin(), favestars.end(), star), favestars.end());
+            if (star->is_faved) favestars.push_back(star);
         }
         Planet::rebuild_host_statistics();
         std::lock_guard<std::mutex> lock(mtx);

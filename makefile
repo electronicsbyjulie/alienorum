@@ -34,18 +34,18 @@ TESTS_DIR = src/tests
 IMGUI_SRC = $(IMGUI_DIR)/imgui.cpp $(IMGUI_DIR)/imgui_demo.cpp $(IMGUI_DIR)/imgui_draw.cpp $(IMGUI_DIR)/imgui_tables.cpp $(IMGUI_DIR)/imgui_widgets.cpp \
             $(IMGUI_DIR)/backends/imgui_impl_sdl2.cpp $(IMGUI_DIR)/backends/imgui_impl_opengl3.cpp
 IGFD_SRC = $(IGFD_DIR)/ImGuiFileDialog.cpp
-CLASSES_SRC = $(CLASSES_DIR)/point.cpp $(CLASSES_DIR)/cat.cpp $(CLASSES_DIR)/star.cpp $(CLASSES_DIR)/celestial.cpp $(CLASSES_DIR)/color.cpp \
+CLASSES_SRC = $(CLASSES_DIR)/fictionalstars.cpp $(CLASSES_DIR)/point.cpp $(CLASSES_DIR)/cat.cpp $(CLASSES_DIR)/star.cpp $(CLASSES_DIR)/celestial.cpp $(CLASSES_DIR)/color.cpp \
             $(CLASSES_DIR)/chemistry.cpp \
             $(CLASSES_DIR)/stellar_catalogs.cpp $(CLASSES_DIR)/surfacenavigation.cpp \
             $(CLASSES_DIR)/misc.cpp $(CLASSES_DIR)/planet.cpp $(CLASSES_DIR)/moon.cpp $(CLASSES_DIR)/galaxy.cpp $(CLASSES_DIR)/comet.cpp \
-			$(CLASSES_DIR)/serial.cpp $(CLASSES_DIR)/noise.cpp $(CLASSES_DIR)/satellite.cpp $(CLASSES_DIR)/shore.cpp $(CLASSES_DIR)/patch.cpp \
+			$(CLASSES_DIR)/serial.cpp $(CLASSES_DIR)/universe_catalog.cpp $(CLASSES_DIR)/noise.cpp $(CLASSES_DIR)/satellite.cpp $(CLASSES_DIR)/shore.cpp $(CLASSES_DIR)/patch.cpp \
 			$(CLASSES_DIR)/cons.cpp $(CLASSES_DIR)/sscimport.cpp $(CLASSES_DIR)/exocons.cpp $(CLASSES_DIR)/sound.cpp
-TESTS_SRC = $(TESTS_DIR)/point_test.cpp $(TESTS_DIR)/color_test.cpp \
+TESTS_SRC = $(TESTS_DIR)/fictionalstars_test.cpp $(TESTS_DIR)/point_test.cpp $(TESTS_DIR)/color_test.cpp \
 			$(TESTS_DIR)/celestial_test.cpp $(TESTS_DIR)/galaxy_test.cpp $(TESTS_DIR)/star_test.cpp \
 			$(TESTS_DIR)/planet_test.cpp $(TESTS_DIR)/moon_test.cpp $(TESTS_DIR)/comet_test.cpp \
 			$(TESTS_DIR)/satellite_test.cpp $(TESTS_DIR)/cons_test.cpp \
-			$(TESTS_DIR)/serial_test.cpp $(TESTS_DIR)/misc_test.cpp $(TESTS_DIR)/cat_test.cpp \
-			$(TESTS_DIR)/housekeeping_test.cpp $(TESTS_DIR)/sound_test.cpp $(TESTS_DIR)/rendering_test.cpp
+			$(TESTS_DIR)/serial_test.cpp $(TESTS_DIR)/universe_catalog_test.cpp $(TESTS_DIR)/misc_test.cpp $(TESTS_DIR)/cat_test.cpp \
+			$(TESTS_DIR)/housekeeping_test.cpp $(TESTS_DIR)/io_performance_test.cpp $(TESTS_DIR)/sound_test.cpp $(TESTS_DIR)/rendering_test.cpp
 
 BIN = bin
 OBJ = obj
@@ -62,10 +62,11 @@ IMGUI_OBJS = $(addsuffix .o, $(addprefix $(OBJIMGUI)/, $(basename $(notdir $(IMG
 OBJS = $(IMGUI_OBJS)
 OBJS += $(addsuffix .o, $(addprefix $(OBJIGFD)/, $(basename $(notdir $(IGFD_SRC)))))
 OBJS += $(addsuffix .o, $(addprefix $(OBJINT)/, $(basename $(notdir $(CLASSES_SRC)))))
-OBJS += $(OBJINT)/globals.o $(OBJINT)/loaders.o $(OBJINT)/housekeeping.o $(OBJINT)/inputs.o \
-	$(OBJINT)/dialogs.o $(OBJINT)/visuals.o $(OBJINT)/gputex.o $(OBJINT)/sphere_impostor.o $(OBJINT)/sunclock_gpu.o $(OBJINT)/clouds_gpu.o $(OBJINT)/horizon_ground_gpu.o $(OBJINT)/horizon_terrain_gpu.o $(OBJINT)/horizon_mesh_gpu.o
+OBJS += $(OBJINT)/fictionalstars_ui.o $(OBJINT)/globals.o $(OBJINT)/loaders.o $(OBJINT)/housekeeping.o $(OBJINT)/inputs.o \
+	$(OBJINT)/dialogs.o $(OBJINT)/visuals.o $(OBJINT)/gputex.o $(OBJINT)/sphere_impostor.o $(OBJINT)/sunclock_gpu.o $(OBJINT)/clouds_gpu.o $(OBJINT)/scenery_gpu.o $(OBJINT)/horizon_ground_gpu.o $(OBJINT)/horizon_terrain_gpu.o $(OBJINT)/horizon_mesh_gpu.o
 
 TESTS = $(addprefix $(BIN)/, $(basename $(notdir $(TESTS_SRC))))
+TEST_OBJS = $(addprefix $(OBJ)/tests/, $(notdir $(TESTS_SRC:.cpp=.o)))
 
 INCLUDES = -I./src/include -I./$(IMGUI_DIR) -I./$(CLASSES_DIR)
 CPPFLAGS += $(INCLUDES)
@@ -120,11 +121,13 @@ $(OBJINT):
 	mkdir -p $(OBJINT)
 
 clean:
+	rm -Rf $(OBJ)/tests
 	rm -Rf $(OBJINT)/*.o
 	rm -Rf $(OBJINT)/*.d
 	rm -Rf $(BIN)/*
 
 deepclean:
+	rm -Rf $(OBJ)/tests
 	rm -Rf $(OBJIMGUI)/*.o
 	rm -Rf $(OBJIMGUI)/*.d
 	rm -Rf $(OBJIGFD)/*.o
@@ -204,6 +207,12 @@ $(OBJINT)/patch.o: $(CLASSES_DIR)/patch.cpp
 
 $(OBJINT)/color.o: $(CLASSES_DIR)/color.cpp
 	$(CPP) $(CLASSES_DIR)/color.cpp $(CPPFLAGS) -c -o $(OBJINT)/color.o
+
+$(OBJINT)/fictionalstars.o: $(CLASSES_DIR)/fictionalstars.cpp
+	$(CPP) $< $(CPPFLAGS) -c -o $@
+
+$(OBJINT)/universe_catalog.o: $(CLASSES_DIR)/universe_catalog.cpp
+	$(CPP) $< $(CPPFLAGS) -c -o $@
 
 $(OBJINT)/point.o: $(CLASSES_DIR)/point.cpp
 	$(CPP) $(CLASSES_DIR)/point.cpp $(CPPFLAGS) -c -o $(OBJINT)/point.o
@@ -299,63 +308,42 @@ $(OBJINT)/horizon_mesh_gpu.o: src/horizon_mesh_gpu.cpp
 	$(CPP) src/horizon_mesh_gpu.cpp $(CPPFLAGS) -c -o $(OBJINT)/horizon_mesh_gpu.o
 
 
-# Every test binary links the whole object set, so $(OBJS) has to be a prerequisite of each of
-# them as well: without it, editing a class only rebuilt that class's .o, and the test kept the
-# copy that was linked into it before the edit -- passing or failing on code that is no longer
-# there. The .cpp and .h that the test is actually about stay listed too, for clarity.
-$(BIN)/point_test: $(OBJS) $(TESTS_DIR)/point_test.cpp $(CLASSES_DIR)/point.h $(CLASSES_DIR)/point.cpp
-	$(CPP) $(TESTS_DIR)/point_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/point_test
+# Cache test translation units independently, while relinking every suite against changed
+# production objects. Generated dependencies cover test fixtures and transitive headers.
+$(OBJS): | $(OBJIMGUI) $(OBJIGFD) $(OBJINT)
 
-$(BIN)/color_test: $(OBJS) $(TESTS_DIR)/color_test.cpp $(CLASSES_DIR)/color.h $(CLASSES_DIR)/color.cpp
-	$(CPP) $(TESTS_DIR)/color_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/color_test
+$(TEST_OBJS): $(OBJ)/tests/%.o: $(TESTS_DIR)/%.cpp
+	mkdir -p $(@D)
+	$(CPP) $< $(CPPFLAGS) -c -o $@
 
-$(BIN)/celestial_test: $(OBJS) $(TESTS_DIR)/celestial_test.cpp $(CLASSES_DIR)/celestial.h $(CLASSES_DIR)/celestial.cpp
-	$(CPP) $(TESTS_DIR)/celestial_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/celestial_test
-
-$(BIN)/galaxy_test: $(OBJS) $(TESTS_DIR)/galaxy_test.cpp $(CLASSES_DIR)/galaxy.h $(CLASSES_DIR)/galaxy.cpp
-	$(CPP) $(TESTS_DIR)/galaxy_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/galaxy_test
-
-$(BIN)/star_test: $(OBJS) $(TESTS_DIR)/star_test.cpp $(CLASSES_DIR)/star.h $(CLASSES_DIR)/star.cpp
-	$(CPP) $(TESTS_DIR)/star_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/star_test
-
-$(BIN)/cons_test: $(OBJS) $(TESTS_DIR)/cons_test.cpp $(CLASSES_DIR)/cons.h $(CLASSES_DIR)/cons.cpp
-	$(CPP) $(TESTS_DIR)/cons_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/cons_test
-
-$(BIN)/planet_test: $(OBJS) $(TESTS_DIR)/planet_test.cpp $(CLASSES_DIR)/planet.h $(CLASSES_DIR)/planet.cpp
-	$(CPP) $(TESTS_DIR)/planet_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/planet_test
-
-$(BIN)/moon_test: $(OBJS) $(TESTS_DIR)/moon_test.cpp $(CLASSES_DIR)/moon.h $(CLASSES_DIR)/moon.cpp
-	$(CPP) $(TESTS_DIR)/moon_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/moon_test
-
-$(BIN)/comet_test: $(OBJS) $(TESTS_DIR)/comet_test.cpp $(CLASSES_DIR)/comet.h $(CLASSES_DIR)/comet.cpp
-	$(CPP) $(TESTS_DIR)/comet_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/comet_test
-
-$(BIN)/satellite_test: $(OBJS) $(TESTS_DIR)/satellite_test.cpp $(CLASSES_DIR)/satellite.h $(CLASSES_DIR)/satellite.cpp
-	$(CPP) $(TESTS_DIR)/satellite_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/satellite_test
-
-$(BIN)/serial_test: $(OBJS) $(TESTS_DIR)/serial_test.cpp $(TESTS_DIR)/universe_fixture.h $(CLASSES_DIR)/serial.h $(CLASSES_DIR)/serial.cpp
-	$(CPP) $(TESTS_DIR)/serial_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/serial_test
-
-$(BIN)/misc_test: $(OBJS) $(TESTS_DIR)/misc_test.cpp $(CLASSES_DIR)/misc.h $(CLASSES_DIR)/misc.cpp
-	$(CPP) $(TESTS_DIR)/misc_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/misc_test
-
-$(BIN)/cat_test: $(OBJS) $(TESTS_DIR)/cat_test.cpp $(TESTS_DIR)/universe_fixture.h $(CLASSES_DIR)/cat.h $(CLASSES_DIR)/cat.cpp
-	$(CPP) $(TESTS_DIR)/cat_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/cat_test
-
-$(BIN)/housekeeping_test: $(OBJS) $(TESTS_DIR)/housekeeping_test.cpp $(TESTS_DIR)/universe_fixture.h src/housekeeping.h src/housekeeping.cpp
-	$(CPP) $(TESTS_DIR)/housekeeping_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/housekeeping_test
-
-$(BIN)/sound_test: $(OBJS) $(TESTS_DIR)/sound_test.cpp $(CLASSES_DIR)/sound.h $(CLASSES_DIR)/sound.cpp
-	$(CPP) $(TESTS_DIR)/sound_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/sound_test
-
-$(BIN)/rendering_test: $(OBJS) $(TESTS_DIR)/rendering_test.cpp $(TESTS_DIR)/universe_fixture.h $(CLASSES_DIR)/clouds_gpu.h
-	$(CPP) $(TESTS_DIR)/rendering_test.cpp $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $(BIN)/rendering_test
+$(TESTS): $(BIN)/%: $(OBJ)/tests/%.o $(OBJS) | $(BIN)
+	$(CPP) $< $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $@
 
 # gprof requires compiling and linking main code file in one unified command; do not split out.
-$(BIN)/alienorum: $(OBJS) src/alienorum.cpp
+$(BIN)/alienorum: $(OBJS) src/alienorum.cpp | $(BIN)
 	$(CPP) src/alienorum.cpp $(OBJS) $(CPPFLAGS) -o $(BIN)/alienorum $(LIBS) $(GPROF)
 
 # Auto-generated per-object header dependencies (see -MMD -MP above). The leading '-' means
 # make won't complain on a clean checkout, before any .d files exist yet.
--include $(OBJS:.o=.d)
+-include $(OBJS:.o=.d) $(TEST_OBJS:.o=.d)
 
+
+$(OBJINT)/fictionalstars_ui.o: src/fictionalstars_ui.cpp
+	$(CPP) $< $(CPPFLAGS) -c -o $@
+
+
+$(BIN)/audit_fictional_population: tools/audit_fictional_population.cpp $(OBJS)
+	$(CPP) $< $(OBJS) $(CPPFLAGS) $(LIBS) -o $@
+
+$(OBJINT)/scenery_gpu.o: src/scenery_gpu.cpp
+	$(CPP) src/scenery_gpu.cpp $(CPPFLAGS) -c -o $(OBJINT)/scenery_gpu.o
+
+# Explicit developer benchmark target; excluded from ordinary test builds/runs.
+$(OBJ)/tests/performance_benchmark_test.o: $(TESTS_DIR)/performance_benchmark_test.cpp
+	mkdir -p $(@D)
+	$(CPP) $< $(CPPFLAGS) -c -o $@
+
+$(BIN)/performance_benchmark_test: $(OBJ)/tests/performance_benchmark_test.o $(OBJS) | $(BIN)
+	$(CPP) $< $(OBJS) $(CPPFLAGS) $(LIBS) $(LIBS_GTEST) -o $@
+
+-include $(OBJ)/tests/performance_benchmark_test.d
