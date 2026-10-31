@@ -5,6 +5,7 @@
 #include <sstream>
 #include "universe_fixture.h"
 #include "../classes/fictionalstars.h"
+#include "../classes/stellar_row.h"
 
 using namespace alienorum;
 namespace fs = std::filesystem;
@@ -131,7 +132,7 @@ TEST_F(UniverseCatalogTest, SplitsAddedStarsAndKeepsEditedCatalogStarsInJson)
     EXPECT_FALSE(edits.at("Edited catalog star").at("user_added"));
     const std::string bytes = read_bytes(stem + ".dat");
     EXPECT_EQ(bytes.find("# USER_STARS1 "), 0u);
-    EXPECT_NE(bytes.find(" FIC1 "), std::string::npos);
+    EXPECT_NE(bytes.find(" FIC2 "), std::string::npos);
 }
 
 TEST_F(UniverseCatalogTest, RelativeCoordinatesAndExactMotionRoundTrip)
@@ -439,4 +440,95 @@ TEST_F(UniverseCatalogTest, LongWhiteDwarfProvenanceSurvivesTheFixedColumns)
     ASSERT_NE(star, nullptr);
     EXPECT_EQ(star->wd_temperature_source, expected.at("wd_temp_src"));
     EXPECT_EQ(star->wd_color_source, expected.at("wd_color_src"));
+}
+
+TEST_F(UniverseCatalogTest, TailOmitsColumnsAndZeroDefaults)
+{
+    populate()->fictional_origin["id"] = "";
+    save();
+    std::istringstream input(read_bytes(stem + ".dat"));
+    std::string line;
+    ASSERT_TRUE(static_cast<bool>(std::getline(input, line)));
+    while (std::getline(input, line))
+    {
+        std::string tag, payload;
+        std::istringstream trailing(line.substr(655));
+        trailing >> tag >> std::quoted(payload);
+        ASSERT_EQ(tag, "FIC2");
+        const auto extra = json::parse(payload);
+        const auto record = extra.value("record", json::object());
+        for (const char* key : {"!name", "RA", "decl", "dist", "BV_color", "UB_color", "mass", "vol_mean_rad",
+            "temp", "sider_rot_per", "sptyp", "pmRA", "pmdec", "radvel", "cls", "typ", "user_added",
+            "RI_color", "VR_color", "eqnx", "oblt", "plx", "rnd_seed", "prec", "!origcenname"})
+            EXPECT_FALSE(record.contains(key)) << key;
+        for (const char* key : {"key", "origin", "origin_id", "velocity_m_s"}) EXPECT_FALSE(extra.contains(key)) << key;
+        if (record.contains("loc"))
+        {
+            EXPECT_FALSE(record.at("loc").contains("sys_cen"));
+        }
+        if (record.contains("stsys"))
+        {
+            EXPECT_FALSE(record.at("stsys").contains("label"));
+        }
+        for (const char* group : {"numeric_residuals", "position_residual_m", "velocity_residual_m_s"})
+        {
+            if (!extra.contains(group)) continue;
+            EXPECT_FALSE(extra.at(group).empty());
+            for (const auto& correction : extra.at(group))
+            {
+                if (correction.is_array())
+                {
+                    for (const auto& part : correction) EXPECT_NE(part.get<double>(), 0);
+                }
+                else EXPECT_NE(correction.get<double>(), 0);
+            }
+        }
+    }
+}
+
+TEST_F(UniverseCatalogTest, ExistingVersionOneCatalogStillLoads)
+{
+    Star* host = populate();
+    const Point expected = host->fictional_epoch_position;
+    save();
+    std::istringstream input(read_bytes(stem + ".dat"));
+    std::string line, comment, tag, payload;
+    ASSERT_TRUE(static_cast<bool>(std::getline(input, line)));
+    std::istringstream first(line);
+    first >> comment >> tag >> std::quoted(payload);
+    json header = json::parse(payload);
+    header["version"] = 1;
+    header["center"].erase("id");
+    header["center"]["key"] = u8"Cú Chulainn";
+    const auto anchor = find(u8"Cú Chulainn")->fictional_epoch_position;
+    std::ostringstream output;
+    output << "# USER_STARS1 " << std::quoted(header.dump()) << '\n';
+    while (std::getline(input, line))
+    {
+        Star* star = find(stellar_row::text(line, 16, 54));
+        ASSERT_NE(star, nullptr);
+        json record = Serialization::output_record(star->to_json());
+        record["loc"].erase("gal_cen");
+        record["loc"]["sys_cen"] = (star == host ? star->fictional_epoch_position - anchor : star->fictional_epoch_position).to_json();
+        json origin = star->fictional_origin;
+        origin.erase("batch");
+        origin.erase("motion");
+        const json extra = {{"key", star->name}, {"record", record}, {"origin", origin},
+            {"velocity_m_s", star->fictional_space_velocity.to_json()}};
+        output << line.substr(0, 655) << " FIC1 " << std::quoted(extra.dump()) << '\n';
+    }
+    const std::string bytes = output.str();
+    uint64_t checksum = 14695981039346656037ull;
+    for (unsigned char byte : bytes) checksum = (checksum ^ byte) * 1099511628211ull;
+    std::ostringstream hash;
+    hash << std::hex << std::setw(16) << std::setfill('0') << checksum;
+    json worlds = read_json(stem + ".json");
+    worlds["$stellar_catalog"]["hash"] = hash.str();
+    { std::ofstream file(directory / (stem + ".dat")); file << bytes; }
+    { std::ofstream file(directory / (stem + ".json")); file << std::setw(4) << worlds; }
+    delete_the_universe();
+    make_star("Sun");
+    ASSERT_TRUE(Serialization::load_file((directory / "universe.json").string(), cels, MAX_CELOBJS));
+    ASSERT_NE(find("FIC-100001"), nullptr);
+    EXPECT_EQ(find("FIC-100001")->fictional_epoch_position.to_json(), expected.to_json());
 }

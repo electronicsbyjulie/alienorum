@@ -13,6 +13,11 @@ package/release-assets
 package/release-galaxies
 package/*.exe
 *.json
+/*.dat
+/*.bak
+/*.md
+*.xcf
+/*.gz
 !vcpkg.json
 *[m-o][d-f]e[c-e]*
 *[e-g][t-v][b-d][j-l]*
@@ -33,3 +38,8 @@ src/tests/__pycache__
 summary
 views
 *.csv
+/obj-asan
+/output
+/snapshots
+/tools/__pycache__
+/*.gpg

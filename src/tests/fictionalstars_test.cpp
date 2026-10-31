@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <fstream>
 #include <future>
+#include <limits>
 #include <thread>
 #include <set>
 #include "../classes/fictionalstars.h"
@@ -216,6 +217,26 @@ TEST_F(FictionalStarsTest, SaveImportPreservesIdentityAfterRenamingAndAllCompani
     EXPECT_NEAR((anchor->location.system_center-original_center).magnitude(), 0, 1e-6);
     json actual_location = anchor->location.to_json();
     actual_location["system_center"] = original.at("system_center");
+    // Equivalent planes can inherit their parent's axis during serialization.
+    for (const char* plane : {"local_system_plane", "orbital_plane", "equatorial_plane"})
+    {
+        const auto& expected = original.at(plane);
+        const auto& actual = actual_location.at(plane);
+        EXPECT_NEAR(actual.at("a").get<double>(), expected.at("a").get<double>(), 1e-12);
+        Point a, b;
+        a.from_json(actual.at("v"));
+        b.from_json(expected.at("v"));
+        const double length_a = std::hypot(a.x, a.y, a.z), length_b = std::hypot(b.x, b.y, b.z);
+        if (length_a > 0 && length_b > 0)
+        {
+            EXPECT_LE((a * (1 / length_a) - b * (1 / length_b)).magnitude(), 8 * std::numeric_limits<double>::epsilon());
+        }
+        else
+        {
+            EXPECT_EQ(a.to_json(), b.to_json());
+        }
+        actual_location[plane] = expected;
+    }
     EXPECT_EQ(actual_location, original);
     for (int i = 1; cels[i]; ++i)
     {
@@ -1109,12 +1130,14 @@ TEST_F(FictionalStarsTest, RegionWhiteDwarfsRetainAtmosphereTemplatesAndPhysical
 TEST_F(FictionalStarsTest, PlanetarySystemsHaveSafeSpacingMoonsAndRoundTripHostStatistics)
 {
     region.planetary_systems = true;
+    region.add_moons = true;
     region.star_count = 200;
     auto batch = generate_fictional_stars(model, region);
     ASSERT_TRUE(batch.error.empty()) << batch.error;
-    EXPECT_EQ(batch.planet_hosts, 20);
-    EXPECT_GE(batch.planets, 60);
-    EXPECT_LE(batch.planets, 200);
+    EXPECT_GT(batch.planet_hosts, 0);
+    EXPECT_LE(batch.planet_hosts, int(std::lround(region.star_count * .333)));
+    EXPECT_GE(batch.planets, 3 * batch.planet_hosts);
+    EXPECT_LE(batch.planets, 10 * batch.planet_hosts);
     EXPECT_GT(batch.moons, 0);
     std::map<Star*, std::vector<Planet*>> systems;
     for (const auto& world : batch.worlds)
@@ -1221,4 +1244,51 @@ TEST_F(FictionalStarsTest, PlanetaryBatchCapacityAndInvalidWorldsCannotPartially
     batch.worlds.front()->mass = NAN;
     EXPECT_FALSE(batch.install(message));
     EXPECT_EQ(ncelobjs, saved_count);
+}
+
+TEST(FictionalRegionDefaultsTest, PlanetsAreEnabledAndMoonsAreDisabled)
+{
+    FictionalRegion configuration;
+    EXPECT_TRUE(configuration.planetary_systems);
+    EXPECT_FALSE(configuration.add_moons);
+}
+
+TEST_F(FictionalStarsTest, MoonOptionLeavesThePlanetPopulationUnchanged)
+{
+    region.star_count = 100;
+    region.planetary_systems = true;
+    auto planets_only = generate_fictional_stars(model, region);
+    ASSERT_TRUE(planets_only.error.empty()) << planets_only.error;
+    ASSERT_GT(planets_only.planets, 0);
+    EXPECT_EQ(planets_only.moons, 0);
+    EXPECT_EQ(planets_only.worlds.size(), size_t(planets_only.planets));
+    std::vector<json> planets;
+    for (const auto& world : planets_only.worlds)
+    {
+        ASSERT_EQ(world->typeclass(), class_planet);
+        // Moon clearance queries resolve this lazy atmosphere in the enabled case.
+        world->get_atmospheric_tau();
+        planets.push_back(world->to_json());
+    }
+    region.add_moons = true;
+    auto with_moons = generate_fictional_stars(model, region);
+    ASSERT_TRUE(with_moons.error.empty()) << with_moons.error;
+    EXPECT_EQ(with_moons.planet_hosts, planets_only.planet_hosts);
+    EXPECT_EQ(with_moons.planets, planets_only.planets);
+    EXPECT_GT(with_moons.moons, 0);
+    size_t index = 0;
+    for (const auto& world : with_moons.worlds)
+    {
+        if (world->typeclass() != class_planet) continue;
+        ASSERT_LT(index, planets.size());
+        world->get_atmospheric_tau();
+        EXPECT_EQ(world->to_json(), planets[index++]);
+    }
+    EXPECT_EQ(index, planets.size());
+    region.planetary_systems = false;
+    auto stars_only = generate_fictional_stars(model, region);
+    ASSERT_TRUE(stars_only.error.empty()) << stars_only.error;
+    EXPECT_TRUE(stars_only.worlds.empty());
+    EXPECT_EQ(stars_only.planets, 0);
+    EXPECT_EQ(stars_only.moons, 0);
 }

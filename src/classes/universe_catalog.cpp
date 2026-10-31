@@ -1,5 +1,6 @@
 #include "serial.h"
 #include "cat.h"
+#include "stellar_row.h"
 #include "../background_file.h"
 #include <algorithm>
 #include <atomic>
@@ -309,16 +310,62 @@ namespace
         record["loc"]["sys_cen"] = position.to_json();
     }
 
+    json compact_star_state(const StarRow& row, const std::string& line, const json& header)
+    {
+        const bool relative = header.at("relative");
+        json record = Serialization::output_record(Serialization::expand_output_record(row.record));
+        record.erase("catalog_frame");
+        json extra = stellar_row::compact(record, line, relative);
+        json restored = stellar_row::restore(line, extra);
+        const bool anchor_row = stellar_row::text(line, 1, 14) == header.at("center").at("id");
+        const Point anchor = point(header.at("center").at("galactocentric_m"));
+        Point approximate = stellar_row::sky_position(restored);
+        if (relative) approximate = anchor_row ? anchor : approximate + anchor;
+        const Point exact = point(record.at("loc").at("sys_cen"));
+        if (relative || row.moving)
+        {
+            const json correction = stellar_row::vector_difference(approximate, exact);
+            if (!correction.empty()) extra["position_residual_m"] = correction;
+        }
+        if (row.moving)
+        {
+            const Point galaxy = point(header.at("galaxy").at("heliocentric_mly"));
+            const Point velocity = stellar_row::velocity(restored, exact + galaxy * (1e6 * light_year));
+            const json correction = stellar_row::vector_difference(velocity, row.velocity);
+            if (!correction.empty()) extra["velocity_residual_m_s"] = correction;
+            if (record.value("fic", 0) != 1) extra["linear_motion"] = true;
+        }
+        if (row.origin.is_object() && row.origin.contains("id") && row.origin["id"].is_string()
+            && !row.origin["id"].get_ref<const std::string&>().empty())
+        {
+            const std::string designation = record.value("!origname", record.at("!name").get<std::string>());
+            const char component = record.contains("orb") && !designation.empty() && designation.back() >= 'A' && designation.back() <= 'Z'
+                ? designation.back() : 'A';
+            const std::string id = record.contains("stsys") && record["stsys"].contains("sys")
+                ? record["stsys"]["sys"].get<std::string>() + ":" + component : "catalog:" + designation;
+            if (row.origin.at("id") != id) extra["origin_id"] = row.origin.at("id");
+        }
+        return extra;
+    }
+
     std::string catalog_bytes(const SaveBatch& batch, const Region& region)
     {
         const StarRow& anchor = region.stars.front();
         const Point anchor_position = point(anchor.record.at("loc").at("sys_cen"));
         const bool relative = !(point(region.galaxy.at("heliocentric_mly")) == Point(0, 0, 0));
-        json header = {{"version", 1}, {"generation", batch.generation}, {"galaxy", region.galaxy},
+        json header = {{"version", 2}, {"generation", batch.generation}, {"galaxy", region.galaxy},
             {"population", region.identity}, {"prefix", region.prefix},
-            {"center", {{"key", anchor.key}, {"name", anchor.record.at("!name")}, {"galactocentric_m", anchor_position.to_json()}}},
+            {"center", {{"id", "U" + digest(anchor.key).substr(0, 13)}, {"name", anchor.record.at("!name")},
+                {"galactocentric_m", anchor_position.to_json()}}},
             {"relative", relative}, {"axes", "ICRF"}, {"distance_unit", "ly"}, {"position_unit", "m"}, {"count", region.stars.size()}};
         if (region.batch.is_object()) header["batch"] = region.batch;
+        std::set<std::string> ids;
+        for (const StarRow& row : region.stars) ids.insert("U" + digest(row.key).substr(0, 13));
+        for (const StarRow& row : region.stars)
+        {
+            if (!row.parent_id.empty() && !ids.count(row.parent_id))
+                header["external_parents"][row.parent_id] = row.record.at("orb").at("cen_name");
+        }
         std::ostringstream output;
         output.imbue(std::locale::classic());
         output << "# USER_STARS1 " << std::quoted(header.dump()) << '\n';
@@ -327,13 +374,8 @@ namespace
             json record = row.record;
             const Point absolute = point(record.at("loc").at("sys_cen"));
             const Point offset = relative && row.key != anchor.key ? absolute - anchor_position : absolute;
-            const Point reconstructed = relative && row.key != anchor.key ? offset + anchor_position : offset;
             if (relative) local_coordinates(record, offset);
             record["loc"].erase("gal_cen");
-            json extra = {{"key", row.key}, {"record", record}};
-            if (!(absolute == reconstructed)) extra["position_residual_m"] = (absolute - reconstructed).to_json();
-            if (row.origin.is_object()) extra["origin"] = row.origin;
-            if (row.moving) extra["velocity_m_s"] = row.velocity.to_json();
             struct CatalogColumns : Star
             {
                 ~CatalogColumns() { HD = HIP = 0; }
@@ -342,7 +384,6 @@ namespace
             json columns = Serialization::expand_output_record(record);
             columns.erase("catalog_aliases");
             if (!formatted.from_json(columns)) throw std::runtime_error("Invalid added star");
-            // These columns are in the file's declared frame. Exact state lives in FIC1.
             formatted.right_ascension = record.at("RA").get<double>() * fiftyseventh;
             formatted.declination = record.at("decl").get<double>() * fiftyseventh;
             formatted.distance = record.at("dist").get<double>() * light_year;
@@ -351,8 +392,8 @@ namespace
             parent_columns.seqno = -1;
             parent_columns.alienorumid = row.parent_id;
             if (formatted.orbit && !row.parent_id.empty()) formatted.orbit->center = &parent_columns;
-            output << CatalogReader::format_condensed_star_line(&formatted, false)
-                << " FIC1 " << std::quoted(extra.dump()) << '\n';
+            const std::string line = CatalogReader::format_condensed_star_line(&formatted, false);
+            output << line << " FIC2 " << std::quoted(compact_star_state(row, line, header).dump()) << '\n';
         }
         return output.str();
     }
@@ -495,49 +536,82 @@ namespace
         first >> comment >> format >> std::quoted(payload);
         if (!first || comment != "#" || format != "USER_STARS1") throw std::runtime_error("Unknown stellar catalog format");
         const json header = json::parse(payload);
-        if (header.at("version") != 1 || header.at("generation") != descriptor.at("generation"))
+        const int version = header.at("version");
+        if ((version != 1 && version != 2) || header.at("generation") != descriptor.at("generation"))
             throw std::runtime_error("Stellar catalog generation mismatch");
         const Point galaxy = point(header.at("galaxy").at("heliocentric_mly"));
         const Point anchor = point(header.at("center").at("galactocentric_m"));
         json records = json::object();
+        std::map<std::string, std::string> names, parents;
+        std::set<std::string> original_parents;
+        const std::string anchor_key = version == 1 ? header.at("center").at("key").get<std::string>()
+            : "@" + header.at("center").at("id").get<std::string>();
         while (std::getline(input, line))
         {
             if (line.size() < 655 || line.size() > 1024 * 1024 || line.substr(468, 3) != "SC2")
                 throw std::runtime_error("Invalid stellar catalog row");
             std::istringstream extras(line.substr(655));
             extras >> format >> std::quoted(payload);
-            if (!extras || format != "FIC1") throw std::runtime_error("Missing added-star state");
+            if (!extras || format != (version == 1 ? "FIC1" : "FIC2")) throw std::runtime_error("Missing added-star state");
             const json extra = json::parse(payload);
-            const std::string key = extra.at("key");
-            json record = extra.at("record");
+            const std::string id = stellar_row::text(line, 1, 14);
+            const std::string key = version == 1 ? extra.at("key").get<std::string>() : "@" + id;
+            json record = version == 1 ? extra.at("record") : stellar_row::restore(line, extra);
             if (record.at("cls") != class_star || !record.value("user_added", false) || records.contains(key))
                 throw std::runtime_error("Invalid added-star identity");
-            Point position = point(record.at("loc").at("sys_cen"));
-            if (header.at("relative").get<bool>() && key != header.at("center").at("key")) position += anchor;
-            if (extra.contains("position_residual_m")) position += point(extra.at("position_residual_m"));
+            Point position = version == 1 ? point(record.at("loc").at("sys_cen")) : stellar_row::sky_position(record);
+            if (header.at("relative").get<bool>())
+            {
+                if (version == 2 && key == anchor_key) position = anchor;
+                else if (key != anchor_key) position += anchor;
+            }
+            if (extra.contains("position_residual_m"))
+            {
+                if (version == 1) position += point(extra.at("position_residual_m"));
+                else position = stellar_row::adjusted_vector(position, extra.at("position_residual_m"));
+            }
             if (header.at("relative").get<bool>()) local_coordinates(record, position + galaxy * (1e6 * light_year));
             record["loc"]["sys_cen"] = position.to_json();
             record["loc"]["gal_cen"] = galaxy.to_json();
             record["catalog_frame"] = {{"population", header.at("population")}, {"prefix", header.at("prefix")},
-                {"galaxy", header.at("galaxy")}, {"anchor", key == header.at("center").at("key")}};
-            if (extra.contains("origin"))
+                {"galaxy", header.at("galaxy")}, {"anchor", key == anchor_key}};
+            if (version == 1 && extra.contains("origin")) record["fictional_origin"] = extra.at("origin");
+            if (version == 2 && record.value("fic", 0) == 1) record["fictional_origin"] = json::object();
+            if (extra.contains("origin_id")) record["fictional_origin"]["id"] = extra.at("origin_id");
+            if (record.contains("fictional_origin") && header.contains("batch")) record["fictional_origin"]["batch"] = header.at("batch");
+            const bool moving = version == 1 ? extra.contains("velocity_m_s")
+                : record.value("fic", 0) == 1 || extra.value("linear_motion", false);
+            if (moving)
             {
-                record["fictional_origin"] = extra.at("origin");
-                if (header.contains("batch")) record["fictional_origin"]["batch"] = header.at("batch");
-            }
-            if (extra.contains("velocity_m_s"))
-            {
-                const Point velocity = point(extra.at("velocity_m_s"));
+                Point velocity = version == 1 ? point(extra.at("velocity_m_s"))
+                    : stellar_row::velocity(record, position + galaxy * (1e6 * light_year));
+                if (version == 2 && extra.contains("velocity_residual_m_s"))
+                    velocity = stellar_row::adjusted_vector(velocity, extra.at("velocity_residual_m_s"));
                 const json motion = {{"model", "galactic_velocity_ellipsoid_v1"},
                     {"reference", "stationary_galaxy_center"}, {"propagation", "linear_cartesian"},
                     {"epoch_position_m", position.to_json()}, {"velocity_m_s", velocity.to_json()}};
                 if (record.contains("fictional_origin")) record["fictional_origin"]["motion"] = motion;
                 else record["catalog_motion"] = motion;
             }
+            if (version == 2)
+            {
+                if (id.empty() || !names.emplace(id, record.at("!name")).second) throw std::runtime_error("Duplicate stellar column identifier");
+                const std::string parent = stellar_row::text(line, 287, 300);
+                if (!parent.empty()) parents[key] = parent;
+                if (extra.value("original_parent", false)) original_parents.insert(key);
+            }
             records[key] = std::move(record);
         }
-        if (!records.contains(header.at("center").at("key").get<std::string>()))
-            throw std::runtime_error("Stellar catalog has no center star");
+        for (const auto& [key, parent] : parents)
+        {
+            const auto name = names.find(parent);
+            if (name != names.end()) records[key]["orb"]["cen_name"] = name->second;
+            else if (header.contains("external_parents") && header["external_parents"].contains(parent))
+                records[key]["orb"]["cen_name"] = header["external_parents"][parent];
+            else throw std::runtime_error("Unknown stellar column parent: " + parent);
+        }
+        for (const std::string& key : original_parents) records[key]["!origcenname"] = records[key].at("orb").at("cen_name");
+        if (!records.contains(anchor_key)) throw std::runtime_error("Stellar catalog has no center star");
         if (records.size() != descriptor.at("count").get<size_t>() || records.size() != header.at("count").get<size_t>())
             throw std::runtime_error("Stellar catalog count mismatch");
         return records;

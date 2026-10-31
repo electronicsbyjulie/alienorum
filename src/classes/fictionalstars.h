@@ -59,6 +59,7 @@ namespace alienorum
         std::vector<std::string> reserved_names;
         bool clusters = true;
         bool planetary_systems = true;
+        bool add_moons = false;
         bool historical_annulus = false;
     };
 

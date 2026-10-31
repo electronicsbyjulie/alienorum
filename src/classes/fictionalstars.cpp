@@ -626,7 +626,7 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
         {"population_reference", "CNS5_Golovin_2023_Mamajek_local_density_Solar_catalog"}, {"source_image", galaxy.image.path}, {"source_hash", galaxy.image.hash},
         {"image_encoding", "display_sRGB_approximation"}, {"model", "image_prior_disk_spheroid_v3"},
         {"selection", "stratified_solar_cns5_v3"}, {"clusters", region.clusters},
-        {"planetary_systems", region.planetary_systems}, {"motion_model", "galactic_velocity_ellipsoid_v1"}, {"velocity_scale_m_s", speed_scale},
+        {"planetary_systems", region.planetary_systems}, {"add_moons", region.add_moons}, {"motion_model", "galactic_velocity_ellipsoid_v1"}, {"velocity_scale_m_s", speed_scale},
         {"center_type", fictional_center_type(region.center_subtype)}, {"galaxy_radius_ly", galaxy.radius_ly},
         {"morphology", galaxy.morphology}, {"spheroid", galaxy.spheroid},
         {"origin_mly", galaxy.origin_mly.to_json()}, {"east", galaxy.east.to_json()},
@@ -1010,6 +1010,7 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
     if (region.planetary_systems)
     {
         std::mt19937_64 random(region.seed ^ 0x743ad81fe0962bc5ULL);
+        std::mt19937_64 moon_random(region.seed ^ 0x4de925a0b7348c16ULL);
         std::vector<Star*> hosts;
         std::unordered_map<StarMulti*, std::vector<Star*>> staged_members;
         for (auto& star : result.stars)
@@ -1100,13 +1101,17 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
             ++result.planet_hosts;
             for (auto& planet : planets)
             {
-                auto moons = planet->generate_fictional_moons(random);
                 ++result.planets;
+                Planet* parent = planet.get();
                 result.worlds.push_back(std::move(planet));
-                for (auto& moon : moons)
+                if (region.add_moons)
                 {
-                    ++result.moons;
-                    result.worlds.push_back(std::move(moon));
+                    auto moons = parent->generate_fictional_moons(moon_random);
+                    for (auto& moon : moons)
+                    {
+                        ++result.moons;
+                        result.worlds.push_back(std::move(moon));
+                    }
                 }
             }
         }
