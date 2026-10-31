@@ -10,6 +10,7 @@
 #include <cmath>
 #include <fstream>
 #include <mutex>
+#include <map>
 #include <ctime>
 #include <curl/curl.h>
 #include <archive.h>
@@ -775,45 +776,54 @@ bool check_and_download_clouds(const std::string& URL, const std::string& save_p
         return false;
     }
 
-    const int kMinRefreshSeconds = 3 * 3600; // 3 hours
-    size_t dot_pos = save_path.rfind('.');
-    std::string timestamp_file = (dot_pos != std::string::npos) ? (save_path.substr(0, dot_pos) + ".timestamp") : (save_path + ".timestamp");
-    std::time_t now = std::time(nullptr);
-    std::time_t last_time = 0;
+    constexpr auto interval = std::chrono::hours(3);
+    const auto steady_now = std::chrono::steady_clock::now();
+    const std::time_t now = std::time(nullptr);
+    const size_t dot_pos = save_path.rfind('.');
+    const std::string base = dot_pos == std::string::npos ? save_path : save_path.substr(0, dot_pos);
+    const std::string timestamp_file = base + ".timestamp";
+    const std::string attempt_file = base + ".attempt";
 
     static std::mutex cloud_mutex;
+    static std::map<std::string, std::chrono::steady_clock::time_point> attempts;
     std::lock_guard<std::mutex> lock(cloud_mutex);
+    auto previous = attempts.find(base);
+    if (previous != attempts.end() && steady_now - previous->second < interval) return false;
+    if (static_clouds && file_exists(save_path.c_str())) return false;
 
-    if (file_exists(timestamp_file.c_str()))
+    for (const auto& path : {timestamp_file, attempt_file})
     {
-        std::ifstream ifs(timestamp_file);
-        if (ifs)
+        std::time_t stamp = 0;
+        std::ifstream input(path);
+        if (input >> stamp)
         {
-            ifs >> last_time;
+            if (stamp > now || now - stamp < 3 * 3600) return false;
         }
     }
-    else if (file_exists(save_path.c_str()))
+    if (file_exists(save_path.c_str()))
     {
-        std::time_t age = file_age(save_path.c_str());
-        if (age >= 0)
-        {
-            last_time = now - age;
-        }
+        const auto age = file_age(save_path.c_str());
+        if (age < 0 || age < 3 * 3600) return false;
     }
 
-    if (file_exists(save_path.c_str()) && (((now - last_time < kMinRefreshSeconds) && (now >= last_time)) || static_clouds))
-    {
-        return false;
-    }
+    // Persist the reservation before network access, including failed attempts.
+    std::ofstream reservation(attempt_file, std::ios::trunc);
+    reservation << now + 1 << std::endl;
+    reservation.close();
+    if (!reservation) return false;
+    attempts[base] = steady_now;
 
-    bool success = download_file(URL, save_path);
+    const bool success = download_file(URL, save_path);
+
+    // Round up persisted seconds so a restart cannot shorten the interval.
+    const auto completed = std::time(nullptr) + 1;
+    attempts[base] = std::chrono::steady_clock::now();
+    std::ofstream attempt_stamp(attempt_file, std::ios::trunc);
+    attempt_stamp << completed << std::endl;
     if (success)
     {
-        std::ofstream ofs(timestamp_file);
-        if (ofs)
-        {
-            ofs << now << std::endl;
-        }
+        std::ofstream stamp(timestamp_file, std::ios::trunc);
+        stamp << completed << std::endl;
     }
 
     return success;

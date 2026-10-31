@@ -12,6 +12,7 @@
 #include <thread>
 #include <algorithm>
 #include <exception>
+#include <memory>
 
 using namespace alienorum;
 
@@ -124,6 +125,81 @@ void wait_for_texture_tasks()
 {
     std::unique_lock<std::mutex> lock(texture_tasks_mutex);
     texture_tasks_finished.wait(lock, []() { return texture_loads_pending.load() == 0; });
+}
+
+// Called under the catalog lock on the rendering thread.
+void refresh_earth_clouds()
+{
+    struct RefreshState
+    {
+        std::mutex mutex;
+        bool active = false;
+        std::unique_ptr<Map> ready;
+        std::chrono::steady_clock::time_point next{};
+    };
+    static RefreshState state;
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (state.active || abort_load.load()) return;
+    if (texture_loads_pending.load() != 0) return;
+
+    const auto now = std::chrono::steady_clock::now();
+    if (!state.ready && now < state.next) return;
+    Planet* earth = nullptr;
+    for (int i = 0; cels[i]; ++i)
+    {
+        if (!cels[i]->deleted && cels[i]->typeclass() == class_planet && !strcmp(cels[i]->name, "Earth"))
+        {
+            earth = static_cast<Planet*>(cels[i]);
+            break;
+        }
+    }
+    if (!earth)
+    {
+        state.next = now + std::chrono::seconds(30);
+        return;
+    }
+    if (state.ready)
+    {
+        state.ready->set_owner(earth);
+        delete earth->cloud_map;
+        earth->cloud_map = state.ready.release();
+        earth->has_real_maps = true;
+        viewchanged = true;
+    }
+    if (now < state.next) return;
+    state.next = now + std::chrono::seconds(30);
+    if (radio_silence || earth->static_clouds || earth->cloud_map_url.empty()) return;
+    const auto url = earth->cloud_map_url;
+    const bool png = url.size() >= 4 && !strcasecmp(url.substr(url.size() - 4).c_str(), ".png");
+    const std::string path = std::string("maps") + _FSSTR + "Earth_clouds" + (png ? ".png" : ".jpg");
+    state.active = true;
+    try
+    {
+        if (!spawn_texture_task([url, path, png, earth]()
+        {
+            std::unique_ptr<Map> map;
+            try
+            {
+                if (check_and_download_clouds(url, path))
+                {
+                    map = std::make_unique<Map>(earth);
+                    const bool loaded = png ? map->load_from_png(path) : map->load_from_jpeg(path);
+                    if (!loaded || !map->is_complete()) map.reset();
+                }
+            }
+            catch (...)
+            {
+                map.reset();
+            }
+            std::lock_guard<std::mutex> result_guard(state.mutex);
+            state.ready = std::move(map);
+            state.active = false;
+        })) state.active = false;
+    }
+    catch (...)
+    {
+        state.active = false;
+    }
 }
 
 void spawn_texture_load(CelestialObject *cel)

@@ -152,7 +152,7 @@ void draw_cons_lines();
 void draw_cached_labels();
 void draw_mouse_cursor(ImGuiIO &io);
 
-void draw_cloudy_sky();
+bool draw_cloudy_sky();
 
 // Unlinking the universe (the star-collision branch of draw_sphere()) hands the objects to the
 // first of these; the second actually frees them, and has to be called once a frame from the main

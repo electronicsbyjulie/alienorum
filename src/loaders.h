@@ -8,6 +8,7 @@
 // Texture loads and regeneration share lifetime tracking; shutdown waits before freeing maps.
 bool spawn_texture_task(std::function<void()> task);
 void wait_for_texture_tasks();
+void refresh_earth_clouds();
 // Call spawn_texture_load() rather than launching load_textures() directly.
 void load_textures(CelestialObject *cel);
 void spawn_texture_load(CelestialObject *cel);

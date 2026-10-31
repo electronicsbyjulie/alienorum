@@ -695,6 +695,37 @@ TEST(CelestialHelperTest, CloudsRateLimitingGeneralization)
     std::remove(test_ts.c_str());
 }
 
+TEST(CelestialHelperTest, CloudCooldownSurvivesMissingImageAndFutureClock)
+{
+    const std::string path = "maps/cloud_cooldown_test.jpg";
+    const std::string stamp = "maps/cloud_cooldown_test.timestamp";
+    std::remove(path.c_str());
+    for (const auto offset : {0, 3 * 3600 - 60, -3600})
+    {
+        std::ofstream output(stamp);
+        output << std::time(nullptr) - offset << std::endl;
+        output.close();
+        EXPECT_FALSE(check_and_download_clouds("invalid://cloud-cooldown-test", path));
+        EXPECT_FALSE(file_exists(path.c_str()));
+        EXPECT_FALSE(file_exists("maps/cloud_cooldown_test.attempt"));
+    }
+    std::remove(stamp.c_str());
+}
+
+TEST(CelestialHelperTest, CloudAttemptCooldownSurvivesMissingImage)
+{
+    const std::string path = "maps/cloud_attempt_test.jpg";
+    const std::string stamp = "maps/cloud_attempt_test.attempt";
+    std::remove(path.c_str());
+    std::ofstream output(stamp);
+    output << std::time(nullptr) << std::endl;
+    output.close();
+    const auto modified = std::filesystem::last_write_time(stamp);
+    EXPECT_FALSE(check_and_download_clouds("invalid://cloud-attempt-test", path));
+    EXPECT_EQ(std::filesystem::last_write_time(stamp), modified);
+    std::remove(stamp.c_str());
+}
+
 TEST(CelestialObjectTest, MergedMapFallbackAndSelection)
 {
     EXPECT_TRUE(show_clouds);

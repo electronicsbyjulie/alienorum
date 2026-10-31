@@ -9449,36 +9449,36 @@ static void draw_lavaworld_rock_clouds(Planet *p)
     }
 }
 
-void draw_cloudy_sky()
+bool draw_cloudy_sky()
 {
     #if planetary_rain
     overhead_rain_cover = CloudRainCover();
     #endif
     if (!show_clouds)
     {
-        return;
+        return false;
     }
     if (view_mode != vm_horizon)
     {
-        return;
+        return false;
     }
 
     // See find_horizon(): horizon mode does not imply a world underfoot.
     if (whereami < 0)
     {
-        return;
+        return false;
     }
     CelestialObject *cel = cels[whereami];
     if (!cel)
     {
-        return;
+        return false;
     }
     cel_obj_class cls = cel->typeclass();
     Planet *p = (cls == class_planet || cls == class_moon) ? (Planet*)cel : nullptr;
 
     if (!p)
     {
-        return;
+        return false;
     }
 
     #if lavaworld_rock_clouds
@@ -9487,18 +9487,18 @@ void draw_cloudy_sky()
         if (p && p->type == lavaworld)
         {
             draw_lavaworld_rock_clouds(p);
-            return;
+            return false;
         }
     }
     #endif
 
     if (!cel->cloud_map || !cel->cloud_map->is_complete())
     {
-        return;
+        return false;
     }
     if (uses_gaseous_map(cel->type))
     {
-        return;
+        return false;
     }
 
     double planet_radius = cel->get_equatorial_radius();
@@ -9509,7 +9509,7 @@ void draw_cloudy_sky()
     if (!(planet_radius > 0) || !std::isfinite(planet_radius)
         || !(zoom > 0) || !std::isfinite(zoom) || dispcx <= 0 || dispcy <= 0)
     {
-        return;
+        return false;
     }
 
     // The CPU supplies only camera/lighting constants and a cached refraction
@@ -9617,5 +9617,7 @@ void draw_cloudy_sky()
         #if planetary_rain
         overhead_rain_cover = cloud_rain_cover();
         #endif
+        return true;
     }
+    return false;
 }

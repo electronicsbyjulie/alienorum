@@ -704,10 +704,13 @@ int main (int argc, char** argv)
                 if (show_consln) draw_cons_lines();
                 draw_objects();
                 draw_local_rings();
-                draw_cloudy_sky();
+                const bool local_clouds_shown = draw_cloudy_sky();
+                if (local_clouds_shown && whereami == iamhome && iamhome >= 0 && cels[iamhome]
+                    && cels[iamhome]->has_eumetsat_clouds()) earth_clouds_shown = true;
                 draw_horizon();
 
-                if ((show_clouds) && ((whereami != iamhome || view_mode == vm_system)))
+                if (show_clouds && (view_mode == vm_system || !dragging) && iamhome >= 0
+                    && (whereami != iamhome || view_mode == vm_system))
                 {
                     CelestialObject *c = cels[iamhome];
                     if (c)
@@ -721,6 +724,8 @@ int main (int argc, char** argv)
                 }
                 draw_cached_labels();
             }
+
+            if (earth_clouds_shown) refresh_earth_clouds();
 
             txtyscale = ImGui::GetTextLineHeightWithSpacing() * 1.116;
             txtycompact = ImGui::GetTextLineHeight();
