@@ -846,7 +846,20 @@ bool CelestialObject::from_json(const json& j)
     } catch (...) { ; }
     try { j.at("RI_color").get_to(RI_color); } catch (...) { ; }
     try { j.at("right_ascension").get_to(right_ascension); right_ascension *= fiftyseventh; } catch (...) { ; }
-    try { j.at("sidereal_rotational_period").get_to(sidereal_rotational_period); sidereal_rotational_period *= oneday; } catch (...) { ; }
+    try
+    {
+        const auto& rotation = j.at("sidereal_rotational_period");
+        if (rotation == "tidal")
+        {
+            if (orbit && orbit->period > 0) sidereal_rotational_period = orbit->period;
+        }
+        else
+        {
+            rotation.get_to(sidereal_rotational_period);
+            sidereal_rotational_period *= oneday;
+        }
+    }
+    catch (...) { ; }
     // A stated temperature stands: the derivations above return it unchanged rather than working
     // one out, which is the point of saving it -- a body whose temperature was measured, edited by
     // hand, or arrived at through a chain this session will not repeat comes back with it intact.

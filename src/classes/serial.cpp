@@ -9,6 +9,7 @@
 #include <iomanip>
 #include <locale>
 #include <sstream>
+#include <limits>
 #include "cat.h"
 #include "serial.h"
 #include "cons.h"
@@ -896,6 +897,25 @@ namespace
         }
     }
 
+    bool same_saved_plane(const json& left, const json& right)
+    {
+        if (left == right) return true;
+        if (!left.is_object() || !right.is_object()) return false;
+        Rotation a, b;
+        if (!a.from_json(left) || !b.from_json(right)) return false;
+        constexpr double tolerance = 8 * std::numeric_limits<double>::epsilon();
+        if (!std::isfinite(a.a) || !std::isfinite(b.a)
+            || std::abs(a.a - b.a) > tolerance * std::max(std::abs(a.a), std::abs(b.a))) return false;
+        const double length_a = std::hypot(a.v.x, a.v.y, a.v.z);
+        const double length_b = std::hypot(b.v.x, b.v.y, b.v.z);
+        if (!(length_a > 0) || !(length_b > 0)
+            || !std::isfinite(length_a) || !std::isfinite(length_b)) return false;
+        // Axis length does not affect rotation; allow only floating-point roundoff.
+        return std::abs(a.v.x / length_a - b.v.x / length_b) <= tolerance
+            && std::abs(a.v.y / length_a - b.v.y / length_b) <= tolerance
+            && std::abs(a.v.z / length_a - b.v.z / length_b) <= tolerance;
+    }
+
     void save_precision(json& record)
     {
         // Coordinates, planes, motion, epochs, and orbital/rotation periods retain every digit.
@@ -1161,6 +1181,26 @@ json Serialization::output_record(json record)
     record.erase("home_world");
     record.erase("space_velocity");
     record.erase("classification_evidence");
+    for (const char* key : {"precession", "RI_color", "VR_color", "equinox", "oblateness", "parallax", "rnd_seed"})
+    {
+        if (record.value(key, 0.0) == 0) record.erase(key);
+    }
+    if (cls == class_planet || cls == class_moon)
+    {
+        const bool water = record.value("has_water", 0.0) != 0;
+        for (const char* key : {"vegetation_r", "vegetation_g", "vegetation_b",
+            "plant_trunk_height", "plant_trunk_width", "plant_crown_size", "plant_crown_oblateness"})
+        {
+            if (!water || record.value(key, 0.0) == 0) record.erase(key);
+        }
+    }
+    if (record.contains("orbit") && record["orbit"].is_object()
+        && record["orbit"].value("period", 0.0) > 0
+        && record.contains("sidereal_rotational_period")
+        && record["sidereal_rotational_period"] == record["orbit"]["period"])
+    {
+        record["sidereal_rotational_period"] = "tidal";
+    }
     if (record.contains("location") && record["location"].is_object())
     {
         auto& location = record["location"];
@@ -1168,9 +1208,9 @@ json Serialization::output_record(json record)
         if (location.contains("local_position") && location["local_position"] == zero) location.erase("local_position");
         // Compare the planes before removing either link in the inheritance chain.
         if (location.contains("equatorial_plane") && location.contains("orbital_plane")
-            && location["equatorial_plane"] == location["orbital_plane"]) location.erase("equatorial_plane");
+            && same_saved_plane(location["equatorial_plane"], location["orbital_plane"])) location.erase("equatorial_plane");
         if (location.contains("orbital_plane") && location.contains("local_system_plane")
-            && location["orbital_plane"] == location["local_system_plane"]) location.erase("orbital_plane");
+            && same_saved_plane(location["orbital_plane"], location["local_system_plane"])) location.erase("orbital_plane");
     }
     if (record.contains("stellar_system") && record["stellar_system"].is_object()) record["stellar_system"].erase("slot");
     for (const char* key : {"known_poles", "rot_axis_known", "is_faved"})
@@ -1226,6 +1266,8 @@ json Serialization::output_record(json record)
         if (fictional)
         {
             record["fic"] = 1;
+            record.erase("rot_heliocen_incl");
+            record.erase("rot_heliocen_node");
             const auto& origin = record["fictional_origin"];
             if (origin.is_object() && origin.contains("designation") && origin["designation"].is_string()
                 && !origin["designation"].get_ref<const std::string&>().empty()) record["!origname"] = origin["designation"];
@@ -1260,6 +1302,19 @@ json Serialization::expand_output_record(json record)
     // The class key distinguishes this format from descriptive legacy object records.
     if (!record.is_object() || !record.contains("cls") || record.contains("typeclass")) return record;
     record = readable_aliases(std::move(record), true);
+    for (const char* key : {"precession", "RI_color", "VR_color", "equinox", "oblateness", "rnd_seed"})
+    {
+        if (!record.contains(key)) record[key] = 0;
+    }
+    const int cls = record.value("typeclass", 0);
+    if (cls == class_planet || cls == class_moon)
+    {
+        for (const char* key : {"vegetation_r", "vegetation_g", "vegetation_b",
+            "plant_trunk_height", "plant_trunk_width", "plant_crown_size", "plant_crown_oblateness"})
+        {
+            if (!record.contains(key)) record[key] = 0;
+        }
+    }
     if (record.contains("location") && record["location"].is_object())
     {
         auto& location = record["location"];
@@ -1271,6 +1326,7 @@ json Serialization::expand_output_record(json record)
     }
     if (record.value("typeclass", 0) == class_star)
     {
+        if (!record.contains("parallax")) record["parallax"] = 0;
         const json defaults = save_defaults(class_star);
         for (const char* key : {"HD", "HR", "HIP", "SAO", "SB9", "CCDM", "WD", "Bayer", "Flamsteed", "Gliese",
             "BayerGrkno", "FlamsteedNo", "constellation", "Bonn_survey", "Bonn_survey_sign", "Bonn_survey_declination",

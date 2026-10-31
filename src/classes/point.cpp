@@ -713,11 +713,13 @@ bool CelestialLocation::from_json(json j)
         json j1 = j.at("local_system_plane");
         local_system_plane.from_json(j1);
     } catch (...) { ; }
+    orbital_plane = local_system_plane;
     try
     {
         json j1 = j.at("orbital_plane");
         orbital_plane.from_json(j1);
     } catch (...) { ; }
+    equatorial_plane = orbital_plane;
     try
     {
         json j1 = j.at("equatorial_plane");

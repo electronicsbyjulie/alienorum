@@ -919,6 +919,8 @@ TEST_F(SerializationTest, UniverseOutputOmitsGeneratedCatalogDefaultsAndProvenan
 {
     Star* generated = make_star("Generated remote star");
     generated->user_added = true;
+    generated->rot_heliocen_incl = .25;
+    generated->rot_heliocen_node = .75;
     generated->HD = 123;
     strcpy(generated->Gliese, "Stale ID");
     generated->gaia_g_magnitude = 5;
@@ -949,7 +951,7 @@ TEST_F(SerializationTest, UniverseOutputOmitsGeneratedCatalogDefaultsAndProvenan
         for (const char* field : {"HD", "HR", "HIP", "SAO", "SB9", "WD", "Bayer", "BayerGrkno", "Flamsteed",
             "FlamsteedNo", "Gliese", "CCDM", "cons", "Bonn_survey", "Bonn_survey_sign", "Bonn_survey_declination",
             "Bonn_survey_sequential", "fictional_origin", "appmagn", "appmagn_est", "home_world", "known_poles",
-            "rot_axis_known", "is_faved", "space_vel", "space_velocity", "orb_cen_cds", "transparent_clouds", "absolute_magnitude", "distance", "M", "T", "l", "m", "n"})
+            "rot_axis_known", "rot_heliocen_incl", "rot_heliocen_node", "is_faved", "space_vel", "space_velocity", "orb_cen_cds", "transparent_clouds", "absolute_magnitude", "distance", "M", "T", "l", "m", "n"})
             EXPECT_FALSE(saved.contains(field)) << field;
         for (const auto& field : saved.items())
         {
@@ -1014,6 +1016,175 @@ TEST_F(SerializationTest, UniverseLocationOmitsOnlyZeroOffsetsAndIdenticalPlanes
             }
         }
     }
+    delete_the_universe();
+    std::remove(path.c_str());
+}
+
+TEST_F(SerializationTest, UniverseOmitsEquatorialPlaneWithAxisRoundoff)
+{
+    Star* star = make_star("Plane roundoff");
+    star->user_edited = true;
+    const std::string path = temp_universe("plane_roundoff");
+    star->location.orbital_plane.v = Point(-1.6475734151116358e73, 0, 9.500785305035618e73);
+    star->location.orbital_plane.a = 105.36480056445366 * fiftyseventh;
+    for (bool distinct : {false, true})
+    {
+        star->location.equatorial_plane = star->location.orbital_plane;
+        star->location.equatorial_plane.v.z = distinct ? 9.5007853050e73 : 9.50078530503562e73;
+        for (bool background : {false, true})
+        {
+            ASSERT_TRUE(Serialization::save_file(path, cels, true, background));
+            ASSERT_TRUE(Serialization::finish_file_saves());
+            json document;
+            { std::ifstream input(path); input >> document; }
+            EXPECT_EQ(document.at("Plane roundoff").at("loc").contains("eq_pln"), distinct);
+            const auto expanded = Serialization::expand_document(document);
+            const auto& location = expanded.at("Plane roundoff").at("location");
+            if (!distinct) EXPECT_EQ(location.at("equatorial_plane"), location.at("orbital_plane"));
+            CelestialLocation restored;
+            ASSERT_TRUE(restored.from_json(location));
+            EXPECT_EQ(restored.equatorial_plane.v.to_json(), distinct
+                ? star->location.equatorial_plane.v.to_json() : star->location.orbital_plane.v.to_json());
+        }
+    }
+    delete_the_universe();
+    std::remove(path.c_str());
+}
+
+TEST(SerializationLocationTest, MissingPlanesInheritFromTheirParentPlane)
+{
+    CelestialLocation source;
+    source.local_system_plane.v = Point(1, 0, 2);
+    source.local_system_plane.a = .25;
+    source.orbital_plane.v = Point(3, 0, 4);
+    source.orbital_plane.a = .5;
+    json record = source.to_json();
+    record.erase("equatorial_plane");
+    CelestialLocation restored;
+    restored.equatorial_plane.a = 1;
+    ASSERT_TRUE(restored.from_json(record));
+    EXPECT_EQ(restored.equatorial_plane.to_json(), restored.orbital_plane.to_json());
+    record.erase("orbital_plane");
+    ASSERT_TRUE(restored.from_json(record));
+    EXPECT_EQ(restored.orbital_plane.to_json(), restored.local_system_plane.to_json());
+    EXPECT_EQ(restored.equatorial_plane.to_json(), restored.orbital_plane.to_json());
+}
+
+TEST_F(SerializationTest, UniverseOmitsZeroColorOrientationParallaxAndRandomValues)
+{
+    Star* star = make_star("Zero output fields");
+    star->user_edited = true;
+    star->rot_heliocen_incl = .25;
+    star->rot_heliocen_node = .75;
+    const std::string path = temp_universe("zero_output_fields");
+    for (bool nonzero : {false, true})
+    {
+        star->RI_color = nonzero ? -.125 : 0;
+        star->VR_color = nonzero ? .25 : 0;
+        star->equinox = nonzero ? .5 : 0;
+        star->oblateness = nonzero ? .125 : 0;
+        star->parallax = nonzero ? .001 : 0;
+        star->rnd_seed = nonzero ? 123 : 0;
+        const json original = star->to_json();
+        for (bool background : {false, true})
+        {
+            ASSERT_TRUE(Serialization::save_file(path, cels, true, background));
+            ASSERT_TRUE(Serialization::finish_file_saves());
+            json document;
+            { std::ifstream input(path); input >> document; }
+            const auto& saved = document.at("Zero output fields");
+            EXPECT_EQ(saved.at("rot_heliocen_incl"), original.at("rot_heliocen_incl"));
+            EXPECT_EQ(saved.at("rot_heliocen_node"), original.at("rot_heliocen_node"));
+            for (const char* key : {"RI_color", "VR_color", "eqnx", "oblt", "plx", "rnd_seed"})
+                EXPECT_EQ(saved.contains(key), nonzero) << key;
+            const auto expanded = Serialization::expand_document(document);
+            const auto& restored = expanded.at("Zero output fields");
+            for (const char* key : {"RI_color", "VR_color", "equinox", "oblateness", "parallax", "rnd_seed"})
+                EXPECT_EQ(restored.at(key), original.at(key)) << key;
+        }
+    }
+    delete_the_universe();
+    std::remove(path.c_str());
+}
+
+TEST_F(SerializationTest, UniverseOmitsDryAndZeroPlantFields)
+{
+    Star* host = make_star("Plant primary");
+    Planet* planet = make_planet(host, "Plant planet");
+    planet->user_edited = true;
+    const std::string path = temp_universe("plant_output");
+    for (bool water : {false, true})
+    {
+        planet->has_water = water ? .5 : 0;
+        planet->vegetation_r = 0;
+        planet->vegetation_g = 120;
+        planet->vegetation_b = 40;
+        planet->plant_trunk_height = 3;
+        planet->plant_trunk_width = 0;
+        planet->plant_crown_size = 2;
+        planet->plant_crown_oblateness = 0;
+        for (bool background : {false, true})
+        {
+            ASSERT_TRUE(Serialization::save_file(path, cels, true, background));
+            ASSERT_TRUE(Serialization::finish_file_saves());
+            json document;
+            { std::ifstream input(path); input >> document; }
+            const auto& saved = document.at("Plant primary.Plant planet");
+            for (const char* key : {"vegetation_r", "plant_trunk_width", "plant_crown_oblt"})
+                EXPECT_FALSE(saved.contains(key)) << key;
+            for (const char* key : {"vegetation_g", "vegetation_b", "plant_trunk_ht", "plant_crown_size"})
+                EXPECT_EQ(saved.contains(key), water) << key;
+            const auto expanded = Serialization::expand_document(document);
+            const auto& restored = expanded.at("Plant primary.Plant planet");
+            EXPECT_EQ(restored.at("vegetation_r"), 0);
+            EXPECT_EQ(restored.at("vegetation_g"), water ? 120 : 0);
+            EXPECT_EQ(restored.at("plant_trunk_height"), water ? 3 : 0);
+            EXPECT_EQ(restored.at("plant_trunk_width"), 0);
+        }
+    }
+    delete_the_universe();
+    std::remove(path.c_str());
+}
+
+TEST_F(SerializationTest, UniverseWritesTidalRotationAndOmitsZeroPrecession)
+{
+    Star* host = make_star("Tidal primary");
+    Planet* planet = make_planet(host, "Tidal planet");
+    planet->user_edited = true;
+    const std::string path = temp_universe("tidal_output");
+    for (bool locked : {false, true})
+    {
+        planet->sidereal_rotational_period = locked ? planet->orbit->period : planet->orbit->period * .75;
+        for (bool background : {false, true})
+        {
+            ASSERT_TRUE(Serialization::save_file(path, cels, true, background));
+            ASSERT_TRUE(Serialization::finish_file_saves());
+            json document;
+            { std::ifstream input(path); input >> document; }
+            const auto& saved = document.at("Tidal primary.Tidal planet");
+            EXPECT_FALSE(saved.contains("prec"));
+            if (locked)
+            {
+                EXPECT_EQ(saved.at("sider_rot_per"), "tidal");
+            }
+            else
+            {
+                EXPECT_EQ(saved.at("sider_rot_per"), planet->sidereal_rotational_period / oneday);
+            }
+            const auto expanded = Serialization::expand_document(document);
+            Planet restored;
+            restored.precession = 1;
+            ASSERT_TRUE(restored.from_json(expanded.at("Tidal primary.Tidal planet")));
+            EXPECT_DOUBLE_EQ(restored.precession, 0);
+            EXPECT_DOUBLE_EQ(restored.sidereal_rotational_period, planet->sidereal_rotational_period);
+            delete restored.orbit;
+            restored.orbit = nullptr;
+        }
+    }
+    // A zero period does not establish synchronous rotation.
+    planet->orbit->period = planet->sidereal_rotational_period = 0;
+    const auto saved = Serialization::output_record(planet->to_json());
+    EXPECT_TRUE(saved.at("sider_rot_per").is_number());
     delete_the_universe();
     std::remove(path.c_str());
 }
