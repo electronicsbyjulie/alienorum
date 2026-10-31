@@ -33,21 +33,19 @@ MSYS2 (Run in MINGW64 environment):
 * Automatic downloading and use of professional star catalogs;
 * Spaceflight feature with time dilation and warp speed capability;
 * View space from any vantage point;
-* Time travel (in-universe only) - set the view for any date by stepping forward/backward;
+* Ability to select an individual object and teleport to its position;
+* Time travel (in-universe only) - set the view for any date by stepping forward/backward in steps from a minute to a millennium;
 * Information shown when hovering over a celestial object, including names, coordinates, distance, and magnitude;
 * Asteroids and comets;
 * Realtime satellite positions;
 * Exoplanets including fictional texture maps, atmospheres, and rings;
 * Customizable texture generation for fictional world building;
-* Ability to select an individual star/planet/moon/satellite and teleport to its position;
+* Ability to add fictional planets, moons, and spacecraft, including an orbital resonance calculator;
+* Generation of stars and planets in remote parts of the galaxy and in other galaxies;
 * Stellar proper motions, orbits, and variability;
 * Unified star catalog with an internal star designation system based on magnitude and color;
-* Universe saved to portable, customizable JSON file, allowing defining your own planets/stars;
-* Custom texture map generation;
+* Each edited universe is saved to a portable JSON file that can be edited to customize each object;
 * More coming soon...
-
-Internal AlienorumIDs for stars from magnitude 8 and dimmer should be considered temporary and subject to change.
-These IDs can be identified by the letter T before the number at the end.
 
 
 ## Initial Run
@@ -155,10 +153,12 @@ To export your objects you've created or modified, press U. To load them again n
 
 Any object properties not included in the edit window can be edited in the .json file.
 
+Alienorum has a feature that generates fictional stars, and optionally planets and moons, about a random or user-specified center point in any galaxy. By default, it will generate 10,000 stars in a 1,000 light-year radius of the selected point in space, with planets around 10% of the stars, including a single sunlike center star system with planets. This generates a large number of objects, so saving it means creating a lerge JSON file, typically more than 50 MB. Some text editors have difficulty with files this big, but a quick internet search reveals several dedicated JSON editors that can handle large files and allow you to edit them. Generated stars will be written to a .dat file as this is a more compact format. If sharing a universe of generated fictional stars, be sure to share both the .json file and the .dat file.
+
 You can also edit the universe JSON files to modify other parameters not included in the window. Just make sure the file is still valid JSON after any edits. There are third party apps that will check a .json file to make sure it's
 valid and find any errors.
 
-IMPORTANT: After loading a universe with F4, subsequently saving your changes with U will not overwrite the external file; it will save to universe.json. Make sure to either copy your changes to the external JSON file or back up your old file and rename universe.json to the working filename. It's also a good idea to check universe.json to make sure it has all the custom celestial objects.
+IMPORTANT: After loading a universe with F4, subsequently saving your changes with U will not overwrite the external file; it will save to universe.json. Make sure to either copy your changes to the external JSON file or back up your old file and rename universe.json to the working filename.
 
 
 ## Editing user.json

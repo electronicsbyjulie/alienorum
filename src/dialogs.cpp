@@ -4030,7 +4030,7 @@ void draw_universe_save_progress(ImGuiIO &io)
     ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.9f),
         ImGuiCond_Appearing, ImVec2(0.5f, 1.0f));
     bool open = true;
-    ImGui::Begin("Universe save", &open, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse
+    ImGui::Begin("Saving the universe...", &open, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse
         | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav);
     ImGui::TextUnformatted(*phase == alienorum::UniverseSavePhase::preparing
         ? "Preparing to save..." : "Saving universe...");
