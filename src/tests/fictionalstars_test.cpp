@@ -1266,8 +1266,6 @@ TEST_F(FictionalStarsTest, MoonOptionLeavesThePlanetPopulationUnchanged)
     for (const auto& world : planets_only.worlds)
     {
         ASSERT_EQ(world->typeclass(), class_planet);
-        // Moon clearance queries resolve this lazy atmosphere in the enabled case.
-        world->get_atmospheric_tau();
         planets.push_back(world->to_json());
     }
     region.add_moons = true;
@@ -1281,7 +1279,6 @@ TEST_F(FictionalStarsTest, MoonOptionLeavesThePlanetPopulationUnchanged)
     {
         if (world->typeclass() != class_planet) continue;
         ASSERT_LT(index, planets.size());
-        world->get_atmospheric_tau();
         EXPECT_EQ(world->to_json(), planets[index++]);
     }
     EXPECT_EQ(index, planets.size());

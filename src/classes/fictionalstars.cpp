@@ -1101,6 +1101,8 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
             ++result.planet_hosts;
             for (auto& planet : planets)
             {
+                // Resolve the parent atmosphere independently of the moon option.
+                if (planet->get_surface_pressure() > 0) planet->get_atmospheric_tau();
                 ++result.planets;
                 Planet* parent = planet.get();
                 result.worlds.push_back(std::move(planet));
