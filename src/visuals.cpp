@@ -7635,7 +7635,7 @@ void draw_horizon()
                 }
 
                 const double scenery_spacing = sqrt(_pi * ROCK_MAX_DIST * ROCK_MAX_DIST / ROCK_COUNT);
-                const double crown_scale = p ? fmax(0.0, p->plant_crown_size) : 0;
+                const double crown_scale = p ? fmax(p->plant_trunk_width, p->plant_crown_size) : 0;
                 const double canopy_margin = 2 * ROCK_MAX_SIZE * crown_scale + 0.1;
                 const bool has_plants = p && (p->vegetation_r || p->vegetation_g || p->vegetation_b);
                 const double scenery_range = has_plants ? std::max(PLANT_MAX_DIST, ROCK_MAX_DIST) : ROCK_MAX_DIST;
@@ -7711,7 +7711,7 @@ void draw_horizon()
                     const double bound_drop = bound_range * bound_range * (.5 / R_planet
                         + fabs(horizon_lift_rad) / fmax(1.0, s_horizon));
                     const double bound_height = ROCK_MAX_SIZE * (p ? fabs(p->plant_trunk_height)
-                        + fabs(p->plant_crown_size * p->plant_crown_oblateness) : 1);
+                        + fabs(crown_scale * p->plant_crown_oblateness) : 1);
                     const auto& visible_scenery = scenery_cache.visible(azimuth, altitude,
                         -h_eye - bound_drop - bound_height, bound_height + bound_drop, scenery_cpu_reference || !performance_enabled(39), false);
 
@@ -7726,7 +7726,7 @@ void draw_horizon()
                         const SurfaceScenery &object = scenery[index];
                         const bool is_vegetation = plant[index];
                         const double rock_aspect = (is_vegetation && p)
-                            ? (p->plant_trunk_height + p->plant_crown_size * p->plant_crown_oblateness)
+                            ? (p->plant_trunk_height + crown_scale * p->plant_crown_oblateness)
                             : (is_lava ? ROCK_ASPECT_LAVA : (is_venus ? ROCK_ASPECT_VENUS : (is_icy ? ROCK_ASPECT_ICY : ROCK_ASPECT_DEFAULT)));
 
                         const uint32_t rhash = object.seed;
@@ -7804,7 +7804,7 @@ void draw_horizon()
                             crown_sx = (x_cam / z_crown_cam) * dispcx * zoom + dispcx;
                             crown_sy = (-y_crown_cam / z_crown_cam) * dispcx * zoom + dispcy;
 
-                            crown_rx = (rock_size * p->plant_crown_size / z_crown_cam) * dispcx * zoom;
+                            crown_rx = (rock_size * crown_scale / z_crown_cam) * dispcx * zoom;
                             crown_rx = fmax(1.2, crown_rx);
                             // The viewing angle belongs to this crown's sightline, independent of camera pitch.
                             const double crown_aspect = scenery_crown_aspect(dist_m, y_crown_world,
@@ -7812,8 +7812,8 @@ void draw_horizon()
                             crown_ry = fmax(1.0, crown_rx * crown_aspect);
 
                             // Attach the trunk to the lower pole of the crown in world space.
-                            double y_top_world = y_crown_world
-                                - rock_size * p->plant_crown_size * p->plant_crown_oblateness;
+                            const double y_top_world = y_crown_world
+                                - rock_size * crown_scale * fabs(p->plant_crown_oblateness);
                             double z_top_cam = y_top_world * sin_alt + z_horiz * cos_alt;
                             double y_top_cam = y_top_world * cos_alt - z_horiz * sin_alt;
 
@@ -7832,6 +7832,8 @@ void draw_horizon()
                                 trunk_top_y = (-y_top_cam / z_top_cam) * dispcx * zoom + dispcy;
                                 trunk_w_top = (rock_size * p->plant_trunk_width / z_top_cam) * dispcx * zoom;
                                 trunk_w_top = fmax(1.0, fmin(dispcx * 0.8, trunk_w_top));
+                                scenery_crown_contact(crown_sx, crown_sy, trunk_w_top,
+                                    crown_rx, crown_ry, trunk_top_x, trunk_top_y);
                             }
 
                             if (z_base_cam >= 0.2)

@@ -1789,6 +1789,8 @@ json Planet::to_json()
     towrite["vegetation_r"] = vegetation_r;
     towrite["vegetation_g"] = vegetation_g;
     towrite["vegetation_b"] = vegetation_b;
+    towrite["veg_min_temp"] = veg_min_temp;
+    towrite["veg_max_temp"] = veg_max_temp;
     towrite["plant_trunk_height"] = plant_trunk_height;
     towrite["plant_trunk_width"] = plant_trunk_width;
     towrite["plant_crown_size"] = plant_crown_size;
@@ -1904,6 +1906,14 @@ bool Planet::from_json(const json& j)
     try { j.at("vegetation_r").get_to(vegetation_r); } catch (...) { ; }
     try { j.at("vegetation_g").get_to(vegetation_g); } catch (...) { ; }
     try { j.at("vegetation_b").get_to(vegetation_b); } catch (...) { ; }
+    veg_min_temp = 278;
+    veg_max_temp = 310;
+    try { j.at("veg_min_temp").get_to(veg_min_temp); } catch (...) { ; }
+    try { j.at("veg_max_temp").get_to(veg_max_temp); } catch (...) { ; }
+    if (!std::isfinite(veg_min_temp)) veg_min_temp = 278;
+    if (!std::isfinite(veg_max_temp)) veg_max_temp = 310;
+    veg_min_temp = std::clamp(veg_min_temp, ORGANIC_LIFE_MIN_TEMP_K, ORGANIC_LIFE_MAX_TEMP_K);
+    veg_max_temp = std::clamp(veg_max_temp, veg_min_temp, ORGANIC_LIFE_MAX_TEMP_K);
     try { j.at("plant_trunk_height").get_to(plant_trunk_height); } catch (...) { ; }
     try { j.at("plant_trunk_width").get_to(plant_trunk_width); } catch (...) { ; }
     try { j.at("plant_crown_size").get_to(plant_crown_size); } catch (...) { ; }

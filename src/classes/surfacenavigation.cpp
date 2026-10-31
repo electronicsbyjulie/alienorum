@@ -11,7 +11,11 @@ SurfaceSampler::SurfaceSampler(Planet *body, Map *surface, SurfaceBiomes &noise,
     : planet(body), map(surface), field(noise), radius(world_radius), strength(displacement),
       bound(SurfaceBiomes::angular_bound(world_radius, displacement))
 {
-    favorable = planet && planet->get_surface_pressure() >= 150 && planet->estimate_surface_temperature() < 400;
+    const double pressure = planet ? planet->get_surface_pressure() : 0;
+    const double inverse_boil = 1.0 / (water_freezing + 100.0)
+        - (8.314 / 40660.0) * std::log(std::max(1.0, pressure) / 1.0e5);
+    const double boiling = inverse_boil > 0 ? std::min(647.096, 1.0 / inverse_boil) : 647.096;
+    favorable = planet && pressure >= 150 && planet->estimate_surface_temperature() < boiling;
     biomes = planet && map && uses_rocky_map(planet->type) && favorable
         && (planet->has_water || planet->vegetation_r || planet->vegetation_g || planet->vegetation_b);
     ocean = planet && (planet->type == waterworld || planet->type == hycean);

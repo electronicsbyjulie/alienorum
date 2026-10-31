@@ -933,7 +933,7 @@ namespace
         for (const char* key : {"absolute_magnitude", "apparent_magnitude", "BV_color", "UB_color",
             "RI_color", "VR_color", "temperature", "albedo", "oblateness", "opposition_surge",
             "has_water", "ring_mean_opacity", "plant_trunk_height", "plant_trunk_width",
-            "plant_crown_size", "plant_crown_oblateness"})
+            "plant_crown_size", "plant_crown_oblateness", "veg_min_temp", "veg_max_temp"})
         {
             auto value = record.find(key);
             if (value == record.end() || !value->is_number_float()) continue;

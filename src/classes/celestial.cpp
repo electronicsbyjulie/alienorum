@@ -2567,26 +2567,19 @@ void Map::generate_rocky_map(CelestialObject *cel)
 
         if (!p->preserve_loaded_parameters) p->temperature = 0;
         double T_surf = p->estimate_surface_temperature();
-        const double Tboil = water_freezing+100;                                     // Reference pressure
-
-        // Constants for water b.p.
-        const double R = 8.314;                                         // J/(mol*K)
-        const double DELTA_H_VAP = 40660.0;                             // J/mol
-        const double P1 = 1.0e+5;  
-
-        // Clausius-Clapeyron calculation
-        double inv_T1 = 1.0 / Tboil;
-        double gas_constant_ratio = R / DELTA_H_VAP;
         double pressure = p->get_surface_pressure();
-        double pressure_log = std::log(pressure / P1);
 
-        bool life_possible = p->estimate_habitability();
+        p->estimate_habitability();
+        pressure = p->get_surface_pressure();
         T_surf = p->estimate_surface_temperature();
+        // Use the same pressure correction as water cloud generation.
+        const double inverse_boil = 1.0 / (water_freezing + 100.0)
+            - (8.314 / 40660.0) * std::log(std::max(1.0, pressure) / 1.0e5);
+        const double Tboil = inverse_boil > 0 ? std::min(647.096, 1.0 / inverse_boil) : 647.096;
 
         if (!p->preserve_loaded_parameters && !force_has_water && pressure >= 5*oneatm && T_surf >= 400)
         {
             p->has_water = 0;
-            life_possible = false;
             want_overcast_sky = (p->cloud_map == nullptr);                                     // for a roasting Venus-like planet with a thick cloud layer.
             p->transparent_clouds = false;
             p->overcast = true;
@@ -2594,7 +2587,6 @@ void Map::generate_rocky_map(CelestialObject *cel)
         else if (!p->preserve_loaded_parameters && !force_has_water && pressure < 150)
         {
             p->has_water = 0;
-            life_possible = false;
         }
 
         int octaves = 5 + (cel->cel_rand() % 4);
@@ -2660,6 +2652,11 @@ void Map::generate_rocky_map(CelestialObject *cel)
         double edge_dist, mottle_strength, ms, invms, mottle_noise, hue_noise;
         unsigned int x, y;
         int idx, province_idx, neighbor_province_idx, mottled_idx;
+        const LocalClimate climate = p->local_climate();
+        // Water/atmosphere formation still uses terrestrial habitability, but
+        // established vegetation follows its own thermal tolerance, without an HZ veto.
+        const bool life_possible = p->has_water && pressure >= 600 && pressure < oneatm * 2000
+            && p->mass > .02 * earth_mass;
         if (!p->preserve_loaded_parameters && p->has_water && life_possible && randomize_txgen
             && !p->vegetation_r && !p->vegetation_g && !p->vegetation_b)
         {
@@ -2670,15 +2667,14 @@ void Map::generate_rocky_map(CelestialObject *cel)
             p->vegetation_r = veg_color.r;
             p->vegetation_g = veg_color.g;
             p->vegetation_b = veg_color.b;
+            const auto temperatures = vegetation_temperature_range(cel->rng, climate, bump_scale * .5);
+            p->veg_min_temp = temperatures.first;
+            p->veg_max_temp = temperatures.second;
         }
         if (p->has_water) inv_h2o_level = 1.0 / p->has_water;
 
-        if (!p->has_water) life_possible = false;
-
         bool tidal_locked_to_star = p->orbit && p->orbit->center && p->orbit->center->type == star 
             && p->is_tidal_locked();
-
-        const LocalClimate climate = p->local_climate();
 
         // A small per-planet palette of terrain "provinces" -- bright highlands against darker
         // basalt or tholin -- so the surface reads as distinct patches with ragged borders rather
@@ -2867,13 +2863,14 @@ void Map::generate_rocky_map(CelestialObject *cel)
                         blue_data[idx] = fmin(255, 192+32*sh);
                         // if (create_bump) bump_data[idx] = 0;
                     }
-                    else if (T_local > veg_max_temp)
+                    else if (T_local > p->veg_max_temp)
                     {   // Beach or desert sand
                         red_data[idx] = fmin(255, 220 * rmult * r_weight);
                         green_data[idx] = fmin(255, 200 * gmult * r_weight);
                         blue_data[idx] = fmin(255, 150 * bmult * r_weight);
                     }
-                    else if (life_possible && T_local >= veg_min_temp
+                    else if (life_possible && T_local < Tboil
+                        && vegetation_temperature_suitable(T_local, p->veg_min_temp, p->veg_max_temp)
                         && (p->vegetation_r || p->vegetation_g || p->vegetation_b)
                         && (!tidal_locked_to_star || nx * climate.sun_x + ny * climate.sun_y + nz * climate.sun_z > 0))                               // vegetation only on the day side
                     {   // Forests
@@ -2889,7 +2886,8 @@ void Map::generate_rocky_map(CelestialObject *cel)
                         blue_data[idx] = fmin(255, 75 * bmult * r_weight);
                     }
                     const double frost = LocalClimate::frost_fraction(T_local);
-                    if (frost >= 0.5) surface_materials[idx] = SurfaceMaterial::ground;
+                    if (frost >= 0.5 && surface_materials[idx] != SurfaceMaterial::vegetation)
+                        surface_materials[idx] = SurfaceMaterial::ground;
                     red_data[idx] = (1 - frost) * red_data[idx] + frost * (192 + 63 * r_weight);
                     green_data[idx] = (1 - frost) * green_data[idx] + frost * (224 + 31 * r_weight);
                     blue_data[idx] = (1 - frost) * blue_data[idx] + frost * (240 + 15 * r_weight);

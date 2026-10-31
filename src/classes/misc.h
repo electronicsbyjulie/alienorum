@@ -336,7 +336,6 @@ extern std::vector<DrawLabel> labels2draw;
 extern std::string objname, viewer_locale;
 extern double simnow, npaz, luminous_flux, sclk_scale, myeq;
 extern double appmagn_lblcut, absmagn_lblcut, distance_lblcut, intrinsic_cutoff, sphere_quality;
-extern float veg_min_temp, veg_max_temp;
 extern int wkday, menu_ht, cbo_edt_units, npointedstar;
 extern const char* compass[16];
 extern PerlinNoise pn;

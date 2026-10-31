@@ -1119,6 +1119,8 @@ TEST_F(SerializationTest, UniverseOmitsDryAndZeroPlantFields)
         planet->vegetation_r = 0;
         planet->vegetation_g = 120;
         planet->vegetation_b = 40;
+        planet->veg_min_temp = 235;
+        planet->veg_max_temp = 430;
         planet->plant_trunk_height = 3;
         planet->plant_trunk_width = 0;
         planet->plant_crown_size = 2;
@@ -1140,6 +1142,8 @@ TEST_F(SerializationTest, UniverseOmitsDryAndZeroPlantFields)
             EXPECT_EQ(restored.at("vegetation_g"), water ? 120 : 0);
             EXPECT_EQ(restored.at("plant_trunk_height"), water ? 3 : 0);
             EXPECT_EQ(restored.at("plant_trunk_width"), 0);
+            EXPECT_EQ(restored.at("veg_min_temp"), 235);
+            EXPECT_EQ(restored.at("veg_max_temp"), 430);
         }
     }
     delete_the_universe();

@@ -3186,6 +3186,43 @@ TEST_F(RenderingRegressionTest, CrownAspectUsesIndividualSightlinesInsteadOfCame
     }
 }
 
+TEST_F(RenderingRegressionTest, CrownContactPreservesLowerPoleAndClosesProjectedGaps)
+{
+    for (double width : {1.0, 5.0, 100.0})
+    {
+        for (double aspect : {.01, .5, 1.0, 3.0})
+        {
+            for (double angle : {-2.0, -.5, 0.0, .5, 2.0})
+            {
+                for (double offset : {.5, 1.0, 2.0})
+                {
+                    double rx = width * .1, ry = rx * aspect;
+                    const double final_rx = width, final_ry = width * aspect;
+                    double x = 20 + std::sin(angle) * final_rx * offset;
+                    double y = 30 + std::cos(angle) * final_ry * offset;
+                    const double old_x = x, old_y = y;
+                    scenery_crown_contact(20, 30, width, rx, ry, x, y);
+                    EXPECT_GT(2 * rx, .76 * width);
+                    EXPECT_NEAR(ry / rx, aspect, 1e-12);
+                    EXPECT_LE(std::hypot((x - 20) / rx, (y - 30) / ry), 1 + 1e-12);
+                    if (offset < 1)
+                    {
+                        EXPECT_DOUBLE_EQ(x, old_x);
+                        EXPECT_DOUBLE_EQ(y, old_y);
+                    }
+                    else
+                    {
+                        EXPECT_NEAR(std::hypot((x - 20) / rx, (y - 30) / ry), 1, 1e-12);
+                    }
+                    // Contact stays on the original projected stalk axis, away from the center.
+                    EXPECT_NEAR((x - 20) * (old_y - 30) - (y - 30) * (old_x - 20), 0, 1e-10);
+                    EXPECT_GT(std::hypot(x - 20, y - 30), 0);
+                }
+            }
+        }
+    }
+}
+
 TEST_F(RenderingRegressionTest, CachedCrownContoursMatchNativeEllipseVertices)
 {
     for (bool antialias : {false, true})

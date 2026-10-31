@@ -2446,7 +2446,11 @@ void draw_objedit_window(ImGuiIO& io)
                         ImGui::Text("%s", "Coldest veg.:   ");
                         ImGui::SameLine();
                         ImGui::SetNextItemWidth(txtwid*.6);
-                        ImGui::InputFloat("##edtvegcold", &veg_min_temp);
+                        if (ImGui::InputDouble("##edtvegcold", &p->veg_min_temp))
+                        {
+                            p->veg_min_temp = std::clamp(p->veg_min_temp, ORGANIC_LIFE_MIN_TEMP_K, p->veg_max_temp);
+                            cel->user_edited = true;
+                        }
                         ImGui::SameLine();
                         ImGui::Text("%s", "degK");
                     }
@@ -2466,7 +2470,11 @@ void draw_objedit_window(ImGuiIO& io)
                         ImGui::Text("%s", "Hottest veg.:   ");
                         ImGui::SameLine();
                         ImGui::SetNextItemWidth(txtwid*.6);
-                        ImGui::InputFloat("##edtveghot", &veg_max_temp);
+                        if (ImGui::InputDouble("##edtveghot", &p->veg_max_temp))
+                        {
+                            p->veg_max_temp = std::clamp(p->veg_max_temp, p->veg_min_temp, ORGANIC_LIFE_MAX_TEMP_K);
+                            cel->user_edited = true;
+                        }
                         ImGui::SameLine();
                         ImGui::Text("%s", "degK");
                     }

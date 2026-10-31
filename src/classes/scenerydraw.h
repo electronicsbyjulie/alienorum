@@ -17,6 +17,23 @@ namespace alienorum
             : std::abs(oblateness);
     }
 
+    inline void scenery_crown_contact(double center_x, double center_y, double trunk_width,
+        double& radius_x, double& radius_y, double& tip_x, double& tip_y)
+    {
+        // Enlarge both axes together to preserve the sightline's crown aspect.
+        const double scale = std::max(1.0, trunk_width / radius_x);
+        radius_x *= scale;
+        radius_y *= scale;
+        // The screen ellipse approximates perspective; close any gap at its rim.
+        const double dx = tip_x - center_x, dy = tip_y - center_y;
+        const double radius = std::hypot(dx / radius_x, dy / radius_y);
+        if (radius > 1.0)
+        {
+            tip_x = center_x + dx / radius;
+            tip_y = center_y + dy / radius;
+        }
+    }
+
     class SceneryCrownOcclusion
     {
         static constexpr int cell_size = 4;

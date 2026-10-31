@@ -4,6 +4,7 @@
 
 #include "celestial.h"
 #include "climate.h"
+#include "vegetation.h"
 #include <functional>
 #include <mutex>
 #include <memory>
@@ -74,6 +75,7 @@ namespace alienorum
         std::string display_designation;
         bool static_clouds = true;
         int vegetation_r=0, vegetation_g=0, vegetation_b=0;
+        double veg_min_temp = 278, veg_max_temp = 310;
         double plant_trunk_height = 0, plant_trunk_width = 0, plant_crown_size = 0, plant_crown_oblateness = 0;
         float has_water = 0;
         bool raincheck = false;

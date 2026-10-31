@@ -16,12 +16,88 @@
 #include "../classes/cat.h"
 #include "../classes/chemistry.h"
 #include "../classes/shore.h"
+#include "../classes/surfacenavigation.h"
 #include "../visuals.h"
 #include "../loaders.h"
 #include "universe_fixture.h"
 
 using namespace alienorum;
 using json = nlohmann::json;
+
+TEST(VegetationClimateTest, TemperatureAdaptationIsPartialRepeatableAndVaried)
+{
+    for (unsigned int seed = 0; seed < 100; ++seed)
+    {
+        LocalClimate climate;
+        climate.contrast_k = climate.regional_k = climate.dry_belt_k = climate.lapse_k_m = 0;
+        climate.mean_k = 250;
+        std::mt19937 cold_random(seed), hot_random(seed), repeat_random(seed);
+        const auto cold = vegetation_temperature_range(cold_random, climate, 0);
+        EXPECT_EQ(cold, vegetation_temperature_range(repeat_random, climate, 0));
+        climate.mean_k = 330;
+        const auto hot = vegetation_temperature_range(hot_random, climate, 0);
+        const double shift = (hot.first + hot.second - cold.first - cold.second) * .5;
+        EXPECT_GT(shift, 40);
+        EXPECT_LT(shift, 70);
+        EXPECT_LT(cold.first, water_freezing);
+        EXPECT_GT(hot.second, 310);
+        EXPECT_GT(cold.second, cold.first);
+    }
+    LocalClimate climate;
+    std::mt19937 first(1), second(2);
+    EXPECT_NE(vegetation_temperature_range(first, climate, 4000),
+        vegetation_temperature_range(second, climate, 4000));
+}
+
+TEST(VegetationClimateTest, RegionalRangeAndUplandsAffectAdaptationWithinOrganicBounds)
+{
+    LocalClimate uniform;
+    uniform.contrast_k = uniform.regional_k = uniform.dry_belt_k = 0;
+    LocalClimate varied = uniform;
+    varied.contrast_k = 90;
+    for (unsigned int seed = 0; seed < 100; ++seed)
+    {
+        std::mt19937 first(seed), second(seed), third(seed);
+        const auto narrow = vegetation_temperature_range(first, uniform, 0);
+        const auto wide = vegetation_temperature_range(second, varied, 0);
+        const auto uplands = vegetation_temperature_range(third, uniform, 4000);
+        EXPECT_GT(wide.second - wide.first, narrow.second - narrow.first);
+        EXPECT_LT(uplands.first, narrow.first);
+        for (double temperature : {2.7, 150.0, 250.0, 288.0, 420.0, 800.0})
+        {
+            varied.mean_k = temperature;
+            const auto range = vegetation_temperature_range(first, varied, 4000);
+            EXPECT_GE(range.first, ORGANIC_LIFE_MIN_TEMP_K);
+            EXPECT_LE(range.second, ORGANIC_LIFE_MAX_TEMP_K);
+            EXPECT_LE(range.first, range.second);
+        }
+        varied.mean_k = uniform.mean_k;
+    }
+    EXPECT_TRUE(vegetation_temperature_suitable(250, 240, 290));
+    EXPECT_TRUE(vegetation_temperature_suitable(420, 400, 440));
+    EXPECT_FALSE(vegetation_temperature_suitable(ORGANIC_LIFE_MIN_TEMP_K - 1, 0, 1000));
+    EXPECT_FALSE(vegetation_temperature_suitable(ORGANIC_LIFE_MAX_TEMP_K + 1, 0, 1000));
+    EXPECT_FALSE(vegetation_temperature_suitable(288, 310, 278));
+    EXPECT_FALSE(vegetation_temperature_suitable(288, 288, 288));
+}
+
+TEST(VegetationClimateTest, PlanetTolerancesAreIndependentAndRestoreLegacyDefaults)
+{
+    Planet original, other, restored;
+    original.veg_min_temp = 235;
+    original.veg_max_temp = 430;
+    ASSERT_TRUE(restored.from_json(original.to_json()));
+    EXPECT_DOUBLE_EQ(restored.veg_min_temp, original.veg_min_temp);
+    EXPECT_DOUBLE_EQ(restored.veg_max_temp, original.veg_max_temp);
+    EXPECT_DOUBLE_EQ(other.veg_min_temp, 278);
+    EXPECT_DOUBLE_EQ(other.veg_max_temp, 310);
+    json legacy = original.to_json();
+    legacy.erase("veg_min_temp");
+    legacy.erase("veg_max_temp");
+    ASSERT_TRUE(restored.from_json(legacy));
+    EXPECT_DOUBLE_EQ(restored.veg_min_temp, 278);
+    EXPECT_DOUBLE_EQ(restored.veg_max_temp, 310);
+}
 
 TEST(BondAlbedoCacheTest, InputsAndDatasetChangesRetainInterpolation)
 {
@@ -955,6 +1031,8 @@ protected:
         original.vegetation_r = 151;
         original.vegetation_g = 37;
         original.vegetation_b = 91;
+        original.veg_min_temp = 235;
+        original.veg_max_temp = 430;
         original.plant_trunk_height = 17;
         original.plant_trunk_width = .8;
         original.plant_crown_size = 11;
@@ -1018,6 +1096,83 @@ TEST_F(SavedPlanetMapTest, LoadedParametersSurviveEverySurfaceGeneratorAndUpdate
         verify_maps(world);
         EXPECT_EQ(world->ring_map, nullptr);
     }
+}
+
+TEST_F(SavedPlanetMapTest, AdaptedWaterBasedVegetationRespectsFrostChemistryAndPressure)
+{
+    Star* host = make_star();
+    int pressurized_plants = 0;
+    for (const auto& scenario : {std::make_pair(150.0, 10.0), std::make_pair(250.0, 10.0),
+        std::make_pair(420.0, 10.0), std::make_pair(800.0, 10.0), std::make_pair(420.0, 1.0)})
+    {
+        const auto [temperature, atmospheres] = scenario;
+        json data = saved_world(host, rocky);
+        data["temperature"] = temperature;
+        data["has_water"] = .1;
+        data["veg_min_temp"] = ORGANIC_LIFE_MIN_TEMP_K;
+        data["veg_max_temp"] = ORGANIC_LIFE_MAX_TEMP_K;
+        data["atmosphere"]["surface_pressure"] = atmospheres * oneatm;
+        Planet* world = new Planet;
+        ASSERT_TRUE(world->from_json(data));
+        world->orbit->center = host;
+        ASSERT_TRUE(append_cel(world));
+        world->surf_map = new Map(world);
+        world->surf_map->generate_rocky_map(world);
+        ASSERT_TRUE(world->surf_map->is_complete());
+        SurfaceBiomes field(world->seqno);
+        SurfaceSampler sampler(world, world->surf_map, field, world->get_equatorial_radius(), 0);
+        if (temperature == 420)
+        {
+            EXPECT_EQ(sampler.water_favorable(), atmospheres == 10);
+        }
+        int plants = 0;
+        for (int row = 0; row < 32; ++row)
+        {
+            const double latitude = half_pi - (row + .5) * _pi / 32;
+            for (int column = 0; column < 64; ++column)
+            {
+                const double longitude = -_pi + (column + .5) * 2 * _pi / 64;
+                plants += world->surf_map->material_at(latitude, longitude) == SurfaceMaterial::vegetation;
+            }
+        }
+        if (temperature == 250 || temperature == 420)
+        {
+            EXPECT_GT(plants, 0) << temperature;
+            if (temperature == 420 && atmospheres == 10) pressurized_plants = plants;
+            if (temperature == 420 && atmospheres == 1)
+            {
+                // Cool polar refuges remain; most of the hot surface is excluded by boiling.
+                EXPECT_LT(plants, pressurized_plants / 2);
+            }
+        }
+        else
+        {
+            EXPECT_EQ(plants, 0) << temperature;
+        }
+    }
+}
+
+TEST_F(SavedPlanetMapTest, RandomizedPigmentsAlsoAdaptTemperatureWithoutRerollingOnUpdate)
+{
+    Planet* world = make_planet(make_star(), "Vegetation adaptation", AU);
+    world->type = waterworld;
+    world->mass = earth_mass;
+    world->volumetric_mean_radius = earth_radius;
+    world->sidereal_rotational_period = oneday;
+    world->ensure_atmosphere()->ensure_composition()->N2_portion = 1;
+    world->fictitious_map_height = 32;
+    world->rnd_seed = 173;
+    world->ring_status_known = true;
+    world->surf_map = new Map(world);
+    world->surf_map->generate_rocky_map(world);
+    ASSERT_GT(world->vegetation_r + world->vegetation_g + world->vegetation_b, 0);
+    const auto adapted = std::make_pair(world->veg_min_temp, world->veg_max_temp);
+    EXPECT_NE(adapted, std::make_pair(278.0, 310.0));
+    EXPECT_GE(adapted.first, ORGANIC_LIFE_MIN_TEMP_K);
+    EXPECT_LE(adapted.second, ORGANIC_LIFE_MAX_TEMP_K);
+    EXPECT_LT(adapted.first, adapted.second);
+    world->surf_map->_map_resample_bump_regen_rocky(world);
+    EXPECT_EQ(std::make_pair(world->veg_min_temp, world->veg_max_temp), adapted);
 }
 
 TEST_F(SavedPlanetMapTest, SavedZerosAirlessWorldsAndMoonPropertiesSurviveGeneration)

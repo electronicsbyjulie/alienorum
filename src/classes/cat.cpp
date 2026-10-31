@@ -5930,6 +5930,12 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
             try { pl.at("vegetation_r").get_to(p->vegetation_r); } catch (...) { ; }
             try { pl.at("vegetation_g").get_to(p->vegetation_g); } catch (...) { ; }
             try { pl.at("vegetation_b").get_to(p->vegetation_b); } catch (...) { ; }
+            try { pl.at("veg_min_temp").get_to(p->veg_min_temp); } catch (...) { ; }
+            try { pl.at("veg_max_temp").get_to(p->veg_max_temp); } catch (...) { ; }
+            if (!std::isfinite(p->veg_min_temp)) p->veg_min_temp = 278;
+            if (!std::isfinite(p->veg_max_temp)) p->veg_max_temp = 310;
+            p->veg_min_temp = std::clamp(p->veg_min_temp, ORGANIC_LIFE_MIN_TEMP_K, ORGANIC_LIFE_MAX_TEMP_K);
+            p->veg_max_temp = std::clamp(p->veg_max_temp, p->veg_min_temp, ORGANIC_LIFE_MAX_TEMP_K);
             // try { pl.at("").get_to(p->); } catch (...) { ; }
 
             if (m)
