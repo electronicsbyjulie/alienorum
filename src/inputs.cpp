@@ -742,6 +742,7 @@ void process_key_cmd_char(char c)
             viewer_dst = selected_locale->dst_rule;
             viewer_locale = selected_locale->name;
             view_mode = vm_horizon;
+            show_localsys = true;
         }
         else break;
 
@@ -998,6 +999,7 @@ void process_key_cmd_char(char c)
             if (cls == class_planet || cls == class_moon)
             {
                 view_mode = vm_horizon;
+                show_localsys = true;
                 viewchanged = true;
                 altitude = _pi / 10;
             }

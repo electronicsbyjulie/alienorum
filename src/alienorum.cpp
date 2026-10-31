@@ -794,6 +794,7 @@ int main (int argc, char** argv)
                 viewer_tz  = 0;
                 viewer_dst = dst_none;
                 view_mode = vm_horizon;
+                show_localsys = true;
                 zoom = 1;
                 global_brightness = default_brightness;
             }

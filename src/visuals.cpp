@@ -1483,6 +1483,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                     viewer_locale = "";
                     velocity = Point(0, 0, 0);
                     view_mode = vm_horizon;
+                    show_localsys = true;
                     altitude = 0;
                     trackidx = -1;
                     set_viewer_surface_location(true);
