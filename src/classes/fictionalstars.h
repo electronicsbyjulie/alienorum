@@ -77,6 +77,7 @@ namespace alienorum
         bool install(std::string& message);
     };
 
+    void generate_fictional_planet_orientation(Planet& planet, std::mt19937_64& random);
     void generate_fictional_white_dwarf(Star& star, double age_gyr, std::mt19937_64& random);
     void restore_fictional_motion(Star& star);
     std::vector<std::string> fictional_reserved_names();

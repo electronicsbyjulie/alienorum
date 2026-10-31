@@ -444,6 +444,20 @@ const char* alienorum::fictional_center_type(int index)
     return types[std::clamp(index, 0, 14)];
 }
 
+void alienorum::generate_fictional_planet_orientation(Planet& planet, std::mt19937_64& random)
+{
+    // Solar System-inspired mixture: 25% aligned, 50% Earth/Mars-like,
+    // 12.5% nearly reversed, and 12.5% uniform in angle.
+    const double component = uniform(random);
+    planet.equinox = 2 * _pi * uniform(random);
+    double degrees;
+    if (component < 0.25) degrees = std::min(90.0, std::abs(2 * normal(random)));
+    else if (component < 0.75) degrees = std::clamp(25 + 4 * normal(random), 0.0, 90.0);
+    else if (component < 0.875) degrees = 180 - std::min(90.0, std::abs(2 * normal(random)));
+    else degrees = 180 * uniform(random);
+    planet.obliquity = degrees * fiftyseventh;
+}
+
 void alienorum::generate_fictional_white_dwarf(Star& star, double age_gyr, std::mt19937_64& random)
 {
     struct Template
@@ -1096,6 +1110,9 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
                 planet->classify();
                 planet->estimate_albedo_and_absmagn();
                 planet->estimate_rotation();
+                // Preserve mass/orbit draws and the independent moon stream.
+                std::mt19937_64 orientation_random(region.seed ^ uint64_t(planet->rnd_seed) ^ 0x8f2a693c51bd407eULL);
+                generate_fictional_planet_orientation(*planet, orientation_random);
                 planet->apply_cosmic_shoreline();
                 planet->update_location(simnow);
                 planets.push_back(std::move(planet));

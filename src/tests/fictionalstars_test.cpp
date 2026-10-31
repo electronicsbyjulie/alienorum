@@ -1127,6 +1127,66 @@ TEST_F(FictionalStarsTest, RegionWhiteDwarfsRetainAtmosphereTemplatesAndPhysical
     EXPECT_GT(warm, 0);
 }
 
+TEST(FictionalPlanetOrientationTest, ClusterWeightsRetrogradeTailAndFlatEquinoxes)
+{
+    std::mt19937_64 random(7519), repeat(7519);
+    Planet planet, repeated;
+    constexpr int samples = 100000;
+    int aligned = 0, moderate = 0, reversed = 0, sideways = 0, retrograde = 0;
+    std::array<int, 12> equinox_bins{};
+    for (int i = 0; i < samples; ++i)
+    {
+        generate_fictional_planet_orientation(planet, random);
+        generate_fictional_planet_orientation(repeated, repeat);
+        EXPECT_EQ(planet.obliquity, repeated.obliquity);
+        EXPECT_EQ(planet.equinox, repeated.equinox);
+        ASSERT_GE(planet.obliquity, 0);
+        ASSERT_LE(planet.obliquity, _pi);
+        ASSERT_GE(planet.equinox, 0);
+        ASSERT_LT(planet.equinox, 2 * _pi);
+        const double degrees = planet.obliquity * fiftyseven;
+        aligned += degrees < 10;
+        moderate += degrees >= 15 && degrees <= 35;
+        reversed += degrees > 170;
+        sideways += degrees >= 60 && degrees <= 120;
+        retrograde += degrees > 90;
+        ++equinox_bins[int(planet.equinox / (2 * _pi) * equinox_bins.size())];
+    }
+    // Include the uniform component's contribution to each interval.
+    EXPECT_NEAR(double(aligned) / samples, .25694, .012);
+    EXPECT_NEAR(double(moderate) / samples, .50768, .015);
+    EXPECT_NEAR(double(reversed) / samples, .13194, .010);
+    EXPECT_NEAR(double(sideways) / samples, .04167, .006);
+    EXPECT_NEAR(double(retrograde) / samples, .1875, .012);
+    for (int count : equinox_bins) EXPECT_NEAR(count, samples / 12.0, 600);
+}
+
+TEST_F(FictionalStarsTest, GeneratedPlanetPolesMatchTheirAnglesAndSurviveSerialization)
+{
+    region.planetary_systems = true;
+    region.star_count = 100;
+    auto batch = generate_fictional_stars(model, region);
+    ASSERT_TRUE(batch.error.empty()) << batch.error;
+    int checked = 0;
+    for (const auto& planet : batch.worlds)
+    {
+        if (planet->typeclass() != class_planet) continue;
+        const Point spin = rotate3D(yaxis, center, planet->location.equatorial_plane.v, -planet->location.equatorial_plane.a);
+        const Point orbit = rotate3D(yaxis, center, planet->location.orbital_plane.v, -planet->location.orbital_plane.a);
+        const double cosine = (spin.x * orbit.x + spin.y * orbit.y + spin.z * orbit.z)
+            / (spin.magnitude() * orbit.magnitude());
+        EXPECT_NEAR(acos(std::clamp(cosine, -1.0, 1.0)), planet->obliquity, 1e-7);
+        EXPECT_GT(planet->equinox, 0);
+        Planet restored;
+        const json saved = Serialization::output_record(planet->to_json());
+        ASSERT_TRUE(restored.from_json(Serialization::expand_output_record(saved)));
+        EXPECT_NEAR(restored.obliquity, planet->obliquity, 1e-12);
+        EXPECT_NEAR(restored.equinox, planet->equinox, 1e-12);
+        ++checked;
+    }
+    EXPECT_GT(checked, 0);
+}
+
 TEST_F(FictionalStarsTest, PlanetarySystemsHaveSafeSpacingMoonsAndRoundTripHostStatistics)
 {
     region.planetary_systems = true;
