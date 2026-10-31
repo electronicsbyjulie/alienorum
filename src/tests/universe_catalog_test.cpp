@@ -1,5 +1,6 @@
 #include <filesystem>
 #include "../catalog_capture.h"
+#include "../universe_save_progress.h"
 #include <chrono>
 #include <fstream>
 #include <iomanip>
@@ -167,6 +168,41 @@ TEST(CatalogCaptureTest, WorkRunsBetweenFramesAndExceptionsReachTheWorker)
     frame.unlock();
     EXPECT_THROW(work.get(), std::runtime_error);
     EXPECT_TRUE(touched.load());
+}
+
+TEST_F(UniverseCatalogTest, InteractiveSaveShowsPreparationAndClosesAfterCompletion)
+{
+    populate();
+    std::lock_guard<std::recursive_mutex> frame(catalog_mutex);
+    ASSERT_FALSE(universe_save_phase().has_value());
+    ASSERT_TRUE(Serialization::save_region_files((directory / "universe.json").string(), cels, true, true, true));
+    ASSERT_TRUE(universe_save_phase().has_value());
+    EXPECT_EQ(*universe_save_phase(), UniverseSavePhase::preparing);
+    // Replacing a queued interactive save must keep the latest indicator alive.
+    ASSERT_TRUE(Serialization::save_region_files((directory / "universe.json").string(), cels, true, true, true));
+    ASSERT_TRUE(Serialization::save_region_files((directory / "universe.json").string(), cels, true, true, true));
+    ASSERT_TRUE(Serialization::finish_file_saves());
+    EXPECT_FALSE(universe_save_phase().has_value());
+}
+
+TEST_F(UniverseCatalogTest, SilentSaveDoesNotShowProgress)
+{
+    populate();
+    std::lock_guard<std::recursive_mutex> frame(catalog_mutex);
+    ASSERT_TRUE(Serialization::save_region_files((directory / "universe.json").string(), cels, true, true));
+    EXPECT_FALSE(universe_save_phase().has_value());
+    ASSERT_TRUE(Serialization::finish_file_saves());
+    EXPECT_FALSE(universe_save_phase().has_value());
+}
+
+TEST_F(UniverseCatalogTest, FailedInteractiveSaveClosesProgress)
+{
+    populate();
+    std::lock_guard<std::recursive_mutex> frame(catalog_mutex);
+    ASSERT_TRUE(Serialization::save_region_files((directory / "absent" / "universe.json").string(), cels, true, true, true));
+    EXPECT_TRUE(universe_save_phase().has_value());
+    EXPECT_FALSE(Serialization::finish_file_saves());
+    EXPECT_FALSE(universe_save_phase().has_value());
 }
 
 TEST_F(UniverseCatalogTest, SplitsAddedStarsAndKeepsEditedCatalogStarsInJson)

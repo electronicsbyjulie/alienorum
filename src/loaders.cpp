@@ -668,10 +668,10 @@ bool look_for_catalogs()
     return catalogs_found;
 }
 
-bool save_universe()
+bool save_universe(bool show_progress)
 {
     alienorum::CatalogLock lock(catalog_mutex);
-    const bool ok = Serialization::save_region_files("universe.json", cels, true, performance_enabled(94));
+    const bool ok = Serialization::save_region_files("universe.json", cels, true, performance_enabled(94), show_progress);
     if (!ok) std::cerr << "FAILED to save universe file." << std::endl;
     return ok;
 }

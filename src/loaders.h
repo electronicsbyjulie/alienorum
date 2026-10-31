@@ -15,7 +15,7 @@ void spawn_texture_load(CelestialObject *cel);
 void save_textures(CelestialObject *cel);
 bool establish_project_root();
 bool look_for_catalogs();
-bool save_universe();
+bool save_universe(bool show_progress = false);
 // The default belongs here rather than on the definition in loaders.cpp: put there, it is only
 // visible to code below that point in that one file, so alienorum.cpp could not use it.
 bool load_universe(std::string universe_fname = "universe.json");

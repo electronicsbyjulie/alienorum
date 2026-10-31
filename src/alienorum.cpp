@@ -758,6 +758,7 @@ int main (int argc, char** argv)
             if (show_favestars) draw_favestars_window(io);
             draw_ssc_import_window(io);
             draw_exoplanet_load_window(io);
+            draw_universe_save_progress(io);
 
             if (just_clicked_menu)
             {

@@ -50,7 +50,7 @@ namespace alienorum
             static bool save_file(const std::string& path, CelestialObject **cels, bool only_edited, bool background);
             static bool finish_file_saves();
             // Named region pairs share one index and are validated before import.
-            static bool save_region_files(const std::string& index_path, CelestialObject** objects, bool only_edited, bool background);
+            static bool save_region_files(const std::string& index_path, CelestialObject** objects, bool only_edited, bool background, bool show_progress = false);
             static bool load_file(const std::string& path, CelestialObject** objects, unsigned int max, bool as_user_added = true);
             static bool load_document(json document, CelestialObject** objects, unsigned int max, bool as_user_added = true);
             static std::string filename_part(const std::string& text);

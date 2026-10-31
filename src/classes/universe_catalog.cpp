@@ -3,6 +3,7 @@
 #include "stellar_row.h"
 #include "../background_file.h"
 #include "../catalog_capture.h"
+#include "../universe_save_progress.h"
 #include <algorithm>
 #include <atomic>
 #include <cctype>
@@ -756,24 +757,31 @@ std::string Serialization::filename_part(const std::string& text)
     return result.empty() ? "Unnamed" : result;
 }
 
-bool Serialization::save_region_files(const std::string& path, CelestialObject** objects, bool only_edited, bool background)
+bool Serialization::save_region_files(const std::string& path, CelestialObject** objects, bool only_edited, bool background, bool show_progress)
 {
     try
     {
         if (!objects || !objects[0]) throw std::runtime_error("No universe to save");
+        auto activity = begin_universe_save_activity(show_progress);
+        const auto save = [path, objects, only_edited, activity]()
+        {
+            SaveBatch batch = capture(path, objects, only_edited);
+            if (activity) activity->phase = UniverseSavePhase::saving;
+            return publish_batch(std::move(batch));
+        };
         if (!background)
         {
             finish_region_saves();
-            return publish_batch(capture(path, objects, only_edited));
+            return save();
         }
-        const bool accepted = region_writer.submit_latest([path, objects, only_edited]()
+        const bool accepted = region_writer.submit_latest([save]()
         {
             struct Scope
             {
                 Scope() { catalog_capture = region_capture.get(); }
                 ~Scope() { catalog_capture = nullptr; }
             } scope;
-            try { return publish_batch(capture(path, objects, only_edited)); }
+            try { return save(); }
             catch (const std::exception& error)
             {
                 std::cerr << "Universe save failed: " << error.what() << std::endl;

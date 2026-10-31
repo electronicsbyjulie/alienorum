@@ -16,6 +16,7 @@
 #endif
 
 #include "dialogs.h"
+#include "universe_save_progress.h"
 #include "inputs.h"
 #include "loaders.h"
 #include "housekeeping.h"
@@ -4019,6 +4020,28 @@ void draw_comet_window(ImGuiIO & io)
     // Code to ensure mouse interacts with window and not viewport.
     if (io.MousePos.x >= cpos.x && io.MousePos.y >= cpos.y && io.MousePos.x < (cpos.x+csiz.x) && io.MousePos.y < (cpos.y+csiz.y))
         is_mouse_over_window = true;
+}
+
+void draw_universe_save_progress(ImGuiIO &io)
+{
+    const auto phase = alienorum::universe_save_phase();
+    if (!phase) return;
+
+    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.9f),
+        ImGuiCond_Appearing, ImVec2(0.5f, 1.0f));
+    ImGui::Begin("Universe save", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse
+        | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav);
+    ImGui::TextUnformatted(*phase == alienorum::UniverseSavePhase::preparing
+        ? "Preparing to save..." : "Saving universe...");
+    // File sizes vary widely, so animate activity without inventing a percentage.
+    ImGui::ProgressBar(-float(ImGui::GetTime()), ImVec2(380, 0), "");
+    const ImVec2 pos = ImGui::GetWindowPos(), size = ImGui::GetWindowSize();
+    ImGui::End();
+    if (io.MousePos.x >= pos.x && io.MousePos.y >= pos.y
+        && io.MousePos.x < pos.x + size.x && io.MousePos.y < pos.y + size.y)
+    {
+        is_mouse_over_window = true;
+    }
 }
 
 void draw_exoplanet_load_window(ImGuiIO &io)
