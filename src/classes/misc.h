@@ -339,5 +339,6 @@ extern double appmagn_lblcut, absmagn_lblcut, distance_lblcut, intrinsic_cutoff,
 extern int wkday, menu_ht, cbo_edt_units, npointedstar;
 extern const char* compass[16];
 extern PerlinNoise pn;
+extern bool exocons_is_generating;
 
 #endif

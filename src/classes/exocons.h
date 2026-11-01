@@ -88,6 +88,7 @@ namespace alienorum
         static void generate_constellations(Star* sys_star, std::vector<Constellation>& out_cons);
         static void start_generation_for(Star* sys_star);
         static void update_frame();
+        static bool current_vantage_pending();
         static void generate_all_synchronous(Star* sys_star);
         static bool save_current_vantage();
         static void save_to_exocons_file(const std::string& vantage_name, const std::vector<Constellation>& cons);
@@ -100,7 +101,7 @@ namespace alienorum
         static void reset();
         static bool get_is_generating()
         {
-            return is_generating;
+            return exocons_is_generating;
         }
 
         private:
@@ -108,7 +109,6 @@ namespace alienorum
         static std::vector<Constellation> generated_cons;
         static Star* current_sys_star;
         static std::string current_vantage_name;
-        static bool is_generating;
         static std::unordered_set<std::string> completed_vantages;
     };
 }

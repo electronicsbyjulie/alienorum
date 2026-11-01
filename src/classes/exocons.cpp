@@ -64,7 +64,6 @@ namespace alienorum
     std::vector<Constellation> ExoConsGenerator::generated_cons;
     Star* ExoConsGenerator::current_sys_star = nullptr;
     std::string ExoConsGenerator::current_vantage_name = "";
-    bool ExoConsGenerator::is_generating = false;
     std::unordered_set<std::string> ExoConsGenerator::completed_vantages;
 
     inline double dot_product(const Point& a, const Point& b)
@@ -2519,7 +2518,7 @@ namespace alienorum
         current_vantage_name = vname;
         pending_cons.clear();
         generated_cons.clear();
-        is_generating = true;
+        exocons_is_generating = true;
         is_thread_running = true;
         thread_cons_ready = false;
 
@@ -2542,6 +2541,25 @@ namespace alienorum
         });
     }
 
+    static Star* current_vantage_star()
+    {
+        CelestialObject* object = mycenobj;
+        if (!object && cels && whereami >= 0 && whereami < ncelobjs) object = cels[whereami];
+        if (!object) return nullptr;
+        if (object->cenobj && object->cenobj->typeclass() == class_star)
+        {
+            return static_cast<Star*>(object->cenobj);
+        }
+        return object->typeclass() == class_star ? static_cast<Star*>(object) : nullptr;
+    }
+
+    bool ExoConsGenerator::current_vantage_pending()
+    {
+        if (get_is_generating()) return true;
+        std::string vantage;
+        return check_should_generate_for(current_vantage_star(), vantage);
+    }
+
     void ExoConsGenerator::update_frame()
     {
         if (thread_cons_ready.load())
@@ -2554,7 +2572,7 @@ namespace alienorum
             }
         }
 
-        if (is_generating)
+        if (exocons_is_generating)
         {
             if (pending_cons.empty() && is_thread_running.load())
             {
@@ -2595,9 +2613,9 @@ namespace alienorum
                 constellations.push_back(c);
             }
 
-            if (pending_cons.empty() && !is_thread_running.load())
+            if (pending_cons.empty() && !is_thread_running.load() && !thread_cons_ready.load())
             {
-                is_generating = false;
+                exocons_is_generating = false;
                 completed_vantages.insert(current_vantage_name);
                 generated_cons.clear();
             }
@@ -2605,19 +2623,7 @@ namespace alienorum
         }
 
         // Check if current system is due for generation
-        CelestialObject* cur_obj = mycenobj ? mycenobj : (whereami >= 0 && cels ? cels[whereami] : nullptr);
-        Star* sys_star = nullptr;
-        if (cur_obj)
-        {
-            if (cur_obj->cenobj && cur_obj->cenobj->typeclass() == class_star)
-            {
-                sys_star = (Star*)cur_obj->cenobj;
-            }
-            else if (cur_obj->typeclass() == class_star)
-            {
-                sys_star = (Star*)cur_obj;
-            }
-        }
+        Star* sys_star = current_vantage_star();
 
         std::string vname;
         if (sys_star && check_should_generate_for(sys_star, vname))
@@ -2700,7 +2706,7 @@ namespace alienorum
         generated_cons.clear();
         current_sys_star = nullptr;
         current_vantage_name = "";
-        is_generating = false;
+        exocons_is_generating = false;
         completed_vantages.clear();
     }
 }

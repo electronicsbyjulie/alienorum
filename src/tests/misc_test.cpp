@@ -1,6 +1,7 @@
 #include <cmath>
 #include <gtest/gtest.h>
 #include "../classes/misc.h"
+#include "../classes/numeric.h"
 #include "../classes/point.h"
 #include "../classes/surfacescatter.h"
 #include "../classes/surfacebiomes.h"
@@ -16,6 +17,47 @@
 #include <fstream>
 
 using namespace alienorum;
+
+TEST(NumericValueTest, QuestionMarksPreserveNumbersAndUnits)
+{
+    for (const char* text : {"0?", "-12.5?", "1.3e+12?", " 250.87? "})
+    {
+        double value = NAN, original = NAN;
+        ASSERT_TRUE(parse_numeric_value(text, value));
+        ASSERT_TRUE(parse_numeric_value(numeric_text(text), original));
+        EXPECT_DOUBLE_EQ(value, original);
+        EXPECT_DOUBLE_EQ(value, std::strtod(text, nullptr));
+    }
+    for (const char* text : {"2y?", "2?y", "2d?", "2?d", "2AU?", "2?AU", "2s?"})
+    {
+        double value = 0;
+        std::string unit;
+        ASSERT_TRUE(parse_numeric_value(text, value, &unit));
+        EXPECT_DOUBLE_EQ(value, 2);
+        EXPECT_FALSE(unit.empty());
+    }
+    for (const char* text : {"", "?", "1?2", "nan?", "inf?", "12garbage?"})
+    {
+        double value = 42;
+        EXPECT_FALSE(parse_numeric_value(text, value)) << text;
+        EXPECT_DOUBLE_EQ(value, 42);
+    }
+}
+
+TEST(NumericValueTest, AnnotatedJsonPreservesNamesAndIntegerPrecision)
+{
+    json record = {{"!name", "123?"}, {"mass", "1.25?"}, {"rnd_seed", "123?"},
+        {"gaia_source_id", "9007199254740993?"}, {"reference", "123?"},
+        {"coordinates", json::array({"0?", "-20?", "1e3?"})}, {"missing", "?"}};
+    normalize_uncertain_numbers(record);
+    EXPECT_EQ(record.at("!name"), "123?");
+    EXPECT_EQ(record.at("reference"), "123?");
+    EXPECT_EQ(record.at("mass"), 1.25);
+    EXPECT_EQ(record.at("rnd_seed"), 123);
+    EXPECT_EQ(record.at("gaia_source_id").get<uint64_t>(), 9007199254740993ULL);
+    EXPECT_EQ(record.at("coordinates"), json::array({0, -20, 1000}));
+    EXPECT_EQ(record.at("missing"), "?");
+}
 
 TEST(SolarTimeStepTest, PreservesPhaseForAllLargeIntervalsAndBothRotationDirections)
 {

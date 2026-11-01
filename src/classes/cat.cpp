@@ -1,4 +1,5 @@
 #include "../catalog_lock_trace.h"
+#include "numeric.h"
 
 #include <string>
 #include <vector>
@@ -41,6 +42,7 @@ static json stellar_system_catalog()
     if (!input) return json::object();
     json records;
     input >> records;
+    normalize_uncertain_numbers(records);
     return records;
 }
 
@@ -488,6 +490,7 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
             {
                 json records;
                 metadata >> records;
+                normalize_uncertain_numbers(records);
                 for (const auto& record : records)
                 {
                     if (record.value("BODYNAME", "") != s->name) continue;
@@ -1832,9 +1835,8 @@ namespace
     double wd_number(const std::string &line, size_t first, size_t last)
     {
         const std::string text = wd_field(line, first, last);
-        char *end = nullptr;
-        const double value = std::strtod(text.c_str(), &end);
-        return end != text.c_str() && *end == '\0' && std::isfinite(value) ? value : NAN;
+        double value = 0;
+        return parse_numeric_value(text, value) ? value : NAN;
     }
 
     struct WdMeasurement
@@ -1960,7 +1962,8 @@ namespace
                 return wd_number(fields[column], 1, fields[column].size());
             };
             char *end = nullptr;
-            r.source = std::strtoull(fields[1].c_str(), &end, 10);
+            const std::string source = numeric_text(fields[1]);
+            r.source = std::strtoull(source.c_str(), &end, 10);
             r.parallax = number(2);
             r.error = number(3);
             if (!r.source || !end || *end || !(r.parallax > 0))
@@ -2282,7 +2285,8 @@ int alienorum::CatalogReader::read_WD_catalog(CelestialObject **objects, int max
             if (key == "gaia_dr3")
             {
                 char *end = nullptr;
-                gaia.source = std::strtoull(value.c_str(), &end, 10);
+                const std::string source = numeric_text(value);
+                gaia.source = std::strtoull(source.c_str(), &end, 10);
                 if (!end || *end) gaia.source = 0;
             }
             else if (key == "distance_pc") distance_pc = number;
@@ -4968,9 +4972,8 @@ int CatalogReader::read_stellar_rotation_catalog(CelestialObject** objects)
     {
         if (line.size() < 153 || line[0] == '#') continue;
         const std::string field = trim(line.substr(143, 5));
-        char* end = nullptr;
-        const double days = strtod(field.c_str(), &end);
-        if (end == field.c_str() || *end || !std::isfinite(days) || days <= 0) continue;
+        double days = 0;
+        if (!parse_numeric_value(field, days) || days <= 0) continue;
         std::set<Star*> matches;
         const auto match = [&](const std::string& key)
         {
@@ -5281,9 +5284,8 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels, int first_host)
         read_field_onebased(buffer, 65, 75, field);
         const auto supplied_angle = [](const std::string& value)
         {
-            char* end = nullptr;
-            const double angle = strtod(value.c_str(), &end);
-            return end != value.c_str() && !*end && std::isfinite(angle);
+            double angle = 0;
+            return parse_numeric_value(value, angle);
         };
         const bool node_supplied = supplied_angle(trim(field));
         double ascending_node = atof(field) * fiftyseventh;
@@ -5302,11 +5304,8 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels, int first_host)
             const auto angle = [&](int first, int last, double& result)
             {
                 read_field_onebased(buffer, first, last, field);
-                const std::string text = trim(field);
-                char* end = nullptr;
-                const double degrees = strtod(text.c_str(), &end);
-                const bool supplied = end != text.c_str() && std::isfinite(degrees) &&
-                    (!*end || !strcmp(end, "?"));
+                double degrees = 0;
+                const bool supplied = parse_numeric_value(field, degrees);
                 if (supplied) result = degrees * fiftyseventh;
                 return supplied;
             };
@@ -5341,13 +5340,12 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels, int first_host)
             read_field_onebased(buffer, 49, 63, field);
             std::string period_text = trim(field);
             const bool estimated = !period_text.empty() && period_text.back() == '?';
-            if (estimated) period_text.pop_back();
-            char* end = nullptr;
-            double period = strtod(period_text.c_str(), &end);
-            const std::string unit = end;
+            std::string unit;
+            double period = 0;
+            const bool has_period = parse_numeric_value(period_text, period, &unit);
             if (unit == "d") period *= oneday;
             else if (unit == "y") period *= oneyear;
-            if (end != period_text.c_str() && (unit.empty() || unit == "d" || unit == "y") &&
+            if (has_period && (unit.empty() || unit == "d" || unit == "y") &&
                 std::isfinite(period) && period > 0)
             {
                 A->sidereal_rotational_period = period;
@@ -5392,7 +5390,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels, int first_host)
             A->disk_heliocen_node = ascending_node;
 
             read_field_onebased(buffer, 101, 111, field);
-            str = trim(field);
+            str = numeric_text(field);
             nxtlast = last = '\0';
             l = str.size();
             if (l) last = str.c_str()[l-1];
@@ -5481,7 +5479,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels, int first_host)
             strcpy(s->spectral_type, trim(field).c_str());
             read_field_onebased(buffer, 177, 191, field);
             f = atof(field);
-            const bool has_visual_magnitude = !trim(field).empty();
+            const bool has_visual_magnitude = parse_numeric_value(field, f);
             if (has_visual_magnitude) s->absolute_magnitude = f;
             double msun=0, rsun=0, lum=0, tempK=0;
             bool has_bolometric_luminosity = false;
@@ -5630,7 +5628,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels, int first_host)
         }
 
         read_field_onebased(buffer, 49, 63, field);
-        str = trim(field);
+        str = numeric_text(field);
         last = '\0';
         l = str.size();
         if (l) last = str.c_str()[l-1];
@@ -5644,7 +5642,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels, int first_host)
         if (f && s->orbit) s->orbit->arg_periapsis = f;
 
         read_field_onebased(buffer, 101, 111, field);
-        str = trim(field);
+        str = numeric_text(field);
         nxtlast = last = '\0';
         l = str.size();
         if (l) last = str.c_str()[l-1];
@@ -5721,6 +5719,7 @@ void CatalogReader::apply_local_catalog_metadata(CelestialObject** objects)
     if (!file || !objects) return;
     json records;
     file >> records;
+    normalize_uncertain_numbers(records);
     for (const auto& record : records)
     {
         const std::string name = record.value("BODYNAME", "");
@@ -5738,6 +5737,7 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
     int result = 0, offset;
     json planets;
     fs >> planets;
+    normalize_uncertain_numbers(planets);
     int i, j, k, n = planets.size();
     bool createnew;
     Planet *p;
@@ -6030,7 +6030,7 @@ static std::string star_orbits_signature()
         hash ^= static_cast<unsigned char>(c);
         hash *= 1099511628211ULL;
     }
-    return "systems3-" + std::to_string(hash);
+    return "systems4-" + std::to_string(hash);
 }
 
 static std::string baked_star_link_key(const json& key)
@@ -6709,11 +6709,10 @@ int alienorum::CatalogReader::read_condensed_star_cat()
 
         read_field_onebased(buffer, 77, 82, field);
         str = trim(field);
-        char *magnitude_end = nullptr;
-        const double apparent = std::strtod(str.c_str(), &magnitude_end);
+        double apparent = 0;
         // The writer represents an unknown magnitude with a sign and otherwise blank digits.
         // Keep Star's unknown-value default unless the field contains a complete finite number.
-        if (magnitude_end != str.c_str() && *magnitude_end == '\0' &&
+        if (parse_numeric_value(str, apparent) &&
             std::isfinite(apparent) && apparent >= -40 && apparent < 99)
         {
             s->apparent_magnitude = apparent;
@@ -6734,21 +6733,25 @@ int alienorum::CatalogReader::read_condensed_star_cat()
                 if (version == "CHEM1" && extras >> std::quoted(value))
                 {
                     json chemistry = json::parse(value, nullptr, false);
+                    normalize_uncertain_numbers(chemistry);
                     if (chemistry.is_object()) s->stellar_abundances = std::move(chemistry);
                 }
                 else if (version == "SYS1" && extras >> std::quoted(value))
                 {
                     json system = json::parse(value, nullptr, false);
+                    normalize_uncertain_numbers(system);
                     if (system.is_object()) s->stellar_system = std::move(system);
                 }
                 else if (version == "ROT1" && extras >> std::quoted(value))
                 {
                     json rotation = json::parse(value, nullptr, false);
+                    normalize_uncertain_numbers(rotation);
                     if (rotation.is_object()) s->stellar_rotation = std::move(rotation);
                 }
                 else if (version == "MET1" && extras >> std::quoted(value))
                 {
-                    const json measurement = json::parse(value, nullptr, false);
+                    json measurement = json::parse(value, nullptr, false);
+                    normalize_uncertain_numbers(measurement);
                     if (measurement.is_array() && measurement.size() == 5 && measurement[0].is_number() &&
                         measurement[1].is_string() && measurement[4].is_string())
                     {
@@ -6766,6 +6769,7 @@ int alienorum::CatalogReader::read_condensed_star_cat()
                 else if (version == "ORB1" && extras >> std::quoted(value))
                 {
                     json state = json::parse(value);
+                    normalize_uncertain_numbers(state);
                     if (state.is_object())
                     {
                         const auto rotation = [](const json& value)
@@ -7309,8 +7313,10 @@ static std::string read_exo_string(char*& cursor)
     return v;
 }
 
-ExoRow CatalogReader::exorow_from_json(const json& row, bool* ok)
+ExoRow CatalogReader::exorow_from_json(const json& source, bool* ok)
 {
+    json row = source;
+    normalize_uncertain_numbers(row);
     ExoRow r;
     *ok = false;
 
@@ -9342,6 +9348,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                 if (!readBufferEU.empty())
                 {
                     json eu_json = json::parse(readBufferEU);
+                    normalize_uncertain_numbers(eu_json);
 
                     if (eu_json.is_array())
                     {
@@ -9385,6 +9392,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                 if (!readBufferNASA.empty())
                 {
                     json nasa_json = json::parse(readBufferNASA);
+                    normalize_uncertain_numbers(nasa_json);
 
                     // NASA uses a flat JSON array of objects
                     if (nasa_json.is_array())
@@ -9439,6 +9447,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
             return 0;
         }
         fs >> planets_array;
+        normalize_uncertain_numbers(planets_array);
         fs.close();
         size_t prev_size = planets_array.size();
         planets_array.erase(std::remove_if(planets_array.begin(), planets_array.end(), [](json& row)

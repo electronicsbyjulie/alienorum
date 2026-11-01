@@ -444,12 +444,12 @@ bool Star::resolve_wd_color(Color &linear_rgb, std::string *source)
         else return false;
     }
     else return false;
-    // Mixed, magnetic, uncertain and peculiar spectra lack a suitable pure-atmosphere fit.
+    // Mixed, magnetic and peculiar spectra lack a suitable pure-atmosphere fit.
     // Ordinary DAZ stars may use the hydrogen approximation; broad DZ opacity cannot.
     for (size_t i = 2; spectral_type[i]; i++)
     {
         const char c = spectral_type[i];
-        if ((c >= '0' && c <= '9') || c == '.') continue;
+        if ((c >= '0' && c <= '9') || c == '.' || c == '?') continue;
         if (c == 'Z' && atmosphere == WdAtmosphere::Hydrogen) continue;
         return false;
     }

@@ -13,6 +13,7 @@
 #include <gtest/gtest.h>
 #include "../classes/cat.h"
 #include "../classes/cons.h"
+#include "../classes/sscimport.h"
 #include "../loaders.h"
 #include "../globals.h"
 #include "../housekeeping.h"
@@ -387,7 +388,7 @@ TEST_F(StellarRotationTest, PartialRotationPolesAndCompanionOrbitsAreNotKnown)
     companion->make_companion_of(primary, 'B');
     CatalogReader reader;
     for (const auto& angles : std::vector<std::pair<std::string, std::string>>
-        {{"", ""}, {"90", ""}, {"", "0"}, {"0", "0"}})
+        {{"", ""}, {"90", ""}, {"", "0"}, {"0", "0"}, {"21?", "250.87?"}, {"0?", "0?"}})
     {
         std::string orbit_row = row("HD99970", "2d", angles.first.c_str(), angles.second.c_str());
         orbit_row.replace(24, 23, "HD99971                ");
@@ -401,6 +402,73 @@ TEST_F(StellarRotationTest, PartialRotationPolesAndCompanionOrbitsAreNotKnown)
         reader.read_star_orbits_dat(cels);
         EXPECT_EQ(primary->known_poles, complete);
     }
+}
+
+TEST_F(StellarRotationTest, EstimatedAnglesAndUnitsSurviveCatalogReload)
+{
+    Star* primary = target(43834);
+    Star* companion = target(99971);
+    Star* disk = target(99972);
+    std::string companion_row = row("HD43834", "2y?", "21?", "250.87?");
+    companion_row.replace(24, 23, "HD99971                ");
+    companion_row.resize(240, ' ');
+    companion_row.replace(100, 7, "11.8AU?");
+    std::string disk_row = row("HD99972", "", "60?", "45?");
+    disk_row.replace(24, 23, "(debris disk)          ");
+    disk_row.resize(120, ' ');
+    disk_row.replace(100, 6, "2.5AU?");
+    std::ofstream("catalogs/star_orbits.dat") << row("HD43834", "30d?", "21?", "250.87?") << '\n'
+        << companion_row << '\n' << disk_row << '\n';
+    CatalogReader reader;
+    reader.read_star_orbits_dat(cels);
+    EXPECT_TRUE(primary->known_poles);
+    EXPECT_TRUE(companion->known_poles);
+    EXPECT_TRUE(disk->known_poles);
+    EXPECT_NEAR(companion->orbit->heliocentric_inclination * fiftyseven, 21, 1e-10);
+    EXPECT_NEAR(companion->orbit->heliocentric_node * fiftyseven, 250.87, 1e-10);
+    EXPECT_DOUBLE_EQ(companion->orbit->period, 2 * oneyear);
+    EXPECT_DOUBLE_EQ(companion->orbit->semimajor_axis, 11.8 * AU);
+    EXPECT_DOUBLE_EQ(disk->disk_inner_edge_sma, 2.5 * AU);
+    EXPECT_DOUBLE_EQ(primary->sidereal_rotational_period, 30 * oneday);
+    EXPECT_TRUE(primary->stellar_rotation.at("estimated"));
+    ASSERT_TRUE(reader.bake_condensed_star_orbits());
+    delete_the_universe();
+    std::fill(hd.begin(), hd.end(), nullptr);
+    std::fill(hip.begin(), hip.end(), nullptr);
+    ASSERT_EQ(reader.read_condensed_star_cat(), 4);
+    ASSERT_NE(hd[43834], nullptr);
+    ASSERT_NE(hd[99971], nullptr);
+    ASSERT_NE(hd[99972], nullptr);
+    EXPECT_TRUE(hd[43834]->known_poles);
+    EXPECT_TRUE(hd[99971]->known_poles);
+    EXPECT_TRUE(hd[99972]->known_poles);
+    EXPECT_DOUBLE_EQ(hd[99971]->orbit->period, 2 * oneyear);
+    EXPECT_DOUBLE_EQ(hd[99971]->orbit->semimajor_axis, 11.8 * AU);
+    EXPECT_DOUBLE_EQ(hd[99972]->disk_inner_edge_sma, 2.5 * AU);
+}
+
+TEST_F(StellarRotationTest, SscNumericAnnotationsMatchUnmarkedValues)
+{
+    const std::string path = "annotated.ssc";
+    std::ofstream file(path);
+    file << "\"Plain\" \"Sol\"\n{\n Radius 6000\n Mass 1\n EllipticalOrbit\n"
+        << " { SemiMajorAxis 1 Period 2 Inclination 21 AscendingNode 250.87 }\n}\n"
+        << "\"Annotated\" \"Sol\"\n{\n Radius \"6000?\"\n Mass 1?\n EllipticalOrbit\n"
+        << " { SemiMajorAxis 1? Period 2? Inclination 21? AscendingNode 250.87? }\n}\n";
+    file.close();
+    SSCImport importer;
+    ASSERT_TRUE(importer.read(path));
+    ASSERT_EQ(importer.report.bodies_added, 2);
+    Planet* plain = static_cast<Planet*>(cels[1]);
+    Planet* annotated = static_cast<Planet*>(cels[2]);
+    EXPECT_DOUBLE_EQ(annotated->mass, plain->mass);
+    EXPECT_DOUBLE_EQ(annotated->volumetric_mean_radius, plain->volumetric_mean_radius);
+    ASSERT_NE(plain->orbit, nullptr);
+    ASSERT_NE(annotated->orbit, nullptr);
+    EXPECT_DOUBLE_EQ(annotated->orbit->semimajor_axis, plain->orbit->semimajor_axis);
+    EXPECT_DOUBLE_EQ(annotated->orbit->period, plain->orbit->period);
+    EXPECT_DOUBLE_EQ(annotated->orbit->heliocentric_inclination, plain->orbit->heliocentric_inclination);
+    EXPECT_DOUBLE_EQ(annotated->orbit->heliocentric_node, plain->orbit->heliocentric_node);
 }
 
 TEST_F(StellarRotationTest, PeriodOnlyRowsAndExplicitZeroPolesSurviveBothSaveFormats)
@@ -2244,6 +2312,19 @@ public:
     using CatalogReader::apply_exoplanet_metallicity;
     using CatalogReader::apply_stellar_abundances;
 };
+
+TEST_F(CatalogParsingTest, ExoplanetJsonAcceptsAnnotatedMeasurements)
+{
+    json source = {{"pl_name", "Estimated b"}, {"hostname", "Estimated"}, {"pl_orbper", "30?"},
+        {"st_mass", "1.25?"}, {"st_teff", "5800?"}, {"pl_orbincl", "0?"}};
+    bool valid = false;
+    const ExoRow row = TestCatalogReader::exorow_from_json(source, &valid);
+    ASSERT_TRUE(valid);
+    EXPECT_DOUBLE_EQ(row.pl_orbper, 30);
+    EXPECT_DOUBLE_EQ(row.st_mass, 1.25);
+    EXPECT_DOUBLE_EQ(row.st_teff, 5800);
+    EXPECT_DOUBLE_EQ(row.pl_orbincl, 0);
+}
 
 class StellarDownloadTest : public CatalogParsingTest
 {

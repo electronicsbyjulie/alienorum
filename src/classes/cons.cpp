@@ -1,5 +1,6 @@
 #include <cmath>
 #include <vector>
+#include <sstream>
 #include "cons.h"
 #include "serial.h"
 
@@ -207,6 +208,50 @@ Constellation *identify_cons_from_coords(double RA, double Decl)
     if (polar) return polar;
 
     return nullptr;
+}
+
+Constellation* identify_designated_cons_of_star(const Star* star)
+{
+    if (!star) return nullptr;
+    const auto match = [](const std::string& abbreviation) -> Constellation*
+    {
+        if (abbreviation.empty()) return nullptr;
+        for (auto& cons : constellations)
+        {
+            if (is_reference_vantage(cons.vantage_name) &&
+                !strcasecmp(abbreviation.c_str(), cons.abbrev.c_str())) return &cons;
+        }
+        return nullptr;
+    };
+    const auto designation = [&](const std::string& name) -> Constellation*
+    {
+        std::istringstream words(name);
+        std::string word;
+        words >> word;
+        if (word.size() > 3)
+        {
+            if (Constellation* cons = match(word.substr(word.size() - 3))) return cons;
+        }
+        // The remaining words contain the constellation and any component suffix.
+        while (words >> word)
+        {
+            if (Constellation* cons = match(word)) return cons;
+        }
+        return nullptr;
+    };
+
+    if (Constellation* cons = designation(star->Flamsteed)) return cons;
+    if (star->FlamsteedNo > 0)
+    {
+        if (Constellation* cons = match(star->constellation)) return cons;
+    }
+    if (Constellation* cons = designation(star->Bayer)) return cons;
+    if (star->BayerGrkno >= 0)
+    {
+        if (Constellation* cons = match(star->constellation)) return cons;
+    }
+    if (Constellation* cons = designation(star->alienorumid)) return cons;
+    return match(star->Gouldcons);
 }
 
 Constellation *identify_cons_of_star(Star *s)

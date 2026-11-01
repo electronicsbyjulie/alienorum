@@ -1,5 +1,6 @@
 
 #include <iostream>
+#include "numeric.h"
 #include <algorithm>
 #include <cmath>
 #include <cctype>
@@ -1575,6 +1576,7 @@ bool Serialization::load_document(json allobj, CelestialObject **cels, unsigned 
 {
     try
     {
+        normalize_uncertain_numbers(allobj);
         if (!cels || !max) throw std::runtime_error("Invalid universe storage");
         // Older empty saves contain null instead of an empty object.
         if (allobj.is_null()) return true;

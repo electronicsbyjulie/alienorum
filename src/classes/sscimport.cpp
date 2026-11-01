@@ -20,6 +20,7 @@
 //                                                       apart and the value is passed through)
 
 #include "sscimport.h"
+#include "numeric.h"
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -759,6 +760,7 @@ bool parse_value(const std::string &s, size_t &i, json &out)
     double v = strtod(begin, &end);
     if (end == begin) return false;
     i += (size_t)(end - begin);
+    while (i < s.size() && s[i] == '?') i++;
     out = v;
     return true;
 }
@@ -1901,6 +1903,7 @@ bool SSCImport::read(const std::string &ssc_path)
         report.note("Could not read the file: " + error + ".");
         return false;
     }
+    for (auto& block : blocks) normalize_uncertain_numbers(block.fields);
     if (blocks.empty())
     {
         report.note("The file defines no objects.");

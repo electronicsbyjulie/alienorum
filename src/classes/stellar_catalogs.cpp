@@ -7,6 +7,7 @@
 #include <set>
 #include <curl/curl.h>
 #include "cat.h"
+#include "numeric.h"
 #include "../globals.h"
 
 using namespace alienorum;
@@ -58,7 +59,7 @@ namespace
     {
         const std::string key = normalized(name);
         if (key.rfind(prefix, 0) != 0 || key.size() == prefix.size()) return 0;
-        const std::string digits = key.substr(prefix.size());
+        const std::string digits = numeric_text(key.substr(prefix.size()));
         if (!std::all_of(digits.begin(), digits.end(), [](unsigned char c) { return std::isdigit(c); })) return 0;
         try { return std::stoull(digits); } catch (...) { return 0; }
     }
@@ -68,6 +69,7 @@ namespace
         std::ifstream input(path);
         if (!input) return false;
         table = json::parse(input, nullptr, false);
+        normalize_uncertain_numbers(table);
         return table.is_object() && table.contains("rows") && table["rows"].is_array();
     }
 
@@ -157,6 +159,7 @@ bool CatalogReader::fetch_stellar_catalog_json(const std::string& url, const std
         return false;
     }
     result = json::parse(response, nullptr, false);
+    normalize_uncertain_numbers(result);
     return !result.is_discarded();
 }
 

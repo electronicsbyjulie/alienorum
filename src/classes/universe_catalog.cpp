@@ -1,4 +1,5 @@
 #include "serial.h"
+#include "numeric.h"
 #include "cat.h"
 #include "stellar_row.h"
 #include "../background_file.h"
@@ -698,7 +699,8 @@ namespace
         std::istringstream first(line);
         first >> comment >> format >> std::quoted(payload);
         if (!first || comment != "#" || format != "USER_STARS1") throw std::runtime_error("Unknown stellar catalog format");
-        const json header = json::parse(payload);
+        json header = json::parse(payload);
+        normalize_uncertain_numbers(header);
         const int version = header.at("version");
         if ((version != 1 && version != 2) || header.at("generation") != descriptor.at("generation"))
             throw std::runtime_error("Stellar catalog generation mismatch");
@@ -716,7 +718,8 @@ namespace
             std::istringstream extras(line.substr(655));
             extras >> format >> std::quoted(payload);
             if (!extras || format != (version == 1 ? "FIC1" : "FIC2")) throw std::runtime_error("Missing added-star state");
-            const json extra = json::parse(payload);
+            json extra = json::parse(payload);
+            normalize_uncertain_numbers(extra);
             const std::string id = stellar_row::text(line, 1, 14);
             const std::string key = version == 1 ? extra.at("key").get<std::string>() : "@" + id;
             json record = version == 1 ? extra.at("record") : stellar_row::restore(line, extra);
@@ -789,6 +792,7 @@ namespace
             {
                 Repairs selected;
                 json document = json::parse(read_bytes(path.string() + suffix));
+                normalize_uncertain_numbers(document);
                 if (!generation.empty() && document.at("$region").at("generation") != generation)
                     throw std::runtime_error("Universe region generation mismatch");
                 const std::string region_generation = document.contains("$region")
@@ -950,7 +954,8 @@ bool Serialization::load_file(const std::string& filename, CelestialObject** obj
         try
         {
             Repairs selected;
-            const json document = json::parse(read_bytes(path.string() + suffix));
+            json document = json::parse(read_bytes(path.string() + suffix));
+            normalize_uncertain_numbers(document);
             if (document.contains("$universe"))
             {
                 const auto& manifest = document.at("$universe");

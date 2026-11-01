@@ -38,7 +38,7 @@ using namespace alienorum;
 // of everything typed before it.
 struct CliCmd
 {
-    enum Kind { k_go, k_mode, k_track, k_find, k_zoom, k_alt, k_az, k_fkey, k_char, k_ctrl_char, k_import } kind;
+    enum Kind { k_go, k_conswait, k_mode, k_track, k_find, k_zoom, k_alt, k_az, k_fkey, k_char, k_ctrl_char, k_import } kind;
     std::string s;
     int fkey = 0;
     char c = 0;
@@ -218,6 +218,10 @@ int main (int argc, char** argv)
         else if (!strcmp(argv[l], "go"))
         {
             if (const char* a = next_arg(argv[l])) push_str(CliCmd::k_go, a);
+        }
+        else if (!strcmp(argv[l], "cwait"))
+        {
+            push_str(CliCmd::k_conswait, "");
         }
         else if (!strcmp(argv[l], "alt"))
         {
@@ -892,6 +896,10 @@ int main (int argc, char** argv)
                         viewchanged = true;
                         break;
                     }
+                    case CliCmd::k_conswait:
+                        // Retry on the next frame so generation and line installation can progress.
+                        if (ExoConsGenerator::current_vantage_pending()) --cli_cmd_pos;
+                        break;
                     case CliCmd::k_mode:
                         if (cmd.s == "hz") view_mode = vm_horizon;
                         else if (cmd.s == "sun") view_mode = vm_sunclock;
@@ -1133,7 +1141,7 @@ int main (int argc, char** argv)
 
             shnapsot_fname << snapdir << _FILESLASH
                 << subject
-                << (snapname.size() ? " from " : "")
+                << ((snapname.size() && view_mode != vm_skymap) ? " from " : "")
                 << snapname << "." 
                 << std::put_time(std::localtime(&time_t_now), "%Y%m%d.%H%M%S") 
                 << ".png";

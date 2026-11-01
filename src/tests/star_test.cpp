@@ -214,6 +214,8 @@ TEST(StarTest, WdColorDiagnosticsDistinguishModelsAndUnsupportedAtmospheres)
     EXPECT_EQ(data["wd_color_profile"]["temperature_source"], "BV");
     EXPECT_TRUE(data["wd_color_profile"]["available"].get<bool>());
     EXPECT_EQ(data["wd_color_profile"]["linear_rgb"].size(), 3u);
+    strcpy(s.spectral_type, "DA2?");
+    EXPECT_EQ(s.to_json()["wd_color_profile"]["linear_rgb"], data["wd_color_profile"]["linear_rgb"]);
     strcpy(s.spectral_type, "DQ");
     data = s.to_json();
     EXPECT_EQ(data["wd_color_profile"]["method"], "legacy_BV");
@@ -359,7 +361,15 @@ TEST(StarTest, WdModelsFollowAtmosphereAndTemperatureWithoutChangingPhotometry)
     EXPECT_EQ(stellar_regime(&s), regime_degenerate);
     strcpy(s.spectral_type, "DAZ5");
     EXPECT_TRUE(s.resolve_wd_color(linear));
-    for (const char *type : {"DQ", "DZ", "DC", "DO", "DAB", "DBA", "DAH", "DA?", "DA+DA", "G2V"})
+    strcpy(s.spectral_type, "DA");
+    ASSERT_TRUE(s.resolve_wd_color(linear, &source));
+    const Color unmarked = linear;
+    strcpy(s.spectral_type, "DA?");
+    ASSERT_TRUE(s.resolve_wd_color(linear, &source));
+    EXPECT_DOUBLE_EQ(linear.red, unmarked.red);
+    EXPECT_DOUBLE_EQ(linear.green, unmarked.green);
+    EXPECT_DOUBLE_EQ(linear.blue, unmarked.blue);
+    for (const char *type : {"DQ", "DZ", "DC", "DO", "DAB", "DBA", "DAH", "DA+DA", "G2V"})
     {
         strcpy(s.spectral_type, type);
         EXPECT_FALSE(s.resolve_wd_color(linear, &source)) << type;

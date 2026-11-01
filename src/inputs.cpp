@@ -1073,7 +1073,14 @@ void process_key_cmd_ctrl_char(char c)
                 myDecl = find_angle(sqrt(myloc.x*myloc.x+myloc.z*myloc.z), myloc.y);
         while (myDecl > half_pi) myDecl -= _pi*2;
 
-        Constellation *cons = identify_cons_from_coords(myRA, myDecl);
+        CelestialObject* local_object = whereami >= 0 && whereami < ncelobjs ? cels[whereami] : mycenobj;
+        while (local_object && local_object->typeclass() != class_star && local_object->orbit)
+        {
+            local_object = local_object->orbit->center;
+        }
+        Constellation* cons = local_object && local_object->typeclass() == class_star
+            ? identify_designated_cons_of_star(static_cast<Star*>(local_object)) : nullptr;
+        if (!cons) cons = identify_cons_from_coords(myRA, myDecl);
         n = themes.size();
         if (cons)
         {

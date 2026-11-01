@@ -93,6 +93,7 @@ bool shortnames = false;
 bool showfails = false;
 int numfails = 0;
 double myeq = 0;
+bool exocons_is_generating = false;
 
 // Use the Dev Dial to adjust values dynamically so you don't have to keep reloading the app just to tweak some constant.
 // Always turn off show_dev_dial before committing/merging into main (fine to leave it on in a branch that isn't ready to merge yet).

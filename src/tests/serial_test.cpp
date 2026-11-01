@@ -65,6 +65,33 @@ class SerializationTest : public UniverseFixture
     }
 };
 
+TEST_F(SerializationTest, AnnotatedNumericValuesLoadAndRoundTrip)
+{
+    Star* source = make_star("Annotated star");
+    json record = source->to_json();
+    record["mass"] = "1.25e30?";
+    record["rnd_seed"] = "123?";
+    record["obliquity"] = "21?";
+    record["equinox"] = "250.87?";
+    record["known_poles"] = true;
+    delete_the_universe();
+    ASSERT_TRUE(Serialization::load_document({{"star", record}}, cels, MAX_CELOBJS, false));
+    Star* loaded = static_cast<Star*>(find_loaded("Annotated star"));
+    ASSERT_NE(loaded, nullptr);
+    EXPECT_DOUBLE_EQ(loaded->mass, 1.25e30);
+    EXPECT_EQ(loaded->rnd_seed, 123);
+    EXPECT_NEAR(loaded->obliquity * fiftyseven, 21, 1e-10);
+    EXPECT_NEAR(loaded->equinox * fiftyseven, 250.87, 1e-10);
+    EXPECT_TRUE(loaded->known_poles);
+    ASSERT_TRUE(save_and_reload("annotated_numbers"));
+    loaded = static_cast<Star*>(find_loaded("Annotated star"));
+    ASSERT_NE(loaded, nullptr);
+    EXPECT_DOUBLE_EQ(loaded->mass, 1.25e30);
+    EXPECT_EQ(loaded->rnd_seed, 123);
+    EXPECT_TRUE(loaded->known_poles);
+    std::filesystem::remove(temp_universe("annotated_numbers"));
+}
+
 TEST_F(SerializationTest, ReloadRefreshesHostDesignationsWhilePreservingProperNames)
 {
     make_star("Sol");

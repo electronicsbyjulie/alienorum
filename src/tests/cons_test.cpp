@@ -1,11 +1,15 @@
 #include <gtest/gtest.h>
 #include <cmath>
+#include <algorithm>
 #include <iomanip>
+#include <chrono>
 #include "../classes/cons.h"
 #include "../classes/star.h"
 #include "../classes/exocons.h"
 #include "../loaders.h"
 #include "../visuals.h"
+#include "../inputs.h"
+#include "../globals.h"
 
 using namespace alienorum;
 
@@ -76,6 +80,178 @@ class ConstellationTest : public ::testing::Test
 // =====================================================================
 // Perimeter Building Tests
 // =====================================================================
+
+TEST_F(ConstellationTest, DesignationsChooseConstellationInPriorityOrder)
+{
+    for (const char* abbreviation : {"For", "Cet", "Eri", "Phe"})
+    {
+        Constellation cons;
+        cons.abbrev = abbreviation;
+        constellations.push_back(cons);
+    }
+    Star star;
+    strcpy(star.Flamsteed, "12  Cet");
+    strcpy(star.Bayer, "Kap For A");
+    star.alienorumid = "5y Eri 123 B";
+    strcpy(star.Gouldcons, "Phe");
+    ASSERT_NE(identify_designated_cons_of_star(&star), nullptr);
+    EXPECT_EQ(identify_designated_cons_of_star(&star)->abbrev, "Cet");
+    std::reverse(constellations.begin(), constellations.end());
+    EXPECT_EQ(identify_designated_cons_of_star(&star)->abbrev, "Cet");
+    star.Flamsteed[0] = 0;
+    EXPECT_EQ(identify_designated_cons_of_star(&star)->abbrev, "For");
+    star.Bayer[0] = 0;
+    EXPECT_EQ(identify_designated_cons_of_star(&star)->abbrev, "Eri");
+    star.alienorumid.clear();
+    EXPECT_EQ(identify_designated_cons_of_star(&star)->abbrev, "Phe");
+    star.Gouldcons[0] = 0;
+    EXPECT_EQ(identify_designated_cons_of_star(&star), nullptr);
+    EXPECT_EQ(identify_designated_cons_of_star(nullptr), nullptr);
+}
+
+TEST_F(ConstellationTest, DesignationsHandleCatalogFieldsAndIgnoreOtherVantages)
+{
+    Constellation foreign;
+    foreign.abbrev = "For";
+    foreign.vantage_name = "Another star";
+    constellations.push_back(foreign);
+    Constellation fornax;
+    fornax.abbrev = "For";
+    constellations.push_back(fornax);
+    Star star;
+    strcpy(star.Bayer, "Kap 1 for");
+    EXPECT_EQ(identify_designated_cons_of_star(&star), &constellations[1]);
+    strcpy(star.Bayer, "Kap1For");
+    EXPECT_EQ(identify_designated_cons_of_star(&star), &constellations[1]);
+    star.Bayer[0] = 0;
+    star.BayerGrkno = 9;
+    strcpy(star.constellation, "For");
+    EXPECT_EQ(identify_designated_cons_of_star(&star), &constellations[1]);
+    star.BayerGrkno = -1;
+    star.FlamsteedNo = 12;
+    EXPECT_EQ(identify_designated_cons_of_star(&star), &constellations[1]);
+    star.FlamsteedNo = -1;
+    strcpy(star.Bayer, "Kap Invalid");
+    star.alienorumid = "5y For 1";
+    EXPECT_EQ(identify_designated_cons_of_star(&star), &constellations[1]);
+}
+
+TEST_F(ConstellationTest, ControlThreeUsesHostDesignationBeforeSkyPosition)
+{
+    ImGuiContext* previous_context = ImGui::GetCurrentContext();
+    ImGuiContext* context = ImGui::CreateContext();
+    const auto previous_themes = themes;
+    const auto previous_style = global_style;
+    const int previous_theme = themes_selected_idx;
+    const int previous_location = whereami;
+    CelestialObject* previous_center = mycenobj;
+    const CelestialLocation previous_position = here;
+    const bool previous_local_step = local_tmstep;
+
+    Constellation cetus;
+    cetus.name = "Cetus";
+    cetus.abbrev = "Cet";
+    cetus.RA_center = cetus.decl_center = 0;
+    cetus.bounds = {{-.5, -.5}, {.5, -.5}, {.5, .5}, {-.5, .5}};
+    constellations.push_back(cetus);
+    Constellation fornax;
+    fornax.name = "Fornax";
+    fornax.abbrev = "For";
+    constellations.push_back(fornax);
+    num_reg_cons = 2;
+    global_style.load("Cetus");
+    const int cetus_theme = std::find(themes.begin(), themes.end(), "Cetus") - themes.begin();
+    const int fornax_theme = std::find(themes.begin(), themes.end(), "Fornax") - themes.begin();
+    themes_selected_idx = cetus_theme;
+
+    Star* star = new Star;
+    strcpy(star->Bayer, "Kap For");
+    star->alienorumid = "5y Cet 1";
+    append_cel(star);
+    Planet* planet = new Planet;
+    planet->orbit = new Orbit;
+    planet->orbit->center = star;
+    append_cel(planet);
+    whereami = 1;
+    mycenobj = star;
+    here = CelestialLocation();
+    here.system_center = Point::from_ra_dec(0, 0, light_year);
+    local_tmstep = false;
+    process_key_cmd_ctrl_char('3');
+    EXPECT_EQ(themes_selected_idx, fornax_theme);
+    star->Bayer[0] = 0;
+    star->alienorumid.clear();
+    process_key_cmd_ctrl_char('3');
+    EXPECT_EQ(themes_selected_idx, cetus_theme);
+
+    themes = previous_themes;
+    global_style = previous_style;
+    themes_selected_idx = previous_theme;
+    whereami = previous_location;
+    mycenobj = previous_center;
+    here = previous_position;
+    local_tmstep = previous_local_step;
+    ImGui::DestroyContext(context);
+    ImGui::SetCurrentContext(previous_context);
+}
+
+TEST_F(ConstellationTest, GenerationBarrierWaitsForActiveAndQueuedVantages)
+{
+    struct RestoreVantage
+    {
+        CelestialObject* object = mycenobj;
+        int place = whereami;
+        SDL_Window* display = window;
+        ~RestoreVantage()
+        {
+            ExoConsGenerator::reset();
+            mycenobj = object;
+            whereami = place;
+            window = display;
+        }
+    } restore;
+    ExoConsGenerator::reset();
+    mycenobj = nullptr;
+    whereami = -1;
+    window = nullptr;
+    EXPECT_FALSE(ExoConsGenerator::current_vantage_pending());
+    whereami = ncelobjs;
+    EXPECT_FALSE(ExoConsGenerator::current_vantage_pending());
+    for (const char* name : {"First vantage", "Second vantage"})
+    {
+        Star* star = new Star;
+        strcpy(star->name, name);
+        star->absolute_magnitude = 30;
+        star->location.system_center = Point((ncelobjs + 1) * 100 * light_year, 0, 0);
+        star->cenobj = star;
+        append_cel(star);
+    }
+    whereami = 0;
+    EXPECT_TRUE(ExoConsGenerator::current_vantage_pending());
+    ExoConsGenerator::update_frame();
+    EXPECT_TRUE(ExoConsGenerator::get_is_generating());
+    EXPECT_TRUE(ExoConsGenerator::current_vantage_pending());
+
+    // A completed job for the old location cannot release a wait at the new location.
+    whereami = 1;
+    const auto finish_active = []()
+    {
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        while (ExoConsGenerator::get_is_generating() && std::chrono::steady_clock::now() < deadline)
+        {
+            ExoConsGenerator::update_frame();
+        }
+        EXPECT_FALSE(ExoConsGenerator::get_is_generating());
+    };
+    finish_active();
+    EXPECT_TRUE(ExoConsGenerator::current_vantage_pending());
+    ExoConsGenerator::update_frame();
+    EXPECT_TRUE(ExoConsGenerator::get_is_generating());
+    finish_active();
+    EXPECT_FALSE(ExoConsGenerator::current_vantage_pending());
+    whereami = 0;
+    EXPECT_FALSE(ExoConsGenerator::current_vantage_pending());
+}
 
 TEST_F(ConstellationTest, BuildPerimeter_OrdersVerticesAndFindsCenter)
 {
@@ -771,9 +947,11 @@ TEST_F(ExoConsTest, ProgressiveFrameGeneration_ExecutesSmoothly)
     ASSERT_NE(gj86, nullptr);
     whereami = find_object("GJ 86", true);
     mycenobj = gj86;
+    EXPECT_TRUE(ExoConsGenerator::current_vantage_pending());
 
     // Test synchronous vs progressive frame generation
     ExoConsGenerator::start_generation_for(gj86);
+    EXPECT_TRUE(ExoConsGenerator::current_vantage_pending());
     for (int frame = 0; frame < 100; ++frame)
     {
         ExoConsGenerator::update_frame();
@@ -789,6 +967,7 @@ TEST_F(ExoConsTest, ProgressiveFrameGeneration_ExecutesSmoothly)
         }
     }
     EXPECT_GE(gj86_count, 50);
+    EXPECT_FALSE(ExoConsGenerator::current_vantage_pending());
 }
 
 TEST_F(ExoConsTest, NearbyVantageWithin10LightYears_SuppressesExoconsGeneration)
