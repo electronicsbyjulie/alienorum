@@ -2,7 +2,7 @@
 
 A cross-platform desktop planetarium app made using the ImGui library. https://github.com/ocornut/imgui
 
-## *** This project is looking for testers. ***
+## * This project is looking for testers. *
 
 <img width="260" height="144" alt="image" src="https://github.com/user-attachments/assets/7a42c429-6c14-4b70-8095-4d48eb478d94" /> <img width="260" height="144" alt="image" src="https://github.com/user-attachments/assets/33745731-b6e0-4ed2-adfa-7b9b3173fb23" /> <img width="260" height="144" alt="image" src="https://github.com/user-attachments/assets/285dea8d-8609-41a0-b741-53ddf8a7471e" />
 <img width="260" height="144" alt="image" src="https://github.com/user-attachments/assets/7ca4673d-8507-4b97-91e4-a9be9ad7f827" /> <img width="260" height="144" alt="image" src="https://github.com/user-attachments/assets/296ef493-0c65-4654-84ea-e5db9e327a24" /> <img width="260" height="144" alt="image" src="https://github.com/user-attachments/assets/8278e35e-6429-4bd8-bda4-73361b642d30" />
@@ -133,7 +133,7 @@ You can also navigate the surface by holding down `End` (to go forward) or `Home
 a total of one million times the default walking speed.
 
 
-In planetfall mode on a world with surface water, press `Ctrl+F` or choose **Spacetime → Find Shore** to move to a nearby shoreline. The search favors the direction you are facing and follows the detailed terrain boundary. You arrive just on the land side, with your viewing direction unchanged.
+In planetfall mode on a world with surface water, press `Ctrl+F` or choose Spacetime → Find Shore to move to a nearby shoreline. The search favors the direction you are facing and follows the detailed terrain boundary. You arrive just on the land side, with your viewing direction unchanged.
 
 
 ### Sun Clock
@@ -156,24 +156,25 @@ Alienorum auto-downloads satellite data from CelesTrak (https://celestrak.org/).
 
 ## Editing and Saving Objects
 
-To edit a celestial object, select it and press Shift+E. An edit window will appear at lower right, offering several object properties that can be set in-program. All changes will take effect right away.
+To edit a celestial object, select it and press Shift+E, or choose Object > Edit Object. The editor exposes properties appropriate to the selected object. Changes affect the current session; press U to save object additions and edits for later sessions.
 
-Use **Ctrl+P** or **Object > Populate Region…** to generate a fictional stellar neighborhood in the current galaxy. The dialog offers four-character sector codes and a minimum system spacing of 1–5 light years (default 2). Close companions within a system retain their orbital separation.
+To add a new object, first select its intended orbit center and press Shift+A, or choose Object > Add Object. The dialog supports galaxies, stars, planets, moons, and custom spacecraft (artificial satellites). Click Go to create the object with default properties and open its editor. To load real artificial satellites from the downloaded catalogs, use Object > Add Satellite... (^) instead.
 
-To add a new object, first select its center of orbit and then press Shift+A. A dialog will ask what kind of object to create. Currently, only Star, Planet, and Moon will work. After clicking Go, the new object will be added with a few default parameters and you will see an edit window to fill in all its other properties.
+Use Ctrl+P or Object > Populate Region... to generate a fictional stellar neighborhood. Choose a galaxy and a suggested or specified location, then set the region radius, star count, catalog prefix, center-star type, and random seed. Open clusters, planetary systems, and moons are optional. Catalog prefixes contain 1–8 letters or digits, and catalog numbers are unique within each prefix. Minimum spacing varies between systems from 1–5 light years; close companions within a system retain their orbital separation. Click Generate Preview to review a population, then Add Stars to install it in the current session.
 
-Alienorum generates fictitious texture maps of objects that don't have a map file in the `maps/` folder. While editing, you can save, refresh, and regenerate these fictitious maps. Save creates file with the object's name in `maps/`, and refresh reloads the existing file or creates a new texture if the file is absent. The regenerate button creates a high resolution texture, never the same as the existing texture, but suitable for world building (10000 x 5000 pixels). This will take a moment to complete so be sure to let it finish before saving or retrying.
+For worlds without supplied texture maps, Alienorum generates fictional maps. The editor's texture controls include a Save button to write map images to `maps/`, a Reload button to reload existing map files, an Update button to regenerate maps using the current settings, and a Regenerate button to choose a new random seed and regenerate them. Reseed resets the random seed back to the object's default. Map Height controls the generated map resolution. Allow generation and saving to finish before copying map files.
 
-To export your objects you've created or modified, press U. To load them again next session, first rename your `universe.json` file to something else, let's say `my_universe.json`, then the next time you run Alienorum, run it from the command line with the `load` argument like this: `./bin/alienorum load my_universe.json`. Note Alienorum will not touch your custom file; any changes made will be written to `universe.json` only, so make sure to either copy them to your custom universe file or rename the default `universe.json` to your filename.
+Press U, or choose File > Save universe files, to save additions and edits. Saving always writes `universe.json` in the application's working directory, regardless of which file was loaded. The save layout depends on the objects:
 
-Any object properties not included in the edit window can be edited in the .json file.
+* Edits to catalog objects and additions within real (not generated) star systems are stored directly in `universe.json`.
+* Each distinct generated stellar population is saved in a compact `.dat` star catalog and a companion `.json` file containing its associated objects such as planets and moons. Their filenames combine the galaxy name, catalog prefix, and population's anchor-star name.
+* When companion files are in use, `universe.json` also serves as a temporary index referencing their `.json` files, which in turn reference the `.dat` catalogs.
 
-Alienorum has a feature that generates fictional stars, and optionally planets and moons, about a random or user-specified center point in any galaxy. By default, it will generate 10,000 stars in a 1,000 light-year radius of the selected point in space, with planets around 10% of the stars, including a single sunlike center star system with planets. This generates a large number of objects, so saving it means creating a lerge JSON file, typically more than 50 MB. Some text editors have difficulty with files this big, but a quick internet search reveals several dedicated JSON editors that can handle large files and allow you to edit them. Generated stars will be written to a .dat file as this is a more compact format. If sharing a universe of generated fictional stars, be sure to share both the .json file and the .dat file.
+To load a saved universe, press F4 or choose File > Load Universe and select its JSON file or a population's companion file. You can also load a universe JSON at startup, for example `./bin/alienorum load my_universe.json`. Renaming the default universe.json is optional; if you close Alienorum and then run `./bin/alienorum load universe.json` it will load all of the object additions and edits from your previous sessions. Loading another universe file merges its objects into the current session. Distinct star populations generated with the Ctrl+P dialog retain their own separate companion files when saved together, so if you load two or more generated universes together, they will still be saved separately.
 
-You can also edit the universe JSON files to modify other parameters not included in the window. Just make sure the file is still valid JSON after any edits. There are third party apps that will check a .json file to make sure it's
-valid and find any errors.
+Saving after loading a renamed universe JSON file still writes `universe.json`; it does not update the renamed file. Population companion files (i.e. from Ctrl+P) are rewritten by the save.
 
-IMPORTANT: If you edit existing objects and/or add objects to existing stars, then press U, your changes will be saved to universe.json ***irrespective of the original filename***. That means if you make edits, then save, then rename your universe.json to something else, you can load the file in a new session, but any further edits will still be saved to universe.json, ***not to your renamed file***. It's different if the saved universe contains generated stars; those and their planets get saved to files with pre-selected names; pressing U *does* overwrite those files.
+Object properties not exposed in the editor can be changed in the appropriate JSON file. Make sure the JSON stays valid; there are programs and websites that can check it. Then reload the file to apply external edits. Generated stellar populations are stored in `.dat` catalogs since they would make the files too big if stored as JSON.
 
 
 ## Editing user.json
@@ -344,5 +345,5 @@ Developer tools, Python scripts, intermediate catalog snapshots, benchmark data,
 When adding a static runtime asset, track it in Git and add its path to `package/runtime_files.txt`. The build script rejects missing or untracked payload entries. No directory-wide copies or file globs are used for the installer payload.
 
 
-**Important Rule for Contributors / Future Sessions:** Any time new runtime files (catalogs, data files, fonts, images, etc.) are added to the repository that are not auto-generated or downloaded dynamically from the internet at runtime, they **MUST** also be added to the CMake/vcpkg installer configuration (`CMakeLists.txt`) so they are bundled into the release installer.
+Important Rule for Contributors / Future Sessions: Any time new runtime files (catalogs, data files, fonts, images, etc.) are added to the repository that are not auto-generated or downloaded dynamically from the internet at runtime, they MUST also be added to the CMake/vcpkg installer configuration (`CMakeLists.txt`) so they are bundled into the release installer.
 
