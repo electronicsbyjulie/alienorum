@@ -30,23 +30,36 @@ MSYS2 (Run in MINGW64 environment):
 
 * OpenGL rendering;
 * Spaceship mode with pan and zoom, RA/dec grid, and constellation lines;
-* Automatic downloading and use of professional star catalogs;
+* Internal condensed star catalog compiled from professional star catalogs, and automatic downloading of professional catalogs when condensed catalog is absent;
+* Multiple viewing modes: spaceship, planetary surface, sun clock, sky atlas, and system view;
+* Red light mode for preserving night vision;
+* Snapshot feature that saves everything in the viewport;
+* Fullscreen mode;
+* White background mode for taking printer-friendly snapshots;
+* Keyboard shortcut that turns off all annotations, effectively creating a "realism" mode;
+* Configurable audible alerts when a given object rises or sets;
+* Robust set of star labeling options, including brightest, nearest, sunlike, presence of planets, and specialized labeling for Bayer, Flamsteed, and Gould;
 * Spaceflight feature with time dilation and warp speed capability;
+* Tracking feature useful for performing flybys;
 * View space from any vantage point;
 * Ability to select an individual object and teleport to its position;
 * Robust fuzzy search shows a results list if more than one inexact match is found;
-* Time travel (in-universe only) - set the view for any date by stepping forward/backward in steps from a minute to a millennium;
+* Favorite-stars list for easy access from anywhere at any time;
+* Time travel (in-universe only) - advance or rewind in steps from a minute to a millennium, with a return-to-present shortcut;
 * Information shown when hovering over a celestial object, including names, coordinates, distance, and magnitude;
 * Asteroids and comets;
-* Realtime satellite positions;
-* Exoplanets including fictional texture maps, atmospheres, and rings;
+* Estimated realtime satellite positions computed locally from official orbital parameters;
+* Cataloged exoplanets augmented with fictional texture maps, atmospheres, and rings;
+* System Explorer and Stellar Neighborhood for easy location of nearby objects;
+* Explore planetary surfaces with latitude/longitude controls and shoreline finding;
 * Customizable texture generation for fictional world building;
 * Ability to add fictional planets, moons, and spacecraft, including an orbital resonance calculator;
-* Generation of stars and planets in remote parts of the galaxy and in other galaxies;
+* Generation of fictional stellar neighborhoods in the Milky Way and in other galaxies, with optional planets, moons, and open clusters;
 * Stellar proper motions, orbits, and variability;
 * Unified star catalog with an internal star designation system based on magnitude and color;
 * Each edited universe is saved to a portable JSON file that can be edited to customize each object;
-* Multiple universes may be loaded together, each generated universe preserving its stars and related objects in its own separate save file;
+* Multiple universes may be loaded together, each generated universe preserving its stars and related objects in its own separate save files;
+* Ability to load SSC files for cross-application compatibility;
 * More coming soon...
 
 
