@@ -36,6 +36,7 @@ MSYS2 (Run in MINGW64 environment):
 * Snapshot feature that saves everything in the viewport;
 * Fullscreen mode;
 * White background mode for taking printer-friendly snapshots;
+* A large diverse set of display themes named after constellations;
 * Keyboard shortcut that turns off all annotations, effectively creating a "realism" mode;
 * Configurable audible alerts when a given object rises or sets;
 * Robust set of star labeling options, including brightest, nearest, sunlike, presence of planets, and specialized labeling for Bayer, Flamsteed, and Gould;
