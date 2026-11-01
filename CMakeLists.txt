@@ -82,6 +82,7 @@ add_library(CLASSES STATIC
 	src/classes/point.cpp
 	src/classes/satellite.cpp
 	src/classes/serial.cpp
+	src/classes/objectsearch.cpp
 	src/classes/universe_catalog.cpp
 	src/classes/shore.cpp
 	src/classes/surfacenavigation.cpp

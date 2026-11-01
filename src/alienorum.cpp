@@ -748,6 +748,7 @@ int main (int argc, char** argv)
             update_surface_edit_targets();
             if (objedtwnd) draw_objedit_window(io);
             if (explorer) draw_system_explorer(io);
+            draw_object_search_results(io);
             if (addcelwnd) draw_addcel_window(io);
             draw_fictional_region();
             if (astwnd) draw_ast_window(io);

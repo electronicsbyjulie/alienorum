@@ -14,6 +14,7 @@
 #include <limits>
 #include <charconv>
 #include "celestial.h"
+#include "objectsearch.h"
 #include "surfaceoptions.h"
 #include "shore.h"
 #include "lavafissures.h"
@@ -66,6 +67,7 @@ CelestialObject::CelestialObject()
 
 CelestialObject::~CelestialObject()
 {
+    retire_object_search_target(this);
     if (alert_rise || alert_set) invalidate_horizon_alerts();
     if (cels && seqno >= 0 && seqno < ncelobjs && cels[seqno] == this) invalidate_frame_objects();
     if (merged_day_map)

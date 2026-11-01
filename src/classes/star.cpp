@@ -46,6 +46,7 @@ static std::mutex catalog_alias_mutex;
 
 void Star::add_catalog_alias(const std::string &alias)
 {
+    std::lock_guard<std::recursive_mutex> catalog_lock(catalog_mutex);
     std::lock_guard<std::mutex> lock(catalog_alias_mutex);
     if (alias.empty()) return;
     if (std::find(catalog_aliases.begin(), catalog_aliases.end(), alias) == catalog_aliases.end())

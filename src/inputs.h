@@ -2,6 +2,8 @@
 #ifndef _Inputs
 #define _Inputs
 
+#include "classes/objectsearch.h"
+
 void center_selected();
 void center_tracked();
 void identify_object_under_cursor(ImGuiIO &io);
@@ -37,6 +39,7 @@ void process_key_F10();
 void process_key_F11();
 void process_key_F12();
 void do_find();
+bool apply_object_search_action(const alienorum::ObjectSearchMatch& match, alienorum::ObjectSearchAction action);
 int lookfor_cb(ImGuiInputTextCallbackData* data);
 void process_select_rise_sound();
 void process_select_set_sound();

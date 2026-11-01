@@ -34,6 +34,111 @@ using namespace alienorum;
 namespace
 {
     std::unordered_map<int, WaterCoverageEditor> surface_editors;
+    ObjectSearchResponse search_results;
+    bool search_results_visible = false, search_list_focus = false;
+    int search_result_row = -1;
+}
+
+void close_object_search_results()
+{
+    search_results_visible = search_list_focus = false;
+    search_result_row = -1;
+    search_results = {};
+}
+
+void open_object_search_results(ObjectSearchResponse results)
+{
+    search_results = std::move(results);
+    search_result_row = -1;
+    search_results_visible = true;
+}
+
+bool object_search_results_open() { return search_results_visible; }
+bool object_search_list_focused() { return search_results_visible && search_list_focus; }
+
+void draw_object_search_results(ImGuiIO&)
+{
+    search_list_focus = false;
+    if (!search_results_visible) return;
+    {
+        std::lock_guard<std::recursive_mutex> lock(catalog_mutex);
+        if (!resolve_object_search_match(search_results.anchor))
+        {
+            close_object_search_results();
+            return;
+        }
+    }
+    ImGui::SetNextWindowSize(ImVec2(580, 380), ImGuiCond_FirstUseEver);
+    if (ImGui::Begin("Search Results", &search_results_visible))
+    {
+        if (ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows)) is_mouse_over_window = true;
+        const float footer = 3 * ImGui::GetFrameHeightWithSpacing();
+        if (ImGui::BeginListBox("##object_search_list", ImVec2(-1, std::max(60.0f, ImGui::GetContentRegionAvail().y - footer))))
+        {
+            search_list_focus = ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows);
+            if (ImGui::BeginTable("##object_search_columns", 2, ImGuiTableFlags_SizingStretchProp))
+            {
+                ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch);
+                ImGui::TableSetupColumn("Type", ImGuiTableColumnFlags_WidthFixed, 90);
+                ImGui::TableHeadersRow();
+                ImGuiListClipper clipper;
+                clipper.Begin(static_cast<int>(search_results.matches.size()));
+                while (clipper.Step())
+                {
+                    for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row)
+                    {
+                        const auto& match = search_results.matches[row];
+                        bool valid;
+                        {
+                            std::lock_guard<std::recursive_mutex> lock(catalog_mutex);
+                            valid = resolve_object_search_match(match) != nullptr;
+                        }
+                        ImGui::TableNextRow();
+                        ImGui::TableNextColumn();
+                        ImGui::PushID(row);
+                        ImGui::BeginDisabled(!valid);
+                        if (ImGui::Selectable(match.name.c_str(), search_result_row == row,
+                            ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_SelectOnNav))
+                            search_result_row = row;
+                        ImGui::TableNextColumn();
+                        ImGui::TextUnformatted(match.type.c_str());
+                        ImGui::EndDisabled();
+                        ImGui::PopID();
+                    }
+                }
+                ImGui::EndTable();
+            }
+            ImGui::EndListBox();
+        }
+        const ObjectSearchMatch* target = search_result_row >= 0
+            && search_result_row < static_cast<int>(search_results.matches.size()) ? &search_results.matches[search_result_row] : nullptr;
+        bool valid = false;
+        if (target)
+        {
+            std::lock_guard<std::recursive_mutex> lock(catalog_mutex);
+            valid = resolve_object_search_match(*target) != nullptr;
+        }
+        const std::pair<const char*, ObjectSearchAction> actions[] =
+        {
+            {"Select", ObjectSearchAction::select}, {"Focus", ObjectSearchAction::focus},
+            {"Track", ObjectSearchAction::track}, {"Go", ObjectSearchAction::go},
+            {"Alert on Rise", ObjectSearchAction::rise}, {"Alert on Set", ObjectSearchAction::set},
+            {"Edit", ObjectSearchAction::edit}
+        };
+        bool first = true;
+        for (const auto& action : actions)
+        {
+            const float width = ImGui::CalcTextSize(action.first).x + ImGui::GetStyle().FramePadding.x * 2;
+            if (!first && ImGui::GetItemRectMax().x + ImGui::GetStyle().ItemSpacing.x + width
+                <= ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMax().x) ImGui::SameLine();
+            ImGui::BeginDisabled(!valid || (action.second == ObjectSearchAction::edit && target && target->type == "object"));
+            if (ImGui::Button(action.first) && target) apply_object_search_action(*target, action.second);
+            ImGui::EndDisabled();
+            first = false;
+        }
+    }
+    ImGui::End();
+    if (!search_results_visible) close_object_search_results();
 }
 
 void update_surface_edit_targets()

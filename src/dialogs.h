@@ -3,6 +3,13 @@
 #define _Dialogs
 
 #include "globals.h"
+#include "classes/objectsearch.h"
+
+void open_object_search_results(alienorum::ObjectSearchResponse results);
+void close_object_search_results();
+bool object_search_results_open();
+bool object_search_list_focused();
+void draw_object_search_results(ImGuiIO& io);
 
 void draw_status_window(ImGuiIO &io);
 void draw_objinf_window(ImGuiIO &io);

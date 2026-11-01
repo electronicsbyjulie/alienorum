@@ -8,6 +8,7 @@
 #include "loaders.h"
 #include "housekeeping.h"
 #include "inputs.h"
+#include "dialogs.h"
 #include "imgui_internal.h"
 #include "visuals.h"
 #include "classes/sscimport.h"
@@ -1227,7 +1228,7 @@ void process_keyboard_commands(ImGuiIO& io)
     if (ImGui::IsKeyPressed(ImGuiKey_F9)) process_key_F9();
     if (ImGui::IsKeyPressed(ImGuiKey_F10)) process_key_F10();
     if (ImGui::IsKeyPressed(ImGuiKey_F12, false)) process_key_F12();
-    if (editing) return;
+    if (editing || object_search_list_focused()) return;
 
     int i;
     for (i = 0; i < io.InputQueueCharacters.Size; i++)
@@ -1568,17 +1569,61 @@ void process_key_F12()
 
 void do_find()
 {
-    int i = find_object(lookfor, false, 9e+29, 6);
-    if (i>=0)
+    close_object_search_results();
+    auto result = search_objects(lookfor);
+    lookfor_notfound = false;
+    if (result.state == ObjectSearchState::single)
     {
-        if (view_mode == vm_sunclock) view_mode = vm_spaceship;
-        selected = i;
-        trackidx = -1;
-        center_selected();
-        searched = true;
-        lookfor_notfound = false;
+        lookfor_notfound = !apply_object_search_action(result.matches.front(), ObjectSearchAction::focus);
     }
-    else lookfor_notfound = true;
+    else if (result.state == ObjectSearchState::multiple) open_object_search_results(std::move(result));
+    else if (result.state != ObjectSearchState::blank) lookfor_notfound = true;
+}
+
+bool apply_object_search_action(const ObjectSearchMatch& match, ObjectSearchAction action)
+{
+    std::lock_guard<std::recursive_mutex> lock(catalog_mutex);
+    CelestialObject* object = resolve_object_search_match(match);
+    if (!object) return false;
+    switch (action)
+    {
+        case ObjectSearchAction::select:
+            selected = match.index;
+            if (view_mode == vm_system) view_mode = vm_spaceship;
+            viewchanged = true;
+            break;
+        case ObjectSearchAction::focus:
+            if (view_mode == vm_sunclock) view_mode = vm_spaceship;
+            selected = match.index;
+            trackidx = -1;
+            center_selected();
+            searched = true;
+            break;
+        case ObjectSearchAction::track:
+            trackidx = match.index;
+            if (view_mode == vm_system) view_mode = vm_spaceship;
+            center_tracked();
+            viewchanged = true;
+            break;
+        case ObjectSearchAction::go:
+            whereami = match.index;
+            if (view_mode == vm_system) view_mode = vm_spaceship;
+            viewer_locale.clear();
+            set_viewer_location_and_plane();
+            selected = trackidx = -1;
+            global_brightness = default_brightness;
+            zoom = 1;
+            viewchanged = true;
+            break;
+        case ObjectSearchAction::rise: object->alert_rise = true; break;
+        case ObjectSearchAction::set: object->alert_set = true; break;
+        case ObjectSearchAction::edit:
+            if (object->typeclass() == class_unknown) return false;
+            editidx = match.index;
+            objedtwnd = true;
+            break;
+    }
+    return true;
 }
 
 int lookfor_cb(ImGuiInputTextCallbackData* data)

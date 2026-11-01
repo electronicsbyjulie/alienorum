@@ -3153,6 +3153,50 @@ TEST_F(RenderingRegressionTest, LargeTimeKeysRetainEarthOrLocalSolarTime)
     }
 }
 
+TEST_F(RenderingRegressionTest, SearchResultsNavigationDoesNotPanUntilTheListLosesFocus)
+{
+    struct CloseResults { ~CloseResults() { close_object_search_results(); } } close;
+    Star* first = make_star("Atlas");
+    Planet* second = make_planet(first, "Atlas");
+    set(selected, first->seqno);
+    set(azimuth, .3);
+    set(altitude, .4);
+    auto& io = ImGui::GetIO();
+    set(io.DisplaySize, ImVec2(800, 600));
+    set(io.ConfigFlags, io.ConfigFlags | ImGuiConfigFlags_NavEnableKeyboard);
+    open_object_search_results(search_objects("Atlas"));
+    ImGui::SetNextWindowPos(ImVec2(10, 10));
+    draw_object_search_results(io);
+    ImGuiWindow* window = ImGui::FindWindowByName("Search Results");
+    ASSERT_NE(window, nullptr);
+    ASSERT_GT(window->DC.ChildWindows.Size, 0);
+    ImGui::FocusWindow(window->DC.ChildWindows[0]);
+    ImGui::EndFrame();
+    io.AddKeyEvent(ImGuiKey_DownArrow, true);
+    ImGui::NewFrame();
+    draw_object_search_results(io);
+    EXPECT_TRUE(object_search_list_focused());
+    process_keyboard_commands(io);
+    EXPECT_DOUBLE_EQ(azimuth, .3);
+    EXPECT_DOUBLE_EQ(altitude, .4);
+    EXPECT_EQ(selected, first->seqno);
+    EXPECT_NE(selected, second->seqno);
+    ImGui::FocusWindow(nullptr);
+    ImGui::EndFrame();
+    io.AddKeyEvent(ImGuiKey_DownArrow, false);
+    io.AddKeyEvent(ImGuiKey_RightArrow, true);
+    ImGui::NewFrame();
+    draw_object_search_results(io);
+    EXPECT_FALSE(object_search_list_focused());
+    process_keyboard_commands(io);
+    EXPECT_NE(azimuth, .3);
+    io.AddKeyEvent(ImGuiKey_RightArrow, false);
+    close_object_search_results();
+    EXPECT_FALSE(object_search_results_open());
+    ImGui::EndFrame();
+    ImGui::NewFrame();
+}
+
 TEST_F(RenderingRegressionTest, CrownAspectUsesIndividualSightlinesInsteadOfCameraPitch)
 {
     EXPECT_DOUBLE_EQ(scenery_crown_aspect(100, 0, .1), .1);
