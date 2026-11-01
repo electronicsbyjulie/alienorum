@@ -7382,11 +7382,9 @@ void draw_horizon()
                 horizon_lift_rad = shared_surface ? surface_lift : p->atmospheric_horizon_lift();
             }
 
-            double s_horizon = shared_surface ? surface_range : sqrt(2.0 * R_planet * h_eye);
-            if (horizon_lift_rad > 0.0)
-            {
-                s_horizon += R_planet * sin(horizon_lift_rad);
-            }
+            // Scenery shares the terrain's geometric horizon ring. Applying the
+            // visual lift to this distance as well suppresses nearby refraction.
+            const double s_horizon = shared_surface ? surface_range : sqrt(2.0 * R_planet * h_eye);
 
             double sun_light = fmax(0.0, sin(sun_elev)) * is_day;
             double amb_light = fmax(0.04, 0.22 * is_day + starlight * 0.4);
@@ -7777,7 +7775,7 @@ void draw_horizon()
 
                             if (s_horizon > 0.0 && horizon_lift_rad > 0.0)
                             {
-                                double lift = (dist_m / s_horizon) * horizon_lift_rad * dist_m;
+                                double lift = fmin(1.0, dist_m / s_horizon) * horizon_lift_rad * dist_m;
                                 y_base_world += lift;
                                 y_crown_world += lift;
                             }
@@ -7867,7 +7865,7 @@ void draw_horizon()
                             double delta = atan(h_eye / dist_m) + (dist_m / (2.0 * R_planet));
                             if (s_horizon > 0.0)
                             {
-                                delta -= (dist_m / s_horizon) * horizon_lift_rad;
+                                delta -= fmin(1.0, dist_m / s_horizon) * horizon_lift_rad;
                             }
                             if (dittrsa)
                             {
@@ -8044,7 +8042,7 @@ void draw_horizon()
                         double y_base_world = -h_eye - curv_drop_rock;
                         if (s_horizon > 0.0 && horizon_lift_rad > 0.0)
                         {
-                            y_base_world += (rk.ground_dist / s_horizon) * horizon_lift_rad * rk.ground_dist;
+                            y_base_world += fmin(1.0, rk.ground_dist / s_horizon) * horizon_lift_rad * rk.ground_dist;
                         }
 
                         double z_base_cam = y_base_world * sin_alt + z_base_horiz * cos_alt;
@@ -8058,7 +8056,7 @@ void draw_horizon()
                         double y_tip_world = -h_eye - curv_drop_tip;
                         if (s_horizon > 0.0 && horizon_lift_rad > 0.0)
                         {
-                            y_tip_world += (dist_tip / s_horizon) * horizon_lift_rad * dist_tip;
+                            y_tip_world += fmin(1.0, dist_tip / s_horizon) * horizon_lift_rad * dist_tip;
                         }
 
                         double z_tip_cam = y_tip_world * sin_alt + z_tip_horiz * cos_alt;

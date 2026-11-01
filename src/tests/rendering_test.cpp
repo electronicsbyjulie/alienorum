@@ -3348,6 +3348,49 @@ TEST_F(RenderingRegressionTest, PlantsArePlacedNearTheKilometerCutoff)
     EXPECT_GT(crowns, 0);
 }
 
+TEST_F(RenderingRegressionTest, DistantPlantsShareTheGroundHorizonRefractionScale)
+{
+    Planet* world = surface(true);
+    world->volumetric_mean_radius = 14186858;
+    world->oblateness = 0;
+    world->temperature = 323.402;
+    delete world->surf_map;
+    world->surf_map = new DistantPlantTestMap(world->get_equatorial_radius());
+    world->plant_trunk_height = 2;
+    world->plant_crown_size = 2.85;
+    set(viewer_eye_height, 1.82);
+    set(zoom, 30.0);
+    set(altitude, 0.0);
+    const auto crown_height = [&](double pressure)
+    {
+        world->ensure_atmosphere()->surface_pressure = pressure;
+        double sum = 0;
+        int count = 0;
+        for (const auto& vertex : scenery())
+        {
+            const int red = (vertex.col >> IM_COL32_R_SHIFT) & 255;
+            const int green = (vertex.col >> IM_COL32_G_SHIFT) & 255;
+            const int blue = (vertex.col >> IM_COL32_B_SHIFT) & 255;
+            if (green > 1.2 * red && green > 2 * blue)
+            {
+                sum += vertex.pos.y;
+                ++count;
+            }
+        }
+        EXPECT_GT(count, 0);
+        return count ? sum / count : 0;
+    };
+    const double clear_y = crown_height(oneatm);
+    const double refracted_y = crown_height(658612.5);
+    const double range = sqrt(2 * world->get_equatorial_radius() * viewer_eye_height);
+    const double lift = world->atmospheric_horizon_lift();
+    const double focal = dispcx * zoom;
+    // Biome displacement perturbs the distant vegetation strip, so allow for
+    // its spread while distinguishing the ground scale from the inflated range.
+    EXPECT_GT(clear_y - refracted_y, .4 * focal * lift * PLANT_MAX_DIST / range);
+    EXPECT_LT(clear_y - refracted_y, 1.2 * focal * lift * PLANT_MAX_DIST / range);
+}
+
 TEST_F(RenderingRegressionTest, ShorelineGeometryStaysFiniteAtFullResolution)
 {
     Planet *world = surface(true);
