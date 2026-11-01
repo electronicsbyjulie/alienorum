@@ -209,7 +209,6 @@ namespace
                     set_viewer_location_and_plane();
                 }
                 refresh_star_visibilities();
-                save_user_json();
                 dialog.preview_valid = false;
                 dialog.region.region_id = fictional_region_id();
                 dialog.region.identity = fictional_population_id();

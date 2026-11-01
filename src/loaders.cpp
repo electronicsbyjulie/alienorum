@@ -1681,7 +1681,7 @@ bool save_user_json()
         j["EyeHeight"] = viewer_eye_height * 100.0;
 
         std::vector<std::string> favenames;
-        for (const Star *s : favestars) favenames.push_back(s->name);
+        for (const Star *s : favestars) if (!s->user_added) favenames.push_back(s->name);
         j["FaveStars"] = favenames;
 
         j["PlayRiseSetSounds"] = play_rise_set_sound;
