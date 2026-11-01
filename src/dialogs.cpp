@@ -56,7 +56,7 @@ void open_object_search_results(ObjectSearchResponse results)
 bool object_search_results_open() { return search_results_visible; }
 bool object_search_list_focused() { return search_results_visible && search_list_focus; }
 
-void draw_object_search_results(ImGuiIO&)
+void draw_object_search_results(ImGuiIO& io)
 {
     search_list_focus = false;
     if (!search_results_visible) return;
@@ -68,11 +68,11 @@ void draw_object_search_results(ImGuiIO&)
             return;
         }
     }
-    ImGui::SetNextWindowSize(ImVec2(580, 380), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(563, 380), ImGuiCond_FirstUseEver);
     if (ImGui::Begin("Search Results", &search_results_visible))
     {
         if (ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows)) is_mouse_over_window = true;
-        const float footer = 3 * ImGui::GetFrameHeightWithSpacing();
+        const float footer = 1.0 * ImGui::GetFrameHeightWithSpacing();
         if (ImGui::BeginListBox("##object_search_list", ImVec2(-1, std::max(60.0f, ImGui::GetContentRegionAvail().y - footer))))
         {
             search_list_focus = ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows);
@@ -137,7 +137,14 @@ void draw_object_search_results(ImGuiIO&)
             first = false;
         }
     }
+
+    ImVec2 cpos = ImGui::GetWindowPos(), csiz = ImGui::GetWindowSize();
+    int dlgwidth = csiz.x, dlgheight = csiz.y, dlgtop = cpos.y, dlgleft = cpos.x;
     ImGui::End();
+    if (io.MousePos.x >= dlgleft && io.MousePos.y >= dlgtop
+        && io.MousePos.x < dlgleft+dlgwidth && io.MousePos.y < dlgtop+dlgheight)
+        is_mouse_over_window = true;
+
     if (!search_results_visible) close_object_search_results();
 }
 
