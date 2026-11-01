@@ -34,6 +34,7 @@ MSYS2 (Run in MINGW64 environment):
 * Spaceflight feature with time dilation and warp speed capability;
 * View space from any vantage point;
 * Ability to select an individual object and teleport to its position;
+* Robust fuzzy search shows a results list if more than one inexact match is found;
 * Time travel (in-universe only) - set the view for any date by stepping forward/backward in steps from a minute to a millennium;
 * Information shown when hovering over a celestial object, including names, coordinates, distance, and magnitude;
 * Asteroids and comets;
@@ -45,6 +46,7 @@ MSYS2 (Run in MINGW64 environment):
 * Stellar proper motions, orbits, and variability;
 * Unified star catalog with an internal star designation system based on magnitude and color;
 * Each edited universe is saved to a portable JSON file that can be edited to customize each object;
+* Multiple universes may be loaded together, each generated universe preserving its stars and related objects in its own separate save file;
 * More coming soon...
 
 
