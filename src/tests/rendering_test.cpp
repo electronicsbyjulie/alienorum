@@ -549,11 +549,15 @@ TEST_F(RenderingRegressionTest, SunclockWithoutNightMapKeepsSurfaceVisibleThroug
     class PatchyCloudMap : public SceneryTestMap
     {
         public:
-        PatchyCloudMap()
+        PatchyCloudMap(unsigned char floor = 0)
+        {
+            set_cloud_floor(floor);
+        }
+        void set_cloud_floor(unsigned char floor)
         {
             for (int i = 0; i < 4; ++i)
             {
-                red_data[i] = green_data[i] = blue_data[i] = i % 2 ? 32 : 0;
+                red_data[i] = green_data[i] = blue_data[i] = std::max(floor, static_cast<unsigned char>(i % 2 ? 32 : 0));
             }
             touch_gen();
         }
@@ -586,6 +590,27 @@ TEST_F(RenderingRegressionTest, SunclockWithoutNightMapKeepsSurfaceVisibleThroug
     const double cloudy = capture();
     EXPECT_GT(clear, 0);
     EXPECT_GT(cloudy, clear * 0.8);
+    EXPECT_NE(cloudy, clear);
+
+    world->transparent_clouds = false;
+    EXPECT_DOUBLE_EQ(capture(), clear);
+    EXPECT_TRUE(show_clouds);
+
+    world->transparent_clouds = true;
+    world->overcast = true;
+    EXPECT_DOUBLE_EQ(capture(), clear);
+    EXPECT_TRUE(show_clouds);
+
+    // Procedural blanket decks retain the transparent flag despite obscuring terrain.
+    world->overcast = false;
+    delete world->cloud_map;
+    auto *blanket = new PatchyCloudMap(220);
+    world->cloud_map = blanket;
+    EXPECT_GT(world->cloud_map->mean_cloud_opacity(), 0.70);
+    EXPECT_DOUBLE_EQ(capture(), clear);
+    EXPECT_TRUE(show_clouds);
+    blanket->set_cloud_floor(0);
+    EXPECT_DOUBLE_EQ(capture(), cloudy);
 }
 
 TEST_F(RenderingRegressionTest, LavaSunclockDayStaysBrighterThanNightUnderStellarTint)

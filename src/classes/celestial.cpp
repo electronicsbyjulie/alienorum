@@ -2040,6 +2040,28 @@ Map::~Map()
     }
 }
 
+double Map::mean_cloud_opacity()
+{
+    if (!is_complete()) return 0;
+    if (cloud_opacity_generation == gen) return cached_cloud_opacity;
+
+    // Equal-area samples avoid giving polar pixels disproportionate weight.
+    double opacity = 0;
+    constexpr int rows = 16, columns = 32;
+    for (int y = 0; y < rows; ++y)
+    {
+        const double latitude = asin(2.0 * (y + 0.5) / rows - 1.0);
+        for (int x = 0; x < columns; ++x)
+        {
+            const double longitude = 2.0 * _pi * (x + 0.5) / columns - _pi;
+            opacity += std::clamp(color_at(latitude, longitude).luminance() / 255.0, 0.0, 1.0);
+        }
+    }
+    cached_cloud_opacity = opacity / (rows * columns);
+    cloud_opacity_generation = gen;
+    return cached_cloud_opacity;
+}
+
 bool Map::create_merged_day(Map *surf, Map *clouds)
 {
     if (!surf || !surf->has_rgb_data() || !clouds || !clouds->is_complete())

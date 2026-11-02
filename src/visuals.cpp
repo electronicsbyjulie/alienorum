@@ -4789,13 +4789,13 @@ void draw_sunclock()
     int x, y, dx, dy, step=2, size = dispcx/2, halfwid = size*2;
     sclk_scale = half_pi / size / zoom;
     double lat, lon, obl = 1.0 - cel->oblateness, elevation;
-    bool was_show_clouds = show_clouds;
-    if (cel->overcast) show_clouds = false;             // show feature-rich surface of Titan or Venus, not a damn bland cloud layer.
-    Map *map = cel->get_day_map();
+    // Opaque decks obscure geography; retain patchy weather over a visible surface.
+    const bool hide_cloud_deck = cel->surf_map && (cel->overcast || !cel->transparent_clouds
+        || (cel->cloud_map && cel->cloud_map->mean_cloud_opacity() >= 0.70));
+    Map *map = hide_cloud_deck ? cel->surf_map : cel->get_day_map();
     // Without a night texture, dim the combined surface and clouds together.
     // A synthetic cloud-only night map would hide the surface behind black.
-    Map *nmap = cel->night_map ? cel->get_night_map() : nullptr;
-    show_clouds = was_show_clouds;
+    Map *nmap = cel->night_map ? (hide_cloud_deck ? cel->night_map : cel->get_night_map()) : nullptr;
     Point land;
     bool dwh = false;
 

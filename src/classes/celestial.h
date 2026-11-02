@@ -234,6 +234,8 @@ namespace alienorum
         std::vector<SurfaceMaterial> surface_materials;
         std::unordered_map<std::uint64_t, std::uint32_t> uniform_regions;
         unsigned int uniform_region_generation = 0;
+        unsigned int cloud_opacity_generation = 0;
+        double cached_cloud_opacity = 0;
         unsigned long image_height = 0;                             // Number of rows in image
         unsigned long image_width = 0;                              // Number of columns in image
         unsigned long allocated = 0;
@@ -282,6 +284,7 @@ namespace alienorum
         void _map_resample_bump_regen_rocky(CelestialObject *cel);
 
         RGB3 color_at(double latitude, double longitude);
+        double mean_cloud_opacity();
         std::pair<RGB3, SurfaceMaterial> surface_at(double latitude, double longitude);
         std::pair<RGB3, SurfaceMaterial> surface_pixel(unsigned long column, unsigned long row) const;
         std::array<double, 4> surface_pixel_bounds(unsigned long column, unsigned long row) const;
