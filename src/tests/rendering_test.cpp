@@ -551,6 +551,29 @@ class RenderingRegressionTest : public UniverseFixture
     }
 };
 
+TEST_F(RenderingRegressionTest, SunclockIncludesBrightCompanionsWithoutDuplicatingTheHost)
+{
+    auto* world = surface();
+    world->cenobj = world->orbit->center;
+    auto* companion = cels[0];
+    companion->location.local_position = Point(AU, 0, AU);
+    const double distance_pc = companion->location.distance_to(world->location) / parsec;
+    companion->absolute_magnitude = -11 - 5 * log10(distance_pc / 10);
+    set(view_mode, vm_sunclock);
+    set(selected_locale, static_cast<Locale*>(nullptr));
+    companion->drawnx = companion->drawny = -1e9;
+    draw_sunclock();
+    EXPECT_GT(companion->drawnx, -1e8);
+    render();
+    ImGui::NewFrame();
+    companion->absolute_magnitude += 2;
+    companion->drawnx = companion->drawny = -1e9;
+    draw_sunclock();
+    EXPECT_EQ(companion->drawnx, -1e9);
+    render();
+    ImGui::NewFrame();
+}
+
 TEST_F(RenderingRegressionTest, SunclockWithoutNightMapKeepsSurfaceVisibleThroughCloudGaps)
 {
     Planet *world = surface();

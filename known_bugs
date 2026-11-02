@@ -1,16 +1,16 @@
 
-Searching trappist or trappist1 does not find TRAPPIST-1.
+[Fixed] Searching trappist or trappist1 finds TRAPPIST-1, and planet suffixes remain distinct.
 
-[Fixed] Pressure haze affects clouds, rocks, and plants. Clouds use their viewing distance, and scenery attenuation uses physical range independently of camera sorting depth.
+[Fixed in better-atmospheres branch] Pressure haze affects clouds, rocks, and plants. Clouds use their viewing distance, and scenery attenuation uses physical range independently of camera sorting depth.
 
-The star icon in sun clock mode doesn't always contrast with the planet texture below it. Let's add a 1px black border around every star icon and planet/moon icon, and a shadow under every non-star icon (planet, moon, satellite, etc).
+[Fixed] Sun-clock star and planet/moon icons have black outlines, and non-star icons have offset shadows for contrast against the surface texture.
 
-The star's rendered color has too much effect on the illumination shown in sun clock mode. Let's turn down the saturation to about one quarter the original value.
+[Fixed] Sun-clock illumination uses one-quarter stellar color saturation in both CPU and GPU rendering.
 
-[Fixed] Plant crowns and trunks are clipped independently. Visible trunk segments remain when the crown passes behind the camera, with finite near-plane clipping and matching CPU/GPU rendering.
+[Fixed in better-atmospheres branch] Plant crowns and trunks are clipped independently. Visible trunk segments remain when the crown passes behind the camera, with finite near-plane clipping and matching CPU/GPU rendering.
 
-Companion stars brighter than magnitude -10 should appear in sun clock mode even if the current object orbits the main star.
+[Fixed] Other stars brighter than magnitude -10 have sun-clock substellar markers, independently of which star the current body orbits. Host and light-center markers are not duplicated.
 
 Companion stars, nearby planets, and bright moons should cast shadows in horizon mode proportional in strength and color to the casting object's brightness and hue relative to the light center.
 
-[Fixed] Rocks use varied faceted profiles and deterministic aspect ratios. A continuous, bounded logarithmic pressure bias favors flatter shapes in dense atmospheres, replacing the Venus-specific slab switch. This is a visual approximation rather than a geological law.
+[Fixed in better-atmospheres branch] Rocks use varied faceted profiles and deterministic aspect ratios. A continuous, bounded logarithmic pressure bias favors flatter shapes in dense atmospheres, replacing the Venus-specific slab switch. This is a visual approximation rather than a geological law.

@@ -618,7 +618,30 @@ TEST_F(PlanetClassificationEvidenceTest, PlutoSizedAsteroidLeavesTheSunWithEight
 {
     Star* sun = make_star("Sun");
     CatalogReader reader;
-    ASSERT_EQ(reader.read_local_planets(cels, MAX_CELOBJS, sun), 8);
+    ASSERT_EQ(reader.read_local_planets(cels, MAX_CELOBJS, sun), 9);
+    Planet* candidate = nullptr;
+    for (int i = 1; i < ncelobjs; ++i)
+    {
+        if (!strcmp(cels[i]->name, "2026 ED138")) candidate = static_cast<Planet*>(cels[i]);
+    }
+    ASSERT_NE(candidate, nullptr);
+    ASSERT_NE(candidate->orbit, nullptr);
+    EXPECT_NEAR(candidate->orbit->epoch, 2461200.5, 1e-8);
+    EXPECT_NEAR(candidate->volumetric_mean_radius, 564722.36, 1);
+    EXPECT_LT(candidate->mass, planet_count_mass_cutoff);
+    // JPL Horizons heliocentric J2000 ecliptic vectors at the epoch and one year later.
+    const double dates[] = {2461200.5, 2461565.75};
+    const Point expected[] = {Point(2.1978008871, -44.5282140674, -15.4689932748),
+        Point(3.0367067334, -44.6388448558, -15.2764489483)};
+    for (int sample = 0; sample < 2; ++sample)
+    {
+        candidate->update_location(J2000_TIME_T + (dates[sample] - J2000) * oneday);
+        const Point position = candidate->location.local_position;
+        EXPECT_NEAR(position.magnitude() / AU, expected[sample].magnitude(), .001);
+        EXPECT_NEAR(position.x / AU, -expected[sample].y, .001);
+        EXPECT_NEAR(position.y / AU, expected[sample].z, .001);
+        EXPECT_NEAR(position.z / AU, expected[sample].x, .001);
+    }
     EXPECT_EQ(sun->has_planets, 8);
     EXPECT_EQ(sun->pl_indices.size(), 8u);
     Planet* asteroid = new Planet();

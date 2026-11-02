@@ -4694,6 +4694,14 @@ void sc_draw_object(CelestialObject *obj, CelestialObject *cel)
     ImVec2 objdxy = sc_drawcoords(obj, cel);
     cel_obj_class cls = obj->typeclass();
     ImGuiIO& io = ImGui::GetIO();
+    ImDrawList* icon_draw = ImGui::GetBackgroundDrawList();
+    const ImU32 icon_border = IM_COL32(0, 0, 0, 255);
+    if (cls == class_planet || cls == class_moon)
+    {
+        const ImVec2 shadow(objdxy.x + 2, objdxy.y + 3);
+        icon_draw->AddCircleFilled(shadow, ico_sz + 3, IM_COL32(0, 0, 0, 55));
+        icon_draw->AddCircleFilled(shadow, ico_sz + 1, IM_COL32(0, 0, 0, 110));
+    }
 
     int dx, dy;
     if (cls == class_star)
@@ -4708,7 +4716,8 @@ void sc_draw_object(CelestialObject *obj, CelestialObject *cel)
         }
         objcol.normalize(255);
         ImU32 obj32 = rgba_apply_redlight(IM_COL32((int)objcol.red, (int)objcol.green, (int)objcol.blue, 255));
-        ImGui::GetBackgroundDrawList()->AddCircleFilled(objdxy, 10, obj32);
+        icon_draw->AddCircleFilled(objdxy, 11, icon_border);
+        icon_draw->AddCircleFilled(objdxy, 10, obj32);
         double lstep = _pi / 8;
         double r = 20;
         int dx1 = objdxy.x, dx2, dy1 = objdxy.y - r, dy2;
@@ -4719,12 +4728,14 @@ void sc_draw_object(CelestialObject *obj, CelestialObject *cel)
             r = 33 - r;
             dx1 = objdxy.x + r * sin(theta);
             dy1 = objdxy.y - r * cos(theta);
-            ImGui::GetBackgroundDrawList()->AddLine(ImVec2(dx1,dy1), ImVec2(dx2,dy2), obj32);
+            icon_draw->AddLine(ImVec2(dx1,dy1), ImVec2(dx2,dy2), icon_border, 3);
+            icon_draw->AddLine(ImVec2(dx1,dy1), ImVec2(dx2,dy2), obj32, 1);
         }
     }
     else if (cls == class_planet || cls == class_moon)
     {
         spawn_texture_load(obj);
+        icon_draw->AddCircleFilled(objdxy, ico_sz + 1.5f, icon_border);
 
         Color objcol = Color::color_from_magnitude_indices(0, obj->BV_color + planet_bv_correction);
         objcol.normalize(255);
@@ -4739,7 +4750,7 @@ void sc_draw_object(CelestialObject *obj, CelestialObject *cel)
 
             for (x = -xsz; x <= xsz; x++)
             {
-                phi = half_pi / xsz * x;
+                phi = xsz ? half_pi / xsz * x : 0;
                 if (day_map)
                 {
                     rgb = day_map->color_at(theta, phi);
@@ -4770,6 +4781,7 @@ void sc_draw_object(CelestialObject *obj, CelestialObject *cel)
                 ? rgba_apply_redlight(IM_COL32(128,  96,  64, 255))
                 : rgba_apply_redlight(IM_COL32(255, 255, 255, 255)));
 
+        draw_satellite_icon(ImVec2(objdxy.x + 2, objdxy.y + 3), IM_COL32(0, 0, 0, 140));
         bloomrad = draw_satellite_icon(objdxy, satcol);
 
         if (i == selected || i == trackidx)
@@ -4894,6 +4906,7 @@ void draw_sunclock()
         ? Color::color_from_star(0, (Star*)lightcen, lightcen->BV_color)
         : Color::color_from_magnitude_indices(0, lightcen->BV_color);
     RGB3 prgb = Color::rgb_from_color(c, -1), rgb = prgb, nrgb(0,0,0);
+    daylight.saturate(.25);
     daylight.normalize(1);
 
     int x, y, dx, dy, step=2, size = dispcx/2, halfwid = size*2;
@@ -5137,6 +5150,15 @@ void draw_sunclock()
     if (host && host != sun)
     {
         sc_draw_object(host, cel);
+    }
+
+    // Additional bright stellar sources have their own substellar points.
+    for (int index : frame_object_candidates())
+    {
+        CelestialObject* companion = cels[index];
+        if (!companion || companion->deleted || companion == cel || companion == sun || companion == host
+            || companion->typeclass() != class_star) continue;
+        if (companion->viewer_magnitude(cel->location) < -10) sc_draw_object(companion, cel);
     }
 
     // Sublunar point
