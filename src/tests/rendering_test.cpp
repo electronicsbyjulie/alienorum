@@ -22,6 +22,7 @@
 #include "../housekeeping.h"
 #include "../classes/clouds_gpu.h"
 #include "../classes/cloudlighting.h"
+#include "../classes/precipitationcache.h"
 #include "../classes/pressurehaze.h"
 #include "../classes/surfacebiomes.h"
 #include "../classes/surfacenavigation.h"
@@ -3892,14 +3893,19 @@ TEST_F(RenderingRegressionTest, LocalColdAndWarmWeatherBothRenderWithoutChanging
     set(rainint_lat, viewer_lat);
     set(rainint_lon, viewer_lon);
     set(drainint, 0.0);
+    set(snow_cpu_reference, false);
+    const bool benchmark = std::getenv("ALIENORUM_SNOW_BENCHMARK");
+    double draw_milliseconds = 0;
     const auto capture = [&](bool precipitation)
     {
-        rain_intensity = max_rain_intensity = precipitation ? 1 : 0;
+        rain_intensity = max_rain_intensity = precipitation ? (benchmark ? 6 : 1) : 0;
         drainint = 0;
         freeze_surface_time();
         EXPECT_TRUE(draw_cloudy_sky());
+        const auto start = std::chrono::steady_clock::now();
         find_horizon();
         draw_horizon();
+        draw_milliseconds = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
         auto pixels = render();
         ImGui::NewFrame();
         return pixels;
@@ -3912,6 +3918,71 @@ TEST_F(RenderingRegressionTest, LocalColdAndWarmWeatherBothRenderWithoutChanging
         const auto dry = capture(false), wet = capture(true);
         EXPECT_GT(image_difference(dry, wet), 10);
         EXPECT_EQ(world->has_water, 1);
+        std::vector<unsigned char> reference_pixels;
+        for (bool reference : {true, false})
+        {
+            snow_cpu_reference = reference;
+            const int frames = benchmark && temperature < 273.15 ? 31 : 1;
+            double milliseconds = 0, precipitation_milliseconds = 0;
+            for (int frame = 0; frame < frames; ++frame)
+            {
+                const auto pixels = capture(true);
+                if (frame) milliseconds += draw_milliseconds;
+                if (frame) precipitation_milliseconds += precipitation_stats.cpu_milliseconds;
+                if (reference) reference_pixels = pixels;
+                else EXPECT_EQ(image_difference(pixels, reference_pixels, 1), 0);
+            }
+            if (frames > 1) std::cout << "Snow " << (reference ? "reference" : "optimized")
+                << " precipitation CPU: " << precipitation_milliseconds / (frames - 1)
+                << " ms; horizon CPU: " << milliseconds / (frames - 1) << " ms\n";
+        }
+    }
+}
+
+TEST(PrecipitationCacheTest, RetainsParticlePositionsAcrossDensityChangesAndBoundsStorage)
+{
+    PrecipitationCache cache;
+    const auto original = cache.get(17, 60)[0];
+    cache.get(17, 2400);
+    EXPECT_EQ(cache.get(17, 60)[0].x, original.x);
+    EXPECT_EQ(cache.get(17, 60)[0].z, original.z);
+    EXPECT_EQ(cache.get(17, 100000).size(), 2400u);
+    EXPECT_NE(cache.get(18, 60)[0].x, original.x);
+    EXPECT_EQ(cache.get(17, 60)[0].x, original.x);
+}
+
+TEST_F(RenderingRegressionTest, CachedSnowflakeMeshMatchesNativeContoursAndAntialiasing)
+{
+    SnowflakeMesh mesh;
+    for (bool aa : {false, true})
+    {
+        for (float fringe : {.5f, 1.f, 2.f})
+        {
+            const auto capture = [&](bool reference)
+            {
+                auto* draw = ImGui::GetBackgroundDrawList();
+                if (aa) draw->Flags |= ImDrawListFlags_AntiAliasedFill;
+                else draw->Flags &= ~ImDrawListFlags_AntiAliasedFill;
+                draw->_FringeScale = fringe;
+                for (int flake = 0; flake < 36; ++flake)
+                {
+                    const ImVec2 center(12.3f + flake % 12 * 14, 20.7f + flake / 12 * 25);
+                    const float radius = .65f + flake % 7 * .35f;
+                    const ImU32 color = IM_COL32(200, 180, 220, 60 + flake * 4);
+                    if (reference) draw->AddCircleFilled(center, radius, color, 6);
+                    else mesh.draw(draw, center, radius, color);
+                }
+                auto pixels = render();
+                ImGui::NewFrame();
+                return pixels;
+            };
+            const auto actual = capture(false), expected = capture(true);
+            int maximum_difference = 0;
+            for (size_t channel = 0; channel < actual.size(); ++channel)
+                maximum_difference = std::max(maximum_difference, abs(int(actual[channel]) - int(expected[channel])));
+            // Translated antialiasing normals can round one RGBA unit differently.
+            EXPECT_LE(maximum_difference, 1);
+        }
     }
 }
 

@@ -15,6 +15,7 @@
 #include "horizon_mesh_gpu.h"
 #include "classes/clouds_gpu.h"
 #include "classes/cloudlighting.h"
+#include "classes/precipitationcache.h"
 #include "classes/pressurehaze.h"
 #include "classes/exocons.h"
 #include "classes/surfacescatter.h"
@@ -5431,6 +5432,7 @@ double norm_cloud, min_rain_intensity = 0.0, max_rain_intensity = 0;
 double rain_intensity = 0, rainint_lat = -1e3, rainint_lon = -1e5, drainint;
 static void draw_planetary_rain(Planet *p)
 {
+    const auto precipitation_start = std::chrono::steady_clock::now();
     if (!p)
     {
         return;
@@ -5540,6 +5542,7 @@ static void draw_planetary_rain(Planet *p)
     uint32_t rain_seed = (uint32_t)(whereami * 1013904223u + 0x4f2d7);
     int num_particles = (int)(60 + rain_intensity * 460);
     num_particles = std::clamp(num_particles, 60, 2400);
+    precipitation_stats.particles = num_particles;
 
     double is_day = fmin(1.0, luminous_flux * 2.5e-11 + starlight);
     int r_c = (int)(180 * is_day + 40 * (1.0 - is_day));
@@ -5567,38 +5570,18 @@ static void draw_planetary_rain(Planet *p)
     double wind_speed_x = (0.60 + 0.30 * sin(t_rain * 0.22));
     double streak_base_dt = 0.018 + 0.008 * fmin(1.0, rain_intensity * 0.1);
 
+    static PrecipitationCache particle_cache;
+    const auto* cached = snow_cpu_reference ? nullptr : &particle_cache.get(rain_seed, num_particles);
+    static const SnowflakeMesh flake_mesh;
+    const double sin_drift_x = sin(t_rain * .8), cos_drift_x = cos(t_rain * .8);
+    const double sin_drift_z = sin(t_rain * .6), cos_drift_z = cos(t_rain * .6);
     for (int pi = 0; pi < num_particles; pi++)
     {
-        // Independent uniform random variables for each dimension
-        uint32_t h0 = rain_seed ^ ((uint32_t)pi * 0x9e3779b9u) ^ 0x1a874b21u;
-        h0 = ((h0 >> 16) ^ h0) * 0x45d9f3bu;
-        h0 = ((h0 >> 16) ^ h0) * 0x45d9f3bu;
-        h0 = (h0 >> 16) ^ h0;
-        double u0 = (double)h0 / 4294967296.0;
-
-        uint32_t h1 = rain_seed ^ ((uint32_t)pi * 0x9e3779b9u) ^ 0x85ebca6bu;
-        h1 = ((h1 >> 16) ^ h1) * 0x45d9f3bu;
-        h1 = ((h1 >> 16) ^ h1) * 0x45d9f3bu;
-        h1 = (h1 >> 16) ^ h1;
-        double u1 = (double)h1 / 4294967296.0;
-
-        uint32_t h2 = rain_seed ^ ((uint32_t)pi * 0x9e3779b9u) ^ 0xc2b2ae35u;
-        h2 = ((h2 >> 16) ^ h2) * 0x45d9f3bu;
-        h2 = ((h2 >> 16) ^ h2) * 0x45d9f3bu;
-        h2 = (h2 >> 16) ^ h2;
-        double u2 = (double)h2 / 4294967296.0;
-
-        uint32_t h3 = rain_seed ^ ((uint32_t)pi * 0x9e3779b9u) ^ 0x27d4eb2fu;
-        h3 = ((h3 >> 16) ^ h3) * 0x45d9f3bu;
-        h3 = ((h3 >> 16) ^ h3) * 0x45d9f3bu;
-        h3 = (h3 >> 16) ^ h3;
-        double u3 = (double)h3 / 4294967296.0;
-
-        // Uniform horizontal disk distribution (constant area density across the sky)
-        double p_theta = u0 * 2.0 * _pi;
-        double p_dist = radius_h * sqrt(u1);
-
-        const bool snow = double((h1 ^ (h2 >> 1)) & 0xFFFF) / 65536.0 < snow_fraction;
+        PrecipitationParticle reference;
+        if (!cached) reference = precipitation_particle(rain_seed, pi, false);
+        const auto& particle = cached ? (*cached)[pi] : reference;
+        const double u0 = particle.u0, u1 = particle.u1, u2 = particle.u2, u3 = particle.u3;
+        const bool snow = particle.phase < snow_fraction;
         const double fall_speed = snow ? .7 + 1.2 * u2 : 8.5 + 9.5 * u2;
 
         // Vertical wrapping
@@ -5614,12 +5597,16 @@ static void draw_planetary_rain(Planet *p)
 
         // Particle world position
         double xw_drift = wind_speed_x * (cur_y - y_ground) * 0.10;
-        double xw = p_dist * sin(p_theta) + xw_drift;
-        double zw = p_dist * cos(p_theta);
+        double xw = particle.x + xw_drift;
+        double zw = particle.z;
         if (snow)
         {
-            xw += sin(t_rain * .8 + u0 * 2 * _pi) * (.2 + .3 * u2);
-            zw += cos(t_rain * .6 + u1 * 2 * _pi) * .25;
+            const double drift_x = snow_cpu_reference ? sin(t_rain * .8 + u0 * 2 * _pi)
+                : sin_drift_x * particle.cos0 + cos_drift_x * particle.sin0;
+            const double drift_z = snow_cpu_reference ? cos(t_rain * .6 + u1 * 2 * _pi)
+                : cos_drift_z * particle.cos1 - sin_drift_z * particle.sin1;
+            xw += drift_x * (.2 + .3 * u2);
+            zw += drift_z * .25;
         }
         double yw = cur_y;
 
@@ -5648,7 +5635,10 @@ static void draw_planetary_rain(Planet *p)
                 (snow_rgb & ~IM_COL32_A_MASK) | (ImU32(alpha) << IM_COL32_A_SHIFT),
                 sqrt(xw * xw + yw * yw + zw * zw));
             const float radius = std::clamp(float(.055 * zoom * dispcx / zc_head), .65f, 2.8f);
-            ImGui::GetBackgroundDrawList()->AddCircleFilled(ImVec2(sx_head, sy_head), radius, color, 6);
+            auto* draw = ImGui::GetBackgroundDrawList();
+            ++precipitation_stats.flakes;
+            if (snow_cpu_reference) draw->AddCircleFilled(ImVec2(sx_head, sy_head), radius, color, 6);
+            else flake_mesh.draw(draw, ImVec2(sx_head, sy_head), radius, color);
             continue;
         }
 
@@ -5723,6 +5713,8 @@ static void draw_planetary_rain(Planet *p)
                 ImVec2(0, haze_y0), ImVec2((float)(dispcx * 2.0), haze_y1), haze_col);
         }
     }
+    precipitation_stats.cpu_milliseconds = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - precipitation_start).count();
 }
 #endif
 
@@ -5744,6 +5736,7 @@ void draw_local_rings()
 
 void draw_horizon()
 {
+    precipitation_stats = {};
     scenery_shadow_stats = {};
     if (performance_enabled(36)) surface_prefetch.clear();
     local_surface_tile_active = false;
