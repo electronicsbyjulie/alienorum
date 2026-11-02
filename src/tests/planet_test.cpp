@@ -2411,6 +2411,56 @@ TEST_F(PlanetAtmosphereTest, DenseCO2GreenhouseIsSaneForRealPlanets)
     delete_the_universe();
 }
 
+TEST_F(PlanetAtmosphereTest, DenseAtmospheresHaveSmoothBoundedInferredWarming)
+{
+    Planet* world = make_planet(make_star(), "Dense greenhouse", 0.2 * AU);
+    Atmosphere* air = world->ensure_atmosphere();
+    air->ensure_composition()->CO2_portion = 0.965;
+    air->comp->N2_portion = 0.035;
+    const double equilibrium = world->equilibrium_temperature();
+    double previous = equilibrium;
+    for (int step = 0; step <= 120; ++step)
+    {
+        const double pressure = std::pow(10.0, 2 + step * 0.05);
+        air->surface_pressure = pressure;
+        const double temperature = world->temperature_at_pressure(pressure);
+        EXPECT_TRUE(std::isfinite(temperature));
+        EXPECT_GE(temperature, previous);
+        EXPECT_GE(temperature, equilibrium);
+        EXPECT_LE(temperature - equilibrium, 600 + 1e-9);
+        EXPECT_LT(temperature - previous, 50);
+        const double original = equilibrium * std::pow(1 + 1.8 * world->get_atmospheric_tau(), 0.25);
+        if (original - equilibrium <= 500) EXPECT_NEAR(temperature, original, 1e-9);
+        previous = temperature;
+    }
+    const double pressure = 1e8;
+    air->surface_pressure = pressure;
+    const double original = equilibrium * std::pow(1 + 1.8 * world->get_atmospheric_tau(), 0.25);
+    EXPECT_GT(original, 4000);
+    EXPECT_LT(world->estimate_surface_temperature(), lava_T_cutoff);
+    EXPECT_DOUBLE_EQ(world->get_surface_pressure(), pressure);
+    world->classify(false, true, true);
+    EXPECT_EQ(world->type, rocky);
+}
+
+TEST_F(PlanetAtmosphereTest, GreenhouseFalloffRetainsIrradiationDrivenLavaAndSuppliedTemperatures)
+{
+    Planet* world = make_planet(make_star(), "Strong irradiation", 0.02 * AU);
+    world->ensure_atmosphere()->surface_pressure = 5e7;
+    world->atm->ensure_composition()->CO2_portion = 1;
+    const double equilibrium = world->equilibrium_temperature();
+    ASSERT_GT(equilibrium, lava_T_cutoff);
+    EXPECT_GE(world->estimate_surface_temperature(), equilibrium);
+    world->classify(false, true, true);
+    EXPECT_EQ(world->type, lavaworld);
+    world->temperature = 4000;
+    EXPECT_DOUBLE_EQ(world->estimate_surface_temperature(), 4000);
+    Planet restored;
+    ASSERT_TRUE(restored.from_json(world->to_json()));
+    EXPECT_DOUBLE_EQ(restored.estimate_surface_temperature(), 4000);
+    EXPECT_DOUBLE_EQ(restored.get_surface_pressure(), 5e7);
+}
+
 TEST_F(PlanetAtmosphereTest, IceGiantWithNoSurfacePressureStillGetsAHaze)
 {
     Star* sun = make_star("Sol");

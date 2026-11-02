@@ -1378,7 +1378,18 @@ double Planet::temperature_at_pressure(double pressure_pa)
     double empirical_tau_scale = 2.4;
     double greenhouse_factor = 1.0 + (0.75 * tau * empirical_tau_scale);
 
-    return t_eq * std::pow(greenhouse_factor, 0.25);
+    const double gray_surface = t_eq * std::pow(greenhouse_factor, 0.25);
+    const double warming = gray_surface - t_eq;
+    // Conservative extrapolation guard for an inferred temperature, not a physical bound.
+    // The fixed-composition gray opacity grows quadratically at high pressures, outside
+    // its Venus-scale calibration. Preserve ordinary warming, then join with unit slope
+    // to a smooth asymptote. Only the greenhouse increment is limited: stellar heating
+    // can still produce a lava world. Supplied temperatures bypass this estimator.
+    constexpr double warming_knee_k = 500;
+    constexpr double warming_tail_k = 100;
+    if (warming <= warming_knee_k) return gray_surface;
+    return t_eq + warming_knee_k
+        + warming_tail_k * std::tanh((warming - warming_knee_k) / warming_tail_k);
 }
 
 // The altitude-independent half of atmospheric_refraction(), computed once per epoch per planet
