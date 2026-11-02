@@ -51,6 +51,7 @@
 
 using namespace alienorum;
 
+extern double rain_intensity, max_rain_intensity, rainint_lat, rainint_lon, drainint;
 
 struct CloudTestView
 {
@@ -1861,6 +1862,23 @@ TEST_F(RenderingRegressionTest, CloudTwilightKeepsNeutralLightAtStrongAtmospheri
         EXPECT_GE(int(pixels[i + 1]), int(pixels[i] * 0.60) - 2);
     }
     EXPECT_GT(visible, 1000);
+}
+
+TEST(CloudIlluminationTest, SnowFollowsRegionalTemperatureRatherThanGlobalMean)
+{
+    LocalClimate climate;
+    climate.mean_k = 288;
+    climate.regional_k = climate.dry_belt_k = 0;
+    EXPECT_EQ(precipitation_snow_fraction(climate.temperature(1, 0, 0, 0)), 0);
+    EXPECT_EQ(precipitation_snow_fraction(climate.temperature(0, 0, 1, 0)), 1);
+    EXPECT_EQ(precipitation_snow_fraction(climate.temperature(1, 0, 0, 6000)), 1);
+    climate.mean_k = 260;
+    climate.stellar_locked = true;
+    climate.redistribution = .8;
+    climate.sun_x = 1;
+    EXPECT_EQ(precipitation_snow_fraction(climate.temperature(1, 0, 0, 0)), 0);
+    EXPECT_EQ(precipitation_snow_fraction(climate.temperature(-1, 0, 0, 0)), 1);
+    EXPECT_DOUBLE_EQ(precipitation_snow_fraction(274.15), .5);
 }
 
 TEST(CloudIlluminationTest, MidnightAmbientIsNotAmplifiedByDaytimeAdaptationOrOrbitalDistance)
@@ -3858,6 +3876,43 @@ TEST_F(RenderingRegressionTest, MountainsSampleDifferentBiomesAlongTheirDepthAbo
     }
     EXPECT_GT(mixed_columns, 0);
     ImGui::NewFrame();
+}
+
+TEST_F(RenderingRegressionTest, LocalColdAndWarmWeatherBothRenderWithoutChangingWaterInventory)
+{
+    #if !planetary_rain
+    GTEST_SKIP() << "Precipitation rendering is disabled.";
+    #endif
+    auto* world = surface(true);
+    world->overcast = true;
+    world->cloud_map = new SceneryTestMap();
+    set(show_clouds, true);
+    set(rain_intensity, 0.0);
+    set(max_rain_intensity, 0.0);
+    set(rainint_lat, viewer_lat);
+    set(rainint_lon, viewer_lon);
+    set(drainint, 0.0);
+    const auto capture = [&](bool precipitation)
+    {
+        rain_intensity = max_rain_intensity = precipitation ? 1 : 0;
+        drainint = 0;
+        freeze_surface_time();
+        EXPECT_TRUE(draw_cloudy_sky());
+        find_horizon();
+        draw_horizon();
+        auto pixels = render();
+        ImGui::NewFrame();
+        return pixels;
+    };
+    for (double temperature : {230.0, 300.0})
+    {
+        world->temperature = temperature;
+        const double local = world->est_local_temp(viewer_lat, viewer_lon);
+        EXPECT_EQ(precipitation_snow_fraction(local), temperature < 273.15 ? 1 : 0);
+        const auto dry = capture(false), wet = capture(true);
+        EXPECT_GT(image_difference(dry, wet), 10);
+        EXPECT_EQ(world->has_water, 1);
+    }
 }
 
 TEST_F(RenderingRegressionTest, RainRequiresOverheadCumulusOrHeavyHaze)

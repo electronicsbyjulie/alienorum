@@ -5442,31 +5442,7 @@ static void draw_planetary_rain(Planet *p)
         return;
     }
 
-    if (!p->raincheck)
-    {
-        // Cannot be too hot for water. Cache this block.
-        p->raincheck = true;
-        double T = p->estimate_surface_temperature();
-        if (T < water_freezing || T >= 647) return;
-
-        const double pressure = p->get_surface_pressure();
-        const double inverse_boil = 1.0 / (water_freezing + 100.0)
-            - (8.314 / 40660.0) * std::log(pressure / 1.0e5);
-
-        const double boiling_temp = inverse_boil > 0 ? std::min(647.096, 1.0 / inverse_boil) : 647.096;
-        if (T > 0.9 * boiling_temp)
-        {
-            p->has_water = 0;
-            return;
-        }
-
-        // Must be a non-gaseous, non-lava celestial body
-        if (uses_gaseous_map(p->type) || p->type == lavaworld)
-        {
-            return;
-        }
-    }
-
+    if (uses_gaseous_map(p->type) || p->type == lavaworld) return;
     // Clouds must be enabled and complete cloud map available
     if (!show_clouds || !p->cloud_map || !p->cloud_map->is_complete())
     {
@@ -5498,6 +5474,16 @@ static void draw_planetary_rain(Planet *p)
     {
         return;
     }
+
+    // Reevaluate local conditions while walking, as latitude, altitude, and daylight change.
+    const double local_temperature = p->est_local_temp(viewer_lat, viewer_lon);
+    if (!std::isfinite(local_temperature) || local_temperature <= 0 || local_temperature >= 647) return;
+    const double snow_fraction = precipitation_snow_fraction(local_temperature);
+
+    const double inverse_boil = 1.0 / (water_freezing + 100.0)
+        - (8.314 / 40660.0) * std::log(p_surf / 1.0e5);
+    const double boiling_temp = inverse_boil > 0 ? std::min(647.096, 1.0 / inverse_boil) : 647.096;
+    if (local_temperature > .9 * boiling_temp) return;
 
     if (fabs(rainint_lat - viewer_lat) > 1e-5 || fabs(rainint_lon - viewer_lon) > 1e-5)
     {
@@ -5560,6 +5546,13 @@ static void draw_planetary_rain(Planet *p)
     int g_c = (int)(205 * is_day + 48 * (1.0 - is_day));
     int b_c = (int)(230 * is_day + 60 * (1.0 - is_day));
 
+    Color snow_tint(1, 1, 1);
+    if (snow_fraction > 0 && p->get_light_center()) snow_tint = water_light_color(p->get_light_center());
+    const double snow_brightness = 230 * is_day + 12 * (1 - is_day);
+    const ImU32 snow_rgb = rgba_apply_redlight(IM_COL32(snow_brightness * snow_tint.red,
+        snow_brightness * snow_tint.green, snow_brightness * snow_tint.blue, 255));
+    const PressureHaze snow_haze = snow_fraction > 0 ? surface_pressure_haze(p) : PressureHaze{};
+
     // Precompute camera orientation matrix for linear world-to-camera rotation
     double cos_az = cos(azimuth);
     double sin_az = sin(azimuth);
@@ -5605,7 +5598,8 @@ static void draw_planetary_rain(Planet *p)
         double p_theta = u0 * 2.0 * _pi;
         double p_dist = radius_h * sqrt(u1);
 
-        double fall_speed = 8.5 + 9.5 * u2;
+        const bool snow = double((h1 ^ (h2 >> 1)) & 0xFFFF) / 65536.0 < snow_fraction;
+        const double fall_speed = snow ? .7 + 1.2 * u2 : 8.5 + 9.5 * u2;
 
         // Vertical wrapping
         double cur_y = y_ground + fmod(u3 * span_h - t_rain * fall_speed - y_ground, span_h);
@@ -5622,6 +5616,11 @@ static void draw_planetary_rain(Planet *p)
         double xw_drift = wind_speed_x * (cur_y - y_ground) * 0.10;
         double xw = p_dist * sin(p_theta) + xw_drift;
         double zw = p_dist * cos(p_theta);
+        if (snow)
+        {
+            xw += sin(t_rain * .8 + u0 * 2 * _pi) * (.2 + .3 * u2);
+            zw += cos(t_rain * .6 + u1 * 2 * _pi) * .25;
+        }
         double yw = cur_y;
 
         // Transform head to camera coordinates
@@ -5639,6 +5638,19 @@ static void draw_planetary_rain(Planet *p)
 
         double sx_head = (xc_head / zc_head) * zoom * dispcx + dispcx;
         double sy_head = (-yc_head / zc_head) * zoom * dispcx + dispcy;
+
+        if (snow)
+        {
+            if (sx_head < -4 || sx_head > dispcx * 2 + 4 || sy_head < -4 || sy_head > dispcy * 2 + 4) continue;
+            const double fade = std::max(.12, 1 - zc_head / radius_h);
+            const int alpha = std::clamp(int((90 + 100 * u0) * fade), 12, 190);
+            const ImU32 color = pressure_haze_color(snow_haze,
+                (snow_rgb & ~IM_COL32_A_MASK) | (ImU32(alpha) << IM_COL32_A_SHIFT),
+                sqrt(xw * xw + yw * yw + zw * zw));
+            const float radius = std::clamp(float(.055 * zoom * dispcx / zc_head), .65f, 2.8f);
+            ImGui::GetBackgroundDrawList()->AddCircleFilled(ImVec2(sx_head, sy_head), radius, color, 6);
+            continue;
+        }
 
         // Particle streak tail: straight line along 3D velocity vector
         double streak_dt = streak_base_dt;
@@ -5703,7 +5715,10 @@ static void draw_planetary_rain(Planet *p)
         if (haze_y1 > haze_y0)
         {
             int haze_alpha = (int)(26.0 * (rain_intensity - 0.15) / 0.85);
-            ImU32 haze_col = rgba_apply_redlight(IM_COL32(r_c, g_c, b_c, haze_alpha));
+            ImU32 haze_col = rgba_apply_redlight(IM_COL32(
+                r_c * (1 - snow_fraction) + snow_brightness * snow_tint.red * snow_fraction,
+                g_c * (1 - snow_fraction) + snow_brightness * snow_tint.green * snow_fraction,
+                b_c * (1 - snow_fraction) + snow_brightness * snow_tint.blue * snow_fraction, haze_alpha));
             ImGui::GetBackgroundDrawList()->AddRectFilled(
                 ImVec2(0, haze_y0), ImVec2((float)(dispcx * 2.0), haze_y1), haze_col);
         }

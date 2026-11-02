@@ -6,6 +6,13 @@
 
 namespace alienorum
 {
+    inline double precipitation_snow_fraction(double local_temperature_k)
+    {
+        if (!std::isfinite(local_temperature_k) || local_temperature_k <= 0) return 0;
+        // A narrow melting transition permits mixed precipitation just above freezing.
+        return 1 - std::clamp((local_temperature_k - 273.15) / 2.0, 0.0, 1.0);
+    }
+
     struct CloudIllumination
     {
         double daylight = 0;
