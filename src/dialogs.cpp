@@ -2418,12 +2418,15 @@ void draw_objedit_window(ImGuiIO& io)
                         ) ((Planet*)cel)->classify(((Planet*)cel)->is_in_con_HZ(), true);
                 }
                 ImGui::SameLine();
-                if (ImGui::Button("Cosm.Shln.##edtpresh"))
+                if (ImGui::Button("Estimate##edtpresh"))
                 {
                     p->ensure_atmosphere()->pressure_supplied = false;
                     p->apply_cosmic_shoreline();
                     cel->user_edited = true;
                 }
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("Estimate pressure from volatile supply, escape, weathering, and condensation.\n"
+                        "Gas giants use a 1 bar reference level.");
                 ImGui::SameLine(col2);
                 ImGui::Text("%s", "Total tau");
                 ImGui::SameLine(col3);

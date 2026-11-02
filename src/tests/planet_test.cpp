@@ -165,23 +165,14 @@ TEST(BondAlbedoCacheTest, RepeatedAndDistinctQueriesMatchFreshModelExactly)
     }
 }
 
-TEST(CosmicShoreTest, PressureSaturatesWithoutOverflowOrVacuumDiscontinuity)
+TEST(CosmicShoreTest, EscapeVelocityUsesStoredGramsAndMeters)
 {
-    EXPECT_DOUBLE_EQ(CosmicShore::estimate_surface_pressure(-1), 0);
-    EXPECT_DOUBLE_EQ(CosmicShore::estimate_surface_pressure(0), 503);
-    EXPECT_NEAR(CosmicShore::estimate_surface_pressure(4), 5030000, 1e-6);
-    double previous = 0;
-    for (double metric : {5.0, 6.0, 100.0, 1000.0, std::numeric_limits<double>::infinity()})
-    {
-        const double pressure = CosmicShore::estimate_surface_pressure(metric);
-        EXPECT_TRUE(std::isfinite(pressure));
-        EXPECT_GE(pressure, previous);
-        EXPECT_LE(pressure, 1e8);
-        previous = pressure;
-    }
-    EXPECT_DOUBLE_EQ(previous, 1e8);
-    EXPECT_DOUBLE_EQ(CosmicShore::estimate_surface_pressure(-INFINITY), 0);
-    EXPECT_DOUBLE_EQ(CosmicShore::estimate_surface_pressure(NAN), 0);
+    Planet planet;
+    planet.mass = earth_mass;
+    planet.volumetric_mean_radius = earth_radius;
+    EXPECT_NEAR(CosmicShore::calculate_escape_velocity(planet), 11186, 5);
+    planet.mass = 0;
+    EXPECT_TRUE(std::isnan(CosmicShore::calculate_escape_velocity(planet)));
 }
 
 class PlanetClassificationEvidenceTest : public UniverseFixture
@@ -193,6 +184,258 @@ protected:
         UniverseFixture::TearDown();
     }
 };
+
+TEST_F(PlanetClassificationEvidenceTest, VolatileBudgetReproducesTerrestrialPressureScalesWithoutNames)
+{
+    Star* host = make_star();
+    struct Example
+    {
+        const char* label;
+        double mass_ratio, radius_ratio, distance_au, low_pa, high_pa;
+    };
+    // Reference scales, not exact fits: Mercury exosphere, Venus 92 bar, Earth 1 bar,
+    // Mars 610 Pa. No supplied pressures, compositions, temperatures, or planet names.
+    const Example examples[] =
+    {
+        {"Mercury", 0.0553, 0.3829, 0.387, 0, 1e-3},
+        {"Venus", 0.815, 0.9499, 0.723, 60e5, 130e5},
+        {"Earth", 1, 1, 1, 0.7e5, 1.5e5},
+        {"Mars", 0.1074, 0.532, 1.524, 200, 2000}
+    };
+    for (const Example& example : examples)
+    {
+        Planet* world = make_planet(host, "Anonymous", example.distance_au * AU);
+        world->mass = example.mass_ratio * earth_mass;
+        world->volumetric_mean_radius = example.radius_ratio * earth_radius;
+        const AtmosphericEstimate estimate = CosmicShore::estimate_atmosphere(*host, *world);
+        ASSERT_TRUE(estimate.valid);
+        RecordProperty(std::string(example.label) + "_pressure_pa", std::to_string(estimate.pressure));
+        EXPECT_GE(estimate.pressure, example.low_pa) << estimate.diagnostics.dump();
+        EXPECT_LE(estimate.pressure, example.high_pa) << estimate.diagnostics.dump();
+        EXPECT_EQ(world->atm, nullptr);
+    }
+}
+
+TEST_F(PlanetClassificationEvidenceTest, ShorelineSeparatesMercuryFromRetainedTerrestrialAtmospheres)
+{
+    Star* host = make_star();
+    Planet* mercury = make_planet(host, "Inner", 0.387 * AU);
+    mercury->mass = 0.0553 * earth_mass;
+    mercury->volumetric_mean_radius = 0.3829 * earth_radius;
+    EXPECT_LT(CosmicShore::calculate_unified_metric(*host, *mercury), 0);
+    Planet* earth = make_planet(host);
+    EXPECT_GT(CosmicShore::calculate_unified_metric(*host, *earth), 0);
+    Planet* mars = make_planet(host, "Outer", 1.524 * AU);
+    mars->mass = 0.1074 * earth_mass;
+    mars->volumetric_mean_radius = 0.532 * earth_radius;
+    EXPECT_NEAR(CosmicShore::calculate_unified_metric(*host, *mars), 0, 0.1);
+}
+
+TEST_F(PlanetClassificationEvidenceTest, WaterAndWeatheringAllowDifferentPressuresAtTheSameShoreline)
+{
+    Star* host = make_star();
+    Planet* world = make_planet(host);
+    const double wet = CosmicShore::estimate_atmosphere(*host, *world).pressure;
+    AtmosphericInventory dry;
+    dry.water_mass_fraction = 0;
+    const double dry_pressure = CosmicShore::estimate_atmosphere(*host, *world, dry).pressure;
+    // CO2 saturation can cap the dry scenario even after water weathering is removed.
+    EXPECT_GT(dry_pressure, 30 * wet);
+    AtmosphericInventory no_weathering;
+    no_weathering.weathering_efficiency = 0;
+    EXPECT_GT(CosmicShore::estimate_atmosphere(*host, *world, no_weathering).pressure, 30 * wet);
+    AtmosphericInventory empty;
+    empty.co2_mass_fraction = empty.nitrogen_mass_fraction = empty.water_mass_fraction = 0;
+    const auto vacuum = CosmicShore::estimate_atmosphere(*host, *world, empty);
+    ASSERT_TRUE(vacuum.valid);
+    EXPECT_DOUBLE_EQ(vacuum.pressure, 0);
+}
+
+TEST_F(PlanetClassificationEvidenceTest, VolatileBudgetUsesInventoryAndHydrostaticColumnWeight)
+{
+    Star* host = make_star();
+    Planet* world = make_planet(host);
+    AtmosphericInventory scenario;
+    scenario.xuv_scale = 0;
+    scenario.weathering_efficiency = 0;
+    scenario.co2_mass_fraction = scenario.water_mass_fraction = 0;
+    scenario.nitrogen_mass_fraction = 1e-6;
+    const auto first = CosmicShore::estimate_atmosphere(*host, *world, scenario);
+    const double expected = G * world->mass * (world->mass * 0.001) * scenario.nitrogen_mass_fraction
+        / (4 * _pi * std::pow(world->volumetric_mean_radius, 4));
+    EXPECT_NEAR(first.pressure, expected, expected * 1e-10);
+    scenario.nitrogen_mass_fraction *= 2;
+    EXPECT_NEAR(CosmicShore::estimate_atmosphere(*host, *world, scenario).pressure, 2 * first.pressure, 1e-6);
+    world->mass *= 2;
+    EXPECT_NEAR(CosmicShore::estimate_atmosphere(*host, *world, scenario).pressure, 8 * first.pressure, 1e-2);
+}
+
+TEST_F(PlanetClassificationEvidenceTest, ActivityAndQualifiedMetallicityAffectEscapeRatherThanInventory)
+{
+    Star* host = make_star();
+    Planet* world = make_planet(host);
+    AtmosphericInventory scenario;
+    scenario.weathering_efficiency = 0;
+    const auto baseline = CosmicShore::estimate_atmosphere(*host, *world, scenario);
+    host->metallicity_ratio = "[Fe/H]";
+    host->metallicity = 0.5;
+    const auto rich = CosmicShore::estimate_atmosphere(*host, *world, scenario);
+    EXPECT_TRUE(rich.diagnostics["metallicity_used"].get<bool>());
+    EXPECT_LT(rich.pressure, baseline.pressure);
+    EXPECT_EQ(rich.diagnostics["inventory"], baseline.diagnostics["inventory"]);
+    host->metallicity = -0.5;
+    EXPECT_GT(CosmicShore::estimate_atmosphere(*host, *world, scenario).pressure, baseline.pressure);
+    host->metallicity_ratio = "[C/Fe]";
+    EXPECT_DOUBLE_EQ(CosmicShore::estimate_atmosphere(*host, *world, scenario).pressure, baseline.pressure);
+    host->metallicity = NAN;
+    scenario.xuv_scale = 10;
+    EXPECT_LT(CosmicShore::estimate_atmosphere(*host, *world, scenario).pressure, baseline.pressure);
+}
+
+TEST_F(PlanetClassificationEvidenceTest, InferredPressureAndScenarioSurviveReloadAndRepeatedApplication)
+{
+    Planet* world = make_planet(make_star());
+    world->user_added = true;
+    world->ensure_atmosphere()->pressure_model = {{"inventory", {{"water_mass_fraction", 0}}}};
+    world->apply_cosmic_shoreline();
+    const double dry_pressure = world->get_surface_pressure();
+    const json composition = world->atm->comp->to_json();
+    world->apply_cosmic_shoreline();
+    EXPECT_DOUBLE_EQ(world->get_surface_pressure(), dry_pressure);
+    EXPECT_EQ(world->atm->comp->to_json(), composition);
+    EXPECT_FALSE(world->atm->pressure_supplied);
+    Planet restored;
+    restored.from_json(world->to_json());
+    ASSERT_NE(restored.atm, nullptr);
+    EXPECT_EQ(restored.atm->pressure_model, world->atm->pressure_model);
+    EXPECT_FALSE(restored.atm->pressure_supplied);
+    EXPECT_DOUBLE_EQ(restored.get_surface_pressure(), dry_pressure);
+    world->atm->pressure_model["inventory"]["water_mass_fraction"] = 2.3e-4;
+    world->apply_cosmic_shoreline();
+    EXPECT_LT(world->get_surface_pressure(), dry_pressure / 30);
+    EXPECT_GT(world->atm->comp->N2_portion, 0.9);
+}
+
+TEST_F(PlanetClassificationEvidenceTest, SuppliedCompositionAndSolarSystemAbsenceRemainAuthoritative)
+{
+    Planet* world = make_planet(make_star());
+    world->apply_cosmic_shoreline();
+    EXPECT_EQ(world->atm, nullptr);
+    world->user_added = true;
+    auto* composition = world->ensure_atmosphere()->ensure_composition();
+    composition->O2_portion = 0.21;
+    composition->N2_portion = 0.79;
+    const json supplied = composition->to_json();
+    world->apply_cosmic_shoreline();
+    EXPECT_EQ(composition->to_json(), supplied);
+}
+
+TEST_F(PlanetClassificationEvidenceTest, InvalidAtmosphereInputsPreservePriorPressure)
+{
+    Planet* world = make_planet(make_star());
+    world->user_added = true;
+    world->ensure_atmosphere()->surface_pressure = 12345;
+    world->atm->pressure_model = {{"inventory", {{"water_mass_fraction", -1}}}};
+    world->apply_cosmic_shoreline();
+    EXPECT_DOUBLE_EQ(world->get_surface_pressure(), 12345);
+    world->atm->pressure_model = nullptr;
+    world->mass = NAN;
+    world->apply_cosmic_shoreline();
+    EXPECT_DOUBLE_EQ(world->get_surface_pressure(), 12345);
+    AtmosphericInventory inventory;
+    EXPECT_FALSE(inventory.from_json({{"age_gyr", -1}}));
+    EXPECT_FALSE(inventory.from_json({{"co2_mass_fraction", 0.8}, {"water_mass_fraction", 0.8}}));
+    EXPECT_FALSE(inventory.from_json({{"xuv_scale", "unknown"}}));
+    EXPECT_DOUBLE_EQ(inventory.age_gyr, 4.5);
+}
+
+TEST_F(PlanetClassificationEvidenceTest, GiantPressureIsACloudReferenceRatherThanASolidSurfaceEstimate)
+{
+    Star* host = make_star();
+    Planet* world = make_planet(host, "Giant", 0.02 * AU);
+    world->user_added = true;
+    world->mass = jupiter_mass;
+    world->volumetric_mean_radius = jupiter_radius;
+    world->type = hot_jupiter;
+    world->apply_cosmic_shoreline();
+    EXPECT_DOUBLE_EQ(world->get_surface_pressure(), 1e5);
+    EXPECT_EQ(world->atm->pressure_model["model"], "cloud_reference_v1");
+    world->mass = world->volumetric_mean_radius = 0;
+    const auto reference = CosmicShore::estimate_atmosphere(*host, *world);
+    EXPECT_TRUE(reference.valid);
+    EXPECT_DOUBLE_EQ(reference.pressure, 1e5);
+}
+
+TEST_F(PlanetClassificationEvidenceTest, ReservoirDiagnosticsConserveInventoriesAcrossAgeAndIrradiation)
+{
+    Star* host = make_star();
+    Planet* world = make_planet(host);
+    for (double distance : {0.1, 0.723, 1.0, 1.524, 10.0, 50.0})
+    {
+        world->orbit->semimajor_axis = distance * AU;
+        for (double age : {0.0, 0.001, 0.15, 4.5, 13.8})
+        {
+            AtmosphericInventory inventory;
+            inventory.age_gyr = age;
+            const auto estimate = CosmicShore::estimate_atmosphere(*host, *world, inventory);
+            ASSERT_TRUE(estimate.valid) << estimate.diagnostics.dump();
+            EXPECT_TRUE(std::isfinite(estimate.pressure));
+            EXPECT_GE(estimate.pressure, 0);
+            EXPECT_LE(estimate.pressure, CosmicShore::pressure_ceiling);
+            for (const auto& ledger : estimate.diagnostics["reservoir_mass_fractions"])
+            {
+                double total = 0;
+                for (const char* key : {"mantle", "atmosphere", "surface_storage", "escaped"})
+                {
+                    const double fraction = ledger[key].get<double>();
+                    EXPECT_GE(fraction, 0);
+                    total += fraction;
+                }
+                EXPECT_NEAR(total, ledger["initial"].get<double>(), 1e-14);
+            }
+        }
+    }
+}
+
+TEST_F(PlanetClassificationEvidenceTest, ScenarioAgeAndCompactSavesRetainModelInputs)
+{
+    Star* host = make_star();
+    host->fictional_origin = {{"age_gyr", 1.25}};
+    Planet* world = make_planet(host);
+    world->user_added = true;
+    world->apply_cosmic_shoreline();
+    EXPECT_DOUBLE_EQ(world->atm->pressure_model["inventory"]["age_gyr"].get<double>(), 1.25);
+    EXPECT_EQ(world->atm->pressure_model["age_origin"], "stellar_formation_scenario");
+    world->atm->pressure_model["inventory"]["age_gyr"] = 0.5;
+    world->apply_cosmic_shoreline();
+    EXPECT_DOUBLE_EQ(world->atm->pressure_model["inventory"]["age_gyr"].get<double>(), 0.5);
+    Serialization::SaveContext context;
+    const json compact = Serialization::compact_record(world->to_json(), context);
+    Planet restored;
+    ASSERT_TRUE(restored.from_json(Serialization::expand_record(compact, context.header)));
+    ASSERT_NE(restored.atm, nullptr);
+    EXPECT_EQ(restored.atm->pressure_model, world->atm->pressure_model);
+    EXPECT_FALSE(restored.atm->pressure_supplied);
+}
+
+TEST_F(PlanetClassificationEvidenceTest, InferenceUsesStellarOrbitForMoonsAndRejectsUnboundOrbits)
+{
+    Star* host = make_star();
+    Planet* primary = make_planet(host);
+    Planet* moon = make_planet(host);
+    moon->orbit->center = primary;
+    moon->orbit->semimajor_axis = 384400000;
+    EXPECT_DOUBLE_EQ(CosmicShore::estimate_atmosphere(*host, *moon).pressure,
+        CosmicShore::estimate_atmosphere(*host, *primary).pressure);
+    primary->orbit->eccentricity = 0.6;
+    const auto eccentric = CosmicShore::estimate_atmosphere(*host, *primary);
+    EXPECT_NEAR(eccentric.diagnostics["flux_earth"].get<double>(), primary->est_bolometric_flux() / 0.8, 1e-12);
+    primary->orbit->eccentricity = 1;
+    EXPECT_FALSE(CosmicShore::estimate_atmosphere(*host, *primary).valid);
+    primary->orbit->eccentricity = 0;
+    primary->orbit->semimajor_axis = -AU;
+    EXPECT_FALSE(CosmicShore::estimate_atmosphere(*host, *primary).valid);
+}
 
 TEST_F(PlanetClassificationEvidenceTest, FictionalMoonsAreSparseForSmallInnerPlanets)
 {
@@ -319,7 +562,7 @@ TEST_F(PlanetClassificationEvidenceTest, InferredAtmosphereHonorsTheShorelineCei
     world->user_added = true;
     world->mass = 200 * earth_mass;
     world->volumetric_mean_radius = 2 * earth_radius;
-    ASSERT_GT(CosmicShore::calculate_unified_metric(*static_cast<Star*>(world->cenobj), *world), 6);
+    ASSERT_GT(CosmicShore::calculate_unified_metric(*static_cast<Star*>(world->cenobj), *world), 0);
     world->apply_cosmic_shoreline();
     EXPECT_TRUE(std::isfinite(world->get_surface_pressure()));
     EXPECT_GT(world->get_surface_pressure(), 0);

@@ -198,6 +198,8 @@ namespace alienorum
         public:
         double surface_pressure = oneatm;
         bool pressure_supplied = false;
+        // Scenario inputs and diagnostic output for an inferred pressure; never an observation.
+        json pressure_model = nullptr;
         double tau = 0;
         double particulates = 0;
         CelestialObject *cel = nullptr;

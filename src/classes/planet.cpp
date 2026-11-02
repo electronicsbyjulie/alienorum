@@ -271,9 +271,38 @@ void alienorum::Planet::apply_cosmic_shoreline()
     {
         // Dereferenced, so it has to be there and it has to be a star: a rogue planet's light
         // center is a null pointer, and a moon of one leads somewhere that is not a Star.
-        double shoreline = CosmicShore::calculate_unified_metric(*(Star*)plc, *this);
-        double max_atm_pressure = CosmicShore::estimate_surface_pressure(shoreline);
-        ensure_atmosphere()->surface_pressure = max_atm_pressure;
+        Star& host = *static_cast<Star*>(plc);
+        AtmosphericInventory inventory = CosmicShore::default_inventory(host);
+        const bool custom_inventory = atm && atm->pressure_model.is_object()
+            && atm->pressure_model.contains("inventory");
+        if (custom_inventory && !inventory.from_json(atm->pressure_model["inventory"])) return;
+        AtmosphericEstimate estimate = custom_inventory ? CosmicShore::estimate_atmosphere(host, *this, inventory)
+            : CosmicShore::estimate_atmosphere(host, *this);
+        // Incomplete geometry/illumination must not erase an existing estimate.
+        if (!estimate.valid) return;
+        Atmosphere* atmosphere = ensure_atmosphere();
+        const bool model_composition = !atmosphere->comp || (atmosphere->pressure_model.is_object()
+            && atmosphere->pressure_model.contains("generated_composition")
+            && atmosphere->pressure_model["generated_composition"] == atmosphere->comp->to_json());
+        atmosphere->surface_pressure = estimate.pressure;
+        atmosphere->pressure_model = std::move(estimate.diagnostics);
+        atmosphere->pressure_model["inventory_source"] = custom_inventory ? "saved_scenario" : "default_scenario";
+        if (model_composition && !uses_gaseous_map(type))
+        {
+            const double total = estimate.co2_moles + estimate.nitrogen_moles + estimate.water_moles;
+            if (total > 0 || atmosphere->comp)
+            {
+                AtmosphereComposition* composition = atmosphere->ensure_composition();
+                *composition = AtmosphereComposition(this);
+                if (total > 0)
+                {
+                    composition->CO2_portion = estimate.co2_moles / total;
+                    composition->N2_portion = estimate.nitrogen_moles / total;
+                    composition->H2O_portion = estimate.water_moles / total;
+                }
+                atmosphere->pressure_model["generated_composition"] = composition->to_json();
+            }
+        }
         temperature = 0;
         estimate_surface_temperature();
     }
@@ -1700,6 +1729,7 @@ json Atmosphere::to_json()
     json towrite;
     towrite["surface_pressure"] = surface_pressure;
     towrite["pressure_supplied"] = pressure_supplied;
+    if (pressure_model.is_object()) towrite["pressure_model"] = pressure_model;
     if (tau) towrite["tau"] = tau;
     if (particulates) towrite["particulates"] = particulates;
     if (comp) towrite["composition"] = comp->to_json();
@@ -1712,6 +1742,8 @@ json Atmosphere::to_json()
 // that have to be kept in step.
 bool Atmosphere::from_json(json j)
 {
+    pressure_model = j.contains("pressure_model") && j["pressure_model"].is_object()
+        ? j["pressure_model"] : json(nullptr);
     for (const char* key : {"surface_pressure", "SurfacePressure"})
     {
         if (j.contains(key) && j[key].is_number())
