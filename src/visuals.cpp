@@ -7848,6 +7848,7 @@ void draw_horizon()
                 auto projection_key = std::make_tuple(scenery_key, cel, map,
                     viewer_lat, viewer_lon, azimuth, altitude, zoom, dispcx, dispcy,
                     h_eye, R_planet, s_horizon, horizon_lift_rad, dittrsa, shore_displacement,
+                    P_surf,
                     p ? p->plant_trunk_height : 0.0, p ? p->plant_trunk_width : 0.0,
                     p ? p->plant_crown_size : 0.0, p ? p->plant_crown_oblateness : 0.0,
                     performance_enabled(39), performance_enabled(40), performance_enabled(41), performance_enabled(43));
@@ -7885,7 +7886,8 @@ void draw_horizon()
                         const bool is_vegetation = plant[index];
                         const double rock_aspect = (is_vegetation && p)
                             ? (p->plant_trunk_height + crown_scale * p->plant_crown_oblateness)
-                            : (is_lava ? ROCK_ASPECT_LAVA : (is_venus ? ROCK_ASPECT_VENUS : (is_icy ? ROCK_ASPECT_ICY : ROCK_ASPECT_DEFAULT)));
+                            : rock_aspect_ratio(object.seed, P_surf,
+                                is_lava ? ROCK_ASPECT_LAVA : (is_icy ? ROCK_ASPECT_ICY : ROCK_ASPECT_DEFAULT));
 
                         const uint32_t rhash = object.seed;
                         double theta_world = performance_enabled(41) ? 0 : atan2(object.east, object.north);
@@ -8457,23 +8459,6 @@ void draw_horizon()
                         if (gpu_plants && (gpu_plant.crown_visible || gpu_plant.trunk_visible))
                             add_scenery_plant_gpu(gpu_plant, rk.crown_above_eye);
                     }
-                    else if (is_venus)
-                    {
-                        ImVec2 slab_pts[4];
-                        slab_pts[0] = ImVec2(rx - rw * 0.50, ry);
-                        slab_pts[1] = ImVec2(rx - rw * 0.44, ry - rh);
-                        slab_pts[2] = ImVec2(rx + rw * 0.44, ry - rh);
-                        slab_pts[3] = ImVec2(rx + rw * 0.50, ry);
-
-                        int vr = fmin(255.0, (base_map_rgb.r * 0.65) * (amb_light + sun_light * 0.5));
-                        int vg = fmin(255.0, (base_map_rgb.g * 0.62) * (amb_light + sun_light * 0.5));
-                        int vb = fmin(255.0, (base_map_rgb.b * 0.50) * (amb_light + sun_light * 0.5));
-                        ImU32 slab_body = rgba_apply_redlight(IM_COL32(vr, vg, vb, 255));
-                        ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(slab_pts, 4, slab_body);
-
-                        ImU32 slab_top_edge = rgba_apply_redlight(IM_COL32(fmin(255, vr + 25), fmin(255, vg + 25), fmin(255, vb + 15), 255));
-                        ImGui::GetBackgroundDrawList()->AddLine(slab_pts[1], slab_pts[2], slab_top_edge, 1.2f);
-                    }
                     else
                     {
                         // Solar direction relative to camera azimuth
@@ -8499,47 +8484,17 @@ void draw_horizon()
                         double sun_mult = is_moon ? 2.0 : (is_mars ? 1.5 : (is_icy ? 1.6 : 1.4));
                         double amb_mult = is_moon ? 0.35 : 0.55;
 
-                        const bool cached_shape = PERF_P101 && !rock_mesh_reference;
-                        const RockShape* shape = cached_shape ? &rock_mesh_cache().get(rk.seed_val) : nullptr;
-                        // Derive pseudo-random vertex offsets deterministically from rock seed
-                        uint32_t sh = rk.seed_val;
-                        auto next_rnd = [&sh]() -> double
+                        RockShape local_shape;
+                        const RockShape* shape;
+                        if (PERF_P101 && !rock_mesh_reference)
                         {
-                            sh = ((sh >> 16) ^ sh) * 0x45d9f3b;
-                            sh = ((sh >> 16) ^ sh) * 0x45d9f3b;
-                            sh = (sh >> 16) ^ sh;
-                            return (double)(sh & 0xFFFF) / 65535.0;
-                        };
-
-                        static const float rock_dome_verts[26][3] =
+                            shape = &rock_mesh_cache().get(rk.seed_val);
+                        }
+                        else
                         {
-                            { 0.000000f,  1.000000f,  0.000000f}, // 0: Apex
-                            { 0.894427f,  0.447214f,  0.000000f}, // 1
-                            { 0.276393f,  0.447214f,  0.850651f}, // 2
-                            {-0.723607f,  0.447214f,  0.525731f}, // 3
-                            {-0.723607f,  0.447214f, -0.525731f}, // 4
-                            { 0.276393f,  0.447214f, -0.850651f}, // 5
-                            { 0.525731f,  0.850651f,  0.000000f}, // 6
-                            { 0.688191f,  0.525731f,  0.500000f}, // 7
-                            { 0.162460f,  0.850651f,  0.500000f}, // 8
-                            {-0.262866f,  0.525731f,  0.809017f}, // 9
-                            {-0.425325f,  0.850651f,  0.309017f}, // 10
-                            {-0.850651f,  0.525731f,  0.000000f}, // 11
-                            {-0.425325f,  0.850651f, -0.309017f}, // 12
-                            {-0.262866f,  0.525731f, -0.809017f}, // 13
-                            { 0.162460f,  0.850651f, -0.500000f}, // 14
-                            { 0.688191f,  0.525731f, -0.500000f}, // 15
-                            { 0.587785f,  0.000000f,  0.809017f}, // 16: Equator base
-                            { 0.951057f,  0.000000f,  0.309017f}, // 17
-                            { 0.951057f,  0.000000f, -0.309017f}, // 18
-                            {-0.587785f,  0.000000f,  0.809017f}, // 19
-                            { 0.000000f,  0.000000f,  1.000000f}, // 20
-                            {-0.951057f,  0.000000f, -0.309017f}, // 21
-                            {-0.951057f,  0.000000f,  0.309017f}, // 22
-                            {-0.000000f,  0.000000f, -1.000000f}, // 23
-                            {-0.587785f,  0.000000f, -0.809017f}, // 24
-                            { 0.587785f,  0.000000f, -0.809017f}  // 25
-                        };
+                            local_shape = build_rock_shape(rk.seed_val);
+                            shape = &local_shape;
+                        }
 
                         static const int rock_dome_faces[40][3] =
                         {
@@ -8555,19 +8510,11 @@ void draw_horizon()
                             {5, 15, 25}, {1, 18, 15}, {15, 18, 25},{5, 25, 23}
                         };
 
-                        double yaw = cached_shape ? 0 : next_rnd() * 2.0 * _pi;
-                        double cos_y = cached_shape ? shape->cos_y : cos(yaw);
-                        double sin_y = cached_shape ? shape->sin_y : sin(yaw);
-
-                        double scale_x = cached_shape ? rw * 0.5 * shape->scale_x : rw * 0.5 * (0.88 + 0.24 * next_rnd());
-                        double scale_z = cached_shape ? rw * 0.5 * shape->scale_z : rw * 0.5 * (0.78 + 0.30 * next_rnd());
-                        double scale_y = cached_shape ? rh * shape->scale_y : rh * (0.92 + 0.16 * next_rnd());
-
-                        double apex_shift_x = cached_shape ? 0 : (next_rnd() - 0.5) * 0.35;
-                        double apex_shift_z = cached_shape ? 0 : (next_rnd() - 0.5) * 0.35;
-
-                        double tilt_x = cached_shape ? shape->tilt_x : (next_rnd() - 0.5) * 0.12;
-                        double tilt_z = cached_shape ? shape->tilt_z : (next_rnd() - 0.5) * 0.12;
+                        const double cos_y = shape->cos_y, sin_y = shape->sin_y;
+                        const double scale_x = rw * 0.5 * shape->scale_x;
+                        const double scale_z = rw * 0.5 * shape->scale_z;
+                        const double scale_y = rh * shape->scale_y;
+                        const double tilt_x = shape->tilt_x, tilt_z = shape->tilt_z;
 
                         // Viewer depression angle looking down at ground at rock distance
                         double alpha = atan2(h_eye, rk.ground_dist);
@@ -8588,8 +8535,6 @@ void draw_horizon()
                             sun_cam_z /= sun_cam_len;
                         }
 
-                        double jagg = cached_shape ? 0 : ROCK_JAGGEDNESS * (0.85 + 0.30 * next_rnd());
-
                         struct CamVertex
                         {
                             double x;
@@ -8602,37 +8547,9 @@ void draw_horizon()
 
                         for (int vi = 0; vi < 26; vi++)
                         {
-                            double vx, vy, vz;
-                            if (cached_shape)
-                            {
-                                vx = shape->vertices[vi][0];
-                                vy = shape->vertices[vi][1];
-                                vz = shape->vertices[vi][2];
-                            }
-                            else
-                            {
-                                uint32_t vsh = (rk.seed_val ^ ((uint32_t)vi * 0x9e3779b9u));
-                                vsh = ((vsh >> 16) ^ vsh) * 0x45d9f3b;
-                                vsh = ((vsh >> 16) ^ vsh) * 0x45d9f3b;
-                                vsh = (vsh >> 16) ^ vsh;
-                                double vrnd = (double)(vsh & 0xFFFF) / 65535.0;
-
-                                double disp = 1.0 + jagg * (vrnd - 0.5);
-                                vx = rock_dome_verts[vi][0] * disp;
-                                vy = rock_dome_verts[vi][1] * disp;
-                                vz = rock_dome_verts[vi][2] * disp;
-
-                                if (vi == 0)
-                                {
-                                    vx += apex_shift_x;
-                                    vz += apex_shift_z;
-                                }
-                                else if (rock_dome_verts[vi][1] < 0.05f)
-                                {
-                                    vy = 0.0;
-                                }
-
-                            }
+                            const double vx = shape->vertices[vi][0];
+                            const double vy = shape->vertices[vi][1];
+                            const double vz = shape->vertices[vi][2];
 
                             // Rotate around Y axis (yaw) and scale
                             double rx_ = (vx * cos_y + vz * sin_y) * scale_x;

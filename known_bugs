@@ -13,4 +13,4 @@ Companion stars brighter than magnitude -10 should appear in sun clock mode even
 
 Companion stars, nearby planets, and bright moons should cast shadows in horizon mode proportional in strength and color to the casting object's brightness and hue relative to the light center.
 
-* Rocks on Venus-like planets are featureless chocolate-bar shaped slabs; rocks on other planets are randomized variants of a repetitive dome/gumdrop shape. Let's make rock aspect ratios variable and, instead of using an "is venus-like" switch, bias rock aspect ratios towards slabs proportional to either the atmospheric pressure or a logarithm thereof, whichever is more correct.
+[Fixed] Rocks use varied faceted profiles and deterministic aspect ratios. A continuous, bounded logarithmic pressure bias favors flatter shapes in dense atmospheres, replacing the Venus-specific slab switch. This is a visual approximation rather than a geological law.

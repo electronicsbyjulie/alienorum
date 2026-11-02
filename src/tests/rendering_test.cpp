@@ -6484,6 +6484,36 @@ TEST_F(RenderingRegressionTest, ReusedTextureStorageMatchesFreshColorBumpAndMipL
     gputex_clear_cache();
 }
 
+TEST(RockMorphologyTest, AspectRatiosVaryDeterministicallyAndFlattenSmoothlyWithPressure)
+{
+    double minimum = 10, maximum = 0;
+    for (uint32_t seed = 0; seed < 512; ++seed)
+    {
+        const double terrestrial = rock_aspect_ratio(seed, oneatm, ROCK_ASPECT_DEFAULT);
+        const double dense = rock_aspect_ratio(seed, 93 * oneatm, ROCK_ASPECT_DEFAULT);
+        const double extreme = rock_aspect_ratio(seed, 700 * oneatm, ROCK_ASPECT_DEFAULT);
+        EXPECT_DOUBLE_EQ(terrestrial, rock_aspect_ratio(seed, 0, ROCK_ASPECT_DEFAULT));
+        EXPECT_GT(terrestrial, dense);
+        EXPECT_GT(dense, extreme);
+        EXPECT_GE(extreme, .045);
+        EXPECT_NEAR(rock_aspect_ratio(seed, 4 * oneatm, ROCK_ASPECT_DEFAULT),
+            rock_aspect_ratio(seed, 4.00001 * oneatm, ROCK_ASPECT_DEFAULT), 1e-5);
+        minimum = std::min(minimum, terrestrial);
+        maximum = std::max(maximum, terrestrial);
+        const auto shape = build_rock_shape(seed);
+        EXPECT_EQ(shape.vertices, build_rock_shape(seed).vertices);
+        for (size_t vertex = 0; vertex < shape.vertices.size(); ++vertex)
+        {
+            for (double coordinate : shape.vertices[vertex]) EXPECT_TRUE(std::isfinite(coordinate));
+            EXPECT_GE(shape.vertices[vertex][1], 0);
+            if (vertex >= 16) EXPECT_DOUBLE_EQ(shape.vertices[vertex][1], 0);
+        }
+    }
+    EXPECT_GT(maximum / minimum, 3);
+    EXPECT_NE(build_rock_shape(0).vertices, build_rock_shape(1).vertices);
+    EXPECT_NE(build_rock_shape(1).vertices, build_rock_shape(2).vertices);
+}
+
 TEST_F(RenderingRegressionTest, RockMeshCachePreservesLiveViewsAndBoundedShapes)
 {
     RockMeshCache cache;
@@ -6510,6 +6540,8 @@ TEST_F(RenderingRegressionTest, RockMeshCachePreservesLiveViewsAndBoundedShapes)
     };
     for (int pose = 0; pose < 12; ++pose)
     {
+        world->ensure_atmosphere()->surface_pressure = pose < 4 ? oneatm : (pose < 8 ? 93e5 : 736e5);
+        world->temperature = 737;
         viewer_lat = pose * .4 / earth_radius;
         viewer_lon = pose > 8 ? _pi - 1e-6 : .3;
         altitude = -.15 - pose * .03;

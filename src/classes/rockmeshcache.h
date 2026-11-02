@@ -1,6 +1,7 @@
 #ifndef ALIENORUM_ROCK_MESH_CACHE_H
 #define ALIENORUM_ROCK_MESH_CACHE_H
 #include <array>
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <deque>
@@ -10,6 +11,22 @@
 #endif
 namespace alienorum
 {
+    inline double rock_slab_bias(double pressure_pa)
+    {
+        if (!std::isfinite(pressure_pa) || pressure_pa <= oneatm) return 0;
+        // A bounded visual prior over orders of magnitude, not a geological law.
+        return std::clamp(std::log10(pressure_pa / oneatm) / 3.0, 0.0, 1.0);
+    }
+
+    inline double rock_aspect_ratio(uint32_t seed, double pressure_pa, double material_aspect)
+    {
+        uint32_t mixed = seed ^ 0xa511e9b3u;
+        mixed = ((mixed >> 16) ^ mixed) * 0x45d9f3bu;
+        mixed = ((mixed >> 16) ^ mixed) * 0x45d9f3bu;
+        const double variation = .45 + 1.35 * ((mixed ^ (mixed >> 16)) & 0xffff) / 65535.0;
+        return std::clamp(material_aspect * variation * (1 - .68 * rock_slab_bias(pressure_pa)), .045, 2.2);
+    }
+
     inline bool rock_mesh_reference = false;
     struct RockShape
     {
@@ -60,9 +77,9 @@ namespace alienorum
         const double yaw = next_rnd() * 2.0 * _pi;
         result.cos_y = cos(yaw);
         result.sin_y = sin(yaw);
-        result.scale_x = 0.88 + 0.24 * next_rnd();
-        result.scale_z = 0.78 + 0.30 * next_rnd();
-        result.scale_y = 0.92 + 0.16 * next_rnd();
+        result.scale_x = 0.70 + 0.60 * next_rnd();
+        result.scale_z = 0.65 + 0.65 * next_rnd();
+        result.scale_y = 0.85 + 0.30 * next_rnd();
         const double apex_x = (next_rnd() - 0.5) * 0.35;
         const double apex_z = (next_rnd() - 0.5) * 0.35;
         result.tilt_x = (next_rnd() - 0.5) * 0.12;
@@ -78,6 +95,28 @@ namespace alienorum
             const double disp = 1.0 + jagg * (vrnd - 0.5);
             auto& vertex = result.vertices[vi];
             vertex = {rock_dome_verts[vi][0] * disp, rock_dome_verts[vi][1] * disp, rock_dome_verts[vi][2] * disp};
+            const unsigned profile = seed % 3;
+            if (profile == 0)
+            {
+                // Broad angular shoulders and a broken, nearly level cap.
+                vertex[0] = std::copysign(std::sqrt(std::abs(vertex[0])), vertex[0]);
+                vertex[2] = std::copysign(std::sqrt(std::abs(vertex[2])), vertex[2]);
+                if (vi > 0 && rock_dome_verts[vi][1] > .05f) vertex[1] = .80 + .17 * vrnd;
+            }
+            else if (profile == 1)
+            {
+                // Offset ridges and unequal shoulders produce angular boulders.
+                vertex[0] *= .7 + .5 * vrnd;
+                vertex[2] *= 1.2 - .4 * vrnd;
+                vertex[1] *= .65 + .7 * vrnd;
+            }
+            else
+            {
+                // Taller fractured forms retain a sharper crest.
+                vertex[0] *= .75 + .3 * vrnd;
+                vertex[2] *= 1.05 - .3 * vrnd;
+                vertex[1] *= vi == 0 ? 1.2 : .7 + .6 * vrnd;
+            }
             if (vi == 0) { vertex[0] += apex_x; vertex[2] += apex_z; }
             else if (rock_dome_verts[vi][1] < 0.05f) vertex[1] = 0.0;
         }
