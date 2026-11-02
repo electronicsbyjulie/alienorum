@@ -2544,6 +2544,12 @@ void draw_objedit_window(ImGuiIO& io)
                             else
                                 ImGui::SetTooltip("Estimated surface area below the waterline, including frozen water.\nEnter a target percentage, then press Update to generate the surface.\nImported maps keep their original colors until Update.\nIf elevations are absent, the target is applied after they are generated.");
                         }
+                        ImGui::SameLine();
+                        ImGui::BeginDisabled(!water_editor.editable());
+                        if (ImGui::Button("Estimate##watercover")) water_editor.estimate();
+                        ImGui::EndDisabled();
+                        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                            ImGui::SetTooltip("Estimate water and ice coverage from retained water and assumed basin relief.\nThis replaces the water level; pressure stays as entered. Press Update to redraw.");
                     }
 
                     ImGui::Text("%s", "Water vapor %");

@@ -76,11 +76,13 @@ namespace alienorum
 
         bool ready() const { return available; }
         bool editable() const { return available && adjustable; }
+        const std::vector<double>& height_samples() const { return thresholds; }
         double percent(double level) const
         {
             if (!available) return 0;
             if (!generated_surface || !adjustable) return measured;
             if (!std::isfinite(level)) return 0;
+            if (level >= 1) return 100;
             const auto end = std::lower_bound(thresholds.begin(), thresholds.end(), std::clamp(level, 0.0, 1.0));
             return 100 * (end - thresholds.begin()) / samples;
         }
@@ -104,7 +106,7 @@ namespace alienorum
         Planet *body = nullptr;
         int body_index = -1;
         double requested = 0;
-        bool pending = false, awaiting_calibration = false;
+        bool pending = false, awaiting_calibration = false, budget_target = false;
         unsigned int starting_generation = 0;
 
         unsigned int map_generation() const { return body && body->surf_map ? body->surf_map->gen : 0; }
@@ -116,10 +118,23 @@ namespace alienorum
             {
                 body = planet;
                 body_index = planet ? planet->seqno : -1;
-                pending = awaiting_calibration = false;
+                pending = awaiting_calibration = budget_target = false;
             }
             coverage.refresh(planet, displacement);
             if (!coverage.ready() || !pending || map_generation() == starting_generation) return;
+            if (budget_target)
+            {
+                if (!coverage.editable()) return;
+                const float previous = body->has_water;
+                if (!body->estimate_surface_water(true, coverage.height_samples()) || body->has_water == previous)
+                {
+                    pending = awaiting_calibration = budget_target = false;
+                    return;
+                }
+                starting_generation = map_generation();
+                body->mark_all_maps_for_regen();
+                return;
+            }
             if (awaiting_calibration)
             {
                 if (!coverage.editable()) return;
@@ -149,22 +164,40 @@ namespace alienorum
         }
         bool ready() const { return coverage.ready(); }
         bool has_target() const { return pending; }
-        double percent() const { return pending ? requested : coverage.percent(body ? body->has_water : 0); }
+        double percent() const { return pending && !budget_target ? requested : coverage.percent(body ? body->has_water : 0); }
         bool editable() const { return body && body->type != waterworld && body->type != hycean && !generating_fic_texture; }
         void edit(double percentage)
         {
             if (!editable() || !std::isfinite(percentage)) return;
             requested = std::clamp(percentage, 0.0, 100.0);
+            body->has_water_supplied = true;
+            budget_target = false;
             pending = true;
             awaiting_calibration = !coverage.editable();
             starting_generation = map_generation();
             if (coverage.editable()) body->has_water = coverage.level(requested);
             body->user_edited = true;
         }
+        bool estimate()
+        {
+            if (!editable()) return false;
+            const bool estimated = coverage.editable()
+                ? body->estimate_surface_water(true, coverage.height_samples()) : body->estimate_surface_water(true);
+            if (!estimated) return false;
+            pending = awaiting_calibration = budget_target = true;
+            starting_generation = map_generation();
+            body->user_edited = true;
+            return true;
+        }
         void prepare_generation(CelestialObject *object)
         {
             if (object != body || !editable()) return;
             if (!pending) return;
+            if (budget_target)
+            {
+                starting_generation = map_generation();
+                return;
+            }
             requested = percent();
             pending = true;
             // Update can resample imported elevations or change their normalization.

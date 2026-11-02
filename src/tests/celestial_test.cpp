@@ -1607,6 +1607,33 @@ TEST_F(ShoreNavigationTest, WaterCoverageConvertsSurfaceAreaInsteadOfScalingWate
     EXPECT_DOUBLE_EQ(coverage.percent(1), 100); // Submerged frozen regions still count toward geographic water coverage.
 }
 
+TEST_F(ShoreNavigationTest, WaterCoverageBudgetEstimationPreservesPressureAndAllowsManualOverride)
+{
+    Planet* planet = world([](double, double) { return false; });
+    delete planet->surf_map;
+    planet->surf_map = new CoverageTestMap();
+    planet->m_bump_scale = 1000;
+    planet->mass = earth_mass;
+    planet->volumetric_mean_radius = earth_radius;
+    planet->user_added = true;
+    planet->ensure_atmosphere()->surface_pressure = 5e5;
+    planet->atm->pressure_supplied = true;
+    WaterCoverageEditor editor;
+    editor.refresh(planet, 0);
+    ASSERT_TRUE(editor.estimate());
+    EXPECT_FALSE(planet->has_water_supplied);
+    EXPECT_EQ(planet->surface_water_model["terrain"], "equal_area_samples");
+    EXPECT_DOUBLE_EQ(planet->get_surface_pressure(), 5e5);
+    const float estimated = planet->has_water;
+    planet->surf_map->touch_gen();
+    editor.refresh(planet, 0);
+    EXPECT_FLOAT_EQ(planet->has_water, estimated);
+    EXPECT_FALSE(editor.has_target());
+    editor.edit(25);
+    EXPECT_TRUE(planet->has_water_supplied);
+    EXPECT_NEAR(editor.percent(), 25, 1e-10);
+}
+
 TEST_F(ShoreNavigationTest, ImportedWaterCoverageUsesEqualAreaAndAcceptsGenerationTarget)
 {
     Planet *planet = world([](double lat, double) { return lat > _pi / 3; }, false);

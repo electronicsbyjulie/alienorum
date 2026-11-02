@@ -16,6 +16,7 @@
 #include "../classes/cat.h"
 #include "../classes/chemistry.h"
 #include "../classes/shore.h"
+#include "../classes/watercoverage.h"
 #include "../classes/surfacenavigation.h"
 #include "../visuals.h"
 #include "../loaders.h"
@@ -435,6 +436,155 @@ TEST_F(PlanetClassificationEvidenceTest, InferenceUsesStellarOrbitForMoonsAndRej
     primary->orbit->eccentricity = 0;
     primary->orbit->semimajor_axis = -AU;
     EXPECT_FALSE(CosmicShore::estimate_atmosphere(*host, *primary).valid);
+}
+
+TEST_F(PlanetClassificationEvidenceTest, SurfaceWaterTracksRetainedCondensateRatherThanRandomDraws)
+{
+    Star* host = make_star();
+    Planet* world = make_planet(host);
+    world->user_added = true;
+    world->apply_cosmic_shoreline();
+    ASSERT_TRUE(world->surface_water_model.is_object());
+    const double depth = world->surface_water_model["equivalent_depth_m"].get<double>();
+    const double coverage = world->surface_water_model["coverage_fraction"].get<double>();
+    EXPECT_GT(depth, 1000);
+    EXPECT_LT(depth, 3000);
+    EXPECT_GT(coverage, 0.5);
+    EXPECT_LT(coverage, 0.9);
+    const float level = world->has_water;
+    const bool saved_randomize = randomize_txgen;
+    randomize_txgen = true;
+    for (int i = 0; i < 3; ++i)
+    {
+        world->estimate_habitability();
+        EXPECT_FLOAT_EQ(world->has_water, level);
+    }
+    randomize_txgen = saved_randomize;
+    world->atm->pressure_model["inventory"]["water_mass_fraction"] = 0;
+    world->apply_cosmic_shoreline();
+    EXPECT_FLOAT_EQ(world->has_water, 0);
+    EXPECT_DOUBLE_EQ(world->surface_water_model["equivalent_depth_m"].get<double>(), 0);
+}
+
+TEST_F(PlanetClassificationEvidenceTest, BasinVolumeAndSurfacePartitionControlTheWaterline)
+{
+    Star* host = make_star();
+    Planet* world = make_planet(host);
+    AtmosphericInventory inventory;
+    auto budget = CosmicShore::estimate_atmosphere(*host, *world, inventory);
+    std::vector<double> heights;
+    for (int i = 0; i < 1024; ++i) heights.push_back((i + 0.5) / 1024);
+    const auto first = CosmicShore::estimate_surface_water(*world, budget.diagnostics, heights);
+    ASSERT_TRUE(first.valid);
+    EXPECT_NEAR(first.diagnostics["equivalent_depth_m"].get<double>(),
+        first.diagnostics["represented_depth_m"].get<double>(), 1e-8);
+    const double coverage = first.diagnostics["coverage_fraction"].get<double>();
+    EXPECT_GT(coverage, 0);
+    EXPECT_LT(coverage, 1);
+    inventory.water_mass_fraction *= 2;
+    budget = CosmicShore::estimate_atmosphere(*host, *world, inventory);
+    const auto wetter = CosmicShore::estimate_surface_water(*world, budget.diagnostics, heights);
+    EXPECT_GT(wetter.diagnostics["coverage_fraction"].get<double>(), coverage);
+    inventory.surface_water_share = 0.1;
+    budget = CosmicShore::estimate_atmosphere(*host, *world, inventory);
+    EXPECT_LT(CosmicShore::estimate_surface_water(*world, budget.diagnostics, heights).level, first.level);
+    inventory.surface_water_share = 0;
+    budget = CosmicShore::estimate_atmosphere(*host, *world, inventory);
+    const auto interior = CosmicShore::estimate_surface_water(*world, budget.diagnostics, heights);
+    EXPECT_FLOAT_EQ(interior.level, 0);
+    EXPECT_GT(interior.diagnostics["interior_storage_mass_fraction"].get<double>(), 0);
+    EXPECT_FALSE(CosmicShore::estimate_surface_water(*world, budget.diagnostics, {NAN}).valid);
+}
+
+TEST_F(PlanetClassificationEvidenceTest, WaterEstimationPreservesSuppliedLevelsAndAtmosphericPressure)
+{
+    Planet* world = make_planet(make_star());
+    world->user_added = true;
+    world->ensure_atmosphere()->from_json({{"surface_pressure", 5e5}});
+    for (float level : {0.0f, 0.42f, 1.0f})
+    {
+        world->has_water = level;
+        world->has_water_supplied = true;
+        EXPECT_FALSE(world->estimate_surface_water());
+        world->estimate_habitability();
+        EXPECT_FLOAT_EQ(world->has_water, level);
+        EXPECT_DOUBLE_EQ(world->get_surface_pressure(), 5e5);
+    }
+    ASSERT_TRUE(world->estimate_surface_water(true));
+    EXPECT_FALSE(world->has_water_supplied);
+    EXPECT_DOUBLE_EQ(world->get_surface_pressure(), 5e5);
+    EXPECT_TRUE(world->atm->pressure_supplied);
+}
+
+TEST_F(PlanetClassificationEvidenceTest, SurfaceWaterInputsAndCalibratedLevelsSurviveAllSaveForms)
+{
+    Planet* world = make_planet(make_star());
+    world->user_added = true;
+    world->apply_cosmic_shoreline();
+    ASSERT_TRUE(world->estimate_surface_water(false, {0.1, 0.2, 0.5, 0.8, 0.9}));
+    const float level = world->has_water;
+    EXPECT_TRUE(world->estimate_surface_water());
+    EXPECT_FLOAT_EQ(world->has_water, level);
+    const json saved = world->to_json();
+    for (const json& record : {saved, Serialization::expand_output_record(Serialization::output_record(saved))})
+    {
+        Serialization::SaveContext context;
+        const auto packed = Serialization::compact_record(record, context);
+        Planet restored;
+        ASSERT_TRUE(restored.from_json(Serialization::expand_record(packed, context.header)));
+        EXPECT_FALSE(restored.has_water_supplied);
+        EXPECT_FLOAT_EQ(restored.has_water, level);
+        EXPECT_EQ(restored.surface_water_model, world->surface_water_model);
+    }
+    Planet legacy;
+    legacy.from_json({{"has_water", 0}});
+    EXPECT_TRUE(legacy.has_water_supplied);
+    EXPECT_FLOAT_EQ(legacy.has_water, 0);
+    Planet approximate;
+    approximate.from_json({{"has_water", "0.42?"}});
+    EXPECT_TRUE(approximate.has_water_supplied);
+    EXPECT_FLOAT_EQ(approximate.has_water, 0.42f);
+    Planet missing;
+    missing.from_json({{"has_water", "?"}});
+    EXPECT_FALSE(missing.has_water_supplied);
+}
+
+TEST_F(PlanetClassificationEvidenceTest, SurfaceWaterNeverCreatesAnAtmosphereAndSupportsFrozenCoverage)
+{
+    Planet* world = make_planet(make_star(), "Cold", 2 * AU);
+    world->user_added = true;
+    ASSERT_EQ(world->atm, nullptr);
+    ASSERT_TRUE(world->estimate_surface_water());
+    EXPECT_EQ(world->atm, nullptr);
+    EXPECT_GT(world->has_water, 0);
+    EXPECT_TRUE(world->surface_water_model["coverage_includes_ice"].get<bool>());
+    world->type = gas_giant;
+    EXPECT_FALSE(world->estimate_surface_water(true));
+}
+
+TEST_F(PlanetClassificationEvidenceTest, GeneratedTerrainUsesTheBudgetWaterlineBeforeAssigningBiomes)
+{
+    Planet* world = make_planet(make_star());
+    world->user_added = true;
+    world->fictitious_map_height = 64;
+    world->rnd_seed = 173;
+    world->ring_status_known = true;
+    world->apply_cosmic_shoreline();
+    world->surf_map = new Map(world);
+    world->surf_map->generate_rocky_map(world);
+    wait_for_texture_tasks();
+    ASSERT_TRUE(world->surf_map->is_complete());
+    ASSERT_EQ(world->surface_water_model["terrain"], "equal_area_samples");
+    EXPECT_NEAR(world->surface_water_model["represented_depth_m"].get<double>(),
+        world->surface_water_model["equivalent_depth_m"].get<double>(), 1e-8);
+    WaterCoverage measured;
+    measured.refresh(world, 0);
+    ASSERT_TRUE(measured.editable());
+    EXPECT_NEAR(measured.percent(world->has_water) * 0.01,
+        world->surface_water_model["coverage_fraction"].get<double>(), 0.05);
+    const float level = world->has_water;
+    world->estimate_habitability();
+    EXPECT_FLOAT_EQ(world->has_water, level);
 }
 
 TEST_F(PlanetClassificationEvidenceTest, FictionalMoonsAreSparseForSmallInnerPlanets)

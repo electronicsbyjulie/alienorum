@@ -2561,7 +2561,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
         double BV = cel->BV_color;
         if (BV < 0.8) BV = 0.8;                 // most rocks aren't blue
         bool force_has_water = false;
-        if (!p->preserve_loaded_parameters && (cel->type == waterworld || cel->type == hycean))
+        if (!p->preserve_loaded_parameters && !p->has_water_supplied && (cel->type == waterworld || cel->type == hycean))
         {
             p->has_water = 1;
             force_has_water = true;
@@ -2572,6 +2572,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
         double pressure = p->get_surface_pressure();
 
         p->estimate_habitability();
+        const bool water_constrained = p->has_water_supplied || p->surface_water_model.is_object();
         pressure = p->get_surface_pressure();
         T_surf = p->estimate_surface_temperature();
         // Use the same pressure correction as water cloud generation.
@@ -2579,14 +2580,14 @@ void Map::generate_rocky_map(CelestialObject *cel)
             - (8.314 / 40660.0) * std::log(std::max(1.0, pressure) / 1.0e5);
         const double Tboil = inverse_boil > 0 ? std::min(647.096, 1.0 / inverse_boil) : 647.096;
 
-        if (!p->preserve_loaded_parameters && !force_has_water && pressure >= 5*oneatm && T_surf >= 400)
+        if (!p->preserve_loaded_parameters && !water_constrained && !force_has_water && pressure >= 5*oneatm && T_surf >= 400)
         {
             p->has_water = 0;
             want_overcast_sky = (p->cloud_map == nullptr);                                     // for a roasting Venus-like planet with a thick cloud layer.
             p->transparent_clouds = false;
             p->overcast = true;
         }
-        else if (!p->preserve_loaded_parameters && !force_has_water && pressure < 150)
+        else if (!p->preserve_loaded_parameters && !water_constrained && !force_has_water && pressure < 150)
         {
             p->has_water = 0;
         }
@@ -2654,6 +2655,42 @@ void Map::generate_rocky_map(CelestialObject *cel)
         double edge_dist, mottle_strength, ms, invms, mottle_noise, hue_noise;
         unsigned int x, y;
         int idx, province_idx, neighbor_province_idx, mottled_idx;
+        if (!p->preserve_loaded_parameters && !p->has_water_supplied && p->surface_water_model.is_object())
+        {
+            // Equal-area samples of this terrain fix the waterline before biome colors
+            // are allocated. Sampling consumes no random draws and uses the same height
+            // field as the main raster pass. Physical relief is stored in the water model.
+            std::vector<double> heights;
+            constexpr int rows = 64, columns = 128;
+            heights.reserve(rows * columns);
+            for (int row = 0; row < rows; ++row)
+            {
+                const double z = -1 + 2.0 * (row + 0.5) / rows;
+                const double ring = std::sqrt(1 - z * z);
+                for (int column = 0; column < columns; ++column)
+                {
+                    const double angle = 2 * _pi * (column + 0.5) / columns;
+                    double height;
+                    if (create_bump)
+                    {
+                        const double sx = ring * std::cos(angle), sy = ring * std::sin(angle);
+                        const double wx = sx * scale + (fBm(sx * warp_scale + 12.3, sy * warp_scale + 4.1, z * warp_scale + 9.8, 3, lacunarity, 0.5) - 0.5) * warp_strength;
+                        const double wy = sy * scale + (fBm(sx * warp_scale + 3.1, sy * warp_scale + 19.2, z * warp_scale + 2.4, 3, lacunarity, 0.5) - 0.5) * warp_strength;
+                        const double wz = z * scale + (fBm(sx * warp_scale + 8.5, sy * warp_scale + 7.7, z * warp_scale + 14.6, 3, lacunarity, 0.5) - 0.5) * warp_strength;
+                        const double roughness = fBm(sx * province_scale * 0.8, sy * province_scale * 0.8, z * province_scale * 0.8, 2, lacunarity, 0.5);
+                        height = fBm(wx, wy, wz, octaves, lacunarity, gain * (0.3 + 0.7 * roughness));
+                    }
+                    else
+                    {
+                        const unsigned long ix = std::min(image_width - 1, static_cast<unsigned long>((column + 0.5) * image_width / columns));
+                        const unsigned long iy = std::min(image_height - 1, static_cast<unsigned long>(std::acos(z) * image_height / _pi));
+                        height = inv_bump_scale * bump_data[iy * image_width + ix] + 0.5;
+                    }
+                    heights.push_back(std::clamp(height, 0.0, 1.0));
+                }
+            }
+            p->estimate_surface_water(false, heights);
+        }
         const LocalClimate climate = p->local_climate();
         // Water/atmosphere formation still uses terrestrial habitability, but
         // established vegetation follows its own thermal tolerance, without an HZ veto.
@@ -2854,7 +2891,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
                         blue_data[idx] = fmin(255, 32+128*height_value);
                     }
                     // Biome allocation based on height thresholds
-                    else if (height_value < p->has_water && T_local < Tboil)
+                    else if ((p->has_water >= 1 || height_value < p->has_water) && T_local < Tboil)
                     {   // Ocean
                         surface_materials[idx] = SurfaceMaterial::water;
                         sh = height_value*inv_h2o_level;

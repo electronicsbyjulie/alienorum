@@ -1,4 +1,5 @@
 #include "shore.h"
+#include "numeric.h"
 #include <algorithm>
 #include <cmath>
 
@@ -68,6 +69,8 @@ namespace
 bool AtmosphericInventory::from_json(const json& value)
 {
     if (!value.is_object()) return false;
+    json normalized = value;
+    normalize_uncertain_numbers(normalized);
     AtmosphericInventory parsed = *this;
     struct Field
     {
@@ -82,13 +85,15 @@ bool AtmosphericInventory::from_json(const json& value)
         {"nitrogen_mass_fraction", &AtmosphericInventory::nitrogen_mass_fraction, 1},
         {"water_mass_fraction", &AtmosphericInventory::water_mass_fraction, 1},
         {"weathering_efficiency", &AtmosphericInventory::weathering_efficiency, 1},
-        {"xuv_scale", &AtmosphericInventory::xuv_scale, INFINITY}
+        {"xuv_scale", &AtmosphericInventory::xuv_scale, INFINITY},
+        {"surface_water_share", &AtmosphericInventory::surface_water_share, 1},
+        {"basin_relief_m", &AtmosphericInventory::basin_relief_m, INFINITY}
     };
     for (const Field& field : fields)
     {
-        if (!value.contains(field.key)) continue;
-        if (!value[field.key].is_number()) return false;
-        const double number = value[field.key].get<double>();
+        if (!normalized.contains(field.key)) continue;
+        if (!normalized[field.key].is_number()) return false;
+        const double number = normalized[field.key].get<double>();
         if (!std::isfinite(number) || number < 0 || number > field.maximum) return false;
         parsed.*(field.member) = number;
     }
@@ -103,7 +108,8 @@ json AtmosphericInventory::to_json() const
     {
         {"age_gyr", age_gyr}, {"co2_mass_fraction", co2_mass_fraction},
         {"nitrogen_mass_fraction", nitrogen_mass_fraction}, {"water_mass_fraction", water_mass_fraction},
-        {"weathering_efficiency", weathering_efficiency}, {"xuv_scale", xuv_scale}
+        {"weathering_efficiency", weathering_efficiency}, {"xuv_scale", xuv_scale},
+        {"surface_water_share", surface_water_share}, {"basin_relief_m", basin_relief_m}
     };
 }
 
@@ -206,7 +212,8 @@ AtmosphericEstimate CosmicShore::estimate_atmosphere(Star& s, Planet& p, const A
     // ocean climate. This smooth climate proxy is independent of cached/rendered temperature,
     // procedural composition, and previous pressure estimates, so repeated calls are stable.
     const double temperate = transition((flux - 0.65) / 0.035) * (1 - steam);
-    const double wet = temperate * water_reservoir / (water_reservoir + 1e-6);
+    const double accessible_water = water_reservoir * inventory.surface_water_share;
+    const double wet = temperate * accessible_water / (accessible_water + 1e-6);
     const double carbon_air = std::exp(-3 * inventory.age_gyr * wet
         * inventory.weathering_efficiency * std::min(1.0, std::sqrt(planet_mass)));
     const double climate_k = std::max(2.7, 255 * std::pow(flux, 0.25) + 33 * temperate + 450 * steam);
@@ -274,5 +281,111 @@ AtmosphericEstimate CosmicShore::estimate_atmosphere(Star& s, Planet& p, const A
     ledger("N2", inventory.nitrogen_mass_fraction, heavy_retention, nitrogen);
     ledger("H2O", inventory.water_mass_fraction, water_retention, water);
     if (metallicity_used) result.diagnostics["metallicity_dex"] = s.metallicity;
+    return result;
+}
+
+SurfaceWaterEstimate CosmicShore::estimate_surface_water(const Planet& p, const json& budget,
+    const std::vector<double>& heights)
+{
+    SurfaceWaterEstimate result;
+    if (!uses_rocky_map(p.type) || p.type == waterworld || p.type == hycean
+        || !std::isfinite(calculate_escape_velocity(p)) || !budget.is_object()
+        || !budget.contains("inventory") || !budget.contains("reservoir_mass_fractions")) return result;
+    AtmosphericInventory inventory;
+    if (!inventory.from_json(budget["inventory"])) return result;
+    const auto& reservoirs = budget["reservoir_mass_fractions"];
+    if (!reservoirs.is_object() || !reservoirs.contains("H2O") || !reservoirs["H2O"].is_object()
+        || !reservoirs["H2O"].contains("surface_storage") || !reservoirs["H2O"]["surface_storage"].is_number()) return result;
+    const double condensed = reservoirs["H2O"]["surface_storage"].get<double>();
+    if (!std::isfinite(condensed) || condensed < 0 || condensed > inventory.water_mass_fraction) return result;
+    const double surface_fraction = condensed * inventory.surface_water_share;
+    const double depth = surface_fraction * (p.mass * 0.001)
+        / (4 * _pi * p.volumetric_mean_radius * p.volumetric_mean_radius * 1000);
+    const double gravity = G * p.mass / (p.volumetric_mean_radius * p.volumetric_mean_radius);
+    // Yield-limited relief scales approximately as 1/g. Actual tectonics and interior
+    // water cycling are unknown: https://arxiv.org/abs/1401.0720 and
+    // https://doi.org/10.1007/s11214-025-01264-5 . Rendering relief is deliberately
+    // separate from physical basin relief; otherwise its shallow bump maps flood too easily.
+    const double relief = std::min(0.05 * p.volumetric_mean_radius, inventory.basin_relief_m * 9.80665 / gravity);
+    if (!std::isfinite(depth) || depth < 0 || !std::isfinite(relief) || relief < 0) return result;
+    double mean = 0, deviation = 0;
+    for (double height : heights)
+    {
+        if (!std::isfinite(height) || height < 0 || height > 1) return result;
+        mean += height / heights.size();
+    }
+    for (double height : heights) deviation += std::pow(height - mean, 2) / heights.size();
+    deviation = std::sqrt(deviation);
+    double coverage = 0, level = 0, represented_depth = 0;
+    if (depth > 0)
+    {
+        if (relief == 0 || (!heights.empty() && deviation < 1e-12))
+        {
+            coverage = 1;
+            level = 1;
+            represented_depth = depth;
+        }
+        else if (!heights.empty())
+        {
+            const double target = depth * deviation / relief;
+            const auto range = std::minmax_element(heights.begin(), heights.end());
+            double low = *range.first, high = *range.second + target;
+            for (int iteration = 0; iteration < 64; ++iteration)
+            {
+                const double middle = low + (high - low) * 0.5;
+                double volume = 0;
+                for (double height : heights) volume += std::max(0.0, middle - height) / heights.size();
+                if (volume < target) low = middle;
+                else high = middle;
+            }
+            const double raw_level = low + (high - low) * 0.5;
+            level = std::clamp(raw_level, 0.0, 1.0);
+            for (double height : heights)
+            {
+                coverage += raw_level > height ? 1.0 / heights.size() : 0;
+                represented_depth += std::max(0.0, raw_level - height) * relief / deviation / heights.size();
+            }
+        }
+        else
+        {
+            // Gaussian hypsometry before terrain exists. E[max(z-X,0)] = z*Phi(z)+phi(z).
+            double low = -12, high = std::max(12.0, depth / relief + 1);
+            for (int iteration = 0; iteration < 80; ++iteration)
+            {
+                const double z = low + (high - low) * 0.5;
+                const double cdf = 0.5 * std::erfc(-z / std::sqrt(2.0));
+                const double density = std::exp(-0.5 * z * z) / std::sqrt(2 * _pi);
+                if (relief * (z * cdf + density) < depth) low = z;
+                else high = z;
+            }
+            const double z = low + (high - low) * 0.5;
+            coverage = 0.5 * std::erfc(-z / std::sqrt(2.0));
+            // Initial procedural height scale only; sampled terrain replaces this waterline.
+            level = std::clamp(0.5 + 0.08 * z, 1e-6, 1.0);
+            represented_depth = depth;
+        }
+    }
+    if (!std::isfinite(level) || !std::isfinite(coverage) || !std::isfinite(represented_depth)) return result;
+    result.valid = true;
+    result.level = static_cast<float>(level);
+    const json basis =
+    {
+        {"mass_g", p.mass}, {"radius_m", p.volumetric_mean_radius},
+        {"condensed_mass_fraction", condensed}, {"surface_water_share", inventory.surface_water_share},
+        {"basin_relief_m", inventory.basin_relief_m}
+    };
+    result.diagnostics =
+    {
+        {"model", "surface_water_v1"}, {"inventory", inventory.to_json()},
+        {"condensed_mass_fraction", condensed}, {"surface_mass_fraction", surface_fraction},
+        {"interior_storage_mass_fraction", condensed - surface_fraction},
+        {"equivalent_depth_m", depth}, {"represented_depth_m", represented_depth},
+        {"basin_relief_m", relief}, {"coverage_fraction", coverage}, {"level", result.level},
+        {"terrain", heights.empty() ? "gaussian_prior" : "equal_area_samples"},
+        {"terrain_samples", heights.size()}, {"coverage_includes_ice", true},
+        {"water_density_kg_m3", 1000},
+        {"basis", basis},
+        {"interpretation", "scenario_estimate_with_assumed_basin_relief_and_surface_partition;not_a_liquid_ocean_detection"}
+    };
     return result;
 }

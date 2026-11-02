@@ -17,6 +17,8 @@ namespace alienorum
         double water_mass_fraction = 2.3e-4;
         double weathering_efficiency = 1;
         double xuv_scale = 1;
+        double surface_water_share = 1;
+        double basin_relief_m = 2500; // RMS relief at Earth gravity; a scenario assumption.
 
         bool from_json(const json& value);
         json to_json() const;
@@ -27,6 +29,13 @@ namespace alienorum
         bool valid = false;
         double pressure = 0;
         double co2_moles = 0, nitrogen_moles = 0, water_moles = 0;
+        json diagnostics = nullptr;
+    };
+
+    struct SurfaceWaterEstimate
+    {
+        bool valid = false;
+        float level = 0;
         json diagnostics = nullptr;
     };
 
@@ -41,6 +50,9 @@ namespace alienorum
         static AtmosphericEstimate estimate_atmosphere(Star& s, Planet& p);
         static AtmosphericEstimate estimate_atmosphere(Star& s, Planet& p,
             const AtmosphericInventory& inventory);
+        // Heights are normalized terrain samples with equal surface-area weights.
+        static SurfaceWaterEstimate estimate_surface_water(const Planet& p, const json& budget,
+            const std::vector<double>& heights = {});
     };
 }
 

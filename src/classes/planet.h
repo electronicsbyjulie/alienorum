@@ -78,10 +78,13 @@ namespace alienorum
         double veg_min_temp = 278, veg_max_temp = 310;
         double plant_trunk_height = 0, plant_trunk_width = 0, plant_crown_size = 0, plant_crown_oblateness = 0;
         float has_water = 0;
+        bool has_water_supplied = false;
+        json surface_water_model = nullptr;
         bool raincheck = false;
 
         void setup_atm_ring_props();
         void apply_cosmic_shoreline();
+        bool estimate_surface_water(bool replace_supplied = false, const std::vector<double>& heights = {});
         bool estimate_habitability();
         void set_color_from_type(bool HZ);
         std::vector<std::unique_ptr<Moon>> generate_fictional_moons(std::mt19937_64& random);
