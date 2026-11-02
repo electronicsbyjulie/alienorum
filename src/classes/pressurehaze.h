@@ -19,6 +19,17 @@ namespace alienorum
 
         bool active() const { return extinction[1] > 0; }
 
+        void cap_light_luminance(double maximum = 140)
+        {
+            // Scale all display-space channels together to preserve the haze hue.
+            const double luminance = .2126 * light[0] + .7152 * light[1] + .0722 * light[2];
+            if (luminance > maximum && luminance > 0)
+            {
+                const double scale = std::max(0.0, maximum) / luminance;
+                for (double& channel : light) channel *= scale;
+            }
+        }
+
         static PressureHaze prepare(double pressure_pa, double temperature_k, double scattering_ratio,
             double particulates, double scale_height_m)
         {

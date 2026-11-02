@@ -997,6 +997,7 @@ static PressureHaze surface_pressure_haze(Planet* planet)
     {
         haze.light[channel] = 255 * illumination * tint[channel] * airlight[channel];
     }
+    haze.cap_light_luminance();
     return haze;
     #endif
 }
@@ -8659,14 +8660,20 @@ void draw_horizon()
                             return a.depth < b.depth;
                         });
 
+                        // Separate triangle fringes create long miter spikes at acute vertices.
+                        // Opaque mesh facets share edges; rasterize them without polygon AA fringes.
+                        ImDrawList* rock_draw_list = ImGui::GetBackgroundDrawList();
+                        const ImDrawListFlags rock_draw_flags = rock_draw_list->Flags;
+                        rock_draw_list->Flags &= ~ImDrawListFlags_AntiAliasedFill;
                         for (int fi = 0; fi < facet_count; fi++)
                         {
-                            ImGui::GetBackgroundDrawList()->AddTriangleFilled(
+                            rock_draw_list->AddTriangleFilled(
                                 facets_to_draw[fi].p0,
                                 facets_to_draw[fi].p1,
                                 facets_to_draw[fi].p2,
                                 facets_to_draw[fi].col);
                         }
+                        rock_draw_list->Flags = rock_draw_flags;
 
                         #if lavaworld_crust_fissures
                         if (show_terrain)

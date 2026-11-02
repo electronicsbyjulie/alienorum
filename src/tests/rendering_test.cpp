@@ -4172,6 +4172,22 @@ TEST_F(RenderingRegressionTest, NadirSurfaceCoversTheViewportOnLandAndWater)
     }
 }
 
+TEST(PressureHazeTest, AirlightLuminanceCapPreservesHueAndDimColors)
+{
+    PressureHaze haze;
+    haze.light = {255, 220, 150};
+    haze.cap_light_luminance();
+    EXPECT_NEAR(.2126 * haze.light[0] + .7152 * haze.light[1] + .0722 * haze.light[2], 140, 1e-9);
+    EXPECT_NEAR(haze.light[0] / haze.light[1], 255.0 / 220, 1e-9);
+    EXPECT_NEAR(haze.light[2] / haze.light[1], 150.0 / 220, 1e-9);
+    haze.light = {30, 20, 10};
+    haze.cap_light_luminance();
+    EXPECT_EQ(haze.light, (std::array<double, 3>{30, 20, 10}));
+    haze.light = {0, 0, 0};
+    haze.cap_light_luminance();
+    EXPECT_EQ(haze.light, (std::array<double, 3>{0, 0, 0}));
+}
+
 TEST(PressureHazeTest, DensityCompositionDistanceAndWavelengthControlVeiling)
 {
     const auto earth = PressureHaze::prepare(101325, 288, 1, 0, 8000);
