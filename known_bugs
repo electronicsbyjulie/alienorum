@@ -7,7 +7,7 @@ The star icon in sun clock mode doesn't always contrast with the planet texture 
 
 The star's rendered color has too much effect on the illumination shown in sun clock mode. Let's turn down the saturation to about one quarter the original value.
 
-* Ensure plants do not vanish merely because the crown goes behind the camera; the base or part of the trunk may still remain visible.
+[Fixed] Plant crowns and trunks are clipped independently. Visible trunk segments remain when the crown passes behind the camera, with finite near-plane clipping and matching CPU/GPU rendering.
 
 Companion stars brighter than magnitude -10 should appear in sun clock mode even if the current object orbits the main star.
 

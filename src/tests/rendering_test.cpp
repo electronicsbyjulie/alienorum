@@ -27,6 +27,7 @@
 #include "../classes/surfacenavigation.h"
 #include "../classes/surfaceoptions.h"
 #include "../classes/scenerydraw.h"
+#include "../classes/surfacescatter.h"
 #include "../classes/sceneryorder.h"
 #include "../classes/rockmeshcache.h"
 #include "../classes/waveboundsoptions.h"
@@ -3346,6 +3347,64 @@ TEST_F(RenderingRegressionTest, CrownAspectUsesIndividualSightlinesInsteadOfCame
                 }
             }
         }
+    }
+}
+
+TEST(PlantProjectionTest, TrunkSegmentsClipIndependentlyOfTheCrown)
+{
+    double base_y = -2, base_z = 3, top_y = 100, top_z = -20;
+    ASSERT_TRUE(scenery_clip_trunk(base_y, base_z, top_y, top_z));
+    EXPECT_DOUBLE_EQ(base_z, 3);
+    EXPECT_DOUBLE_EQ(top_z, .2);
+    EXPECT_NEAR(top_y, 100 + (20.2 / 23) * -102, 1e-12);
+    base_y = -100; base_z = -20; top_y = 2; top_z = 3;
+    ASSERT_TRUE(scenery_clip_trunk(base_y, base_z, top_y, top_z));
+    EXPECT_DOUBLE_EQ(base_z, .2);
+    EXPECT_DOUBLE_EQ(top_z, 3);
+    base_z = -1; top_z = -.5;
+    EXPECT_FALSE(scenery_clip_trunk(base_y, base_z, top_y, top_z));
+}
+
+TEST_F(RenderingRegressionTest, PlantTrunksRemainVisibleWhenCrownsAreBehindTheCamera)
+{
+    Planet* world = surface(true);
+    delete world->surf_map;
+    world->surf_map = new BlueBiomeTestMap(SurfaceMaterial::vegetation);
+    world->plant_trunk_height = 200;
+    world->plant_trunk_width = 2;
+    world->plant_crown_size = .2;
+    world->plant_crown_oblateness = .2;
+    const double spacing = sqrt(_pi * ROCK_MAX_DIST * ROCK_MAX_DIST / ROCK_COUNT);
+    const auto candidates = surface_scenery(earth_radius, 0, 0, 20, spacing, world->seqno);
+    ASSERT_FALSE(candidates.empty());
+    viewer_lat = candidates.front().latitude - 3 / earth_radius;
+    viewer_lon = candidates.front().longitude;
+    altitude = -.7;
+    std::vector<unsigned char> expected;
+    for (bool reference : {true, false})
+    {
+        scenery_gpu_reference = reference;
+        freeze_surface_time();
+        find_horizon();
+        draw_horizon();
+        EXPECT_GT(clipped_plant_trunks, 0u);
+        for (const auto& vertex : ImGui::GetBackgroundDrawList()->VtxBuffer)
+        {
+            EXPECT_TRUE(std::isfinite(vertex.pos.x));
+            EXPECT_TRUE(std::isfinite(vertex.pos.y));
+        }
+        const auto pixels = render();
+        if (reference) expected = pixels;
+        else EXPECT_LT(image_difference(pixels, expected), 100);
+        int trunk_pixels = 0;
+        for (size_t pixel = 0; pixel < pixels.size(); pixel += 4)
+        {
+            const bool ground = pixels[pixel] == 80 && pixels[pixel + 1] == 60 && pixels[pixel + 2] == 40;
+            trunk_pixels += !ground && pixels[pixel] > pixels[pixel + 1]
+                && pixels[pixel + 1] > pixels[pixel + 2];
+        }
+        EXPECT_GT(trunk_pixels, 0);
+        ImGui::NewFrame();
     }
 }
 
