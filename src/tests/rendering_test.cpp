@@ -72,6 +72,7 @@ struct CloudTestView
     double cloud_latitude = 0;
     double cloud_longitude = 0;
     double horizon_angle = -0.0001;
+    std::array<float, 3> haze_extinction{}, haze_light{};
 };
 
 class SceneryTestMap : public Map
@@ -500,6 +501,11 @@ class RenderingRegressionTest : public UniverseFixture
         input.world[2] = (view.shell - view.observer) * (view.shell + view.observer);
         input.world[3] = sin(view.horizon_angle);
         input.world[8] = view.opaque_ground ? 1 : 0;
+        for (int channel = 0; channel < 3; ++channel)
+        {
+            input.world[9 + channel] = view.haze_extinction[channel];
+            input.world[12 + channel] = view.haze_light[channel];
+        }
         input.light[0] = view.dark ? 0 : 1;
         input.light[1] = view.dark ? 0 : 0.6;
         input.light[2] = view.overcast ? 1 : 0;
@@ -4340,6 +4346,31 @@ TEST_F(RenderingRegressionTest, GpuPressureHazeBoundsGeometryAtScreenshotResolut
         }
     }
     if (benchmark) SDL_SetWindowSize(window, 192, 108);
+}
+
+TEST_F(RenderingRegressionTest, CloudPressureHazeUsesCloudDistanceAndInvalidatesCachedColor)
+{
+    CloudTestView view;
+    view.overcast = true;
+    const auto clear = clouds(255, 1.0, 1.0, view);
+    view.haze_extinction = {3, 4, 6};
+    view.haze_light = {.7f, .55f, .15f};
+    const auto distant = clouds(255, 1.0, 1.0, view);
+    view.observer = 1000.9;
+    const auto nearby = clouds(255, 1.0, 1.0, view);
+    const size_t center = (render_height / 2 * render_width + render_width / 2) * 4;
+    double distant_error = 0, nearby_error = 0;
+    for (int channel = 0; channel < 3; ++channel)
+    {
+        const double target = view.haze_light[channel] * 255;
+        distant_error += fabs(distant[center + channel] - target);
+        nearby_error += fabs(nearby[center + channel] - target);
+    }
+    EXPECT_LT(distant_error, nearby_error);
+    EXPECT_GT(image_difference(distant, clear), 1000);
+    view.haze_extinction = {};
+    view.observer = 1000;
+    EXPECT_EQ(image_difference(clouds(255, 1.0, 1.0, view), clear), 0);
 }
 
 TEST_F(RenderingRegressionTest, OvercastPressureHazeUsesYellowDeckInsteadOfSunsetRed)
