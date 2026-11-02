@@ -198,6 +198,10 @@ std::string alienorum::object_search_key(const std::string& text)
         if (std::isspace(ch)) continue;
         key += ch >= 'A' && ch <= 'Z' ? ch + ('a' - 'A') : ch;
     }
+    // Accept the host's common shorthand without conflating numbered planet suffixes.
+    if (key == "trappist") key = "trappist-1";
+    else if (key.size() > 8 && key.compare(0, 8, "trappist") == 0
+        && std::isdigit(static_cast<unsigned char>(key[8]))) key.insert(8, "-");
     // These catalog spellings share one namespace; Wolf and Woolley remain separate.
     if (key.size() > 6 && key.compare(0, 6, "gliese") == 0
         && std::isdigit(static_cast<unsigned char>(key[6]))) key.replace(0, 6, "gj");

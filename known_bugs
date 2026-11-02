@@ -1,5 +1,5 @@
 
-Searching trappist or trappist1 does not find TRAPPIST-1.
+[Fixed] Searching trappist or trappist1 finds TRAPPIST-1, and planet suffixes remain distinct.
 
 [Fixed in better-atmospheres branch] Pressure haze affects clouds, rocks, and plants. Clouds use their viewing distance, and scenery attenuation uses physical range independently of camera sorting depth.
 

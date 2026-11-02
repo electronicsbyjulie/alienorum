@@ -57,6 +57,21 @@ class ObjectSearchTest : public UniverseFixture
     }
 };
 
+TEST_F(ObjectSearchTest, TrappistShorthandResolvesHostAndPreservesPlanetSuffixes)
+{
+    auto* host = make_star("TRAPPIST-1");
+    auto* planet = make_planet(host, "TRAPPIST-1 b");
+    for (const char* query : {"trappist", "trappist1", "TRAPPIST-1"})
+    {
+        const auto result = search_objects(query);
+        ASSERT_EQ(result.matches.size(), 1u);
+        EXPECT_EQ(result.matches[0].address, host);
+    }
+    const auto result = search_objects("trappist1 b");
+    ASSERT_EQ(result.matches.size(), 1u);
+    EXPECT_EQ(result.matches[0].address, planet);
+}
+
 TEST_F(ObjectSearchTest, ExactNamesAndCatalogAliasesIgnoreCaseAndWhitespace)
 {
     Star* star = make_star("Tau Ceti");
