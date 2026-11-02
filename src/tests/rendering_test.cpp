@@ -4342,6 +4342,61 @@ TEST_F(RenderingRegressionTest, GpuPressureHazeBoundsGeometryAtScreenshotResolut
     if (benchmark) SDL_SetWindowSize(window, 192, 108);
 }
 
+TEST_F(RenderingRegressionTest, OvercastPressureHazeUsesYellowDeckInsteadOfSunsetRed)
+{
+    #if !PRESSURE_HAZE
+    GTEST_SKIP() << "Pressure haze is disabled.";
+    #endif
+    // Match the solar white balance established during catalog loading.
+    set(bv_correction, -.6244);
+    Planet* world = surface();
+    world->temperature = 737;
+    world->mass = .815 * earth_mass;
+    world->volumetric_mean_radius = .9499 * earth_radius;
+    world->BV_color = .81;
+    world->overcast = true;
+    auto* source = static_cast<Star*>(world->get_light_center());
+    source->BV_color = .65;
+    auto* air = world->ensure_atmosphere();
+    air->surface_pressure = 93e5;
+    auto* gas = air->ensure_composition();
+    gas->CO2_portion = .965;
+    gas->N2_portion = .035;
+    class YellowDeck : public SceneryTestMap
+    {
+        public:
+        YellowDeck()
+        {
+            for (unsigned long i = 0; i < allocated; ++i)
+            {
+                red_data[i] = 245;
+                green_data[i] = 220;
+                blue_data[i] = 130;
+            }
+            touch_gen();
+        }
+    };
+    world->cloud_map = new YellowDeck();
+    set(show_terrain, false);
+    set(whtbkgd, false);
+    set(sky_grad, std::map<int, RGB3>{});
+    set(sky_mag_shift, sky_mag_shift);
+    for (bool reference : {true, false})
+    {
+        horizon_ground_gpu_reference = reference;
+        freeze_surface_time();
+        find_horizon();
+        draw_sky_gradient();
+        draw_horizon();
+        const auto pixels = render();
+        const size_t sky = ((render_height - 8) * render_width + render_width / 2) * 4;
+        EXPECT_GT(pixels[sky], 150);
+        EXPECT_GT(pixels[sky + 1], pixels[sky] * .8);
+        EXPECT_LT(pixels[sky + 2], pixels[sky + 1] * .75);
+        ImGui::NewFrame();
+    }
+}
+
 TEST_F(RenderingRegressionTest, SkyGradientFollowsZoomAndViewingAltitude)
 {
     surface(true);

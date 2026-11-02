@@ -977,9 +977,26 @@ static PressureHaze surface_pressure_haze(Planet* planet)
     const double illumination = std::clamp(pow(std::max(0.0, luminous_flux) * 2.5e-11, 1.0 / 5.5)
         + .01 * std::max(0.0, starlight), 0.0, 1.0);
     const double tint[] = {star.red, star.green, star.blue};
-    // A diffuse, spectrally filtered airlight closure, not a full radiative-transfer solution.
+    std::array<double, 3> airlight;
+    for (int channel = 0; channel < 3; ++channel) airlight[channel] = .35 + .65 * low[channel];
+    if (planet->overcast)
+    {
+        // An opaque deck supplies diffuse illumination, not a grazing sunset beam.
+        // Use the same palette as cloud lighting so Venus retains its yellow sky.
+        airlight = {1, 1, 1};
+        if (planet->cloud_map && planet->cloud_map->is_complete())
+        {
+            const RGB3 deck = planet->cloud_map->color_at(viewer_lat, viewer_lon);
+            const double maximum = std::max({double(deck.r), double(deck.g), double(deck.b)});
+            airlight = maximum > 0 ? std::array<double, 3>{deck.r / maximum, deck.g / maximum, deck.b / maximum}
+                : std::array<double, 3>{0, 0, 0};
+        }
+    }
+    // A diffuse illumination closure, not a full radiative-transfer solution.
     for (int channel = 0; channel < 3; ++channel)
-        haze.light[channel] = 255 * illumination * tint[channel] * (.35 + .65 * low[channel]);
+    {
+        haze.light[channel] = 255 * illumination * tint[channel] * airlight[channel];
+    }
     return haze;
     #endif
 }
