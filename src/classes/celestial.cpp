@@ -17,6 +17,7 @@
 #include "objectsearch.h"
 #include "surfaceoptions.h"
 #include "shore.h"
+#include "cloudclimate.h"
 #include "lavafissures.h"
 #include "wdcolor.h"
 #include "../loaders.h"
@@ -2583,9 +2584,14 @@ void Map::generate_rocky_map(CelestialObject *cel)
         if (!p->preserve_loaded_parameters && !water_constrained && !force_has_water && pressure >= 5*oneatm && T_surf >= 400)
         {
             p->has_water = 0;
-            want_overcast_sky = (p->cloud_map == nullptr);                                     // for a roasting Venus-like planet with a thick cloud layer.
-            p->transparent_clouds = false;
-            p->overcast = true;
+            const CloudClimate clouds = CloudClimate::prepare(*p);
+            const CloudLayer equator = clouds.valid ? clouds.at(1, 0, 0) : CloudLayer();
+            want_overcast_sky = p->cloud_map == nullptr && equator.coverage >= 0.9 && equator.optical_depth >= 5;
+            if (want_overcast_sky)
+            {
+                p->transparent_clouds = false;
+                p->overcast = true;
+            }
         }
         else if (!p->preserve_loaded_parameters && !water_constrained && !force_has_water && pressure < 150)
         {
@@ -3594,6 +3600,8 @@ void alienorum::Map::generate_overcast_sky(CelestialObject *cel)
     double zonal, scale, shear, sweep_exp, warp_amt, polar_k, contrast, mottle_scale, mottle_amt;
     bool tidal_locked_to_star;
     RGB3 rgb, deep;
+    const CloudClimate cloud_climate = CloudClimate::prepare(*p);
+    const CloudLayer cloud_layer = cloud_climate.valid ? cloud_climate.at(1, 0, 0) : CloudLayer();
 
     std::this_thread::sleep_for(std::chrono::milliseconds((int)frand(13,29)));
     mtx.lock();
@@ -3615,6 +3623,7 @@ void alienorum::Map::generate_overcast_sky(CelestialObject *cel)
         std::cout << "Allocated " << allocated << " pixels for fictitious overcast sky map." << std::endl;
 
         rgb = RGB3( (unsigned char)cel->cel_frand(242, 249), (unsigned char)cel->cel_frand(234, 243), (unsigned char)cel->cel_frand(214, 228) );
+        if (cloud_layer.condensate != CloudCondensate::sulfuric_acid) rgb = RGB3(244, 246, 249);
 
         tidal_locked_to_star = p->orbit && p->orbit->center && p->orbit->center->type == star
             && (fabs((p->sidereal_rotational_period / p->orbit->period) - 1) < 0.01);
@@ -3624,6 +3633,7 @@ void alienorum::Map::generate_overcast_sky(CelestialObject *cel)
         deep = RGB3((unsigned char)(rgb.r * cel->cel_frand(0.78, 0.86)),
                     (unsigned char)(rgb.g * cel->cel_frand(0.66, 0.75)),
                     (unsigned char)(rgb.b * cel->cel_frand(0.44, 0.56)));
+        if (cloud_layer.condensate != CloudCondensate::sulfuric_acid) deep = RGB3(195, 199, 205);
 
         zonal = cel->cel_frand(5.0, 9.0);
         scale = cel->cel_frand(1.6, 2.6);
@@ -3637,6 +3647,8 @@ void alienorum::Map::generate_overcast_sky(CelestialObject *cel)
 
         mottle_scale = scale * cel->cel_frand(2.5, 4.5);
         mottle_amt = cel->cel_frand(0.04, 0.10);
+        zonal *= 0.6 + 0.4 * std::clamp(cloud_climate.rotation, 0.0, 2.0);
+        contrast *= 0.5 + 0.5 / (1 + cloud_layer.optical_depth / 20);
     }
     catch (...)
     {
@@ -3718,7 +3730,7 @@ void CelestialObject::generate_water_clouds()
     std::lock_guard<std::mutex> lock(mtx);
     const cel_obj_class cls = typeclass();
     if ((cls != class_planet && cls != class_moon) || !uses_rocky_map(type)
-        || type == lavaworld || cloud_map || !surf_map || !surf_map->is_complete()
+        || cloud_map || !surf_map || !surf_map->is_complete()
         || done || abort_load)
     {
         return;
@@ -3739,7 +3751,7 @@ void CelestialObject::generate_water_clouds()
     }
     catch (const std::exception& error)
     {
-        std::cerr << "Water cloud generation failed for " << name << ": " << error.what() << std::endl;
+        std::cerr << "Cloud generation failed for " << name << ": " << error.what() << std::endl;
     }
     generating_fic_texture = false;
 }
@@ -3758,62 +3770,13 @@ bool Map::generate_water_cloud_map(CelestialObject *cel)
     // under clouds and seeing the rain come and go on my screen, hanging out in the eye of a hurricane, and it's all
     // so fitting because the clouds and storms on my screen look exactly how the room feels.
     Planet *p = (Planet*)cel;
-    const double pressure = p->get_surface_pressure();
-    if (!(p->has_water > 0) || !std::isfinite(p->has_water)
-        || !std::isfinite(pressure) || pressure < 611.657)
-    {
-        return false;
-    }
-
-    const double surface_temp = p->estimate_surface_temperature();
-    if (!(surface_temp > 0) || !std::isfinite(surface_temp))
-    {
-        return false;
-    }
-
-    // Match the existing approximate pressure correction for water's boiling point.
-    // The critical temperature caps this approximation at high pressure.
-    const double inverse_boil = 1.0 / (water_freezing + 100.0)
-        - (8.314 / 40660.0) * std::log(pressure / 1.0e5);
-    const double boiling_temp = inverse_boil > 0 ? std::min(647.096, 1.0 / inverse_boil) : 647.096;
-    const LocalClimate climate = p->local_climate();
-    Map *surface = cel->surf_map;
-    const bool full_ocean = cel->type == waterworld || cel->type == hycean;
-    const bool sample_oceans = surface->has_bump_data() && p->m_bump_scale > 0;
-    bool liquid_ocean = false;
-
-    // Sample actual ocean elevations when available. Imported color maps without
-    // elevation data use the stored water amount and the same regional temperatures.
-    for (unsigned long row = 0; row < 32 && !liquid_ocean; ++row)
-    {
-        const unsigned long sy = row * surface->image_height / 32;
-        const double theta = sy * _pi / surface->image_height;
-        for (unsigned long col = 0; col < 64; ++col)
-        {
-            const unsigned long sx = col * surface->image_width / 64;
-            if (sample_oceans && !full_ocean)
-            {
-                const double height = surface->bump_data[sy * surface->image_width + sx]
-                    / p->m_bump_scale + 0.5;
-                if (!std::isfinite(height) || height >= p->has_water)
-                {
-                    continue;
-                }
-            }
-            const double phi = sx * 2.0 * _pi / surface->image_width;
-            const double local_temp = climate.temperature(sin(theta) * cos(phi), sin(theta) * sin(phi),
-                cos(theta), climate.sea_level_m);
-            if (local_temp >= water_freezing && local_temp < boiling_temp)
-            {
-                liquid_ocean = true;
-                break;
-            }
-        }
-    }
-    if (!liquid_ocean || !cel->fictitious_map_height)
-    {
-        return false;
-    }
+    // Legacy entry point also handles ice and non-water condensates. A liquid ocean
+    // and water's triple-point pressure are not prerequisites for atmospheric clouds.
+    const CloudClimate cloud_climate = CloudClimate::prepare(*p);
+    if (!cloud_climate.valid || !cel->fictitious_map_height) return false;
+    const CloudLayer reference = cloud_climate.at(1, 0, 0);
+    const double storm_activity = reference.convection * std::min(1.0, reference.optical_depth / 3)
+        * std::clamp(cloud_climate.rotation, 0.0, 1.0);
 
     generating_fic_texture = true;
     // Weather varies by real-world hour and planet name, independently of terrain.
@@ -3855,13 +3818,15 @@ bool Map::generate_water_cloud_map(CelestialObject *cel)
     std::vector<CloudStorm> storms;
     std::uniform_real_distribution<double> unit(0.0, 1.0);
     std::uniform_int_distribution<int> system_count(7, 10);
-    const int storm_count = system_count(cloud_rng);
+    const int storm_count = static_cast<int>(std::round(system_count(cloud_rng) * storm_activity));
+    const double system_size = std::clamp(1 / std::sqrt(cloud_climate.rotation + 0.15), 0.6, 2.5);
     const double rotation_sign = cel->sidereal_rotational_period < 0 ? -1.0 : 1.0;
     for (int i = 0; i < storm_count; ++i)
     {
         CloudStorm storm;
         storm.compact = (i % 4 == 0);
         storm.radius = storm.compact ? 0.08 + 0.05 * unit(cloud_rng) : 0.14 + 0.10 * unit(cloud_rng);
+        storm.radius *= system_size;
         storm.cos_radius = cos(storm.radius);
         storm.orientation = 2.0 * _pi * unit(cloud_rng);
         const double hemisphere = (i % 2 == 0) ? 1.0 : -1.0;
@@ -3940,6 +3905,9 @@ bool Map::generate_water_cloud_map(CelestialObject *cel)
             const double phi = x * inv_lon_scale;
             const double nx = ring_radius * cos(phi);
             const double ny = ring_radius * sin(phi);
+            const CloudLayer weather = cloud_climate.at(nx, ny, nz);
+            const double coverage_shift = (weather.coverage - 0.65) * 0.18;
+            const double optical_scale = std::clamp(weather.optical_depth / 6, 0.0, 4.0);
 
             double flow_x = nx;
             double flow_y = ny;
@@ -4023,9 +3991,9 @@ bool Map::generate_water_cloud_map(CelestialObject *cel)
             // around broad cloud patches and along the wound fronts.
             const double filament = fBm(wx * 9.0 + ox + 81.3, wy * 9.0 + oy + 24.5,
                 wz * 36.0 + oz + 67.9, wisp_octaves, 2.0, 0.5);
-            const double body = smooth(0.48, 0.57, broad + 0.22 * (detail - 0.5));
-            const double fringe = smooth(0.42, 0.50, broad) * smooth(0.49, 0.60, filament);
-            const double organized = storm_weight * smooth(0.12, 0.80,
+            const double body = smooth(0.48, 0.57, broad + coverage_shift + 0.22 * (detail - 0.5));
+            const double fringe = smooth(0.42, 0.50, broad + coverage_shift) * smooth(0.49, 0.60, filament);
+            const double organized = weather.convection * storm_weight * smooth(0.12, 0.80,
                 storm_shape + 0.30 * (detail - 0.5) + 0.16 * (filament - 0.5));
 
             // Thickness varies independently of the cloud footprint. Sample the same
@@ -4042,11 +4010,13 @@ bool Map::generate_water_cloud_map(CelestialObject *cel)
 
             // Convert dimensionless optical depth to opacity. Fractional coverage keeps
             // feathered edges soft even when the interior of a cloud becomes opaque.
-            const double body_opacity = body * (1.0 - exp(-body_depth));
-            const double wisp_opacity = 0.65 * fringe * (1.0 - exp(-wisp_depth));
-            const double storm_opacity = organized * (1.0 - exp(-storm_depth));
+            const double body_opacity = body * (1.0 - exp(-body_depth * optical_scale));
+            const double wisp_opacity = 0.65 * fringe * (1.0 - exp(-wisp_depth * optical_scale));
+            const double storm_opacity = organized * (1.0 - exp(-storm_depth * optical_scale));
             const double background_opacity = std::max(body_opacity, wisp_opacity) * (1.0 - 0.80 * storm_weight);
-            const double opacity = std::clamp(std::max(background_opacity, storm_opacity), 0.0, 1.0);
+            const double deck = smooth(0.80, 0.98, weather.coverage) * (1 - exp(-0.35 * weather.optical_depth))
+                * (0.85 + 0.15 * column);
+            const double opacity = std::clamp(std::max({background_opacity, storm_opacity, deck}), 0.0, 1.0);
             // Grayscale is premultiplied white: the existing map compositor also reads it as alpha.
             const unsigned char brightness = (unsigned char)(255.0 * opacity + 0.5);
             const unsigned long idx = y * image_width + x;

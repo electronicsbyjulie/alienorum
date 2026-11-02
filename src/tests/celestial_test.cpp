@@ -3,6 +3,7 @@
 #include <cstring>
 #include <fstream>
 #include <limits>
+#include <cstdlib>
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp>
 #include "../classes/celestial.h"
@@ -11,6 +12,7 @@
 #include "../classes/surfacebiomes.h"
 #include "../classes/surfacenavigation.h"
 #include "../classes/watercoverage.h"
+#include "../classes/cloudclimate.h"
 #include "universe_fixture.h"
 #include "../loaders.h"
 #include <functional>
@@ -1836,6 +1838,211 @@ TEST_F(ShoreNavigationTest, GeneratedCloudAttributionTracksProvenanceAcrossPngRe
     planet->home_world = false;
     EXPECT_FALSE(planet->has_eumetsat_clouds());
     std::filesystem::remove(path);
+}
+
+class CloudClimateTest : public UniverseFixture
+{
+    protected:
+    Planet* atmosphere(double temperature, double pressure, double water, double co2 = 0)
+    {
+        Planet* planet = make_planet(make_star(), "Cloud comparison");
+        planet->temperature = temperature;
+        planet->sidereal_rotational_period = oneday;
+        planet->fictitious_map_height = 64;
+        planet->has_water = 0;
+        auto* air = planet->ensure_atmosphere();
+        air->surface_pressure = pressure;
+        air->pressure_supplied = true;
+        auto* gas = air->ensure_composition();
+        gas->H2O_portion = water;
+        gas->CO2_portion = co2;
+        gas->N2_portion = std::max(0.0, 1 - water - co2);
+        return planet;
+    }
+
+    static double mean_opacity(Map& map)
+    {
+        double total = 0, weight = 0;
+        for (int row = 0; row < 32; ++row)
+        {
+            const double latitude = std::asin(-1 + 2.0 * (row + 0.5) / 32);
+            for (int column = 0; column < 64; ++column)
+            {
+                const auto color = map.color_at(latitude, -_pi + 2 * _pi * (column + 0.5) / 64);
+                total += color.r / 255.0;
+                weight += 1;
+                EXPECT_EQ(color.r, color.g);
+                EXPECT_EQ(color.g, color.b);
+            }
+        }
+        return total / weight;
+    }
+
+    void TearDown() override
+    {
+        wait_for_texture_tasks();
+        delete_the_universe();
+        UniverseFixture::TearDown();
+    }
+};
+
+TEST_F(CloudClimateTest, SaturationAndHydrostaticColumnsControlCloudsWithoutAlteringGasData)
+{
+    EXPECT_NEAR(CloudClimate::water_saturation(273.16), 611.657, 1e-9);
+    EXPECT_GT(CloudClimate::water_saturation(288), CloudClimate::water_saturation(273.16));
+    EXPECT_LT(CloudClimate::water_saturation(210), 2);
+    Planet* wet = atmosphere(288, oneatm, 0.012);
+    const json original = wet->atm->to_json();
+    const CloudClimate wet_clouds = CloudClimate::prepare(*wet);
+    EXPECT_TRUE(wet_clouds.valid);
+    EXPECT_FALSE(wet_clouds.humidity_assumed);
+    EXPECT_EQ(wet->atm->to_json(), original);
+    EXPECT_GT(wet_clouds.relative_humidity, 0.3);
+    Planet* dry = atmosphere(288, oneatm, 0);
+    dry->has_water = 1; // A stated zero vapor fraction stays dry, even above water.
+    EXPECT_FALSE(CloudClimate::prepare(*dry).valid);
+    Map clear(dry);
+    EXPECT_FALSE(clear.generate_water_cloud_map(dry));
+    Planet* tenuous = atmosphere(288, 1000, 0.012);
+    const auto thin = CloudClimate::prepare(*tenuous);
+    EXPECT_LT(thin.at(1, 0, 0).optical_depth, wet_clouds.at(1, 0, 0).optical_depth);
+    wet->mass *= 2;
+    EXPECT_LT(CloudClimate::prepare(*wet).at(1, 0, 0).optical_depth, wet_clouds.at(1, 0, 0).optical_depth);
+}
+
+TEST_F(CloudClimateTest, MarsHasThinIceCloudsBelowWaterTriplePointWithoutLiquidOceans)
+{
+    Planet* mars = atmosphere(210, 610, 1e-4, 0.95);
+    mars->mass = 0.1074 * earth_mass;
+    mars->volumetric_mean_radius = 0.532 * earth_radius;
+    mars->orbit->semimajor_axis = 1.524 * AU;
+    const auto profile = CloudClimate::prepare(*mars);
+    ASSERT_TRUE(profile.valid);
+    EXPECT_EQ(profile.at(1, 0, 0).condensate, CloudCondensate::water_ice);
+    EXPECT_LT(profile.at(1, 0, 0).optical_depth, 1);
+    Map clouds(mars);
+    ASSERT_TRUE(clouds.generate_water_cloud_map(mars));
+    const double opacity = mean_opacity(clouds);
+    EXPECT_GT(opacity, 0);
+    EXPECT_LT(opacity, 0.15);
+    Planet* earth = atmosphere(288, oneatm, 0.012);
+    Map earth_clouds(earth);
+    ASSERT_TRUE(earth_clouds.generate_water_cloud_map(earth));
+    EXPECT_GT(mean_opacity(earth_clouds), 3 * opacity);
+}
+
+TEST_F(CloudClimateTest, OceanHumidityAndRotationChangeCoverageAndOrganization)
+{
+    Planet* ocean = atmosphere(300, oneatm, 0.03);
+    ocean->type = waterworld;
+    ocean->has_water = 1;
+    const auto wet = CloudClimate::prepare(*ocean);
+    Planet* arid = atmosphere(300, oneatm, 0.0001);
+    const auto dry = CloudClimate::prepare(*arid);
+    EXPECT_GT(wet.at(1, 0, 0).coverage, dry.at(1, 0, 0).coverage);
+    EXPECT_GT(wet.at(1, 0, 0).optical_depth, dry.at(1, 0, 0).optical_depth);
+    ocean->sidereal_rotational_period = 10 * oneday;
+    EXPECT_LT(CloudClimate::prepare(*ocean).rotation, wet.rotation);
+    ocean->sidereal_rotational_period = ocean->orbit->period;
+    const auto locked = CloudClimate::prepare(*ocean);
+    ASSERT_TRUE(locked.climate.stellar_locked);
+    const auto& climate = locked.climate;
+    const auto day = locked.at(climate.sun_x, climate.sun_y, climate.sun_z);
+    const auto night = locked.at(-climate.sun_x, -climate.sun_y, -climate.sun_z);
+    EXPECT_GT(day.coverage, night.coverage);
+}
+
+TEST_F(CloudClimateTest, SulfurPrecursorCloudsAreDistinctFromPureCarbonDioxide)
+{
+    Planet* venus = atmosphere(737, 92e5, 3e-5, 0.965);
+    venus->orbit->semimajor_axis = 0.723 * AU;
+    venus->mass = 0.815 * earth_mass;
+    venus->volumetric_mean_radius = 0.9499 * earth_radius;
+    venus->atm->comp->SO2_portion = 150e-6;
+    const auto sulfur = CloudClimate::prepare(*venus);
+    ASSERT_TRUE(sulfur.valid);
+    EXPECT_EQ(sulfur.at(1, 0, 0).condensate, CloudCondensate::sulfuric_acid);
+    EXPECT_GT(sulfur.at(1, 0, 0).coverage, 0.95);
+    EXPECT_GT(sulfur.at(1, 0, 0).optical_depth, 5);
+    venus->atm->comp->SO2_portion = 0;
+    venus->atm->comp->H2O_portion = 0;
+    const auto bare = CloudClimate::prepare(*venus);
+    EXPECT_NE(bare.at(1, 0, 0).condensate, CloudCondensate::sulfuric_acid);
+    EXPECT_LT(bare.at(1, 0, 0).optical_depth, sulfur.at(1, 0, 0).optical_depth);
+}
+
+TEST_F(CloudClimateTest, ColdMethaneAndAmmoniaMixturesCanFormCloudsWithoutSurfaceWater)
+{
+    Planet* titan = atmosphere(94, 1.47e5, 0);
+    titan->mass = 1.345e26;
+    titan->volumetric_mean_radius = 2.575e6;
+    titan->orbit->semimajor_axis = 9.5 * AU;
+    titan->atm->comp->CH4_portion = 0.05;
+    titan->atm->comp->N2_portion = 0.95;
+    auto clouds = CloudClimate::prepare(*titan);
+    EXPECT_TRUE(clouds.valid);
+    EXPECT_EQ(clouds.at(1, 0, 0).condensate, CloudCondensate::methane);
+    titan->temperature = 190;
+    titan->atm->comp->CH4_portion = 0;
+    titan->atm->comp->NH3_portion = 0.02;
+    clouds = CloudClimate::prepare(*titan);
+    EXPECT_TRUE(clouds.valid);
+    EXPECT_EQ(clouds.at(1, 0, 0).condensate, CloudCondensate::ammonia);
+}
+
+TEST_F(CloudClimateTest, MissingHumidityUsesSurfaceReservoirButVacuumStaysClear)
+{
+    Planet* world = atmosphere(288, oneatm, 0);
+    delete world->atm->comp;
+    world->atm->comp = nullptr;
+    world->has_water = 1;
+    auto clouds = CloudClimate::prepare(*world);
+    EXPECT_TRUE(clouds.valid);
+    EXPECT_TRUE(clouds.humidity_assumed);
+    EXPECT_EQ(world->atm->comp, nullptr);
+    world->atm->surface_pressure = 0;
+    EXPECT_FALSE(CloudClimate::prepare(*world).valid);
+    world->atm->surface_pressure = NAN;
+    EXPECT_FALSE(CloudClimate::prepare(*world).valid);
+}
+
+TEST_F(CloudClimateTest, RepresentativeTexturesSpanWispsStormsAndOpaqueDecks)
+{
+    Planet* earth = atmosphere(288, oneatm, 0.012);
+    earth->has_water = 0.71;
+    Planet* mars = atmosphere(210, 610, 1e-4, 0.95);
+    mars->mass = 0.1074 * earth_mass;
+    mars->volumetric_mean_radius = 0.532 * earth_radius;
+    mars->orbit->semimajor_axis = 1.524 * AU;
+    Planet* ocean = atmosphere(300, oneatm, 0.03);
+    ocean->has_water = 1;
+    ocean->type = waterworld;
+    Planet* venus = atmosphere(737, 92e5, 3e-5, 0.965);
+    venus->orbit->semimajor_axis = .723 * AU;
+    venus->mass = .815 * earth_mass;
+    venus->volumetric_mean_radius = .9499 * earth_radius;
+    venus->atm->comp->SO2_portion = 150e-6;
+    Planet* arid = atmosphere(300, oneatm, 0.0001);
+    std::array<Planet*, 5> worlds = {earth, mars, ocean, venus, arid};
+    std::array<const char*, 5> labels = {"earth", "mars", "ocean", "venus", "arid"};
+    std::array<double, 5> opacity{};
+    for (size_t i = 0; i < worlds.size(); ++i)
+    {
+        Map map(worlds[i]);
+        ASSERT_TRUE(map.generate_water_cloud_map(worlds[i])) << labels[i];
+        opacity[i] = mean_opacity(map);
+        RecordProperty(std::string(labels[i]) + "_mean_opacity", std::to_string(opacity[i]));
+        if (const char* folder = std::getenv("ALIENORUM_CLOUD_PREVIEW_DIR"))
+        {
+            std::filesystem::create_directories(folder);
+            ASSERT_TRUE(map.save_to_png((std::filesystem::path(folder) / (std::string(labels[i]) + ".png")).string()));
+        }
+    }
+    EXPECT_GT(opacity[0], 0.05);
+    EXPECT_LT(opacity[0], 0.8);
+    EXPECT_LT(opacity[1], opacity[0] / 3);
+    EXPECT_GT(opacity[2], 3 * opacity[4]);
+    EXPECT_GT(opacity[3], 0.7);
 }
 
 TEST_F(ShoreNavigationTest, StellarTexturesIgnoreViewChangesDuringGeneration)
