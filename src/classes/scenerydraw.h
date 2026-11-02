@@ -2,6 +2,7 @@
 #define ALIENORUM_SCENERY_DRAW_H
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -32,6 +33,24 @@ namespace alienorum
             base_z = near_plane;
         }
         return true;
+    }
+
+    struct SceneryShadowStats
+    {
+        size_t lights = 0, triangles = 0;
+    };
+    inline SceneryShadowStats scenery_shadow_stats;
+
+    inline std::array<double, 3> scenery_shadow_fraction(double flux,
+        const std::array<double, 3>& color, const std::array<double, 3>& total)
+    {
+        std::array<double, 3> fraction{};
+        for (int channel = 0; channel < 3; ++channel)
+        {
+            if (total[channel] > 0 && std::isfinite(total[channel]))
+                fraction[channel] = std::clamp(flux * color[channel] / total[channel], 0.0, 1.0);
+        }
+        return fraction;
     }
 
     inline double scenery_crown_aspect(double horizontal_distance, double relative_height, double oblateness)

@@ -551,6 +551,105 @@ class RenderingRegressionTest : public UniverseFixture
     }
 };
 
+TEST(SceneryLightingTest, BlockedLightTracksFluxAndConservesEachColorChannel)
+{
+    const auto white = scenery_shadow_fraction(1, {1, 1, 1}, {4, 4, 4});
+    for (double channel : white) EXPECT_DOUBLE_EQ(channel, .25);
+    const auto warm = scenery_shadow_fraction(1, {2, 1, .5}, {5, 4, 3.5});
+    const auto cool = scenery_shadow_fraction(3, {1, 1, 1}, {5, 4, 3.5});
+    EXPECT_GT(warm[0], warm[1]);
+    EXPECT_GT(warm[1], warm[2]);
+    for (int channel = 0; channel < 3; ++channel) EXPECT_NEAR(warm[channel] + cool[channel], 1, 1e-12);
+    EXPECT_EQ(scenery_shadow_fraction(0, {1, 1, 1}, {0, 0, 0}), (std::array<double, 3>{0, 0, 0}));
+}
+
+TEST_F(RenderingRegressionTest, SecondarySceneryShadowsFollowBrightnessColorAndDirection)
+{
+    auto* world = surface();
+    delete world->surf_map;
+    world->surf_map = new BlueBiomeTestMap(SurfaceMaterial::ground);
+    world->has_water = 0;
+    const double spacing = sqrt(_pi * ROCK_MAX_DIST * ROCK_MAX_DIST / ROCK_COUNT);
+    const auto candidates = surface_scenery(earth_radius, 0, 0, 40, spacing, world->seqno);
+    ASSERT_FALSE(candidates.empty());
+    const auto boulder = std::max_element(candidates.begin(), candidates.end(), [](const auto& a, const auto& b)
+    {
+        return scenery_size(a.seed, ROCK_MIN_SIZE, ROCK_MAX_SIZE) < scenery_size(b.seed, ROCK_MIN_SIZE, ROCK_MAX_SIZE);
+    });
+    set(viewer_lat, boulder->latitude - 5 / earth_radius);
+    set(viewer_lon, boulder->longitude);
+    set(zoom, 2.0);
+    set(altitude, -atan2(viewer_eye_height, 5));
+    auto* primary = world->get_light_center();
+    world->cenobj = primary;
+    set(mycenobj, primary);
+    primary->location.local_position = primary->tmprel = Point(0, -AU, 0);
+    auto* moon = new Moon;
+    strcpy(moon->name, "Shadow moon");
+    moon->orbit = new Orbit;
+    moon->orbit->center = world;
+    moon->cenobj = primary;
+    append_cel(moon);
+    auto* planet = make_planet(static_cast<Star*>(primary), "Shadow planet");
+    surface_magnitudes.assign(ncelobjs, 999);
+    vmag_cache = surface_magnitudes.data();
+    int capture_index = 0;
+    const auto capture = [&]()
+    {
+        freeze_surface_time();
+        find_horizon();
+        draw_horizon();
+        auto pixels = render();
+        if (const char* folder = std::getenv("ALIENORUM_SHADOW_PREVIEW_DIR"))
+        {
+            std::filesystem::create_directories(folder);
+            SDL_Surface* image = SDL_CreateRGBSurfaceWithFormatFrom(pixels.data(), render_width,
+                render_height, 32, render_width * 4, SDL_PIXELFORMAT_RGBA32);
+            if (image)
+            {
+                const auto path = std::filesystem::path(folder) / (std::to_string(capture_index++) + ".png");
+                EXPECT_EQ(IMG_SavePNG(image, path.c_str()), 0);
+                SDL_FreeSurface(image);
+            }
+        }
+        ImGui::NewFrame();
+        return pixels;
+    };
+    const auto clear = capture();
+    const auto darkness = [&](const auto& image)
+    {
+        double sum = 0;
+        for (size_t pixel = 0; pixel < image.size(); pixel += 4)
+            for (int channel = 0; channel < 3; ++channel) sum += int(clear[pixel + channel]) - int(image[pixel + channel]);
+        return sum;
+    };
+    for (CelestialObject* source : {cels[0], static_cast<CelestialObject*>(moon), static_cast<CelestialObject*>(planet)})
+    {
+        source->location.local_position = source->tmprel = Point(AU, .2 * AU, .2 * AU);
+        EXPECT_GT(source->Decl_as_radians(here), .02);
+        source->BV_color = 2;
+        vmag_cache[source->seqno] = -26;
+        const auto warm = capture();
+        EXPECT_GT(scenery_shadow_stats.lights, 0u);
+        EXPECT_GT(scenery_shadow_stats.triangles, 0u);
+        EXPECT_GT(darkness(warm), 100);
+        source->BV_color = -.3;
+        const auto cool = capture();
+        EXPECT_GT(image_difference(warm, cool), 0);
+        vmag_cache[source->seqno] = -20;
+        EXPECT_LT(darkness(capture()), darkness(cool));
+        vmag_cache[source->seqno] = -26;
+        source->location.local_position = source->tmprel = Point(-AU, .2 * AU, .2 * AU);
+        EXPECT_GT(image_difference(capture(), cool), 0);
+        source->location.local_position = source->tmprel = Point(0, -AU, 0);
+        EXPECT_EQ(capture(), clear);
+        vmag_cache[source->seqno] = 999;
+    }
+    GLboolean color_mask[4];
+    glGetBooleanv(GL_COLOR_WRITEMASK, color_mask);
+    for (GLboolean enabled : color_mask) EXPECT_EQ(enabled, GL_TRUE);
+}
+
 TEST_F(RenderingRegressionTest, SunclockIncludesBrightCompanionsWithoutDuplicatingTheHost)
 {
     auto* world = surface();

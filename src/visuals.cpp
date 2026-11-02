@@ -5358,6 +5358,55 @@ static Color water_light_color(CelestialObject* object)
     return color;
 }
 
+struct SceneryShadowLight
+{
+    double elevation, azimuth, flux;
+    std::array<double, 3> color;
+};
+
+static std::vector<SceneryShadowLight> scenery_shadow_lights(CelestialObject* world, CelestialObject* primary)
+{
+    std::vector<SceneryShadowLight> lights;
+    const auto append = [&](CelestialObject* source, double magnitude)
+    {
+        if (!source || source == world || source->deleted || !std::isfinite(magnitude)) return;
+        const double elevation = source->Decl_as_radians(here);
+        if (!(elevation > .02)) return;
+        const double flux = pow(magnbase, -magnitude) * (1 - eclipse_obscuration(source));
+        if (!(flux > 0) || !std::isfinite(flux)) return;
+        const Point horizontal = rotate3D(to_viewer_plane(source->tmprel), center, yaxis, -azimuth_correction);
+        Color color = water_light_color(source);
+        const double luminance = color.luminance();
+        if (!(luminance > 0)) return;
+        lights.push_back({elevation, atan2(horizontal.x, horizontal.z), flux,
+            {color.red / luminance, color.green / luminance, color.blue / luminance}});
+    };
+    if (primary) append(primary, primary->viewer_magnitude(here));
+    for (int index : frame_bright_candidates())
+    {
+        CelestialObject* source = cels[index];
+        if (!source || source == primary || source == world || source->deleted || !vmag_cache) continue;
+        const auto cls = source->typeclass();
+        if (cls != class_star && cls != class_planet && cls != class_moon) continue;
+        if (vmag_cache[index] < -1.5) append(source, vmag_cache[index]);
+    }
+    std::stable_sort(lights.begin(), lights.end(), [](const auto& a, const auto& b) { return a.flux > b.flux; });
+    if (lights.size() > 8) lights.resize(8);
+    return lights;
+}
+
+static void begin_scenery_shadow_blend(const ImDrawList*, const ImDrawCmd*)
+{
+    // RGB stores blocked light; multiply the terrain by its remaining light.
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_FALSE);
+    glBlendFunc(GL_ZERO, GL_ONE_MINUS_SRC_COLOR);
+}
+
+static void end_scenery_shadow_blend(const ImDrawList*, const ImDrawCmd*)
+{
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+}
+
 #if planetary_rain
 static CloudRainCover overhead_rain_cover;
 double norm_cloud, min_rain_intensity = 0.0, max_rain_intensity = 0;
@@ -5662,6 +5711,7 @@ void draw_local_rings()
 
 void draw_horizon()
 {
+    scenery_shadow_stats = {};
     if (performance_enabled(36)) surface_prefetch.clear();
     local_surface_tile_active = false;
     scenery_projection_hits = 0;
@@ -8186,113 +8236,152 @@ void draw_horizon()
                     }
                 }
 
-                int shadow_base_alpha = is_moon ? ROCK_SHADOW_ALPHA_MOON : (is_mars ? ROCK_SHADOW_ALPHA_MARS : (is_venus ? ROCK_SHADOW_ALPHA_VENUS : (is_lava ? 70 : ROCK_SHADOW_ALPHA_DEF)));
-                int shadow_alpha = (int)(fmin(1.0, fmax(0.0, sun_elev * 2.5)) * is_day
-                    * shadow_base_alpha * (1 - haze.sky_opacity));
-                bool has_sun_shadow = (shadow_alpha >= 10 && sun_elev > 0.02 && !dittrsa);
-
-                if (has_sun_shadow)
+                const int shadow_base_alpha = is_moon ? ROCK_SHADOW_ALPHA_MOON : (is_mars ? ROCK_SHADOW_ALPHA_MARS : (is_venus ? ROCK_SHADOW_ALPHA_VENUS : (is_lava ? 70 : ROCK_SHADOW_ALPHA_DEF)));
+                const auto shadow_sources = scenery_shadow_lights(cel, sun_obj);
+                scenery_shadow_stats.lights = shadow_sources.size();
+                std::array<double, 3> total_light{};
+                double total_flux = 0;
+                for (const auto& source : shadow_sources)
                 {
-                    double cos_alt = surface_cos_altitude();
-                    double sin_alt = surface_sin_altitude();
-                    double cos_az = cos(azimuth);
-                    double sin_az = sin(azimuth);
-
-                    for (int ri = 0; ri < num_rocks; ri++)
+                    const double flux = source.flux * sin(source.elevation);
+                    total_flux += flux;
+                    for (int channel = 0; channel < 3; ++channel) total_light[channel] += flux * source.color[channel];
+                }
+                // A small diffuse component softens shadows without inventing a second direction.
+                for (double& channel : total_light) channel += .04 * total_flux;
+                if (!dittrsa && !shadow_sources.empty())
+                {
+                    ImDrawList* shadow_draw = ImGui::GetBackgroundDrawList();
+                    shadow_draw->AddCallback(begin_scenery_shadow_blend, nullptr);
+                    for (const auto& shadow_source : shadow_sources)
                     {
-                        const RockInstance& rk = rocks[ri];
-                        const bool is_vegetation = rk.vegetation;
-                        const ImU32 shad_col = rgba_apply_redlight(IM_COL32(0, 0, 0,
-                            static_cast<int>(shadow_alpha * rk.opacity * haze.transmission(hypot(rk.ground_dist, h_eye), 1))));
-                        if (rk.width < 3.0 || !rk.base_valid)
+                        auto blocked = scenery_shadow_fraction(shadow_source.flux * sin(shadow_source.elevation),
+                            shadow_source.color, total_light);
+                        if (redlight_mode)
                         {
-                            continue;
+                            const double attenuation = .2126 * blocked[0] + .7152 * blocked[1] + .0722 * blocked[2];
+                            blocked = {attenuation, attenuation, attenuation};
                         }
+                        const double visibility = std::clamp(pow(total_flux * 2.5e-11, 1.0 / 5.5), 0.0, 1.0);
+                        const double shadow_strength = shadow_base_alpha / 255.0 * visibility
+                            * std::min(1.0, shadow_source.elevation * 2.5) * (1 - haze.sky_opacity);
+                        double cos_alt = surface_cos_altitude();
+                        double sin_alt = surface_sin_altitude();
+                        double cos_az = cos(azimuth);
+                        double sin_az = sin(azimuth);
 
-                        double rx = rk.screen_x;
-                        double ry = rk.screen_y;
-                        double rw = rk.width;
-
-                        double actual_rock_h = rk.size * rk.aspect;
-                        double L_shadow = actual_rock_h / fmax(0.12, tan(fmax(0.06, sun_elev)));
-                        if (!is_vegetation)
+                        for (int ri = 0; ri < num_rocks; ri++)
                         {
-                            L_shadow = fmin(rk.ground_dist * 1.5, L_shadow);
-                        }
-                        L_shadow = fmin(actual_rock_h * ROCK_SHADOW_MAX_MULT * 2.0, L_shadow);
-
-                        double u_rock = rk.ground_dist * sin(rk.theta);
-                        double v_rock = rk.ground_dist * cos(rk.theta);
-
-                        double u_tip = u_rock - L_shadow * sin(sun_az_world);
-                        double v_tip = v_rock - L_shadow * cos(sun_az_world);
-
-                        double x_base_cam = u_rock * cos_az - v_rock * sin_az;
-                        double z_base_horiz = u_rock * sin_az + v_rock * cos_az;
-
-                        double curv_drop_rock = (rk.ground_dist * rk.ground_dist) / (2.0 * R_planet);
-                        double y_base_world = -h_eye - curv_drop_rock;
-                        if (s_horizon > 0.0 && horizon_lift_rad > 0.0)
-                        {
-                            y_base_world += fmin(1.0, rk.ground_dist / s_horizon) * horizon_lift_rad * rk.ground_dist;
-                        }
-
-                        double z_base_cam = y_base_world * sin_alt + z_base_horiz * cos_alt;
-                        double y_base_cam = y_base_world * cos_alt - z_base_horiz * sin_alt;
-
-                        double x_tip_cam = u_tip * cos_az - v_tip * sin_az;
-                        double z_tip_horiz = u_tip * sin_az + v_tip * cos_az;
-
-                        double dist_tip = sqrt(u_tip * u_tip + v_tip * v_tip);
-                        double curv_drop_tip = (dist_tip * dist_tip) / (2.0 * R_planet);
-                        double y_tip_world = -h_eye - curv_drop_tip;
-                        if (s_horizon > 0.0 && horizon_lift_rad > 0.0)
-                        {
-                            y_tip_world += fmin(1.0, dist_tip / s_horizon) * horizon_lift_rad * dist_tip;
-                        }
-
-                        double z_tip_cam = y_tip_world * sin_alt + z_tip_horiz * cos_alt;
-                        double y_tip_cam = y_tip_world * cos_alt - z_tip_horiz * sin_alt;
-
-                        double tip_x = 0.0;
-                        double tip_y = 0.0;
-                        bool tip_valid = false;
-
-                        if (z_tip_cam >= 0.2)
-                        {
-                            tip_x = (x_tip_cam / z_tip_cam) * dispcx * zoom + dispcx;
-                            tip_y = (-y_tip_cam / z_tip_cam) * dispcx * zoom + dispcy;
-                            tip_valid = true;
-                        }
-                        else if (z_base_cam > 0.2)
-                        {
-                            double t = (z_base_cam - 0.2) / (z_base_cam - z_tip_cam);
-                            if (t > 0.0 && t <= 1.0)
+                            const RockInstance& rk = rocks[ri];
+                            const bool is_vegetation = rk.vegetation;
+                            const double opacity = shadow_strength * rk.opacity;
+                            const double haze_distance = hypot(rk.ground_dist, h_eye);
+                            const ImU32 shad_col = IM_COL32(255 * blocked[0] * opacity * haze.transmission(haze_distance, 0),
+                                255 * blocked[1] * opacity * haze.transmission(haze_distance, 1),
+                                255 * blocked[2] * opacity * haze.transmission(haze_distance, 2), 255);
+                            if (rk.width < 3.0 || !rk.base_valid)
                             {
-                                double x_clip = x_base_cam + t * (x_tip_cam - x_base_cam);
-                                double y_clip = y_base_cam + t * (y_tip_cam - y_base_cam);
-                                tip_x = (x_clip / 0.2) * dispcx * zoom + dispcx;
-                                tip_y = (-y_clip / 0.2) * dispcx * zoom + dispcy;
+                                continue;
+                            }
+
+                            double rx = rk.screen_x;
+                            double ry = rk.screen_y;
+                            double rw = rk.width;
+
+                            double actual_rock_h = rk.size * rk.aspect;
+                            double L_shadow = actual_rock_h / fmax(0.12, tan(fmax(0.06, shadow_source.elevation)));
+                            if (!is_vegetation)
+                            {
+                                L_shadow = fmin(rk.ground_dist * 1.5, L_shadow);
+                            }
+                            L_shadow = fmin(actual_rock_h * ROCK_SHADOW_MAX_MULT * 2.0, L_shadow);
+
+                            double u_rock = rk.ground_dist * sin(rk.theta);
+                            double v_rock = rk.ground_dist * cos(rk.theta);
+
+                            double u_tip = u_rock - L_shadow * sin(shadow_source.azimuth);
+                            double v_tip = v_rock - L_shadow * cos(shadow_source.azimuth);
+
+                            double x_base_cam = u_rock * cos_az - v_rock * sin_az;
+                            double z_base_horiz = u_rock * sin_az + v_rock * cos_az;
+
+                            double curv_drop_rock = (rk.ground_dist * rk.ground_dist) / (2.0 * R_planet);
+                            double y_base_world = -h_eye - curv_drop_rock;
+                            if (s_horizon > 0.0 && horizon_lift_rad > 0.0)
+                            {
+                                y_base_world += fmin(1.0, rk.ground_dist / s_horizon) * horizon_lift_rad * rk.ground_dist;
+                            }
+
+                            double z_base_cam = y_base_world * sin_alt + z_base_horiz * cos_alt;
+                            double y_base_cam = y_base_world * cos_alt - z_base_horiz * sin_alt;
+
+                            double x_tip_cam = u_tip * cos_az - v_tip * sin_az;
+                            double z_tip_horiz = u_tip * sin_az + v_tip * cos_az;
+
+                            double dist_tip = sqrt(u_tip * u_tip + v_tip * v_tip);
+                            double curv_drop_tip = (dist_tip * dist_tip) / (2.0 * R_planet);
+                            double y_tip_world = -h_eye - curv_drop_tip;
+                            if (s_horizon > 0.0 && horizon_lift_rad > 0.0)
+                            {
+                                y_tip_world += fmin(1.0, dist_tip / s_horizon) * horizon_lift_rad * dist_tip;
+                            }
+
+                            double z_tip_cam = y_tip_world * sin_alt + z_tip_horiz * cos_alt;
+                            double y_tip_cam = y_tip_world * cos_alt - z_tip_horiz * sin_alt;
+
+                            double tip_x = 0.0;
+                            double tip_y = 0.0;
+                            bool tip_valid = false;
+
+                            if (z_tip_cam >= 0.2)
+                            {
+                                tip_x = (x_tip_cam / z_tip_cam) * dispcx * zoom + dispcx;
+                                tip_y = (-y_tip_cam / z_tip_cam) * dispcx * zoom + dispcy;
                                 tip_valid = true;
                             }
-                        }
-
-                        if (tip_valid)
-                        {
-                            if (rk.lift_px > 0.0 && rk.ground_dist > 0.0)
+                            else if (z_base_cam > 0.2)
                             {
-                                tip_y -= rk.lift_px * (dist_tip / rk.ground_dist);
+                                double t = (z_base_cam - 0.2) / (z_base_cam - z_tip_cam);
+                                if (t > 0.0 && t <= 1.0)
+                                {
+                                    double x_clip = x_base_cam + t * (x_tip_cam - x_base_cam);
+                                    double y_clip = y_base_cam + t * (y_tip_cam - y_base_cam);
+                                    tip_x = (x_clip / 0.2) * dispcx * zoom + dispcx;
+                                    tip_y = (-y_clip / 0.2) * dispcx * zoom + dispcy;
+                                    tip_valid = true;
+                                }
                             }
 
-                            double half_base_w = is_vegetation ? (rk.trunk_w_base * 0.5) : (rw * 0.45);
-                            ImVec2 shad_pts[3];
-                            shad_pts[0] = ImVec2(rx - half_base_w, ry);
-                            shad_pts[1] = ImVec2(rx + half_base_w, ry);
-                            shad_pts[2] = ImVec2(tip_x, tip_y);
+                            if (tip_valid)
+                            {
+                                if (rk.lift_px > 0.0 && rk.ground_dist > 0.0)
+                                {
+                                    tip_y -= rk.lift_px * (dist_tip / rk.ground_dist);
+                                }
 
-                            ImGui::GetBackgroundDrawList()->AddTriangleFilled(shad_pts[0], shad_pts[1], shad_pts[2], shad_col);
+                                double half_base_w = is_vegetation ? (rk.trunk_w_base * 0.5) : (rw * 0.45);
+                                ImVec2 shad_pts[3];
+                                shad_pts[0] = ImVec2(rx - half_base_w, ry);
+                                shad_pts[1] = ImVec2(rx + half_base_w, ry);
+                                shad_pts[2] = ImVec2(tip_x, tip_y);
+
+                                const int first_vertex = shadow_draw->VtxBuffer.Size;
+                                shadow_draw->AddTriangleFilled(shad_pts[0], shad_pts[1], shad_pts[2], shad_col);
+                                ++scenery_shadow_stats.triangles;
+                                // Encode coverage in RGB as the multiplicative blend ignores alpha.
+                                for (int vertex = first_vertex; vertex < shadow_draw->VtxBuffer.Size; ++vertex)
+                                {
+                                    ImU32& color = shadow_draw->VtxBuffer[vertex].col;
+                                    const unsigned coverage = (color >> IM_COL32_A_SHIFT) & 255;
+                                    color = IM_COL32(((color >> IM_COL32_R_SHIFT) & 255) * coverage / 255,
+                                        ((color >> IM_COL32_G_SHIFT) & 255) * coverage / 255,
+                                        ((color >> IM_COL32_B_SHIFT) & 255) * coverage / 255, 255);
+                                }
+                            }
                         }
                     }
+                    shadow_draw->AddCallback(end_scenery_shadow_blend, nullptr);
+                    shadow_draw->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
                 }
 
                 const bool gpu_plants = prepare_scenery_gpu();
