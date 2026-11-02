@@ -3,7 +3,7 @@
 
 [Fixed in better-atmospheres branch] Pressure haze affects clouds, rocks, and plants. Clouds use their viewing distance, and scenery attenuation uses physical range independently of camera sorting depth.
 
-The star icon in sun clock mode doesn't always contrast with the planet texture below it. Let's add a 1px black border around every star icon and planet/moon icon, and a shadow under every non-star icon (planet, moon, satellite, etc).
+[Fixed] Sun-clock star and planet/moon icons have black outlines, and non-star icons have offset shadows for contrast against the surface texture.
 
 The star's rendered color has too much effect on the illumination shown in sun clock mode. Let's turn down the saturation to about one quarter the original value.
 
