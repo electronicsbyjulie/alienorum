@@ -368,6 +368,25 @@
         "Mass": 2.6e+21
     },
     {
+        "BODYNAME": "2026 ED138",
+        "CENTER_OF_ORBIT": "Sun",
+        "ABSMG": 2.8533,
+        "Epoch": 2026.4372526790871,
+        "SEMIMAJOR_AXIS": 6425033361095.334,
+        "Eccentricity": 0.1417448328770402,
+        "Incl": 24.47104038674766,
+        "AscNode": 322.5008984905298,
+        "ArgPeri": 167.9532328404424,
+        "MeanAnom": 128.3342024098231,
+        "OrbitPeriod": 8882539180.41919,
+        "VolMeanRad": 564722.3618871137,
+        "Mass": 1.13157885677736e+21,
+        "#Status": "Trans-Neptunian object and dwarf-planet candidate; no confirmed dwarf-planet designation.",
+        "#OrbitSource": "NASA/JPL SBDB solution 2 (2026-10-29), retrieved 2026-11-02: https://ssd-api.jpl.nasa.gov/sbdb.api?sstr=2026%20ED138&full-prec=true&phys-par=true",
+        "#OrbitFrame": "Heliocentric J2000 ecliptic, epoch JD 2461200.5 TDB. Epoch uses the loader tropical-year conversion, not a calendar decimal year.",
+        "#PhysicalAssumptions": "Radius from JPL H=2.8533 and assumed geometric albedo 0.10; mass assumes density 1500 kg/m^3. Size, mass, spin, poles, and generated surface are unmeasured or illustrative. No supplied atmosphere or satellites."
+    },
+    {
         "BODYNAME": "Arrokoth",
         "Mass": 7.485e+14,
         "VolMeanRad": 19896
