@@ -1,4 +1,5 @@
 #include <array>
+#include <algorithm>
 #include <cstddef>
 #include <cmath>
 #include <iostream>
@@ -15,8 +16,10 @@ namespace alienorum
     static GLuint program = 0, vao = 0, vbo = 0, depth_texture = 0, horizon_texture = 0;
     static bool attempted = false;
     static GLint projection_location = -1, terrain_location = -1;
+    static GLint haze_location = -1;
     static int texture_width = 0, texture_height = 0;
     static bool terrain_mask = false;
+    static HorizonGroundHaze prepared_haze;
     typedef void (APIENTRYP DrawArraysProc)(GLenum, GLint, GLsizei);
     static DrawArraysProc draw_arrays = nullptr;
     static constexpr GLenum red_format = 0x1903, rg_format = 0x8227;
@@ -33,6 +36,7 @@ namespace alienorum
         std::vector<Vertex> vertices;
         std::array<float, 16> projection;
         bool terrain = false;
+        HorizonGroundHaze haze;
     };
 
     static std::array<Batch, 4> batches;
@@ -61,6 +65,11 @@ out vec4 FragColor;
 uniform sampler2D uDepth;
 uniform sampler2D uHorizon;
 uniform bool uTerrain;
+uniform mat4 uHaze;
+#define uCamera uHaze[0]
+#define uSurface uHaze[1]
+#define uExtinction uHaze[2].xyz
+#define uAirlight uHaze[3].xyz
 void main()
 {
     ivec2 cell = ivec2(floor(pixel));
@@ -68,6 +77,34 @@ void main()
     if (float(cell.y) + 0.5 < horizon.r) discard;
     if (uTerrain && float(cell.y) < horizon.g && texelFetch(uDepth, cell, 0).r <= 0.0) discard;
     FragColor = color;
+    if (uExtinction.g > 0.0)
+    {
+        vec2 ray = (vec2(cell) + vec2(0.5) - uCamera.xy) / uCamera.z;
+        ray.y = -ray.y;
+        float north = uSurface.x - ray.y * uCamera.w;
+        float up = ray.y * uSurface.x + uCamera.w;
+        float slope = -up / max(1e-12, length(vec2(ray.x, north)));
+        float discriminant = slope * slope - 4.0 * uSurface.y * uSurface.z;
+        float distance = 1e30;
+        if (discriminant >= 0.0)
+        {
+            float denominator = slope + sqrt(discriminant);
+            if (denominator > 0.0)
+            {
+                float candidate = 2.0 * uSurface.z / denominator;
+                if (candidate <= uSurface.w) distance = candidate;
+            }
+        }
+        if (uTerrain)
+        {
+            float terrainDistance = texelFetch(uDepth, cell, 0).r;
+            if (terrainDistance > 0.0) distance = min(distance, terrainDistance);
+        }
+        if (distance == 1e30) distance = uSurface.w;
+        vec3 transmission = exp(-uExtinction * distance);
+        vec3 veiled = color.rgb * transmission + uAirlight * (vec3(1.0) - transmission);
+        FragColor.rgb = floor(clamp(veiled, 0.0, 1.0) * 255.0 + 0.0001) / 255.0;
+    }
 }
 )GLSL";
 
@@ -140,6 +177,7 @@ void main()
         if (!program) return false;
         projection_location = glGetUniformLocation(program, "uProjection");
         terrain_location = glGetUniformLocation(program, "uTerrain");
+        haze_location = glGetUniformLocation(program, "uHaze");
 
         GLint previous_program, previous_vao, previous_vbo;
         glGetIntegerv(GL_CURRENT_PROGRAM, &previous_program);
@@ -168,7 +206,8 @@ void main()
     }
 
     bool prepare_horizon_ground_gpu(int width, int height, const std::vector<float> &distances,
-        const std::vector<double> &horizon, const std::vector<int> &base_top, bool terrain)
+        const std::vector<double> &horizon, const std::vector<int> &base_top, bool terrain,
+        const HorizonGroundHaze& haze)
     {
         stats = {};
         if (horizon_ground_gpu_reference || width <= 0 || height <= 0
@@ -213,6 +252,7 @@ void main()
         texture_width = width;
         texture_height = height;
         terrain_mask = terrain;
+        prepared_haze = haze;
         return true;
     }
 
@@ -222,6 +262,12 @@ void main()
         glUseProgram(program);
         glUniformMatrix4fv(projection_location, 1, GL_FALSE, batch.projection.data());
         glUniform1i(terrain_location, batch.terrain);
+        std::array<float, 16> haze{};
+        std::copy(batch.haze.camera.begin(), batch.haze.camera.end(), haze.begin());
+        std::copy(batch.haze.surface.begin(), batch.haze.surface.end(), haze.begin() + 4);
+        std::copy(batch.haze.extinction.begin(), batch.haze.extinction.end(), haze.begin() + 8);
+        std::copy(batch.haze.light.begin(), batch.haze.light.end(), haze.begin() + 12);
+        glUniformMatrix4fv(haze_location, 1, GL_FALSE, haze.data());
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, depth_texture);
         glActiveTexture(GL_TEXTURE0 + 1);
@@ -243,6 +289,7 @@ void main()
         batch.vertices.clear();
         batch.vertices.reserve(rectangles.size() * 6);
         batch.terrain = terrain_mask;
+        batch.haze = prepared_haze;
         const ImGuiIO &io = ImGui::GetIO();
         batch.projection =
         {
@@ -261,6 +308,7 @@ void main()
                 {left, top, rectangle.color}, {right, bottom, rectangle.color}, {left, bottom, rectangle.color}
             });
             ++stats.tiles;
+            if (batch.haze.extinction[1] > 0) ++stats.haze_tiles;
             stats.pixels += (rectangle.right - rectangle.left) * (rectangle.bottom - rectangle.top);
         }
         ImDrawList *draw = ImGui::GetBackgroundDrawList();

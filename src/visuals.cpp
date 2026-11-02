@@ -984,20 +984,28 @@ static PressureHaze surface_pressure_haze(Planet* planet)
     #endif
 }
 
-static ImU32 pressure_haze_color(const PressureHaze& haze, ImU32 color, double distance)
+static ImU32 pressure_haze_blend(ImU32 color, const std::array<double, 3>& transmission, ImU32 airlight)
 {
-    if (!haze.active()) return color;
-    const ImU32 airlight = rgba_apply_redlight(IM_COL32(haze.light[0], haze.light[1], haze.light[2], 255));
     const int shifts[] = {IM_COL32_R_SHIFT, IM_COL32_G_SHIFT, IM_COL32_B_SHIFT};
     ImU32 result = color & IM_COL32_A_MASK;
     for (int channel = 0; channel < 3; ++channel)
     {
-        const double transmission = haze.transmission(distance, channel);
-        const double value = ((color >> shifts[channel]) & 255) * transmission
-            + ((airlight >> shifts[channel]) & 255) * (1 - transmission);
+        const double value = ((color >> shifts[channel]) & 255) * transmission[channel]
+            + ((airlight >> shifts[channel]) & 255) * (1 - transmission[channel]);
         result |= static_cast<ImU32>(std::clamp(value, 0.0, 255.0)) << shifts[channel];
     }
     return result;
+}
+
+static ImU32 pressure_haze_color(const PressureHaze& haze, ImU32 color, double distance)
+{
+    if (!haze.active()) return color;
+    const ImU32 airlight = rgba_apply_redlight(IM_COL32(haze.light[0], haze.light[1], haze.light[2], 255));
+    const std::array<double, 3> transmission =
+    {
+        haze.transmission(distance, 0), haze.transmission(distance, 1), haze.transmission(distance, 2)
+    };
+    return pressure_haze_blend(color, transmission, airlight);
 }
 
 // The ring plane's normal in camera space -- the planet's local +Y (polar) axis, rotated
@@ -4863,7 +4871,7 @@ void draw_sunclock()
     double lat, lon, obl = 1.0 - cel->oblateness, elevation;
     // Opaque decks obscure geography; retain patchy weather over a visible surface.
     const bool hide_cloud_deck = cel->surf_map && (cel->overcast || !cel->transparent_clouds
-        || (cel->cloud_map && cel->cloud_map->mean_cloud_opacity() >= 0.70));
+        || (cel->cloud_map && cel->cloud_map->mean_cloud_opacity() >= cloud_opacity_threshold));
     Map *map = hide_cloud_deck ? cel->surf_map : cel->get_day_map();
     // Without a night texture, dim the combined surface and clouds together.
     // A synthetic cloud-only night map would hide the surface behind black.
@@ -5662,6 +5670,8 @@ void draw_horizon()
         RGB3 rgb = surface_sample(viewer_lat, viewer_lon);
         const bool ocean_world = surface.ocean_world();
         const bool surface_water = surface.has_surface_water();
+        const bool paint_biomes = surface_water || (surface_biomes && cel->type != lavaworld);
+        const bool veiled_uniform_ground = haze.active() && !paint_biomes && map && map->is_complete();
         const auto water_at = [&](double latitude, double longitude)
         {
             return surface.water_at(latitude, longitude);
@@ -6029,6 +6039,7 @@ void draw_horizon()
         }
         #endif
 
+        const ImU32 unveiled_terraincol = terraincol;
         terraincol = pressure_haze_color(haze, terraincol, surface_range);
         if (faded)
         {
@@ -6084,9 +6095,12 @@ void draw_horizon()
         }
         else if (full_ground_view)
         {
-            ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, 0), ImVec2(dispcx * 2, dispcy * 2), terraincol);
+            if (!veiled_uniform_ground)
+            {
+                ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, 0), ImVec2(dispcx * 2, dispcy * 2), terraincol);
+            }
         }
-        else
+        else if (!veiled_uniform_ground)
         {
             int prior_horizon = -1;
             for (j = 0; j <= hznodes; j++)
@@ -6767,7 +6781,7 @@ void draw_horizon()
             if (first_ground == ground_height) reset_horizon_ground_gpu_stats();
         }
 
-        if (!faded && (surface_water || (surface_biomes && cel->type != lavaworld) || haze.active())
+        if (!faded && (paint_biomes || haze.active())
             && (!bounded_ground || first_ground < ground_height))
         {
             ImDrawList *ground = ImGui::GetBackgroundDrawList();
@@ -6776,8 +6790,9 @@ void draw_horizon()
             #if horizon_gpu_ground_painting
             // In this domain base-surface coverage is monotonic down each column.
             // Other views retain the reference painter, including views past the nadir.
-            if (map && map->is_complete() && surface_cos_altitude() >= 0 && top_north > 0 && bottom_north > 0
-                && !horizon_ground_gpu_reference && !haze.active())
+            if (map && map->is_complete() && (!paint_biomes
+                || (surface_cos_altitude() >= 0 && top_north > 0 && bottom_north > 0))
+                && !horizon_ground_gpu_reference)
             {
                 std::vector<int> local_base_top;
                 auto& base_top = bounded_ground ? bounded_base_top : local_base_top;
@@ -6796,8 +6811,23 @@ void draw_horizon()
                         base_top[x] = first;
                     }
                 }
+                HorizonGroundHaze gpu_haze;
+                if (haze.active())
+                {
+                    const ImU32 airlight = rgba_apply_redlight(IM_COL32(haze.light[0], haze.light[1], haze.light[2], 255));
+                    const int shifts[] = {IM_COL32_R_SHIFT, IM_COL32_G_SHIFT, IM_COL32_B_SHIFT};
+                    for (int channel = 0; channel < 3; ++channel)
+                    {
+                        gpu_haze.extinction[channel] = static_cast<float>(haze.extinction[channel]);
+                        gpu_haze.light[channel] = ((airlight >> shifts[channel]) & 255) / 255.0f;
+                    }
+                    gpu_haze.camera = {static_cast<float>(dispcx), static_cast<float>(dispcy),
+                        static_cast<float>(surface_focal()), static_cast<float>(surface_sin_altitude())};
+                    gpu_haze.surface = {static_cast<float>(surface_cos_altitude()), static_cast<float>(surface_curvature()),
+                        static_cast<float>(surface_eye), static_cast<float>(surface_range)};
+                }
                 gpu_ground = prepare_horizon_ground_gpu(screen_w, ground_height, terrain_raster.distances(),
-                    min_hz_y_at_x, base_top, terrain_mesh);
+                    min_hz_y_at_x, base_top, terrain_mesh, gpu_haze);
             }
             #endif
             const auto gpu_tile_color = [&](int left, int top, int right, int bottom, RGB3 &color)
@@ -6826,6 +6856,12 @@ void draw_horizon()
                 const double farthest_base = base_distance(farthest_x, top + 0.5);
                 if (std::isfinite(nearest_base)) near_distance = fmin(near_distance, nearest_base);
                 if (std::isfinite(farthest_base)) far_distance = fmin(far_distance, farthest_base);
+                if (haze.active() && haze.transmission(near_distance, 0) < .5 / 255)
+                {
+                    // Subpixel source contrast cannot affect the displayed result.
+                    color = RGB3(0, 0, 0);
+                    return true;
+                }
                 double low_bearing = 10, high_bearing = -10;
                 for (double x : {left + 0.5, right - 0.5})
                 {
@@ -6852,11 +6888,15 @@ void draw_horizon()
                 {
                     return static_cast<ImU32>(0);
                 }
-                const auto coord = ground_coord(x, y);
-                const RGB3 sample = surface_sample(coord.first, coord.second);
-                const ImU32 color = rgba_apply_redlight(IM_COL32(fmin(255, is_day * sample.r),
-                    fmin(255, is_day * sample.g), fmin(255, is_day * sample.b),
-                    dragging ? (192 - 128 * is_day) : 255));
+                ImU32 color = unveiled_terraincol;
+                if (paint_biomes)
+                {
+                    const auto coord = ground_coord(x, y);
+                    const RGB3 sample = surface_sample(coord.first, coord.second);
+                    color = rgba_apply_redlight(IM_COL32(fmin(255, is_day * sample.r),
+                        fmin(255, is_day * sample.g), fmin(255, is_day * sample.b),
+                        dragging ? (192 - 128 * is_day) : 255));
+                }
                 const double distance = visible_distance(x, y);
                 return pressure_haze_color(haze, color, std::isfinite(distance) ? distance : surface_range);
             };
@@ -6963,11 +7003,20 @@ void draw_horizon()
                     self(self, left, mid_y, right, bottom);
                 }
             };
-            for (int x = 0; x < screen_w; x += 32)
+            if (gpu_ground && !paint_biomes)
             {
-                for (int y = 0; y < dispcy * 2.0; y += 32)
+                // Dry worlds retain their local ground color, without sampling distant
+                // atlas pixels. One GPU rectangle supplies continuous distance veiling.
+                gpu_rectangles.push_back({0, 0, screen_w, ground_height, unveiled_terraincol});
+            }
+            else
+            {
+                for (int x = 0; x < screen_w; x += 32)
                 {
-                    patch(patch, x, y, std::min(screen_w, x + 32), std::min((int)(dispcy * 2.0), y + 32));
+                    for (int y = 0; y < dispcy * 2.0; y += 32)
+                    {
+                        patch(patch, x, y, std::min(screen_w, x + 32), std::min((int)(dispcy * 2.0), y + 32));
+                    }
                 }
             }
             if (gpu_ground) queue_horizon_ground_gpu(std::move(gpu_rectangles));
@@ -8196,10 +8245,16 @@ void draw_horizon()
                 auto fade_scenery = [&](int first_vertex, double opacity, double distance)
                 {
                     if (opacity >= 1.0 && !haze.active()) return;
+                    // Every facet of one object shares its viewing distance.
+                    const std::array<double, 3> transmission =
+                    {
+                        haze.transmission(distance, 0), haze.transmission(distance, 1), haze.transmission(distance, 2)
+                    };
+                    const ImU32 airlight = rgba_apply_redlight(IM_COL32(haze.light[0], haze.light[1], haze.light[2], 255));
                     for (int vertex = first_vertex; vertex < scenery_draw_list->VtxBuffer.Size; ++vertex)
                     {
                         ImU32 &color = scenery_draw_list->VtxBuffer[vertex].col;
-                        color = pressure_haze_color(haze, color, distance);
+                        color = pressure_haze_blend(color, transmission, airlight);
                         const ImU32 alpha = static_cast<ImU32>(((color & IM_COL32_A_MASK)
                             >> IM_COL32_A_SHIFT) * opacity);
                         color = (color & ~IM_COL32_A_MASK) | (alpha << IM_COL32_A_SHIFT);

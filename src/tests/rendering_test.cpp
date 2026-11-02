@@ -408,12 +408,18 @@ class RenderingRegressionTest : public UniverseFixture
         viewport->BgFgDrawListsLastTimeActive[1] = -1.0f;
     }
 
-    int image_difference(const std::vector<unsigned char> &actual, const std::vector<unsigned char> &expected)
+    int image_difference(const std::vector<unsigned char> &actual, const std::vector<unsigned char> &expected,
+        int rgb_tolerance = 0)
     {
         int count = 0;
         for (size_t i = 0; i < actual.size(); i += 4)
         {
-            if (std::equal(actual.begin() + i, actual.begin() + i + 4, expected.begin() + i)) continue;
+            bool matches = actual[i + 3] == expected[i + 3];
+            for (int channel = 0; channel < 3; ++channel)
+            {
+                matches &= abs(int(actual[i + channel]) - int(expected[i + channel])) <= rgb_tolerance;
+            }
+            if (matches) continue;
             if (count < 4)
             {
                 std::cout << "Pixel " << (i / 4) % render_width << ", " << (i / 4) / render_width << ": actual ";
@@ -605,9 +611,9 @@ TEST_F(RenderingRegressionTest, SunclockWithoutNightMapKeepsSurfaceVisibleThroug
     // Procedural blanket decks retain the transparent flag despite obscuring terrain.
     world->overcast = false;
     delete world->cloud_map;
-    auto *blanket = new PatchyCloudMap(220);
+    auto *blanket = new PatchyCloudMap(255);
     world->cloud_map = blanket;
-    EXPECT_GT(world->cloud_map->mean_cloud_opacity(), 0.70);
+    EXPECT_GT(world->cloud_map->mean_cloud_opacity(), cloud_opacity_threshold);
     EXPECT_DOUBLE_EQ(capture(), clear);
     EXPECT_TRUE(show_clouds);
     blanket->set_cloud_floor(0);
@@ -2174,7 +2180,9 @@ TEST_F(RenderingRegressionTest, GpuGroundPreservesCoastsDenseAirSeamsAndPoles)
                 draw_horizon();
                 const auto pixels = render();
                 if (reference) expected = pixels;
-                else EXPECT_EQ(image_difference(pixels, expected), 0) << position.first << ", " << position.second << ", " << pressure;
+                // Active haze uses float shader exponentials rather than CPU doubles.
+                else EXPECT_EQ(image_difference(pixels, expected, pressure > 2e5 && PRESSURE_HAZE ? 1 : 0), 0)
+                    << position.first << ", " << position.second << ", " << pressure;
                 ImGui::NewFrame();
             }
         }
@@ -3603,12 +3611,15 @@ TEST_F(RenderingRegressionTest, DenseAtmosphereCoastHasSeaBelowTheLiftedHorizon)
     ImGui::NewFrame();
 }
 
-TEST_F(RenderingRegressionTest, HotDryGroundSkipsPerPixelBiomePainting)
+TEST_F(RenderingRegressionTest, HotDryGroundKeepsSingleGpuHazeTile)
 {
+    #if !horizon_gpu_ground_painting || !PRESSURE_HAZE
+    GTEST_SKIP() << "GPU pressure haze is disabled.";
+    #endif
     Planet *world = surface(true);
     world->temperature = 737;
-    // Isolate the dry-biome fast path; dense air deliberately adds depth-dependent painting.
-    world->ensure_atmosphere()->surface_pressure = oneatm;
+    world->ensure_atmosphere()->surface_pressure = 93 * oneatm;
+    set(horizon_ground_gpu_reference, false);
     delete world->surf_map;
     world->surf_map = new MountainBandsTestMap();
     set(dispcx, 960.0);
@@ -3617,6 +3628,7 @@ TEST_F(RenderingRegressionTest, HotDryGroundSkipsPerPixelBiomePainting)
     find_horizon();
     const int before = ImGui::GetBackgroundDrawList()->VtxBuffer.Size;
     draw_horizon();
+    EXPECT_EQ(horizon_ground_gpu_stats().haze_tiles, 1u);
     const int vertices = ImGui::GetBackgroundDrawList()->VtxBuffer.Size - before;
     render();
     ImGui::NewFrame();
@@ -3624,6 +3636,7 @@ TEST_F(RenderingRegressionTest, HotDryGroundSkipsPerPixelBiomePainting)
     world->surf_map = new SceneryTestMap();
     const int plain_before = ImGui::GetBackgroundDrawList()->VtxBuffer.Size;
     draw_horizon();
+    EXPECT_EQ(horizon_ground_gpu_stats().haze_tiles, 1u);
     const int plain_vertices = ImGui::GetBackgroundDrawList()->VtxBuffer.Size - plain_before;
     EXPECT_EQ(vertices, plain_vertices);
     render();
@@ -4169,6 +4182,12 @@ TEST_F(RenderingRegressionTest, PressureHazeVeilsSkyAndSurfaceWithoutLightingThe
     scenery_gpu_reference = false;
     const auto accelerated = capture();
     EXPECT_LT(image_difference(accelerated, dense), render_width * render_height / 200);
+    #if horizon_gpu_ground_painting && PRESSURE_HAZE
+    horizon_ground_gpu_reference = false;
+    const auto gpu_ground = capture();
+    EXPECT_EQ(image_difference(gpu_ground, accelerated, 1), 0);
+    EXPECT_GT(horizon_ground_gpu_stats().haze_tiles, 0u);
+    #endif
     luminous_flux = 0;
     const auto night = capture();
     #if PRESSURE_HAZE
@@ -4195,6 +4214,132 @@ TEST_F(RenderingRegressionTest, PressureHazeVeilsSkyAndSurfaceWithoutLightingThe
             SDL_FreeSurface(image);
         }
     }
+}
+
+TEST_F(RenderingRegressionTest, GpuPressureHazePreservesDepthAndRemovesCardinalAtlasSeams)
+{
+    #if !horizon_gpu_ground_painting || !PRESSURE_HAZE
+    GTEST_SKIP() << "GPU pressure haze is disabled.";
+    #endif
+    Planet* world = surface(true);
+    delete world->surf_map;
+    world->surf_map = new CoastalTestMap();
+    world->has_water = 0;
+    world->temperature = 749;
+    auto* air = world->ensure_atmosphere();
+    air->pressure_supplied = true;
+    air->ensure_composition()->CO2_portion = 1;
+    set(show_terrain, false);
+    set(viewer_lat, 0.0);
+    set(viewer_lon, 0.0);
+    const auto capture = [&](bool reference)
+    {
+        horizon_ground_gpu_reference = reference;
+        freeze_surface_time();
+        find_horizon();
+        draw_horizon();
+        auto pixels = render();
+        ImGui::NewFrame();
+        return pixels;
+    };
+    for (double pressure : {93e5, 736e5})
+    {
+        air->surface_pressure = pressure;
+        for (double pitch : {-.4, 0.0, .4})
+        {
+            altitude = pitch;
+            for (double heading : {0.0, half_pi, _pi, 3 * half_pi})
+            {
+                azimuth = heading;
+                const auto reference = capture(true);
+                const auto accelerated = capture(false);
+                // Float shader math and byte quantization can differ by one level.
+                EXPECT_EQ(image_difference(accelerated, reference, 1), 0) << pressure << ", " << pitch << ", " << heading;
+                EXPECT_EQ(horizon_ground_gpu_stats().haze_tiles, 1u);
+                for (int y = 2; y < render_height / 4; ++y)
+                {
+                    for (int x = 2; x < render_width / 2; ++x)
+                    {
+                        const size_t left = (y * render_width + x) * 4;
+                        const size_t right = (y * render_width + render_width - 1 - x) * 4;
+                        for (int channel = 0; channel < 3; ++channel)
+                        {
+                            EXPECT_NEAR(accelerated[left + channel], accelerated[right + channel], 1)
+                                << "Cardinal seam at " << heading << ", " << x << ", " << y;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+TEST_F(RenderingRegressionTest, GpuPressureHazeBoundsGeometryAtScreenshotResolution)
+{
+    #if !horizon_gpu_ground_painting || !PRESSURE_HAZE
+    GTEST_SKIP() << "GPU pressure haze is disabled.";
+    #endif
+    const bool benchmark = std::getenv("ALIENORUM_HAZE_BENCHMARK") != nullptr;
+    if (benchmark)
+    {
+        render_width = 1280;
+        render_height = 800;
+        SDL_SetWindowSize(window, render_width, render_height);
+        SDL_PumpEvents();
+        SDL_GL_SwapWindow(window);
+        ImGui::GetIO().DisplaySize = ImVec2(render_width, render_height);
+        dispcx = render_width * .5;
+        dispcy = render_height * .5;
+        ImGui::EndFrame();
+        ImGui::NewFrame();
+    }
+    Planet* world = surface(true);
+    world->has_water = 0;
+    world->temperature = 749;
+    world->ensure_atmosphere()->ensure_composition()->CO2_portion = 1;
+    set(show_terrain, false);
+    altitude = -.1;
+    for (double pressure : {93e5, 736e5})
+    {
+        world->atm->surface_pressure = pressure;
+        std::vector<unsigned char> expected;
+        size_t cpu_vertices = 0;
+        for (bool reference : {true, false})
+        {
+            horizon_ground_gpu_reference = reference;
+            double milliseconds = 0;
+            const int frames = benchmark ? 4 : 2;
+            for (int frame = 0; frame < frames; ++frame)
+            {
+                freeze_surface_time();
+                find_horizon();
+                const auto start = std::chrono::steady_clock::now();
+                draw_horizon();
+                const size_t vertices = ImGui::GetBackgroundDrawList()->VtxBuffer.Size;
+                const auto pixels = render(); // Readback also waits for GPU completion.
+                milliseconds += frame ? std::chrono::duration<double, std::milli>(
+                    std::chrono::steady_clock::now() - start).count() : 0;
+                if (reference)
+                {
+                    expected = pixels;
+                    cpu_vertices = vertices;
+                }
+                else
+                {
+                    EXPECT_EQ(image_difference(pixels, expected, 1), 0);
+                    EXPECT_EQ(horizon_ground_gpu_stats().haze_tiles, 1u);
+                    EXPECT_LT(vertices, cpu_vertices);
+                }
+                ImGui::NewFrame();
+            }
+            if (benchmark)
+            {
+                std::cout << "Haze " << pressure / 1e5 << " bar, "
+                    << (reference ? "CPU" : "GPU") << ": " << milliseconds / (frames - 1) << " ms\n";
+            }
+        }
+    }
+    if (benchmark) SDL_SetWindowSize(window, 192, 108);
 }
 
 TEST_F(RenderingRegressionTest, SkyGradientFollowsZoomAndViewingAltitude)
