@@ -4340,6 +4340,42 @@ TEST(PressureHazeTest, DensityCompositionDistanceAndWavelengthControlVeiling)
     #endif
 }
 
+TEST_F(RenderingRegressionTest, CloudToggleDisablesPressureHazeInCpuAndGpuGround)
+{
+    #if !PRESSURE_HAZE
+    GTEST_SKIP() << "Pressure haze is disabled.";
+    #endif
+    auto* world = surface(true);
+    world->has_water = 0;
+    auto* air = world->ensure_atmosphere();
+    air->ensure_composition()->CO2_portion = 1;
+    air->surface_pressure = 93e5;
+    set(show_clouds, true);
+    set(whtbkgd, false);
+    const auto capture = [&]()
+    {
+        freeze_surface_time();
+        find_horizon();
+        draw_horizon();
+        auto pixels = render();
+        ImGui::NewFrame();
+        return pixels;
+    };
+    for (bool reference : {true, false})
+    {
+        horizon_ground_gpu_reference = reference;
+        show_clouds = false;
+        const auto hidden = capture();
+        show_clouds = true;
+        const auto visible = capture();
+        EXPECT_GT(image_difference(visible, hidden), 100);
+        show_clouds = false;
+        EXPECT_EQ(capture(), hidden);
+        show_clouds = true;
+        EXPECT_EQ(capture(), visible);
+    }
+}
+
 TEST_F(RenderingRegressionTest, PressureHazeVeilsSkyAndSurfaceWithoutLightingTheNight)
 {
     const char* preview = std::getenv("ALIENORUM_HAZE_PREVIEW_DIR");

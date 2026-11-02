@@ -935,7 +935,7 @@ static PressureHaze surface_pressure_haze(Planet* planet)
     #if !PRESSURE_HAZE
     return {};
     #else
-    if (!planet || !uses_rocky_map(planet->type)) return {};
+    if (!show_clouds || !planet || !uses_rocky_map(planet->type)) return {};
     const double pressure = planet->get_surface_pressure();
     if (!(pressure > 2e5)) return {};
     const double temperature = planet->estimate_surface_temperature();

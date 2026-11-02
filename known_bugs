@@ -15,6 +15,6 @@
 
 [Fixed in better-atmospheres branch] Rocks use varied faceted profiles and deterministic aspect ratios. A continuous, bounded logarithmic pressure bias favors flatter shapes in dense atmospheres, replacing the Venus-specific slab switch. This is a visual approximation rather than a geological law.
 
-Pressure haze should be controlled by the same flag that controls showing clouds, togglable by Ctrl+C.
+[Fixed] Pressure haze follows the cloud visibility flag, including Ctrl+C, for the sky, clouds, terrain, and scenery in CPU and GPU rendering.
 
 In the N panel, for the Sun, underneath its AlienorumID of -26, there's strange text that reads ???k@.
