@@ -5041,6 +5041,15 @@ void draw_sunclock()
         sc_draw_object(host, cel);
     }
 
+    // Additional bright stellar sources have their own substellar points.
+    for (int index : frame_object_candidates())
+    {
+        CelestialObject* companion = cels[index];
+        if (!companion || companion->deleted || companion == cel || companion == sun || companion == host
+            || companion->typeclass() != class_star) continue;
+        if (companion->viewer_magnitude(cel->location) < -10) sc_draw_object(companion, cel);
+    }
+
     // Sublunar point
     if (cel->type != star) for (i=cel->seqno+1; cels[i]; i++)
     {

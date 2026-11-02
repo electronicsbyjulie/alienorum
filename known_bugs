@@ -9,7 +9,7 @@
 
 [Fixed in better-atmospheres branch] Plant crowns and trunks are clipped independently. Visible trunk segments remain when the crown passes behind the camera, with finite near-plane clipping and matching CPU/GPU rendering.
 
-Companion stars brighter than magnitude -10 should appear in sun clock mode even if the current object orbits the main star.
+[Fixed] Other stars brighter than magnitude -10 have sun-clock substellar markers, independently of which star the current body orbits. Host and light-center markers are not duplicated.
 
 Companion stars, nearby planets, and bright moons should cast shadows in horizon mode proportional in strength and color to the casting object's brightness and hue relative to the light center.
 
