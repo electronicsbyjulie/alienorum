@@ -4369,7 +4369,43 @@ void draw_system_view()
     {
         if (object->volumetric_mean_radius > 0 && std::isfinite(object->volumetric_mean_radius))
         {
-            draw_sphere(object, radius);
+            const int drawn_radius = draw_sphere(object, radius);
+            const auto cls = object->typeclass();
+            if (drawn_radius > 0 && (cls == class_planet || cls == class_moon))
+            {
+                Map* texture = object->get_day_map();
+                if (!texture || !texture->is_complete())
+                {
+                    ImDrawList* draw = ImGui::GetBackgroundDrawList();
+                    const ImVec2 center((int)object->drawnx, (int)object->drawny);
+                    const float height = std::clamp(float(radius * .55), 5.0f, 12.0f);
+                    const float width = height * .7f;
+                    const ImU32 frame = rgba_apply_redlight(IM_COL32(224, 254, 245, 255));
+                    const ImU32 border = rgba_apply_redlight(IM_COL32(0, 24, 16, 255));
+                    const ImU32 sand = rgba_apply_redlight(IM_COL32(255, 192, 110, 255));
+                    // draw->AddCircleFilled(center, height + 3, IM_COL32(0, 0, 0, 210));
+                    for (float sign : {-1.0f, 1.0f})
+                    {
+                        const float y = center.y + sign * height;
+                        const float y1 = center.y + sign * (height+2);
+
+                        draw->AddLine(ImVec2(center.x - width - 2, y1 + sign), ImVec2(center.x + width + 2, y1 + sign), border, 2);
+                        draw->AddLine(ImVec2(center.x - width, y), ImVec2(center.x - 1, center.y), border);
+                        draw->AddLine(ImVec2(center.x + width, y), ImVec2(center.x + 1, center.y), border);
+
+                        draw->AddLine(ImVec2(center.x - width - 1, y1), ImVec2(center.x + width + 1, y1), frame, 2);
+                        draw->AddLine(ImVec2(center.x - width - 1, y), ImVec2(center.x + width + 1, y), frame, 2);
+                        draw->AddLine(ImVec2(center.x - width, y), center, frame);
+                        draw->AddLine(ImVec2(center.x + width, y), center, frame);
+                    }
+                    draw->AddTriangleFilled(ImVec2(center.x - width * .55f, center.y - height * .55f),
+                                            ImVec2(center.x + width * .55f, center.y - height * .55f),
+                                            center, sand);
+                    draw->AddTriangleFilled(ImVec2(center.x, center.y + height * .6f),
+                                            ImVec2(center.x + width - 1, center.y + height - 1),
+                                            ImVec2(center.x - width + 1, center.y + height - 1), sand);
+                }
+            }
             return;
         }
         // Missing physical dimensions still get a visible schematic marker.

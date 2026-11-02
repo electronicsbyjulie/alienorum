@@ -22,6 +22,7 @@
 #include "housekeeping.h"
 #include "classes/clouds_gpu.h"
 #include "classes/orbit_spacing.h"
+#include "classes/neighborhoodfilter.h"
 #include "classes/watercoverage.h"
 #include "visuals.h"
 #include <cstdint>
@@ -3141,8 +3142,9 @@ void draw_system_explorer(ImGuiIO& io)
         is_mouse_over_window = true;
 }
 
-bool onlywd = false;
-bool onlysun = false, onlyplt = false, onlyhz = false, onlyknp = false;
+NeighborhoodType neighborhood_type = NeighborhoodType::all;
+NeighborhoodOrder neighborhood_order = NeighborhoodOrder::nearest;
+bool onlyplt = false, onlyhz = false, onlyknp = false;
 std::vector<int> neighb_celids;
 std::vector<double> neighb_celr;
 int neighbly = 25, lneighbly = 0, minpl = 1;
@@ -3151,9 +3153,16 @@ void draw_stellar_neighborhood(ImGuiIO &io)
     if (!cels[1]) return;
     ImGui::Begin("Stellar Neighborhood", &neighborhood, 0);
 
-    if (ImGui::Checkbox("Sunlike##", &onlysun) && onlysun) onlywd = false;
+    int type_choice = static_cast<int>(neighborhood_type);
+    ImGui::SetNextItemWidth(155);
+    ImGui::Combo("##neighborhood_type", &type_choice,
+        "(All Types)\0Sunlike\0Orange Dwarfs\0Red+Brwn Dwarfs\0Sirius-like\0Subgiants\0Giants + OB\0White Dwarfs\0");
+    neighborhood_type = static_cast<NeighborhoodType>(type_choice);
     ImGui::SameLine();
-    if (ImGui::Checkbox("WD##neighbors", &onlywd) && onlywd) onlysun = false;
+    int order_choice = static_cast<int>(neighborhood_order);
+    ImGui::SetNextItemWidth(110);
+    ImGui::Combo("##neighborhood_order", &order_choice, "Nearest\0Brightest\0");
+    neighborhood_order = static_cast<NeighborhoodOrder>(order_choice);
     ImGui::SameLine();
     ImGui::Checkbox("Planets##neighb_must_have_planets", &onlyplt);
     if (minpl < 1) minpl = 1;
@@ -3170,15 +3179,18 @@ void draw_stellar_neighborhood(ImGuiIO &io)
 
     ImGui::SameLine();
     ImGui::Checkbox("Known Poles##", &onlyknp);
-    ImGui::SameLine();
-    ImGui::Text("Cutoff:");
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(81);
-    ImGui::InputInt("##neighborhood_ly_cutoff", &neighbly, 5);
-    ImGui::SameLine();
-    ImGui::Text("l.y.");
+    if (neighborhood_order == NeighborhoodOrder::nearest)
+    {
+        ImGui::SameLine();
+        ImGui::Text("Cutoff:");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(81);
+        ImGui::InputInt("##neighborhood_ly_cutoff", &neighbly, 5);
+        ImGui::SameLine();
+        ImGui::Text("l.y.");
+    }
 
-    neighb_rthresh = (double)neighbly * light_year;
+    neighb_rthresh = neighborhood_order == NeighborhoodOrder::nearest ? (double)neighbly * light_year : INFINITY;
 
     int i, j, l, n;
     double r, m;
@@ -3186,12 +3198,17 @@ void draw_stellar_neighborhood(ImGuiIO &io)
     int item_highlighted_idx = -1;
     int first_visible = -1;
     bool selected_visible = false;
-    ImGui::Text("%s", " Name                                Mag.      Sp. Type     Pl./HZ   Distance");
+    ImGui::Text("%s", neighborhood_order == NeighborhoodOrder::nearest
+        ? " Name                                Mag.      Sp. Type     Pl./HZ   Distance"
+        : " Name                               Abs.Mag.   Sp. Type     Pl./HZ   Distance");
     if (ImGui::BeginListBox("##neighblist", ImVec2(802, 16 * ImGui::GetTextLineHeightWithSpacing())))
     {
         j = 0;
-        if (last_neighb_cen != mycenobj || fabs(lneighbly - neighbly) > 1e-29)
+        static NeighborhoodOrder last_order = NeighborhoodOrder::nearest;
+        if (last_neighb_cen != mycenobj || lneighbly != neighbly || last_order != neighborhood_order)
         {
+            const int selected_id = item_selected_idx >= 0 && item_selected_idx < static_cast<int>(neighb_celids.size())
+                ? neighb_celids[item_selected_idx] : -1;
             neighb_celids.clear();
             neighb_celr.clear();
             struct Neighbor
@@ -3209,7 +3226,9 @@ void draw_stellar_neighborhood(ImGuiIO &io)
                 r = cels[i]->tmprel.magnitude();
                 if (r > neighb_rthresh) continue;
                 // Legacy insertion leaves an unknown distance after the preceding maximum.
-                const double rank = std::isnan(r) ? preceding_max : r;
+                const double magnitude = static_cast<Star*>(cels[i])->absolute_magnitude;
+                const double rank = neighborhood_order == NeighborhoodOrder::brightest
+                    ? (std::isfinite(magnitude) ? magnitude : INFINITY) : (std::isnan(r) ? preceding_max : r);
                 if (!std::isnan(r)) preceding_max = std::max(preceding_max, r);
                 neighbors.push_back({r, rank, i});
             }
@@ -3225,7 +3244,13 @@ void draw_stellar_neighborhood(ImGuiIO &io)
                 neighb_celids.push_back(neighbor.index);
             }
 
+            item_selected_idx = -1;
+            for (size_t pos = 0; pos < neighb_celids.size(); ++pos)
+            {
+                if (neighb_celids[pos] == selected_id) item_selected_idx = static_cast<int>(pos);
+            }
             lneighbly = neighbly;
+            last_order = neighborhood_order;
         }
 
         n = neighb_celids.size();
@@ -3237,8 +3262,7 @@ void draw_stellar_neighborhood(ImGuiIO &io)
         {
             i = neighb_celids[j];
             Star *s = (Star*)cels[i];
-            if (onlysun && !s->is_sunlike()) continue;
-            if (onlywd && !s->is_white_dwarf()) continue;
+            if (!neighborhood_matches_type(*s, neighborhood_type)) continue;
             if (onlyhz)
             {
                 if (!s->has_hz_planets) continue;
@@ -3252,6 +3276,7 @@ void draw_stellar_neighborhood(ImGuiIO &io)
                 selected_row = static_cast<int>(filtered_neighbors.size());
             }
             filtered_neighbors.push_back(j);
+            if (neighborhood_order == NeighborhoodOrder::brightest && filtered_neighbors.size() == 100) break;
         }
         ImGuiListClipper clipper;
         clipper.Begin(static_cast<int>(filtered_neighbors.size()));
@@ -3270,9 +3295,9 @@ void draw_stellar_neighborhood(ImGuiIO &io)
                 if (l < 36) line << std::string(36-l, ' ');
 
                 r = cels[i]->tmprel.magnitude();
-                if (r)
+                if (r || neighborhood_order == NeighborhoodOrder::brightest)
                 {
-                    m = cels[i]->viewer_magnitude(here);
+                    m = neighborhood_order == NeighborhoodOrder::brightest ? s->absolute_magnitude : cels[i]->viewer_magnitude(here);
                     line << setprecision(4) << ((m>=0) ? "+" : "-") << string_format("%05.2f", fabs(m));
                 }
                 else line << "-";

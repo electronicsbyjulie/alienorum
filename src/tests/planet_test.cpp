@@ -1727,6 +1727,54 @@ TEST_F(SavedPlanetMapTest, SavedCloudModesRemainConsistentWithGeneratedTextures)
     }
 }
 
+TEST_F(SavedPlanetMapTest, ExistingMainTextureStillReceivesMissingRingChannels)
+{
+    auto* host = make_star();
+    auto* world = new Planet;
+    json data = saved_world(host, gas_giant);
+    data["ring_radius"] = 20000;
+    data["ring_inner_radius"] = 10000;
+    data["ring_mean_opacity"] = .6;
+    ASSERT_TRUE(world->from_json(data));
+    world->orbit->center = host;
+    append_cel(world);
+    world->ignore_map_files = true;
+    class LoadedCloudMap : public Map
+    {
+        public:
+        explicit LoadedCloudMap(CelestialObject* owner) : Map(owner)
+        {
+            image_width = image_height = allocated = 1;
+            red_data = new unsigned char[1]{180};
+            green_data = new unsigned char[1]{160};
+            blue_data = new unsigned char[1]{140};
+            touch_gen();
+        }
+    };
+    world->cloud_map = new LoadedCloudMap(world);
+    Map* main = world->cloud_map;
+    load_textures(world);
+    EXPECT_EQ(world->cloud_map, main);
+    ASSERT_NE(world->ring_map, nullptr);
+    ASSERT_NE(world->ringx_map, nullptr);
+    EXPECT_TRUE(world->ring_map->is_complete());
+    EXPECT_TRUE(world->ringx_map->is_complete());
+    EXPECT_DOUBLE_EQ(world->ring_radius, 2e7);
+    EXPECT_DOUBLE_EQ(world->ring_inner_radius, 1e7);
+    EXPECT_DOUBLE_EQ(world->ring_mean_opacity, .6);
+    Map* color = world->ring_map;
+    Map* opacity = world->ringx_map;
+    load_textures(world);
+    EXPECT_EQ(world->ring_map, color);
+    EXPECT_EQ(world->ringx_map, opacity);
+    delete world->ringx_map;
+    world->ringx_map = nullptr;
+    load_textures(world);
+    EXPECT_EQ(world->ring_map, color);
+    ASSERT_NE(world->ringx_map, nullptr);
+    EXPECT_TRUE(world->ringx_map->is_complete());
+}
+
 TEST_F(SavedPlanetMapTest, UnknownSurfaceClassificationRetainsSavedAppearance)
 {
     Star* host = make_star();

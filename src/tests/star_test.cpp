@@ -11,6 +11,7 @@
 #include "../classes/cons.h"
 #include "../classes/wdcolor.h"
 #include "../classes/wdlimb.h"
+#include "../classes/neighborhoodfilter.h"
 
 using namespace alienorum;
 
@@ -1284,4 +1285,94 @@ TEST(StarTest, VisualBolometricCorrectionsRemainPhysicalAcrossStellarTemperature
     EXPECT_GT(Star::bolometric_correction(225000), -11);
     EXPECT_LT(Star::bolometric_correction(225000), -8);
     EXPECT_NEAR(Star::bolometric_correction(50000.01), Star::bolometric_correction(50000), 0.001);
+}
+
+TEST(NeighborhoodFilterTest, SpectralBoundariesPrefixesAndLuminosityClasses)
+{
+    struct Example
+    {
+        const char* spectrum;
+        NeighborhoodType filter;
+        bool matches;
+    };
+    const Example examples[] =
+    {
+        {"F7V", NeighborhoodType::sunlike, false},
+        {"p F 8 V n", NeighborhoodType::sunlike, true},
+        {"F9.5V", NeighborhoodType::sunlike, true},
+        {"G2V+M4V", NeighborhoodType::sunlike, true},
+        {"K2V", NeighborhoodType::sunlike, true},
+        {"K2.5V", NeighborhoodType::sunlike, false},
+        {"K3V", NeighborhoodType::orange, true},
+        {"K9V", NeighborhoodType::orange, true},
+        {"K9III", NeighborhoodType::orange, false},
+        {"dM4e", NeighborhoodType::red_brown, true},
+        {"M4III", NeighborhoodType::red_brown, false},
+        {"C5V", NeighborhoodType::red_brown, true},
+        {"dC", NeighborhoodType::red_brown, true},
+        {"L2", NeighborhoodType::red_brown, true},
+        {"T6V", NeighborhoodType::red_brown, true},
+        {"Y1", NeighborhoodType::red_brown, true},
+        {"A0V", NeighborhoodType::sirius, true},
+        {"A9.5V", NeighborhoodType::sirius, true},
+        {"F7IV-V", NeighborhoodType::sirius, true},
+        {"F8V", NeighborhoodType::sirius, false},
+        {"A0III", NeighborhoodType::sirius, false},
+        {"G5 IV / V", NeighborhoodType::subgiants, true},
+        {"M1IV", NeighborhoodType::subgiants, true},
+        {"G5III-IV", NeighborhoodType::subgiants, false},
+        {"G5III-IV", NeighborhoodType::giants_ob, true},
+        {"O9V", NeighborhoodType::giants_ob, true},
+        {"B2V", NeighborhoodType::giants_ob, true},
+        {"Be", NeighborhoodType::giants_ob, true},
+        {"Of?p", NeighborhoodType::giants_ob, true},
+        {"K0II", NeighborhoodType::giants_ob, true},
+        {"M2Iab", NeighborhoodType::giants_ob, true},
+        {"S4III", NeighborhoodType::giants_ob, true},
+        {"DA2", NeighborhoodType::white_dwarfs, true},
+        {"WD", NeighborhoodType::white_dwarfs, true},
+        {"G2VI", NeighborhoodType::white_dwarfs, true},
+        {"G2V", NeighborhoodType::white_dwarfs, false},
+        {"", NeighborhoodType::all, true},
+        {"WN5", NeighborhoodType::all, true}
+    };
+    Star star;
+    star.absolute_magnitude = 20;
+    for (const auto& example : examples)
+    {
+        SCOPED_TRACE(example.spectrum);
+        strcpy(star.spectral_type, example.spectrum);
+        EXPECT_EQ(neighborhood_matches_type(star, example.filter), example.matches);
+    }
+}
+
+TEST(NeighborhoodFilterTest, ClasslessDwarfsUseAbsoluteMagnitude)
+{
+    Star::load_main_seq_dat();
+    Star star;
+    star.WD = "Catalog white dwarf identifier";
+    strcpy(star.spectral_type, "G2V");
+    star.absolute_magnitude = 4.83;
+    EXPECT_TRUE(neighborhood_matches_type(star, NeighborhoodType::sunlike));
+    EXPECT_TRUE(neighborhood_matches_type(star, NeighborhoodType::white_dwarfs));
+    star.WD.clear();
+    strcpy(star.spectral_type, "A1");
+    star.absolute_magnitude = 1.42;
+    EXPECT_TRUE(neighborhood_matches_type(star, NeighborhoodType::sirius));
+    strcpy(star.spectral_type, "F5");
+    star.absolute_magnitude = 2.66;
+    EXPECT_TRUE(neighborhood_matches_type(star, NeighborhoodType::sirius));
+    strcpy(star.spectral_type, "K5");
+    star.absolute_magnitude = 7.0;
+    EXPECT_TRUE(neighborhood_matches_type(star, NeighborhoodType::orange));
+    star.absolute_magnitude = -2;
+    EXPECT_FALSE(neighborhood_matches_type(star, NeighborhoodType::orange));
+    strcpy(star.spectral_type, "M4");
+    star.absolute_magnitude = 12;
+    EXPECT_TRUE(neighborhood_matches_type(star, NeighborhoodType::red_brown));
+    star.absolute_magnitude = -2;
+    EXPECT_FALSE(neighborhood_matches_type(star, NeighborhoodType::red_brown));
+    strcpy(star.spectral_type, "G2");
+    star.absolute_magnitude = 4.83;
+    EXPECT_TRUE(neighborhood_matches_type(star, NeighborhoodType::sunlike));
 }

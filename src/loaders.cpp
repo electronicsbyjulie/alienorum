@@ -217,6 +217,42 @@ void spawn_texture_load(CelestialObject *cel)
     }
 }
 
+static void complete_ring_textures(CelestialObject* cel)
+{
+    if (!cel || cel->typeclass() != class_planet) return;
+    auto* planet = static_cast<Planet*>(cel);
+    const double radius = planet->volumetric_mean_radius, outer = planet->ring_radius;
+    if (!std::isfinite(radius) || radius <= 0 || !std::isfinite(outer) || outer <= radius
+        || !std::isfinite(planet->ring_inner_radius) || planet->ring_inner_radius < 0
+        || planet->ring_inner_radius >= outer || !std::isfinite(planet->ring_mean_opacity)) return;
+    const bool color_complete = planet->ring_map && planet->ring_map->is_complete();
+    const bool opacity_complete = planet->ringx_map && planet->ringx_map->is_complete();
+    if (color_complete && opacity_complete) return;
+
+    // Stage both generated channels without replacing an existing supplied texture.
+    planet->randomize();
+    Planet generated;
+    generated.rnd_seed = planet->rnd_seed;
+    generated.ring_map = new Map(planet);
+    generated.ringx_map = new Map(planet);
+    const int resolution = static_cast<int>(std::clamp(outer / radius * 1024, 32.0, 16384.0));
+    generated.ring_map->generate_ring_map(&generated, resolution, planet->ring_inner_radius / outer,
+        std::clamp(planet->ring_mean_opacity, 0.0, 1.0), generated.ringx_map);
+    if (!generated.ring_map->is_complete() || !generated.ringx_map->is_complete()) return;
+    if (!color_complete)
+    {
+        delete planet->ring_map;
+        planet->ring_map = generated.ring_map;
+        generated.ring_map = nullptr;
+    }
+    if (!opacity_complete)
+    {
+        delete planet->ringx_map;
+        planet->ringx_map = generated.ringx_map;
+        generated.ringx_map = nullptr;
+    }
+}
+
 void load_textures(CelestialObject* cel)
 {
     if ((cel->typeclass() == class_planet || cel->typeclass() == class_moon)
@@ -585,6 +621,7 @@ void load_textures(CelestialObject* cel)
     }
 
     cel->generate_water_clouds();
+    complete_ring_textures(cel);
 }
 
 void save_textures(CelestialObject* cel)

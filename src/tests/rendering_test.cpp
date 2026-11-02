@@ -13,6 +13,7 @@
 #include "../globals.h"
 #include "../fictionalstars_ui.h"
 #include "../classes/fictionalstars.h"
+#include "../classes/neighborhoodfilter.h"
 #include "../classes/galaxyimage.h"
 #include "../classes/galaxygeometry.h"
 #include "../visuals.h"
@@ -992,7 +993,9 @@ TEST_F(RenderingRegressionTest, StellarNeighborhoodSortsDistancesAndRetainsCatal
 {
     extern std::vector<int> neighb_celids;
     extern std::vector<double> neighb_celr;
-    extern bool onlysun, onlywd, onlyplt, onlyhz, onlyknp;
+    extern bool onlyplt, onlyhz, onlyknp;
+    extern NeighborhoodType neighborhood_type;
+    extern NeighborhoodOrder neighborhood_order;
     extern int neighbly, lneighbly;
     Star* observer = make_star("Neighborhood observer");
     set(mycenobj, static_cast<CelestialObject*>(observer));
@@ -1000,8 +1003,8 @@ TEST_F(RenderingRegressionTest, StellarNeighborhoodSortsDistancesAndRetainsCatal
     set(neighborhood, true);
     set(neighbly, 1000);
     set(lneighbly, -1);
-    set(onlysun, false);
-    set(onlywd, false);
+    set(neighborhood_type, NeighborhoodType::all);
+    set(neighborhood_order, NeighborhoodOrder::nearest);
     set(onlyplt, false);
     set(onlyhz, false);
     set(onlyknp, false);
@@ -1058,7 +1061,9 @@ TEST_F(RenderingRegressionTest, StellarNeighborhoodSortsDistancesAndRetainsCatal
 
 TEST_F(RenderingRegressionTest, StellarNeighborhoodClippingPreservesFilteredSelectionAndScrolling)
 {
-    extern bool onlysun, onlywd, onlyplt, onlyhz, onlyknp;
+    extern bool onlyplt, onlyhz, onlyknp;
+    extern NeighborhoodType neighborhood_type;
+    extern NeighborhoodOrder neighborhood_order;
     extern int neighbly, lneighbly;
     Star* observer = make_star("Neighborhood observer");
     set(mycenobj, static_cast<CelestialObject*>(observer));
@@ -1067,8 +1072,8 @@ TEST_F(RenderingRegressionTest, StellarNeighborhoodClippingPreservesFilteredSele
     set(selected, -1);
     set(neighbly, 1000);
     set(lneighbly, -1);
-    set(onlysun, false);
-    set(onlywd, false);
+    set(neighborhood_type, NeighborhoodType::all);
+    set(neighborhood_order, NeighborhoodOrder::nearest);
     set(onlyplt, false);
     set(onlyhz, false);
     set(onlyknp, true);
@@ -1116,6 +1121,83 @@ TEST_F(RenderingRegressionTest, StellarNeighborhoodClippingPreservesFilteredSele
     draw();
     EXPECT_EQ(selected, target->seqno);
     EXPECT_GT(list->Scroll.y, 1000);
+}
+
+TEST_F(RenderingRegressionTest, StellarNeighborhoodBrightestFiltersBeforeCappingAndPreservesSelection)
+{
+    extern std::vector<int> neighb_celids;
+    extern std::vector<double> neighb_celr;
+    extern NeighborhoodType neighborhood_type;
+    extern NeighborhoodOrder neighborhood_order;
+    extern bool onlyplt, onlyhz, onlyknp;
+    extern int neighbly, lneighbly;
+    neighb_celids.clear();
+    neighb_celr.clear();
+    Star* observer = make_star("Brightest observer");
+    set(mycenobj, static_cast<CelestialObject*>(observer));
+    set(last_neighb_cen, static_cast<CelestialObject*>(nullptr));
+    set(neighborhood, true);
+    set(selected, -1);
+    set(neighbly, 1);
+    set(lneighbly, -1);
+    set(neighborhood_type, NeighborhoodType::sunlike);
+    set(neighborhood_order, NeighborhoodOrder::brightest);
+    set(onlyplt, true);
+    set(onlyhz, false);
+    set(onlyknp, false);
+    Star* brightest = nullptr;
+    for (int index = 0; index < 250; ++index)
+    {
+        Star* star = make_star(("Brightest candidate " + std::to_string(index)).c_str());
+        strcpy(star->spectral_type, index < 120 ? "A0V" : "G2V");
+        star->absolute_magnitude = index * 0.01;
+        star->has_planets = index > 120 ? 1 : 0;
+        star->tmprel = Point(0, 0, (300-index)*light_year);
+        star->location.local_position = star->tmprel;
+        if (index == 121) brightest = star;
+    }
+    const auto draw = [&]()
+    {
+        ImGui::GetIO().DisplaySize = ImVec2(1300, 800);
+        ImGui::SetNextWindowPos(ImVec2(0, 0));
+        ImGui::SetNextWindowSize(ImVec2(1200, 650));
+        draw_stellar_neighborhood(ImGui::GetIO());
+    };
+    const auto next_frame = [&]()
+    {
+        ImGui::EndFrame();
+        ImGui::NewFrame();
+    };
+    draw();
+    ImGuiWindow* window = ImGui::FindWindowByName("Stellar Neighborhood");
+    ASSERT_NE(window, nullptr);
+    ImGui::ActivateItemByID(window->GetID("Select##neighbors"));
+    next_frame();
+    draw();
+    EXPECT_EQ(selected, brightest->seqno);
+    ASSERT_FALSE(window->DC.ChildWindows.empty());
+    ImGuiWindow* list = window->DC.ChildWindows[0];
+    const float row_height = ImGui::GetTextLineHeightWithSpacing();
+    EXPECT_NEAR(list->ContentSize.y, 100 * row_height - ImGui::GetStyle().ItemSpacing.y, 2);
+    for (size_t index = 1; index < neighb_celids.size(); ++index)
+    {
+        EXPECT_LE(static_cast<Star*>(cels[neighb_celids[index-1]])->absolute_magnitude,
+            static_cast<Star*>(cels[neighb_celids[index]])->absolute_magnitude);
+    }
+    neighborhood_order = NeighborhoodOrder::nearest;
+    neighbly = 1000;
+    next_frame();
+    draw();
+    ImGui::ActivateItemByID(window->GetID("Select##neighbors"));
+    next_frame();
+    draw();
+    EXPECT_EQ(selected, brightest->seqno);
+    for (size_t index = 1; index < neighb_celr.size(); ++index)
+    {
+        EXPECT_LE(neighb_celr[index-1], neighb_celr[index]);
+    }
+    neighb_celids.clear();
+    neighb_celr.clear();
 }
 
 TEST_F(RenderingRegressionTest, StellarFrameReuseExpiresBeforeSameEpochEditsAndDirectUpdates)

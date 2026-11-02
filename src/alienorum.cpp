@@ -1135,16 +1135,16 @@ int main (int argc, char** argv)
                         ? std::string(biggest_cel->name) // + std::string(".")
                         : std::string("")
                         ));
-            
-            if (view_mode == vm_skymap) snapname += ".skymap";
-            if (view_mode == vm_sunclock) snapname += ".sunclock";
 
             shnapsot_fname << snapdir << _FILESLASH
                 << subject
-                << ((snapname.size() && view_mode != vm_skymap) ? " from " : "")
+                << ((subject.size() && snapname.size() && view_mode != vm_skymap && view_mode != vm_system) ? " from " : "")
                 << snapname << "." 
                 << std::put_time(std::localtime(&time_t_now), "%Y%m%d.%H%M%S") 
                 << ".png";
+
+            if (view_mode == vm_skymap) snapname += ".skymap";
+            if (view_mode == vm_sunclock) snapname += ".sunclock";
 
             if (save_snapshot_png(shnapsot_fname.str(), (int)io.DisplaySize.x, (int)io.DisplaySize.y))
                 std::cout << (PERF_P095 ? "Snapshot queued: " : "Saved ") << shnapsot_fname.str() << " (" << (int)io.DisplaySize.x << "x" << (int)io.DisplaySize.y << ")" << std::endl;
