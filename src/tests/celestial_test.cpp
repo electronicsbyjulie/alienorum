@@ -1634,6 +1634,48 @@ TEST_F(ShoreNavigationTest, WaterCoverageBudgetEstimationPreservesPressureAndAll
     EXPECT_NEAR(editor.percent(), 25, 1e-10);
 }
 
+TEST_F(ShoreNavigationTest, WaterBudgetUpdateStopsAfterOneCorrectiveGeneration)
+{
+    Planet* planet = world([](double, double) { return false; });
+    planet->fictitious_map_height = 64;
+    planet->mass = earth_mass;
+    planet->volumetric_mean_radius = earth_radius;
+    planet->user_added = true;
+    planet->ring_status_known = true;
+    planet->ensure_atmosphere()->surface_pressure = 5e5;
+    planet->atm->pressure_supplied = true;
+    planet->atm->ensure_composition()->N2_portion = 1;
+    planet->m_bump_scale = planet->estimate_bump_scale();
+    delete planet->surf_map;
+    planet->surf_map = new CoverageTestMap(planet->m_bump_scale);
+    const bool old_randomize = randomize_txgen;
+    randomize_txgen = false;
+    WaterCoverageEditor editor;
+    editor.refresh(planet, 8);
+    ASSERT_TRUE(editor.estimate());
+    editor.prepare_generation(planet);
+    planet->mark_all_maps_for_regen();
+    int passes = 0;
+    while (editor.has_target() && passes < 5)
+    {
+        wait_for_texture_tasks();
+        editor.poll(8);
+        ++passes;
+    }
+    wait_for_texture_tasks();
+    randomize_txgen = old_randomize;
+    EXPECT_FALSE(editor.has_target());
+    EXPECT_LE(passes, 2);
+    const auto generation = planet->surf_map->gen;
+    const float level = planet->has_water;
+    for (int frame = 0; frame < 5; ++frame) editor.poll(8);
+    wait_for_texture_tasks();
+    EXPECT_EQ(planet->surf_map->gen, generation);
+    EXPECT_FLOAT_EQ(planet->has_water, level);
+    EXPECT_DOUBLE_EQ(planet->get_surface_pressure(), 5e5);
+    EXPECT_FALSE(planet->has_water_supplied);
+}
+
 TEST_F(ShoreNavigationTest, ImportedWaterCoverageUsesEqualAreaAndAcceptsGenerationTarget)
 {
     Planet *planet = world([](double lat, double) { return lat > _pi / 3; }, false);

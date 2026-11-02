@@ -124,6 +124,14 @@ namespace alienorum
             if (!coverage.ready() || !pending || map_generation() == starting_generation) return;
             if (budget_target)
             {
+                // Calibration is a single corrective pass, not a fixed-point iteration.
+                // The generator and editor sample different grids, so their floating-point
+                // waterlines can alternate forever even when the terrain is unchanged.
+                if (!awaiting_calibration)
+                {
+                    pending = budget_target = false;
+                    return;
+                }
                 if (!coverage.editable()) return;
                 const float previous = body->has_water;
                 if (!body->estimate_surface_water(true, coverage.height_samples()) || body->has_water == previous)
@@ -131,6 +139,7 @@ namespace alienorum
                     pending = awaiting_calibration = budget_target = false;
                     return;
                 }
+                awaiting_calibration = false;
                 starting_generation = map_generation();
                 body->mark_all_maps_for_regen();
                 return;
