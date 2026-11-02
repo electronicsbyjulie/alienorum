@@ -478,7 +478,8 @@ void main()
         alpha = solid + background_alpha;
         rain_cumulus = solid;
         puff_weight = solid / max(1e-5, alpha);
-        if (nearest < 1e30) haze_distance = mix(distance, nearest, puff_weight);
+        // Puff intersections are offsets from the shell hit, not observer ranges.
+        if (nearest < 1e30) haze_distance = mix(distance, max(0.0, distance + nearest), puff_weight);
         // Cirrus catches the warm light throughout; cumulus only on undersides.
         warm_weight = (0.55 * solid * underside + background_alpha) / max(1e-5, alpha);
     }
@@ -495,7 +496,7 @@ void main()
     if (uLight[3].w > 0.5) color *= clamp(uLight[3].rgb, 0.0, 1.0);
     if (uWorld[2].z > 0.0)
     {
-        vec3 transmission = exp(-uWorld[2].yzw * haze_distance);
+        vec3 transmission = exp(-max(vec3(0.0), uWorld[2].yzw) * max(0.0, haze_distance));
         color = color * transmission + uWorld[3].rgb * (vec3(1.0) - transmission);
     }
     if (uLight[0].w > 0.5)

@@ -4581,6 +4581,31 @@ TEST_F(RenderingRegressionTest, GpuPressureHazeBoundsGeometryAtScreenshotResolut
     if (benchmark) SDL_SetWindowSize(window, 192, 108);
 }
 
+TEST_F(RenderingRegressionTest, PressureHazeKeepsRedLitCloudPuffsWithinTheirIllumination)
+{
+    CloudTestView view;
+    view.illumination = CloudIllumination{1, .6, {1, .02, .01}};
+    view.haze_extinction = {1.f, 3.f, 6.f};
+    view.haze_light = {.5f, .005f, .002f};
+    for (auto mode : {CloudGeometryMode::accelerated, CloudGeometryMode::reference})
+    {
+        view.mode = mode;
+        for (double elevation : {.1, .4, 1.0})
+        {
+            const auto pixels = clouds(100, elevation, 1.0, view);
+            int visible = 0;
+            for (size_t pixel = 0; pixel < pixels.size(); pixel += 4)
+            {
+                if (!pixels[pixel + 3]) continue;
+                ++visible;
+                EXPECT_LE(pixels[pixel + 1], 6);
+                EXPECT_LE(pixels[pixel + 2], 4);
+            }
+            EXPECT_GT(visible, 10);
+        }
+    }
+}
+
 TEST_F(RenderingRegressionTest, CloudPressureHazeUsesCloudDistanceAndInvalidatesCachedColor)
 {
     CloudTestView view;
