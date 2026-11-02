@@ -757,7 +757,10 @@ namespace alienorum
         // path at grazing incidence. RGB extinction removes underlying surface contrast.
         "        float column = max(1.0, hazePath / max(atmRel, 1e-6));\n"
         "        vec3 transmission = exp(-uAtm[2].rgb * column);\n"
-        "        float illumination = pow(max(0.0, dot(airNormal, vLightDir)), 1.0/3.0);\n"
+        // System view's legacy surface lighting supplies an AU-length vector.
+        // Normalize locally so scattering remains bounded and other body types retain their lighting.
+        "        vec3 airLightDir = vLightDir / max(length(vLightDir), 1e-20);\n"
+        "        float illumination = pow(clamp(dot(airNormal, airLightDir), 0.0, 1.0), 1.0/3.0);\n"
         "        vec3 scattered = 0.55 * uAtm[0].rgb * vTint * illumination * shadow;\n"
         "        outColor = outColor * transmission + scattered * (vec3(1.0) - transmission);\n"
         "    }\n"

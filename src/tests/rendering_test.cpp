@@ -4735,6 +4735,9 @@ TEST_F(RenderingRegressionTest, DiscScatteringIncludesMoonsAndPreservesGiantAndC
                 if (uses_rocky_map(type))
                 {
                     EXPECT_GT(image_difference(original, scattered), 10);
+                    const size_t center = (render_height / 2 * render_width + render_width / 2) * 4;
+                    for (int channel = 0; channel < 3; ++channel)
+                        EXPECT_LE(scattered[center + channel], 145) << "view mode " << mode;
                 }
                 else
                 {
