@@ -3766,8 +3766,6 @@ void CelestialObject::generate_water_clouds()
         std::unique_ptr<Map> clouds(new Map(this));
         if (clouds->generate_water_cloud_map(this))
         {
-            transparent_clouds = true;
-            ((Planet*)this)->overcast = false;
             cloud_map = clouds.release();
         }
     }
@@ -3912,6 +3910,7 @@ bool Map::generate_water_cloud_map(CelestialObject *cel)
     const int wisp_octaves = octaves_for(36.0, 4);
     const int depth_octaves = octaves_for(2.6, 4);
     const int cell_octaves = octaves_for(30.0, 3);
+    unsigned char minimum_opacity = 255;
 
     for (unsigned long y = 0; y < image_height; ++y)
     {
@@ -4041,6 +4040,7 @@ bool Map::generate_water_cloud_map(CelestialObject *cel)
             const double opacity = std::clamp(std::max({background_opacity, storm_opacity, deck}), 0.0, 1.0);
             // Grayscale is premultiplied white: the existing map compositor also reads it as alpha.
             const unsigned char brightness = (unsigned char)(255.0 * opacity + 0.5);
+            minimum_opacity = std::min(minimum_opacity, brightness);
             const unsigned long idx = y * image_width + x;
             red_data[idx] = brightness;
             green_data[idx] = brightness;
@@ -4048,6 +4048,10 @@ bool Map::generate_water_cloud_map(CelestialObject *cel)
         }
     }
 
+    // A transparency-capable texture can still form a globally obscuring deck.
+    // Require every pixel to reach 70% opacity; clear gaps retain patchy blending.
+    p->transparent_clouds = minimum_opacity < 179;
+    p->overcast = !p->transparent_clouds;
     procedurally_generated = true;
     touch_gen();
     return true;

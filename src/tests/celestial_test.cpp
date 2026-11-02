@@ -2031,6 +2031,16 @@ TEST_F(CloudClimateTest, RepresentativeTexturesSpanWispsStormsAndOpaqueDecks)
         Map map(worlds[i]);
         ASSERT_TRUE(map.generate_water_cloud_map(worlds[i])) << labels[i];
         opacity[i] = mean_opacity(map);
+        unsigned char minimum = 255;
+        for (unsigned long y = 0; y < map.get_height(); ++y)
+        {
+            for (unsigned long x = 0; x < map.get_width(); ++x)
+            {
+                minimum = std::min(minimum, map.surface_pixel(x, y).first.r);
+            }
+        }
+        EXPECT_EQ(worlds[i]->transparent_clouds, minimum < 179) << labels[i];
+        EXPECT_EQ(worlds[i]->overcast, minimum >= 179) << labels[i];
         RecordProperty(std::string(labels[i]) + "_mean_opacity", std::to_string(opacity[i]));
         if (const char* folder = std::getenv("ALIENORUM_CLOUD_PREVIEW_DIR"))
         {
@@ -2043,6 +2053,20 @@ TEST_F(CloudClimateTest, RepresentativeTexturesSpanWispsStormsAndOpaqueDecks)
     EXPECT_LT(opacity[1], opacity[0] / 3);
     EXPECT_GT(opacity[2], 3 * opacity[4]);
     EXPECT_GT(opacity[3], 0.7);
+    EXPECT_TRUE(earth->transparent_clouds);
+    EXPECT_FALSE(earth->overcast);
+    EXPECT_FALSE(venus->transparent_clouds);
+    EXPECT_TRUE(venus->overcast);
+    for (Planet* world : {earth, venus})
+    {
+        world->transparent_clouds = true;
+        world->overcast = false;
+        world->surf_map = new ShoreTestMap([](double, double) { return false; });
+        world->generate_water_clouds();
+        ASSERT_NE(world->cloud_map, nullptr);
+        EXPECT_EQ(world->transparent_clouds, world == earth);
+        EXPECT_EQ(world->overcast, world == venus);
+    }
 }
 
 TEST_F(ShoreNavigationTest, StellarTexturesIgnoreViewChangesDuringGeneration)
