@@ -22,6 +22,7 @@
 #include "../housekeeping.h"
 #include "../classes/clouds_gpu.h"
 #include "../classes/cloudlighting.h"
+#include "../classes/pressurehaze.h"
 #include "../classes/surfacebiomes.h"
 #include "../classes/surfacenavigation.h"
 #include "../classes/surfaceoptions.h"
@@ -146,7 +147,7 @@ class DistantPlantTestMap : public Map
 class CoastalTestMap : public Map
 {
     public:
-    CoastalTestMap()
+    explicit CoastalTestMap(bool ocean = true)
     {
         image_width = 2;
         image_height = 32768;
@@ -158,7 +159,7 @@ class CoastalTestMap : public Map
         blue_data = new unsigned char[allocated];
         for (unsigned long index = 0; index < allocated; index++)
         {
-            const bool sea = index / image_width < image_height / 2;
+            const bool sea = ocean && index / image_width < image_height / 2;
             red_data[index] = sea ? 20 : 160;
             green_data[index] = sea ? 100 : 120;
             blue_data[index] = sea ? 160 : 80;
@@ -3582,13 +3583,20 @@ TEST_F(RenderingRegressionTest, DenseAtmosphereCoastHasSeaBelowTheLiftedHorizon)
     find_horizon();
     draw_horizon();
     const auto pixels = render();
+    ImGui::NewFrame();
+    // Compare against land under identical airlight: thick air changes sea color.
+    delete world->surf_map;
+    world->surf_map = new CoastalTestMap(false);
+    find_horizon();
+    draw_horizon();
+    const auto land = render();
     int sea = 0;
     for (int y = 56; y < 60; y++)
     {
         for (int x = 86; x < 106; x++)
         {
             const int index = ((render_height - y - 1) * render_width + x) * 4;
-            sea += pixels[index + 2] > pixels[index] * 2;
+            sea += pixels[index + 2] > land[index + 2] + 2;
         }
     }
     EXPECT_GT(sea, 60);
@@ -3599,7 +3607,8 @@ TEST_F(RenderingRegressionTest, HotDryGroundSkipsPerPixelBiomePainting)
 {
     Planet *world = surface(true);
     world->temperature = 737;
-    world->ensure_atmosphere()->surface_pressure = 93 * oneatm;
+    // Isolate the dry-biome fast path; dense air deliberately adds depth-dependent painting.
+    world->ensure_atmosphere()->surface_pressure = oneatm;
     delete world->surf_map;
     world->surf_map = new MountainBandsTestMap();
     set(dispcx, 960.0);
@@ -4081,6 +4090,109 @@ TEST_F(RenderingRegressionTest, NadirSurfaceCoversTheViewportOnLandAndWater)
                 }
                 ImGui::NewFrame();
             }
+        }
+    }
+}
+
+TEST(PressureHazeTest, DensityCompositionDistanceAndWavelengthControlVeiling)
+{
+    const auto earth = PressureHaze::prepare(101325, 288, 1, 0, 8000);
+    EXPECT_FALSE(earth.active());
+    const auto venus = PressureHaze::prepare(92e5, 737, 2.5, 0, 15000);
+    const auto dense = PressureHaze::prepare(700e5, 1000, 2.5, 0, 15000);
+    #if PRESSURE_HAZE
+    EXPECT_TRUE(venus.active());
+    EXPECT_GT(dense.transmission(10, 1), .9);
+    EXPECT_LT(dense.transmission(3000, 1), .01);
+    EXPECT_GT(venus.transmission(1000, 1), dense.transmission(1000, 1));
+    EXPECT_GT(dense.transmission(1000, 0), dense.transmission(1000, 2));
+    const auto hot = PressureHaze::prepare(700e5, 2000, 2.5, 0, 15000);
+    EXPECT_GT(hot.transmission(1000, 1), dense.transmission(1000, 1));
+    const auto hydrogen = PressureHaze::prepare(700e5, 1000, .23, 0, 15000);
+    EXPECT_GT(hydrogen.transmission(1000, 1), dense.transmission(1000, 1));
+    #else
+    EXPECT_FALSE(dense.active());
+    #endif
+    PressureHaze colored = dense;
+    colored.light = {120, 90, 50};
+    const std::array<double, 3> terrain = {30, 40, 60};
+    EXPECT_EQ(colored.apply(terrain, 0), terrain);
+    EXPECT_EQ(earth.apply(terrain, 10000), terrain);
+    #if PRESSURE_HAZE
+    const auto far = colored.apply(terrain, 1000000);
+    for (int channel = 0; channel < 3; ++channel) EXPECT_NEAR(far[channel], colored.light[channel], 1e-6);
+    #endif
+}
+
+TEST_F(RenderingRegressionTest, PressureHazeVeilsSkyAndSurfaceWithoutLightingTheNight)
+{
+    const char* preview = std::getenv("ALIENORUM_HAZE_PREVIEW_DIR");
+    if (preview)
+    {
+        render_width = 640;
+        render_height = 360;
+        SDL_SetWindowSize(window, render_width, render_height);
+        SDL_PumpEvents();
+        SDL_GL_SwapWindow(window);
+        ImGui::GetIO().DisplaySize = ImVec2(render_width, render_height);
+        dispcx = render_width * .5;
+        dispcy = render_height * .5;
+        ImGui::EndFrame();
+        ImGui::NewFrame();
+    }
+    Planet* world = surface(true);
+    auto* air = world->ensure_atmosphere();
+    air->pressure_supplied = true;
+    air->ensure_composition()->CO2_portion = 1;
+    set(whtbkgd, false);
+    set(sky_grad, std::map<int, RGB3>{});
+    set(sky_mag_shift, sky_mag_shift);
+    altitude = 0;
+    const auto capture = [&]()
+    {
+        freeze_surface_time();
+        find_horizon();
+        draw_sky_gradient();
+        draw_horizon();
+        const auto pixels = render();
+        ImGui::NewFrame();
+        return pixels;
+    };
+    air->surface_pressure = oneatm;
+    const auto clear = capture();
+    air->surface_pressure = 700e5;
+    const auto dense = capture();
+    #if PRESSURE_HAZE
+    EXPECT_GT(image_difference(dense, clear), 1000);
+    #endif
+    // Both paths use identical airlight for tree crowns/trunks and rocks.
+    scenery_gpu_reference = false;
+    const auto accelerated = capture();
+    EXPECT_LT(image_difference(accelerated, dense), render_width * render_height / 200);
+    luminous_flux = 0;
+    const auto night = capture();
+    #if PRESSURE_HAZE
+    for (int y = render_height - 8; y < render_height - 2; ++y)
+    {
+        const size_t pixel = (y * render_width + render_width / 2) * 4;
+        EXPECT_LE(night[pixel] + night[pixel + 1] + night[pixel + 2], 3);
+    }
+    #endif
+    if (preview)
+    {
+        std::filesystem::create_directories(preview);
+        for (const auto& item : {std::make_pair("clear.png", &clear), std::make_pair("dense.png", &dense),
+            std::make_pair("night.png", &night)})
+        {
+            std::vector<unsigned char> flipped(item.second->size());
+            for (int y = 0; y < render_height; ++y)
+                std::copy_n(item.second->data() + (render_height - 1 - y) * render_width * 4,
+                    render_width * 4, flipped.data() + y * render_width * 4);
+            SDL_Surface* image = SDL_CreateRGBSurfaceWithFormatFrom(flipped.data(), render_width,
+                render_height, 32, render_width * 4, SDL_PIXELFORMAT_RGBA32);
+            ASSERT_NE(image, nullptr);
+            EXPECT_EQ(IMG_SavePNG(image, (std::filesystem::path(preview) / item.first).string().c_str()), 0);
+            SDL_FreeSurface(image);
         }
     }
 }

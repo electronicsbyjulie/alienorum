@@ -15,6 +15,7 @@
 #include "horizon_mesh_gpu.h"
 #include "classes/clouds_gpu.h"
 #include "classes/cloudlighting.h"
+#include "classes/pressurehaze.h"
 #include "classes/exocons.h"
 #include "classes/surfacescatter.h"
 #include "classes/scenerydraw.h"
@@ -926,6 +927,77 @@ static void atmosphere_colors(Planet *pl, double out_high[3], double out_low[3],
         if (mx <= 0) continue;
         for (int i = 0; i < 3; i++) outs[k][i] = (ins[k][i] / mx) * amount;
     }
+}
+
+// Shared airlight and extinction for the sky, terrain, and scenery.
+static PressureHaze surface_pressure_haze(Planet* planet)
+{
+    #if !PRESSURE_HAZE
+    return {};
+    #else
+    if (!planet || !uses_rocky_map(planet->type)) return {};
+    const double pressure = planet->get_surface_pressure();
+    if (!(pressure > 2e5)) return {};
+    const double temperature = planet->estimate_surface_temperature();
+    double ratio = 1, molar_mass = .02897;
+    if (planet->atm && planet->atm->comp)
+    {
+        auto* gas = planet->atm->comp;
+        // Approximate visible Rayleigh strengths relative to terrestrial air.
+        const std::pair<double, double> mixture[] =
+        {
+            {gas->H2_portion, .23}, {gas->He_portion, .015}, {gas->N2_portion, 1.05},
+            {gas->O2_portion, .85}, {gas->CO2_portion, 2.5}, {gas->CH4_portion, 2.2},
+            {gas->H2O_portion, .85}, {gas->Ar_portion, .9}, {gas->CO_portion, 1.2},
+            {gas->SO2_portion, 4}, {gas->H2S_portion, 3}, {gas->HCN_portion, 3},
+            {gas->NH3_portion, 2}, {gas->C2H6_portion, 4}, {gas->N2O_portion, 3}, {gas->O3_portion, 2}
+        };
+        double total = 0, scattering = 0;
+        for (const auto& component : mixture)
+        {
+            if (!std::isfinite(component.first) || component.first <= 0) continue;
+            total += component.first;
+            scattering += component.first * component.second;
+        }
+        if (total > 0) ratio = scattering / total;
+        molar_mass = gas->mean_molar_mass();
+    }
+    const double gravity = G * planet->mass / pow(planet->volumetric_mean_radius, 2);
+    const double scale_height = gravity > 0 ? 8.314462618 * temperature / (molar_mass * gravity) : 8000;
+    PressureHaze haze = PressureHaze::prepare(pressure, temperature, ratio,
+        planet->get_particulates(), scale_height);
+    if (!haze.active()) return haze;
+    double high[3], low[3], umbra[3];
+    atmosphere_colors(planet, high, low, umbra);
+    Color star(1, 1, 1);
+    CelestialObject* source = planet->get_light_center();
+    if (source && source->typeclass() == class_star)
+        star = Color::color_from_star(0, static_cast<Star*>(source), source->BV_color);
+    star.normalize(1);
+    const double illumination = std::clamp(pow(std::max(0.0, luminous_flux) * 2.5e-11, 1.0 / 5.5)
+        + .01 * std::max(0.0, starlight), 0.0, 1.0);
+    const double tint[] = {star.red, star.green, star.blue};
+    // A diffuse, spectrally filtered airlight closure, not a full radiative-transfer solution.
+    for (int channel = 0; channel < 3; ++channel)
+        haze.light[channel] = 255 * illumination * tint[channel] * (.35 + .65 * low[channel]);
+    return haze;
+    #endif
+}
+
+static ImU32 pressure_haze_color(const PressureHaze& haze, ImU32 color, double distance)
+{
+    if (!haze.active()) return color;
+    const ImU32 airlight = rgba_apply_redlight(IM_COL32(haze.light[0], haze.light[1], haze.light[2], 255));
+    const int shifts[] = {IM_COL32_R_SHIFT, IM_COL32_G_SHIFT, IM_COL32_B_SHIFT};
+    ImU32 result = color & IM_COL32_A_MASK;
+    for (int channel = 0; channel < 3; ++channel)
+    {
+        const double transmission = haze.transmission(distance, channel);
+        const double value = ((color >> shifts[channel]) & 255) * transmission
+            + ((airlight >> shifts[channel]) & 255) * (1 - transmission);
+        result |= static_cast<ImU32>(std::clamp(value, 0.0, 255.0)) << shifts[channel];
+    }
+    return result;
 }
 
 // The ring plane's normal in camera space -- the planet's local +Y (polar) axis, rotated
@@ -5549,6 +5621,15 @@ void draw_horizon()
 
         spawn_texture_load(cel);
 
+        const PressureHaze haze = surface_pressure_haze(p);
+        if (haze.active() && !dragging && !whtbkgd)
+        {
+            // Draw after celestial objects and clouds, before the ground: deep air
+            // also erases distant cloud detail and the direct stellar disk.
+            ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, 0), ImVec2(dispcx * 2, dispcy * 2),
+                rgba_apply_redlight(IM_COL32(haze.light[0], haze.light[1], haze.light[2], haze.sky_opacity * 255)));
+        }
+
         double is_day = fmin(1, luminous_flux*2.5e-11 + starlight);
 
         // Adjust for relative instellation.
@@ -5948,6 +6029,7 @@ void draw_horizon()
         }
         #endif
 
+        terraincol = pressure_haze_color(haze, terraincol, surface_range);
         if (faded)
         {
             const double bluing = 0.9;
@@ -6685,7 +6767,7 @@ void draw_horizon()
             if (first_ground == ground_height) reset_horizon_ground_gpu_stats();
         }
 
-        if (!faded && (surface_water || (surface_biomes && cel->type != lavaworld))
+        if (!faded && (surface_water || (surface_biomes && cel->type != lavaworld) || haze.active())
             && (!bounded_ground || first_ground < ground_height))
         {
             ImDrawList *ground = ImGui::GetBackgroundDrawList();
@@ -6695,7 +6777,7 @@ void draw_horizon()
             // In this domain base-surface coverage is monotonic down each column.
             // Other views retain the reference painter, including views past the nadir.
             if (map && map->is_complete() && surface_cos_altitude() >= 0 && top_north > 0 && bottom_north > 0
-                && !horizon_ground_gpu_reference)
+                && !horizon_ground_gpu_reference && !haze.active())
             {
                 std::vector<int> local_base_top;
                 auto& base_top = bounded_ground ? bounded_base_top : local_base_top;
@@ -6772,9 +6854,11 @@ void draw_horizon()
                 }
                 const auto coord = ground_coord(x, y);
                 const RGB3 sample = surface_sample(coord.first, coord.second);
-                return rgba_apply_redlight(IM_COL32(fmin(255, is_day * sample.r),
+                const ImU32 color = rgba_apply_redlight(IM_COL32(fmin(255, is_day * sample.r),
                     fmin(255, is_day * sample.g), fmin(255, is_day * sample.b),
                     dragging ? (192 - 128 * is_day) : 255));
+                const double distance = visible_distance(x, y);
+                return pressure_haze_color(haze, color, std::isfinite(distance) ? distance : surface_range);
             };
             // Subdivide map boundaries while drawing uniform regions as large patches.
             const auto patch = [&](const auto &self, int left, int top, int right, int bottom) -> void
@@ -7324,7 +7408,7 @@ void draw_horizon()
                                 }
                             }
 
-                            ImU32 w_col = rgba_apply_redlight(IM_COL32(cr, cg, cb, ca));
+                            ImU32 w_col = pressure_haze_color(haze, rgba_apply_redlight(IM_COL32(cr, cg, cb, ca)), dist_m);
                             float line_th = fmax(1.0f, (float)(1.5 / fmax(1.0, dist_m * 0.1)));
                             ImGui::GetBackgroundDrawList()->AddLine(prev_pt, cur_pt, w_col, line_th);
                         }
@@ -7389,6 +7473,8 @@ void draw_horizon()
 
             double sun_light = fmax(0.0, sin(sun_elev)) * is_day;
             double amb_light = fmax(0.04, 0.22 * is_day + starlight * 0.4);
+            amb_light += .35 * is_day * haze.sky_opacity;
+            sun_light *= 1 - haze.sky_opacity;
 
             if (show_terrain)
             {
@@ -7997,7 +8083,8 @@ void draw_horizon()
                 }
 
                 int shadow_base_alpha = is_moon ? ROCK_SHADOW_ALPHA_MOON : (is_mars ? ROCK_SHADOW_ALPHA_MARS : (is_venus ? ROCK_SHADOW_ALPHA_VENUS : (is_lava ? 70 : ROCK_SHADOW_ALPHA_DEF)));
-                int shadow_alpha = (int)(fmin(1.0, fmax(0.0, sun_elev * 2.5)) * is_day * shadow_base_alpha);
+                int shadow_alpha = (int)(fmin(1.0, fmax(0.0, sun_elev * 2.5)) * is_day
+                    * shadow_base_alpha * (1 - haze.sky_opacity));
                 bool has_sun_shadow = (shadow_alpha >= 10 && sun_elev > 0.02 && !dittrsa);
 
                 if (has_sun_shadow)
@@ -8012,7 +8099,7 @@ void draw_horizon()
                         const RockInstance& rk = rocks[ri];
                         const bool is_vegetation = rk.vegetation;
                         const ImU32 shad_col = rgba_apply_redlight(IM_COL32(0, 0, 0,
-                            static_cast<int>(shadow_alpha * rk.opacity)));
+                            static_cast<int>(shadow_alpha * rk.opacity * haze.transmission(rk.dist, 1))));
                         if (rk.width < 3.0 || !rk.base_valid)
                         {
                             continue;
@@ -8106,12 +8193,13 @@ void draw_horizon()
 
                 const bool gpu_plants = prepare_scenery_gpu();
                 ImDrawList *scenery_draw_list = ImGui::GetBackgroundDrawList();
-                auto fade_scenery = [&](int first_vertex, double opacity)
+                auto fade_scenery = [&](int first_vertex, double opacity, double distance)
                 {
-                    if (opacity >= 1.0) return;
+                    if (opacity >= 1.0 && !haze.active()) return;
                     for (int vertex = first_vertex; vertex < scenery_draw_list->VtxBuffer.Size; ++vertex)
                     {
                         ImU32 &color = scenery_draw_list->VtxBuffer[vertex].col;
+                        color = pressure_haze_color(haze, color, distance);
                         const ImU32 alpha = static_cast<ImU32>(((color & IM_COL32_A_MASK)
                             >> IM_COL32_A_SHIFT) * opacity);
                         color = (color & ~IM_COL32_A_MASK) | (alpha << IM_COL32_A_SHIFT);
@@ -8168,12 +8256,12 @@ void draw_horizon()
                         {
                             SceneryPlantGpu plant;
                             plant.crown = ImVec4(px, py, rw * .5f, rw * .5f);
-                            plant.crown_color = peb_col;
+                            plant.crown_color = pressure_haze_color(haze, peb_col, rk.dist);
                             plant.trunk_visible = 0;
                             add_scenery_plant_gpu(plant, true, true);
                         }
                         else ImGui::GetBackgroundDrawList()->AddCircleFilled(ImVec2(px, py), rw * 0.5f, peb_col);
-                        fade_scenery(first_vertex, rk.opacity);
+                        fade_scenery(first_vertex, rk.opacity, rk.dist);
                         continue;
                     }
 
@@ -8233,8 +8321,8 @@ void draw_horizon()
                         ImU32 crown_col = rgba_apply_redlight(IM_COL32(cr, cg, cb, 255));
                         SceneryPlantGpu gpu_plant;
                         gpu_plant.crown = ImVec4(cx, cy, crown_rx, crown_ry);
-                        gpu_plant.crown_color = crown_col;
-                        gpu_plant.trunk_color = trunk_col;
+                        gpu_plant.crown_color = pressure_haze_color(haze, crown_col, rk.dist);
+                        gpu_plant.trunk_color = pressure_haze_color(haze, trunk_col, rk.dist);
                         if (rk.opacity < 1)
                         {
                             for (ImU32* color : {&gpu_plant.crown_color, &gpu_plant.trunk_color})
@@ -8597,7 +8685,7 @@ void draw_horizon()
                         }
                         #endif
                     }
-                    fade_scenery(first_vertex, rk.opacity);
+                    fade_scenery(first_vertex, rk.opacity, rk.dist);
                 }
                 if (gpu_plants) flush_scenery_gpu();
             }

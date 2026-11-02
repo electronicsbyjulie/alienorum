@@ -135,6 +135,8 @@ a total of one million times the default walking speed.
 
 In planetfall mode on a world with surface water, press `Ctrl+F` or choose Spacetime → Find Shore to move to a nearby shoreline. The search favors the direction you are facing and follows the detailed terrain boundary. You arrive just on the land side, with your viewing direction unchanged.
 
+High-pressure atmospheres progressively veil distant terrain, rocks, and vegetation and soften the sky into diffuse atmospheric light. This rendering approximation uses pressure, temperature, gas composition, and viewing distance; it is not a visibility forecast. To disable it, set `PRESSURE_HAZE` to `0` in `src/classes/pressurehaze.h`, or compile with `-DPRESSURE_HAZE=0`.
+
 #### Exoplanet estimates and uncertainty
 
 Alienorum's exoplanet simulations are illustrative estimates based on the limited information available, rather than predictions of actual conditions. Depicted atmospheres, clouds, water, ice, and life represent plausible scenarios under the model's assumptions; they are not evidence that these features exist on a particular planet. Atmospheric pressures, temperatures, surface water coverage, and planet types can be highly uncertain, especially when masses, radii, compositions, or stellar histories are poorly constrained. Vegetation and other signs of life are speculative visualizations, not detections or estimates of the probability of life.
