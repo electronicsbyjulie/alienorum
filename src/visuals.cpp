@@ -4795,6 +4795,7 @@ void draw_sunclock()
         ? Color::color_from_star(0, (Star*)lightcen, lightcen->BV_color)
         : Color::color_from_magnitude_indices(0, lightcen->BV_color);
     RGB3 prgb = Color::rgb_from_color(c, -1), rgb = prgb, nrgb(0,0,0);
+    daylight.saturate(.25);
     daylight.normalize(1);
 
     int x, y, dx, dy, step=2, size = dispcx/2, halfwid = size*2;

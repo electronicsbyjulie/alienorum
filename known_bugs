@@ -5,7 +5,7 @@
 
 [Fixed] Sun-clock star and planet/moon icons have black outlines, and non-star icons have offset shadows for contrast against the surface texture.
 
-The star's rendered color has too much effect on the illumination shown in sun clock mode. Let's turn down the saturation to about one quarter the original value.
+[Fixed] Sun-clock illumination uses one-quarter stellar color saturation in both CPU and GPU rendering.
 
 [Fixed in better-atmospheres branch] Plant crowns and trunks are clipped independently. Visible trunk segments remain when the crown passes behind the camera, with finite near-plane clipping and matching CPU/GPU rendering.
 
