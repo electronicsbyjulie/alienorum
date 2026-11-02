@@ -488,8 +488,9 @@ void main()
         + vec3(uLight[0].y * (1.0 - deck));
     color = mix(color, vec3(uLight[0].y * shade), puff_weight);
     float warmth = 0.65 * clamp(uLight[1].y, 0.0, 1.0) * warm_weight;
-    float glow_light = max(0.18, max(color.r, max(color.g, color.b)));
+    float glow_light = max(color.r, max(color.g, color.b));
     color = mix(color, vec3(1.0, 0.45, 0.15) * glow_light, warmth);
+    if (uLight[3].w > 0.5) color *= clamp(uLight[3].rgb, 0.0, 1.0);
     if (uLight[0].w > 0.5)
     {
         color = vec3(min(1.0, color.r + 0.5 * color.g + 0.3 * color.b), color.g / 3.0, color.b / 3.0);

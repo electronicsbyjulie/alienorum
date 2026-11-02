@@ -21,6 +21,7 @@
 #include "../sphere_impostor.h"
 #include "../housekeeping.h"
 #include "../classes/clouds_gpu.h"
+#include "../classes/cloudlighting.h"
 #include "../classes/surfacebiomes.h"
 #include "../classes/surfacenavigation.h"
 #include "../classes/surfaceoptions.h"
@@ -51,6 +52,7 @@ using namespace alienorum;
 
 struct CloudTestView
 {
+    std::optional<CloudIllumination> illumination;
     CloudGeometryMode mode = CloudGeometryMode::accelerated;
     double latitude = 0;
     double longitude = 0;
@@ -495,6 +497,13 @@ class RenderingRegressionTest : public UniverseFixture
         input.light[1] = view.dark ? 0 : 0.6;
         input.light[2] = view.overcast ? 1 : 0;
         input.light[5] = view.warmth;
+        if (view.illumination)
+        {
+            input.light[0] = view.illumination->daylight;
+            input.light[1] = view.illumination->body;
+            for (int channel = 0; channel < 3; ++channel) input.light[12 + channel] = view.illumination->color[channel];
+            input.light[15] = 1;
+        }
         input.light[8] = view.wind;
         input.texture = cloud_texture;
         input.revision = cloud_epoch * 1024 + coverage + (view.patterned ? 256 : 0) + (view.isolated ? 512 : 0);
@@ -1691,6 +1700,76 @@ TEST_F(RenderingRegressionTest, CloudTwilightKeepsNeutralLightAtStrongAtmospheri
         EXPECT_GE(int(pixels[i + 1]), int(pixels[i] * 0.60) - 2);
     }
     EXPECT_GT(visible, 1000);
+}
+
+TEST(CloudIlluminationTest, MidnightAmbientIsNotAmplifiedByDaytimeAdaptationOrOrbitalDistance)
+{
+    const std::array<double, 3> white = {1, 1, 1};
+    const auto night = cloud_illumination(0, .03, 1, 101325, 0, false, white, white);
+    const auto distant = cloud_illumination(0, .03, .0001, 101325, 0, false, white, white);
+    EXPECT_LT(night.body, .001);
+    EXPECT_LT(night.daylight, .001);
+    EXPECT_DOUBLE_EQ(night.body, distant.body);
+    EXPECT_DOUBLE_EQ(night.daylight, distant.daylight);
+    const auto day = cloud_illumination(4e10, .03, 1, 101325, 0, false, white, white);
+    EXPECT_DOUBLE_EQ(day.daylight, 1);
+    EXPECT_DOUBLE_EQ(day.body, .71);
+    EXPECT_EQ(day.color, white);
+    const auto twilight = cloud_illumination(4e7, .03, 1, 101325, 0, false, white, white);
+    EXPECT_GT(twilight.body, night.body);
+    EXPECT_LT(twilight.body, day.body);
+}
+
+TEST_F(RenderingRegressionTest, CloudBodiesAndWispsShareTheFilteredIllumination)
+{
+    CloudTestView view;
+    view.illumination = cloud_illumination(4e10, .03, 1, 229e5, 1, false,
+        {1, .6, .3}, {160, 96, 64});
+    const auto tinted = clouds(153, .25, 1, view);
+    const auto initial = cloud_sky_gpu_stats();
+    view.illumination = cloud_illumination(4e10, .03, 1, 101325, 0, false,
+        {1, 1, 1}, {1, 1, 1});
+    const auto white = clouds(153, .25, 1, view);
+    EXPECT_GT(cloud_sky_gpu_stats().image_builds, initial.image_builds);
+    EXPECT_EQ(cloud_sky_gpu_stats().geometry_builds, initial.geometry_builds);
+    int visible = 0;
+    for (size_t i = 0; i < tinted.size(); i += 4)
+    {
+        EXPECT_EQ(tinted[i + 3], white[i + 3]);
+        if (white[i] < 20) continue;
+        ++visible;
+        EXPECT_NEAR(tinted[i], white[i], 2);
+        EXPECT_NEAR(tinted[i + 1], white[i + 1] * .6, 2);
+        EXPECT_NEAR(tinted[i + 2], white[i + 2] * .4, 2);
+    }
+    EXPECT_GT(visible, 1000);
+}
+
+TEST_F(RenderingRegressionTest, MidnightCloudsOccludeStarsWithoutEmittingLight)
+{
+    CloudTestView view;
+    view.warmth = 5; // A leftover tint must not supply its own illumination.
+    view.illumination = cloud_illumination(0, .03, .1, 5e5, 0, false,
+        {1, .6, .3}, {0, 0, 0});
+    const auto night = clouds(153, .25, 1, view);
+    int opaque = 0;
+    for (size_t i = 0; i < night.size(); i += 4)
+    {
+        EXPECT_LE(night[i], 1);
+        EXPECT_LE(night[i + 1], 1);
+        EXPECT_LE(night[i + 2], 1);
+        opaque += night[i + 3] >= 250;
+    }
+    EXPECT_GT(opaque, 1000);
+    view.overcast = true;
+    const auto deck = clouds(255, .7, 1, view);
+    for (size_t i = 0; i < deck.size(); i += 4)
+    {
+        EXPECT_LE(deck[i], 1);
+        EXPECT_LE(deck[i + 1], 1);
+        EXPECT_LE(deck[i + 2], 1);
+        EXPECT_GE(deck[i + 3], 254);
+    }
 }
 
 TEST_F(RenderingRegressionTest, DistantCloudClusterOutsideTheLimitLeavesOnlyTheBank)

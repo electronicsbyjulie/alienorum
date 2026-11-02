@@ -14,6 +14,7 @@
 #include "horizon_terrain_gpu.h"
 #include "horizon_mesh_gpu.h"
 #include "classes/clouds_gpu.h"
+#include "classes/cloudlighting.h"
 #include "classes/exocons.h"
 #include "classes/surfacescatter.h"
 #include "classes/scenerydraw.h"
@@ -9554,15 +9555,24 @@ bool draw_cloudy_sky()
             refraction[i] = (float)(a + p->atmospheric_refraction(a));
         }
     }
-    double daylight = fmin(1.0, luminous_flux * 2.5e-11 + starlight);
-    daylight /= fmin(1.0, fmax(0.01, sqrt(p->mean_instellation())));
-    daylight = std::clamp(daylight, 0.0, 1.0);
-
     CelestialObject *sun_obj = p->get_light_center();
-    double atm_pressure = (whereami >= 0 && cels && cels[whereami] && uses_rocky_map(cels[whereami]->type)) ? ((Planet*)cels[whereami])->get_surface_pressure() : 0;
-    double zenith_rad = find_3D_angle(sun_obj->viewrel, yaxis, center);
+    const double atm_pressure = p->get_surface_pressure();
+    const double zenith_rad = sun_obj ? find_3D_angle(sun_obj->viewrel, yaxis, center) : 0;
     double atm_yellowing = Color::compute_atmospheric_yellowing(atm_pressure, zenith_rad) * 3;
     if (p->overcast) atm_yellowing = false;
+    double high[3], transmitted[3], umbra[3];
+    atmosphere_colors(p, high, transmitted, umbra);
+    // Use the same atmospheric palette as the sky, independently of the camera angle.
+    std::array<double, 3> diffuse = {high[0], high[1], high[2]};
+    if (p->overcast)
+    {
+        const RGB3 deck = cel->cloud_map->color_at(viewer_lat, viewer_lon);
+        diffuse = {double(deck.r), double(deck.g), double(deck.b)};
+    }
+    const auto lighting = cloud_illumination(luminous_flux, starlight, p->mean_instellation(),
+        atm_pressure, p->get_particulates(), p->overcast,
+        {transmitted[0], transmitted[1], transmitted[2]}, diffuse,
+        cumulus_day_swing, cumulus_day_exponent, cumulus_day_maximum);
 
     CloudSkyGpuInput in = {};
     in.camera[0] = (float)azimuth;
@@ -9585,8 +9595,8 @@ bool draw_cloudy_sky()
     const double horizon_dip = acos(std::clamp(planet_radius / observer, 0.0, 1.0));
     in.world[3] = (float)sin(p->atmospheric_horizon_lift() - horizon_dip);
     in.world[8] = dragging ? 0.0f : 1.0f;
-    in.light[0] = (float)daylight;
-    in.light[1] = (float)(std::clamp(cumulus_day_swing * pow(daylight, cumulus_day_exponent), 0.0, 1.0) * cumulus_day_maximum);
+    in.light[0] = (float)lighting.daylight;
+    in.light[1] = (float)lighting.body;
     in.light[2] = p->overcast ? 1.0f : 0.0f;
     in.light[3] = redlight_mode ? 1.0f : 0.0f;
     in.light[4] = (float)dev_dial;                  // Leave this here in case we find other constants to adjust at a later date.
@@ -9611,6 +9621,8 @@ bool draw_cloudy_sky()
     // Align texture centers with the original CPU map's angular pixel grid.
     in.light[8] = 0.5f / cel->cloud_map->get_width();
     in.light[9] = 0.5f / cel->cloud_map->get_height();
+    for (int channel = 0; channel < 3; ++channel) in.light[12 + channel] = (float)lighting.color[channel];
+    in.light[15] = 1;
     in.texture = gputex_for(cel->cloud_map);
     in.revision = cel->cloud_map->gen;
     in.refraction = refraction;
