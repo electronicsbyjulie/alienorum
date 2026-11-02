@@ -31,10 +31,10 @@ namespace alienorum
         }
 
         static PressureHaze prepare(double pressure_pa, double temperature_k, double scattering_ratio,
-            double particulates, double scale_height_m)
+            double particulates, double scale_height_m, bool enabled = PRESSURE_HAZE)
         {
             PressureHaze result;
-            #if PRESSURE_HAZE
+            if (!enabled) return result;
             if (!std::isfinite(pressure_pa) || pressure_pa <= 2e5
                 || !std::isfinite(temperature_k) || temperature_k <= 0
                 || !std::isfinite(scattering_ratio) || scattering_ratio <= 0) return result;
@@ -52,7 +52,6 @@ namespace alienorum
                 result.extinction[channel] = beta * (std::pow(550 / wavelength[channel], 4) + dust);
             // Multiple scattering progressively replaces sky/cloud contrast with diffuse light.
             result.sky_opacity = -std::expm1(-beta * std::max(0.0, scale_height_m));
-            #endif
             return result;
         }
 

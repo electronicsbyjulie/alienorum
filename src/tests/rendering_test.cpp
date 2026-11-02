@@ -4690,6 +4690,114 @@ TEST_F(RenderingRegressionTest, SkyGradientFollowsZoomAndViewingAltitude)
     EXPECT_TRUE(sky_grad.empty());
 }
 
+TEST_F(RenderingRegressionTest, DiscScatteringIncludesMoonsAndPreservesGiantAndClearSkiesDiscs)
+{
+    auto* host = make_star();
+    host->location.local_position = host->tmprel = Point(0, 0, -AU);
+    auto* world = make_planet(host);
+    auto* observer = make_planet(host, "Disc observer");
+    auto* moon = new Moon;
+    moon->orbit = new Orbit;
+    moon->orbit->center = world;
+    moon->mass = earth_mass;
+    moon->volumetric_mean_radius = earth_radius;
+    append_cel(moon);
+    set(show_clouds, true);
+    set(sky_grad, std::map<int, RGB3>{});
+    for (Planet* target : {world, static_cast<Planet*>(moon)})
+    {
+        target->temperature = 1000;
+        target->location.local_position = target->tmprel = Point(0, 0, 5 * earth_radius);
+        target->surf_map = new SceneryTestMap();
+        auto* air = target->ensure_atmosphere();
+        air->surface_pressure = 700e5;
+        air->ensure_composition()->CO2_portion = 1;
+        for (cel_obj_type type : {rocky, icy, gas_giant, ice_giant, hot_jupiter, clearskies})
+        {
+            target->type = type;
+            for (ViewMode mode : {vm_spaceship, vm_system, vm_horizon})
+            {
+                view_mode = mode;
+                whereami = mode == vm_horizon ? observer->seqno : -1;
+                target->drawnx = dispcx;
+                target->drawny = dispcy;
+                const auto capture = [&](bool enabled)
+                {
+                    show_clouds = enabled;
+                    impostor_begin_frame();
+                    EXPECT_GT(draw_sphere_gpu(target, 20), 0);
+                    auto pixels = render();
+                    ImGui::NewFrame();
+                    return pixels;
+                };
+                const auto original = capture(false), scattered = capture(true);
+                #if DISC_SCATTERING
+                if (uses_rocky_map(type))
+                {
+                    EXPECT_GT(image_difference(original, scattered), 10);
+                }
+                else
+                {
+                    EXPECT_EQ(original, scattered);
+                }
+                #else
+                EXPECT_EQ(original, scattered);
+                #endif
+                air->surface_pressure = oneatm;
+                EXPECT_EQ(capture(false), capture(true));
+                air->surface_pressure = 700e5;
+            }
+        }
+    }
+}
+
+TEST_F(RenderingRegressionTest, DiscScatteringSuppressesSurfaceContrastTowardTheLimbWithoutNightGlow)
+{
+    SphereImpostorInput input{};
+    input.cz = 5;
+    input.r = input.axis_x = input.axis_y = input.axis_z = 1;
+    input.basisX[0] = input.basisY[1] = 1;
+    input.light_dir[2] = -1;
+    for (int channel = 0; channel < 3; ++channel)
+    {
+        input.daylight_tint[channel] = 1;
+        input.atmosphere_color[channel] = input.atmosphere_low_color[channel] = .7;
+    }
+    input.atmosphere_height = .04;
+    const auto capture = [&](double depth, int albedo)
+    {
+        for (double& channel : input.atmosphere_optical_depth) channel = depth;
+        input.fallback_color = IM_COL32(albedo, albedo, albedo, 255);
+        impostor_begin_frame();
+        double xmin, ymin, xmax, ymax;
+        EXPECT_TRUE(queue_sphere_impostor(input, 1, dispcx, dispcy, dispcx, &xmin, &ymin, &xmax, &ymax));
+        auto pixels = render();
+        ImGui::NewFrame();
+        return pixels;
+    };
+    const auto clear_white = capture(0, 160), clear_black = capture(0, 0);
+    const auto thin_white = capture(.3, 160), thin_black = capture(.3, 0);
+    const auto thick_white = capture(20, 160), thick_black = capture(20, 0);
+    const size_t center = (render_height / 2 * render_width + render_width / 2) * 4;
+    const size_t limb = center + 18 * 4;
+    #if DISC_SCATTERING
+    const double center_ratio = double(thin_white[center] - thin_black[center]) / (clear_white[center] - clear_black[center]);
+    const double limb_ratio = double(thin_white[limb] - thin_black[limb]) / (clear_white[limb] - clear_black[limb]);
+    EXPECT_GT(center_ratio, 0);
+    EXPECT_LT(center_ratio, 1);
+    EXPECT_LT(limb_ratio, center_ratio);
+    EXPECT_EQ(thick_white[center], thick_black[center]);
+    #else
+    EXPECT_EQ(thin_white, clear_white);
+    EXPECT_EQ(thick_white, clear_white);
+    #endif
+    input.light_dir[2] = 1;
+    const auto night = capture(20, 0);
+    EXPECT_EQ(night[center], 0);
+    EXPECT_EQ(night[center + 1], 0);
+    EXPECT_EQ(night[center + 2], 0);
+}
+
 TEST_F(RenderingRegressionTest, GpuSphereUsesProjectedSkyRows)
 {
     set(sky_grad, std::map<int, RGB3>{});

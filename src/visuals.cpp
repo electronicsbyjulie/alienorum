@@ -929,13 +929,11 @@ static void atmosphere_colors(Planet *pl, double out_high[3], double out_low[3],
     }
 }
 
-// Shared airlight and extinction for the sky, terrain, and scenery.
-static PressureHaze surface_pressure_haze(Planet* planet)
+// Shared density and composition model, independent of observer illumination.
+static PressureHaze planetary_pressure_scattering(Planet* planet, bool enabled = PRESSURE_HAZE,
+    double* column_height_m = nullptr)
 {
-    #if !PRESSURE_HAZE
-    return {};
-    #else
-    if (!show_clouds || !planet || !uses_rocky_map(planet->type)) return {};
+    if (!planet || !uses_rocky_map(planet->type)) return {};
     const double pressure = planet->get_surface_pressure();
     if (!(pressure > 2e5)) return {};
     const double temperature = planet->estimate_surface_temperature();
@@ -964,8 +962,19 @@ static PressureHaze surface_pressure_haze(Planet* planet)
     }
     const double gravity = G * planet->mass / pow(planet->volumetric_mean_radius, 2);
     const double scale_height = gravity > 0 ? 8.314462618 * temperature / (molar_mass * gravity) : 8000;
-    PressureHaze haze = PressureHaze::prepare(pressure, temperature, ratio,
-        planet->get_particulates(), scale_height);
+    if (column_height_m) *column_height_m = scale_height;
+    return PressureHaze::prepare(pressure, temperature, ratio,
+        planet->get_particulates(), scale_height, enabled);
+}
+
+// Shared airlight and extinction for the sky, terrain, and scenery.
+static PressureHaze surface_pressure_haze(Planet* planet)
+{
+    #if !PRESSURE_HAZE
+    return {};
+    #else
+    if (!show_clouds) return {};
+    PressureHaze haze = planetary_pressure_scattering(planet);
     if (!haze.active()) return haze;
     double high[3], low[3], umbra[3];
     atmosphere_colors(planet, high, low, umbra);
@@ -1256,6 +1265,15 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
             in.atmosphere_height = kAtmosphereScaleHeights * scale_height;
             double umbra_unused[3];
             atmosphere_colors(pl, in.atmosphere_color, in.atmosphere_low_color, umbra_unused);
+            #if DISC_SCATTERING
+            if (show_clouds && uses_rocky_map(pl->type))
+            {
+                double column_height = 0;
+                const auto scattering = planetary_pressure_scattering(pl, true, &column_height);
+                for (int channel = 0; channel < 3; ++channel)
+                    in.atmosphere_optical_depth[channel] = scattering.extinction[channel] * column_height;
+            }
+            #endif
         }
     }
 

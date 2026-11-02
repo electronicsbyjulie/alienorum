@@ -257,7 +257,8 @@ namespace alienorum
         "uniform mat4 uCasterAtm;\n"
         // This body's own atmosphere: column 0 = high-altitude scattered color rgb, w = the
         // glow's thickness as a fraction of the body's radius; column 1 = the redder low-
-        // altitude color rgb. A zero w means no atmosphere.
+        // altitude color rgb; column 2 = vertical RGB scattering depth.
+        // A zero shell thickness means no atmosphere.
         "uniform mat4 uAtm;\n"
         "const float PI = 3.14159265358979;\n"
         //
@@ -546,6 +547,7 @@ namespace alienorum
         "    // basis rows (see this block's opening comment), not a vector sum.\n"
         "    vec3 localGrad = hitLocal / vRadii;\n"
         "    vec3 n = normalize(vec3(dot(vBasisX, localGrad), dot(vBasisY, localGrad), dot(basisZ, localGrad)));\n"
+        "    vec3 airNormal = n;\n"
         "\n"
         "    float lat = asin(clamp(hitLocal.y, -1.0, 1.0));\n"
         "    float lon = atan(-hitLocal.x, hitLocal.z);\n"
@@ -749,7 +751,20 @@ namespace alienorum
         "        ? clamp((hazePath/maxpath) * (1.0 - cosView) * ATM_GLOW, 0.0, 1.0)\n"
         "            * smoothstep(-0.05, 0.35, groundSun)\n"
         "        : 0.0;\n"
-        "    outColor += (air_tint(groundSun, phase) * shadow + umbraAmt * umbraTint) * haze;\n"
+        "    if (vFlags.x < 0.5 && any(greaterThan(uAtm[2].rgb, vec3(0.0))))\n"
+        "    {\n"
+        // Finite spherical-shell column: one vertical column at disc center, a longer
+        // path at grazing incidence. RGB extinction removes underlying surface contrast.
+        "        float column = max(1.0, hazePath / max(atmRel, 1e-6));\n"
+        "        vec3 transmission = exp(-uAtm[2].rgb * column);\n"
+        "        float illumination = pow(max(0.0, dot(airNormal, vLightDir)), 1.0/3.0);\n"
+        "        vec3 scattered = 0.55 * uAtm[0].rgb * vTint * illumination * shadow;\n"
+        "        outColor = outColor * transmission + scattered * (vec3(1.0) - transmission);\n"
+        "    }\n"
+        "    else\n"
+        "    {\n"
+        "        outColor += (air_tint(groundSun, phase) * shadow + umbraAmt * umbraTint) * haze;\n"
+        "    }\n"
         "\n"
         "    vec3 surfColor = finish_color(outColor);\n"
         "    if (inAir && solidCoverage < 1.0)\n"
@@ -1302,6 +1317,13 @@ namespace alienorum
             p->atm[4] = (float)in.atmosphere_low_color[0];
             p->atm[5] = (float)in.atmosphere_low_color[1];
             p->atm[6] = (float)in.atmosphere_low_color[2];
+            #if DISC_SCATTERING
+            for (int channel = 0; channel < 3; ++channel)
+            {
+                const double depth = in.atmosphere_optical_depth[channel];
+                p->atm[8 + channel] = std::isfinite(depth) ? (float)std::clamp(depth, 0.0, 1e4) : 0;
+            }
+            #endif
         }
 
         ImVec4 col = ImGui::ColorConvertU32ToFloat4(in.fallback_color);

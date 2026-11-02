@@ -8,6 +8,11 @@
 // file that includes this one.
 #include "imgui.h"
 
+// Set to 0, or compile with -DDISC_SCATTERING=0, to retain the original disc rendering.
+#ifndef DISC_SCATTERING
+#define DISC_SCATTERING 1
+#endif
+
 namespace alienorum
 {
     const int max_eclipse_casters = 4;
@@ -55,6 +60,7 @@ namespace alienorum
         double atmosphere_height;
         double atmosphere_color[3];
         double atmosphere_low_color[3];
+        double atmosphere_optical_depth[3] = {}; // Vertical RGB scattering depth; zero preserves the rim-only path.
 
         double night_illum;
         bool redlight_mode;
