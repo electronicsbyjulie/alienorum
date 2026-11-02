@@ -20,6 +20,15 @@ namespace alienorum
         std::array<double, 3> color = {1, 1, 1};
     };
 
+    inline std::array<double, 3> cumulus_top_color(const CloudIllumination& lighting)
+    {
+        std::array<double, 3> color{};
+        // The cloud shader's sunlit lobe reaches a shade factor of 1.25.
+        for (size_t channel = 0; channel < color.size(); ++channel)
+            color[channel] = std::clamp(lighting.body * 1.25 * lighting.color[channel], 0.0, 1.0);
+        return color;
+    }
+
     inline CloudIllumination cloud_illumination(double source_flux, double ambient,
         double instellation, double pressure_pa, double haze, bool overcast,
         std::array<double, 3> transmitted, std::array<double, 3> sky,

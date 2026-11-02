@@ -5428,6 +5428,9 @@ static void end_scenery_shadow_blend(const ImDrawList*, const ImDrawCmd*)
 
 #if planetary_rain
 static CloudRainCover overhead_rain_cover;
+static CloudIllumination overhead_cloud_lighting;
+static Planet* overhead_cloud_world = nullptr;
+static int overhead_cloud_frame = -1;
 double norm_cloud, min_rain_intensity = 0.0, max_rain_intensity = 0;
 double rain_intensity = 0, rainint_lat = -1e3, rainint_lon = -1e5, drainint;
 static void draw_planetary_rain(Planet *p)
@@ -5451,7 +5454,8 @@ static void draw_planetary_rain(Planet *p)
         return;
     }
 
-    if (!overhead_rain_cover.permits_rain())
+    if (!overhead_rain_cover.permits_rain() || overhead_cloud_world != p
+        || overhead_cloud_frame != ImGui::GetFrameCount())
     {
         return;
     }
@@ -5549,11 +5553,9 @@ static void draw_planetary_rain(Planet *p)
     int g_c = (int)(205 * is_day + 48 * (1.0 - is_day));
     int b_c = (int)(230 * is_day + 60 * (1.0 - is_day));
 
-    Color snow_tint(1, 1, 1);
-    if (snow_fraction > 0 && p->get_light_center()) snow_tint = water_light_color(p->get_light_center());
-    const double snow_brightness = 230 * is_day + 12 * (1 - is_day);
-    const ImU32 snow_rgb = rgba_apply_redlight(IM_COL32(snow_brightness * snow_tint.red,
-        snow_brightness * snow_tint.green, snow_brightness * snow_tint.blue, 255));
+    const auto snow_light = cumulus_top_color(overhead_cloud_lighting);
+    const ImU32 snow_rgb = rgba_apply_redlight(IM_COL32(255 * snow_light[0],
+        255 * snow_light[1], 255 * snow_light[2], 255));
     const PressureHaze snow_haze = snow_fraction > 0 ? surface_pressure_haze(p) : PressureHaze{};
 
     // Precompute camera orientation matrix for linear world-to-camera rotation
@@ -5706,9 +5708,9 @@ static void draw_planetary_rain(Planet *p)
         {
             int haze_alpha = (int)(26.0 * (rain_intensity - 0.15) / 0.85);
             ImU32 haze_col = rgba_apply_redlight(IM_COL32(
-                r_c * (1 - snow_fraction) + snow_brightness * snow_tint.red * snow_fraction,
-                g_c * (1 - snow_fraction) + snow_brightness * snow_tint.green * snow_fraction,
-                b_c * (1 - snow_fraction) + snow_brightness * snow_tint.blue * snow_fraction, haze_alpha));
+                r_c * (1 - snow_fraction) + 255 * snow_light[0] * snow_fraction,
+                g_c * (1 - snow_fraction) + 255 * snow_light[1] * snow_fraction,
+                b_c * (1 - snow_fraction) + 255 * snow_light[2] * snow_fraction, haze_alpha));
             ImGui::GetBackgroundDrawList()->AddRectFilled(
                 ImVec2(0, haze_y0), ImVec2((float)(dispcx * 2.0), haze_y1), haze_col);
         }
@@ -9693,6 +9695,8 @@ bool draw_cloudy_sky()
 {
     #if planetary_rain
     overhead_rain_cover = CloudRainCover();
+    overhead_cloud_world = nullptr;
+    overhead_cloud_frame = -1;
     #endif
     if (view_mode != vm_horizon)
     {
@@ -9872,6 +9876,9 @@ bool draw_cloudy_sky()
     {
         #if planetary_rain
         overhead_rain_cover = cloud_rain_cover();
+        overhead_cloud_lighting = lighting;
+        overhead_cloud_world = p;
+        overhead_cloud_frame = ImGui::GetFrameCount();
         #endif
         return true;
     }

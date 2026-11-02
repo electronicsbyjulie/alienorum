@@ -1865,6 +1865,23 @@ TEST_F(RenderingRegressionTest, CloudTwilightKeepsNeutralLightAtStrongAtmospheri
     EXPECT_GT(visible, 1000);
 }
 
+TEST(CloudIlluminationTest, SnowSharesCumulusTopAdaptationAndTintWithoutBrighteningTheNight)
+{
+    const auto faint_day = cloud_illumination(4e7, .03, .0001, oneatm, 0, false,
+        {1, 1, 1}, {1, 1, 1});
+    const auto day = cumulus_top_color(faint_day);
+    EXPECT_GT(day[0] * 255, 50);
+    EXPECT_DOUBLE_EQ(day[0], day[1]);
+    EXPECT_DOUBLE_EQ(day[1], day[2]);
+    const auto red = cumulus_top_color(cloud_illumination(4e10, .03, 1, 100 * oneatm, 0, false,
+        {1, .2, .05}, {1, 1, 1}));
+    EXPECT_NEAR(red[1] / red[0], .2, 1e-9);
+    EXPECT_NEAR(red[2] / red[0], .05, 1e-9);
+    const auto night = cumulus_top_color(cloud_illumination(0, .03, .0001, oneatm, 0, false,
+        {1, 1, 1}, {1, 1, 1}));
+    EXPECT_LT(night[0] * 255, 1);
+}
+
 TEST(CloudIlluminationTest, SnowFollowsRegionalTemperatureRatherThanGlobalMean)
 {
     LocalClimate climate;
