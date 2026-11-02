@@ -17,4 +17,4 @@
 
 [Fixed] Pressure haze follows the cloud visibility flag, including Ctrl+C, for the sky, clouds, terrain, and scenery in CPU and GPU rendering.
 
-In the N panel, for the Sun, underneath its AlienorumID of -26, there's strange text that reads ???k@.
+[Fixed] Solar catalog metadata preserves stellar identifiers and valid text in the object information panel. Stellar records no longer access planet-specific storage.

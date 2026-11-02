@@ -5713,6 +5713,52 @@ static void apply_body_metadata(CelestialObject* body, const json& record)
     }
 }
 
+static void apply_stellar_surface_metadata(Star* body, const json& record)
+{
+    apply_body_metadata(body, record);
+    // Shared surface fields belong to CelestialObject; planetary storage is absent on stars.
+    struct Field
+    {
+        const char* key;
+        double CelestialObject::*member;
+        double scale;
+    };
+    const Field fields[] =
+    {
+        {"ABSMG", &CelestialObject::absolute_magnitude, 1},
+        {"BVmag", &CelestialObject::BV_color, 1},
+        {"UBmag", &CelestialObject::UB_color, 1},
+        {"Mass", &CelestialObject::mass, 1000},
+        {"VolMeanRad", &CelestialObject::volumetric_mean_radius, 1},
+        {"SurfaceTemperature", &CelestialObject::temperature, 1},
+        {"RotationPeriod", &CelestialObject::sidereal_rotational_period, 1},
+        {"Oblateness", &CelestialObject::oblateness, 1},
+        {"Obliquity", &CelestialObject::obliquity, fiftyseventh},
+        {"Equinox", &CelestialObject::equinox, fiftyseventh}
+    };
+    for (const auto& field : fields)
+    {
+        try { body->*(field.member) = record.at(field.key).get<double>() * field.scale; }
+        catch (...) { ; }
+    }
+    try
+    {
+        const double epoch = record.at("Epoch").get<double>();
+        body->epoch = J2000 + (epoch - 2000) * oneyear / oneday;
+        if (body->orbit) body->orbit->epoch = body->epoch;
+    }
+    catch (...) { ; }
+    try
+    {
+        const double ra = record.at("NorthPoleRA").get<double>() * fiftyseventh;
+        const double decl = record.at("NorthPoleDecl").get<double>() * fiftyseventh;
+        const Point pole = Point::from_ra_dec(ra, decl, light_year * 1e29, 0);
+        body->location.equatorial_plane = align_points_3d(pole, yaxis, center);
+        body->lock_equatorial_plane = body->known_poles = true;
+    }
+    catch (...) { ; }
+}
+
 void CatalogReader::apply_local_catalog_metadata(CelestialObject** objects)
 {
     std::ifstream file("catalogs/planets.json");
@@ -5810,6 +5856,11 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
             else                                // Name taken and no center specified,
             {
                 // update existing.
+                if (cels[j]->typeclass() == class_star)
+                {
+                    apply_stellar_surface_metadata(static_cast<Star*>(cels[j]), pl);
+                    continue;
+                }
                 p = (Planet*)cels[j];
                 m = (p->typeclass() == class_moon) ? ((Moon*)p) : nullptr;
                 createnew = false;

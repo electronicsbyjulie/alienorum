@@ -614,6 +614,26 @@ TEST_F(PlanetClassificationEvidenceTest, FictionalMoonsAreSparseForSmallInnerPla
     EXPECT_GT(outer_total, 768u);
 }
 
+TEST_F(PlanetClassificationEvidenceTest, SolarMetadataPreservesStellarIdentifiersAndValidText)
+{
+    auto* sun = make_star("Sun");
+    sun->alienorumid = "-26";
+    strcpy(sun->Gliese, "Sun");
+    CatalogReader reader;
+    EXPECT_EQ(reader.read_local_planets(cels, MAX_CELOBJS, nullptr, sun), 0);
+    EXPECT_EQ(sun->alienorumid, "-26");
+    EXPECT_STREQ(sun->Gliese, "Sun");
+    EXPECT_STREQ(sun->Bayer, "");
+    EXPECT_STREQ(sun->Flamsteed, "");
+    EXPECT_STREQ(sun->spectral_type, "G2V");
+    EXPECT_NO_THROW(sun->to_json().dump());
+    EXPECT_DOUBLE_EQ(sun->temperature, 5778);
+    EXPECT_DOUBLE_EQ(sun->sidereal_rotational_period, 2164000);
+    EXPECT_TRUE(sun->known_poles);
+    EXPECT_TRUE(sun->lock_equatorial_plane);
+    EXPECT_NE(std::find(sun->catalog_aliases.begin(), sun->catalog_aliases.end(), "Sol"), sun->catalog_aliases.end());
+}
+
 TEST_F(PlanetClassificationEvidenceTest, PlutoSizedAsteroidLeavesTheSunWithEightPlanets)
 {
     Star* sun = make_star("Sun");
