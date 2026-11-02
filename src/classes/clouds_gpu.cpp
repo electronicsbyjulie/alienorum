@@ -249,6 +249,7 @@ void main()
     float alpha = mix(coverage, 1.0, deck);
     float shade = 1.0;
     float puff_weight = 0.0;
+    float haze_distance = distance;
     float warm_weight = 1.0;
     float rain_cumulus = 0.0;
     // Even a fully blended cloud-map pixel may have a nearer cumulus lobe.
@@ -477,6 +478,7 @@ void main()
         alpha = solid + background_alpha;
         rain_cumulus = solid;
         puff_weight = solid / max(1e-5, alpha);
+        if (nearest < 1e30) haze_distance = mix(distance, nearest, puff_weight);
         // Cirrus catches the warm light throughout; cumulus only on undersides.
         warm_weight = (0.55 * solid * underside + background_alpha) / max(1e-5, alpha);
     }
@@ -488,8 +490,14 @@ void main()
         + vec3(uLight[0].y * (1.0 - deck));
     color = mix(color, vec3(uLight[0].y * shade), puff_weight);
     float warmth = 0.65 * clamp(uLight[1].y, 0.0, 1.0) * warm_weight;
-    float glow_light = max(0.18, max(color.r, max(color.g, color.b)));
+    float glow_light = max(color.r, max(color.g, color.b));
     color = mix(color, vec3(1.0, 0.45, 0.15) * glow_light, warmth);
+    if (uLight[3].w > 0.5) color *= clamp(uLight[3].rgb, 0.0, 1.0);
+    if (uWorld[2].z > 0.0)
+    {
+        vec3 transmission = exp(-uWorld[2].yzw * haze_distance);
+        color = color * transmission + uWorld[3].rgb * (vec3(1.0) - transmission);
+    }
     if (uLight[0].w > 0.5)
     {
         color = vec3(min(1.0, color.r + 0.5 * color.g + 0.3 * color.b), color.g / 3.0, color.b / 3.0);

@@ -30,7 +30,7 @@ namespace alienorum
     struct CloudSkyGpuInput
     {
         float camera[16];
-        float world[16];
+        float world[16]; // [9..11]: extinction per cloud unit; [12..14]: atmospheric airlight.
         float light[16];
         unsigned int texture;
         unsigned int revision;

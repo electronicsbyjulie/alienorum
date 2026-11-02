@@ -3,6 +3,7 @@
 #include "numeric.h"
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <cctype>
 #include <set>
 #include <memory>
@@ -937,6 +938,9 @@ namespace
             "plant_crown_size", "plant_crown_oblateness", "veg_min_temp", "veg_max_temp"})
         {
             auto value = record.find(key);
+            // Terrain thresholds control geographic area nonlinearly. Inferred waterlines
+            // retain their exact float so their saved volume/coverage diagnostics stay aligned.
+            if (std::strcmp(key, "has_water") == 0 && record.contains("surface_water_model")) continue;
             if (value == record.end() || !value->is_number_float()) continue;
             const double original = value->get<double>();
             if (!std::isfinite(original) || std::abs(original) > 1e12) continue;

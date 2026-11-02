@@ -61,6 +61,7 @@
 #define cumulus_day_swing 1.3
 #define cumulus_day_exponent 0.666
 #define cumulus_day_maximum 0.71
+#define cloud_opacity_threshold 0.90
 
 // Shoreline and other surface boundary params
 #define shore_displacement 8.0

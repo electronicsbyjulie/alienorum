@@ -12,6 +12,7 @@
 #include <unordered_map>
 
 #include "planet.h"
+#include "numeric.h"
 #include "moon.h"
 #include "chemistry.h"
 #include "star.h"
@@ -271,12 +272,71 @@ void alienorum::Planet::apply_cosmic_shoreline()
     {
         // Dereferenced, so it has to be there and it has to be a star: a rogue planet's light
         // center is a null pointer, and a moon of one leads somewhere that is not a Star.
-        double shoreline = CosmicShore::calculate_unified_metric(*(Star*)plc, *this);
-        double max_atm_pressure = CosmicShore::estimate_surface_pressure(shoreline);
-        ensure_atmosphere()->surface_pressure = max_atm_pressure;
+        Star& host = *static_cast<Star*>(plc);
+        AtmosphericInventory inventory = CosmicShore::default_inventory(host);
+        const bool custom_inventory = atm && atm->pressure_model.is_object()
+            && atm->pressure_model.contains("inventory");
+        if (custom_inventory && !inventory.from_json(atm->pressure_model["inventory"])) return;
+        AtmosphericEstimate estimate = custom_inventory ? CosmicShore::estimate_atmosphere(host, *this, inventory)
+            : CosmicShore::estimate_atmosphere(host, *this);
+        // Incomplete geometry/illumination must not erase an existing estimate.
+        if (!estimate.valid) return;
+        Atmosphere* atmosphere = ensure_atmosphere();
+        const bool model_composition = !atmosphere->comp || (atmosphere->pressure_model.is_object()
+            && atmosphere->pressure_model.contains("generated_composition")
+            && atmosphere->pressure_model["generated_composition"] == atmosphere->comp->to_json());
+        atmosphere->surface_pressure = estimate.pressure;
+        atmosphere->pressure_model = std::move(estimate.diagnostics);
+        atmosphere->pressure_model["inventory_source"] = custom_inventory ? "saved_scenario" : "default_scenario";
+        if (model_composition && !uses_gaseous_map(type))
+        {
+            const double total = estimate.co2_moles + estimate.nitrogen_moles + estimate.water_moles;
+            if (total > 0 || atmosphere->comp)
+            {
+                AtmosphereComposition* composition = atmosphere->ensure_composition();
+                *composition = AtmosphereComposition(this);
+                if (total > 0)
+                {
+                    composition->CO2_portion = estimate.co2_moles / total;
+                    composition->N2_portion = estimate.nitrogen_moles / total;
+                    composition->H2O_portion = estimate.water_moles / total;
+                }
+                atmosphere->pressure_model["generated_composition"] = composition->to_json();
+            }
+        }
         temperature = 0;
         estimate_surface_temperature();
+        estimate_surface_water();
     }
+}
+
+bool Planet::estimate_surface_water(bool replace_supplied, const std::vector<double>& heights)
+{
+    if (!replace_supplied && (has_water_supplied || preserve_loaded_parameters || rendering_saved_parameters)) return false;
+    if (!uses_rocky_map(type) || type == waterworld || type == hycean) return false;
+    CelestialObject* light = get_light_center();
+    if (!light || light->typeclass() != class_star || (!replace_supplied && !user_added && !light->seqno)) return false;
+    Star& host = *static_cast<Star*>(light);
+    AtmosphericInventory inventory = CosmicShore::default_inventory(host);
+    const json* scenario = nullptr;
+    if (atm && atm->pressure_model.is_object() && atm->pressure_model.contains("inventory"))
+        scenario = &atm->pressure_model["inventory"];
+    else if (surface_water_model.is_object() && surface_water_model.contains("inventory"))
+        scenario = &surface_water_model["inventory"];
+    if (scenario && !inventory.from_json(*scenario)) return false;
+    const auto budget = CosmicShore::estimate_atmosphere(host, *this, inventory);
+    if (!budget.valid) return false;
+    const auto estimate = CosmicShore::estimate_surface_water(*this, budget.diagnostics, heights);
+    if (!estimate.valid) return false;
+    // Keep a calibrated terrain waterline while its physical budget is unchanged.
+    if (!replace_supplied && heights.empty() && surface_water_model.is_object()
+        && surface_water_model.contains("basis") && surface_water_model["basis"] == estimate.diagnostics["basis"]
+        && surface_water_model.contains("level") && surface_water_model["level"].is_number()
+        && has_water == surface_water_model["level"].get<float>()) return true;
+    has_water = estimate.level;
+    has_water_supplied = false;
+    surface_water_model = estimate.diagnostics;
+    return true;
 }
 
 bool alienorum::Planet::estimate_habitability()
@@ -289,11 +349,12 @@ bool alienorum::Planet::estimate_habitability()
             && press >= 600 && press < oneatm * 2000
             && surface > 0.9 * water_freezing && surface < 320;
     }
-    if (type == waterworld || type == hycean)
+    const bool water_constrained = has_water_supplied || estimate_surface_water() || surface_water_model.is_object();
+    if (!water_constrained && (type == waterworld || type == hycean))
     {
         has_water = 1;
     }
-    else if (randomize_txgen)
+    else if (!water_constrained && randomize_txgen)
     {
         has_water = 0;
     }
@@ -352,7 +413,7 @@ bool alienorum::Planet::estimate_habitability()
             std::cout << "Surface temperature: " << T_surf << " K." << std::endl << std::flush;*/
         #endif
 
-        if (!has_water && randomize_txgen)
+        if (!water_constrained && !has_water && randomize_txgen)
         {
             if (type == waterworld || type == hycean) has_water = 1;
             else if (T_surf < 0.9 * water_freezing)
@@ -1317,7 +1378,18 @@ double Planet::temperature_at_pressure(double pressure_pa)
     double empirical_tau_scale = 2.4;
     double greenhouse_factor = 1.0 + (0.75 * tau * empirical_tau_scale);
 
-    return t_eq * std::pow(greenhouse_factor, 0.25);
+    const double gray_surface = t_eq * std::pow(greenhouse_factor, 0.25);
+    const double warming = gray_surface - t_eq;
+    // Conservative extrapolation guard for an inferred temperature, not a physical bound.
+    // The fixed-composition gray opacity grows quadratically at high pressures, outside
+    // its Venus-scale calibration. Preserve ordinary warming, then join with unit slope
+    // to a smooth asymptote. Only the greenhouse increment is limited: stellar heating
+    // can still produce a lava world. Supplied temperatures bypass this estimator.
+    constexpr double warming_knee_k = 500;
+    constexpr double warming_tail_k = 100;
+    if (warming <= warming_knee_k) return gray_surface;
+    return t_eq + warming_knee_k
+        + warming_tail_k * std::tanh((warming - warming_knee_k) / warming_tail_k);
 }
 
 // The altitude-independent half of atmospheric_refraction(), computed once per epoch per planet
@@ -1700,6 +1772,7 @@ json Atmosphere::to_json()
     json towrite;
     towrite["surface_pressure"] = surface_pressure;
     towrite["pressure_supplied"] = pressure_supplied;
+    if (pressure_model.is_object()) towrite["pressure_model"] = pressure_model;
     if (tau) towrite["tau"] = tau;
     if (particulates) towrite["particulates"] = particulates;
     if (comp) towrite["composition"] = comp->to_json();
@@ -1712,6 +1785,8 @@ json Atmosphere::to_json()
 // that have to be kept in step.
 bool Atmosphere::from_json(json j)
 {
+    pressure_model = j.contains("pressure_model") && j["pressure_model"].is_object()
+        ? j["pressure_model"] : json(nullptr);
     for (const char* key : {"surface_pressure", "SurfacePressure"})
     {
         if (j.contains(key) && j[key].is_number())
@@ -1751,6 +1826,8 @@ json Planet::to_json()
     if (J2) towrite["J2"] = J2;
     towrite["overcast"] = overcast;
     towrite["has_water"] = has_water;
+    towrite["has_water_supplied"] = has_water_supplied;
+    if (surface_water_model.is_object()) towrite["surface_water_model"] = surface_water_model;
     towrite["ring_status_known"] = ring_status_known;
     towrite["cloud_map_url"] = cloud_map_url;
     towrite["static_clouds"] = static_clouds;
@@ -1900,7 +1977,21 @@ bool Planet::from_json(const json& j)
     try { j.at("ring_inner_radius").get_to(ring_inner_radius); ring_inner_radius *= 1e3; } catch (...) { ; }
     try { j.at("ring_mean_opacity").get_to(ring_mean_opacity); } catch (...) { ; }
     try { j.at("transparent_clouds").get_to(transparent_clouds); } catch (...) { ; }
-    try { j.at("has_water").get_to(has_water); } catch (...) { ; }
+    if (j.contains("has_water"))
+    {
+        const json& value = j["has_water"];
+        double level = NAN;
+        if (value.is_number()) level = value.get<double>();
+        else if (value.is_string()) parse_numeric_value(value.get<std::string>(), level);
+        if (std::isfinite(level) && level >= 0 && level <= 1)
+        {
+            has_water = static_cast<float>(level);
+            has_water_supplied = !j.contains("has_water_supplied") || !j["has_water_supplied"].is_boolean()
+                || j["has_water_supplied"].get<bool>();
+        }
+    }
+    surface_water_model = j.contains("surface_water_model") && j["surface_water_model"].is_object()
+        ? j["surface_water_model"] : json(nullptr);
     try { j.at("catalog_designation").get_to(catalog_designation); } catch (...) { ; }
     try { j.at("display_designation").get_to(display_designation); } catch (...) { ; }
     try { j.at("vegetation_r").get_to(vegetation_r); } catch (...) { ; }

@@ -133,8 +133,13 @@ While in planetfall mode, there are controls to edit the current latitude and lo
 You can also navigate the surface by holding down `End` (to go forward) or `Home` (to go backward) at a brisk walking speed. If you desire to go faster, simultaneously holding down `Shift` increases your speed tenfold and `Ctrl` one hundredfold. Both `Shift` keys and both `Ctrl` keys may be combined to produce
 a total of one million times the default walking speed.
 
-
 In planetfall mode on a world with surface water, press `Ctrl+F` or choose Spacetime → Find Shore to move to a nearby shoreline. The search favors the direction you are facing and follows the detailed terrain boundary. You arrive just on the land side, with your viewing direction unchanged.
+
+High-pressure atmospheres progressively veil distant terrain, rocks, and vegetation and soften the sky into diffuse atmospheric light. This rendering approximation uses pressure, temperature, gas composition, and viewing distance; it is not a visibility forecast. To disable it, set `PRESSURE_HAZE` to `0` in `src/classes/pressurehaze.h`, or compile with `-DPRESSURE_HAZE=0`.
+
+#### Exoplanet estimates and uncertainty
+
+Alienorum's exoplanet simulations are illustrative estimates based on the limited information available, rather than predictions of actual conditions. Depicted atmospheres, clouds, water, ice, and life represent plausible scenarios under the model's assumptions; they are not evidence that these features exist on a particular planet. Atmospheric pressures, temperatures, surface water coverage, and planet types can be highly uncertain, especially when masses, radii, compositions, or stellar histories are poorly constrained. Vegetation and other signs of life are speculative visualizations, not detections or estimates of the probability of life.
 
 
 ### Sun Clock
@@ -259,18 +264,6 @@ for example:
 ```
 
 
-### Configuring Exoplanet Loading
-
-By default, Alienorum will load exoplanets during application startup, when it reads the star catalog, solar system, constellations, and so on. However, the sheer number
-of known exoplanets is large enough that loading them all takes about a minute, which is too much extra effort if all you want to do is find out what's visible in your area
-tonight or fly around the Solar System. However, if your use of the app is more focused on exoplanets, you can add the following line in `user.json` to enable loading the
-exoplanet catalog every time the application starts:
-
-```
-    "ExosOnDemand": false
-```
-
-
 ## Troubleshooting
 
 Some of Alienorum's status messages and error mesages are output to the terminal (the command line), so it is recommended to run the app in a command prompt if you notice any unexpected behavior. Note the Windows desktop app from the installer exe does run in a terminal every time, so you will always be able to see any error messages in that case. Some of the errors are normal because our source data are incomplete; if the stars and constellations and stuff look right on your screen, then the app is working.
@@ -299,16 +292,16 @@ Every new PR will have to pass all unit tests before merge. Recommended but not 
 
 The current version can be found in vcpkg.json. This is the version for the Windows installer (see below) as well as any other releases that may be added in the future.
 
-The repo owner will try to release a new version every week, typically around Sunday night MST.
+The repo owner will try to release a new version every week, typically by Sunday night MST.
 
-Version numbering shall be incremented as follows:
+Until testers help with verifying the Windows installer and checking that everything works in Windows and MacOS, this project remains in beta. Upon successful testing and transition to version 1.0.0, further version numbering shall be incremented as follows:
 - Every new release that does not increment the major or minor increments the patch number by one;
 - Every new release that introduces a significant new feature, or integrates with a new third party module, increments the minor by one and resets the patch to zero.
-- Every new release that breaks compatibility with any third party code or app or library, or changes the format or behavior of a command line argument, or changes an existing keyboard shortcut, or changes a top level menu item, shall increment the major by one and reset the minor and patch to zero.
+- Every new release that breaks compatibility with any third party code or app or library, or changes the format or behavior of a command line argument, or changes an existing keyboard shortcut, or significantly changes a top level menu item, shall increment the major by one and reset the minor and patch to zero.
 
 Every attempt should be made to avoid breaking compatibility since we don't want the version number to skyrocket into the double digits in just a few years without massive enhancements to the UX.
 
-What counts as a feature? Anything significant to the user experience or anything substantial enough to warrant a minor version update. For example, had version 1.0 not included planetary atmospheres, the addition of that feature would have qualified for version 1.1, but the addition of a new text field for a previously ignored gas, say hydrogen chloride, would not qualify.
+What counts as a feature? Anything significant to the user experience or anything substantial enough to warrant a minor version update.
 
 ### Building the Windows Installer
 

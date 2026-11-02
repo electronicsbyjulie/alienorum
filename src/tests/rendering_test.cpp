@@ -21,10 +21,13 @@
 #include "../sphere_impostor.h"
 #include "../housekeeping.h"
 #include "../classes/clouds_gpu.h"
+#include "../classes/cloudlighting.h"
+#include "../classes/pressurehaze.h"
 #include "../classes/surfacebiomes.h"
 #include "../classes/surfacenavigation.h"
 #include "../classes/surfaceoptions.h"
 #include "../classes/scenerydraw.h"
+#include "../classes/surfacescatter.h"
 #include "../classes/sceneryorder.h"
 #include "../classes/rockmeshcache.h"
 #include "../classes/waveboundsoptions.h"
@@ -51,6 +54,7 @@ using namespace alienorum;
 
 struct CloudTestView
 {
+    std::optional<CloudIllumination> illumination;
     CloudGeometryMode mode = CloudGeometryMode::accelerated;
     double latitude = 0;
     double longitude = 0;
@@ -69,6 +73,7 @@ struct CloudTestView
     double cloud_latitude = 0;
     double cloud_longitude = 0;
     double horizon_angle = -0.0001;
+    std::array<float, 3> haze_extinction{}, haze_light{};
 };
 
 class SceneryTestMap : public Map
@@ -144,7 +149,7 @@ class DistantPlantTestMap : public Map
 class CoastalTestMap : public Map
 {
     public:
-    CoastalTestMap()
+    explicit CoastalTestMap(bool ocean = true)
     {
         image_width = 2;
         image_height = 32768;
@@ -156,7 +161,7 @@ class CoastalTestMap : public Map
         blue_data = new unsigned char[allocated];
         for (unsigned long index = 0; index < allocated; index++)
         {
-            const bool sea = index / image_width < image_height / 2;
+            const bool sea = ocean && index / image_width < image_height / 2;
             red_data[index] = sea ? 20 : 160;
             green_data[index] = sea ? 100 : 120;
             blue_data[index] = sea ? 160 : 80;
@@ -405,12 +410,18 @@ class RenderingRegressionTest : public UniverseFixture
         viewport->BgFgDrawListsLastTimeActive[1] = -1.0f;
     }
 
-    int image_difference(const std::vector<unsigned char> &actual, const std::vector<unsigned char> &expected)
+    int image_difference(const std::vector<unsigned char> &actual, const std::vector<unsigned char> &expected,
+        int rgb_tolerance = 0)
     {
         int count = 0;
         for (size_t i = 0; i < actual.size(); i += 4)
         {
-            if (std::equal(actual.begin() + i, actual.begin() + i + 4, expected.begin() + i)) continue;
+            bool matches = actual[i + 3] == expected[i + 3];
+            for (int channel = 0; channel < 3; ++channel)
+            {
+                matches &= abs(int(actual[i + channel]) - int(expected[i + channel])) <= rgb_tolerance;
+            }
+            if (matches) continue;
             if (count < 4)
             {
                 std::cout << "Pixel " << (i / 4) % render_width << ", " << (i / 4) / render_width << ": actual ";
@@ -491,10 +502,22 @@ class RenderingRegressionTest : public UniverseFixture
         input.world[2] = (view.shell - view.observer) * (view.shell + view.observer);
         input.world[3] = sin(view.horizon_angle);
         input.world[8] = view.opaque_ground ? 1 : 0;
+        for (int channel = 0; channel < 3; ++channel)
+        {
+            input.world[9 + channel] = view.haze_extinction[channel];
+            input.world[12 + channel] = view.haze_light[channel];
+        }
         input.light[0] = view.dark ? 0 : 1;
         input.light[1] = view.dark ? 0 : 0.6;
         input.light[2] = view.overcast ? 1 : 0;
         input.light[5] = view.warmth;
+        if (view.illumination)
+        {
+            input.light[0] = view.illumination->daylight;
+            input.light[1] = view.illumination->body;
+            for (int channel = 0; channel < 3; ++channel) input.light[12 + channel] = view.illumination->color[channel];
+            input.light[15] = 1;
+        }
         input.light[8] = view.wind;
         input.texture = cloud_texture;
         input.revision = cloud_epoch * 1024 + coverage + (view.patterned ? 256 : 0) + (view.isolated ? 512 : 0);
@@ -563,11 +586,15 @@ TEST_F(RenderingRegressionTest, SunclockWithoutNightMapKeepsSurfaceVisibleThroug
     class PatchyCloudMap : public SceneryTestMap
     {
         public:
-        PatchyCloudMap()
+        PatchyCloudMap(unsigned char floor = 0)
+        {
+            set_cloud_floor(floor);
+        }
+        void set_cloud_floor(unsigned char floor)
         {
             for (int i = 0; i < 4; ++i)
             {
-                red_data[i] = green_data[i] = blue_data[i] = i % 2 ? 32 : 0;
+                red_data[i] = green_data[i] = blue_data[i] = std::max(floor, static_cast<unsigned char>(i % 2 ? 32 : 0));
             }
             touch_gen();
         }
@@ -600,6 +627,27 @@ TEST_F(RenderingRegressionTest, SunclockWithoutNightMapKeepsSurfaceVisibleThroug
     const double cloudy = capture();
     EXPECT_GT(clear, 0);
     EXPECT_GT(cloudy, clear * 0.8);
+    EXPECT_NE(cloudy, clear);
+
+    world->transparent_clouds = false;
+    EXPECT_DOUBLE_EQ(capture(), clear);
+    EXPECT_TRUE(show_clouds);
+
+    world->transparent_clouds = true;
+    world->overcast = true;
+    EXPECT_DOUBLE_EQ(capture(), clear);
+    EXPECT_TRUE(show_clouds);
+
+    // Procedural blanket decks retain the transparent flag despite obscuring terrain.
+    world->overcast = false;
+    delete world->cloud_map;
+    auto *blanket = new PatchyCloudMap(255);
+    world->cloud_map = blanket;
+    EXPECT_GT(world->cloud_map->mean_cloud_opacity(), cloud_opacity_threshold);
+    EXPECT_DOUBLE_EQ(capture(), clear);
+    EXPECT_TRUE(show_clouds);
+    blanket->set_cloud_floor(0);
+    EXPECT_DOUBLE_EQ(capture(), cloudy);
 }
 
 TEST_F(RenderingRegressionTest, LavaSunclockDayStaysBrighterThanNightUnderStellarTint)
@@ -1716,6 +1764,76 @@ TEST_F(RenderingRegressionTest, CloudTwilightKeepsNeutralLightAtStrongAtmospheri
     EXPECT_GT(visible, 1000);
 }
 
+TEST(CloudIlluminationTest, MidnightAmbientIsNotAmplifiedByDaytimeAdaptationOrOrbitalDistance)
+{
+    const std::array<double, 3> white = {1, 1, 1};
+    const auto night = cloud_illumination(0, .03, 1, 101325, 0, false, white, white);
+    const auto distant = cloud_illumination(0, .03, .0001, 101325, 0, false, white, white);
+    EXPECT_LT(night.body, .001);
+    EXPECT_LT(night.daylight, .001);
+    EXPECT_DOUBLE_EQ(night.body, distant.body);
+    EXPECT_DOUBLE_EQ(night.daylight, distant.daylight);
+    const auto day = cloud_illumination(4e10, .03, 1, 101325, 0, false, white, white);
+    EXPECT_DOUBLE_EQ(day.daylight, 1);
+    EXPECT_DOUBLE_EQ(day.body, .71);
+    EXPECT_EQ(day.color, white);
+    const auto twilight = cloud_illumination(4e7, .03, 1, 101325, 0, false, white, white);
+    EXPECT_GT(twilight.body, night.body);
+    EXPECT_LT(twilight.body, day.body);
+}
+
+TEST_F(RenderingRegressionTest, CloudBodiesAndWispsShareTheFilteredIllumination)
+{
+    CloudTestView view;
+    view.illumination = cloud_illumination(4e10, .03, 1, 229e5, 1, false,
+        {1, .6, .3}, {160, 96, 64});
+    const auto tinted = clouds(153, .25, 1, view);
+    const auto initial = cloud_sky_gpu_stats();
+    view.illumination = cloud_illumination(4e10, .03, 1, 101325, 0, false,
+        {1, 1, 1}, {1, 1, 1});
+    const auto white = clouds(153, .25, 1, view);
+    EXPECT_GT(cloud_sky_gpu_stats().image_builds, initial.image_builds);
+    EXPECT_EQ(cloud_sky_gpu_stats().geometry_builds, initial.geometry_builds);
+    int visible = 0;
+    for (size_t i = 0; i < tinted.size(); i += 4)
+    {
+        EXPECT_EQ(tinted[i + 3], white[i + 3]);
+        if (white[i] < 20) continue;
+        ++visible;
+        EXPECT_NEAR(tinted[i], white[i], 2);
+        EXPECT_NEAR(tinted[i + 1], white[i + 1] * .6, 2);
+        EXPECT_NEAR(tinted[i + 2], white[i + 2] * .4, 2);
+    }
+    EXPECT_GT(visible, 1000);
+}
+
+TEST_F(RenderingRegressionTest, MidnightCloudsOccludeStarsWithoutEmittingLight)
+{
+    CloudTestView view;
+    view.warmth = 5; // A leftover tint must not supply its own illumination.
+    view.illumination = cloud_illumination(0, .03, .1, 5e5, 0, false,
+        {1, .6, .3}, {0, 0, 0});
+    const auto night = clouds(153, .25, 1, view);
+    int opaque = 0;
+    for (size_t i = 0; i < night.size(); i += 4)
+    {
+        EXPECT_LE(night[i], 1);
+        EXPECT_LE(night[i + 1], 1);
+        EXPECT_LE(night[i + 2], 1);
+        opaque += night[i + 3] >= 250;
+    }
+    EXPECT_GT(opaque, 1000);
+    view.overcast = true;
+    const auto deck = clouds(255, .7, 1, view);
+    for (size_t i = 0; i < deck.size(); i += 4)
+    {
+        EXPECT_LE(deck[i], 1);
+        EXPECT_LE(deck[i + 1], 1);
+        EXPECT_LE(deck[i + 2], 1);
+        EXPECT_GE(deck[i + 3], 254);
+    }
+}
+
 TEST_F(RenderingRegressionTest, DistantCloudClusterOutsideTheLimitLeavesOnlyTheBank)
 {
     const auto pixels = clouds(77, 0.03, 0.125);
@@ -2092,7 +2210,9 @@ TEST_F(RenderingRegressionTest, GpuGroundPreservesCoastsDenseAirSeamsAndPoles)
                 draw_horizon();
                 const auto pixels = render();
                 if (reference) expected = pixels;
-                else EXPECT_EQ(image_difference(pixels, expected), 0) << position.first << ", " << position.second << ", " << pressure;
+                // Active haze uses float shader exponentials rather than CPU doubles.
+                else EXPECT_EQ(image_difference(pixels, expected, pressure > 2e5 && PRESSURE_HAZE ? 1 : 0), 0)
+                    << position.first << ", " << position.second << ", " << pressure;
                 ImGui::NewFrame();
             }
         }
@@ -3253,6 +3373,64 @@ TEST_F(RenderingRegressionTest, CrownAspectUsesIndividualSightlinesInsteadOfCame
     }
 }
 
+TEST(PlantProjectionTest, TrunkSegmentsClipIndependentlyOfTheCrown)
+{
+    double base_y = -2, base_z = 3, top_y = 100, top_z = -20;
+    ASSERT_TRUE(scenery_clip_trunk(base_y, base_z, top_y, top_z));
+    EXPECT_DOUBLE_EQ(base_z, 3);
+    EXPECT_DOUBLE_EQ(top_z, .2);
+    EXPECT_NEAR(top_y, 100 + (20.2 / 23) * -102, 1e-12);
+    base_y = -100; base_z = -20; top_y = 2; top_z = 3;
+    ASSERT_TRUE(scenery_clip_trunk(base_y, base_z, top_y, top_z));
+    EXPECT_DOUBLE_EQ(base_z, .2);
+    EXPECT_DOUBLE_EQ(top_z, 3);
+    base_z = -1; top_z = -.5;
+    EXPECT_FALSE(scenery_clip_trunk(base_y, base_z, top_y, top_z));
+}
+
+TEST_F(RenderingRegressionTest, PlantTrunksRemainVisibleWhenCrownsAreBehindTheCamera)
+{
+    Planet* world = surface(true);
+    delete world->surf_map;
+    world->surf_map = new BlueBiomeTestMap(SurfaceMaterial::vegetation);
+    world->plant_trunk_height = 200;
+    world->plant_trunk_width = 2;
+    world->plant_crown_size = .2;
+    world->plant_crown_oblateness = .2;
+    const double spacing = sqrt(_pi * ROCK_MAX_DIST * ROCK_MAX_DIST / ROCK_COUNT);
+    const auto candidates = surface_scenery(earth_radius, 0, 0, 20, spacing, world->seqno);
+    ASSERT_FALSE(candidates.empty());
+    viewer_lat = candidates.front().latitude - 3 / earth_radius;
+    viewer_lon = candidates.front().longitude;
+    altitude = -.7;
+    std::vector<unsigned char> expected;
+    for (bool reference : {true, false})
+    {
+        scenery_gpu_reference = reference;
+        freeze_surface_time();
+        find_horizon();
+        draw_horizon();
+        EXPECT_GT(clipped_plant_trunks, 0u);
+        for (const auto& vertex : ImGui::GetBackgroundDrawList()->VtxBuffer)
+        {
+            EXPECT_TRUE(std::isfinite(vertex.pos.x));
+            EXPECT_TRUE(std::isfinite(vertex.pos.y));
+        }
+        const auto pixels = render();
+        if (reference) expected = pixels;
+        else EXPECT_LT(image_difference(pixels, expected), 100);
+        int trunk_pixels = 0;
+        for (size_t pixel = 0; pixel < pixels.size(); pixel += 4)
+        {
+            const bool ground = pixels[pixel] == 80 && pixels[pixel + 1] == 60 && pixels[pixel + 2] == 40;
+            trunk_pixels += !ground && pixels[pixel] > pixels[pixel + 1]
+                && pixels[pixel + 1] > pixels[pixel + 2];
+        }
+        EXPECT_GT(trunk_pixels, 0);
+        ImGui::NewFrame();
+    }
+}
+
 TEST_F(RenderingRegressionTest, CrownContactPreservesLowerPoleAndClosesProjectedGaps)
 {
     for (double width : {1.0, 5.0, 100.0})
@@ -3501,24 +3679,35 @@ TEST_F(RenderingRegressionTest, DenseAtmosphereCoastHasSeaBelowTheLiftedHorizon)
     find_horizon();
     draw_horizon();
     const auto pixels = render();
+    ImGui::NewFrame();
+    // Compare against land under identical airlight: thick air changes sea color.
+    delete world->surf_map;
+    world->surf_map = new CoastalTestMap(false);
+    find_horizon();
+    draw_horizon();
+    const auto land = render();
     int sea = 0;
     for (int y = 56; y < 60; y++)
     {
         for (int x = 86; x < 106; x++)
         {
             const int index = ((render_height - y - 1) * render_width + x) * 4;
-            sea += pixels[index + 2] > pixels[index] * 2;
+            sea += pixels[index + 2] > land[index + 2] + 2;
         }
     }
     EXPECT_GT(sea, 60);
     ImGui::NewFrame();
 }
 
-TEST_F(RenderingRegressionTest, HotDryGroundSkipsPerPixelBiomePainting)
+TEST_F(RenderingRegressionTest, HotDryGroundKeepsSingleGpuHazeTile)
 {
+    #if !horizon_gpu_ground_painting || !PRESSURE_HAZE
+    GTEST_SKIP() << "GPU pressure haze is disabled.";
+    #endif
     Planet *world = surface(true);
     world->temperature = 737;
     world->ensure_atmosphere()->surface_pressure = 93 * oneatm;
+    set(horizon_ground_gpu_reference, false);
     delete world->surf_map;
     world->surf_map = new MountainBandsTestMap();
     set(dispcx, 960.0);
@@ -3527,6 +3716,7 @@ TEST_F(RenderingRegressionTest, HotDryGroundSkipsPerPixelBiomePainting)
     find_horizon();
     const int before = ImGui::GetBackgroundDrawList()->VtxBuffer.Size;
     draw_horizon();
+    EXPECT_EQ(horizon_ground_gpu_stats().haze_tiles, 1u);
     const int vertices = ImGui::GetBackgroundDrawList()->VtxBuffer.Size - before;
     render();
     ImGui::NewFrame();
@@ -3534,6 +3724,7 @@ TEST_F(RenderingRegressionTest, HotDryGroundSkipsPerPixelBiomePainting)
     world->surf_map = new SceneryTestMap();
     const int plain_before = ImGui::GetBackgroundDrawList()->VtxBuffer.Size;
     draw_horizon();
+    EXPECT_EQ(horizon_ground_gpu_stats().haze_tiles, 1u);
     const int plain_vertices = ImGui::GetBackgroundDrawList()->VtxBuffer.Size - plain_before;
     EXPECT_EQ(vertices, plain_vertices);
     render();
@@ -4001,6 +4192,337 @@ TEST_F(RenderingRegressionTest, NadirSurfaceCoversTheViewportOnLandAndWater)
                 ImGui::NewFrame();
             }
         }
+    }
+}
+
+TEST(PressureHazeTest, AirlightLuminanceCapPreservesHueAndDimColors)
+{
+    PressureHaze haze;
+    haze.light = {255, 220, 150};
+    haze.cap_light_luminance();
+    EXPECT_NEAR(.2126 * haze.light[0] + .7152 * haze.light[1] + .0722 * haze.light[2], 140, 1e-9);
+    EXPECT_NEAR(haze.light[0] / haze.light[1], 255.0 / 220, 1e-9);
+    EXPECT_NEAR(haze.light[2] / haze.light[1], 150.0 / 220, 1e-9);
+    haze.light = {30, 20, 10};
+    haze.cap_light_luminance();
+    EXPECT_EQ(haze.light, (std::array<double, 3>{30, 20, 10}));
+    haze.light = {0, 0, 0};
+    haze.cap_light_luminance();
+    EXPECT_EQ(haze.light, (std::array<double, 3>{0, 0, 0}));
+}
+
+TEST(PressureHazeTest, DensityCompositionDistanceAndWavelengthControlVeiling)
+{
+    const auto earth = PressureHaze::prepare(101325, 288, 1, 0, 8000);
+    EXPECT_FALSE(earth.active());
+    const auto venus = PressureHaze::prepare(92e5, 737, 2.5, 0, 15000);
+    const auto dense = PressureHaze::prepare(700e5, 1000, 2.5, 0, 15000);
+    #if PRESSURE_HAZE
+    EXPECT_TRUE(venus.active());
+    EXPECT_GT(dense.transmission(10, 1), .9);
+    EXPECT_LT(dense.transmission(3000, 1), .01);
+    EXPECT_GT(venus.transmission(1000, 1), dense.transmission(1000, 1));
+    EXPECT_GT(dense.transmission(1000, 0), dense.transmission(1000, 2));
+    const auto hot = PressureHaze::prepare(700e5, 2000, 2.5, 0, 15000);
+    EXPECT_GT(hot.transmission(1000, 1), dense.transmission(1000, 1));
+    const auto hydrogen = PressureHaze::prepare(700e5, 1000, .23, 0, 15000);
+    EXPECT_GT(hydrogen.transmission(1000, 1), dense.transmission(1000, 1));
+    #else
+    EXPECT_FALSE(dense.active());
+    #endif
+    PressureHaze colored = dense;
+    colored.light = {120, 90, 50};
+    const std::array<double, 3> terrain = {30, 40, 60};
+    EXPECT_EQ(colored.apply(terrain, 0), terrain);
+    EXPECT_EQ(earth.apply(terrain, 10000), terrain);
+    #if PRESSURE_HAZE
+    const auto far = colored.apply(terrain, 1000000);
+    for (int channel = 0; channel < 3; ++channel) EXPECT_NEAR(far[channel], colored.light[channel], 1e-6);
+    #endif
+}
+
+TEST_F(RenderingRegressionTest, PressureHazeVeilsSkyAndSurfaceWithoutLightingTheNight)
+{
+    const char* preview = std::getenv("ALIENORUM_HAZE_PREVIEW_DIR");
+    if (preview)
+    {
+        render_width = 640;
+        render_height = 360;
+        SDL_SetWindowSize(window, render_width, render_height);
+        SDL_PumpEvents();
+        SDL_GL_SwapWindow(window);
+        ImGui::GetIO().DisplaySize = ImVec2(render_width, render_height);
+        dispcx = render_width * .5;
+        dispcy = render_height * .5;
+        ImGui::EndFrame();
+        ImGui::NewFrame();
+    }
+    Planet* world = surface(true);
+    auto* air = world->ensure_atmosphere();
+    air->pressure_supplied = true;
+    air->ensure_composition()->CO2_portion = 1;
+    set(whtbkgd, false);
+    set(sky_grad, std::map<int, RGB3>{});
+    set(sky_mag_shift, sky_mag_shift);
+    altitude = 0;
+    const auto capture = [&]()
+    {
+        freeze_surface_time();
+        find_horizon();
+        draw_sky_gradient();
+        draw_horizon();
+        const auto pixels = render();
+        ImGui::NewFrame();
+        return pixels;
+    };
+    air->surface_pressure = oneatm;
+    const auto clear = capture();
+    air->surface_pressure = 700e5;
+    const auto dense = capture();
+    #if PRESSURE_HAZE
+    EXPECT_GT(image_difference(dense, clear), 1000);
+    #endif
+    // Both paths use identical airlight for tree crowns/trunks and rocks.
+    scenery_gpu_reference = false;
+    const auto accelerated = capture();
+    EXPECT_LT(image_difference(accelerated, dense), render_width * render_height / 200);
+    #if horizon_gpu_ground_painting && PRESSURE_HAZE
+    horizon_ground_gpu_reference = false;
+    const auto gpu_ground = capture();
+    EXPECT_EQ(image_difference(gpu_ground, accelerated, 1), 0);
+    EXPECT_GT(horizon_ground_gpu_stats().haze_tiles, 0u);
+    #endif
+    luminous_flux = 0;
+    const auto night = capture();
+    #if PRESSURE_HAZE
+    for (int y = render_height - 8; y < render_height - 2; ++y)
+    {
+        const size_t pixel = (y * render_width + render_width / 2) * 4;
+        EXPECT_LE(night[pixel] + night[pixel + 1] + night[pixel + 2], 3);
+    }
+    #endif
+    if (preview)
+    {
+        std::filesystem::create_directories(preview);
+        for (const auto& item : {std::make_pair("clear.png", &clear), std::make_pair("dense.png", &dense),
+            std::make_pair("night.png", &night)})
+        {
+            std::vector<unsigned char> flipped(item.second->size());
+            for (int y = 0; y < render_height; ++y)
+                std::copy_n(item.second->data() + (render_height - 1 - y) * render_width * 4,
+                    render_width * 4, flipped.data() + y * render_width * 4);
+            SDL_Surface* image = SDL_CreateRGBSurfaceWithFormatFrom(flipped.data(), render_width,
+                render_height, 32, render_width * 4, SDL_PIXELFORMAT_RGBA32);
+            ASSERT_NE(image, nullptr);
+            EXPECT_EQ(IMG_SavePNG(image, (std::filesystem::path(preview) / item.first).string().c_str()), 0);
+            SDL_FreeSurface(image);
+        }
+    }
+}
+
+TEST_F(RenderingRegressionTest, GpuPressureHazePreservesDepthAndRemovesCardinalAtlasSeams)
+{
+    #if !horizon_gpu_ground_painting || !PRESSURE_HAZE
+    GTEST_SKIP() << "GPU pressure haze is disabled.";
+    #endif
+    Planet* world = surface(true);
+    delete world->surf_map;
+    world->surf_map = new CoastalTestMap();
+    world->has_water = 0;
+    world->temperature = 749;
+    auto* air = world->ensure_atmosphere();
+    air->pressure_supplied = true;
+    air->ensure_composition()->CO2_portion = 1;
+    set(show_terrain, false);
+    set(viewer_lat, 0.0);
+    set(viewer_lon, 0.0);
+    const auto capture = [&](bool reference)
+    {
+        horizon_ground_gpu_reference = reference;
+        freeze_surface_time();
+        find_horizon();
+        draw_horizon();
+        auto pixels = render();
+        ImGui::NewFrame();
+        return pixels;
+    };
+    for (double pressure : {93e5, 736e5})
+    {
+        air->surface_pressure = pressure;
+        for (double pitch : {-.4, 0.0, .4})
+        {
+            altitude = pitch;
+            for (double heading : {0.0, half_pi, _pi, 3 * half_pi})
+            {
+                azimuth = heading;
+                const auto reference = capture(true);
+                const auto accelerated = capture(false);
+                // Float shader math and byte quantization can differ by one level.
+                EXPECT_EQ(image_difference(accelerated, reference, 1), 0) << pressure << ", " << pitch << ", " << heading;
+                EXPECT_EQ(horizon_ground_gpu_stats().haze_tiles, 1u);
+                for (int y = 2; y < render_height / 4; ++y)
+                {
+                    for (int x = 2; x < render_width / 2; ++x)
+                    {
+                        const size_t left = (y * render_width + x) * 4;
+                        const size_t right = (y * render_width + render_width - 1 - x) * 4;
+                        for (int channel = 0; channel < 3; ++channel)
+                        {
+                            EXPECT_NEAR(accelerated[left + channel], accelerated[right + channel], 1)
+                                << "Cardinal seam at " << heading << ", " << x << ", " << y;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+TEST_F(RenderingRegressionTest, GpuPressureHazeBoundsGeometryAtScreenshotResolution)
+{
+    #if !horizon_gpu_ground_painting || !PRESSURE_HAZE
+    GTEST_SKIP() << "GPU pressure haze is disabled.";
+    #endif
+    const bool benchmark = std::getenv("ALIENORUM_HAZE_BENCHMARK") != nullptr;
+    if (benchmark)
+    {
+        render_width = 1280;
+        render_height = 800;
+        SDL_SetWindowSize(window, render_width, render_height);
+        SDL_PumpEvents();
+        SDL_GL_SwapWindow(window);
+        ImGui::GetIO().DisplaySize = ImVec2(render_width, render_height);
+        dispcx = render_width * .5;
+        dispcy = render_height * .5;
+        ImGui::EndFrame();
+        ImGui::NewFrame();
+    }
+    Planet* world = surface(true);
+    world->has_water = 0;
+    world->temperature = 749;
+    world->ensure_atmosphere()->ensure_composition()->CO2_portion = 1;
+    set(show_terrain, false);
+    altitude = -.1;
+    for (double pressure : {93e5, 736e5})
+    {
+        world->atm->surface_pressure = pressure;
+        std::vector<unsigned char> expected;
+        size_t cpu_vertices = 0;
+        for (bool reference : {true, false})
+        {
+            horizon_ground_gpu_reference = reference;
+            double milliseconds = 0;
+            const int frames = benchmark ? 4 : 2;
+            for (int frame = 0; frame < frames; ++frame)
+            {
+                freeze_surface_time();
+                find_horizon();
+                const auto start = std::chrono::steady_clock::now();
+                draw_horizon();
+                const size_t vertices = ImGui::GetBackgroundDrawList()->VtxBuffer.Size;
+                const auto pixels = render(); // Readback also waits for GPU completion.
+                milliseconds += frame ? std::chrono::duration<double, std::milli>(
+                    std::chrono::steady_clock::now() - start).count() : 0;
+                if (reference)
+                {
+                    expected = pixels;
+                    cpu_vertices = vertices;
+                }
+                else
+                {
+                    EXPECT_EQ(image_difference(pixels, expected, 1), 0);
+                    EXPECT_EQ(horizon_ground_gpu_stats().haze_tiles, 1u);
+                    EXPECT_LT(vertices, cpu_vertices);
+                }
+                ImGui::NewFrame();
+            }
+            if (benchmark)
+            {
+                std::cout << "Haze " << pressure / 1e5 << " bar, "
+                    << (reference ? "CPU" : "GPU") << ": " << milliseconds / (frames - 1) << " ms\n";
+            }
+        }
+    }
+    if (benchmark) SDL_SetWindowSize(window, 192, 108);
+}
+
+TEST_F(RenderingRegressionTest, CloudPressureHazeUsesCloudDistanceAndInvalidatesCachedColor)
+{
+    CloudTestView view;
+    view.overcast = true;
+    const auto clear = clouds(255, 1.0, 1.0, view);
+    view.haze_extinction = {3, 4, 6};
+    view.haze_light = {.7f, .55f, .15f};
+    const auto distant = clouds(255, 1.0, 1.0, view);
+    view.observer = 1000.9;
+    const auto nearby = clouds(255, 1.0, 1.0, view);
+    const size_t center = (render_height / 2 * render_width + render_width / 2) * 4;
+    double distant_error = 0, nearby_error = 0;
+    for (int channel = 0; channel < 3; ++channel)
+    {
+        const double target = view.haze_light[channel] * 255;
+        distant_error += fabs(distant[center + channel] - target);
+        nearby_error += fabs(nearby[center + channel] - target);
+    }
+    EXPECT_LT(distant_error, nearby_error);
+    EXPECT_GT(image_difference(distant, clear), 1000);
+    view.haze_extinction = {};
+    view.observer = 1000;
+    EXPECT_EQ(image_difference(clouds(255, 1.0, 1.0, view), clear), 0);
+}
+
+TEST_F(RenderingRegressionTest, OvercastPressureHazeUsesYellowDeckInsteadOfSunsetRed)
+{
+    #if !PRESSURE_HAZE
+    GTEST_SKIP() << "Pressure haze is disabled.";
+    #endif
+    // Match the solar white balance established during catalog loading.
+    set(bv_correction, -.6244);
+    Planet* world = surface();
+    world->temperature = 737;
+    world->mass = .815 * earth_mass;
+    world->volumetric_mean_radius = .9499 * earth_radius;
+    world->BV_color = .81;
+    world->overcast = true;
+    auto* source = static_cast<Star*>(world->get_light_center());
+    source->BV_color = .65;
+    auto* air = world->ensure_atmosphere();
+    air->surface_pressure = 93e5;
+    auto* gas = air->ensure_composition();
+    gas->CO2_portion = .965;
+    gas->N2_portion = .035;
+    class YellowDeck : public SceneryTestMap
+    {
+        public:
+        YellowDeck()
+        {
+            for (unsigned long i = 0; i < allocated; ++i)
+            {
+                red_data[i] = 245;
+                green_data[i] = 220;
+                blue_data[i] = 130;
+            }
+            touch_gen();
+        }
+    };
+    world->cloud_map = new YellowDeck();
+    set(show_terrain, false);
+    set(whtbkgd, false);
+    set(sky_grad, std::map<int, RGB3>{});
+    set(sky_mag_shift, sky_mag_shift);
+    for (bool reference : {true, false})
+    {
+        horizon_ground_gpu_reference = reference;
+        freeze_surface_time();
+        find_horizon();
+        draw_sky_gradient();
+        draw_horizon();
+        const auto pixels = render();
+        const size_t sky = ((render_height - 8) * render_width + render_width / 2) * 4;
+        EXPECT_GT(pixels[sky], 150);
+        EXPECT_GT(pixels[sky + 1], pixels[sky] * .8);
+        EXPECT_LT(pixels[sky + 2], pixels[sky + 1] * .75);
+        ImGui::NewFrame();
     }
 }
 
@@ -6001,6 +6523,36 @@ TEST_F(RenderingRegressionTest, ReusedTextureStorageMatchesFreshColorBumpAndMipL
     gputex_clear_cache();
 }
 
+TEST(RockMorphologyTest, AspectRatiosVaryDeterministicallyAndFlattenSmoothlyWithPressure)
+{
+    double minimum = 10, maximum = 0;
+    for (uint32_t seed = 0; seed < 512; ++seed)
+    {
+        const double terrestrial = rock_aspect_ratio(seed, oneatm, ROCK_ASPECT_DEFAULT);
+        const double dense = rock_aspect_ratio(seed, 93 * oneatm, ROCK_ASPECT_DEFAULT);
+        const double extreme = rock_aspect_ratio(seed, 700 * oneatm, ROCK_ASPECT_DEFAULT);
+        EXPECT_DOUBLE_EQ(terrestrial, rock_aspect_ratio(seed, 0, ROCK_ASPECT_DEFAULT));
+        EXPECT_GT(terrestrial, dense);
+        EXPECT_GT(dense, extreme);
+        EXPECT_GE(extreme, .045);
+        EXPECT_NEAR(rock_aspect_ratio(seed, 4 * oneatm, ROCK_ASPECT_DEFAULT),
+            rock_aspect_ratio(seed, 4.00001 * oneatm, ROCK_ASPECT_DEFAULT), 1e-5);
+        minimum = std::min(minimum, terrestrial);
+        maximum = std::max(maximum, terrestrial);
+        const auto shape = build_rock_shape(seed);
+        EXPECT_EQ(shape.vertices, build_rock_shape(seed).vertices);
+        for (size_t vertex = 0; vertex < shape.vertices.size(); ++vertex)
+        {
+            for (double coordinate : shape.vertices[vertex]) EXPECT_TRUE(std::isfinite(coordinate));
+            EXPECT_GE(shape.vertices[vertex][1], 0);
+            if (vertex >= 16) EXPECT_DOUBLE_EQ(shape.vertices[vertex][1], 0);
+        }
+    }
+    EXPECT_GT(maximum / minimum, 3);
+    EXPECT_NE(build_rock_shape(0).vertices, build_rock_shape(1).vertices);
+    EXPECT_NE(build_rock_shape(1).vertices, build_rock_shape(2).vertices);
+}
+
 TEST_F(RenderingRegressionTest, RockMeshCachePreservesLiveViewsAndBoundedShapes)
 {
     RockMeshCache cache;
@@ -6027,6 +6579,8 @@ TEST_F(RenderingRegressionTest, RockMeshCachePreservesLiveViewsAndBoundedShapes)
     };
     for (int pose = 0; pose < 12; ++pose)
     {
+        world->ensure_atmosphere()->surface_pressure = pose < 4 ? oneatm : (pose < 8 ? 93e5 : 736e5);
+        world->temperature = 737;
         viewer_lat = pose * .4 / earth_radius;
         viewer_lon = pose > 8 ? _pi - 1e-6 : .3;
         altitude = -.15 - pose * .03;

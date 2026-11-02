@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <unordered_map>
 #include <vector>
@@ -10,6 +11,29 @@
 
 namespace alienorum
 {
+    inline std::size_t clipped_plant_trunks = 0;
+
+    inline bool scenery_clip_trunk(double& base_y, double& base_z, double& top_y, double& top_z,
+        double near_plane = .2)
+    {
+        if (!std::isfinite(base_y) || !std::isfinite(base_z) || !std::isfinite(top_y)
+            || !std::isfinite(top_z) || !std::isfinite(near_plane) || near_plane <= 0) return false;
+        if (base_z < near_plane && top_z < near_plane) return false;
+        if (top_z < near_plane)
+        {
+            const double fraction = (near_plane - top_z) / (base_z - top_z);
+            top_y += fraction * (base_y - top_y);
+            top_z = near_plane;
+        }
+        if (base_z < near_plane)
+        {
+            const double fraction = (near_plane - base_z) / (top_z - base_z);
+            base_y += fraction * (top_y - base_y);
+            base_z = near_plane;
+        }
+        return true;
+    }
+
     inline double scenery_crown_aspect(double horizontal_distance, double relative_height, double oblateness)
     {
         const double range = std::hypot(horizontal_distance, relative_height);
