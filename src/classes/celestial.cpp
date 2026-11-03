@@ -2969,7 +2969,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
             }
         }
 
-        if (!p->preserve_loaded_parameters) cel->BV_color = 0.9 - p->has_water;
+        if (!p->preserve_loaded_parameters && !p->lock_bv_color) cel->BV_color = 0.9 - p->has_water;
 
     }
     catch (...)

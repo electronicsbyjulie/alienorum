@@ -19,6 +19,9 @@ namespace alienorum
         double xuv_scale = 1;
         double surface_water_share = 1;
         double basin_relief_m = 2500; // RMS relief at Earth gravity; a scenario assumption.
+        double nitrogen_frost_albedo = 0.8;
+        double nitrogen_frost_emissivity = 0.67;
+        double cold_temperature_k = 0; // Zero selects the independent energy-balance proxy.
 
         bool from_json(const json& value);
         json to_json() const;
@@ -47,6 +50,7 @@ namespace alienorum
         // Simulation ceiling for inferred pressures, in Pa; not a physical maximum.
         static constexpr double pressure_ceiling = 1e8;
         static AtmosphericInventory default_inventory(const Star& s);
+        static AtmosphericInventory default_inventory(Star& s, Planet& p);
         static AtmosphericEstimate estimate_atmosphere(Star& s, Planet& p);
         static AtmosphericEstimate estimate_atmosphere(Star& s, Planet& p,
             const AtmosphericInventory& inventory);

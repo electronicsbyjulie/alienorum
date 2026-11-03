@@ -273,10 +273,22 @@ void alienorum::Planet::apply_cosmic_shoreline()
         // Dereferenced, so it has to be there and it has to be a star: a rogue planet's light
         // center is a null pointer, and a moon of one leads somewhere that is not a Star.
         Star& host = *static_cast<Star*>(plc);
-        AtmosphericInventory inventory = CosmicShore::default_inventory(host);
-        const bool custom_inventory = atm && atm->pressure_model.is_object()
+        AtmosphericInventory inventory = CosmicShore::default_inventory(host, *this);
+        bool custom_inventory = atm && atm->pressure_model.is_object()
             && atm->pressure_model.contains("inventory");
-        if (custom_inventory && !inventory.from_json(atm->pressure_model["inventory"])) return;
+        if (custom_inventory)
+        {
+            AtmosphericInventory saved = inventory;
+            if (!saved.from_json(atm->pressure_model["inventory"])) return;
+            const json& model = atm->pressure_model;
+            const bool unchanged_default = model.contains("default_inventory")
+                && saved.to_json() == model["default_inventory"];
+            const bool legacy_default = model.value("model", "") == "volatile_budget_v1"
+                && model.value("inventory_source", "") == "default_scenario"
+                && saved.to_json() == CosmicShore::default_inventory(host).to_json();
+            custom_inventory = !unchanged_default && !legacy_default;
+            if (custom_inventory) inventory = saved;
+        }
         AtmosphericEstimate estimate = custom_inventory ? CosmicShore::estimate_atmosphere(host, *this, inventory)
             : CosmicShore::estimate_atmosphere(host, *this);
         // Incomplete geometry/illumination must not erase an existing estimate.

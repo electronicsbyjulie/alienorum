@@ -217,6 +217,135 @@ TEST_F(PlanetClassificationEvidenceTest, VolatileBudgetReproducesTerrestrialPres
     }
 }
 
+TEST_F(PlanetClassificationEvidenceTest, ColdVolatilesRecoverMoonPressuresWithoutObjectNames)
+{
+    Star* host = make_star();
+    struct Example
+    {
+        const char* label;
+        double mass_kg, radius_m, distance_au, low_pa, high_pa;
+        bool cold;
+    };
+    const Example examples[] =
+    {
+        {"Titan", 1.3455e23, 2.5747e6, 9.5826, 1.2e5, 1.8e5, true},
+        {"Triton", 2.14e22, 1.3534e6, 30.07, 1.0, 2.0, true},
+        {"Pluto", 1.303e22, 1.1883e6, 39.482, 0.2, 2.0, true},
+        {"Ganymede", 1.4819e23, 2.6312e6, 5.204, 0, 1e-3, true},
+        {"Callisto", 1.0759e23, 2.4103e6, 5.204, 0, 1e-3, true},
+        {"Europa", 4.8e22, 1.5608e6, 5.204, 0, 1e-3, false},
+        {"Enceladus", 1.08022e20, 252100, 9.5826, 0, 1e-3, true},
+        {"Moon", 7.349e22, 1.73737e6, 1, 0, 1e-3, false}
+    };
+    for (const auto& example : examples)
+    {
+        SCOPED_TRACE(example.label);
+        Planet* primary = make_planet(host, "Anonymous primary", example.distance_au * AU);
+        Planet* world = make_planet(host, "Anonymous satellite");
+        world->orbit->center = primary;
+        world->orbit->semimajor_axis = 1e9;
+        world->mass = example.mass_kg * 1000;
+        world->volumetric_mean_radius = example.radius_m;
+        world->type = rocky;
+        const auto estimate = CosmicShore::estimate_atmosphere(*host, *world);
+        ASSERT_TRUE(estimate.valid);
+        RecordProperty(std::string(example.label) + "_pressure_pa", std::to_string(estimate.pressure));
+        EXPECT_GE(estimate.pressure, example.low_pa) << estimate.diagnostics.dump();
+        EXPECT_LE(estimate.pressure, example.high_pa) << estimate.diagnostics.dump();
+        EXPECT_EQ(estimate.diagnostics["regime"], example.cold ? "cold_volatiles" : "terrestrial");
+        world->temperature = 4000;
+        world->type = icy;
+        EXPECT_DOUBLE_EQ(CosmicShore::estimate_atmosphere(*host, *world).pressure, estimate.pressure);
+        EXPECT_EQ(world->atm, nullptr);
+    }
+}
+
+TEST_F(PlanetClassificationEvidenceTest, NitrogenFrostUsesMeasuredPhaseCurvesAndFiniteReservoirs)
+{
+    Star* host = make_star();
+    Planet* world = make_planet(host, "Anonymous ice world", 30 * AU);
+    world->mass = 2.14e25;
+    world->volumetric_mean_radius = 1.3534e6;
+    AtmosphericInventory inventory;
+    inventory.co2_mass_fraction = inventory.water_mass_fraction = 0;
+    inventory.nitrogen_mass_fraction = 1.4e-4;
+    inventory.xuv_scale = 0;
+    inventory.cold_temperature_k = 36.93;
+    const auto frost = CosmicShore::estimate_atmosphere(*host, *world, inventory);
+    EXPECT_NEAR(frost.pressure, 1.15, 0.15);
+    EXPECT_TRUE(frost.diagnostics["cold_volatiles"]["nitrogen_frost"].get<bool>());
+    inventory.nitrogen_mass_fraction *= 100;
+    EXPECT_NEAR(CosmicShore::estimate_atmosphere(*host, *world, inventory).pressure, frost.pressure, 1e-8);
+    inventory.nitrogen_mass_fraction = 1e-12;
+    const auto depleted = CosmicShore::estimate_atmosphere(*host, *world, inventory);
+    EXPECT_LT(depleted.pressure, frost.pressure / 100);
+    EXPECT_FALSE(depleted.diagnostics["cold_volatiles"]["nitrogen_frost"].get<bool>());
+    inventory.nitrogen_mass_fraction = 1.4e-4;
+    double previous = 0;
+    for (double temperature : {2.7, 9.999, 10.0, 20.0, 35.609, 35.61, 35.611, 36.93, 50.0, 63.139, 63.14, 63.141, 77.34})
+    {
+        inventory.cold_temperature_k = temperature;
+        const double pressure = CosmicShore::estimate_atmosphere(*host, *world, inventory).pressure;
+        EXPECT_TRUE(std::isfinite(pressure));
+        EXPECT_GE(pressure, previous);
+        previous = pressure;
+    }
+}
+
+TEST_F(PlanetClassificationEvidenceTest, ColdInventoryScenariosPersistAndConserveMass)
+{
+    Star* host = make_star();
+    Planet* world = make_planet(host, "Anonymous ice world", 30 * AU);
+    world->mass = 2.14e25;
+    world->volumetric_mean_radius = 1.3534e6;
+    world->type = icy;
+    world->user_added = true;
+    world->apply_cosmic_shoreline();
+    ASSERT_NE(world->atm, nullptr);
+    EXPECT_EQ(world->atm->pressure_model["inventory_source"], "default_scenario");
+    EXPECT_DOUBLE_EQ(world->atm->pressure_model["inventory"]["nitrogen_mass_fraction"].get<double>(), 1.35e-4);
+    const double pressure = world->get_surface_pressure();
+    world->apply_cosmic_shoreline();
+    EXPECT_DOUBLE_EQ(world->get_surface_pressure(), pressure);
+    EXPECT_EQ(world->atm->pressure_model["inventory_source"], "default_scenario");
+    for (double age : {0.0, 0.001, 0.1, 4.5, 13.8})
+    {
+        auto inventory = CosmicShore::default_inventory(*host, *world);
+        inventory.age_gyr = age;
+        const auto estimate = CosmicShore::estimate_atmosphere(*host, *world, inventory);
+        for (const auto& ledger : estimate.diagnostics["reservoir_mass_fractions"])
+        {
+            double total = 0;
+            for (const char* key : {"mantle", "atmosphere", "surface_storage", "escaped"})
+            {
+                const double fraction = ledger[key].get<double>();
+                EXPECT_GE(fraction, 0);
+                total += fraction;
+            }
+            EXPECT_NEAR(total, ledger["initial"].get<double>(), 1e-14);
+        }
+    }
+    world->atm->pressure_model["inventory"]["cold_temperature_k"] = 36.93;
+    world->apply_cosmic_shoreline();
+    EXPECT_EQ(world->atm->pressure_model["inventory_source"], "saved_scenario");
+    EXPECT_NEAR(world->get_surface_pressure(), 1.15, 0.15);
+    Serialization::SaveContext context;
+    const json compact = Serialization::compact_record(world->to_json(), context);
+    Planet restored;
+    ASSERT_TRUE(restored.from_json(Serialization::expand_record(compact, context.header)));
+    ASSERT_NE(restored.atm, nullptr);
+    EXPECT_EQ(restored.atm->pressure_model, world->atm->pressure_model);
+    world->atm->pressure_model["inventory"]["cold_temperature_k"] = 150;
+    world->apply_cosmic_shoreline();
+    EXPECT_TRUE(world->atm->pressure_model["cold_volatiles"]["nitrogen_saturation_pa"].is_null());
+    EXPECT_EQ(json::parse(world->atm->pressure_model.dump()), world->atm->pressure_model);
+    world->atm->pressure_model["inventory"]["nitrogen_mass_fraction"] = 0;
+    world->atm->pressure_model["inventory"]["co2_mass_fraction"] = 0;
+    world->atm->pressure_model["inventory"]["water_mass_fraction"] = 0;
+    world->apply_cosmic_shoreline();
+    EXPECT_DOUBLE_EQ(world->get_surface_pressure(), 0);
+}
+
 TEST_F(PlanetClassificationEvidenceTest, ShorelineSeparatesMercuryFromRetainedTerrestrialAtmospheres)
 {
     Star* host = make_star();

@@ -52,6 +52,51 @@ namespace
         return std::min(CosmicShore::pressure_ceiling, reference_pa * std::exp(std::min(100.0, exponent)));
     }
 
+    bool cold_volatile_regime(const Planet& p, double flux)
+    {
+        const double density = p.mass * 0.001 / (4 * _pi / 3 * std::pow(p.volumetric_mean_radius, 3));
+        return std::isfinite(density) && density > 0 && density < 3000 && flux < 0.08;
+    }
+
+    double nitrogen_vapor_pressure(double temperature)
+    {
+        if (temperature >= 126.19) return INFINITY;
+        // NIST liquid-nitrogen Antoine fit: bar converted to Pa.
+        // https://webbook.nist.gov/cgi/cbook.cgi?ID=C7727379&Mask=4
+        const auto liquid = [](double t) { return 1e5 * std::pow(10.0, 3.7362 - 264.651 / (t - 6.788)); };
+        if (temperature >= 63.14) return liquid(temperature);
+        // Fray & Schmitt (2009), reproduced in Marboeuf et al. (2014), Table 3.
+        // https://arxiv.org/abs/1407.7271 . Join the measured solid-phase fits continuously.
+        const auto beta = [](double t)
+        {
+            const double x = 1 / t;
+            return 1e5 * std::exp(8.514 + x * (-458.4 + x * (-1.987e4 + x * (4.8e5 - x * 4.524e6))));
+        };
+        const auto alpha = [](double t)
+        {
+            const double x = 1 / t;
+            return 1e5 * std::exp(12.4 + x * (-807.4 + x * (-3926 + x * (6.297e4 + x * (-4.633e5 + x * 1.325e6)))));
+        };
+        const double join = liquid(63.14) / beta(63.14);
+        if (temperature >= 35.61) return join * beta(temperature);
+        // Below the fit's 10 K limit, continue monotonically towards vacuum.
+        if (temperature < 10) return join * beta(35.61) / alpha(35.61)
+            * alpha(10) * std::exp(850 * (0.1 - 1 / temperature));
+        return join * beta(35.61) / alpha(35.61) * alpha(temperature);
+    }
+
+    double nitrogen_frost_temperature(double flux, const AtmosphericInventory& inventory)
+    {
+        // Lewis et al. (2020), https://arxiv.org/abs/1912.02333 : bright nitrogen frost,
+        // reduced IR emissivity, and an alpha/beta emissivity contrast around 35.61 K.
+        const double beta = 255 * std::pow(flux * (1 - inventory.nitrogen_frost_albedo)
+            / (0.7 * inventory.nitrogen_frost_emissivity), 0.25);
+        const double alpha = beta * std::pow(3.0, 0.25);
+        if (beta >= 35.61) return beta;
+        if (alpha <= 35.61) return std::max(2.7, alpha);
+        return 35.61; // Coexisting solid phases provide a thermal plateau.
+    }
+
     // q holds each constituent's weight per unit area in Pa, not its mole partial pressure.
     // For a well mixed atmosphere, x_i * sum(q) is its surface partial pressure. Solve
     // that expression for q_i to impose saturation without confusing mass and mole fractions.
@@ -87,7 +132,10 @@ bool AtmosphericInventory::from_json(const json& value)
         {"weathering_efficiency", &AtmosphericInventory::weathering_efficiency, 1},
         {"xuv_scale", &AtmosphericInventory::xuv_scale, INFINITY},
         {"surface_water_share", &AtmosphericInventory::surface_water_share, 1},
-        {"basin_relief_m", &AtmosphericInventory::basin_relief_m, INFINITY}
+        {"basin_relief_m", &AtmosphericInventory::basin_relief_m, INFINITY},
+        {"nitrogen_frost_albedo", &AtmosphericInventory::nitrogen_frost_albedo, 1},
+        {"nitrogen_frost_emissivity", &AtmosphericInventory::nitrogen_frost_emissivity, 1},
+        {"cold_temperature_k", &AtmosphericInventory::cold_temperature_k, INFINITY}
     };
     for (const Field& field : fields)
     {
@@ -98,6 +146,7 @@ bool AtmosphericInventory::from_json(const json& value)
         parsed.*(field.member) = number;
     }
     if (parsed.co2_mass_fraction + parsed.nitrogen_mass_fraction + parsed.water_mass_fraction > 1) return false;
+    if (parsed.nitrogen_frost_emissivity <= 0) return false;
     *this = parsed;
     return true;
 }
@@ -109,7 +158,9 @@ json AtmosphericInventory::to_json() const
         {"age_gyr", age_gyr}, {"co2_mass_fraction", co2_mass_fraction},
         {"nitrogen_mass_fraction", nitrogen_mass_fraction}, {"water_mass_fraction", water_mass_fraction},
         {"weathering_efficiency", weathering_efficiency}, {"xuv_scale", xuv_scale},
-        {"surface_water_share", surface_water_share}, {"basin_relief_m", basin_relief_m}
+        {"surface_water_share", surface_water_share}, {"basin_relief_m", basin_relief_m},
+        {"nitrogen_frost_albedo", nitrogen_frost_albedo},
+        {"nitrogen_frost_emissivity", nitrogen_frost_emissivity}, {"cold_temperature_k", cold_temperature_k}
     };
 }
 
@@ -147,7 +198,9 @@ AtmosphericInventory CosmicShore::default_inventory(const Star& s)
 
 AtmosphericEstimate CosmicShore::estimate_atmosphere(Star& s, Planet& p)
 {
-    auto estimate = estimate_atmosphere(s, p, default_inventory(s));
+    const auto inventory = default_inventory(s, p);
+    auto estimate = estimate_atmosphere(s, p, inventory);
+    estimate.diagnostics["default_inventory"] = inventory.to_json();
     estimate.diagnostics["age_origin"] = s.fictional_origin.is_object()
         && s.fictional_origin.contains("age_gyr") && s.fictional_origin["age_gyr"].is_number()
         && s.fictional_origin["age_gyr"] == default_inventory(s).age_gyr
@@ -155,12 +208,24 @@ AtmosphericEstimate CosmicShore::estimate_atmosphere(Star& s, Planet& p)
     return estimate;
 }
 
+AtmosphericInventory CosmicShore::default_inventory(Star& s, Planet& p)
+{
+    auto inventory = default_inventory(s);
+    if (std::isfinite(calculate_escape_velocity(p)) && cold_volatile_regime(p, stellar_flux(s, p)))
+    {
+        // N2-equivalent nitrogen released from ammonia/organics in ice-rich interiors.
+        // The accessible inventory is a Titan-scale scenario calibration, not bulk ice content.
+        inventory.nitrogen_mass_fraction = 1.35e-4;
+    }
+    return inventory;
+}
+
 AtmosphericEstimate CosmicShore::estimate_atmosphere(Star& s, Planet& p, const AtmosphericInventory& inventory)
 {
     AtmosphericEstimate result;
     result.diagnostics =
     {
-        {"model", "volatile_budget_v1"}, {"inventory", inventory.to_json()},
+        {"model", "volatile_budget_v2"}, {"inventory", inventory.to_json()},
         {"status", "invalid_input"},
         {"interpretation", "approximate_scenario_not_a_measured_pressure_or_calibrated_confidence_interval"}
     };
@@ -179,6 +244,7 @@ AtmosphericEstimate CosmicShore::estimate_atmosphere(Star& s, Planet& p, const A
     if (!std::isfinite(velocity) || velocity <= 0) return result;
     const double flux = stellar_flux(s, p);
     if (!std::isfinite(flux) || flux <= 0) return result;
+    const bool cold = cold_volatile_regime(p, flux);
     const double planet_mass = p.mass / earth_mass;
     const double radius = p.volumetric_mean_radius / earth_radius;
     if (!std::isfinite(planet_mass) || !std::isfinite(radius) || planet_mass <= 0 || radius <= 0) return result;
@@ -201,11 +267,24 @@ AtmosphericEstimate CosmicShore::estimate_atmosphere(Star& s, Planet& p, const A
     // Effective heavy-gas escape and early degassing, calibrated only to the approximate
     // Venus/Earth/Mars pressure scales. These are not energy-limited hydrogen loss rates.
     // Interior/outgassing motivation: Hill et al., https://arxiv.org/abs/2605.00170 .
-    const double loss_rate = std::min(1e12, 0.035 * flux * mean_activity * std::pow(11200 / velocity, 6));
-    const double release_time = std::clamp(0.15 * std::sqrt(planet_mass), 0.01, 2.0);
+    double loss_rate = std::min(1e12, 0.035 * flux * mean_activity * std::pow(11200 / velocity, 6));
+    double escape_temperature = 0, binding_parameter = 0;
+    if (cold)
+    {
+        // Jeans-shaped molecular binding factor, with an effective historical heating proxy.
+        // 10000 K and 1000/Gyr are scenario calibration constants, not present exobase measurements.
+        // Titan's escape/outgassing history: https://arxiv.org/abs/2010.12342 .
+        escape_temperature = std::max(2.7, 1e4 * std::sqrt(flux * mean_activity));
+        binding_parameter = 0.028 * velocity * velocity / (2 * 8.314462618 * escape_temperature);
+        loss_rate = mean_activity > 0 && std::isfinite(binding_parameter)
+            ? std::exp(std::min(std::log(1e12), std::log(1000 * mean_activity)
+                + 0.5 * std::log(escape_temperature / 1000) + std::log1p(binding_parameter) - binding_parameter)) : 0;
+    }
+    const double release_time = cold ? 0.1 : std::clamp(0.15 * std::sqrt(planet_mass), 0.01, 2.0);
     const double heavy_retention = released_and_retained(inventory.age_gyr, release_time, loss_rate);
     const double steam = transition((flux - 1.15) / 0.025);
-    const double water_retention = released_and_retained(inventory.age_gyr, release_time, loss_rate * (1 + 500 * steam));
+    const double water_retention = released_and_retained(inventory.age_gyr, release_time,
+        cold ? 0 : loss_rate * (1 + 500 * steam));
     const double water_reservoir = inventory.water_mass_fraction * water_retention;
 
     // A fixed reference albedo avoids interpreting Venus's bright clouds as proof of an
@@ -216,7 +295,7 @@ AtmosphericEstimate CosmicShore::estimate_atmosphere(Star& s, Planet& p, const A
     const double wet = temperate * accessible_water / (accessible_water + 1e-6);
     const double carbon_air = std::exp(-3 * inventory.age_gyr * wet
         * inventory.weathering_efficiency * std::min(1.0, std::sqrt(planet_mass)));
-    const double climate_k = std::max(2.7, 255 * std::pow(flux, 0.25) + 33 * temperate + 450 * steam);
+    double climate_k = std::max(2.7, 255 * std::pow(flux, 0.25) + 33 * temperate + 450 * steam);
     // Convert retained mass fractions to atmospheric column weights, in Pa.
     const double earth_column = G * earth_mass * (earth_mass * 0.001)
         / (4 * _pi * std::pow(earth_radius, 4));
@@ -225,13 +304,25 @@ AtmosphericEstimate CosmicShore::estimate_atmosphere(Star& s, Planet& p, const A
     double co2 = column * inventory.co2_mass_fraction * heavy_retention * carbon_air;
     double nitrogen = column * inventory.nitrogen_mass_fraction * heavy_retention;
     double water = column * water_reservoir;
+    bool nitrogen_frost = false;
+    if (cold)
+    {
+        const double gravity = G * p.mass / std::pow(p.volumetric_mean_radius, 2);
+        // Bounded net IR proxy for N2 collision absorption and trace greenhouse gases/haze.
+        const double raw_tau = std::pow(std::min(nitrogen, pressure_ceiling) / 1.5e5, 2) * 1.35 / gravity;
+        const double tau = 10 * raw_tau / (10 + raw_tau);
+        climate_k *= std::pow(1 + 0.75 * tau, 0.25);
+        nitrogen_frost = nitrogen > nitrogen_vapor_pressure(climate_k);
+        if (nitrogen_frost) climate_k = nitrogen_frost_temperature(flux, inventory);
+        if (inventory.cold_temperature_k > 0) climate_k = inventory.cold_temperature_k;
+        nitrogen_frost = nitrogen > nitrogen_vapor_pressure(climate_k);
+    }
     // Cold trapping limits water in cold, dry climates; humidity is a 50% scenario prior.
     const double water_saturation = (0.5 * temperate + steam) * vapor_pressure(climate_k, 273.16, 611.657,
         climate_k < 273.16 ? 51060 : 45050, 647.10);
     const double co2_saturation = vapor_pressure(climate_k, 216.59, 518500,
         climate_k < 216.59 ? 25000 : 16000, 304.13);
-    const double nitrogen_saturation = vapor_pressure(climate_k, 77.36, oneatm,
-        climate_k < 63.15 ? 6280 : 5560, 126.19);
+    const double nitrogen_saturation = nitrogen_vapor_pressure(climate_k);
     // Alternating caps account for changes in the mixture while condensation proceeds.
     for (int iteration = 0; iteration < 24; ++iteration)
     {
@@ -258,11 +349,24 @@ AtmosphericEstimate CosmicShore::estimate_atmosphere(Star& s, Planet& p, const A
             {"metallicity_activity_sensitivity_assumed", 0.3}, {"xuv_dose_solar", dose},
             {"heavy_release_and_retention", heavy_retention}, {"water_release_and_retention", water_retention},
             {"carbon_atmospheric_share", carbon_air},
+            {"regime", cold ? "cold_volatiles" : "terrestrial"},
             {"column_weight_pa", {{"CO2", co2}, {"N2", nitrogen}, {"H2O", water}}},
             {"shoreline_metric", calculate_unified_metric(s, p)},
             {"limitations", "Solar_System_scale_calibration;unknown_formation_and_rotation_history;no_biology_or_primordial_H_He;climate_proxy"}
         }
     );
+    if (cold)
+    {
+        result.diagnostics["cold_volatiles"] =
+        {
+            {"escape_temperature_proxy_k", escape_temperature}, {"nitrogen_binding_parameter", binding_parameter},
+            {"effective_loss_rate_gyr", loss_rate}, {"release_time_gyr", release_time},
+            {"nitrogen_frost", nitrogen_frost},
+            {"nitrogen_saturation_pa", std::isfinite(nitrogen_saturation) ? json(nitrogen_saturation) : json(nullptr)},
+            {"temperature_source", inventory.cold_temperature_k > 0 ? "scenario" : "energy_balance_proxy"},
+            {"assumptions", "Titan_scale_nitrogen_inventory_and_effective_escape;N2_frost_energy_balance;no_explicit_methane_cycle_or_magnetospheric_sputtering"}
+        };
+    }
     // Conservation diagnostics keep the non-atmospheric reservoirs visible. The inferred
     // pressure ceiling is a rendering bound and does not destroy material in this ledger.
     const double mantle_share = std::exp(-inventory.age_gyr / release_time);
