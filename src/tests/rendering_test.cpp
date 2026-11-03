@@ -1137,6 +1137,7 @@ TEST_F(RenderingRegressionTest, StellarNeighborhoodBrightestFiltersBeforeCapping
     set(mycenobj, static_cast<CelestialObject*>(observer));
     set(last_neighb_cen, static_cast<CelestialObject*>(nullptr));
     set(neighborhood, true);
+    set(here, observer->location);
     set(selected, -1);
     set(neighbly, 1);
     set(lneighbly, -1);
@@ -1154,7 +1155,7 @@ TEST_F(RenderingRegressionTest, StellarNeighborhoodBrightestFiltersBeforeCapping
         star->has_planets = index > 120 ? 1 : 0;
         star->tmprel = Point(0, 0, (300-index)*light_year);
         star->location.local_position = star->tmprel;
-        if (index == 121) brightest = star;
+        if (index == 249) brightest = star;
     }
     const auto draw = [&]()
     {
@@ -1181,8 +1182,16 @@ TEST_F(RenderingRegressionTest, StellarNeighborhoodBrightestFiltersBeforeCapping
     EXPECT_NEAR(list->ContentSize.y, 100 * row_height - ImGui::GetStyle().ItemSpacing.y, 2);
     for (size_t index = 1; index < neighb_celids.size(); ++index)
     {
-        EXPECT_LE(static_cast<Star*>(cels[neighb_celids[index-1]])->absolute_magnitude,
-            static_cast<Star*>(cels[neighb_celids[index]])->absolute_magnitude);
+        EXPECT_LE(cels[neighb_celids[index-1]]->viewer_magnitude(here),
+            cels[neighb_celids[index]]->viewer_magnitude(here));
+    }
+    here.local_position = Point(0, 0, -100 * light_year);
+    next_frame();
+    draw();
+    for (size_t index = 1; index < neighb_celids.size(); ++index)
+    {
+        EXPECT_LE(cels[neighb_celids[index-1]]->viewer_magnitude(here),
+            cels[neighb_celids[index]]->viewer_magnitude(here));
     }
     neighborhood_order = NeighborhoodOrder::nearest;
     neighbly = 1000;

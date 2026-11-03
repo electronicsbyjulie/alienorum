@@ -1375,6 +1375,7 @@ const double mass_units_conv[cbo_edt_num_units] = {1000, solar_mass, jupiter_mas
 const char* size_units[cbo_edt_num_units] = {"km", "Sun", "Jup.", "Earth"};
 const double size_units_conv[cbo_edt_num_units] = {1000, solar_radius, jupiter_radius, earth_radius};
 bool sma_res_picker = false;
+
 void draw_objedit_window(ImGuiIO& io)
 {
     if (!cels[1]) return;
@@ -3198,14 +3199,14 @@ void draw_stellar_neighborhood(ImGuiIO &io)
     int item_highlighted_idx = -1;
     int first_visible = -1;
     bool selected_visible = false;
-    ImGui::Text("%s", neighborhood_order == NeighborhoodOrder::nearest
-        ? " Name                                Mag.      Sp. Type     Pl./HZ   Distance"
-        : " Name                               Abs.Mag.   Sp. Type     Pl./HZ   Distance");
+    ImGui::Text("%s", " Name                                Mag.      Sp. Type     Pl./HZ   Distance");
     if (ImGui::BeginListBox("##neighblist", ImVec2(802, 16 * ImGui::GetTextLineHeightWithSpacing())))
     {
         j = 0;
         static NeighborhoodOrder last_order = NeighborhoodOrder::nearest;
-        if (last_neighb_cen != mycenobj || lneighbly != neighbly || last_order != neighborhood_order)
+        static CelestialLocation last_viewer;
+        const bool viewer_moved = neighborhood_order == NeighborhoodOrder::brightest && last_viewer.squared_distance_to(here) != 0;
+        if (last_neighb_cen != mycenobj || lneighbly != neighbly || last_order != neighborhood_order || viewer_moved)
         {
             const int selected_id = item_selected_idx >= 0 && item_selected_idx < static_cast<int>(neighb_celids.size())
                 ? neighb_celids[item_selected_idx] : -1;
@@ -3226,9 +3227,9 @@ void draw_stellar_neighborhood(ImGuiIO &io)
                 r = cels[i]->tmprel.magnitude();
                 if (r > neighb_rthresh) continue;
                 // Legacy insertion leaves an unknown distance after the preceding maximum.
-                const double magnitude = static_cast<Star*>(cels[i])->absolute_magnitude;
+                const double magnitude = neighborhood_order == NeighborhoodOrder::brightest ? cels[i]->viewer_magnitude(here) : 0;
                 const double rank = neighborhood_order == NeighborhoodOrder::brightest
-                    ? (std::isfinite(magnitude) ? magnitude : INFINITY) : (std::isnan(r) ? preceding_max : r);
+                    ? (std::isnan(magnitude) ? INFINITY : magnitude) : (std::isnan(r) ? preceding_max : r);
                 if (!std::isnan(r)) preceding_max = std::max(preceding_max, r);
                 neighbors.push_back({r, rank, i});
             }
@@ -3251,6 +3252,7 @@ void draw_stellar_neighborhood(ImGuiIO &io)
             }
             lneighbly = neighbly;
             last_order = neighborhood_order;
+            last_viewer = here;
         }
 
         n = neighb_celids.size();
@@ -3297,7 +3299,7 @@ void draw_stellar_neighborhood(ImGuiIO &io)
                 r = cels[i]->tmprel.magnitude();
                 if (r || neighborhood_order == NeighborhoodOrder::brightest)
                 {
-                    m = neighborhood_order == NeighborhoodOrder::brightest ? s->absolute_magnitude : cels[i]->viewer_magnitude(here);
+                    m = cels[i]->viewer_magnitude(here);
                     line << setprecision(4) << ((m>=0) ? "+" : "-") << string_format("%05.2f", fabs(m));
                 }
                 else line << "-";
