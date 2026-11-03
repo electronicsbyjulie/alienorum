@@ -529,6 +529,7 @@ int main (int argc, char** argv)
         if (done) break;
         if (SDL_GetWindowFlags(window) & SDL_WINDOW_MINIMIZED)
         {
+            catalog_lock.unlock();
             SDL_Delay(10);
             continue;
         }

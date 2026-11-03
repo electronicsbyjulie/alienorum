@@ -6149,7 +6149,9 @@ std::string alienorum::CatalogReader::format_condensed_star_line(Star* s, bool e
     put(202, 212, number(s->radial_velocity));
     put(214, 224, number(s->parallax));
     put(226, 236, number(s->distance / light_year));
-    if (!s->absolute_magnitude)
+    if ((!std::isfinite(s->absolute_magnitude) || fabs(s->absolute_magnitude) >= 99)
+        && std::isfinite(s->apparent_magnitude) && s->apparent_magnitude >= -40 && s->apparent_magnitude < 99
+        && std::isfinite(s->distance) && s->distance > 0)
     {
         const double brightness = pow(magnbase, -s->apparent_magnitude) * pow(fmax(AU, s->distance) / parsec / 10, 2);
         s->absolute_magnitude = -log(brightness) * invlogmagnbase;
@@ -7005,7 +7007,15 @@ int alienorum::CatalogReader::read_condensed_star_cat()
         if (s->parallax > 0) s->distance_known = true;
 
         read_field_onebased(buffer, 238, 243, field);
-        s->absolute_magnitude = atof(field);
+        double absolute = 0;
+        s->absolute_magnitude = parse_numeric_value(field, absolute) && std::isfinite(absolute) && fabs(absolute) < 99
+            ? absolute : 1e29;
+        if (s->absolute_magnitude >= 99 && std::isfinite(s->apparent_magnitude)
+            && s->apparent_magnitude >= -40 && s->apparent_magnitude < 99
+            && std::isfinite(s->distance) && s->distance > 0)
+        {
+            s->absolute_magnitude = s->apparent_magnitude - 5 * log10(s->distance / (10 * parsec));
+        }
 
         read_field_onebased(buffer, 245, 255, field);
         s->mass = atof(field) * solar_mass;

@@ -1547,6 +1547,10 @@ TEST_F(CatalogParsingTest, MissingCompanionMagnitudesSurviveLoadingAndBrightness
     write_companion("Fixture B", "Unknown magnitude B", 99991, 1e29, 12);
     write_companion("Fixture C", "Unknown magnitude C", 99992, 1e29, 15);
     write_companion("Fixture D", "Measured zero D", 99993, 0, 12);
+    write_companion("Fixture E", "Unknown photometry E", 99994, 1e29, 1e29);
+    write_companion("Fixture F", "Measured absolute zero F", 99995, 1e29, 0);
+    write_companion("Fixture G", "Estimated absolute G", 99996, 1e29, 10.5);
+    write_companion("Fixture H", "Legacy unknown absolute H", 99997, 1e29, 1e29);
     fclose(file);
     std::vector<std::string> rows;
     std::ifstream input("catalogs/soles_alienorum.dat");
@@ -1556,10 +1560,13 @@ TEST_F(CatalogParsingTest, MissingCompanionMagnitudesSurviveLoadingAndBrightness
         rows.push_back(row);
     }
     input.close();
-    ASSERT_EQ(rows.size(), 4u);
+    ASSERT_EQ(rows.size(), 8u);
     ASSERT_EQ(rows[1].substr(76, 6), "+     ");
     ASSERT_EQ(rows[3].substr(76, 6), "+00.00");
     rows[2].replace(76, 6, "      ");
+    ASSERT_EQ(rows[4].substr(237, 6), "+     ");
+    ASSERT_EQ(rows[5].substr(237, 6), "+00.00");
+    rows[7].replace(237, 6, "      ");
     std::ofstream legacy("catalogs/soles_alienorum.dat");
     for (const auto &record : rows)
     {
@@ -1573,7 +1580,7 @@ TEST_F(CatalogParsingTest, MissingCompanionMagnitudesSurviveLoadingAndBrightness
         Star *sun = static_cast<Star*>(cels[0]);
         sun->distance = 0;
         sun->update_location(simnow);
-        ASSERT_EQ(reader.read_condensed_star_cat(), 4);
+        ASSERT_EQ(reader.read_condensed_star_cat(), 8);
         Star *unknown_b = hdcache[99991];
         Star *unknown_c = hdcache[99992];
         Star *measured_zero = hdcache[99993];
@@ -1590,11 +1597,22 @@ TEST_F(CatalogParsingTest, MissingCompanionMagnitudesSurviveLoadingAndBrightness
         EXPECT_GT(unknown_b->viewer_magnitude(sun->location), 10);
         EXPECT_GT(unknown_c->viewer_magnitude(sun->location), 10);
         EXPECT_NEAR(measured_zero->viewer_magnitude(sun->location), 0, 1e-5);
+        for (unsigned int hd : {99994u, 99997u})
+        {
+            ASSERT_NE(hdcache[hd], nullptr);
+            EXPECT_DOUBLE_EQ(hdcache[hd]->absolute_magnitude, 1e29);
+            EXPECT_DOUBLE_EQ(hdcache[hd]->apparent_magnitude, 1e29);
+            EXPECT_GT(hdcache[hd]->viewer_magnitude(sun->location), 99);
+        }
+        ASSERT_NE(hdcache[99995], nullptr);
+        EXPECT_DOUBLE_EQ(hdcache[99995]->absolute_magnitude, 0);
+        ASSERT_NE(hdcache[99996], nullptr);
+        EXPECT_DOUBLE_EQ(hdcache[99996]->absolute_magnitude, 10.5);
         if (pass == 0)
         {
             FILE *roundtrip = fopen("catalogs/soles_alienorum.dat", "w");
             ASSERT_NE(roundtrip, nullptr);
-            for (unsigned int hd = 99990; hd <= 99993; hd++)
+            for (unsigned int hd = 99990; hd <= 99997; hd++)
             {
                 reader.write_condensed_star_cat_line(roundtrip, hdcache[hd]);
             }
