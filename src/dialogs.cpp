@@ -1375,7 +1375,6 @@ const double mass_units_conv[cbo_edt_num_units] = {1000, solar_mass, jupiter_mas
 const char* size_units[cbo_edt_num_units] = {"km", "Sun", "Jup.", "Earth"};
 const double size_units_conv[cbo_edt_num_units] = {1000, solar_radius, jupiter_radius, earth_radius};
 bool sma_res_picker = false;
-
 void draw_objedit_window(ImGuiIO& io)
 {
     if (!cels[1]) return;
@@ -1586,6 +1585,7 @@ void draw_objedit_window(ImGuiIO& io)
             {
                 cel->BV_color = edit_bvcol;
                 cel->user_edited = true;
+                cel->lock_bv_color = true;
                 viewchanged = true;
                 if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
                 else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);

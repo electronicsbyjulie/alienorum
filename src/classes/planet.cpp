@@ -133,7 +133,7 @@ std::vector<std::unique_ptr<Moon>> Planet::generate_fictional_moons(std::mt19937
         m->mass = pow(draw(0, 1), 4) * cel->mass / 4000;
         m->volumetric_mean_radius = pow(m->mass / earth_mass, 1.0/3.0) * draw(0.9, 1.5) * earth_radius;
         m->albedo = draw(0.1, 0.6);
-        m->BV_color = draw(0.8, 1.8);
+        if (!m->lock_bv_color) m->BV_color = draw(0.8, 1.8);
         m->cenobj = cel->cenobj;
         m->epoch = J2000;
         m->equinox = draw(0, _pi*2);
@@ -458,6 +458,8 @@ bool alienorum::Planet::estimate_habitability()
 
 void Planet::set_color_from_type(bool HZ)
 {
+    if (lock_bv_color) return;
+
     if (type == gas_giant)
     {
         BV_color = 0.98;         // average of Jupiter and Saturn.

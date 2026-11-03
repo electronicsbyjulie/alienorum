@@ -389,6 +389,7 @@ namespace alienorum
         double BV_color = 0;
         double VR_color = 0;
         double RI_color = 0;
+        bool lock_bv_color = false;
 
         bool user_added = false;
         bool user_edited = false;
