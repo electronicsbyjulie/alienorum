@@ -1302,8 +1302,13 @@ TEST(NeighborhoodFilterTest, SpectralBoundariesPrefixesAndLuminosityClasses)
         {"F9.5V", NeighborhoodType::sunlike, true},
         {"G2V+M4V", NeighborhoodType::sunlike, true},
         {"K2V", NeighborhoodType::sunlike, true},
-        {"K2.5V", NeighborhoodType::sunlike, false},
+        {"K2.5V", NeighborhoodType::sunlike, true},
+        {"K2.9V", NeighborhoodType::sunlike, true},
+        {"K3V", NeighborhoodType::sunlike, false},
+        {"K2.9V", NeighborhoodType::orange, false},
         {"K3V", NeighborhoodType::orange, true},
+        {"K9.9V", NeighborhoodType::orange, true},
+        {"M0V", NeighborhoodType::red_brown, true},
         {"K9V", NeighborhoodType::orange, true},
         {"K9III", NeighborhoodType::orange, false},
         {"dM4e", NeighborhoodType::red_brown, true},
@@ -1316,7 +1321,10 @@ TEST(NeighborhoodFilterTest, SpectralBoundariesPrefixesAndLuminosityClasses)
         {"A0V", NeighborhoodType::sirius, true},
         {"A9.5V", NeighborhoodType::sirius, true},
         {"F7IV-V", NeighborhoodType::sirius, true},
+        {"F7.9V", NeighborhoodType::sirius, true},
+        {"F7.9V", NeighborhoodType::sunlike, false},
         {"F8V", NeighborhoodType::sirius, false},
+        {"F8V", NeighborhoodType::sunlike, true},
         {"A0III", NeighborhoodType::sirius, false},
         {"G5 IV / V", NeighborhoodType::subgiants, true},
         {"M1IV", NeighborhoodType::subgiants, true},
@@ -1331,7 +1339,7 @@ TEST(NeighborhoodFilterTest, SpectralBoundariesPrefixesAndLuminosityClasses)
         {"S4III", NeighborhoodType::giants_ob, true},
         {"DA2", NeighborhoodType::white_dwarfs, true},
         {"WD", NeighborhoodType::white_dwarfs, true},
-        {"G2VI", NeighborhoodType::white_dwarfs, true},
+        {"G2VI", NeighborhoodType::white_dwarfs, false},
         {"G2V", NeighborhoodType::white_dwarfs, false},
         {"", NeighborhoodType::all, true},
         {"WN5", NeighborhoodType::all, true}
@@ -1375,4 +1383,42 @@ TEST(NeighborhoodFilterTest, ClasslessDwarfsUseAbsoluteMagnitude)
     strcpy(star.spectral_type, "G2");
     star.absolute_magnitude = 4.83;
     EXPECT_TRUE(neighborhood_matches_type(star, NeighborhoodType::sunlike));
+}
+
+TEST(NeighborhoodFilterTest, SubdwarfClassesShareDwarfGroupsAndClassSevenIsWhite)
+{
+    Star::load_main_seq_dat();
+    Star star;
+    const std::pair<const char*, NeighborhoodType> groups[] =
+    {
+        {"A1", NeighborhoodType::sirius}, {"F7.5", NeighborhoodType::sirius},
+        {"F8", NeighborhoodType::sunlike}, {"G2", NeighborhoodType::sunlike},
+        {"K2.5", NeighborhoodType::sunlike}, {"K3", NeighborhoodType::orange},
+        {"K9.5", NeighborhoodType::orange}, {"M4", NeighborhoodType::red_brown},
+        {"C5", NeighborhoodType::red_brown}, {"L2", NeighborhoodType::red_brown},
+        {"T6", NeighborhoodType::red_brown}, {"Y1", NeighborhoodType::red_brown}
+    };
+    for (const auto& group : groups)
+    {
+        for (const char* luminosity : {"V", "VI", "V-VI", "V / VI", "VI-V"})
+        {
+            const std::string spectrum = std::string(group.first) + luminosity + "pec";
+            SCOPED_TRACE(spectrum);
+            strcpy(star.spectral_type, spectrum.c_str());
+            star.absolute_magnitude = 20;
+            EXPECT_TRUE(neighborhood_matches_type(star, group.second));
+            EXPECT_FALSE(neighborhood_matches_type(star, NeighborhoodType::white_dwarfs));
+            EXPECT_FALSE(neighborhood_matches_type(star, NeighborhoodType::subgiants));
+        }
+        const std::string spectrum = std::string(group.first) + "VII";
+        strcpy(star.spectral_type, spectrum.c_str());
+        star.absolute_magnitude = 1.42;
+        EXPECT_TRUE(neighborhood_matches_type(star, NeighborhoodType::white_dwarfs));
+        EXPECT_FALSE(neighborhood_matches_type(star, group.second));
+    }
+    for (const char* spectrum : {"sdG2", "esdK5", "usdM4"})
+    {
+        strcpy(star.spectral_type, spectrum);
+        EXPECT_FALSE(neighborhood_matches_type(star, NeighborhoodType::white_dwarfs));
+    }
 }

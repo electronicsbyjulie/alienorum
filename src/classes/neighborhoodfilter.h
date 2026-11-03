@@ -15,7 +15,7 @@ namespace alienorum
         all, sunlike, orange, red_brown, sirius, subgiants, giants_ob, white_dwarfs
     };
     enum class NeighborhoodOrder { nearest, brightest };
-    enum class NeighborhoodLuminosity { unknown, v, iv_v, iv, iii_iv, iii, ii, i, vi };
+    enum class NeighborhoodLuminosity { unknown, v, iv_v, iv, iii_iv, iii, ii, i, vii };
 
     struct NeighborhoodSpectrum
     {
@@ -36,12 +36,12 @@ namespace alienorum
         if (compact.compare(0, 3, "esd") == 0 || compact.compare(0, 3, "usd") == 0)
         {
             compact.erase(0, 3);
-            prefix = NeighborhoodLuminosity::vi;
+            prefix = NeighborhoodLuminosity::v;
         }
         else if (compact.compare(0, 2, "sd") == 0)
         {
             compact.erase(0, 2);
-            prefix = NeighborhoodLuminosity::vi;
+            prefix = NeighborhoodLuminosity::v;
         }
         else if (compact.size() > 1 && compact[0] == 'd' && std::isupper(static_cast<unsigned char>(compact[1])))
         {
@@ -88,8 +88,11 @@ namespace alienorum
             {"III-IV", NeighborhoodLuminosity::iii_iv}, {"III/IV", NeighborhoodLuminosity::iii_iv},
             {"IV-V", NeighborhoodLuminosity::iv_v}, {"IV/V", NeighborhoodLuminosity::iv_v},
             {"V-IV", NeighborhoodLuminosity::iv_v}, {"V/IV", NeighborhoodLuminosity::iv_v},
+            {"V-VI", NeighborhoodLuminosity::v}, {"V/VI", NeighborhoodLuminosity::v},
+            {"VI-V", NeighborhoodLuminosity::v}, {"VI/V", NeighborhoodLuminosity::v},
+            {"VII", NeighborhoodLuminosity::vii},
             {"III", NeighborhoodLuminosity::iii}, {"II", NeighborhoodLuminosity::ii},
-            {"IV", NeighborhoodLuminosity::iv}, {"VI", NeighborhoodLuminosity::vi},
+            {"IV", NeighborhoodLuminosity::iv}, {"VI", NeighborhoodLuminosity::v},
             {"V", NeighborhoodLuminosity::v}, {"I", NeighborhoodLuminosity::i}
         };
         for (size_t pos = suffix; pos < compact.size(); ++pos)
@@ -126,7 +129,7 @@ namespace alienorum
         if (filter == NeighborhoodType::all) return true;
         const auto spectrum = neighborhood_spectrum(star.spectral_type);
         const auto lum = spectrum.luminosity;
-        const bool white = spectrum.type == 'D' || lum == NeighborhoodLuminosity::vi || star.is_white_dwarf();
+        const bool white = spectrum.type == 'D' || lum == NeighborhoodLuminosity::vii || star.is_white_dwarf();
         if (filter == NeighborhoodType::white_dwarfs) return white;
         const bool unknown = lum == NeighborhoodLuminosity::unknown;
         const bool dwarf = lum == NeighborhoodLuminosity::v;
@@ -134,17 +137,18 @@ namespace alienorum
         {
             case NeighborhoodType::sunlike:
                 return ((spectrum.type == 'F' && spectrum.subtype >= 8 && spectrum.subtype < 10)
-                    || spectrum.type == 'G' || (spectrum.type == 'K' && spectrum.subtype >= 0 && spectrum.subtype <= 2))
+                    || spectrum.type == 'G' || (spectrum.type == 'K' && spectrum.subtype >= 0 && spectrum.subtype < 3))
                     && (dwarf || (unknown && star.absolute_magnitude >= 4.12 && star.absolute_magnitude <= 5.93));
             case NeighborhoodType::orange:
-                return spectrum.type == 'K' && spectrum.subtype >= 3 && spectrum.subtype <= 9
+                return spectrum.type == 'K' && spectrum.subtype >= 3 && spectrum.subtype < 10
                     && (dwarf || (unknown && neighborhood_dwarf_magnitude(star, spectrum)));
             case NeighborhoodType::red_brown:
                 return spectrum.type && strchr("MCLTY", spectrum.type)
                     && (dwarf || (unknown && (strchr("LTY", spectrum.type) || neighborhood_dwarf_magnitude(star, spectrum))));
             case NeighborhoodType::sirius:
                 return ((spectrum.type == 'A' && spectrum.subtype >= 0 && spectrum.subtype < 10)
-                    || (spectrum.type == 'F' && spectrum.subtype >= 0 && spectrum.subtype <= 7))
+                    || (spectrum.type == 'F' && spectrum.subtype >= 0 && spectrum.subtype < 8))
+                    && lum != NeighborhoodLuminosity::vii
                     && (dwarf || lum == NeighborhoodLuminosity::iv_v || neighborhood_dwarf_magnitude(star, spectrum));
             case NeighborhoodType::subgiants:
                 return lum == NeighborhoodLuminosity::iv || lum == NeighborhoodLuminosity::iv_v;
