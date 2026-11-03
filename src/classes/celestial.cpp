@@ -3799,10 +3799,9 @@ bool Map::generate_water_cloud_map(CelestialObject *cel)
         * std::clamp(cloud_climate.rotation, 0.0, 1.0);
 
     generating_fic_texture = true;
-    // Weather varies by real-world hour and planet name, independently of terrain.
-    const std::uint64_t weather_hour = static_cast<std::uint64_t>(
-        std::chrono::duration_cast<std::chrono::hours>(
-            std::chrono::system_clock::now().time_since_epoch()).count());
+    // Weather follows simulation time; an explicit refresh advances its independent pattern.
+    const double weather_time = std::isfinite(p->cloud_epoch) ? p->cloud_epoch : simnow;
+    const std::int64_t weather_hour = static_cast<std::int64_t>(std::floor(weather_time / 3600));
     std::uint32_t planet_hash = 2166136261u;
     for (const char *c = cel->name; *c; ++c)
     {
@@ -3814,7 +3813,7 @@ bool Map::generate_water_cloud_map(CelestialObject *cel)
         planet_hash,
         static_cast<std::uint32_t>(weather_hour),
         static_cast<std::uint32_t>(weather_hour >> 32),
-        static_cast<std::uint32_t>(0x63a9d27bu)
+        static_cast<std::uint32_t>(0x63a9d27bu), p->weather_revision
     };
     std::mt19937 cloud_rng(weather_seed);
     std::uniform_real_distribution<double> offset(0.0, 128.0);

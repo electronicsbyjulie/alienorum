@@ -19,6 +19,16 @@
 
 using namespace alienorum;
 
+static CelestialObject* cloud_refresh_target()
+{
+    int index = (view_mode == vm_sunclock || view_mode == vm_horizon) ? whereami
+        : (selected >= 0 ? selected : (trackidx >= 0 ? trackidx : whereami));
+    if (index < 0 || index >= ncelobjs || !cels[index]) return nullptr;
+    const auto cls = cels[index]->typeclass();
+    return cls == class_planet || cls == class_moon ? cels[index] : nullptr;
+}
+
+
 static double velocity_increment(double speed, double fraction)
 {
     const double light_frame = speed_of_light / target_frame_rate;
@@ -459,6 +469,11 @@ void show_menu()
             if (ImGui::MenuItem("Azimuth 180deg", "8", nullptr, (trackidx < 0))) { process_key_cmd_char('8'); menu_clicked = true; }
             if (ImGui::MenuItem("Azimuth 270deg", "4", nullptr, (trackidx < 0))) { process_key_cmd_char('4'); menu_clicked = true; }
             ImGui::Separator();
+            if (ImGui::MenuItem("Regenerate Clouds", "Ctrl+Shift+C", false, cloud_refresh_target() != nullptr))
+            {
+                process_key_cmd_ctrl_char('C');
+                menu_clicked = true;
+            }
             if (ImGui::MenuItem("Red Light Mode", "Shift+R", redlight_mode)) { process_key_cmd_char('R'); menu_clicked = true; }
             if (ImGui::MenuItem("White Background Mode", "Shift+W", whtbkgd)) { process_key_cmd_char('W'); menu_clicked = true; }
             if (ImGui::MenuItem("Fullscreen", "F11", fullscreen)) { process_key_F11(); menu_clicked = true; }
@@ -1121,6 +1136,13 @@ void process_key_cmd_ctrl_char(char c)
 
     switch (c)
     {
+        case 'C':
+        {
+            request_cloud_regeneration(cloud_refresh_target());
+            viewchanged = true;
+            break;
+        }
+
         case 'c':
         {
             show_clouds = !show_clouds;

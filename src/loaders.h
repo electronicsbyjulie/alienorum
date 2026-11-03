@@ -9,6 +9,8 @@
 bool spawn_texture_task(std::function<void()> task);
 void wait_for_texture_tasks();
 void refresh_earth_clouds();
+bool request_cloud_regeneration(CelestialObject* object);
+void publish_regenerated_clouds();
 // Call spawn_texture_load() rather than launching load_textures() directly.
 void load_textures(CelestialObject *cel);
 void spawn_texture_load(CelestialObject *cel);

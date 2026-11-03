@@ -5518,7 +5518,7 @@ static void draw_planetary_rain(Planet *p)
     }
 
     // Reevaluate local conditions while walking, as latitude, altitude, and daylight change.
-    const double local_temperature = p->est_local_temp(viewer_lat, viewer_lon);
+    const double local_temperature = p->est_current_local_temp(viewer_lat, viewer_lon);
     if (!std::isfinite(local_temperature) || local_temperature <= 0 || local_temperature >= 647) return;
     const double snow_fraction = precipitation_snow_fraction(local_temperature);
 

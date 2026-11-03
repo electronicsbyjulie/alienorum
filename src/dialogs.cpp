@@ -695,7 +695,7 @@ void draw_status_window(ImGuiIO& io)            // the S panel
             sssg << "Est. temp.:   " << std::fixed << std::setprecision(1)
             #if show_local_temp
             << ((cels[whereami]->typeclass() == class_planet || cels[whereami]->typeclass() == class_moon)
-                ? static_cast<Planet*>(cels[whereami])->est_local_temp(viewer_lat, viewer_lon)
+                ? static_cast<Planet*>(cels[whereami])->est_current_local_temp(viewer_lat, viewer_lon)
                 : cels[whereami]->temperature)
             #else
             << ((Planet*)cels[whereami])->estimate_surface_temperature()
@@ -857,7 +857,7 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
                 double elev = p->surf_map->elevation_at_bilinear(is_a_locale_under_cursor->lat * fiftyseventh, is_a_locale_under_cursor->lon * fiftyseventh);
                 ImGui::Text("Elev:     %.0f km", elev/1000);
                 #if show_local_temp
-                double lT = p->est_local_temp(is_a_locale_under_cursor->lat * fiftyseventh, is_a_locale_under_cursor->lon * fiftyseventh);
+                double lT = p->est_current_local_temp(is_a_locale_under_cursor->lat * fiftyseventh, is_a_locale_under_cursor->lon * fiftyseventh);
                 ImGui::Text("Temp:     %.1f K", lT);
                 #endif
             }
@@ -990,7 +990,7 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
                 {
                     double elev = p->surf_map->elevation_at_bilinear(lat, lon);
                     ImGui::Text("Elev:     %.0f km", elev/1000);
-                    double lT = p->est_local_temp(lat, lon);
+                    double lT = p->est_current_local_temp(lat, lon);
                     ImGui::Text("Temp:     %.1f K", lT);
                 }
             }

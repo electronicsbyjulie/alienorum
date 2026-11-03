@@ -787,7 +787,7 @@ namespace
         {
             {"!name", "n"}, {"!origname", "on"}, {"!origcenname", "oc"},
             {"typeclass", "c"}, {"type", "t"}, {"location", "l"}, {"orbit", "o"},
-            {"mass", "m"}, {"volumetric_mean_radius", "r"}, {"temperature", "T"},
+            {"mass", "m"}, {"volumetric_mean_radius", "r"}, {"temperature", "T"}, {"temperature_supplied", "Ts"},
             {"absolute_magnitude", "M"}, {"apparent_magnitude", "V"},
             {"BV_color", "bv"}, {"UB_color", "ub"}, {"RI_color", "ri"}, {"VR_color", "vr"},
             {"right_ascension", "ra"}, {"declination", "de"}, {"distance", "d"},

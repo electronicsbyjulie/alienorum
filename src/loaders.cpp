@@ -1,5 +1,6 @@
 #include "catalog_lock_trace.h"
 #include "performance_options.h"
+#include "classes/cloudclimate.h"
 
 #include "loaders.h"
 #include "housekeeping.h"
@@ -199,6 +200,116 @@ void refresh_earth_clouds()
     catch (...)
     {
         state.active = false;
+    }
+}
+
+namespace
+{
+    struct CloudRegeneration
+    {
+        CelestialObject* target = nullptr;
+        int index = -1;
+        Map* original = nullptr;
+        std::unique_ptr<Map> ready;
+        bool complete = false, clear = false, transparent = true, overcast = false;
+    };
+    std::mutex cloud_regeneration_mutex;
+    std::vector<std::shared_ptr<CloudRegeneration>> cloud_regenerations;
+}
+
+bool request_cloud_regeneration(CelestialObject* object)
+{
+    if (!object || (object->typeclass() != class_planet && object->typeclass() != class_moon)
+        || object->deleted || abort_load.load()) return false;
+    auto* planet = static_cast<Planet*>(object);
+    // Earth always uses the existing download path, including its persistent three-hour gate.
+    // No image, attempt reservation, URL, or timestamp is cleared by a manual refresh.
+    if (planet->home_world || !strcmp(planet->name, "Earth"))
+    {
+        if (planet->static_clouds || planet->cloud_map_url.empty()) return false;
+        refresh_earth_clouds();
+        return true;
+    }
+    if (!uses_rocky_map(planet->type) || !std::isfinite(planet->get_surface_pressure()) || planet->get_surface_pressure() <= 0
+        || !std::isfinite(planet->mass) || !(planet->mass > 0)
+        || !std::isfinite(planet->volumetric_mean_radius) || !(planet->volumetric_mean_radius > 0) || !planet->fictitious_map_height
+        || !planet->cloud_map_url.empty()
+        || texture_loads_pending.load() != 0) return false;
+    std::lock_guard<std::mutex> guard(cloud_regeneration_mutex);
+    for (const auto& job : cloud_regenerations)
+    {
+        if (job->target == object) return false;
+    }
+    auto working = std::make_shared<Planet>();
+    if (!working->from_json(planet->to_json())) return false;
+    working->rendering_saved_parameters = true;
+    working->location = planet->location;
+    working->cenobj = planet->cenobj;
+    if (working->orbit && planet->orbit) working->orbit->center = planet->orbit->center;
+    working->fictitious_map_height = planet->fictitious_map_height;
+    working->m_bump_scale = planet->m_bump_scale;
+    working->cloud_epoch = simnow;
+    working->weather_revision = ++planet->weather_revision;
+    working->cloud_climate_snapshot = std::make_shared<LocalClimate>(planet->current_local_climate(true));
+    auto job = std::make_shared<CloudRegeneration>();
+    job->target = object;
+    job->index = object->seqno;
+    job->original = object->cloud_map;
+    cloud_regenerations.push_back(job);
+    try
+    {
+        if (spawn_texture_task([working, job]()
+        {
+            std::unique_ptr<Map> map;
+            bool clear = false;
+            try
+            {
+                clear = !CloudClimate::prepare(*working).valid;
+                if (!clear) map = std::make_unique<Map>(working.get());
+                if (map && (!map->generate_water_cloud_map(working.get()) || !map->is_complete())) map.reset();
+                if (map) map->set_owner(nullptr);
+            }
+            catch (...)
+            {
+                map.reset();
+            }
+            std::lock_guard<std::mutex> result_guard(cloud_regeneration_mutex);
+            job->ready = std::move(map);
+            job->clear = clear;
+            job->transparent = clear || working->transparent_clouds;
+            job->overcast = !clear && working->overcast;
+            job->complete = true;
+        })) return true;
+    }
+    catch (...)
+    {
+    }
+    cloud_regenerations.pop_back();
+    return false;
+}
+
+void publish_regenerated_clouds()
+{
+    std::lock_guard<std::mutex> guard(cloud_regeneration_mutex);
+    for (auto it = cloud_regenerations.begin(); it != cloud_regenerations.end();)
+    {
+        auto& job = **it;
+        if (!job.complete)
+        {
+            ++it;
+            continue;
+        }
+        if ((job.ready || job.clear) && job.index >= 0 && job.index < ncelobjs && cels[job.index] == job.target
+            && !job.target->deleted && job.target->cloud_map == job.original)
+        {
+            if (job.ready) job.ready->set_owner(job.target);
+            delete job.target->cloud_map;
+            job.target->cloud_map = job.ready.release();
+            job.target->transparent_clouds = job.transparent;
+            job.target->overcast = job.overcast;
+            viewchanged = true;
+        }
+        it = cloud_regenerations.erase(it);
     }
 }
 

@@ -13,6 +13,7 @@
 
 #include "planet.h"
 #include "numeric.h"
+#include "thermalclimate.h"
 #include "moon.h"
 #include "chemistry.h"
 #include "star.h"
@@ -61,6 +62,9 @@ bool alienorum::render_saved_planet(CelestialObject* object,
     copy->has_real_maps = source->has_real_maps;
     copy->cloud_map_url = source->cloud_map_url;
     copy->static_clouds = source->static_clouds;
+    copy->weather_revision = source->weather_revision;
+    copy->cloud_epoch = source->cloud_epoch;
+    copy->cloud_climate_snapshot = source->cloud_climate_snapshot;
 
     struct TextureTransfer
     {
@@ -784,6 +788,173 @@ double alienorum::Planet::est_local_temp(double lat, double lon)
     return climate.temperature(-cos_lat * cos(lon), -cos_lat * sin(lon), sin(lat), elevation);
 }
 
+bool Planet::has_supplied_mean_temperature() const
+{
+    return temperature_supplied || (temperature > 0 && (!std::isfinite(inferred_mean_temperature)
+        || temperature != inferred_mean_temperature));
+}
+
+LocalClimate Planet::current_local_climate(bool include_supplied)
+{
+    if (include_supplied && cloud_climate_snapshot) return *cloud_climate_snapshot;
+    // Cloud workers and UI readouts can prepare the same body's cached climate.
+    static std::mutex preparation_mutex;
+    std::lock_guard<std::mutex> guard(preparation_mutex);
+    const bool supplied = has_supplied_mean_temperature();
+    LocalClimate climate = local_climate();
+    if (supplied && !include_supplied) return climate;
+    CelestialObject* source = get_light_center();
+    if (!source || source->typeclass() != class_star) return climate;
+    CelestialObject* annual = this;
+    for (int depth = 0; annual && annual->orbit && annual->orbit->center != source && depth < 64; ++depth)
+    {
+        annual = annual->orbit->center;
+    }
+    if (!annual || !annual->orbit || annual->orbit->center != source) return climate;
+    const double now = std::isfinite(cloud_epoch) ? cloud_epoch : simnow;
+    const double jd = J2000 + (now - J2000_TIME_T) / oneday;
+    double node, inclination, argument, axis, eccentricity, anomaly, period, node_rate, peri_rate, epoch;
+    annual->orbit->interpolate_osculating_e(jd, node, inclination, argument, axis, eccentricity,
+        anomaly, period, node_rate, peri_rate, epoch);
+    if (!(axis > 0) || !std::isfinite(axis) || !std::isfinite(eccentricity)
+        || eccentricity < 0 || eccentricity >= 1) return climate;
+    if (!(period > 0)) period = 2 * _pi * std::sqrt(std::pow(axis, 3) / (G * (source->mass + annual->mass)));
+    if (!std::isfinite(period) || period <= 0) return climate;
+    const double elapsed = (jd - epoch) * oneday;
+    node -= elapsed * node_rate;
+    argument += elapsed * peri_rate;
+    ThermalOrbit forcing;
+    forcing.eccentricity = eccentricity;
+    forcing.period = period;
+    forcing.mean_anomaly = anomaly + elapsed * (2 * _pi / period + node_rate - peri_rate);
+    const double sn = std::sin(node), cn = std::cos(node), sw = std::sin(argument), cw = std::cos(argument);
+    const double si = std::sin(inclination), ci = std::cos(inclination);
+    Point u(sn * cw + cn * sw * ci, -sw * si, -cn * cw + sn * sw * ci);
+    Point v(-sn * sw + cn * cw * ci, -cw * si, cn * sw + sn * cw * ci);
+    const auto equatorial = [&](Point vector)
+    {
+        vector = rotate3D(vector, center, annual->location.local_system_plane.v, -annual->location.local_system_plane.a);
+        return rotate3D(vector, center, location.equatorial_plane.v, location.equatorial_plane.a);
+    };
+    u = equatorial(u);
+    v = equatorial(v);
+    forcing.pole_u = u.y;
+    forcing.pole_v = v.y;
+    const double current_e = forcing.eccentric_anomaly(forcing.mean_anomaly);
+    Point sunlight = u * (std::cos(current_e) - eccentricity)
+        + v * (std::sqrt(1 - eccentricity * eccentricity) * std::sin(current_e));
+    sunlight.scale(1);
+    const double declination = std::asin(std::clamp(sunlight.y, -1.0, 1.0));
+    const Point body_sun = rotate3D(sunlight, center, yaxis, timeofday());
+    const double longitude = find_angle(body_sun.z, -body_sun.x);
+    climate.sun_x = -std::cos(declination) * std::cos(longitude);
+    climate.sun_y = -std::cos(declination) * std::sin(longitude);
+    climate.sun_z = std::sin(declination);
+
+    double ocean = 0;
+    if (has_water_supplied && has_water <= 0) ocean = 0;
+    else if (surface_water_model.is_object() && surface_water_model.contains("coverage_fraction")
+        && surface_water_model["coverage_fraction"].is_number()) ocean = surface_water_model["coverage_fraction"];
+    else if (type == waterworld || type == hycean) ocean = 1;
+    else if (has_water > 0 && surf_map && surf_map->has_bump_data() && m_bump_scale > 0)
+    {
+        for (int row = 0; row < 12; ++row)
+        {
+            const double latitude = std::asin(-1 + 2.0 * (row + 0.5) / 12);
+            for (int col = 0; col < 24; ++col)
+            {
+                const double lon = -_pi + 2 * _pi * (col + 0.5) / 24;
+                if (surf_map->elevation_at(latitude, lon) < climate.sea_level_m) ocean += 1.0 / 288;
+            }
+        }
+    }
+    else if (has_water > 0) ocean = std::clamp(double(has_water), 0.0, 1.0);
+    ocean = std::clamp(ocean, 0.0, 1.0);
+    const double gravity = G * mass / std::pow(volumetric_mean_radius, 2);
+    if (!std::isfinite(gravity) || gravity <= 0) return climate;
+    double cp_molar = 0, mixture_mass = 0;
+    const auto gas = [&](double fraction, double molar_mass, double cp)
+    {
+        if (!std::isfinite(fraction) || fraction <= 0) return;
+        cp_molar += fraction * cp;
+        mixture_mass += fraction * molar_mass;
+    };
+    if (atm && atm->comp)
+    {
+        const auto& c = *atm->comp;
+        gas(c.N2_portion, .028014, 29.1); gas(c.O2_portion, .031999, 29.4);
+        gas(c.CO2_portion, .04401, 37.1); gas(c.H2O_portion, .018015, 33.6);
+        gas(c.H2_portion, .002016, 28.8); gas(c.He_portion, .004003, 20.8);
+        gas(c.CH4_portion, .016043, 35.7); gas(c.Ar_portion, .039948, 20.8);
+        gas(c.NH3_portion, .017031, 35.1); gas(c.SO2_portion, .064066, 39.9);
+    }
+    const double cp = mixture_mass > 0 ? cp_molar / mixture_mass : 1005;
+    const double atmosphere_capacity = std::max(0.0, get_surface_pressure()) / gravity * cp;
+    // Seasonal mixed layer: 50 m liquid water; 2 m ice. A 5 m freezing layer buffers
+    // the phase transition over a 20 K interval. These depths are scenario assumptions.
+    const double liquid = std::clamp((climate.mean_k - 263.15) / 20, 0.0, 1.0);
+    const double water_capacity = 2.09e8 * liquid + 3.85e6 * (1 - liquid)
+        + 8.35e7 * std::exp(-std::pow((climate.mean_k - 273.15) / 10, 2));
+    const double stellar_flux = est_bolometric_flux() * 1361;
+    const double feedback = std::max(0.01, stellar_flux * (1 - std::clamp(estimate_bond_albedo(), 0.0, 0.99)) / climate.mean_k);
+    const double actual_distance = location.distance_to(source->location);
+    double spin_period = sidereal_rotational_period;
+    if (spin_period == 0 && orbit && is_tidal_locked()) spin_period = orbit->period;
+    const std::vector<double> cache_key =
+    {
+        now, climate.mean_k, climate.contrast_k, climate.redistribution, climate.lapse_k_m,
+        climate.sea_level_m, climate.dry_belt_k, climate.regional_k, double(climate.stellar_locked),
+        forcing.eccentricity, forcing.mean_anomaly, forcing.period, forcing.pole_u, forcing.pole_v,
+        climate.sun_x, climate.sun_y, climate.sun_z, actual_distance, axis, atmosphere_capacity,
+        water_capacity, ocean, feedback, spin_period, double(supplied)
+    };
+    if (conditions_cache && conditions_cache_key == cache_key) return *conditions_cache;
+    const double land_capacity = 2e6 + atmosphere_capacity + ocean * climate.redistribution * water_capacity * 0.3;
+    const double ocean_capacity = atmosphere_capacity + water_capacity;
+    const ThermalHistory land_history(forcing, land_capacity / feedback);
+    const ThermalHistory ocean_history(forcing, ocean_capacity / feedback);
+    const ThermalHistory global_history(forcing, ((1 - ocean) * land_capacity + ocean * ocean_capacity) / feedback);
+    const double reference = supplied ? std::sqrt(1 - eccentricity * eccentricity) : 1;
+    climate.current_mean_k = climate.mean_k * std::pow(global_history.global_flux * reference, 0.25);
+    climate.instantaneous_flux = reference / std::pow(1 - eccentricity * std::cos(current_e), 2);
+    if (std::isfinite(actual_distance) && actual_distance > 0)
+    {
+        climate.instantaneous_flux = reference * std::pow(axis / actual_distance, 2);
+    }
+    for (size_t row = 0; row < climate.land_seasonal_flux.size(); ++row)
+    {
+        const double latitude = -1 + 2.0 * row / (climate.land_seasonal_flux.size() - 1);
+        double annual_heating = 0;
+        for (int sample = 0; sample < 64; ++sample)
+        {
+            const double phase = 2 * _pi * (sample + 0.5) / 64;
+            const double sin_declination = forcing.pole_u * std::cos(phase) + forcing.pole_v * std::sin(phase);
+            annual_heating += daily_stellar_heating(latitude, std::clamp(sin_declination, -1.0, 1.0)) / 64;
+        }
+        const double share = 1 - 0.8 * climate.redistribution;
+        climate.land_seasonal_flux[row] = land_history.local_flux(latitude, annual_heating, share) * reference;
+        climate.water_seasonal_flux[row] = ocean_history.local_flux(latitude, annual_heating, share) * reference;
+    }
+    climate.solar_frequency = spin_period ? 2 * _pi * (1 / spin_period - 1 / period) : -2 * _pi / period;
+    // The diurnal surface exchanges heat with a shallow atmospheric boundary layer and 1 m of water.
+    climate.land_diurnal_seconds = (2e5 + 0.05 * atmosphere_capacity) / feedback;
+    climate.water_diurnal_seconds = (4.18e6 * liquid + 1.93e6 * (1 - liquid) + 0.05 * atmosphere_capacity) / feedback;
+    climate.water_fraction = ocean;
+    climate.current_conditions = true;
+    conditions_cache = std::make_shared<LocalClimate>(climate);
+    conditions_cache_key = cache_key;
+    return climate;
+}
+
+double Planet::est_current_local_temp(double lat, double lon)
+{
+    const LocalClimate climate = current_local_climate();
+    if (!std::isfinite(lat) || !std::isfinite(lon)) return climate.mean_k;
+    lat = std::clamp(lat, -half_pi, half_pi);
+    const double elevation = surf_map ? surf_map->elevation_at_bilinear(lat, lon) : climate.sea_level_m;
+    return climate.temperature(-std::cos(lat) * std::cos(lon), -std::cos(lat) * std::sin(lon), std::sin(lat), elevation);
+}
+
 void Planet::set_explicit_mass(double value)
 {
     mass = value;
@@ -1268,14 +1439,16 @@ double Planet::estimate_surface_temperature()
         return temperature ? temperature : temperature_at_pressure(get_surface_pressure());
     if (temperature)
     {
+        temperature_supplied = has_supplied_mean_temperature();
         // Catalog and editor temperatures still constrain which gases can remain aloft.
         if (atm && atm->comp && !uses_gaseous_map(type))
             temperature = condense_atmosphere(NAN, temperature);
+        if (!temperature_supplied) inferred_mean_temperature = temperature;
         return temperature;
     }
-    if (uses_gaseous_map(type)) return temperature = equilibrium_temperature();         // For gas giants, just give equilibrium temp.
+    if (uses_gaseous_map(type)) return inferred_mean_temperature = temperature = equilibrium_temperature();         // For gas giants, just give equilibrium temp.
     const double surface_k = temperature_at_pressure(get_surface_pressure());
-    return temperature = condense_atmosphere(equilibrium_temperature(), surface_k);
+    return inferred_mean_temperature = temperature = condense_atmosphere(equilibrium_temperature(), surface_k);
 }
 
 double Planet::condense_atmosphere(double equilibrium_k, double surface_k)
@@ -1882,6 +2055,7 @@ json Planet::to_json()
     towrite["vegetation_b"] = vegetation_b;
     towrite["veg_min_temp"] = veg_min_temp;
     towrite["veg_max_temp"] = veg_max_temp;
+    towrite["temperature_supplied"] = has_supplied_mean_temperature();
     towrite["plant_trunk_height"] = plant_trunk_height;
     towrite["plant_trunk_width"] = plant_trunk_width;
     towrite["plant_crown_size"] = plant_crown_size;
@@ -1894,6 +2068,8 @@ bool Planet::from_json(const json& j)
 {
     temperature = 0;
     CelestialObject::from_json(j);
+    temperature_supplied = j.value("temperature_supplied", temperature > 0);
+    inferred_mean_temperature = temperature > 0 && !temperature_supplied ? temperature : NAN;
     lock_system_plane = j.value("lock_system_plane", false);
     preserve_loaded_parameters = true;
     // Optional zero-valued fields are omitted by older saves; a reload must clear stale values.

@@ -730,6 +730,7 @@ int main (int argc, char** argv)
                 draw_cached_labels();
             }
 
+            publish_regenerated_clouds();
             if (earth_clouds_shown) refresh_earth_clouds();
 
             txtyscale = ImGui::GetTextLineHeightWithSpacing() * 1.116;

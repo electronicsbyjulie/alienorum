@@ -93,7 +93,8 @@ namespace alienorum
                 || !std::isfinite(p.volumetric_mean_radius) || p.volumetric_mean_radius <= 0) return model;
             model.surface_k = p.estimate_surface_temperature();
             if (!std::isfinite(model.surface_k) || model.surface_k <= 0) return model;
-            model.climate = p.local_climate();
+            model.climate = p.current_local_climate(true);
+            if (model.climate.current_conditions) model.surface_k = model.climate.current_mean_k;
             const double gravity = G * p.mass / std::pow(p.volumetric_mean_radius, 2);
             if (!std::isfinite(gravity) || gravity <= 0) return model;
 
@@ -116,6 +117,8 @@ namespace alienorum
                 }
                 else model.ocean_fraction = std::clamp(double(p.has_water), 0.0, 1.0);
             }
+
+            if (model.climate.current_conditions) model.ocean_fraction = model.climate.water_fraction;
 
             // Mole fractions and molar heat capacities. Normalize locally, preserving data.
             const AtmosphereComposition* comp = p.atm ? p.atm->comp : nullptr;

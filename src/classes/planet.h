@@ -30,6 +30,13 @@ namespace alienorum
         // Saved worlds retain authored parameters during procedural rendering.
         bool preserve_loaded_parameters = false;
         bool rendering_saved_parameters = false;
+        bool temperature_supplied = false;
+        double inferred_mean_temperature = NAN;
+        std::shared_ptr<LocalClimate> cloud_climate_snapshot;
+        std::shared_ptr<LocalClimate> conditions_cache;
+        std::vector<double> conditions_cache_key;
+        double cloud_epoch = NAN;
+        uint32_t weather_revision = 0;
         std::mutex saved_render_mutex;
         PlanetMeasurement mass_evidence = PlanetMeasurement::unknown;
         PlanetMeasurement radius_evidence = PlanetMeasurement::unknown;
@@ -93,6 +100,9 @@ namespace alienorum
                                                             // set the type, e.g. for exoplanets
         LocalClimate local_climate();
         double est_local_temp(double lat, double lon);
+        bool has_supplied_mean_temperature() const;
+        LocalClimate current_local_climate(bool include_supplied = false);
+        double est_current_local_temp(double lat, double lon);
         void set_explicit_mass(double value);
         void set_explicit_radius(double value);
         void estimate_radius();                             // if mass known
