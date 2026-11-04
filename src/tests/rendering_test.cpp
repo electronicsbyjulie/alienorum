@@ -6545,6 +6545,7 @@ TEST_F(RenderingRegressionTest, WaterCachesReuseGeometryAndInvalidateSurfaceCert
     world->surf_map = new BlueBiomeTestMap(SurfaceMaterial::water);
     show_terrain = false;
     altitude = -.4;
+    std::vector<unsigned char> last_water_pixels;
     const auto paint = [&](double time)
     {
         freeze_surface_time();
@@ -6552,7 +6553,7 @@ TEST_F(RenderingRegressionTest, WaterCachesReuseGeometryAndInvalidateSurfaceCert
         find_horizon();
         draw_horizon();
         const auto stats = horizon_water_stats();
-        render();
+        last_water_pixels = render();
         ImGui::NewFrame();
         return stats;
     };
@@ -6574,9 +6575,16 @@ TEST_F(RenderingRegressionTest, WaterCachesReuseGeometryAndInvalidateSurfaceCert
     EXPECT_EQ(paint(55).bounds_builds, 1u);
     delete world->surf_map;
     world->surf_map = new BlueBiomeTestMap(SurfaceMaterial::ground);
+    horizon_reference_trial = 6;
+    const auto original_land = paint(56);
+    const auto expected_land = last_water_pixels;
+    EXPECT_GT(original_land.land_points, 100u);
+    horizon_reference_trial = 0;
     const auto land = paint(56);
-    EXPECT_EQ(land.bounds_builds, 1u);
-    EXPECT_GT(land.land_points, 100u);
+    EXPECT_EQ(last_water_pixels, expected_land);
+    EXPECT_EQ(land.geometry_builds, 0u);
+    EXPECT_EQ(land.bounds_builds, 0u);
+    EXPECT_EQ(land.land_points, 0u);
     EXPECT_EQ(land.samples, 0u);
     EXPECT_EQ(land.uniform_water_points, 0u);
 }

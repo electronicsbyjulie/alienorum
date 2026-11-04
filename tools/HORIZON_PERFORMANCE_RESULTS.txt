@@ -183,9 +183,35 @@ evidence of a code-induced regression. Building and querying the index did not
 produce a convincing gain in its target panning workload, so it was removed.
 Raw results: /tmp/horizon-trial-05-native/ and /tmp/horizon-trial-05-confirm/.
 
+Item 6: Streamline water setup and row geometry
+==============================================
+Status: retained.
+
+A full-footprint RGB/material certificate can skip the entire water stage when
+all possible lookups are dry. The radius includes the far terrain extent and
+the sampler's biome displacement bound. Uncertain or mixed footprints retain
+the original path. Row-constant rotation and wave amplitude are calculated once
+per row during geometry construction; coast sampling and wave animation remain
+unchanged. The runtime trial control retains the original calculations.
+
+Eight paired rounds across seven scenes and five modes passed image/stride
+comparisons. Forest panning improved 24.54 -> 20.75 ms (-15.63%); Earth panning
+67.32 -> 66.34 ms (-1.91%); forest tenfold walking 26.32 -> 25.66 ms (-2.23%).
+All three median intervals excluded zero. Other moving results were unresolved.
+
+Initial p95 flags on Earth and ocean tenfold walking did not repeat in twelve
+fresh pairs: Earth +0.05%, interval -1.07 to +1.81%; ocean +4.16%, interval -5.04
+to +8.98%. The lava changing-light control also cleared its initial flag:
+median +2.25%, interval -1.88 to +6.01%; p95 +0.83%, interval -6.35 to +10.58%.
+No reproducible completed-frame regression was established.
+
+Forty-three focused image/behavior tests passed on the final build. The dry-stage
+assertion verifies skipped work against the original path's exact pixels.
+Raw results: /tmp/horizon-trial-06-native/, /tmp/horizon-trial-06-confirm/, and
+/tmp/horizon-trial-06-lava-confirm/.
+
 Remaining sequence
 ==================
-6. Streamline water geometry and animation.
 7. Improve terrain mesh reuse while walking.
 8. Reject zero-effect scenery shadows and hoist light factors.
 9. Retain rock facet geometry and ordering.

@@ -7460,7 +7460,16 @@ void draw_horizon()
             if (!reuse_ground && ground_stride == 1) full_ground_paint_ms = precipitation_stats.ground_paint_milliseconds;
         }
 
-        if (surface_water && !faded && screen_w > 0)
+        bool certified_dry = false;
+        if (horizon_fast_path(6) && surface_water && !faded && screen_w > 0 && surface_radius > 0)
+        {
+            const double reach = terrain_mesh ? std::max(surface_range,
+                std::min(std::max(60000.0, surface_range * 8.0), surface_radius * .15)) : surface_range;
+            SurfaceSampler::Sample footprint;
+            certified_dry = surface.uniform_sample(viewer_lat, viewer_lon, reach / surface_radius + 1e-8,
+                footprint) && !footprint.water;
+        }
+        if (surface_water && !faded && screen_w > 0 && !certified_dry)
         {
             double wave_t = ImGui::GetTime();
             static std::vector<GlintSource> retained_glint_sources;
@@ -7657,13 +7666,16 @@ void draw_horizon()
                     const int num_steps = WAVE_STEPS_PER_ROW;
                     const double step_angle = (0.9 / fmax(0.3, zoom)) / (double)num_steps;
                     const double row_offset = (wr_i % 2 == 1) ? (0.5 * step_angle) : 0.0;
+                    const Point row_point = horizon_fast_path(6) ? rotate3D(zaxis, center, xaxis, delta) : center;
+                    const double row_amplitude = horizon_fast_path(6) ? fmax(0.5, fmin(4.5,
+                        (0.04 / fmax(1.0, row.distance * 0.1)) * dispcx * zoom)) : 0;
                     row.points.resize(num_steps * 2 + 1);
                     for (int si = -num_steps; si <= num_steps; ++si)
                     {
                         WavePoint& sample = row.points[si + num_steps];
                         const double th_rel = si * step_angle + row_offset;
                         const double th_world = azimuth + th_rel;
-                        Point pt_w = rotate3D(zaxis, center, xaxis, delta);
+                        Point pt_w = horizon_fast_path(6) ? row_point : rotate3D(zaxis, center, xaxis, delta);
                         pt_w = rotate3D(pt_w, center, yaxis, th_world);
                         Cartesian2D cart(pt_w, azimuth, altitude, zoom);
                         sample.wx = cart.x * dispcx + dispcx;
@@ -7674,7 +7686,7 @@ void draw_horizon()
                             ? static_cast<int>(std::clamp(round(sample.wx), 0.0, double(screen_w - 1))) : 0;
                         sample.u_world = row.distance * sin(th_world);
                         sample.v_world = row.distance * cos(th_world);
-                        sample.amplitude = fmax(0.5, fmin(4.5,
+                        sample.amplitude = horizon_fast_path(6) ? row_amplitude : fmax(0.5, fmin(4.5,
                             (0.04 / fmax(1.0, row.distance * 0.1)) * dispcx * zoom));
                     }
                 }
