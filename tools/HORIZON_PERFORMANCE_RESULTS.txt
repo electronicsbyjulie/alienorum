@@ -257,9 +257,27 @@ established, but no convincing repeated gain justified retaining the logic.
 Raw results: /tmp/horizon-trial-08-native/, /tmp/horizon-trial-08-confirm/, and
 /tmp/horizon-trial-08-forest-confirm/.
 
+Item 9: Retain projected rock facets and normals
+===============================================
+Status: rejected for insufficient repeatable benefit; prototype removed.
+
+The prototype retained sorted facet positions and normals on a reused scenery
+projection, while recomputing current illumination per facet. Moving views used
+the original construction and cleared retained facets without filling the cache.
+Twenty-nine focused rock/scenery/haze image tests passed. The seven-scene,
+five-mode eight-pair matrix also matched images and sampling strides.
+
+The intended stationary gain was small: airless 9.30 -> 9.23 ms (-0.85%). Earth
+and ice stationary differences were unresolved. Forest stationary initially
+flagged +5.88%; twelve fresh pairs left it unresolved (+1.96%, interval -2.82 to
++7.03%). Twelve fresh airless pairs also left the gain unresolved: 9.32 -> 9.20
+ms, -1.53%, interval -2.03 to +1.35%; p95 -2.88%, interval -3.33 to +23.21%.
+No repeatable regression was established, but the measured saving did not
+justify the larger geometry cache and associated invalidation logic.
+Raw results: /tmp/horizon-trial-09-native/ and /tmp/horizon-trial-09-confirm/.
+
 Remaining sequence
 ==================
-9. Retain rock facet geometry and ordering.
 10. Avoid the second CPU scenery fog pass.
 11. Reduce raster work for rejected spans.
 12. Remove repeated immutable GL state traffic and small allocations.
