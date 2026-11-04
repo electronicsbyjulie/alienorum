@@ -1,0 +1,84 @@
+HORIZON PERFORMANCE TRIALS
+
+Protocol
+========
+The item numbers follow the twelve findings in the local draw_horizon audit.
+Each trial compares its original path with the candidate on the same executable,
+scenes, poses, animation times, source pixels, and movement distances. Alternating
+order reduces thermal and cache-order bias. A separate source generation starts
+each arm, followed by two stationary settling frames and three movement warmup
+frames. Moving views use the same
+base-color sampling quality in both arms. End and Shift+End use their current
+control calculation at a fixed seven-frame-per-second timestep.
+
+Metrics cover find_horizon plus draw_horizon preparation, thread CPU time on
+Linux, and completion of the submitted horizon draw through glFinish. Pixel
+readback occurs outside timed samples. These are horizon-stage measurements,
+not whole-application FPS estimates. Current trials use hidden windows on the
+desktop graphics context; the log records the GL renderer. Software OpenGL
+results are diagnostic only. The paired driver stops each child at 90 seconds,
+with a two-second hard-stop grace period and an outer process-group watchdog.
+
+Worlds: generated Tau-Ceti-like ice, authored Earth coastal maps, a dense ocean,
+forest, Venus-like hot haze, an airless rock, and a lava world. Modes: stationary,
+continuous panning, normal walking, and tenfold walking. Eight alternating paired
+rounds confirm retained candidates; borderline regressions receive further checks.
+Median and p95 completed-frame results both matter. Preparation and CPU results
+provide supporting evidence. A retained candidate must show an improvement and
+no supported completed-frame regression, especially in the three moving modes.
+Image and live-invalidation tests are required as well. No gain is inferred from
+timing noise, and a faster stationary view does not excuse slower movement.
+
+Driver example:
+python3 tools/run_horizon_trials.py --trial 1 --rounds 8 --output /tmp/horizon-trial-01-native
+
+Item 1: Retain projected terrain and the CPU depth raster
+========================================================
+Status: retained.
+
+Implementation: retain the CPU projected terrain and depth raster under a mesh
+epoch plus the full projection/raster settings. The mesh epoch advances when
+world geometry changes. Walking and panning invalidate the view key; no travel
+tolerance was introduced for terrain geometry. Disabling terrain invalidates the
+retained raster. A developer reference control selects the uncached path.
+
+Intel HD Graphics 2000, eight paired rounds, six timed frames per arm and mode:
+Scene     Stationary before/after   Pan before/after   Walk before/after   10x before/after
+Ice          27.72 / 22.19            35.99 / 36.15       34.23 / 34.60      38.33 / 38.64
+Earth        32.78 / 29.11            67.46 / 67.84       45.20 / 44.95      78.84 / 78.36
+Forest       18.08 / 13.70            27.75 / 27.85       26.32 / 25.84      28.62 / 29.36
+Values are completed horizon-frame milliseconds, not app frame times. Paired
+stationary changes were -20.15%, -10.56%, and -23.04%; their bootstrap intervals
+excluded zero. Moving differences in these scenes were unresolved apart from a
+faster forest walk. Ocean, hot haze, airless, and lava controls also ran.
+
+The first matrix flagged lava walking at +2.47% (95% interval +0.35 to +7.13%).
+A fresh twelve-pair check was unresolved: +3.37%, interval -3.20 to +6.99%.
+The terrain-mesh path is inactive in that scene; no reproducible moving
+regression was established. No other completed-frame median or p95 regression
+was supported by the eight-pair matrix.
+
+Quality: 42 focused image/behavior tests passed on the desktop GPU. Eight-round
+paired image comparisons passed across all seven scenes and four motion modes.
+The first harness attempt exposed a sampling-phase difference even in the
+identical-path control. Two stationary settling frames now align the origin and
+every measured frame asserts equal sampling stride. The existing one-level RGB
+tolerance was not raised. The corrected identical-path control also passed.
+
+Raw results: /tmp/horizon-trial-01-validated/ and
+/tmp/horizon-trial-01-lava-confirm/. The initial software-GL pilot was excluded
+from acceptance. The native graphics logs identify Mesa Intel HD Graphics 2000.
+
+Remaining sequence
+==================
+2. Separate source painting from changing illumination.
+3. Replace global suppression with per-map publication state.
+4. Retain GPU ground geometry.
+5. Retain conservative depth bounds for tile certification.
+6. Streamline water geometry and animation.
+7. Improve terrain mesh reuse while walking.
+8. Reject zero-effect scenery shadows and hoist light factors.
+9. Retain rock facet geometry and ordering.
+10. Avoid the second CPU scenery fog pass.
+11. Reduce raster work for rejected spans.
+12. Remove repeated immutable GL state traffic and small allocations.

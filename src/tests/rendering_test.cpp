@@ -17,6 +17,7 @@
 #include "../classes/galaxyimage.h"
 #include "../classes/galaxygeometry.h"
 #include "../visuals.h"
+#include "../horizon_performance.h"
 #include "../inputs.h"
 #include "../dialogs.h"
 #include "../sphere_impostor.h"
@@ -297,6 +298,7 @@ class RenderingRegressionTest : public UniverseFixture
         set(dragging, false);
         // Vertex assertions exercise the reference painter; GPU tests compare complete images.
         set(horizon_ground_gpu_reference, true);
+        set(horizon_reference_trial, 0u);
         // Image comparisons use full detail regardless of host timing. The
         // motion-specific test explicitly exercises adaptive sampling below.
         set(horizon_ground_motion_budget_ms, std::numeric_limits<double>::infinity());
@@ -6809,6 +6811,48 @@ TEST_F(RenderingRegressionTest, GroundBoundsPreserveSkyPeaksGapsAndDownwardViews
                 ImGui::NewFrame();
             }
         }
+    }
+}
+
+TEST_F(RenderingRegressionTest, RetainedTerrainRasterMatchesMotionAndLiveGeometryEdits)
+{
+    auto* world = surface(true);
+    world->ensure_atmosphere()->surface_pressure = 7.88e5;
+    delete world->surf_map;
+    world->surf_map = new CoastalTestMap(true, true);
+    set(horizon_ground_gpu_reference, false);
+    const auto capture = [&]()
+    {
+        freeze_surface_time();
+        find_horizon();
+        draw_horizon();
+        auto pixels = render();
+        ImGui::NewFrame();
+        return pixels;
+    };
+    const std::vector<std::function<void()>> edits =
+    {
+        []() {},
+        [&]() { azimuth += .2; },
+        [&]() { viewer_lat += .5 / earth_radius; },
+        [&]() { viewer_lon += 5 / earth_radius; },
+        [&]() { viewer_eye_height += 7; },
+        [&]() { altitude = -.4; },
+        [&]() { zoom *= 2; },
+        [&]() { world->atm->surface_pressure *= 2; },
+        [&]() { world->surf_map->touch_gen(); },
+        [&]() { show_terrain = false; },
+        [&]() { show_terrain = true; },
+        [&]() { world->volumetric_mean_radius *= .9; }
+    };
+    for (const auto& edit : edits)
+    {
+        edit();
+        horizon_reference_trial = 1;
+        const auto original = capture();
+        horizon_reference_trial = 0;
+        EXPECT_EQ(capture(), original);
+        EXPECT_EQ(capture(), original);
     }
 }
 

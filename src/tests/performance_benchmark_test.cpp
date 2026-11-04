@@ -1,5 +1,6 @@
 // Developer-only paired benchmarks; ordinary test runs skip this suite.
 #include "rendering_test.cpp"
+#include "horizon_performance_trials.h"
 #include "texture_upload_fixture.h"
 #include "../performance_options.h"
 #include "../classes/sound.h"

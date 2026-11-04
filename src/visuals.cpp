@@ -10,6 +10,7 @@
 #include "gputex.h"
 #include "sunclock_gpu.h"
 #include "horizon_ground_gpu.h"
+#include "horizon_performance.h"
 #include "scenery_gpu.h"
 #include "horizon_terrain_gpu.h"
 #include "horizon_mesh_gpu.h"
@@ -5938,8 +5939,13 @@ void draw_horizon()
             prefetch_route.last_longitude_step = dlon;
         }
         static HorizonTerrainRaster terrain_raster;
+        static bool projected_terrain_valid = false;
         if (!performance_enabled(23)) terrain_raster = HorizonTerrainRaster();
-        terrain_raster.deactivate();
+        if (!terrain_mesh || !performance_enabled(23))
+        {
+            terrain_raster.deactivate();
+            projected_terrain_valid = false;
+        }
         const auto surface_coord = [&](double distance, double bearing)
         {
             const double arc = distance / surface_radius;
@@ -6412,6 +6418,7 @@ void draw_horizon()
             constexpr int terrain_rows = 40;
             static std::vector<HorizonTerrainVertex> mesh;
             static std::vector<double> terrain_up;
+            static std::uint64_t mesh_epoch = 0;
             struct AdaptiveTerrainPatch
             {
                 int row, column;
@@ -6690,60 +6697,41 @@ void draw_horizon()
                 saved_mesh_key = mesh_key;
                 saved_mesh_view = mesh_view;
                 mesh_valid = true;
+                if (horizon_fast_path(1)) ++mesh_epoch;
             }
 
-            terrain_raster.reset(screen_w, static_cast<int>(dispcy * 2.0), performance_enabled(24));
-            static std::vector<ProjectedTerrainVertex> projected;
-            if (!performance_enabled(23)) std::vector<ProjectedTerrainVertex>().swap(projected);
-            projected.assign(mesh.size(), {});
-            static std::vector<std::array<double, 3>> camera_vertices;
-            if (!performance_enabled(23)) std::vector<std::array<double, 3>>().swap(camera_vertices);
-            std::array<bool, terrain_columns> visible_sectors;
-            const double cos_alt = surface_cos_altitude(), sin_alt = surface_sin_altitude();
-            if (!performance_enabled(22) || horizon_terrain_cpu_reference)
+            using ProjectionKey = decltype(std::make_tuple(mesh_epoch, azimuth, altitude,
+                zoom, dispcx, dispcy, shared_surface, horizon_terrain_cpu_reference,
+                performance_enabled(22), performance_enabled(24), performance_enabled(25), performance_enabled(26),
+                bool(horizon_gpu_terrain_rasterization), horizon_terrain_gpu_reference));
+            static std::optional<ProjectionKey> saved_projected_terrain_key;
+            const bool retain_projection = horizon_fast_path(1) && performance_enabled(23) && !horizon_terrain_cpu_reference;
+            std::optional<ProjectionKey> projected_terrain_key;
+            if (retain_projection)
             {
-                visible_sectors.fill(true);
-                for (size_t vertex = 0; vertex < mesh.size(); ++vertex)
-                {
-                    const HorizonTerrainVertex &source = mesh[vertex];
-                    const double bearing = source.bearing - azimuth;
-                    const double x = source.distance * sin(bearing);
-                    const double north = source.distance * cos(bearing);
-                    double up;
-                    if ((performance_enabled(25) && !horizon_terrain_cpu_reference)) up = terrain_up[vertex];
-                    else
-                    {
-                        const double refraction = surface_lift * fmin(1.0, source.distance / surface_range) * source.distance;
-                        up = source.elevation - surface_eye
-                            - source.distance * source.distance / (2.0 * surface_radius) + refraction;
-                    }
-                    const double depth = up * sin_alt + north * cos_alt;
-                    if (depth > 0.1)
-                    {
-                        ProjectedTerrainVertex &target = projected[vertex];
-                        target.x = dispcx + x / depth * zoom * dispcx;
-                        target.y = dispcy - (up * cos_alt - north * sin_alt) / depth * zoom * dispcx;
-                        target.inverse_depth = 1.0 / depth;
-                        target.distance_over_depth = source.distance / depth;
-                    }
-                }
+                projected_terrain_key.emplace(mesh_epoch, azimuth, altitude, zoom, dispcx, dispcy, shared_surface,
+                    horizon_terrain_cpu_reference, performance_enabled(22), performance_enabled(24),
+                    performance_enabled(25), performance_enabled(26), bool(horizon_gpu_terrain_rasterization), horizon_terrain_gpu_reference);
             }
-            else
+            if (!retain_projection || !projected_terrain_valid || saved_projected_terrain_key != projected_terrain_key)
             {
-                camera_vertices.resize(mesh.size());
-                std::array<HorizonTerrainSector, terrain_columns> sectors;
-                const double horizontal = (dispcx + 2) / surface_focal();
-                const double vertical = (dispcy + 2) / surface_focal();
-                for (int column = 0; column < terrain_columns; ++column)
+                terrain_raster.reset(screen_w, static_cast<int>(dispcy * 2.0), performance_enabled(24));
+                static std::vector<ProjectedTerrainVertex> projected;
+                if (!performance_enabled(23)) std::vector<ProjectedTerrainVertex>().swap(projected);
+                projected.assign(mesh.size(), {});
+                static std::vector<std::array<double, 3>> camera_vertices;
+                if (!performance_enabled(23)) std::vector<std::array<double, 3>>().swap(camera_vertices);
+                std::array<bool, terrain_columns> visible_sectors;
+                const double cos_alt = surface_cos_altitude(), sin_alt = surface_sin_altitude();
+                if (!performance_enabled(22) || horizon_terrain_cpu_reference)
                 {
-                    const double bearing = mesh[column].bearing - azimuth;
-                    const double sine = sin(bearing), cosine = cos(bearing);
-                    for (int row = 0; row < terrain_rows; ++row)
+                    visible_sectors.fill(true);
+                    for (size_t vertex = 0; vertex < mesh.size(); ++vertex)
                     {
-                        const size_t vertex = row * terrain_columns + column;
                         const HorizonTerrainVertex &source = mesh[vertex];
-                        const double x = source.distance * sine;
-                        const double north = source.distance * cosine;
+                        const double bearing = source.bearing - azimuth;
+                        const double x = source.distance * sin(bearing);
+                        const double north = source.distance * cos(bearing);
                         double up;
                         if ((performance_enabled(25) && !horizon_terrain_cpu_reference)) up = terrain_up[vertex];
                         else
@@ -6753,103 +6741,141 @@ void draw_horizon()
                                 - source.distance * source.distance / (2.0 * surface_radius) + refraction;
                         }
                         const double depth = up * sin_alt + north * cos_alt;
-                        const double y = up * cos_alt - north * sin_alt;
-                        camera_vertices[vertex] = {x, y, depth};
-                        sectors[column].include(x, y, depth, horizontal, vertical);
-                    }
-                }
-                for (int column = 0; column < terrain_columns; ++column)
-                    visible_sectors[column] = !sectors[column].outside(sectors[(column + 1) % terrain_columns]);
-                for (int column = 0; column < terrain_columns; ++column)
-                {
-                    if (!visible_sectors[column] && !visible_sectors[(column + terrain_columns - 1) % terrain_columns]) continue;
-                    for (int row = 0; row < terrain_rows; ++row)
-                    {
-                        const size_t vertex = row * terrain_columns + column;
-                        const auto &camera = camera_vertices[vertex];
-                        const double depth = camera[2];
-                        if (depth > .1)
+                        if (depth > 0.1)
                         {
-                            auto &target = projected[vertex];
-                            target.x = dispcx + camera[0] / depth * zoom * dispcx;
-                            target.y = dispcy - camera[1] / depth * zoom * dispcx;
+                            ProjectedTerrainVertex &target = projected[vertex];
+                            target.x = dispcx + x / depth * zoom * dispcx;
+                            target.y = dispcy - (up * cos_alt - north * sin_alt) / depth * zoom * dispcx;
                             target.inverse_depth = 1.0 / depth;
-                            target.distance_over_depth = mesh[vertex].distance / depth;
+                            target.distance_over_depth = source.distance / depth;
                         }
                     }
                 }
-            }
-            bool gpu_raster = false;
-            #if horizon_gpu_terrain_rasterization
-            gpu_raster = !horizon_terrain_gpu_reference;
-            #endif
-            static std::vector<ProjectedTerrainVertex> triangles;
-            if (!performance_enabled(23)) std::vector<ProjectedTerrainVertex>().swap(triangles);
-            triangles.clear();
-            if (gpu_raster) triangles.reserve((terrain_rows - 1) * terrain_columns * 6);
-            static std::vector<unsigned char> adaptive_cells;
-            const bool adaptive = performance_enabled(26) && !horizon_terrain_cpu_reference
-                && performance_enabled(22) && !gpu_raster;
-            if (adaptive)
-            {
-                adaptive_cells.assign((terrain_rows - 1) * terrain_columns, 0);
-                terrain_lod_stats.patches = adaptive_patches.size();
-                for (const auto& patch : adaptive_patches)
+                else
                 {
-                    if (!patch.uniform || !visible_sectors[patch.column]
-                        || !visible_sectors[(patch.column + 1) % terrain_columns]) continue;
-                    double minimum_depth = std::numeric_limits<double>::infinity();
-                    for (int dr = 0; dr <= 4; ++dr)
-                        for (int dc = 0; dc <= 2; ++dc)
-                            minimum_depth = fmin(minimum_depth, camera_vertices[(patch.row + dr) * terrain_columns
-                                + (patch.column + dc) % terrain_columns][2]);
-                    if (!patch.error.within(zoom * dispcx, sin_alt, minimum_depth)) continue;
-                    ++terrain_lod_stats.accepted_patches;
-                    terrain_lod_stats.triangles_removed += 4;
-                    constexpr int boundary[12][2] = {{0, 0}, {0, 1}, {0, 2}, {1, 2}, {2, 2}, {3, 2},
-                        {4, 2}, {4, 1}, {4, 0}, {3, 0}, {2, 0}, {1, 0}};
-                    const auto vertex = [&](int row, int column) -> const ProjectedTerrainVertex&
+                    camera_vertices.resize(mesh.size());
+                    std::array<HorizonTerrainSector, terrain_columns> sectors;
+                    const double horizontal = (dispcx + 2) / surface_focal();
+                    const double vertical = (dispcy + 2) / surface_focal();
+                    for (int column = 0; column < terrain_columns; ++column)
                     {
-                        return projected[(patch.row + row) * terrain_columns + (patch.column + column) % terrain_columns];
-                    };
-                    const auto& middle = vertex(2, 1);
-                    for (int edge = 0; edge < 12; ++edge)
-                    {
-                        const auto& a = vertex(boundary[edge][0], boundary[edge][1]);
-                        const auto& b = vertex(boundary[(edge + 1) % 12][0], boundary[(edge + 1) % 12][1]);
-                        terrain_raster.triangle(a, b, middle, performance_enabled(24));
+                        const double bearing = mesh[column].bearing - azimuth;
+                        const double sine = sin(bearing), cosine = cos(bearing);
+                        for (int row = 0; row < terrain_rows; ++row)
+                        {
+                            const size_t vertex = row * terrain_columns + column;
+                            const HorizonTerrainVertex &source = mesh[vertex];
+                            const double x = source.distance * sine;
+                            const double north = source.distance * cosine;
+                            double up;
+                            if ((performance_enabled(25) && !horizon_terrain_cpu_reference)) up = terrain_up[vertex];
+                            else
+                            {
+                                const double refraction = surface_lift * fmin(1.0, source.distance / surface_range) * source.distance;
+                                up = source.elevation - surface_eye
+                                    - source.distance * source.distance / (2.0 * surface_radius) + refraction;
+                            }
+                            const double depth = up * sin_alt + north * cos_alt;
+                            const double y = up * cos_alt - north * sin_alt;
+                            camera_vertices[vertex] = {x, y, depth};
+                            sectors[column].include(x, y, depth, horizontal, vertical);
+                        }
                     }
-                    for (int dr = 0; dr < 4; ++dr)
-                        for (int dc = 0; dc < 2; ++dc)
-                            adaptive_cells[(patch.row + dr) * terrain_columns + (patch.column + dc) % terrain_columns] = 1;
-                }
-            }
-            for (int row = 0; row < terrain_rows - 1; ++row)
-            {
-                for (int column = 0; column < terrain_columns; ++column)
-                {
-                    if (!visible_sectors[column] || (adaptive && adaptive_cells[row * terrain_columns + column])) continue;
-                    const int next = (column + 1) % terrain_columns;
-                    const auto &a = projected[row * terrain_columns + column];
-                    const auto &b = projected[row * terrain_columns + next];
-                    const auto &c = projected[(row + 1) * terrain_columns + column];
-                    const auto &d = projected[(row + 1) * terrain_columns + next];
-                    if (gpu_raster) triangles.insert(triangles.end(), {a, b, c, b, d, c});
-                    else
+                    for (int column = 0; column < terrain_columns; ++column)
+                        visible_sectors[column] = !sectors[column].outside(sectors[(column + 1) % terrain_columns]);
+                    for (int column = 0; column < terrain_columns; ++column)
                     {
-                        terrain_raster.triangle(a, b, c, !horizon_terrain_cpu_reference && performance_enabled(24));
-                        terrain_raster.triangle(b, d, c, !horizon_terrain_cpu_reference && performance_enabled(24));
+                        if (!visible_sectors[column] && !visible_sectors[(column + terrain_columns - 1) % terrain_columns]) continue;
+                        for (int row = 0; row < terrain_rows; ++row)
+                        {
+                            const size_t vertex = row * terrain_columns + column;
+                            const auto &camera = camera_vertices[vertex];
+                            const double depth = camera[2];
+                            if (depth > .1)
+                            {
+                                auto &target = projected[vertex];
+                                target.x = dispcx + camera[0] / depth * zoom * dispcx;
+                                target.y = dispcy - camera[1] / depth * zoom * dispcx;
+                                target.inverse_depth = 1.0 / depth;
+                                target.distance_over_depth = mesh[vertex].distance / depth;
+                            }
+                        }
                     }
                 }
-            }
-            if (gpu_raster && !rasterize_horizon_terrain_gpu(terrain_raster, triangles,
-                screen_w, static_cast<int>(dispcy * 2.0)))
-            {
-                for (size_t index = 0; index < triangles.size(); index += 3)
+                bool gpu_raster = false;
+                #if horizon_gpu_terrain_rasterization
+                gpu_raster = !horizon_terrain_gpu_reference;
+                #endif
+                static std::vector<ProjectedTerrainVertex> triangles;
+                if (!performance_enabled(23)) std::vector<ProjectedTerrainVertex>().swap(triangles);
+                triangles.clear();
+                if (gpu_raster) triangles.reserve((terrain_rows - 1) * terrain_columns * 6);
+                static std::vector<unsigned char> adaptive_cells;
+                const bool adaptive = performance_enabled(26) && !horizon_terrain_cpu_reference
+                    && performance_enabled(22) && !gpu_raster;
+                if (adaptive)
                 {
-                    terrain_raster.triangle(triangles[index], triangles[index + 1], triangles[index + 2],
-                        !horizon_terrain_cpu_reference && performance_enabled(24));
+                    adaptive_cells.assign((terrain_rows - 1) * terrain_columns, 0);
+                    terrain_lod_stats.patches = adaptive_patches.size();
+                    for (const auto& patch : adaptive_patches)
+                    {
+                        if (!patch.uniform || !visible_sectors[patch.column]
+                            || !visible_sectors[(patch.column + 1) % terrain_columns]) continue;
+                        double minimum_depth = std::numeric_limits<double>::infinity();
+                        for (int dr = 0; dr <= 4; ++dr)
+                            for (int dc = 0; dc <= 2; ++dc)
+                                minimum_depth = fmin(minimum_depth, camera_vertices[(patch.row + dr) * terrain_columns
+                                    + (patch.column + dc) % terrain_columns][2]);
+                        if (!patch.error.within(zoom * dispcx, sin_alt, minimum_depth)) continue;
+                        ++terrain_lod_stats.accepted_patches;
+                        terrain_lod_stats.triangles_removed += 4;
+                        constexpr int boundary[12][2] = {{0, 0}, {0, 1}, {0, 2}, {1, 2}, {2, 2}, {3, 2},
+                            {4, 2}, {4, 1}, {4, 0}, {3, 0}, {2, 0}, {1, 0}};
+                        const auto vertex = [&](int row, int column) -> const ProjectedTerrainVertex&
+                        {
+                            return projected[(patch.row + row) * terrain_columns + (patch.column + column) % terrain_columns];
+                        };
+                        const auto& middle = vertex(2, 1);
+                        for (int edge = 0; edge < 12; ++edge)
+                        {
+                            const auto& a = vertex(boundary[edge][0], boundary[edge][1]);
+                            const auto& b = vertex(boundary[(edge + 1) % 12][0], boundary[(edge + 1) % 12][1]);
+                            terrain_raster.triangle(a, b, middle, performance_enabled(24));
+                        }
+                        for (int dr = 0; dr < 4; ++dr)
+                            for (int dc = 0; dc < 2; ++dc)
+                                adaptive_cells[(patch.row + dr) * terrain_columns + (patch.column + dc) % terrain_columns] = 1;
+                    }
                 }
+                for (int row = 0; row < terrain_rows - 1; ++row)
+                {
+                    for (int column = 0; column < terrain_columns; ++column)
+                    {
+                        if (!visible_sectors[column] || (adaptive && adaptive_cells[row * terrain_columns + column])) continue;
+                        const int next = (column + 1) % terrain_columns;
+                        const auto &a = projected[row * terrain_columns + column];
+                        const auto &b = projected[row * terrain_columns + next];
+                        const auto &c = projected[(row + 1) * terrain_columns + column];
+                        const auto &d = projected[(row + 1) * terrain_columns + next];
+                        if (gpu_raster) triangles.insert(triangles.end(), {a, b, c, b, d, c});
+                        else
+                        {
+                            terrain_raster.triangle(a, b, c, !horizon_terrain_cpu_reference && performance_enabled(24));
+                            terrain_raster.triangle(b, d, c, !horizon_terrain_cpu_reference && performance_enabled(24));
+                        }
+                    }
+                }
+                if (gpu_raster && !rasterize_horizon_terrain_gpu(terrain_raster, triangles,
+                    screen_w, static_cast<int>(dispcy * 2.0)))
+                {
+                    for (size_t index = 0; index < triangles.size(); index += 3)
+                    {
+                        terrain_raster.triangle(triangles[index], triangles[index + 1], triangles[index + 2],
+                            !horizon_terrain_cpu_reference && performance_enabled(24));
+                    }
+                }
+                if (retain_projection) saved_projected_terrain_key = projected_terrain_key;
+                projected_terrain_valid = retain_projection;
             }
             for (int x = 0; x < screen_w; ++x)
             {
