@@ -2462,6 +2462,31 @@ TEST_F(CatalogParsingTest, RenamedPlanetLettersMergeByOrbitWithoutMixingPhysical
     EXPECT_EQ(rows, once);
 }
 
+TEST_F(CatalogParsingTest, InclinationReconciliationRefreshesTheFinalMassAndVolatileBudget)
+{
+    Star::load_main_seq_dat();
+    make_star("Sun");
+    Star* host = make_star("Anonymous disk host");
+    host->has_disk = true;
+    host->disk_heliocen_inclination = 50 * fiftyseventh;
+    Planet* body = make_planet(host);
+    body->mass = body->msini = 3 * earth_mass;
+    body->mass_evidence = PlanetMeasurement::minimum;
+    body->estimate_radius();
+    body->apply_cosmic_shoreline();
+    const double previous = body->get_surface_pressure();
+    std::vector<Planet*> bodies{body};
+    std::vector<double> inclinations{0}, nodes{0};
+    CatalogReader::reconcile_exoplanet_inclinations(host, bodies, inclinations, nodes);
+    EXPECT_DOUBLE_EQ(body->mass, body->msini / sin(50 * fiftyseventh));
+    EXPECT_EQ(body->mass_evidence, PlanetMeasurement::estimated);
+    EXPECT_DOUBLE_EQ(body->surface_water_model["basis"]["mass_g"].get<double>(), body->mass);
+    EXPECT_NE(body->get_surface_pressure(), previous);
+    const json once = body->atm->pressure_model;
+    CatalogReader::reconcile_exoplanet_inclinations(host, bodies, inclinations, nodes);
+    EXPECT_EQ(body->atm->pressure_model, once);
+}
+
 TEST_F(CatalogParsingTest, ExoplanetJsonAcceptsAnnotatedMeasurements)
 {
     json source = {{"pl_name", "Estimated b"}, {"hostname", "Estimated"}, {"pl_orbper", "30?"},

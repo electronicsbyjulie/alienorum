@@ -1,7 +1,7 @@
 
 - [fixed] From the ocean worlds audit: "The local unified JSON contains a mixed row: `82 Eri d` has the long-period orbit but also 4.8 Earth masses, `pl_msinie = 2.98`, `pl_msinij = 0.01831`, an inclination field of 90°, and radius fields around 2 Earth radii. Those minimum-mass entries disagree: 0.01831 Jupiter masses is approximately 5.82 Earth masses, not 2.98. A separate `GJ 139 f` row describes essentially the same outer orbit with the newer minimum mass. This is an identification/provenance problem in the composite inputs, not evidence of different physical reservoirs." It looks like we're using the right values in the long run, but let's look into what's causing the discrepancies and see if there's a bug to fix.
 
-- Planetary volatiles budgets/atmospheric pressure and compensation must be calculated *after* the inclination mass update. See to it that we fix any cases where these calculations are done in the wrong sequence.
+- [fixed] Planetary volatiles budgets/atmospheric pressure and compensation must be calculated *after* the inclination mass update. See to it that we fix any cases where these calculations are done in the wrong sequence.
 
 - The composition budget assumes a 4.5 Gy age for both Tau Ceti and 82 Eridani. Both stars are actually much older than that. We should add stellar ages when known, estimate them if possible when unknown, and incorporate known and estimated ages into all calculations where stellar age would matter, including the volatiles budget.
 

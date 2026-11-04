@@ -3659,6 +3659,14 @@ static bool broad_exoplanet_inclination(const Planet* planet)
         fabs(planet->inclination_error_lower) >= 20 * fiftyseventh;
 }
 
+static void refresh_planet_mass_model(Planet& planet)
+{
+    if (planet.radius_evidence == PlanetMeasurement::estimated && !planet.radius_estimate_supplied)
+        planet.estimate_radius();
+    planet.classify();
+    planet.apply_cosmic_shoreline();
+}
+
 void CatalogReader::reconcile_exoplanet_inclinations(
     Star* host_star,
     const std::vector<Planet*>& planets,
@@ -3761,9 +3769,18 @@ void CatalogReader::reconcile_exoplanet_inclinations(
         if (!replace) continue;
         const double replacement = pincls[i] == 0 ? anchor : precise_reference;
         const double new_sin = sin(replacement);
-        if (planet && new_sin > 0.05 && planet->msini > 0) planet->mass = planet->msini / new_sin;
+        bool mass_changed = false;
+        if (planet && new_sin > 0.05 && planet->msini > 0 && planet->mass_evidence != PlanetMeasurement::observed)
+        {
+            const double mass = planet->msini / new_sin;
+            mass_changed = mass != planet->mass;
+            planet->mass = mass;
+            planet->mass_evidence = mass > planet->msini * 1.000001
+                ? PlanetMeasurement::estimated : PlanetMeasurement::minimum;
+        }
         pincls[i] = replacement;
         if (planet && planet->orbit) planet->orbit->inclination = replacement;
+        if (mass_changed) refresh_planet_mass_model(*planet);
     }
 }
 
@@ -4384,8 +4401,7 @@ void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>&
             {
                 p->mass_evidence = p->mass > p->msini * 1.000001
                     ? PlanetMeasurement::estimated : PlanetMeasurement::minimum;
-                p->classify();
-                p->apply_cosmic_shoreline();
+                refresh_planet_mass_model(*p);
             }
 
 #if _debug_exoplanet_inclinations
