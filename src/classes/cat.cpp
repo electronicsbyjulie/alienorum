@@ -4176,9 +4176,11 @@ void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>&
 #endif
 
         std::vector<Planet*> sys_planets;
+        std::vector<double> classified_masses;
         for (i = 0; i < (int)row.size(); i++)
         {
             sys_planets.push_back((Planet*)cels[row[i]]);
+            classified_masses.push_back(cels[row[i]]->mass);
         }
         reconcile_exoplanet_inclinations(s, sys_planets, pincls, pnodes);
         if (s->planets_heliocen_inclination) sysincl = s->planets_heliocen_inclination;
@@ -4378,6 +4380,13 @@ void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>&
 
             p->location.local_system_plane = s->location.local_system_plane;
             p->lock_equatorial_plane = false;
+            if (p->mass != classified_masses[i])
+            {
+                p->mass_evidence = p->mass > p->msini * 1.000001
+                    ? PlanetMeasurement::estimated : PlanetMeasurement::minimum;
+                p->classify();
+                p->apply_cosmic_shoreline();
+            }
 
 #if _debug_exoplanet_inclinations
             p->update_location(simnow);
@@ -7471,6 +7480,10 @@ ExoRow CatalogReader::exorow_from_json(const json& source, bool* ok)
     }
     r.transiting = std::isfinite(transit_flag) ? transit_flag == 1 : transit_method;
     if (row.contains("tran_flag") && row.at("tran_flag").is_boolean()) r.transiting = row.at("tran_flag").get<bool>();
+    const std::string radius_provenance = gets("pl_radprov");
+    r.radius_observed = r.transiting || radius_provenance == "Measured" || radius_provenance == "Observed";
+    if (row.contains("radius_observed") && row["radius_observed"].is_boolean())
+        r.radius_observed = row["radius_observed"].get<bool>();
     r.pl_orbincl = getd("pl_orbincl");
     r.pl_orbinclerr1 = getd("pl_orbinclerr1");
     r.pl_orbinclerr2 = getd("pl_orbinclerr2");
@@ -7548,6 +7561,7 @@ void CatalogReader::exorow_write_line(FILE* fp, const ExoRow& row)
     };
     for (double value : errors) write_exo_double(fp, value);
     write_exo_double(fp, row.transiting ? 1 : 0);
+    write_exo_double(fp, row.radius_observed ? 1 : 0);
 
     fputc('\n', fp);
 }
@@ -7615,6 +7629,9 @@ bool CatalogReader::exorow_read_line(FILE* fp, ExoRow& row)
     row.pl_bmasselim = read_exo_double(cursor);
     row.pl_radelim = read_exo_double(cursor);
     row.transiting = read_exo_double(cursor) == 1;
+    // Older caches have no explicit radius provenance. A transit still supplies a
+    // radius measurement; an RV catalog's populated radius field does not.
+    row.radius_observed = row.transiting || read_exo_double(cursor) == 1;
 
     return true;
 }
@@ -8371,13 +8388,16 @@ bool CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, s
 
     new_planet->mass_evidence = pl_massknown ? PlanetMeasurement::observed
         : pl_msini_known ? PlanetMeasurement::minimum : PlanetMeasurement::unknown;
-    if (row.pl_bmassprov == "M-R relationship" || (mass_untrustworthy && pl_massknown))
+    if (row.pl_bmassprov == "M-R relationship" || row.pl_bmassprov == "Msin(i)/sin(i)"
+        || (mass_untrustworthy && pl_massknown))
         new_planet->mass_evidence = PlanetMeasurement::estimated;
     else if (row.pl_bmassprov == "Msini") new_planet->mass_evidence = PlanetMeasurement::minimum;
-    new_planet->radius_evidence = pl_radknown ? PlanetMeasurement::observed : PlanetMeasurement::unknown;
+    new_planet->radius_evidence = !pl_radknown ? PlanetMeasurement::unknown
+        : row.transiting || row.radius_observed ? PlanetMeasurement::observed : PlanetMeasurement::estimated;
     if (std::isfinite(row.pl_bmasselim) && row.pl_bmasselim != 0)
         new_planet->mass_evidence = row.pl_bmasselim > 0 ? PlanetMeasurement::minimum : PlanetMeasurement::estimated;
     if (std::isfinite(row.pl_radelim) && row.pl_radelim != 0) new_planet->radius_evidence = PlanetMeasurement::estimated;
+    new_planet->radius_estimate_supplied = pl_radknown && new_planet->radius_evidence == PlanetMeasurement::estimated;
     new_planet->classify(new_planet->is_in_con_HZ(), (pl_massknown || pl_msini_known) && pl_radknown);
 
     new_planet->estimate_albedo_and_absmagn();
@@ -8391,6 +8411,55 @@ bool CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, s
 
     planet_celids[host_star->seqno].push_back(new_planet->seqno);
     return true;
+}
+
+void CatalogReader::merge_exoplanet_solution(json& destination, const json& source)
+{
+    json measurements = json::array();
+    const auto remember = [&](const json& row)
+    {
+        const json entries = row.value("source_measurements", json::array());
+        if (entries.is_array() && !entries.empty())
+        {
+            for (const auto& entry : entries)
+                if (std::find(measurements.begin(), measurements.end(), entry) == measurements.end()) measurements.push_back(entry);
+        }
+        else
+        {
+            json entry = row;
+            entry.erase("source_measurements");
+            if (std::find(measurements.begin(), measurements.end(), entry) == measurements.end()) measurements.push_back(entry);
+        }
+    };
+    remember(destination);
+    remember(source);
+    merge_exoplanet_metallicity(destination, source);
+    // Prefer a coherent archive solution over a composite assembled from unrelated epochs.
+    // Keep every original row so later reconciliation can compare measurements by source.
+    if (source.value("source_catalog", "") == "NASA")
+    {
+        for (const std::string family : {"pl_orb", "pl_bmass", "pl_msini", "pl_rad", "pl_tran"})
+        {
+            bool supplied = false;
+            for (const auto& field : source.items())
+                if (field.key().rfind(family, 0) == 0 && !field.value().is_null()) supplied = true;
+            if (!supplied) continue;
+            std::vector<std::string> keys;
+            for (const auto& field : destination.items())
+                if (field.key().rfind(family, 0) == 0) keys.push_back(field.key());
+            for (const auto& key : keys) destination.erase(key);
+            for (const auto& field : source.items())
+                if (field.key().rfind(family, 0) == 0) destination[field.key()] = field.value();
+        }
+        destination["solution_source"] = "NASA";
+    }
+    for (const auto& field : source.items())
+    {
+        if (field.key() == "source_measurements" || field.key().rfind("st_met", 0) == 0) continue;
+        if (!field.value().is_null() && (!destination.contains(field.key()) || destination[field.key()].is_null()))
+            destination[field.key()] = field.value();
+    }
+    destination["source_measurements"] = std::move(measurements);
 }
 
 void CatalogReader::dedup_planets(json& planets_array)
@@ -8698,7 +8767,11 @@ void CatalogReader::dedup_planets(json& planets_array)
             }
 
             // Planet letter protection: 'b' vs 'c'
-            if (!candidates[idx1].letter.empty() && !candidates[idx2].letter.empty() &&
+            const double period_scale = std::max(candidates[idx1].per, candidates[idx2].per);
+            const bool same_orbit_across_sources = period_scale > 0 && candidates[idx1].per > 0 && candidates[idx2].per > 0
+                && fabs(candidates[idx1].per - candidates[idx2].per) / period_scale < .02
+                && planets_array[idx1].value("source_catalog", "") != planets_array[idx2].value("source_catalog", "");
+            if (!same_orbit_across_sources && !candidates[idx1].letter.empty() && !candidates[idx2].letter.empty() &&
                 candidates[idx1].letter != candidates[idx2].letter)
             {
                 continue;
@@ -8729,6 +8802,7 @@ void CatalogReader::dedup_planets(json& planets_array)
             {
                 auto& p1_json = planets_array[idx1];
                 const auto& p2_json = planets_array[idx2];
+                merge_exoplanet_solution(p1_json, p2_json);
                 merge_exoplanet_metallicity(p1_json, p2_json);
                 for (auto& [key, val] : p2_json.items())
                 {
@@ -8803,7 +8877,11 @@ void CatalogReader::dedup_planets(json& planets_array)
                 {
                     continue;
                 }
-                if (!candidates[idx1].letter.empty() && !candidates[idx2].letter.empty() &&
+                const double period_scale = std::max(candidates[idx1].per, candidates[idx2].per);
+                const bool same_orbit_across_sources = period_scale > 0 && candidates[idx1].per > 0 && candidates[idx2].per > 0
+                    && fabs(candidates[idx1].per - candidates[idx2].per) / period_scale < .02
+                    && planets_array[idx1].value("source_catalog", "") != planets_array[idx2].value("source_catalog", "");
+                if (!same_orbit_across_sources && !candidates[idx1].letter.empty() && !candidates[idx2].letter.empty() &&
                     candidates[idx1].letter != candidates[idx2].letter)
                 {
                     continue;
@@ -8833,6 +8911,7 @@ void CatalogReader::dedup_planets(json& planets_array)
                 {
                     auto& p1_json = planets_array[idx1];
                     const auto& p2_json = planets_array[idx2];
+                    merge_exoplanet_solution(p1_json, p2_json);
                     merge_exoplanet_metallicity(p1_json, p2_json);
                     for (auto& [key, val] : p2_json.items())
                     {
@@ -8943,7 +9022,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
         std::ifstream cache_header(derived_cache);
         std::string version;
         std::getline(cache_header, version);
-        derived_cache_valid = version == "# EXO_TRANSIT3";
+        derived_cache_valid = version == "# EXO_TRANSIT4";
 
     }
 
@@ -9378,9 +9457,18 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                 }
 
                 // 2. Field-level Merge
+                if (merged_planets.count(target_key))
+                {
+                    const json& previous = merged_planets.at(target_key);
+                    const double first = previous.value("pl_orbper", json()).is_number() ? previous["pl_orbper"].get<double>() : 0;
+                    const double second = litem.value("pl_orbper", json()).is_number() ? litem["pl_orbper"].get<double>() : 0;
+                    if (first > 0 && second > 0 && fabs(first - second) > .05 * std::max(first, second))
+                        target_key = norm + "@" + std::to_string(second);
+                }
                 if (merged_planets.find(target_key) != merged_planets.end())
                 {
                     auto& existing = merged_planets[target_key];
+                    merge_exoplanet_solution(existing, litem);
                     merge_exoplanet_metallicity(existing, litem);
                     for (auto& [key, value] : litem.items())
                     {
@@ -9536,7 +9624,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
     if (cachefp)
     {
         setvbuf(cachefp, cache_io_buf, _IOFBF, sizeof(cache_io_buf));
-        fputs("# EXO_TRANSIT3\n", cachefp);
+        fputs("# EXO_TRANSIT4\n", cachefp);
     }
 
     int rows_written = 0;

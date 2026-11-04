@@ -2331,6 +2331,137 @@ public:
     using CatalogReader::apply_stellar_abundances;
 };
 
+TEST_F(CatalogParsingTest, MetalPoorRvCatalogPlanetsUseChemistryAfterCacheAndInclinationUpdates)
+{
+    Star::load_main_seq_dat();
+    std::ifstream input("catalogs/exoplanets.json");
+    ASSERT_TRUE(input.good());
+    const json catalog = json::parse(input);
+    for (const char* target : {"tau Cet f", "82 Eri d"})
+    {
+        auto found = std::find_if(catalog.begin(), catalog.end(), [&](const json& row)
+        {
+            return row.value("pl_name", "") == target;
+        });
+        ASSERT_NE(found, catalog.end());
+        for (bool cached : {false, true})
+        {
+            if (!cels[0]) make_star("Sun");
+            const bool tau = std::string(target) == "tau Cet f";
+            Star* host = make_star(tau ? "Tau Ceti" : "82 Eridani");
+            host->HD = tau ? 10700 : 20794;
+            host->temperature = 0;
+            host->BV_color = .72;
+            host->absolute_magnitude = tau ? 5.68 : 5.35;
+            strcpy(host->spectral_type, "G8V");
+            host->has_disk = true;
+            host->disk_heliocen_inclination = (tau ? 35 : 50) * fiftyseventh;
+            host->metallicity = tau ? -.52 : -.42;
+            host->metallicity_ratio = "[Fe/H]";
+            host->metallicity_source = "NASA pscomppars";
+            host->metallicity_error_upper = .02;
+            host->metallicity_error_lower = -.02;
+            TestCatalogReader reader;
+            bool valid = false;
+            ExoRow row = reader.exorow_from_json(*found, &valid);
+            ASSERT_TRUE(valid);
+            ASSERT_FALSE(row.transiting);
+            ASSERT_FALSE(row.radius_observed);
+            if (cached)
+            {
+                FILE* file = std::tmpfile();
+                ASSERT_NE(file, nullptr);
+                reader.exorow_write_line(file, row);
+                rewind(file);
+                ExoRow restored;
+                ASSERT_TRUE(reader.exorow_read_line(file, restored));
+                fclose(file);
+                row = restored;
+            }
+            std::map<int, std::vector<int>> planets;
+            unsigned int count = 0;
+            ASSERT_TRUE(reader.add_exoplanet_from_row(row, host, planets, count));
+            reader.apply_exoplanet_names(planets);
+            ASSERT_EQ(count, 1u);
+            Planet* body = static_cast<Planet*>(cels[planets.at(host->seqno).front()]);
+            EXPECT_EQ(body->type, rocky) << target;
+            EXPECT_EQ(body->radius_evidence, PlanetMeasurement::estimated);
+            EXPECT_TRUE(body->radius_estimate_supplied);
+            EXPECT_NEAR(body->mass / earth_mass, tau ? 6.870596 : 7.596236, .001);
+            EXPECT_TRUE(body->classification_evidence["metallicity_applied"].get<bool>());
+            EXPECT_EQ(body->classification_evidence["metallicity_model"], "cool_formation_envelope_prior");
+            EXPECT_FALSE(body->classification_evidence["density_observed"].get<bool>());
+            EXPECT_FALSE(body->classification_evidence.contains("large_radius_probability"));
+            ASSERT_NE(body->atm, nullptr);
+            EXPECT_DOUBLE_EQ(body->surface_water_model["basis"]["mass_g"].get<double>(), body->mass);
+            const double radius = body->volumetric_mean_radius;
+            host->metallicity = 0;
+            body->classify(false, false, true);
+            EXPECT_EQ(body->type, ice_giant);
+            EXPECT_DOUBLE_EQ(body->volumetric_mean_radius, radius);
+            delete_the_universe();
+        }
+    }
+}
+
+TEST_F(CatalogParsingTest, RadiusMeasurementProvenanceSurvivesTheDerivedCache)
+{
+    TestCatalogReader reader;
+    for (const char* provenance : {"", "Observed", "M-R relationship"})
+    {
+        for (bool transit : {false, true})
+        {
+            bool valid = false;
+            ExoRow row = reader.exorow_from_json({{"pl_name", "Example b"}, {"hostname", "Example"},
+                {"pl_orbper", 30}, {"pl_rade", "2.04?"}, {"pl_radprov", provenance}, {"tran_flag", transit}}, &valid);
+            ASSERT_TRUE(valid);
+            const bool observed = transit || std::string(provenance) == "Observed";
+            EXPECT_EQ(row.radius_observed, observed);
+            EXPECT_DOUBLE_EQ(row.pl_rade, 2.04);
+            FILE* file = std::tmpfile();
+            ASSERT_NE(file, nullptr);
+            reader.exorow_write_line(file, row);
+            rewind(file);
+            ExoRow restored;
+            ASSERT_TRUE(reader.exorow_read_line(file, restored));
+            fclose(file);
+            EXPECT_EQ(restored.radius_observed, observed);
+            EXPECT_DOUBLE_EQ(restored.pl_rade, 2.04);
+        }
+    }
+}
+
+TEST_F(CatalogParsingTest, RenamedPlanetLettersMergeByOrbitWithoutMixingPhysicalSolutions)
+{
+    json rows = json::array(
+    {
+        {{"pl_name", "82 Eri c"}, {"hostname", "82 Eri"}, {"source_catalog", "EU"},
+            {"ra", 49.99}, {"dec", -43.06}, {"pl_orbper", 89.68}, {"pl_msinie", 2.98}},
+        {{"pl_name", "82 Eri d"}, {"hostname", "82 Eri"}, {"source_catalog", "EU"},
+            {"ra", 49.99}, {"dec", -43.06}, {"pl_orbper", 648.2}, {"pl_msinie", 2.98},
+            {"pl_msinij", .01831}, {"pl_bmasse", 4.8}},
+        {{"pl_name", "GJ 139 f"}, {"hostname", "GJ 139"}, {"source_catalog", "NASA"},
+            {"ra", 49.99}, {"dec", -43.06}, {"pl_orbper", 647.6}, {"pl_msinie", 5.82},
+            {"pl_msinij", .01831177}, {"pl_bmasse", 5.82}, {"pl_bmassprov", "Msini"}}
+    });
+    CatalogReader::dedup_planets(rows);
+    ASSERT_EQ(rows.size(), 2u);
+    for (const auto& row : rows)
+    {
+        if (row["pl_orbper"].get<double>() < 100) EXPECT_DOUBLE_EQ(row["pl_msinie"], 2.98);
+        else
+        {
+            EXPECT_DOUBLE_EQ(row["pl_orbper"], 647.6);
+            EXPECT_DOUBLE_EQ(row["pl_msinie"], 5.82);
+            EXPECT_DOUBLE_EQ(row["pl_bmasse"], 5.82);
+            ASSERT_EQ(row["source_measurements"].size(), 2u);
+        }
+    }
+    const json once = rows;
+    CatalogReader::dedup_planets(rows);
+    EXPECT_EQ(rows, once);
+}
+
 TEST_F(CatalogParsingTest, ExoplanetJsonAcceptsAnnotatedMeasurements)
 {
     json source = {{"pl_name", "Estimated b"}, {"hostname", "Estimated"}, {"pl_orbper", "30?"},
@@ -3567,7 +3698,7 @@ TEST_F(StellarDownloadTest, RecentDerivedExoplanetCachesWorkWithoutTheJsonSource
         const char* path = stars_only ? "catalogs/exoplanets_stars.dat" : "catalogs/exoplanets_planets.dat";
         FILE* cache = fopen(path, "wb");
         ASSERT_NE(cache, nullptr);
-        fputs("# EXO_TRANSIT3\n", cache);
+        fputs("# EXO_TRANSIT4\n", cache);
         TestCatalogReader::exorow_write_line(cache, row);
         fclose(cache);
         DownloadReader reader;

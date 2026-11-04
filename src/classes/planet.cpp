@@ -683,6 +683,7 @@ void Planet::classify(bool HZ, bool mnrk, bool ck)
     const bool dense_solid = std::isfinite(density_constraint) && density_constraint >= 3.2 && mass < jupiter_mass;
     bool solid = dense_solid || (valid_mass && mass < rocky_mass_cutoff && (!measured_radius || radius_earth <= 1.8)) ||
         (!valid_mass && measured_radius && radius_earth <= 1.8);
+    bool compact_prior = false;
     classification_evidence["basis"] = measured_radius && valid_mass
         ? classification_evidence["density_constraint_basis"].get<std::string>()
         : measured_radius ? "observed_radius" : "mass_with_radius_unavailable_or_estimated";
@@ -690,7 +691,8 @@ void Planet::classify(bool HZ, bool mnrk, bool ck)
     const bool inclination_mass = mass_evidence == PlanetMeasurement::estimated
         && std::isfinite(msini) && msini > 0 && msini <= mass;
     classification_evidence["mass_from_rv_inclination"] = inclination_mass;
-    if (host && valid_mass && (mass_evidence == PlanetMeasurement::observed || inclination_mass)
+    if (host && valid_mass && (mass_evidence == PlanetMeasurement::observed || inclination_mass
+        || mass_evidence == PlanetMeasurement::minimum)
         && !measured_radius && typeclass() == class_planet)
     {
         const double error_mass = inclination_mass ? msini : mass;
@@ -700,13 +702,18 @@ void Planet::classify(bool HZ, bool mnrk, bool ck)
         classification_evidence["metallicity_model"] = prior.reason;
         if (prior.applicable)
         {
-            classification_evidence[prior.class_balanced ? "baseline_large_radius_score" : "baseline_large_radius_probability"] = prior.baseline;
-            classification_evidence[prior.class_balanced ? "large_radius_score" : "large_radius_probability"] = prior.probability;
-            // The balanced fit supplies the decision; the mass-only fit is a diagnostic.
-            if (prior.class_balanced ||
+            classification_evidence[prior.formation_scenario ? "baseline_envelope_score"
+                : prior.class_balanced ? "baseline_large_radius_score" : "baseline_large_radius_probability"] = prior.baseline;
+            classification_evidence[prior.formation_scenario ? "envelope_score"
+                : prior.class_balanced ? "large_radius_score" : "large_radius_probability"] = prior.probability;
+            classification_evidence["metallicity_support"] = prior.formation_scenario ? "formation_scenario" : "empirical_radius_proxy";
+            classification_evidence["metallicity_empirical_weight"] = prior.empirical_weight;
+            // Scores select a scenario; measured radii and explicit type locks outrank it.
+            if (prior.class_balanced || prior.formation_scenario ||
                 (solid == (prior.baseline < 0.5) && (prior.baseline < 0.5) != (prior.probability < 0.5)))
             {
                 solid = prior.probability < 0.5;
+                compact_prior = solid;
                 classification_evidence["metallicity_applied"] = true;
             }
         }
@@ -718,10 +725,11 @@ void Planet::classify(bool HZ, bool mnrk, bool ck)
         if (std::isfinite(surface_temperature) && surface_temperature > lava_T_cutoff) type = lavaworld;
         else
         {
-            // Dense silicate bodies remain rocky in the cold; porous warm bodies can be rocky too.
+            // A compact-interior decision remains rocky when cold. Surface ice is handled
+            // by climate and terrain, rather than undoing the composition decision.
             const bool cold = std::isfinite(equilibrium) ? equilibrium < 170.0
                 : std::isfinite(surface_temperature) && surface_temperature < 170.0;
-            type = cold && !dense_solid ? icy : rocky;
+            type = cold && !dense_solid && !compact_prior ? icy : rocky;
         }
     }
     else
@@ -733,7 +741,8 @@ void Planet::classify(bool HZ, bool mnrk, bool ck)
         else type = gas_giant;
     }
     classification_evidence["class_code"] = static_cast<int>(type);
-    if (valid_mass && (!valid_radius || (radius_evidence == PlanetMeasurement::estimated && previous_type != type)))
+    if (valid_mass && (!valid_radius || (radius_evidence == PlanetMeasurement::estimated
+        && !radius_estimate_supplied && previous_type != type)))
     {
         estimate_radius();
         classification_evidence["radius_evidence"] = static_cast<int>(radius_evidence);
@@ -967,12 +976,14 @@ void Planet::set_explicit_mass(double value)
 void Planet::set_explicit_radius(double value)
 {
     volumetric_mean_radius = value;
+    radius_estimate_supplied = false;
     radius_evidence = std::isfinite(value) && value > 0 ? PlanetMeasurement::observed : PlanetMeasurement::unknown;
     radius_error_upper = radius_error_lower = NAN;
 }
 
 void Planet::estimate_radius()
 {
+    radius_estimate_supplied = false;
     radius_evidence = PlanetMeasurement::estimated;
     // https://doi.org/10.1051/0004-6361/202348690
     if ((mass < rocky_mass_cutoff && !uses_gaseous_map(type))
@@ -2001,6 +2012,7 @@ json Planet::to_json()
     towrite["lock_system_plane"] = lock_system_plane;
     towrite["mass_evidence"] = static_cast<int>(mass_evidence);
     towrite["radius_evidence"] = static_cast<int>(radius_evidence);
+    if (radius_estimate_supplied) towrite["radius_estimate_supplied"] = true;
     if (std::isfinite(mass_error_upper)) towrite["mass_error_upper"] = mass_error_upper;
     if (std::isfinite(mass_error_lower)) towrite["mass_error_lower"] = mass_error_lower;
     if (std::isfinite(radius_error_upper)) towrite["radius_error_upper"] = radius_error_upper;
@@ -2103,6 +2115,7 @@ bool Planet::from_json(const json& j)
     };
     mass_evidence = evidence("mass_evidence");
     radius_evidence = evidence("radius_evidence");
+    radius_estimate_supplied = j.value("radius_estimate_supplied", false);
     const auto optional_number = [&](const char* key) -> double
     {
         auto it = j.find(key);

@@ -7,6 +7,7 @@
 #include <fstream>
 #include <chrono>
 #include <thread>
+#include <tuple>
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp>
 #include "../classes/planet.h"
@@ -1166,10 +1167,95 @@ TEST_F(PlanetClassificationEvidenceTest, ShippedBalancedModelDrivesUnmeasuredRad
     host->metallicity_ratio = "[M/H]";
     EXPECT_FALSE(planet_envelope_prior(*host, 6, 350, .05).applicable);
     host->metallicity_ratio = "[Fe/H]";
-    EXPECT_FALSE(planet_envelope_prior(*host, 6, 350, .5).applicable);
+    EXPECT_TRUE(planet_envelope_prior(*host, 6, 350, .5).formation_scenario);
     EXPECT_FALSE(planet_envelope_prior(*host, 100, 350, .05).applicable);
     host->metallicity_error_upper = NAN;
-    EXPECT_FALSE(planet_envelope_prior(*host, 6, 350, .05).applicable);
+    EXPECT_TRUE(planet_envelope_prior(*host, 6, 350, .05).formation_scenario);
+}
+
+TEST_F(PlanetClassificationEvidenceTest, CoolMetalPoorRvPlanetsUseFormationPriorWithoutObservedRadii)
+{
+    Star::load_main_seq_dat();
+    for (const auto& target : std::vector<std::tuple<const char*, double, double, double, double>>
+        {{"Tau Ceti", 6.870596, 3.940812, -.52, .27}, {"82 Eridani", 7.596236, 5.819054, -.42, .35}})
+    {
+        const auto [name, mass, minimum, metal, flux] = target;
+        Star* host = make_star(name);
+        strcpy(host->spectral_type, "G8 V");
+        host->BV_color = .72;
+        host->temperature = 0;
+        host->metallicity = metal;
+        host->metallicity_ratio = "[Fe/H]";
+        host->metallicity_source = "NASA pscomppars";
+        host->metallicity_error_upper = .02;
+        host->metallicity_error_lower = -.02;
+        const double temperature = host->estimate_temperature();
+        const double luminosity = pow(magnbase, 4.74 - host->absolute_magnitude - Star::bolometric_correction(temperature));
+        Planet* body = make_planet(host, "Anonymous RV planet", AU * sqrt(luminosity / flux));
+        body->mass = mass * earth_mass;
+        body->msini = minimum * earth_mass;
+        body->mass_evidence = PlanetMeasurement::estimated;
+        body->radius_evidence = PlanetMeasurement::estimated;
+        body->radius_estimate_supplied = true;
+        body->volumetric_mean_radius = 2.04 * earth_radius;
+        body->temperature = 280;
+        for (cel_obj_type starting_type : {rocky, ice_giant})
+        {
+            body->type = starting_type;
+            body->classify(false, true, true);
+            EXPECT_EQ(body->type, rocky) << name;
+            EXPECT_TRUE(body->classification_evidence["metallicity_applied"].get<bool>());
+            EXPECT_EQ(body->classification_evidence["metallicity_model"], "cool_formation_envelope_prior");
+            EXPECT_LT(body->classification_evidence["envelope_score"].get<double>(), .5);
+            EXPECT_GT(body->classification_evidence["baseline_envelope_score"].get<double>(), .5);
+            EXPECT_FALSE(body->classification_evidence["density_observed"].get<bool>());
+            EXPECT_DOUBLE_EQ(body->volumetric_mean_radius, 2.04 * earth_radius);
+        }
+        Planet restored;
+        ASSERT_TRUE(restored.from_json(body->to_json()));
+        EXPECT_TRUE(restored.radius_estimate_supplied);
+        EXPECT_EQ(restored.radius_evidence, PlanetMeasurement::estimated);
+        host->metallicity = 0;
+        body->classify(false, false, true);
+        EXPECT_EQ(body->type, ice_giant);
+        host->metallicity = metal;
+        body->mass = body->msini;
+        body->mass_evidence = PlanetMeasurement::minimum;
+        body->classify(false, false, true);
+        EXPECT_TRUE(body->classification_evidence["metallicity_applied"].get<bool>());
+        body->set_explicit_radius(earth_radius);
+        EXPECT_FALSE(body->radius_estimate_supplied);
+    }
+}
+
+TEST_F(PlanetClassificationEvidenceTest, CoolPriorJoinsTheEmpiricalModelContinuously)
+{
+    Star::load_main_seq_dat();
+    Star* host = make_star();
+    host->metallicity = -.3;
+    host->metallicity_ratio = "[Fe/H]";
+    host->metallicity_source = "NASA pscomppars";
+    host->metallicity_error_upper = .02;
+    host->metallicity_error_lower = -.02;
+    for (double flux : {1.0, 2.49})
+    {
+        auto below = planet_envelope_prior(*host, 6, flux * (1 - 1e-6), .05);
+        auto above = planet_envelope_prior(*host, 6, flux * (1 + 1e-6), .05);
+        ASSERT_TRUE(below.applicable);
+        ASSERT_TRUE(above.applicable);
+        EXPECT_NEAR(below.probability, above.probability, 1e-5);
+    }
+    // Metal-poor stars outside the transit sample still supply a formation prior.
+    host->metallicity = -.52;
+    host->metallicity_error_upper = host->metallicity_error_lower = NAN;
+    auto low = planet_envelope_prior(*host, 8, .3);
+    host->metallicity = .3;
+    auto high = planet_envelope_prior(*host, 8, .3);
+    ASSERT_TRUE(low.applicable);
+    ASSERT_TRUE(high.applicable);
+    EXPECT_LT(low.probability, high.probability);
+    EXPECT_TRUE(low.formation_scenario);
+    EXPECT_DOUBLE_EQ(low.empirical_weight, 0);
 }
 
 struct SolarPrediction

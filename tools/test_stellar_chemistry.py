@@ -84,6 +84,7 @@ class CalibrationSelectionTest(unittest.TestCase):
         self.assertEqual(rebuilt["training"], "class_balanced_logistic")
         self.assertEqual(rebuilt["regularization"], [0, 1.5, 1.5, 7.5])
         self.assertNotIn("improvement_95_percent_host_bootstrap", rebuilt)
+        self.assertEqual(rebuilt["formation_prior"], shipped["formation_prior"])
         for key in ("metallicity_coefficients", "baseline_coefficients", "validation_results"):
             self.assertEqual(rebuilt[key], shipped[key])
 

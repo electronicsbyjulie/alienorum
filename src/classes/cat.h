@@ -39,6 +39,7 @@ namespace alienorum
         double pl_radeerr1=NAN, pl_radeerr2=NAN, pl_radjerr1=NAN, pl_radjerr2=NAN;
         double pl_bmasselim=NAN, pl_radelim=NAN;
         bool transiting = false;
+        bool radius_observed = false;
         double pl_orbinclerr1=NAN, pl_orbinclerr2=NAN;
         double pl_orbincl=NAN, pl_msinij=NAN, pl_msinie=NAN, pl_bmassj=NAN, pl_bmasse=NAN;
         double pl_radj=NAN, pl_rade=NAN, pl_trueobliq=NAN;
@@ -125,6 +126,7 @@ namespace alienorum
         static bool apply_exoplanet_host_position(ExoRow& row, const std::map<std::string, ExoRow>& positions);
         static bool accept_exoplanet_source(json& row, bool from_nasa);
         static void merge_exoplanet_metallicity(json& destination, const json& source);
+        static void merge_exoplanet_solution(json& destination, const json& source);
         static void apply_exoplanet_metallicity(const ExoRow& row, Star* host);
         void apply_stellar_abundances(Star* host);
         Star* resolve_or_create_exostar(const ExoRow& row, bool loaded_starsonly, bool* was_new,

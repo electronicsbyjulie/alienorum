@@ -7983,5 +7983,24 @@
     ],
     "solar_system_in_training": false,
     "benchmark_sha256": "c090b0f4e5dfb9c611f898b9e8a036d1d4c9a2ef3baf9fbd0672ddd71047c28f",
-    "selection": "Measured mass and radius with finite errors; mass error <=35%; radius error <=15%; Fe/H error <=0.2 dex; dwarf logg 4.0-4.7; compact or extended radius labels"
+    "selection": "Measured mass and radius with finite errors; mass error <=35%; radius error <=15%; Fe/H error <=0.2 dex; dwarf logg 4.0-4.7; compact or extended radius labels",
+    "formation_prior": {
+        "version": 1,
+        "minimum_mass_earth": 0.1,
+        "maximum_mass_earth": 30,
+        "solar_transition_mass_earth": 4.37,
+        "log_mass_coefficient": 2.0,
+        "metallicity_log_odds_coefficient": 3.0,
+        "cool_flux_earth": 1.0,
+        "irradiation_escape_scale_earth": 100.0,
+        "irradiation_escape_coefficient": 0.5,
+        "interpretation": "Scenario envelope score, not a calibrated composition probability",
+        "coefficients_source": "Scenario choices anchored to the existing mass transition; literature motivates direction and overlap, not these coefficient values",
+        "scope": "Unmeasured radii around F8-K2 dwarfs, including cool metal-poor RV systems",
+        "transition": "Smooth log-odds join from one Earth flux to the empirical sample boundary",
+        "references": [
+            "https://arxiv.org/abs/1911.04745",
+            "https://arxiv.org/abs/1405.7695"
+        ]
+    }
 }

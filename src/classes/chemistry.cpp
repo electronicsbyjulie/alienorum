@@ -273,9 +273,24 @@ void CatalogReader::apply_stellar_abundances(Star* host)
 MetallicityPrior alienorum::planet_envelope_prior(const Star& host, double earth_masses, double irradiation, double mass_relative_error)
 {
     MetallicityPrior result;
+    const json model = classification_model();
+    const json scenario = model.value("formation_prior", json::object());
     double metal, error;
-    if (!host.calibrated_iron_abundance(metal, error)) { result.reason = "unqualified_iron_abundance"; return result; }
-    const char* spectrum = host.spectral_type;
+    const bool calibrated_abundance = host.calibrated_iron_abundance(metal, error);
+    if (!calibrated_abundance)
+    {
+        if (scenario.empty() || host.metallicity_ratio != "[Fe/H]" || !std::isfinite(host.metallicity))
+        {
+            result.reason = "unqualified_iron_abundance";
+            return result;
+        }
+        metal = host.metallicity;
+        error = NAN;
+    }
+    std::string compact_spectrum;
+    for (unsigned char c : std::string(host.spectral_type))
+        if (!std::isspace(c)) compact_spectrum += c;
+    const char* spectrum = compact_spectrum.c_str();
     if (*spectrum == 'd') ++spectrum;
     if (!spectrum[0] || !spectrum[1] || !std::isdigit(static_cast<unsigned char>(spectrum[1])))
     {
@@ -285,7 +300,6 @@ MetallicityPrior alienorum::planet_envelope_prior(const Star& host, double earth
     const double subtype = std::strtod(spectrum + (spectrum[0] ? 1 : 0), nullptr);
     if (!host.is_main_sequence() || !((spectrum[0] == 'F' && subtype >= 8) || spectrum[0] == 'G' ||
         (spectrum[0] == 'K' && subtype <= 2))) { result.reason = "outside_stellar_domain"; return result; }
-    const json model = classification_model();
     if (!model.contains("schema") || !model["schema"].is_number_integer() ||
         (model["schema"] != 1 && model["schema"] != 2) ||
         !model.contains("enabled") || !model["enabled"].is_boolean() || !model["enabled"].get<bool>())
@@ -317,12 +331,51 @@ MetallicityPrior alienorum::planet_envelope_prior(const Star& host, double earth
         return bounds.is_array() && bounds.size() == 2 && bounds[0].is_number() && bounds[1].is_number() &&
             value >= bounds[0].get<double>() && value <= bounds[1].get<double>();
     };
-    if (!(earth_masses > 0) || !(irradiation > 0) || !within("mass_earth", earth_masses) || !within("irradiation_earth", irradiation) ||
-        !within("metallicity_dex", metal) || !within("temperature_k", host.temperature) ||
+    MetallicityPrior formation;
+    const double transition_mass = numeric(scenario, "solar_transition_mass_earth");
+    const double mass_slope = numeric(scenario, "log_mass_coefficient");
+    const double metal_slope = numeric(scenario, "metallicity_log_odds_coefficient");
+    const double escape_scale = numeric(scenario, "irradiation_escape_scale_earth");
+    const double escape_slope = numeric(scenario, "irradiation_escape_coefficient");
+    const double cool_flux = numeric(scenario, "cool_flux_earth");
+    if (std::isfinite(earth_masses) && earth_masses > 0 && std::isfinite(irradiation) && irradiation > 0
+        && transition_mass > 0 && mass_slope > 0 && metal_slope > 0 && escape_scale > 0
+        && escape_slope >= 0 && std::isfinite(cool_flux) && cool_flux > 0
+        && earth_masses >= numeric(scenario, "minimum_mass_earth")
+        && earth_masses <= numeric(scenario, "maximum_mass_earth"))
+    {
+        // Formation odds for unmeasured radii, including cool RV planets. These coefficients
+        // describe an explicit scenario, not a fit extrapolated from the hot transit sample.
+        // Otegi et al. (2020), https://arxiv.org/abs/1911.04745, finds overlapping solid
+        // and volatile-rich masses; Buchhave et al. (2014), https://arxiv.org/abs/1405.7695,
+        // motivates a metallicity preference rather than a deterministic composition rule.
+        const double baseline = mass_slope * std::log(earth_masses / transition_mass)
+            - escape_slope * std::log1p(std::max(0.0, irradiation - cool_flux) / escape_scale);
+        const auto logistic = [](double value) { return 1.0 / (1.0 + std::exp(-std::clamp(value, -40.0, 40.0))); };
+        formation.applicable = true;
+        formation.formation_scenario = true;
+        formation.empirical_weight = 0;
+        formation.baseline = logistic(baseline);
+        formation.probability = logistic(baseline + metal_slope * metal);
+        formation.reason = irradiation <= cool_flux ? "cool_formation_envelope_prior" : "formation_envelope_prior";
+    }
+    const double temperature = host.temperature > 0 ? host.temperature
+        : Star::interpolate_mseq_temp(Star::get_mseqidx_from_BV(host.BV_color));
+    // Evaluate only at the fitted flux boundary when joining to the cool scenario. No
+    // linear continuation of the hot sample's irradiation coefficient to cool orbits.
+    double fitted_flux = irradiation;
+    const json flux_bounds = model.value("domain", json::object()).value("irradiation_earth", json::array());
+    const double minimum_flux = flux_bounds.is_array() && flux_bounds.size() == 2 && flux_bounds[0].is_number()
+        ? flux_bounds[0].get<double>() : NAN;
+    if (formation.applicable && std::isfinite(minimum_flux)) fitted_flux = std::max(irradiation, minimum_flux);
+    if (!(earth_masses > 0) || !(irradiation > 0) || !calibrated_abundance
+        || !within("mass_earth", earth_masses) || !within("irradiation_earth", fitted_flux)
+        || !within("metallicity_dex", metal) || !within("temperature_k", temperature) ||
         !std::isfinite(numeric(model, "maximum_metallicity_error")) || error > numeric(model, "maximum_metallicity_error") ||
         !std::isfinite(mass_relative_error) || mass_relative_error < 0 ||
         !std::isfinite(numeric(model, "maximum_mass_relative_error")) || mass_relative_error > numeric(model, "maximum_mass_relative_error"))
     {
+        if (formation.applicable) return formation;
         result.reason = "outside_calibration_domain";
         return result;
     }
@@ -330,7 +383,7 @@ MetallicityPrior alienorum::planet_envelope_prior(const Star& host, double earth
     {
         const size_t count = metallicity ? 4 : 3;
         if (!model.contains(key) || !model[key].is_array() || model[key].size() != count) return NAN;
-        const double features[] = {1, log10(earth_masses), log10(irradiation), metal};
+        const double features[] = {1, log10(earth_masses), log10(fitted_flux), metal};
         double score = 0;
         for (size_t i = 0; i < count; ++i)
         {
@@ -345,5 +398,23 @@ MetallicityPrior alienorum::planet_envelope_prior(const Star& host, double earth
     result.reason = result.applicable
         ? result.class_balanced ? "balanced_large_radius_prior" : "validated_large_radius_prior"
         : "invalid_model";
+    if (formation.applicable && result.applicable && irradiation < minimum_flux)
+    {
+        const double fraction = std::clamp(std::log(irradiation / cool_flux) / std::log(minimum_flux / cool_flux), 0.0, 1.0);
+        const double weight = fraction * fraction * (3 - 2 * fraction);
+        if (weight == 0) return formation;
+        const auto blend = [&](double cool, double fitted)
+        {
+            cool = std::clamp(cool, 1e-12, 1 - 1e-12);
+            fitted = std::clamp(fitted, 1e-12, 1 - 1e-12);
+            const double odds = (1 - weight) * std::log(cool / (1 - cool)) + weight * std::log(fitted / (1 - fitted));
+            return 1.0 / (1.0 + std::exp(-odds));
+        };
+        result.baseline = blend(formation.baseline, result.baseline);
+        result.probability = blend(formation.probability, result.probability);
+        result.empirical_weight = weight;
+        result.formation_scenario = true;
+        result.reason = "blended_formation_envelope_prior";
+    }
     return result;
 }

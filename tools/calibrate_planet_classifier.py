@@ -62,6 +62,20 @@ def sample(row):
 REGULARIZATION = [0, 1.5, 1.5, 7.5]
 
 
+def formation_prior():
+    # Explicit scenario coefficients, separate from the hot-transit population fit.
+    # A dex of Fe/H changes envelope odds by exp(3); it does not assign bulk water.
+    return dict(version=1, minimum_mass_earth=0.1, maximum_mass_earth=30,
+        solar_transition_mass_earth=4.37, log_mass_coefficient=2.0,
+        metallicity_log_odds_coefficient=3.0, cool_flux_earth=1.0,
+        irradiation_escape_scale_earth=100.0, irradiation_escape_coefficient=0.5,
+        interpretation="Scenario envelope score, not a calibrated composition probability",
+        coefficients_source="Scenario choices anchored to the existing mass transition; literature motivates direction and overlap, not these coefficient values",
+        scope="Unmeasured radii around F8-K2 dwarfs, including cool metal-poor RV systems",
+        transition="Smooth log-odds join from one Earth flux to the empirical sample boundary",
+        references=["https://arxiv.org/abs/1911.04745", "https://arxiv.org/abs/1405.7695"])
+
+
 def calibrate(rows):
     # Local import shares the experiment's solver without a module import cycle.
     from experiment_planet_class_weights import evaluate, fit
@@ -90,6 +104,7 @@ def calibrate(rows):
         class_weights="Equal total compact and bulky weight in every training partition",
         score_interpretation="Class-balanced scores are not calibrated population probabilities",
         target="Large-radius proxy: R >= 2 Earth radii versus compact R <= 1.4 Earth radii; not a measured composition",
+        formation_prior=formation_prior(),
         feature_order=["intercept", "log10_mass_earth", "log10_irradiation_earth", "stellar_Fe_H_dex"],
         baseline_coefficients=fit(rows, 3, True, REGULARIZATION[:3]),
         metallicity_coefficients=fit(rows, 4, True, REGULARIZATION),

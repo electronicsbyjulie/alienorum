@@ -40,6 +40,7 @@ namespace alienorum
         std::mutex saved_render_mutex;
         PlanetMeasurement mass_evidence = PlanetMeasurement::unknown;
         PlanetMeasurement radius_evidence = PlanetMeasurement::unknown;
+        bool radius_estimate_supplied = false;
         double mass_error_upper = NAN, mass_error_lower = NAN;
         double radius_error_upper = NAN, radius_error_lower = NAN;
         json classification_evidence = nullptr;
