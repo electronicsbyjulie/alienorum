@@ -5,7 +5,7 @@
 
 - [fixed] The composition budget assumes a 4.5 Gy age for both Tau Ceti and 82 Eridani. Both stars are actually much older than that. We should add stellar ages when known, estimate them if possible when unknown, and incorporate known and estimated ages into all calculations where stellar age would matter, including the volatiles budget.
 
-- `CatalogReader::add_exoplanet_from_row` sets a supplied radius to `observed` without requiring a transit or another actual radius measurement. Only observed radii should be marked observed.
+- [fixed] `CatalogReader::add_exoplanet_from_row` sets a supplied radius to `observed` without requiring a transit or another actual radius measurement. Only observed radii should be marked observed.
 
 - NASA and EU estimated radii for 82 Eridani d / HD 20794 f, the 648 day planet, assume either a rocky or ice giant composition and set the radius accordingly. Planets in the rocky_mass_cutoff < p.mass < Saturn_mass range, after the sin inclination correction, are problematic because we don't have examples of planets like these in our solar system that we can confidently classify based on mass alone. Estimated radii for these planets might not take into account stellar metallicity; in the case of 82 Eri d the estimated radius is based on a mini-Neptune density, but our own calculation estimates a rocky planet from this radius. Investigate whether estimated radii for super-Earth/mini-Neptuine planets should be discarded altogether, and if so, change the code to do so.
 
