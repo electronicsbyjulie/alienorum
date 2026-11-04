@@ -144,9 +144,27 @@ Confirmation data: /tmp/horizon-trial-03-foreign-tail-confirm/ and
 /tmp/horizon-trial-03-tail-confirm/. The driver retains a general mode selector
 for focused repetitions; the temporary foreign-writer modes were removed.
 
+Item 4: Retain GPU ground geometry
+==================================
+Status: rejected for lack of a convincing benefit; prototype removed.
+
+The prototype retained expanded vertices in the existing four callback batches
+and associated identical rectangle lists with one VBO revision. Context teardown
+cleared all retained state. Masks and haze uniforms remained live. Eight paired
+rounds across seven scenes and five modes passed image and sampling checks.
+Stationary results were unresolved throughout: ice 21.62 -> 22.90 ms, Earth
+29.77 -> 29.40 ms, and forest 13.83 -> 13.62 ms. Rectangle equality checks and
+retained storage offered little advantage on these already cached painters.
+
+Ocean tenfold walking initially flagged +7.57%; a fresh twelve-pair repetition
+did not confirm it: median -2.79%, interval -4.32 to +3.20%; p95 -1.49%, interval
+-7.56 to +4.43%. Ocean normal walking was faster in the first matrix (-3.83%),
+but without a stationary gain or a consistent moving gain the additional cache
+was not retained. This trial does not establish a reproducible regression.
+Raw results: /tmp/horizon-trial-04-native/ and /tmp/horizon-trial-04-confirm/.
+
 Remaining sequence
 ==================
-4. Retain GPU ground geometry.
 5. Retain conservative depth bounds for tile certification.
 6. Streamline water geometry and animation.
 7. Improve terrain mesh reuse while walking.
