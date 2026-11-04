@@ -315,6 +315,54 @@ not attributed to the candidate. The exact shortcut did not show a convincing
 gain in the workload it targets, so it was removed.
 Raw results: /tmp/horizon-trial-11-native/.
 
-Remaining sequence
-==================
-12. Remove repeated immutable GL state traffic and small allocations.
+Item 12: Retain immutable GL settings and small staging storage
+==============================================================
+Status: rejected for insufficient repeatable benefit; prototype removed.
+
+The prototype cached the context's texture-size limit and owned texture filters,
+retained horizon-column staging capacity, and initialized crown-occlusion storage
+at the first actual projected plant. Context clearing reset the GL caches.
+Forty-six focused rendering tests passed, including context/mask invalidation.
+The seven-scene, five-mode eight-pair matrix matched images and sampling strides.
+
+Initial airless median gains were 0.75% panning and 2.06% walking. Twelve fresh
+pairs left both unresolved: pan -0.62%, interval -1.05 to +0.45%; walk -1.99%,
+interval -3.62 to +0.28%. A further twenty-four pairs did not confirm them:
+pan -0.48%, interval -1.84 to +1.02%; walk +1.15%, interval -1.39 to +2.85%.
+Their p95 intervals also crossed zero. An initial Venus stationary p95 flag
+(+1.77%) cleared in twelve fresh pairs: -3.85%, interval -11.46 to +1.61%.
+There was no supported moving regression or convincing repeated gain, so the
+cleanup was removed rather than presented as a performance improvement.
+Raw results: /tmp/horizon-trial-12-native/,
+/tmp/horizon-trial-12-airless-confirm/, /tmp/horizon-trial-12-venus-confirm/,
+and /tmp/horizon-trial-12-airless-extended/.
+
+Retained implementation
+=======================
+Items 1, 2, and 6 remain active. Items 3 through 5 and 7 through 12 were removed.
+Each numbered item has a separate results commit, including rejected trials.
+The native paired driver, mode selector, and optional every-pose image checks
+remain available for future measurements. No whole-application FPS floor is
+inferred from these horizon-stage measurements.
+
+Final validation
+=================
+Every-pose inspection initially compared the first pre-settled frame as well.
+Earth showed 811 pixels differing by two blue levels on that setup frame, both
+with trial 6 and with the identical-path trial 99 control. No later replay pose
+failed. The optional inspection now starts after the same two stationary
+settling frames already used by the timing protocol, including all three moving
+warmup poses. It keeps the one-level color tolerance unchanged. The early moving
+poses that rejected item 7 remain part of this comparison.
+Control log: /tmp/horizon-trials-initial-frame-control/.
+
+The final production set rebuilt successfully. All 46 focused rendering tests
+passed on Intel HD Graphics 2000. The corrected identical-path Earth control
+passed, followed by every-pose comparisons across ice, Earth, forest, and ocean
+for panning, normal walking, tenfold walking, and changing light (three paired
+replays, nine timed poses plus three movement warmup poses). These final replays
+validate images; their pilot timings do not replace the eight-pair acceptance
+matrices. All test children exited.
+Final logs: /tmp/horizon-trials-final-tests.log,
+/tmp/horizon-trials-final-control/, and
+/tmp/horizon-trials-final-validated-poses/.

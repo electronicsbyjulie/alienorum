@@ -180,12 +180,12 @@ TEST_F(HorizonTrialTest, PairedHorizonPaths)
                             << milliseconds(start, prepared) << ',' << cpu << ',' << milliseconds(start, finished)
                             << ',' << precipitation_stats.ground_sample_stride << '\n';
                     }
-                    if (inspect_every_pose)
+                    if (inspect_every_pose && frame >= 0)
                     {
                         std::vector<unsigned char> pixels(render_width * render_height * 4);
                         glReadPixels(0, 0, render_width, render_height, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
                         if (arm == 0) pose_images.push_back(std::move(pixels));
-                        else EXPECT_EQ(image_difference(pixels, pose_images[frame + 2], 1), 0)
+                        else EXPECT_EQ(image_difference(pixels, pose_images[frame], 1), 0)
                             << scene << ' ' << mode << ' ' << round << ' ' << frame;
                     }
                     if (frame + 1 == frames + 3)
