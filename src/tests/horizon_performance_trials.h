@@ -2,6 +2,7 @@
 
 #include "../horizon_performance.h"
 #include <ctime>
+#include <sstream>
 
 class HorizonTrialTest : public RenderingRegressionTest
 {
@@ -123,7 +124,15 @@ TEST_F(HorizonTrialTest, PairedHorizonPaths)
     {
         return std::chrono::duration<double, std::milli>(last - first).count();
     };
-    for (const std::string mode : {"still", "pan", "walk", "fast_walk", "lighting"})
+    std::vector<std::string> modes = {"still", "pan", "walk", "fast_walk", "lighting"};
+    if (const char* selected_modes = std::getenv("ALIENORUM_HORIZON_MODES"))
+    {
+        modes.clear();
+        std::istringstream parser(selected_modes);
+        std::string selected;
+        while (std::getline(parser, selected, ',')) modes.push_back(selected);
+    }
+    for (const std::string& mode : modes)
     {
         for (int round = 0; round < rounds; ++round)
         {

@@ -99,9 +99,53 @@ redlight cache checks against the original painter. Paired per-frame sampling
 stride and final image checks passed throughout the matrix.
 Raw results: /tmp/horizon-trial-02-native/.
 
+Item 3: Isolate map publication and cache suppression
+====================================================
+Status: rejected; production code and candidate-specific fixtures removed.
+
+The tested candidate placed active writers in a bounded per-map registry.
+Sampling checks performed no
+allocation or locking. Nested writers retain ownership until publication; a full
+hash bucket falls back conservatively to global suppression. File loaders,
+procedural writers, and secondary opacity/facula maps participate. Completed bump
+loads also advance the source generation, invalidating retained terrain geometry.
+The existing general generation status remains available for other consumers.
+This does not replace the application's texture ownership synchronization.
+
+The seven-scene, five-mode native matrix passed image and stride checks. Eight
+paired rounds also covered unrelated procedural generation and unrelated file
+loading. For procedural-generation comparisons, the legacy path withholds valid
+material tags and disables motion painting reuse. Equal stride or equal images
+against that provisional path would preserve its incorrect global coupling.
+Instead, the candidate's fully refined image is compared with quiescent rendering
+at the same pose, source, and animation time, within the same one-level tolerance.
+Ordinary and file-loading comparisons still assert matching stride and images.
+
+Unrelated procedural generation, eight pairs on Intel HD Graphics 2000:
+Scene     Still before/after   Pan before/after   Walk before/after   10x before/after
+Ice        345.94 / 21.64       356.36 / 36.05     375.79 / 34.32     373.91 / 39.00
+Earth       80.24 / 29.37        88.32 / 67.22     109.64 / 44.76     109.63 / 78.46
+All completed-frame median intervals excluded zero in favor of the candidate.
+Unrelated Earth file loading showed unresolved moving differences of +0.30%,
++0.44%, and -0.86% for pan, walk, and tenfold walking respectively.
+
+Raw results: /tmp/horizon-trial-03-native/ and the corresponding
+/tmp/horizon-trial-03-foreign_* directories. A fresh tail confirmation and
+publication tests informed the evaluation. Forty-four focused rendering tests
+passed. The unexecuted loader-version assertion was removed with the candidate.
+
+Rejection: unrelated generation plus Earth tenfold walking improved the median
+but worsened p95. Eight pairs showed +8.22%; a fresh twelve-pair confirmation
+showed 110.99 -> 120.13 ms, +8.20%, interval +7.52 to +9.47%. This violates the
+movement-tail criterion despite the large stationary and median gains. The
+ordinary tenfold-walking tail flag did not repeat: twelve fresh pairs gave
+-0.58%, interval -1.17 to +0.35%. No per-map registry is shipped by this trial.
+Confirmation data: /tmp/horizon-trial-03-foreign-tail-confirm/ and
+/tmp/horizon-trial-03-tail-confirm/. The driver retains a general mode selector
+for focused repetitions; the temporary foreign-writer modes were removed.
+
 Remaining sequence
 ==================
-3. Replace global suppression with per-map publication state.
 4. Retain GPU ground geometry.
 5. Retain conservative depth bounds for tile certification.
 6. Streamline water geometry and animation.

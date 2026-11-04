@@ -52,6 +52,7 @@ def main():
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--binary', type=Path, default=Path('bin/performance_benchmark_test'))
     parser.add_argument('--headless', action='store_true')
+    parser.add_argument('--modes')
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     all_rows, all_results = [], []
@@ -59,6 +60,10 @@ def main():
         env = os.environ.copy()
         env.update(ALIENORUM_HORIZON_TRIAL=str(args.trial), ALIENORUM_HORIZON_SCENE=scene,
                    ALIENORUM_HORIZON_ROUNDS=str(args.rounds), ALIENORUM_HORIZON_FRAMES=str(args.frames))
+        if args.modes:
+            env['ALIENORUM_HORIZON_MODES'] = args.modes
+        else:
+            env.pop('ALIENORUM_HORIZON_MODES', None)
         command = ['timeout', '--kill-after=2s', '90s', str(args.binary.resolve()),
                    '--gtest_filter=HorizonTrialTest.PairedHorizonPaths']
         if args.headless:
