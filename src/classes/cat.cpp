@@ -7411,10 +7411,163 @@ static std::string read_exo_string(char*& cursor)
     return v;
 }
 
+namespace
+{
+    // Catalog units are nominal equatorial radii, not our Solar System mean radii.
+    // IAU 2015 B3, https://arxiv.org/abs/1510.07674; archive conversion conventions:
+    // https://dace.unige.ch/pythonAPI/tutorials/exoplanet/EXOPLANET-OtegiTable.html
+    constexpr double exo_jupiter_to_earth_mass = 317.8284065946748;
+    constexpr double exo_jupiter_to_earth_radius = 71492000.0 / 6378100;
+    constexpr double exo_earth_radius_m = 6378100;
+
+    void reconcile_exoplanet_physical_values(json& row)
+    {
+        if (!row.is_object()) return;
+        if (!row.contains("source_measurements"))
+        {
+            json original = row;
+            original.erase("physical_parameter_consensus");
+            row["source_measurements"] = json::array({std::move(original)});
+        }
+        std::map<std::string, json> providers;
+        const auto numeric = [](const json& item, const std::string& field)
+        {
+            const auto found = item.find(field);
+            return found != item.end() && found->is_number() ? found->get<double>() : NAN;
+        };
+        for (const auto& original : row["source_measurements"])
+        {
+            if (!original.is_object()) continue;
+            const double period = numeric(row, "pl_orbper"), other = numeric(original, "pl_orbper");
+            if (period > 0 && other > 0 && fabs(period - other) > .05 * std::min(period, other)) continue;
+            const std::string provider = original.value("source_catalog", "adopted");
+            // Keep the latest retained solution from each provider; aliases are not extra votes.
+            providers[provider] = original;
+        }
+        if (providers.size() > 1) providers.erase("adopted");
+        for (const std::string family : {"pl_bmass", "pl_msini", "pl_rad"})
+        {
+            const bool radius = family == "pl_rad";
+            const double conversion = radius ? exo_jupiter_to_earth_radius : exo_jupiter_to_earth_mass;
+            json candidates = json::array();
+            for (const auto& [provider, original] : providers)
+            {
+                for (const std::string unit : {"e", "j"})
+                {
+                    const std::string field = family + unit;
+                    const double value = numeric(original, field);
+                    if (!std::isfinite(value) || value <= 0) continue;
+                    const double scale = unit == "j" ? conversion : 1;
+                    // Fallback order: NASA Earth, NASA Jupiter, EU Jupiter, EU Earth.
+                    // Earth fields retain precision for small NASA planets; EU's native unit is Jupiter.
+                    const int priority = provider == "NASA" ? (unit == "e" ? 0 : 1)
+                        : provider == "EU" ? (unit == "j" ? 2 : 3) : (unit == "e" ? 4 : 5);
+                    json candidate = {{"provider", provider}, {"field", field}, {"value_earth_units", value * scale},
+                        {"priority", priority}};
+                    for (const std::string suffix : {"err1", "err2"})
+                    {
+                        const double error = numeric(original, field + suffix);
+                        if (std::isfinite(error)) candidate[suffix] = fabs(error) * scale;
+                    }
+                    const double limit = family == "pl_msini" ? NAN
+                        : numeric(original, radius ? "pl_radelim" : "pl_bmasselim");
+                    if (std::isfinite(limit)) candidate["limit"] = limit;
+                    if (family == "pl_bmass") candidate["provenance"] = original.value("pl_bmassprov", "");
+                    candidates.push_back(std::move(candidate));
+                }
+            }
+            if (candidates.empty()) continue;
+            std::sort(candidates.begin(), candidates.end(), [](const json& a, const json& b)
+            {
+                return a["priority"].get<int>() < b["priority"].get<int>();
+            });
+            const size_t count = candidates.size();
+            if (count > 4) continue; // Only the two identified providers can form a four-way vote.
+            unsigned selected = 1, largest = 0;
+            bool tied = false;
+            for (unsigned subset = 1; subset < (1u << count); ++subset)
+            {
+                double low = INFINITY, high = 0;
+                unsigned size = 0;
+                bool compatible = true;
+                std::string provenance;
+                double limit = NAN;
+                for (size_t i = 0; i < count; ++i)
+                    if (subset & (1u << i))
+                    {
+                        const auto& candidate = candidates[i];
+                        const double other_limit = candidate.value("limit", 0.0);
+                        if (std::isfinite(limit) && other_limit != limit) compatible = false;
+                        limit = other_limit;
+                        const std::string other_provenance = candidate.value("provenance", "");
+                        if (!provenance.empty() && !other_provenance.empty() && provenance != other_provenance) compatible = false;
+                        if (!other_provenance.empty()) provenance = other_provenance;
+                        const double value = candidates[i]["value_earth_units"];
+                        low = std::min(low, value);
+                        high = std::max(high, value);
+                        ++size;
+                    }
+                // Three percent accommodates rounded unit conversions, not independent error bars.
+                if (!compatible || high > low * 1.03) continue;
+                if (size > largest)
+                {
+                    selected = subset;
+                    largest = size;
+                    tied = false;
+                }
+                else if (size == largest) tied = true;
+            }
+            const bool majority = !tied && largest > count / 2;
+            if (!majority) selected = 1;
+            double sum = 0, low = INFINITY, high = 0, upper = NAN, lower = NAN;
+            unsigned accepted = 0;
+            for (size_t i = 0; i < count; ++i)
+            {
+                candidates[i]["accepted"] = (selected & (1u << i)) != 0;
+                if (!(selected & (1u << i))) continue;
+                const auto& candidate = candidates[i];
+                if (!accepted)
+                {
+                    if (family != "pl_msini")
+                    {
+                        const std::string limit_field = radius ? "pl_radelim" : "pl_bmasselim";
+                        if (candidate.contains("limit")) row[limit_field] = candidate["limit"];
+                        else row.erase(limit_field);
+                    }
+                    if (family == "pl_bmass" && !candidate.value("provenance", "").empty()) row["pl_bmassprov"] = candidate["provenance"];
+                }
+                const double value = candidate["value_earth_units"];
+                sum += value;
+                low = std::min(low, value);
+                high = std::max(high, value);
+                ++accepted;
+                if (candidate.contains("err1")) upper = std::isfinite(upper)
+                    ? std::max(upper, candidate["err1"].get<double>()) : candidate["err1"].get<double>();
+                if (candidate.contains("err2")) lower = std::isfinite(lower)
+                    ? std::max(lower, candidate["err2"].get<double>()) : candidate["err2"].get<double>();
+            }
+            const double mean = sum / accepted;
+            for (const std::string unit : {"e", "j"})
+            {
+                const double scale = unit == "j" ? conversion : 1;
+                row[family + unit] = mean / scale;
+                // Duplicate conversions do not supply independent precision: no sqrt(N) reduction.
+                row[family + unit + "err1"] = std::isfinite(upper) ? json(std::max(upper, high - mean) / scale) : json(nullptr);
+                row[family + unit + "err2"] = std::isfinite(lower) ? json(-std::max(lower, mean - low) / scale) : json(nullptr);
+            }
+            row["physical_parameter_consensus"][family] = {{"candidates", std::move(candidates)},
+                {"value_earth_units", mean}, {"selection", majority && accepted > 1 ? "majority_mean" : "source_precedence"},
+                {"fractional_agreement", .03}, {"correlated_unit_conversions", true},
+                {"fallback_order", "NASA_Earth,NASA_Jupiter,EU_Jupiter,EU_Earth"}};
+        }
+    }
+}
+
 ExoRow CatalogReader::exorow_from_json(const json& source, bool* ok)
 {
     json row = source;
     normalize_uncertain_numbers(row);
+    reconcile_exoplanet_physical_values(row);
     ExoRow r;
     *ok = false;
 
@@ -8257,7 +8410,7 @@ bool CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, s
     bool pl_massknown = false, pl_msini_known = false, pl_radknown = false;
     if (!isnan(row.pl_msinij))
     {
-        new_planet->mass = row.pl_msinij * jupiter_mass;
+        new_planet->mass = row.pl_msinij * exo_jupiter_to_earth_mass * earth_mass;
         pl_msini_known = true;
         pl_msini = new_planet->mass;
         new_planet->msini = pl_msini;
@@ -8272,9 +8425,9 @@ bool CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, s
 
     if (!isnan(row.pl_bmassj))
     {
-        new_planet->mass = row.pl_bmassj * jupiter_mass;
-        new_planet->mass_error_upper = row.pl_bmassjerr1 * jupiter_mass;
-        new_planet->mass_error_lower = row.pl_bmassjerr2 * jupiter_mass;
+        new_planet->mass = row.pl_bmassj * exo_jupiter_to_earth_mass * earth_mass;
+        new_planet->mass_error_upper = row.pl_bmassjerr1 * exo_jupiter_to_earth_mass * earth_mass;
+        new_planet->mass_error_lower = row.pl_bmassjerr2 * exo_jupiter_to_earth_mass * earth_mass;
         pl_massknown = true;
         pl_mass = new_planet->mass;
     }
@@ -8289,16 +8442,16 @@ bool CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, s
 
     if (!isnan(row.pl_radj))
     {
-        new_planet->volumetric_mean_radius = row.pl_radj * jupiter_radius;
-        new_planet->radius_error_upper = row.pl_radjerr1 * jupiter_radius;
-        new_planet->radius_error_lower = row.pl_radjerr2 * jupiter_radius;
+        new_planet->volumetric_mean_radius = row.pl_radj * exo_jupiter_to_earth_radius * exo_earth_radius_m;
+        new_planet->radius_error_upper = row.pl_radjerr1 * exo_jupiter_to_earth_radius * exo_earth_radius_m;
+        new_planet->radius_error_lower = row.pl_radjerr2 * exo_jupiter_to_earth_radius * exo_earth_radius_m;
         pl_radknown = true;
     }
     else if (!isnan(row.pl_rade))
     {
-        new_planet->volumetric_mean_radius = row.pl_rade * earth_radius;
-        new_planet->radius_error_upper = row.pl_radeerr1 * earth_radius;
-        new_planet->radius_error_lower = row.pl_radeerr2 * earth_radius;
+        new_planet->volumetric_mean_radius = row.pl_rade * exo_earth_radius_m;
+        new_planet->radius_error_upper = row.pl_radeerr1 * exo_earth_radius_m;
+        new_planet->radius_error_lower = row.pl_radeerr2 * exo_earth_radius_m;
         pl_radknown = true;
     }
 
@@ -8514,6 +8667,7 @@ void CatalogReader::dedup_planets(json& planets_array)
     {
         return;
     }
+    normalize_uncertain_numbers(planets_array);
 
     auto get_sma = [](const json& item) -> double
     {
@@ -9017,6 +9171,7 @@ void CatalogReader::dedup_planets(json& planets_array)
 
         return false;
     });
+    for (auto& planet : planets_array) reconcile_exoplanet_physical_values(planet);
 }
 
 unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
@@ -9068,7 +9223,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
         std::ifstream cache_header(derived_cache);
         std::string version;
         std::getline(cache_header, version);
-        derived_cache_valid = version == "# EXO_TRANSIT4";
+        derived_cache_valid = version == "# EXO_TRANSIT5";
 
     }
 
@@ -9670,7 +9825,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
     if (cachefp)
     {
         setvbuf(cachefp, cache_io_buf, _IOFBF, sizeof(cache_io_buf));
-        fputs("# EXO_TRANSIT4\n", cachefp);
+        fputs("# EXO_TRANSIT5\n", cachefp);
     }
 
     int rows_written = 0;

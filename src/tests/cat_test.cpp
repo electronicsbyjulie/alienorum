@@ -2388,7 +2388,7 @@ TEST_F(CatalogParsingTest, MetalPoorRvCatalogPlanetsUseChemistryAfterCacheAndInc
             EXPECT_EQ(body->radius_evidence, PlanetMeasurement::estimated);
             EXPECT_FALSE(body->radius_estimate_supplied);
             EXPECT_TRUE(body->classification_evidence["catalog_radius"].is_object());
-            EXPECT_NEAR(body->mass / earth_mass, tau ? 6.870596 : 7.596236, .001);
+            EXPECT_NEAR(body->mass / earth_mass, tau ? 6.8618 : 7.5977, .001);
             EXPECT_TRUE(body->classification_evidence["metallicity_applied"].get<bool>());
             EXPECT_EQ(body->classification_evidence["metallicity_model"], "cool_formation_envelope_prior");
             EXPECT_FALSE(body->classification_evidence["density_observed"].get<bool>());
@@ -2461,7 +2461,7 @@ TEST_F(CatalogParsingTest, RenamedPlanetLettersMergeByOrbitWithoutMixingPhysical
         else
         {
             EXPECT_DOUBLE_EQ(row["pl_orbper"], 647.6);
-            EXPECT_DOUBLE_EQ(row["pl_msinie"], 5.82);
+            EXPECT_NEAR(row["pl_msinie"].get<double>(), 5.82, .001);
             EXPECT_DOUBLE_EQ(row["pl_bmasse"], 5.82);
             ASSERT_EQ(row["source_measurements"].size(), 2u);
         }
@@ -2469,6 +2469,78 @@ TEST_F(CatalogParsingTest, RenamedPlanetLettersMergeByOrbitWithoutMixingPhysical
     const json once = rows;
     CatalogReader::dedup_planets(rows);
     EXPECT_EQ(rows, once);
+}
+
+TEST_F(CatalogParsingTest, PhysicalParameterConsensusRejectsOneOutlierAndPreservesEverySource)
+{
+    for (const std::string family : {"pl_bmass", "pl_msini", "pl_rad"})
+    {
+        const double conversion = family == "pl_rad" ? 71492000.0 / 6378100 : 317.8284065946748;
+        for (int missing : {-1, 0, 1, 2})
+        {
+            json nasa = {{"source_catalog", "NASA"}, {family + "e", 2.0}, {family + "j", 2.02 / conversion},
+                {family + "eerr1", .2}, {family + "eerr2", -.1}};
+            json eu = {{"source_catalog", "EU"}, {family + "e", 20.0}, {family + "j", 1.99 / conversion}};
+            if (missing == 0) nasa.erase(family + "e");
+            if (missing == 1) nasa.erase(family + "j");
+            if (missing == 2) eu.erase(family + "j");
+            json rows = json::array({{{"pl_name", "Host b"}, {"hostname", "Host"}, {"pl_orbper", 10},
+                {"source_measurements", json::array({nasa, eu})}}});
+            CatalogReader::dedup_planets(rows);
+            ASSERT_EQ(rows.size(), 1u);
+            const json row = rows[0];
+            const double expected = missing == -1 ? (2 + 2.02 + 1.99) / 3
+                : missing == 0 ? (2.02 + 1.99) / 2 : missing == 1 ? (2 + 1.99) / 2 : (2 + 2.02) / 2;
+            EXPECT_NEAR(row[family + "e"].get<double>(), expected, 1e-12);
+            EXPECT_NEAR(row[family + "j"].get<double>() * conversion, expected, 1e-12);
+            EXPECT_EQ(row["source_measurements"], json::array({nasa, eu}));
+            EXPECT_EQ(row["physical_parameter_consensus"][family]["selection"], "majority_mean");
+            if (missing != 0) EXPECT_DOUBLE_EQ(row[family + "eerr1"].get<double>(), .2);
+            const json first = rows;
+            CatalogReader::dedup_planets(rows);
+            EXPECT_EQ(rows, first);
+            bool valid = false;
+            const ExoRow parsed = TestCatalogReader::exorow_from_json(row, &valid);
+            ASSERT_TRUE(valid);
+            const double actual = family == "pl_rad" ? parsed.pl_rade
+                : family == "pl_msini" ? parsed.pl_msinie : parsed.pl_bmasse;
+            EXPECT_NEAR(actual, expected, 1e-12);
+        }
+    }
+}
+
+TEST_F(CatalogParsingTest, PhysicalParameterDisagreementsUseExplicitSourcePrecedence)
+{
+    const double conversion = 317.8284065946748;
+    for (int available : {2, 4})
+    {
+        json nasa = {{"source_catalog", "NASA"}, {"pl_bmasse", 4.0}, {"pl_bmassj", 8.0 / conversion}};
+        json eu = {{"source_catalog", "EU"}, {"pl_bmasse", 20.0}, {"pl_bmassj", 16.0 / conversion}};
+        if (available == 2)
+        {
+            nasa.erase("pl_bmassj");
+            eu.erase("pl_bmasse");
+        }
+        json rows = json::array({{{"pl_name", "Host b"}, {"hostname", "Host"}, {"pl_orbper", 10},
+            {"source_measurements", json::array({nasa, eu})}}});
+        CatalogReader::dedup_planets(rows);
+        EXPECT_DOUBLE_EQ(rows[0]["pl_bmasse"].get<double>(), 4);
+        EXPECT_EQ(rows[0]["physical_parameter_consensus"]["pl_bmass"]["selection"], "source_precedence");
+    }
+    make_star("Sun");
+    Star* host = make_star("Host");
+    ExoRow row;
+    row.pl_name = "Host b";
+    row.pl_orbper = 10;
+    row.pl_bmasse = 10;
+    row.pl_radj = 1;
+    row.radius_observed = true;
+    std::map<int, std::vector<int>> planets;
+    unsigned count = 0;
+    TestCatalogReader reader;
+    ASSERT_TRUE(reader.add_exoplanet_from_row(row, host, planets, count));
+    auto* planet = static_cast<Planet*>(cels[planets.at(host->seqno).front()]);
+    EXPECT_NEAR(planet->volumetric_mean_radius, 71492000, 1e-6);
 }
 
 TEST_F(CatalogParsingTest, InclinationReconciliationRefreshesTheFinalMassAndVolatileBudget)
@@ -3761,7 +3833,7 @@ TEST_F(StellarDownloadTest, RecentDerivedExoplanetCachesWorkWithoutTheJsonSource
         const char* path = stars_only ? "catalogs/exoplanets_stars.dat" : "catalogs/exoplanets_planets.dat";
         FILE* cache = fopen(path, "wb");
         ASSERT_NE(cache, nullptr);
-        fputs("# EXO_TRANSIT4\n", cache);
+        fputs("# EXO_TRANSIT5\n", cache);
         TestCatalogReader::exorow_write_line(cache, row);
         fclose(cache);
         DownloadReader reader;
