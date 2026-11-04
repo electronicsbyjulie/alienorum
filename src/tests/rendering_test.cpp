@@ -4882,6 +4882,18 @@ TEST_F(RenderingRegressionTest, GroundPaintingCacheRetainsPixelsAndInvalidatesLi
     const auto warm = capture();
     EXPECT_TRUE(warm.second);
     EXPECT_EQ(first.first, warm.first);
+    // Celestial north changes as the body rotates; local ground coordinates do
+    // not. Advancing this sky-only transform must retain the painted surface.
+    const double original_correction = azimuth_correction;
+    set(azimuth_correction, original_correction + 1e-6);
+    const auto rotated = capture();
+    EXPECT_TRUE(rotated.second);
+    world->surf_map->touch_gen();
+    const auto rotated_fresh = capture();
+    EXPECT_FALSE(rotated_fresh.second);
+    EXPECT_EQ(rotated.first, rotated_fresh.first);
+    azimuth_correction = original_correction;
+    EXPECT_TRUE(capture().second);
     const double start_latitude = viewer_lat;
     for (double distance : {.1, .5, 1.5})
     {
@@ -4897,6 +4909,7 @@ TEST_F(RenderingRegressionTest, GroundPaintingCacheRetainsPixelsAndInvalidatesLi
         [&]() { viewer_lon += .003; },
         [&]() { viewer_eye_height += 3; },
         [&]() { altitude = .3; },
+        [&]() { azimuth += .2; },
         [&]() { world->has_water = .7; },
         [&]() { world->m_bump_scale += 1000; },
         [&]() { world->atm->surface_pressure = 15e5; },
@@ -6393,6 +6406,7 @@ TEST_F(RenderingRegressionTest, WaterCachesReuseGeometryAndInvalidateSurfaceCert
     {
         freeze_surface_time();
         ImGui::GetCurrentContext()->Time = time;
+        find_horizon();
         draw_horizon();
         const auto stats = horizon_water_stats();
         render();

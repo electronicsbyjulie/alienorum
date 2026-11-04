@@ -7051,7 +7051,8 @@ void draw_horizon()
             ground_inputs.insert(ground_inputs.end(), haze.extinction.begin(), haze.extinction.end());
             for (double light : haze.light) ground_inputs.push_back(std::clamp(int(light), 0, 255));
             ground_inputs.push_back(dev_dial);
-            ground_inputs.push_back(azimuth_correction);
+            // Ground bearings already use the observer's local north. The
+            // celestial-frame correction rotates the sky, not this painting.
             ground_inputs.push_back(surface_uniform_reference);
             for (bool reference : performance_reference) ground_inputs.push_back(reference);
             auto ground_key = std::make_tuple(cel, map, std::move(ground_inputs));

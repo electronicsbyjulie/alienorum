@@ -19,5 +19,7 @@
 
 - [fixed] Apply any other items from section 11 of the ocean worlds audit that I have not mentioned here.
 
-- The view from 82 Eridani d's surface puts a giant damper on the frame rate. What happened? It's all in the clouds and horizon; with clouds turned off I get a little over 7 fps, but with them on it drops to 2, yet if I look up to the zenith it bounces back to 8 fps. Anything under 5 is unacceptable.
+- [fixed] Tau Ceti f repainted the ground every frame as the celestial north transform changed during rotation. Ground painting now retains its cache independently of this sky transform.
+
+- The view from 82 Eridani d's surface puts a giant damper on the frame rate. What happened? It's all in the clouds and horizon; with clouds turned off I get a little over 7 fps, but with them on it drops to 2, yet if I look up to the zenith it bounces back to 8 fps. The minimum target is 7 fps; overall performance remains under review.
 
