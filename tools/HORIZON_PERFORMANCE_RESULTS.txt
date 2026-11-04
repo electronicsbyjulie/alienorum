@@ -4,7 +4,8 @@ Protocol
 ========
 The item numbers follow the twelve findings in the local draw_horizon audit.
 Each trial compares its original path with the candidate on the same executable,
-scenes, poses, animation times, source pixels, and movement distances. Alternating
+scenes, poses, animation times, source pixels, and movement distances. All
+previously retained items remain active in both arms. Alternating
 order reduces thermal and cache-order bias. A separate source generation starts
 each arm, followed by two stationary settling frames and three movement warmup
 frames. Moving views use the same
@@ -69,9 +70,37 @@ Raw results: /tmp/horizon-trial-01-validated/ and
 /tmp/horizon-trial-01-lava-confirm/. The initial software-GL pilot was excluded
 from acceptance. The native graphics logs identify Mesa Intel HD Graphics 2000.
 
+Item 2: Separate source painting from illumination
+==================================================
+Status: retained, with a conservative uniform-footprint scope.
+
+The candidate proves that the entire possible visible ground footprint has one
+source RGB/material value, including far terrain and biome displacement bounds.
+It retains that source independently of live illumination and haze light. A
+single cropped GPU quad uses current masks and the current byte-quantized color;
+its coverage is refreshed even on a source-cache hit. Detailed or uncertain
+footprints use the original painter. No new per-fragment shader work was added.
+
+Eight paired rounds on Intel HD Graphics 2000, including a changing-light mode:
+Scene/mode       Before ms   After ms   Paired change
+Ocean/pan          23.56       19.44       -16.99%
+Ocean/10x walk     19.27       15.68       -20.47%
+Ocean/lighting     18.95       15.11       -21.31%
+Forest/pan         27.78       24.27       -13.40%
+Forest/10x walk    28.59       25.80        -9.48%
+Forest/lighting    17.74       13.63       -23.79%
+These intervals excluded zero. No completed-frame median or p95 regression was
+supported in the seven-scene, five-mode matrix. Other scene/mode differences
+were largely unresolved. The candidate is not a claim that every coast can
+reuse its source painting across illumination edits.
+
+Quality: 43 focused image/behavior tests passed, including live illumination and
+redlight cache checks against the original painter. Paired per-frame sampling
+stride and final image checks passed throughout the matrix.
+Raw results: /tmp/horizon-trial-02-native/.
+
 Remaining sequence
 ==================
-2. Separate source painting from changing illumination.
 3. Replace global suppression with per-map publication state.
 4. Retain GPU ground geometry.
 5. Retain conservative depth bounds for tile certification.

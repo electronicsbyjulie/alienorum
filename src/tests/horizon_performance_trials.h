@@ -123,7 +123,7 @@ TEST_F(HorizonTrialTest, PairedHorizonPaths)
     {
         return std::chrono::duration<double, std::milli>(last - first).count();
     };
-    for (const std::string mode : {"still", "pan", "walk", "fast_walk"})
+    for (const std::string mode : {"still", "pan", "walk", "fast_walk", "lighting"})
     {
         for (int round = 0; round < rounds; ++round)
         {
@@ -148,6 +148,8 @@ TEST_F(HorizonTrialTest, PairedHorizonPaths)
                     viewer_lat = origin_lat + angle * cos(1.3);
                     viewer_lon = origin_lon + angle * sin(1.3) / cos(origin_lat);
                     azimuth = 1.3 + (mode == "pan" ? pose_frame * .02 : 0);
+                    luminous_flux = mode == "lighting" ? 4e10 * std::min(1.0, std::max(.01,
+                        sqrt(world->mean_instellation()))) * (.45 + pose_frame * .02) : 4e10;
                     freeze_surface_time();
                     ImGui::GetCurrentContext()->Time = 50.0 + pose_frame / 7.0;
                     const auto start = std::chrono::steady_clock::now();

@@ -4938,6 +4938,37 @@ TEST_F(RenderingRegressionTest, GroundPaintingCacheRetainsPixelsAndInvalidatesLi
     }
 }
 
+TEST_F(RenderingRegressionTest, UniformSourceRetainsSamplingAcrossLiveIlluminationAndRedlightEdits)
+{
+    auto* world = surface(true);
+    set(horizon_ground_gpu_reference, false);
+    set(viewer_lat, .3);
+    set(viewer_lon, .4);
+    world->ensure_atmosphere()->surface_pressure = 7.88e5;
+    const auto capture = [&]()
+    {
+        freeze_surface_time();
+        find_horizon();
+        draw_horizon();
+        auto pixels = render();
+        ImGui::NewFrame();
+        return pixels;
+    };
+    const double scale = std::min(1.0, std::max(.01, sqrt(world->mean_instellation())));
+    for (int step = 0; step < 5; ++step)
+    {
+        horizon_reference_trial = 0;
+        capture();
+        luminous_flux = 4e10 * scale * (.2 + step * .13);
+        redlight_mode = step % 2;
+        const auto retained = capture();
+        EXPECT_TRUE(precipitation_stats.ground_cache_hit);
+        horizon_reference_trial = 2;
+        const auto original = capture();
+        EXPECT_EQ(image_difference(retained, original, 1), 0);
+    }
+}
+
 TEST_F(RenderingRegressionTest, ModeratePressureHazeKeepsNearbyWetGroundOnTheGpu)
 {
     auto* world = surface();

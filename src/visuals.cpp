@@ -7049,6 +7049,24 @@ void draw_horizon()
             const auto ground_paint_start = std::chrono::steady_clock::now();
             precipitation_stats.ground_setup_milliseconds = std::chrono::duration<double, std::milli>(
                 ground_paint_start - ground_setup_start).count();
+            RGB3 uniform_source;
+            const double source_reach = terrain_mesh ? std::max(surface_range,
+                fmin(fmax(60000.0, surface_range * 8.0), surface_radius * .15)) : surface_range;
+            const bool uniform_lit_source = horizon_fast_path(2) && gpu_ground && paint_biomes
+                && map->color_within_cap(viewer_lat, viewer_lon,
+                    source_reach / surface_radius + (surface_biomes ? biome_angle : 0) + 1e-8, uniform_source, true);
+            const auto uniform_source_color = [&]()
+            {
+                return rgba_apply_redlight(IM_COL32(fmin(255, is_day * uniform_source.r),
+                    fmin(255, is_day * uniform_source.g), fmin(255, is_day * uniform_source.b),
+                    dragging ? (192 - 128 * is_day) : 255));
+            };
+            const auto paint_uniform_source = [&]()
+            {
+                const double first = *std::min_element(min_hz_y_at_x.begin(), min_hz_y_at_x.end());
+                const int top = first >= ground_height ? ground_height : std::max(0, static_cast<int>(floor(first)));
+                if (top < ground_height) gpu_rectangles.push_back({0, top, screen_w, ground_height, uniform_source_color()});
+            };
             // Retain completed base painting independently of animated waves/scenery.
             // Small walking steps retain base colors; geometry masks, waves and
             // scenery still update each frame. Physical/lighting edits invalidate it.
@@ -7080,13 +7098,21 @@ void draw_horizon()
             for (int channel = 0; channel < 256; ++channel)
                 if (painted_channels[channel] && painted_lighting[channel] != std::clamp(int(channel * is_day), 0, 255))
                     same_lighting = false;
+            if (uniform_lit_source)
+            {
+                // The shader supplies current haze; only this single source
+                // color changes with illumination, with no atlas resampling.
+                same_lighting = true;
+                ground_inputs[16] = ground_inputs[21] = 0;
+            }
             ground_inputs.insert(ground_inputs.end(), haze.extinction.begin(), haze.extinction.end());
-            for (double light : haze.light) ground_inputs.push_back(std::clamp(int(light), 0, 255));
+            for (double light : haze.light) ground_inputs.push_back(uniform_lit_source ? 0 : std::clamp(int(light), 0, 255));
             ground_inputs.push_back(dev_dial);
             // Ground bearings already use the observer's local north. The
             // celestial-frame correction rotates the sky, not this painting.
             ground_inputs.push_back(surface_uniform_reference);
             for (bool reference : performance_reference) ground_inputs.push_back(reference);
+            ground_inputs.push_back(uniform_lit_source);
             ground_inputs.push_back(1); // Base-color sample stride; masks and haze stay at full resolution.
             auto ground_key = std::make_tuple(cel, map, std::move(ground_inputs));
             static decltype(ground_key) saved_ground_key;
@@ -7388,13 +7414,19 @@ void draw_horizon()
             {
                 for (const auto& rectangle : saved_cpu_rectangles)
                     ground->AddRectFilled(rectangle.low, rectangle.high, rectangle.color);
-                gpu_rectangles = saved_gpu_rectangles;
+                if (uniform_lit_source) paint_uniform_source();
+                else gpu_rectangles = saved_gpu_rectangles;
             }
             else
             {
                 saved_cpu_rectangles.clear();
                 painted_channels.fill(false);
-                if (gpu_ground && !paint_biomes)
+                if (uniform_lit_source)
+                {
+                    remember_channels(uniform_source);
+                    paint_uniform_source();
+                }
+                else if (gpu_ground && !paint_biomes)
                 {
                     // Dry worlds retain their local ground color, without sampling distant
                     // atlas pixels. One GPU rectangle supplies continuous distance veiling.
