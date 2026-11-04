@@ -6271,6 +6271,12 @@ std::string alienorum::CatalogReader::format_condensed_star_line(Star* s, bool e
         extra << " ROT1 " << std::quoted(s->stellar_rotation.dump());
         line += extra.str();
     }
+    if (s->stellar_age.is_object())
+    {
+        std::ostringstream extra;
+        extra << " AGE1 " << std::quoted(s->stellar_age.dump());
+        line += extra.str();
+    }
     if (s->stellar_system.is_object())
     {
         std::ostringstream extra;
@@ -6825,6 +6831,12 @@ int alienorum::CatalogReader::read_condensed_star_cat()
                     json rotation = json::parse(value, nullptr, false);
                     normalize_uncertain_numbers(rotation);
                     if (rotation.is_object()) s->stellar_rotation = std::move(rotation);
+                }
+                else if (version == "AGE1" && extras >> std::quoted(value))
+                {
+                    json age = json::parse(value, nullptr, false);
+                    normalize_uncertain_numbers(age);
+                    if (age.is_object()) s->stellar_age = std::move(age);
                 }
                 else if (version == "MET1" && extras >> std::quoted(value))
                 {
@@ -7450,6 +7462,10 @@ ExoRow CatalogReader::exorow_from_json(const json& source, bool* ok)
     r.st_mass = getd("st_mass");
     r.st_rad = getd("st_rad");
     r.st_rotp = getd("st_rotp");
+    r.st_age = getd("st_age");
+    r.st_ageerr1 = getd("st_ageerr1");
+    r.st_ageerr2 = getd("st_ageerr2");
+    r.st_agelim = getd("st_agelim");
     r.pl_bmassprov = gets("pl_bmassprov");
     r.pl_bmasselim = getd("pl_bmasselim");
     r.pl_radelim = getd("pl_radelim");
@@ -7578,6 +7594,7 @@ void CatalogReader::exorow_write_line(FILE* fp, const ExoRow& row)
     for (double value : errors) write_exo_double(fp, value);
     write_exo_double(fp, row.transiting ? 1 : 0);
     write_exo_double(fp, row.radius_observed ? 1 : 0);
+    for (double value : {row.st_age, row.st_ageerr1, row.st_ageerr2, row.st_agelim}) write_exo_double(fp, value);
 
     fputc('\n', fp);
 }
@@ -7647,7 +7664,12 @@ bool CatalogReader::exorow_read_line(FILE* fp, ExoRow& row)
     row.transiting = read_exo_double(cursor) == 1;
     // Older caches have no explicit radius provenance. A transit still supplies a
     // radius measurement; an RV catalog's populated radius field does not.
-    row.radius_observed = row.transiting || read_exo_double(cursor) == 1;
+    const double radius_flag = read_exo_double(cursor);
+    row.radius_observed = row.transiting || radius_flag == 1;
+    row.st_age = read_exo_double(cursor);
+    row.st_ageerr1 = read_exo_double(cursor);
+    row.st_ageerr2 = read_exo_double(cursor);
+    row.st_agelim = read_exo_double(cursor);
 
     return true;
 }
@@ -8190,6 +8212,14 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
     if (host_star->is_white_dwarf() && (!(host_star->volumetric_mean_radius > 0) ||
         !std::isfinite(host_star->volumetric_mean_radius))) host_star->estimate_radius();
     apply_stellar_abundances(host_star);
+    if (!host_star->stellar_age.is_object() && std::isfinite(row.st_age) && row.st_age >= 0)
+    {
+        host_star->stellar_age = {{"value_gyr", row.st_age}, {"source", "NASA_pscomppars"},
+            {"estimated", std::isfinite(row.st_agelim) && row.st_agelim != 0}};
+        if (std::isfinite(row.st_ageerr1)) host_star->stellar_age["upper_gyr"] = row.st_age + fabs(row.st_ageerr1);
+        if (std::isfinite(row.st_ageerr2)) host_star->stellar_age["lower_gyr"] = row.st_age - fabs(row.st_ageerr2);
+        if (std::isfinite(row.st_agelim) && row.st_agelim != 0) host_star->stellar_age["limit"] = row.st_agelim;
+    }
     if (host_star && !identifiers.gliese.empty() && !host_star->Gliese[0])
     {
         snprintf(host_star->Gliese, sizeof(host_star->Gliese), "%s", identifiers.gliese.c_str());
@@ -9219,7 +9249,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                                "select+pl_name,hostname,hd_name,hip_name,tran_flag,discoverymethod,pl_orbper,pl_orbsmax,pl_orbeccen,pl_orbincl,pl_orbinclerr1,pl_orbinclerr2,pl_orblper,pl_orbtper,pl_tranmid,"
                                "pl_bmasse,pl_bmasseerr1,pl_bmasseerr2,pl_bmasselim,pl_bmassj,pl_bmassjerr1,pl_bmassjerr2,pl_bmassprov,"
                                "pl_msinij,pl_msinie,pl_rade,pl_radeerr1,pl_radeerr2,pl_radelim,pl_radj,pl_radjerr1,pl_radjerr2,pl_trueobliq,"
-                               "st_mass,st_rad,sy_dist,ra,dec,sy_vmag,st_spectype,st_teff,st_lum,st_rotp,st_met,st_meterr1,st_meterr2,st_metlim,st_metratio+"
+                               "st_mass,st_rad,sy_dist,ra,dec,sy_vmag,st_spectype,st_teff,st_lum,st_rotp,st_age,st_ageerr1,st_ageerr2,st_agelim,st_met,st_meterr1,st_meterr2,st_metlim,st_metratio+"
                                "from+pscomppars+order+by+pl_name+asc&format=json";
 
         if (!fetch_tap(nasa_url, readBufferNASA))

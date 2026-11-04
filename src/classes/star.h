@@ -27,6 +27,9 @@ namespace alienorum
         std::string metallicity_ratio, metallicity_source;
         json stellar_abundances = nullptr;
         json stellar_rotation = nullptr;             // Period provenance and supplied/assumed pole fields.
+        json stellar_age = nullptr;                  // Published age, uncertainties and source alternatives.
+        json age_diagnostics() const;
+        double estimate_age_gyr() const;
         json fictional_origin = nullptr;           // Stable fictional identity and generation provenance.
         json catalog_frame = nullptr;                // Region identity and coordinate origin for split saves.
         json stellar_system = nullptr;               // Physical system, published label, and orbit provenance.

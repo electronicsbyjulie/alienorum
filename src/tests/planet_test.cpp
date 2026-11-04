@@ -549,6 +549,32 @@ TEST_F(PlanetClassificationEvidenceTest, ScenarioAgeAndCompactSavesRetainModelIn
     EXPECT_FALSE(restored.atm->pressure_supplied);
 }
 
+TEST_F(PlanetClassificationEvidenceTest, PublishedStellarAgesDriveEscapeAndPersistAcrossSaves)
+{
+    Star* host = make_star();
+    Planet* world = make_planet(host);
+    host->stellar_age = {{"value_gyr", 1.0}, {"source", "published_example"}, {"estimated", false}};
+    const auto young = CosmicShore::estimate_atmosphere(*host, *world);
+    host->stellar_age["value_gyr"] = 10.0;
+    const auto old = CosmicShore::estimate_atmosphere(*host, *world);
+    EXPECT_DOUBLE_EQ(old.diagnostics["inventory"]["age_gyr"].get<double>(), 10);
+    EXPECT_EQ(old.diagnostics["age_origin"], "published_example");
+    EXPECT_NE(young.pressure, old.pressure);
+    Star restored;
+    ASSERT_TRUE(restored.from_json(host->to_json()));
+    EXPECT_EQ(restored.stellar_age, host->stellar_age);
+    json uncertain = host->to_json();
+    uncertain["stellar_age"]["value_gyr"] = "8.7?";
+    ASSERT_TRUE(restored.from_json(uncertain));
+    EXPECT_DOUBLE_EQ(restored.estimate_age_gyr(), 8.7);
+    restored.stellar_age["value_gyr"] = 0;
+    EXPECT_DOUBLE_EQ(restored.estimate_age_gyr(), 0);
+    restored.stellar_age = nullptr;
+    const auto prior = restored.age_diagnostics();
+    EXPECT_TRUE(prior["estimated"].get<bool>());
+    EXPECT_GT(restored.estimate_age_gyr(), 0);
+}
+
 TEST_F(PlanetClassificationEvidenceTest, InferenceUsesStellarOrbitForMoonsAndRejectsUnboundOrbits)
 {
     Star* host = make_star();

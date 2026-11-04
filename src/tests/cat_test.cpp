@@ -2416,6 +2416,10 @@ TEST_F(CatalogParsingTest, RadiusMeasurementProvenanceSurvivesTheDerivedCache)
                 {"pl_orbper", 30}, {"pl_rade", "2.04?"}, {"pl_radprov", provenance}, {"tran_flag", transit}}, &valid);
             ASSERT_TRUE(valid);
             const bool observed = transit || std::string(provenance) == "Observed";
+            row.st_age = 9.25;
+            row.st_ageerr1 = 1.5;
+            row.st_ageerr2 = -2;
+            row.st_agelim = 0;
             EXPECT_EQ(row.radius_observed, observed);
             EXPECT_DOUBLE_EQ(row.pl_rade, 2.04);
             FILE* file = std::tmpfile();
@@ -2427,6 +2431,10 @@ TEST_F(CatalogParsingTest, RadiusMeasurementProvenanceSurvivesTheDerivedCache)
             fclose(file);
             EXPECT_EQ(restored.radius_observed, observed);
             EXPECT_DOUBLE_EQ(restored.pl_rade, 2.04);
+            EXPECT_DOUBLE_EQ(restored.st_age, 9.25);
+            EXPECT_DOUBLE_EQ(restored.st_ageerr1, 1.5);
+            EXPECT_DOUBLE_EQ(restored.st_ageerr2, -2);
+            EXPECT_DOUBLE_EQ(restored.st_agelim, 0);
         }
     }
 }
@@ -2710,6 +2718,7 @@ TEST_F(CatalogParsingTest, StellarMetallicitySurvivesCatalogAndUniverseRoundTrip
     measured->metallicity_error_lower = -0.06;
     measured->metallicity_ratio = "[Fe/H]";
     measured->metallicity_source = "NASA pscomppars";
+    measured->stellar_age = {{"value_gyr", 8.25}, {"source", "published_example"}, {"estimated", false}};
     measured->stellar_abundances = {{"Hypatia", {{"solar_scale", "asplund09"}, {"elements", json::object()}}}};
     measured->add_catalog_alias("Measured abundance host");
     Star* solar = make_star("Solar abundance");
@@ -2735,6 +2744,7 @@ TEST_F(CatalogParsingTest, StellarMetallicitySurvivesCatalogAndUniverseRoundTrip
     EXPECT_EQ(restored.metallicity_ratio, "[Fe/H]");
     EXPECT_DOUBLE_EQ(restored.metallicity_error_lower, -0.06);
     EXPECT_EQ(restored.metallicity_source, "NASA pscomppars");
+    EXPECT_EQ(restored.stellar_age, measured->stellar_age);
     EXPECT_FALSE(unknown->to_json().contains("stellar_metallicity"));
     ASSERT_TRUE(restored.from_json(unknown->to_json()));
     EXPECT_TRUE(std::isnan(restored.metallicity));
@@ -2750,6 +2760,7 @@ TEST_F(CatalogParsingTest, StellarMetallicitySurvivesCatalogAndUniverseRoundTrip
     EXPECT_DOUBLE_EQ(measured->metallicity_error_lower, -0.06);
     EXPECT_EQ(measured->metallicity_ratio, "[Fe/H]");
     EXPECT_EQ(measured->metallicity_source, "NASA pscomppars");
+    EXPECT_DOUBLE_EQ(measured->estimate_age_gyr(), 8.25);
     EXPECT_EQ(measured->stellar_abundances, saved_abundances);
     EXPECT_EQ(measured->catalog_aliases, std::vector<std::string>({"Measured abundance host"}));
     EXPECT_DOUBLE_EQ(solar->metallicity, 0);
@@ -2757,6 +2768,32 @@ TEST_F(CatalogParsingTest, StellarMetallicitySurvivesCatalogAndUniverseRoundTrip
     EXPECT_TRUE(std::isnan(solar->metallicity_error_upper));
     EXPECT_TRUE(std::isnan(unknown->metallicity));
     delete_the_universe();
+}
+
+TEST_F(CatalogParsingTest, PublishedAgeSupplementCoversTheCatalogAndMatchesIdentifiers)
+{
+    std::ifstream input("catalogs/stellar_ages.json");
+    ASSERT_TRUE(input.good());
+    const json ages = json::parse(input);
+    ASSERT_GT(ages.at("rows").size(), 15000u);
+    Star* tau = make_star("Unrelated display label");
+    tau->HD = 10700;
+    tau->HIP = 8102;
+    CatalogReader reader;
+    reader.apply_stellar_abundances(tau);
+    EXPECT_DOUBLE_EQ(tau->estimate_age_gyr(), 7.63);
+    EXPECT_EQ(tau->stellar_age["source"], "Pagano_2015_Tau_Ceti");
+    EXPECT_GE(tau->stellar_age["alternatives"].size(), 4u);
+    Star* supplied = make_star("82 Eridani");
+    supplied->HD = 20794;
+    supplied->stellar_age = {{"value_gyr", 8.75}, {"source", "authored"}};
+    reader.apply_stellar_abundances(supplied);
+    EXPECT_DOUBLE_EQ(supplied->estimate_age_gyr(), 8.75);
+    Star* conflicting = make_star("Conflicting identifiers");
+    conflicting->HIP = 8102;
+    conflicting->HD = 20794;
+    reader.apply_stellar_abundances(conflicting);
+    EXPECT_FALSE(conflicting->stellar_age.is_object());
 }
 
 TEST_F(CatalogParsingTest, ExoplanetMetallicityKeepsSourceScaleAndErrorsTogether)

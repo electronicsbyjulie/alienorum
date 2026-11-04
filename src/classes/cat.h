@@ -32,6 +32,7 @@ namespace alienorum
         std::string pl_name, hostname, hd_name, hip_name, st_spectype;
         double sy_dist=NAN, ra=NAN, dec=NAN, st_lum=NAN, sy_vmag=NAN, st_teff=NAN;
         double st_mass=NAN, st_rad=NAN, st_rotp=NAN;
+        double st_age=NAN, st_ageerr1=NAN, st_ageerr2=NAN, st_agelim=NAN;
         double st_met=NAN, st_meterr1=NAN, st_meterr2=NAN;
         std::string st_metratio, st_met_source;
         std::string pl_bmassprov;
@@ -55,6 +56,7 @@ namespace alienorum
         std::vector<std::string>find_catalogs(std::string path);
         void download_catalogs(bool have_ihc);
         void prepare_stellar_chemistry();
+        void apply_stellar_abundances(Star* host);
 
         static void apply_local_catalog_metadata(CelestialObject** objects);
 
@@ -128,7 +130,6 @@ namespace alienorum
         static void merge_exoplanet_metallicity(json& destination, const json& source);
         static void merge_exoplanet_solution(json& destination, const json& source);
         static void apply_exoplanet_metallicity(const ExoRow& row, Star* host);
-        void apply_stellar_abundances(Star* host);
         Star* resolve_or_create_exostar(const ExoRow& row, bool loaded_starsonly, bool* was_new,
             ExactStarSearchIndex *lookup = nullptr);
         bool add_exoplanet_from_row(const ExoRow& row, Star* host_star, std::map<int, std::vector<int>>& planet_celids, unsigned int& result);

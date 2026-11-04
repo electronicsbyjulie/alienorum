@@ -1702,6 +1702,8 @@ void load_stuff()
         mtx.unlock();
         cr.prepare_stellar_chemistry();
         if (load_aborted()) return;
+        for (int i = 0; cels[i]; ++i)
+            if (cels[i]->typeclass() == class_star) cr.apply_stellar_abundances(static_cast<Star*>(cels[i]));
         // Gaia and the stellar audit can change luminosities after the initial orbit linking.
         // Reconcile companion photometry at the adopted system distance before saving the cache.
         set_center_objects();

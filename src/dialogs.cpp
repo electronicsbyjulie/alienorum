@@ -1125,6 +1125,12 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
         {
             ImGui::Text("%-9s%+.2f dex", (s->metallicity_ratio + ":").c_str(), s->metallicity);
         }
+        if (s && cls == class_star)
+        {
+            const json age = s->age_diagnostics();
+            ImGui::Text("Age:     %s%.2f Gy", age.value("estimated", false) ? "~" : "", s->estimate_age_gyr());
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", age.value("source", "").c_str());
+        }
 
         if (i >= 0 && cels[i]->mass)
         {

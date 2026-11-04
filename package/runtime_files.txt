@@ -29,6 +29,7 @@ catalogs/sat/sources.json
 catalogs/soles_alienorum.dat
 catalogs/star_orbits.dat
 catalogs/stellar_systems.json
+catalogs/stellar_ages.json
 catalogs/urls.dat
 consline.dat
 ephemerides/Earth.Moon.txt.gz

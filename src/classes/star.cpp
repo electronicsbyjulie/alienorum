@@ -12,6 +12,7 @@
 #include "planet.h"
 #include "fictionalstars.h"
 #include "wdcolor.h"
+#include "numeric.h"
 #include "../globals.h"
 
 using namespace alienorum;
@@ -1670,9 +1671,56 @@ void Star::gotta_be_named_something()
     if (orbit && orbit->center) origcenname = orbit->center->name;
 }
 
+json Star::age_diagnostics() const
+{
+    if (stellar_age.is_object() && stellar_age.contains("value_gyr") && stellar_age["value_gyr"].is_number())
+    {
+        const double age = stellar_age["value_gyr"];
+        if (std::isfinite(age) && age >= 0) return stellar_age;
+    }
+    if (fictional_origin.is_object() && fictional_origin.contains("age_gyr") && fictional_origin["age_gyr"].is_number())
+    {
+        const double age = fictional_origin["age_gyr"];
+        if (std::isfinite(age) && age >= 0)
+            return {{"value_gyr", age}, {"estimated", true}, {"source", "stellar_formation_scenario"}};
+    }
+    const double stellar_mass = mass > 0 && std::isfinite(mass) ? mass / solar_mass : 1;
+    const double lifetime = 10 * std::pow(std::clamp(stellar_mass, .08, 100.0), -2.5);
+    double age = .45 * std::min(13.8, lifetime);
+    std::string source = "main_sequence_lifetime_prior";
+    if (is_main_sequence() && stellar_rotation.is_object() && !stellar_rotation.value("estimated", true)
+        && sidereal_rotational_period > 0 && BV_color > .5 && BV_color < .9)
+    {
+        // Mamajek & Hillenbrand (2008), https://arxiv.org/abs/0807.1686.
+        const double period = sidereal_rotational_period / oneday;
+        age = std::pow(period / (.407 * std::pow(BV_color - .495, .325)), 1 / .566) / 1000;
+        age = std::clamp(age, .01, std::min(13.8, lifetime));
+        source = "gyrochronology_Mamajek_Hillenbrand_2008";
+    }
+    else if (is_white_dwarf())
+    {
+        const double effective = temperature > 0 ? temperature : 9000;
+        age = std::clamp(1.8 + .8 * std::pow(9000 / effective, 1 / .35), .01, 13.8);
+        source = "cooling_plus_progenitor_lifetime_prior";
+    }
+    else if (!is_main_sequence())
+    {
+        age = std::min(13.8, 1.05 * lifetime);
+        source = "evolved_stellar_lifetime_prior";
+    }
+    return {{"value_gyr", age}, {"estimated", true}, {"source", source},
+        {"interpretation", "Broad_age_scenario_from_available_stellar_properties"}};
+}
+
+double Star::estimate_age_gyr() const
+{
+    return age_diagnostics().at("value_gyr").get<double>();
+}
+
 json Star::to_json()
 {
     json towrite = CelestialObject::to_json();
+    if (stellar_age.is_object()) towrite["stellar_age"] = stellar_age;
     if (is_white_dwarf())
     {
         Color linear;
@@ -1771,6 +1819,8 @@ json Star::to_json()
 bool Star::from_json(const json& j)
 {
     CelestialObject::from_json(j);
+    stellar_age = j.value("stellar_age", json(nullptr));
+    if (stellar_age.is_object()) normalize_uncertain_numbers(stellar_age);
     stellar_abundances = j.contains("stellar_abundances") && j["stellar_abundances"].is_object()
         ? j["stellar_abundances"] : json(nullptr);
     stellar_rotation = j.contains("stellar_rotation") && j["stellar_rotation"].is_object()

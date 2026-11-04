@@ -187,12 +187,7 @@ double CosmicShore::calculate_unified_metric(Star& s, Planet& p)
 AtmosphericInventory CosmicShore::default_inventory(const Star& s)
 {
     AtmosphericInventory inventory;
-    if (s.fictional_origin.is_object() && s.fictional_origin.contains("age_gyr")
-        && s.fictional_origin["age_gyr"].is_number())
-    {
-        const double age = s.fictional_origin["age_gyr"].get<double>();
-        if (std::isfinite(age) && age >= 0) inventory.age_gyr = age;
-    }
+    inventory.age_gyr = s.estimate_age_gyr();
     return inventory;
 }
 
@@ -201,10 +196,11 @@ AtmosphericEstimate CosmicShore::estimate_atmosphere(Star& s, Planet& p)
     const auto inventory = default_inventory(s, p);
     auto estimate = estimate_atmosphere(s, p, inventory);
     estimate.diagnostics["default_inventory"] = inventory.to_json();
+    estimate.diagnostics["stellar_age"] = s.age_diagnostics();
     estimate.diagnostics["age_origin"] = s.fictional_origin.is_object()
         && s.fictional_origin.contains("age_gyr") && s.fictional_origin["age_gyr"].is_number()
         && s.fictional_origin["age_gyr"] == default_inventory(s).age_gyr
-        ? "stellar_formation_scenario" : "assumed_4.5_gyr";
+        ? "stellar_formation_scenario" : s.age_diagnostics().value("source", "stellar_age_estimate");
     return estimate;
 }
 

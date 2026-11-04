@@ -170,6 +170,45 @@ json Star::chemistry_diagnostics() const
 void CatalogReader::apply_stellar_abundances(Star* host)
 {
     if (!host) return;
+    // Ages cover the entire stellar catalog, independently of abundance availability.
+    static std::map<std::string, json> age_tables;
+    static std::mutex age_mutex;
+    {
+        std::lock_guard<std::mutex> guard(age_mutex);
+        const std::string path = std::filesystem::absolute("catalogs/stellar_ages.json").string();
+        auto table = age_tables.find(path);
+        if (table == age_tables.end())
+        {
+            std::ifstream input(path);
+            const json catalog = input ? json::parse(input, nullptr, false) : json();
+            json index = json::object();
+            if (catalog.is_object() && catalog.contains("rows") && catalog["rows"].is_array())
+                for (const auto& row : catalog["rows"])
+                    for (const char* id : {"hip", "hd", "gaia", "name"})
+                        if (row.contains(id))
+                        {
+                            const std::string key = std::string(id) + ":" + (std::string(id) == "name"
+                                ? normalized(row[id].get<std::string>()) : row[id].dump());
+                            if (!index.contains(key)) index[key] = row;
+                            else if (index[key] != row) index[key] = nullptr;
+                        }
+            table = age_tables.emplace(path, std::move(index)).first;
+        }
+        if (!host->stellar_age.is_object())
+        {
+            for (const auto& key : {"hip:" + std::to_string(host->HIP), "hd:" + std::to_string(host->HD),
+                "gaia:" + std::to_string(host->gaia_source_id), "name:" + normalized(host->name)})
+                if (table->second.contains(key) && table->second[key].is_object())
+                {
+                    const json& candidate = table->second[key];
+                    if ((host->HIP && candidate.contains("hip") && candidate["hip"] != host->HIP)
+                        || (host->HD && candidate.contains("hd") && candidate["hd"] != host->HD)
+                        || (host->gaia_source_id && candidate.contains("gaia") && candidate["gaia"] != host->gaia_source_id)) continue;
+                    host->stellar_age = candidate;
+                    break;
+                }
+        }
+    }
     const auto keys = [](const json& row)
     {
         std::vector<std::string> result;

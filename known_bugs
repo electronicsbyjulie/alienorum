@@ -3,7 +3,7 @@
 
 - [fixed] Planetary volatiles budgets/atmospheric pressure and compensation must be calculated *after* the inclination mass update. See to it that we fix any cases where these calculations are done in the wrong sequence.
 
-- The composition budget assumes a 4.5 Gy age for both Tau Ceti and 82 Eridani. Both stars are actually much older than that. We should add stellar ages when known, estimate them if possible when unknown, and incorporate known and estimated ages into all calculations where stellar age would matter, including the volatiles budget.
+- [fixed] The composition budget assumes a 4.5 Gy age for both Tau Ceti and 82 Eridani. Both stars are actually much older than that. We should add stellar ages when known, estimate them if possible when unknown, and incorporate known and estimated ages into all calculations where stellar age would matter, including the volatiles budget.
 
 - `CatalogReader::add_exoplanet_from_row` sets a supplied radius to `observed` without requiring a transit or another actual radius measurement. Only observed radii should be marked observed.
 
