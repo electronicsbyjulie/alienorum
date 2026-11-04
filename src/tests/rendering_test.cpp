@@ -297,6 +297,9 @@ class RenderingRegressionTest : public UniverseFixture
         set(dragging, false);
         // Vertex assertions exercise the reference painter; GPU tests compare complete images.
         set(horizon_ground_gpu_reference, true);
+        // Image comparisons use full detail regardless of host timing. The
+        // motion-specific test explicitly exercises adaptive sampling below.
+        set(horizon_ground_motion_budget_ms, std::numeric_limits<double>::infinity());
         set(horizon_terrain_gpu_reference, true);
         set(horizon_mesh_gpu_reference, true);
         set(horizon_terrain_cpu_reference, false);
@@ -4975,6 +4978,113 @@ TEST_F(RenderingRegressionTest, ModeratePressureHazeKeepsNearbyWetGroundOnTheGpu
     #if PRESSURE_HAZE && horizon_gpu_ground_painting
     EXPECT_GT(horizon_ground_gpu_stats().haze_tiles, 0u);
     EXPECT_LT(accelerated.second, reference.second * .9);
+    #endif
+    SDL_SetWindowSize(window, 192, 108);
+}
+
+TEST_F(RenderingRegressionTest, GroundMaskUploadsRetainPixelsAndTrackDepthHorizonAndContextEdits)
+{
+    set(horizon_ground_gpu_reference, false);
+    std::vector<float> depths(render_width * render_height, 100);
+    std::vector<double> horizon(render_width, 0);
+    std::vector<int> base_top(render_width, render_height);
+    const auto capture = [&]()
+    {
+        EXPECT_TRUE(prepare_horizon_ground_gpu(render_width, render_height, depths, horizon, base_top, true));
+        queue_horizon_ground_gpu({{0, 0, render_width, render_height, IM_COL32(80, 120, 160, 255)}});
+        auto pixels = render();
+        ImGui::NewFrame();
+        return pixels;
+    };
+    clear_horizon_ground_gpu();
+    const auto first = capture();
+    EXPECT_EQ(horizon_ground_gpu_stats().depth_uploads, 1u);
+    EXPECT_EQ(horizon_ground_gpu_stats().horizon_uploads, 1u);
+    EXPECT_EQ(capture(), first);
+    EXPECT_EQ(horizon_ground_gpu_stats().depth_uploads, 0u);
+    EXPECT_EQ(horizon_ground_gpu_stats().horizon_uploads, 0u);
+    depths[20 * render_width + 15] = 0;
+    const auto edited_depth = capture();
+    EXPECT_EQ(horizon_ground_gpu_stats().depth_uploads, 1u);
+    EXPECT_EQ(horizon_ground_gpu_stats().horizon_uploads, 0u);
+    EXPECT_EQ(image_difference(first, edited_depth), 1);
+    horizon[35] = 30;
+    const auto edited_horizon = capture();
+    EXPECT_EQ(horizon_ground_gpu_stats().depth_uploads, 0u);
+    EXPECT_EQ(horizon_ground_gpu_stats().horizon_uploads, 1u);
+    EXPECT_EQ(image_difference(edited_depth, edited_horizon), 30);
+    clear_horizon_ground_gpu();
+    EXPECT_EQ(capture(), edited_horizon);
+    EXPECT_EQ(horizon_ground_gpu_stats().depth_uploads, 1u);
+    EXPECT_EQ(horizon_ground_gpu_stats().horizon_uploads, 1u);
+}
+
+TEST_F(RenderingRegressionTest, PanningHazyCoastPreservesDetailedGroundPixels)
+{
+    auto* world = surface(true);
+    delete world->surf_map;
+    world->surf_map = new CoastalTestMap(true, true);
+    world->temperature = 265;
+    world->mass = 6.86 * earth_mass;
+    world->volumetric_mean_radius = 1.7 * earth_radius;
+    world->ensure_atmosphere()->surface_pressure = 7.88e5;
+    world->atm->ensure_composition()->N2_portion = .88;
+    world->atm->comp->CO2_portion = .12;
+    set(show_clouds, true);
+    set(viewer_lat, .00001);
+    set(viewer_lon, .4);
+    set(sky_grad, std::map<int, RGB3>{});
+    render_width = 640;
+    render_height = 400;
+    SDL_SetWindowSize(window, render_width, render_height);
+    set(dispcx, 320.0);
+    set(dispcy, 200.0);
+    ImGui::GetIO().DisplaySize = ImVec2(render_width, render_height);
+    ImGui::EndFrame();
+    ImGui::NewFrame();
+    const auto capture = [&]()
+    {
+        freeze_surface_time();
+        find_horizon();
+        draw_horizon();
+        const double cpu = precipitation_stats.horizon_cpu_milliseconds;
+        auto pixels = render();
+        ImGui::NewFrame();
+        return std::make_pair(std::move(pixels), cpu);
+    };
+    double reference_cpu = 0, accelerated_cpu = 0;
+    for (double heading : {0.0, .7, 1.8, 3.0})
+    {
+        azimuth = heading;
+        altitude = heading > 1 ? -.2 : .03;
+        horizon_ground_gpu_reference = true;
+        const auto reference = capture();
+        horizon_ground_gpu_reference = false;
+        const auto accelerated = capture();
+        EXPECT_EQ(image_difference(reference.first, accelerated.first, 1), 0) << heading;
+        reference_cpu += reference.second;
+        accelerated_cpu += accelerated.second;
+    }
+    std::cout << "Panning haze coast: reference CPU " << reference_cpu / 4
+        << " ms; accelerated CPU " << accelerated_cpu / 4 << " ms" << std::endl;
+    #if horizon_motion_ground_sampling
+    // Force the adaptive path independently of the test machine's speed.
+    set(horizon_ground_motion_budget_ms, 0.0);
+    capture();
+    azimuth += .1;
+    const auto moving = capture();
+    EXPECT_EQ(precipitation_stats.ground_sample_stride, 2);
+    EXPECT_FALSE(precipitation_stats.ground_cache_hit);
+    const auto refined = capture();
+    EXPECT_EQ(precipitation_stats.ground_sample_stride, 1);
+    EXPECT_FALSE(precipitation_stats.ground_cache_hit);
+    for (size_t index = 3; index < refined.first.size(); index += 4)
+        EXPECT_EQ(moving.first[index], refined.first[index]) << index;
+    EXPECT_EQ(capture().first, refined.first);
+    EXPECT_TRUE(precipitation_stats.ground_cache_hit);
+    world->surf_map->touch_gen();
+    EXPECT_EQ(capture().first, refined.first);
+    EXPECT_FALSE(precipitation_stats.ground_cache_hit);
     #endif
     SDL_SetWindowSize(window, 192, 108);
 }

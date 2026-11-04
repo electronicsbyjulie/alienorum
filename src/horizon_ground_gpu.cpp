@@ -20,6 +20,7 @@ namespace alienorum
     static int texture_width = 0, texture_height = 0;
     static bool terrain_mask = false;
     static HorizonGroundHaze prepared_haze;
+    static std::vector<float> uploaded_depth, uploaded_columns;
     typedef void (APIENTRYP DrawArraysProc)(GLenum, GLint, GLsizei);
     static DrawArraysProc draw_arrays = nullptr;
     static constexpr GLenum red_format = 0x1903, rg_format = 0x8227;
@@ -138,6 +139,8 @@ void main()
         }
         program = vao = vbo = depth_texture = horizon_texture = 0;
         texture_width = texture_height = 0;
+        uploaded_depth.clear();
+        uploaded_columns.clear();
         attempted = false;
         context = nullptr;
         stats = {};
@@ -232,7 +235,12 @@ void main()
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
         if (resize) glTexImage2D(GL_TEXTURE_2D, 0, r32f_format, width, height, 0, red_format, GL_FLOAT, nullptr);
-        if (terrain) glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, red_format, GL_FLOAT, distances.data());
+        const bool upload_depth = terrain && (resize || uploaded_depth != distances);
+        if (upload_depth)
+        {
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, red_format, GL_FLOAT, distances.data());
+            ++stats.depth_uploads;
+        }
         std::vector<float> columns(width * 2);
         for (int x = 0; x < width; ++x)
         {
@@ -244,11 +252,24 @@ void main()
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
         if (resize) glTexImage2D(GL_TEXTURE_2D, 0, rg32f_format, width, 1, 0, rg_format, GL_FLOAT, nullptr);
-        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, 1, rg_format, GL_FLOAT, columns.data());
+        const bool upload_columns = resize || uploaded_columns != columns;
+        if (upload_columns)
+        {
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, 1, rg_format, GL_FLOAT, columns.data());
+            ++stats.horizon_uploads;
+        }
         glBindTexture(GL_TEXTURE_2D, previous_texture);
         glPixelStorei(GL_UNPACK_ROW_LENGTH, previous_row_length);
         glPixelStorei(GL_UNPACK_ALIGNMENT, previous_alignment);
-        if (glGetError() != 0) return false;
+        if (glGetError() != 0)
+        {
+            uploaded_depth.clear();
+            uploaded_columns.clear();
+            return false;
+        }
+        if (upload_depth) uploaded_depth = distances;
+        else if (resize) uploaded_depth.clear();
+        if (upload_columns) uploaded_columns = std::move(columns);
         texture_width = width;
         texture_height = height;
         terrain_mask = terrain;

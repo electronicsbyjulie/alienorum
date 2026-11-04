@@ -69,6 +69,11 @@
 #ifndef horizon_gpu_ground_painting
 #define horizon_gpu_ground_painting 1
 #endif
+#ifndef horizon_motion_ground_sampling
+// Expensive moving views refine their base colors as soon as movement stops.
+#define horizon_motion_ground_sampling 1
+#endif
+extern double horizon_ground_motion_budget_ms;
 #ifndef horizon_gpu_terrain_rasterization
 // Opt-in: compare performance on the target GPU before enabling by default.
 #define horizon_gpu_terrain_rasterization 0

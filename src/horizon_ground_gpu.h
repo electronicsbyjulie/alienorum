@@ -18,6 +18,7 @@ namespace alienorum
         unsigned int tiles = 0;
         unsigned int pixels = 0;
         unsigned int haze_tiles = 0;
+        unsigned int depth_uploads = 0, horizon_uploads = 0;
     };
 
     struct HorizonGroundHaze

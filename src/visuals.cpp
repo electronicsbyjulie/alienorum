@@ -44,6 +44,7 @@ bool horizon_terrain_cpu_reference = false;
 bool horizon_background_cpu_reference = false;
 bool scenery_cpu_reference = false;
 bool water_cpu_reference = false;
+double horizon_ground_motion_budget_ms = 20;
 static size_t scenery_projection_hits = 0;
 size_t scenery_projection_cache_hits() { return scenery_projection_hits; }
 static LocalSurfaceTile local_surface_tile;
@@ -6973,6 +6974,7 @@ void draw_horizon()
             && (!bounded_ground || first_ground < ground_height))
         {
             ImDrawList *ground = ImGui::GetBackgroundDrawList();
+            const auto ground_setup_start = std::chrono::steady_clock::now();
             std::vector<HorizonGroundRect> gpu_rectangles;
             bool gpu_ground = false;
             #if horizon_gpu_ground_painting
@@ -7018,6 +7020,9 @@ void draw_horizon()
                     min_hz_y_at_x, base_top, terrain_mesh, gpu_haze);
             }
             #endif
+            const auto ground_paint_start = std::chrono::steady_clock::now();
+            precipitation_stats.ground_setup_milliseconds = std::chrono::duration<double, std::milli>(
+                ground_paint_start - ground_setup_start).count();
             // Retain completed base painting independently of animated waves/scenery.
             // Small walking steps retain base colors; geometry masks, waves and
             // scenery still update each frame. Physical/lighting edits invalidate it.
@@ -7025,6 +7030,7 @@ void draw_horizon()
             static std::vector<PaintedGroundRect> saved_cpu_rectangles;
             static std::vector<HorizonGroundRect> saved_gpu_rectangles;
             static double painted_latitude = 0, painted_longitude = 0;
+            static double full_ground_paint_ms = 0;
             static std::array<bool, 256> painted_channels{};
             static std::array<int, 256> painted_lighting{};
             const auto remember_channels = [&](const RGB3& color)
@@ -7055,6 +7061,7 @@ void draw_horizon()
             // celestial-frame correction rotates the sky, not this painting.
             ground_inputs.push_back(surface_uniform_reference);
             for (bool reference : performance_reference) ground_inputs.push_back(reference);
+            ground_inputs.push_back(1); // Base-color sample stride; masks and haze stay at full resolution.
             auto ground_key = std::make_tuple(cel, map, std::move(ground_inputs));
             static decltype(ground_key) saved_ground_key;
             static bool ground_cache_valid = false;
@@ -7066,6 +7073,20 @@ void draw_horizon()
             // retain exact positions because the north/east basis turns rapidly.
             const bool position_reusable = travel < std::min(2.0, surface_radius * .001)
                 && (fabs(viewer_lat) < half_pi - .001 || (latitude_step == 0 && longitude_step == 0));
+            int ground_stride = 1;
+            if (horizon_motion_ground_sampling && gpu_ground && paint_biomes && ground_cache_valid
+                && std::get<0>(ground_key) == std::get<0>(saved_ground_key)
+                && std::get<1>(ground_key) == std::get<1>(saved_ground_key)
+                && full_ground_paint_ms > horizon_ground_motion_budget_ms)
+            {
+                const auto& old = std::get<2>(saved_ground_key);
+                const auto& current = std::get<2>(ground_key);
+                if (old.size() == current.size() && old[3] == 1 && old[13] == current[13] && old[14] == current[14]
+                    && (!position_reusable || old[10] != current[10] || old[11] != current[11] || old[12] != current[12]))
+                    ground_stride = 2;
+            }
+            std::get<2>(ground_key).back() = ground_stride;
+            precipitation_stats.ground_sample_stride = ground_stride;
             const bool reuse_ground = ground_cache_valid && position_reusable && same_lighting && ground_key == saved_ground_key;
             const char* cache_reason = "first painting";
             if (ground_cache_valid)
@@ -7085,6 +7106,8 @@ void draw_horizon()
                 }
             }
             if (ground_cache_valid && !same_lighting) cache_reason = "lighting";
+            if (ground_stride > 1) cache_reason = "panning";
+            else if (ground_cache_valid && std::get<2>(saved_ground_key).back() > 1) cache_reason = "refining";
             precipitation_stats.ground_cache_reason = reuse_ground ? "reused" : cache_reason;
             precipitation_stats.ground_cache_active = true;
             precipitation_stats.ground_cache_hit = reuse_ground;
@@ -7120,7 +7143,10 @@ void draw_horizon()
                 const double nearest_base = base_distance(closest_x, bottom - 0.5);
                 const double farthest_base = base_distance(farthest_x, top + 0.5);
                 if (std::isfinite(nearest_base)) near_distance = fmin(near_distance, nearest_base);
-                if (std::isfinite(farthest_base)) far_distance = fmin(far_distance, farthest_base);
+                if (std::isfinite(farthest_base))
+                    far_distance = nearby ? fmax(far_distance, farthest_base) : fmin(far_distance, farthest_base);
+                else if (nearby) far_distance = surface_range;
+                if (far_distance < near_distance) return false;
                 if (haze.active() && haze.transmission(near_distance, 0) < .5 / 255)
                 {
                     // Subpixel source contrast cannot affect the displayed result.
@@ -7141,12 +7167,28 @@ void draw_horizon()
                 }
                 // A radial segment plus a bearing arc encloses every reference lookup.
                 // Include the entire noise displacement, rather than dropping coastal detail.
-                const double angle = (0.5 * (far_distance - near_distance)
-                    + far_distance * 0.5 * (high_bearing - low_bearing)) / surface_radius
-                    + (surface_biomes ? biome_angle : 0.0) + 1.0e-10;
+                const double footprint_angle = (0.5 * (far_distance - near_distance)
+                    + far_distance * 0.5 * (high_bearing - low_bearing)) / surface_radius + 1.0e-10;
+                const double angle = footprint_angle + (surface_biomes ? biome_angle : 0.0);
                 const auto center = surface_coord(0.5 * (near_distance + far_distance),
                     azimuth + 0.5 * (low_bearing + high_bearing));
-                const bool uniform = map->color_within_cap(center.first, center.second, angle, color, true);
+                bool uniform = map->color_within_cap(center.first, center.second, angle, color, true);
+                if (!uniform && surface_biomes && footprint_angle >= 0)
+                {
+                    // The full displacement bound does not shrink with tile size.
+                    // Around a displaced center, the Jacobian instead bounds just
+                    // this footprint, certifying small tiles close to biome edges.
+                    const double minimum_radius = surface_radius - SurfaceBiomes::maximum_displacement(shore_displacement);
+                    const double chord = 2 * surface_radius * sin(std::min(_pi, footprint_angle) * .5)
+                        * (1 + 3 * SurfaceBiomes::gradient_bound(shore_displacement));
+                    const double displaced_angle = minimum_radius > 0
+                        ? 2 * asin(std::min(1.0, chord / (2 * minimum_radius))) + 1e-10 : _pi;
+                    if (displaced_angle < angle)
+                    {
+                        const auto displaced = biome_field.coordinates(surface_radius, center.first, center.second, shore_displacement);
+                        uniform = map->color_within_cap(displaced.first, displaced.second, displaced_angle, color, true);
+                    }
+                }
                 if (uniform) remember_channels(color);
                 return uniform;
             };
@@ -7169,6 +7211,15 @@ void draw_horizon()
                 const double distance = visible_distance(x, y);
                 return pressure_haze_color(haze, color, std::isfinite(distance) ? distance : surface_range);
             };
+            const auto sampled_gpu_tile = [&](int left, int top, int right, int bottom)
+            {
+                const auto coord = ground_coord((left + right) * .5, (top + bottom) * .5);
+                const RGB3 sample = surface_sample(coord.first, coord.second);
+                remember_channels(sample);
+                gpu_rectangles.push_back({left, top, right, bottom,
+                    rgba_apply_redlight(IM_COL32(fmin(255, is_day * sample.r), fmin(255, is_day * sample.g),
+                        fmin(255, is_day * sample.b), dragging ? (192 - 128 * is_day) : 255))});
+            };
             // Subdivide map boundaries while drawing uniform regions as large patches.
             const auto patch = [&](const auto &self, int left, int top, int right, int bottom) -> void
             {
@@ -7184,7 +7235,7 @@ void draw_horizon()
                 {
                     return;
                 }
-                const bool small = right - left <= 1 && bottom - top <= 1;
+                const bool small = right - left <= ground_stride && bottom - top <= ground_stride;
                 bool pixel_sampling = false;
                 #if distant_biome_pixel_sampling
                 if (!small)
@@ -7215,6 +7266,24 @@ void draw_horizon()
                                 dragging ? (192 - 128 * is_day) : 255))});
                         return;
                     }
+                    if (gpu_ground && right - left > 4 && bottom - top > 4)
+                    {
+                        // A failed large cap can contain many smaller constant
+                        // regions. Certify those before sampling every pixel.
+                        const int mid_x = (left + right) / 2, mid_y = (top + bottom) / 2;
+                        self(self, left, top, mid_x, mid_y);
+                        self(self, mid_x, top, right, mid_y);
+                        self(self, left, mid_y, mid_x, bottom);
+                        self(self, mid_x, mid_y, right, bottom);
+                        return;
+                    }
+                    if (ground_stride > 1)
+                    {
+                        for (int y = top; y < bottom; y += ground_stride)
+                            for (int x = left; x < right; x += ground_stride)
+                                sampled_gpu_tile(x, y, std::min(right, x + ground_stride), std::min(bottom, y + ground_stride));
+                        return;
+                    }
                     // Sample every pixel, then merge equal colors into horizontal runs.
                     for (int y = top; y < bottom; ++y)
                     {
@@ -7240,6 +7309,11 @@ void draw_horizon()
                 // Certify nearby map colors before testing shaded corners. The GPU
                 // supplies exact coverage and optional distance haze without splitting
                 // constant source regions into individual CPU-painted pixels.
+                if (ground_stride > 1 && small)
+                {
+                    sampled_gpu_tile(left, top, right, bottom);
+                    return;
+                }
                 RGB3 nearby_color;
                 if (gpu_ground && gpu_tile_color(left, top, right, bottom, nearby_color, true))
                 {
@@ -7323,6 +7397,9 @@ void draw_horizon()
                 }
             }
             if (gpu_ground) queue_horizon_ground_gpu(std::move(gpu_rectangles));
+            precipitation_stats.ground_paint_milliseconds = std::chrono::duration<double, std::milli>(
+                std::chrono::steady_clock::now() - ground_paint_start).count();
+            if (!reuse_ground && ground_stride == 1) full_ground_paint_ms = precipitation_stats.ground_paint_milliseconds;
         }
 
         if (surface_water && !faded && screen_w > 0)
