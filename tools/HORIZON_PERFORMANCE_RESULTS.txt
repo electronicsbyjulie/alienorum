@@ -153,7 +153,7 @@ and associated identical rectangle lists with one VBO revision. Context teardown
 cleared all retained state. Masks and haze uniforms remained live. Eight paired
 rounds across seven scenes and five modes passed image and sampling checks.
 Stationary results were unresolved throughout: ice 21.62 -> 22.90 ms, Earth
-29.77 -> 29.40 ms, and forest 13.83 -> 13.62 ms. Rectangle equality checks and
+29.77 -> 29.40 ms, and forest 13.22 -> 13.55 ms. Rectangle equality checks and
 retained storage offered little advantage on these already cached painters.
 
 Ocean tenfold walking initially flagged +7.57%; a fresh twelve-pair repetition
