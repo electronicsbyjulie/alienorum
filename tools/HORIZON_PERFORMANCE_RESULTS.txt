@@ -236,9 +236,29 @@ ALIENORUM_HORIZON_INSPECT_EVERY_POSE=1. Raw logs:
 /tmp/horizon-trial-07-tight-pilot/, /tmp/horizon-trial-07-long-pilot/, and
 /tmp/horizon-trial-07-every-pose/.
 
+Item 8: Reject zero-effect shadows and hoist per-light factors
+=============================================================
+Status: rejected for insufficient repeatable benefit; prototype removed.
+
+The prototype rejected existing width/base failures before distance and haze
+work, skipped zero-strength lights and exactly zero encoded shadow RGB, and
+hoisted per-light direction trigonometry and length divisors. Zero RGB is an
+identity operation for the multiplicative shadow blend. Thirty-two focused
+image tests passed, and the seven-scene, five-mode eight-pair matrix matched
+images and sampling strides.
+
+Small initial gains included ice tenfold walking (-0.39%) and Earth tenfold
+walking (-0.69%). Ice normal walking flagged +2.40%, while forest tenfold-walk
+p95 flagged +3.33%. Twelve fresh ice pairs left both moving results unresolved:
+walk +1.49%, interval -1.40 to +2.05%; tenfold -0.89%, interval -1.84 to +0.94%.
+Their p95 changes were also unresolved. Twelve fresh forest pairs cleared the
+tail flag: -0.41%, interval -3.32 to +1.77%. No reproducible regression was
+established, but no convincing repeated gain justified retaining the logic.
+Raw results: /tmp/horizon-trial-08-native/, /tmp/horizon-trial-08-confirm/, and
+/tmp/horizon-trial-08-forest-confirm/.
+
 Remaining sequence
 ==================
-8. Reject zero-effect scenery shadows and hoist light factors.
 9. Retain rock facet geometry and ordering.
 10. Avoid the second CPU scenery fog pass.
 11. Reduce raster work for rejected spans.
