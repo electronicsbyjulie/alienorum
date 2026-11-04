@@ -249,15 +249,50 @@ void Planet::refresh_host_display_designation()
     }
 }
 
+static bool constrained_atmospheric_composition(const Planet& planet)
+{
+    return planet.atm && (planet.atm->pressure_supplied
+        || (planet.atm->pressure_model.is_object()
+            && planet.atm->pressure_model.value("status", "") == "estimated"));
+}
+
+static void record_climate_consistency(Planet& planet)
+{
+    if (!planet.atm || !planet.atm->pressure_model.is_object()
+        || !planet.atm->pressure_model.contains("climate_proxy_k")) return;
+    auto& model = planet.atm->pressure_model;
+    const double proxy = model["climate_proxy_k"].get<double>();
+    const double rendered = planet.estimate_surface_temperature();
+    if (!std::isfinite(rendered)) return;
+    model["climate_consistency"] =
+    {
+        {"reservoir_proxy_k", proxy}, {"rendered_mean_k", rendered}, {"difference_k", rendered - proxy},
+        {"frozen_water_disagreement", (proxy < water_freezing) != (rendered < water_freezing)},
+        {"interpretation", "Separate_phase_and_render_models;not_a_converged_coupled_climate"}
+    };
+    if (planet.atm->comp)
+    {
+        const json composition = planet.atm->comp->to_json();
+        model["rendered_composition"] = composition;
+        model["rendered_composition_source"] = model.value("generated_composition", json(nullptr)) == composition
+            ? "conserved_secondary_volatile_budget" : "separate_supplied_or_authored_composition_scenario";
+    }
+}
+
 void alienorum::Planet::setup_atm_ring_props()
 {
     classify();
     apply_cosmic_shoreline();
-    if (estimate_habitability() && type != hycean) ensure_atmosphere()->ensure_composition()->generate_fictitious_habitable();
-    else ensure_atmosphere()->ensure_composition()->generate_fictitious_for_planet(type);
+    const bool habitable = estimate_habitability();
+    if (!constrained_atmospheric_composition(*this))
+    {
+        if (habitable && type != hycean) ensure_atmosphere()->ensure_composition()->generate_fictitious_habitable();
+        else ensure_atmosphere()->ensure_composition()->generate_fictitious_for_planet(type);
+    }
 
     temperature = 0;
     estimate_surface_temperature();
+    record_climate_consistency(*this);
 
     if (typeclass() == class_planet)
     {
@@ -355,6 +390,7 @@ void alienorum::Planet::apply_cosmic_shoreline()
         temperature = 0;
         estimate_surface_temperature();
         estimate_surface_water();
+        record_climate_consistency(*this);
     }
 }
 
@@ -365,7 +401,7 @@ bool Planet::estimate_surface_water(bool replace_supplied, const std::vector<dou
     CelestialObject* light = get_light_center();
     if (!light || light->typeclass() != class_star || (!replace_supplied && !user_added && !light->seqno)) return false;
     Star& host = *static_cast<Star*>(light);
-    AtmosphericInventory inventory = CosmicShore::default_inventory(host);
+    AtmosphericInventory inventory = CosmicShore::default_inventory(host, *this);
     const json* scenario = nullptr;
     if (atm && atm->pressure_model.is_object() && atm->pressure_model.contains("inventory"))
         scenario = &atm->pressure_model["inventory"];
@@ -446,7 +482,7 @@ bool alienorum::Planet::estimate_habitability()
 
     AtmosphereComposition *ac = atm ? atm->ensure_composition() : nullptr;
     life_possible = (is_in_con_HZ() && mass > 0.02 * earth_mass);       // Based on Titan's mass.
-    if (randomize_txgen && ac)
+    if (randomize_txgen && ac && !constrained_atmospheric_composition(*this))
     {
         if (life_possible)
         {
@@ -489,7 +525,7 @@ bool alienorum::Planet::estimate_habitability()
             }
         }
 
-        if (ac) ac->H2O_portion = 0.014 * has_water;
+        if (ac && !constrained_atmospheric_composition(*this)) ac->H2O_portion = 0.014 * has_water;
         temperature = 0;        // force refresh
         if (atm) atm->calculate_tau(press);
         T_surf = estimate_surface_temperature();
@@ -499,7 +535,7 @@ bool alienorum::Planet::estimate_habitability()
             && T_surf > 0.9*water_freezing && T_surf < 320
             && press < oneatm*2000);
 
-        if (randomize_txgen && ac)
+        if (randomize_txgen && ac && !constrained_atmospheric_composition(*this))
         {
             if (life_possible)
             {
@@ -646,7 +682,11 @@ void Planet::classify(bool HZ, bool mnrk, bool ck)
 {
     if (lock_type && (uses_rocky_map(type) || uses_gaseous_map(type)))
     {
-        classification_evidence = {{"basis", "explicit_type_lock"}, {"class_code", static_cast<int>(type)}};
+        if (!classification_evidence.is_object()) classification_evidence = json::object();
+        classification_evidence["basis"] = "explicit_type_lock";
+        classification_evidence["class_code"] = static_cast<int>(type);
+        if (classification_evidence.contains("primordial_envelope"))
+            classification_evidence["primordial_envelope"]["selection_applied"] = false;
         return;
     }
     const cel_obj_type previous_type = type;
@@ -1004,7 +1044,10 @@ LocalClimate Planet::current_local_climate(bool include_supplied)
         climate.sun_x, climate.sun_y, climate.sun_z, actual_distance, axis, atmosphere_capacity,
         water_capacity, ocean, feedback, spin_period, double(supplied)
     };
-    if (conditions_cache && conditions_cache_key == cache_key) return *conditions_cache;
+    const bool phase_pending = atm && atm->pressure_model.is_object()
+        && atm->pressure_model.contains("phase_available_column_pa")
+        && !atm->pressure_model.contains("seasonal_conditions");
+    if (conditions_cache && conditions_cache_key == cache_key && !phase_pending) return *conditions_cache;
     const double land_capacity = 2e6 + atmosphere_capacity + ocean * climate.redistribution * water_capacity * 0.3;
     const double ocean_capacity = atmosphere_capacity + water_capacity;
     const ThermalHistory land_history(forcing, land_capacity / feedback);
@@ -1037,6 +1080,11 @@ LocalClimate Planet::current_local_climate(bool include_supplied)
     climate.water_diurnal_seconds = (4.18e6 * liquid + 1.93e6 * (1 - liquid) + 0.05 * atmosphere_capacity) / feedback;
     climate.water_fraction = ocean;
     climate.current_conditions = true;
+    if (atm && atm->pressure_model.is_object() && atm->pressure_model.value("status", "") == "estimated")
+    {
+        atm->pressure_model["seasonal_conditions"] = CosmicShore::seasonal_volatiles(atm->pressure_model,
+            forcing, climate.mean_k, ((1 - ocean) * land_capacity + ocean * ocean_capacity) / feedback, reference);
+    }
     conditions_cache = std::make_shared<LocalClimate>(climate);
     conditions_cache_key = cache_key;
     return climate;

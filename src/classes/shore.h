@@ -42,6 +42,8 @@ namespace alienorum
         json diagnostics = nullptr;
     };
 
+    struct ThermalOrbit;
+
     class CosmicShore
     {
         public:
@@ -56,6 +58,9 @@ namespace alienorum
         static AtmosphericEstimate estimate_atmosphere(Star& s, Planet& p);
         static AtmosphericEstimate estimate_atmosphere(Star& s, Planet& p,
             const AtmosphericInventory& inventory);
+        // Periodic thermal and phase history for the currently inspected body.
+        static json seasonal_volatiles(const json& budget, const ThermalOrbit& orbit,
+            double mean_k, double response_seconds, double flux_reference = 1);
         // Heights are normalized terrain samples with equal surface-area weights.
         static SurfaceWaterEstimate estimate_surface_water(const Planet& p, const json& budget,
             const std::vector<double>& heights = {});

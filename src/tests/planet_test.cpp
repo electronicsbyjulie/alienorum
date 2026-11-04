@@ -17,6 +17,7 @@
 #include "../classes/cat.h"
 #include "../classes/chemistry.h"
 #include "../classes/shore.h"
+#include "../classes/thermalclimate.h"
 #include "../classes/watercoverage.h"
 #include "../classes/surfacenavigation.h"
 #include "../visuals.h"
@@ -239,13 +240,15 @@ TEST_F(PlanetClassificationEvidenceTest, InitialInventoriesRespondToDeliveryMass
     Star* host = make_star();
     Planet* world = make_planet(host);
     const auto reference = CosmicShore::default_inventory(*host, *world);
-    EXPECT_DOUBLE_EQ(reference.water_mass_fraction, 2.3e-4);
+    EXPECT_NEAR(reference.water_mass_fraction * reference.surface_water_share, 2.3e-4, 1e-18);
+    EXPECT_NEAR(reference.surface_water_share, 1.0 / 3, 1e-15);
     EXPECT_DOUBLE_EQ(reference.co2_mass_fraction, 1.45e-4);
     EXPECT_DOUBLE_EQ(reference.nitrogen_mass_fraction, 1e-6);
     world->mass *= 4;
     world->volumetric_mean_radius *= 1.5;
     const auto massive = CosmicShore::default_inventory(*host, *world);
     EXPECT_GT(massive.water_mass_fraction, reference.water_mass_fraction);
+    EXPECT_LT(massive.surface_water_share, reference.surface_water_share);
     EXPECT_GT(massive.nitrogen_mass_fraction, reference.nitrogen_mass_fraction);
     world->orbit->semimajor_axis *= 3;
     const auto outer = CosmicShore::default_inventory(*host, *world);
@@ -597,6 +600,142 @@ TEST_F(PlanetClassificationEvidenceTest, SuppliedCompositionAndSolarSystemAbsenc
     const json supplied = composition->to_json();
     world->apply_cosmic_shoreline();
     EXPECT_EQ(composition->to_json(), supplied);
+}
+
+TEST_F(PlanetClassificationEvidenceTest, SetupPreservesConservedGasAndReportsClimateMismatch)
+{
+    Star* host = make_star();
+    Planet* world = make_planet(host);
+    world->user_added = true;
+    world->lock_type = true;
+    world->apply_cosmic_shoreline();
+    ASSERT_NE(world->atm, nullptr);
+    ASSERT_NE(world->atm->comp, nullptr);
+    const json gases = world->atm->comp->to_json();
+    const bool old_randomize = randomize_txgen;
+    randomize_txgen = true;
+    for (int iteration = 0; iteration < 3; ++iteration)
+    {
+        world->setup_atm_ring_props();
+        world->estimate_habitability();
+        EXPECT_EQ(world->atm->comp->to_json(), gases);
+        const auto& model = world->atm->pressure_model;
+        EXPECT_EQ(model["rendered_composition_source"], "conserved_secondary_volatile_budget");
+        EXPECT_EQ(model["rendered_composition"], gases);
+        EXPECT_DOUBLE_EQ(model["climate_consistency"]["rendered_mean_k"].get<double>(), world->estimate_surface_temperature());
+        EXPECT_EQ(model["structure_scenarios"].size(), 4u);
+    }
+    world->atm->comp->O2_portion = .2;
+    const json authored = world->atm->comp->to_json();
+    world->setup_atm_ring_props();
+    EXPECT_EQ(world->atm->comp->to_json(), authored);
+    EXPECT_EQ(world->atm->pressure_model["rendered_composition_source"], "separate_supplied_or_authored_composition_scenario");
+    randomize_txgen = old_randomize;
+}
+
+TEST_F(PlanetClassificationEvidenceTest, WaterPartitionSeparatesDeepStorageAndRetainsAllSurfaceAlternative)
+{
+    Star* host = make_star();
+    Planet* world = make_planet(host);
+    auto scenario = CosmicShore::default_inventory(*host, *world);
+    const auto estimate = CosmicShore::estimate_atmosphere(*host, *world, scenario);
+    ASSERT_TRUE(estimate.valid);
+    const auto& partition = estimate.diagnostics["water_partition"];
+    const double deep = partition["interior_recycled_mass_fraction"].get<double>();
+    const double surface = partition["surface_condensed_mass_fraction"].get<double>();
+    const double condensed = estimate.diagnostics["reservoir_mass_fractions"]["H2O"]["surface_storage"].get<double>();
+    EXPECT_GT(deep, surface);
+    EXPECT_NEAR(deep + surface, condensed, 1e-18);
+    const auto water = CosmicShore::estimate_surface_water(*world, estimate.diagnostics);
+    ASSERT_TRUE(water.valid);
+    EXPECT_DOUBLE_EQ(water.diagnostics["surface_mass_fraction"].get<double>(), surface);
+    EXPECT_NEAR(water.diagnostics["interior_storage_mass_fraction"].get<double>(), deep, 1e-18);
+    scenario.surface_water_share = 1;
+    const auto all = CosmicShore::estimate_atmosphere(*host, *world, scenario);
+    EXPECT_DOUBLE_EQ(all.diagnostics["water_partition"]["interior_recycled_mass_fraction"].get<double>(), 0);
+    EXPECT_GT(CosmicShore::estimate_surface_water(*world, all.diagnostics).diagnostics["surface_mass_fraction"].get<double>(), surface);
+    // The Earth-scale accessible inventory and pressure calibration survive the split.
+    AtmosphericInventory original;
+    EXPECT_NEAR(estimate.pressure, CosmicShore::estimate_atmosphere(*host, *world, original).pressure, 1e-7);
+}
+
+TEST_F(PlanetClassificationEvidenceTest, CurrentClimatePublishesSeasonalPhaseDiagnosticsWithoutReplacingMeanBudget)
+{
+    Planet* world = make_planet(make_star());
+    world->user_added = true;
+    world->orbit->eccentricity = .3;
+    world->apply_cosmic_shoreline();
+    ASSERT_NE(world->atm, nullptr);
+    const double pressure = world->get_surface_pressure();
+    const json ledger = world->atm->pressure_model["reservoir_mass_fractions"];
+    const auto current = world->current_local_climate();
+    EXPECT_TRUE(current.current_conditions);
+    const json seasonal = world->atm->pressure_model["seasonal_conditions"];
+    ASSERT_TRUE(seasonal.is_object());
+    EXPECT_TRUE(seasonal["current_temperature_k"].is_number());
+    EXPECT_TRUE(seasonal["gas_column_pa"]["H2O"].is_number());
+    EXPECT_DOUBLE_EQ(world->get_surface_pressure(), pressure);
+    EXPECT_EQ(world->atm->pressure_model["reservoir_mass_fractions"], ledger);
+    world->current_local_climate();
+    EXPECT_EQ(world->atm->pressure_model["seasonal_conditions"], seasonal);
+    world->apply_cosmic_shoreline();
+    EXPECT_FALSE(world->atm->pressure_model.contains("seasonal_conditions"));
+    world->current_local_climate();
+    EXPECT_EQ(world->atm->pressure_model["seasonal_conditions"], seasonal);
+}
+
+TEST(SeasonalVolatilesTest, PeriodicHistoryConservesSpeciesAndBuffersEccentricSeasons)
+{
+    ThermalOrbit orbit;
+    orbit.period = 365.25 * 86400;
+    orbit.eccentricity = .6;
+    const json budget = {{"phase_available_column_pa", json::array({1e5, 1e5, 1e7})}};
+    const auto fast = CosmicShore::seasonal_volatiles(budget, orbit, 280, 86400);
+    const auto buffered = CosmicShore::seasonal_volatiles(budget, orbit, 280, 10 * orbit.period);
+    EXPECT_LT(buffered["maximum_temperature_k"].get<double>() - buffered["minimum_temperature_k"].get<double>(),
+        (fast["maximum_temperature_k"].get<double>() - fast["minimum_temperature_k"].get<double>()) / 10);
+    EXPECT_GT(fast["frozen_temperature_time_fraction"].get<double>(), 0);
+    EXPECT_GT(fast["condensed_liquid_time_fraction"].get<double>(), 0);
+    std::vector<json> trajectory;
+    const char* species[] = {"CO2", "N2", "H2O"};
+    for (int phase = 0; phase < 32; ++phase)
+    {
+        orbit.mean_anomaly = 2 * _pi * phase / 32;
+        const auto state = CosmicShore::seasonal_volatiles(budget, orbit, 280, .05 * orbit.period);
+        ASSERT_TRUE(state.is_object());
+        EXPECT_LT(state["periodic_closure_relative"].get<double>(), 1e-10);
+        for (int i = 0; i < 3; ++i)
+        {
+            const double gas = state["gas_column_pa"][species[i]].get<double>();
+            const double condensed = state["condensed_column_pa"][species[i]].get<double>();
+            EXPECT_GE(gas, 0);
+            EXPECT_GE(condensed, 0);
+            EXPECT_NEAR(gas + condensed, budget["phase_available_column_pa"][i].get<double>(), 1e-8);
+        }
+        trajectory.push_back(state);
+    }
+    // Reverse time jumps reproduce the same history instead of resetting a time-step state.
+    for (int phase = 31; phase >= 0; --phase)
+    {
+        orbit.mean_anomaly = 2 * _pi * phase / 32;
+        EXPECT_EQ(CosmicShore::seasonal_volatiles(budget, orbit, 280, .05 * orbit.period), trajectory[phase]);
+    }
+    // With negligible thermal lag, equal temperatures on the two orbital legs
+    // still carry different vapor columns because exchange takes finite time.
+    orbit.mean_anomaly = .5;
+    const auto cooling = CosmicShore::seasonal_volatiles(budget, orbit, 280, 1);
+    orbit.mean_anomaly = -.5;
+    const auto warming = CosmicShore::seasonal_volatiles(budget, orbit, 280, 1);
+    EXPECT_NEAR(cooling["current_temperature_k"].get<double>(), warming["current_temperature_k"].get<double>(), 1e-6);
+    EXPECT_GT(cooling["gas_column_pa"]["H2O"].get<double>(), warming["gas_column_pa"]["H2O"].get<double>() * 1.1);
+    orbit.eccentricity = 0;
+    orbit.period = 3600;
+    const auto short_orbit = CosmicShore::seasonal_volatiles(budget, orbit, 280, 1e12);
+    EXPECT_NEAR(short_orbit["minimum_temperature_k"].get<double>(), 280, 1e-8);
+    EXPECT_NEAR(short_orbit["maximum_temperature_k"].get<double>(), 280, 1e-8);
+    EXPECT_LT(short_orbit["periodic_closure_relative"].get<double>(), 1e-10);
+    orbit.eccentricity = 1;
+    EXPECT_TRUE(CosmicShore::seasonal_volatiles(budget, orbit, 280, 1).is_null());
 }
 
 TEST_F(PlanetClassificationEvidenceTest, InvalidAtmosphereInputsPreservePriorPressure)
@@ -1232,9 +1371,12 @@ TEST_F(PlanetClassificationEvidenceTest, ObservedDensityAndTypeLocksOutrankChemi
     }
     planet->lock_type = true;
     planet->type = waterworld;
+    const json radius_origin = {{"value_m", 2 * earth_radius}, {"evidence", "supplied_estimate"}};
+    planet->classification_evidence["catalog_radius"] = radius_origin;
     planet->classify(false, true, true);
     EXPECT_EQ(planet->type, waterworld);
     EXPECT_EQ(planet->classification_evidence["basis"], "explicit_type_lock");
+    EXPECT_EQ(planet->classification_evidence["catalog_radius"], radius_origin);
 }
 
 TEST_F(PlanetClassificationEvidenceTest, SyntheticModelExercisesValidationAndApplicabilityGates)
