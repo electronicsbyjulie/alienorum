@@ -163,9 +163,28 @@ but without a stationary gain or a consistent moving gain the additional cache
 was not retained. This trial does not establish a reproducible regression.
 Raw results: /tmp/horizon-trial-04-native/ and /tmp/horizon-trial-04-confirm/.
 
+Item 5: Retain conservative depth bounds for tile certification
+==============================================================
+Status: rejected for insufficient benefit; prototype and dedicated test removed.
+
+The prototype lazily built exact positive-depth min/max values for 16x16 blocks,
+scanned partial edges directly, and invalidated with the retained terrain raster.
+Forty-eight focused image/behavior tests passed, including direct bounds checks
+at partial tiles, empty depth fields, invalidation, and changed dimensions.
+Eight paired rounds covered seven scenes and five modes with matching images.
+
+No panning gain was established: ice 37.26 -> 36.64 ms (paired +0.34%, unresolved),
+Earth 66.82 -> 67.41 ms (+0.56%, unresolved). Earth changing-light frames gained
+about 0.99%. Ordinary Earth walking initially flagged +0.59%, but a fresh twelve
+pairs did not repeat it: -0.41%, interval -0.84 to +0.08%; p95 -0.64%, interval
+-2.08 to -0.03%. The matrix also flagged forest lighting and Venus stationary
+timings, where this depth-index path was inactive; those flags were not used as
+evidence of a code-induced regression. Building and querying the index did not
+produce a convincing gain in its target panning workload, so it was removed.
+Raw results: /tmp/horizon-trial-05-native/ and /tmp/horizon-trial-05-confirm/.
+
 Remaining sequence
 ==================
-5. Retain conservative depth bounds for tile certification.
 6. Streamline water geometry and animation.
 7. Improve terrain mesh reuse while walking.
 8. Reject zero-effect scenery shadows and hoist light factors.
