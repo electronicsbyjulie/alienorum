@@ -97,11 +97,41 @@ def match_record(record, index):
     return number
 
 
+def consolidate_abundance_aliases(rows, index):
+    combined = {}
+    for row in rows:
+        number = match_record(row, index)
+        key = ("row", number) if number is not None else ("name", row["name"])
+        if key not in combined:
+            combined[key] = row.copy()
+            combined[key]["elements"] = row["elements"].copy()
+            continue
+        previous = combined[key]
+        if previous["elements"] != row["elements"]:
+            alternatives = previous.setdefault("previous_measurements", [])
+            snapshot = dict(name=previous["name"], elements=previous["elements"].copy())
+            if snapshot not in alternatives:
+                alternatives.append(snapshot)
+        aliases = set(previous.get("aliases", [])) | set(row.get("aliases", []))
+        aliases.update((previous["name"], row["name"]))
+        previous["aliases"] = sorted(aliases)
+        previous["name"] = row["name"]
+        previous["elements"].update(row["elements"])
+        for field in ("hip", "hd", "gaia"):
+            if row.get(field):
+                previous[field] = row[field]
+    return sorted(combined.values(), key=lambda row: row["name"])
+
+
 def import_hypatia(index, refresh):
     path = Path("catalogs/Hypatia/stellar_abundances.json")
-    if path.exists() and not refresh:
-        return json.loads(path.read_text())
+    previous = json.loads(path.read_text()) if path.exists() and not refresh else {}
+    if previous.get("alias_resolution_version") == 2:
+        previous["rows"] = consolidate_abundance_aliases(previous["rows"], index)
+        write_json(path, previous)
+        return previous
     names = set()
+    unresolved = set()
     for second, third in (("Mg", "Si"), ("C", "O")):
         params = dict(mode="scatter", xaxis1="Fe", yaxis1=second, zaxis1=third, solarnorm="asplund09")
         data = read_json(HYPATIA + "data/?" + urllib.parse.urlencode(params))
@@ -110,6 +140,26 @@ def import_hypatia(index, refresh):
             candidate = dict(name=name, **identifier_fields([name]))
             if match_record(candidate, index) is not None:
                 names.add(name)
+            else:
+                unresolved.add(name)
+    # Scatter names are often SIMBAD Bayer designations, rather than catalog display names.
+    # Resolve all unmatched identities through the provider's HD/HIP/Gaia aliases.
+    groups = [sorted(unresolved)[start:start + 50] for start in range(0, len(unresolved), 50)]
+    def resolve(group):
+        entries = read_json(HYPATIA + "star?" + urllib.parse.urlencode([("name", name) for name in group]))
+        result = []
+        for entry in entries:
+            aliases = entry.get("other_names", []) + [entry.get(key) or "" for key in
+                ("name", "requested_name", "hd", "hip", "nea_name")]
+            candidate = dict(name=entry.get("name") or "", **identifier_fields(aliases))
+            if match_record(candidate, index) is not None:
+                result.append(entry.get("requested_name") or entry.get("name"))
+        return result
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        for resolved in pool.map(resolve, groups):
+            names.update(resolved)
+    previous_rows = {row["name"]: row for row in previous.get("rows", [])}
+    names.difference_update(previous_rows)
     names = sorted(names)
     print("Hypatia matching targets:", len(names), flush=True)
 
@@ -120,7 +170,7 @@ def import_hypatia(index, refresh):
                 params.extend((("name", name), ("element", element.lower()), ("solarnorm", "asplund09")))
         return read_json(HYPATIA + "composition?" + urllib.parse.urlencode(params))
 
-    rows = {}
+    rows = previous_rows.copy()
     failures = 0
     groups = [names[start:start + 12] for start in range(0, len(names), 12)]
     with ThreadPoolExecutor(max_workers=4) as pool:
@@ -152,9 +202,10 @@ def import_hypatia(index, refresh):
             if completed % 50 == 0 or completed == len(groups):
                 print("Hypatia batches:", completed, "/", len(groups), flush=True)
     table = dict(schema=1, source="Hypatia", solar_scale="asplund09", solar=SOLAR,
+        alias_resolution_version=2,
         reference="https://www.hypatiacatalog.com/api", failed_batches=failures,
         selection="Exact catalog matches; normalized literature medians; per-element representative errors or half-ranges",
-        rows=sorted(rows.values(), key=lambda row: row["name"]))
+        rows=consolidate_abundance_aliases(rows.values(), index))
     if not table["rows"] or failures:
         raise RuntimeError("Hypatia import is incomplete; existing data was preserved")
     write_json(path, table)

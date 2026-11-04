@@ -1,18 +1,51 @@
 import copy
+import os
 import json
 import shlex
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
 
-from import_stellar_abundances import bake_catalog, catalog_index, galah_measurements, match_record
+from import_stellar_abundances import bake_catalog, catalog_index, consolidate_abundance_aliases, galah_measurements, import_hypatia, match_record
 from calibrate_planet_classifier import calibrate, fold, sample
 from test_stellar_metallicity import star
 
 
 class AbundanceImportTest(unittest.TestCase):
+    def test_aliases_merge_into_one_record_without_losing_older_measurements(self):
+        index = catalog_index([star("Bright Host", 12)])
+        rows = [dict(name="HD12", hd=12, elements=dict(Fe=dict(dex=-.2))),
+                dict(name="* bright Hst", hd=12, elements=dict(Fe=dict(dex=-.3), O=dict(dex=.1)))]
+        merged = consolidate_abundance_aliases(rows, index)
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(merged[0]["elements"]["Fe"]["dex"], -.3)
+        self.assertEqual(merged[0]["previous_measurements"][0]["elements"]["Fe"]["dex"], -.2)
+        self.assertEqual(consolidate_abundance_aliases(merged, index), merged)
+
+    def test_simbad_display_names_resolve_through_catalog_identifiers(self):
+        index = catalog_index([star("Bright Host", 12)])
+        def response(url):
+            if "/data/" in url:
+                return dict(values=[dict(name="* bright Hst")])
+            if "/star?" in url:
+                return [dict(name="* bright Hst", requested_name="* bright Hst", other_names=["HD 12"])]
+            return [dict(name="* bright Hst", requested_name="* bright Hst", all_names=["HD 12"],
+                         element="Fe", solarnorm="asplund09", median_value=0)]
+        original = Path.cwd()
+        with tempfile.TemporaryDirectory() as directory:
+            try:
+                os.chdir(directory)
+                with patch("import_stellar_abundances.read_json", side_effect=response):
+                    result = import_hypatia(index, False)
+                self.assertEqual(result["rows"][0]["hd"], 12)
+                self.assertEqual(result["rows"][0]["elements"]["Fe"]["dex"], 0)
+                self.assertEqual(result["alias_resolution_version"], 2)
+            finally:
+                os.chdir(original)
+
     def test_shared_binary_and_conflicting_identifiers_are_rejected(self):
         index = catalog_index([star("A", 12), star("B", 12), star("C", 13)])
         self.assertIsNone(match_record(dict(hd=12), index))

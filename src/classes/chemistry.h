@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include <string>
+#include "nlohmann/json.hpp"
 
 namespace alienorum
 {
@@ -17,6 +18,7 @@ namespace alienorum
         std::string reason = "unavailable";
     };
     MetallicityPrior planet_envelope_prior(const Star& host, double earth_masses, double irradiation, double mass_relative_error = NAN);
+    const nlohmann::json& planet_formation_chemistry(const Star& host);
 }
 
 #endif

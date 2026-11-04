@@ -62,7 +62,7 @@ namespace
         return iron / (iron + silicates);
     }
 
-    json classification_model()
+    const json& classification_model()
     {
         // A separate entry per working directory keeps fixture data isolated from the app.
         static std::mutex mutex;
@@ -74,8 +74,7 @@ namespace
         std::ifstream input(path);
         json model = input ? json::parse(input, nullptr, false) : json(nullptr);
         if (!model.is_object()) model = json::object();
-        models.emplace(path, model);
-        return model;
+        return models.emplace(path, std::move(model)).first->second;
     }
 }
 
@@ -309,10 +308,105 @@ void CatalogReader::apply_stellar_abundances(Star* host)
     }
 }
 
+const json& alienorum::planet_formation_chemistry(const Star& host)
+{
+    // Classification, pressure and water reuse the same host chemistry during loading.
+    // Compare the source bundle so edits and recycled object addresses cannot leave stale results.
+    static thread_local json last_input, cached;
+    if (!cached.is_null() && last_input == host.stellar_abundances) return cached;
+    last_input = host.stellar_abundances;
+    json alternatives = json::array(), selected = nullptr;
+    int best_count = 0;
+    if (host.stellar_abundances.is_object())
+    {
+        for (const auto& item : host.stellar_abundances.items())
+        {
+            const json& bundle = item.value();
+            if (!bundle.is_object() || !bundle.contains("elements") || !bundle.contains("solar")) continue;
+            const json& elements = bundle["elements"], solar = bundle["solar"];
+            if (!elements.is_object() || !solar.is_object()) continue;
+            const double iron = abundance_log(elements, solar, "Fe") - numeric(solar, "Fe");
+            if (!std::isfinite(iron)) continue;
+            std::map<std::string, double> actual, reference;
+            json inferred = json::array();
+            int measured = 0;
+            bool valid = true;
+            for (const char* element : {"Fe", "Mg", "Si", "O", "C"})
+            {
+                reference[element] = numeric(solar, element);
+                double value = abundance_log(elements, solar, element);
+                if (!std::isfinite(reference[element])) { valid = false; break; }
+                if (std::isfinite(value)) ++measured;
+                else
+                {
+                    value = reference[element] + iron;
+                    inferred.push_back(element);
+                }
+                actual[element] = value;
+            }
+            if (!valid) continue;
+            const auto solids = [](const std::map<std::string, double>& logs)
+            {
+                const double silicon = logs.at("Si");
+                const auto atoms = [&](const char* element) { return std::pow(10.0, logs.at(element) - silicon); };
+                const double mg = atoms("Mg"), fe = atoms("Fe"), carbon = atoms("C"), oxygen = atoms("O");
+                // Santos et al. (2017), https://arxiv.org/abs/1711.00777.
+                // Mg+2Si oxygen atoms also covers excess MgO when Mg/Si exceeds two.
+                const double rock_oxygen = std::min(oxygen, mg + 2);
+                // Bitsch & Battistini (2020): 45% CO, 10% CO2, 45% CH4.
+                // https://doi.org/10.1051/0004-6361/201936463
+                const double carbon_oxygen = std::min(std::max(0.0, oxygen - rock_oxygen), .65 * carbon);
+                const double water_oxygen = std::max(0.0, oxygen - rock_oxygen - carbon_oxygen);
+                const double rock = 55.845 * fe + 24.305 * mg + 28.085 + 15.999 * rock_oxygen;
+                const double water = 18.01528 * water_oxygen;
+                return json{{"Mg_Si", mg}, {"C_O", carbon / oxygen}, {"Fe_Mg", fe / mg},
+                    {"rock_mass_per_Si", rock}, {"water_to_rock", water / rock},
+                    {"carbon_to_rock", 12.011 * carbon / rock}, {"iron_to_rock", 55.845 * fe / rock},
+                    {"condensable_water_fraction", water / (water + rock)},
+                    {"oxygen_per_Si", {{"total", oxygen}, {"silicates", rock_oxygen},
+                        {"carbon_molecules", carbon_oxygen}, {"water", water_oxygen}}},
+                    {"oxygen_limited_silicates", oxygen < mg + 2}};
+            };
+            json composition = solids(actual);
+            const json solar_composition = solids(reference);
+            const double water_scale = composition["water_to_rock"].get<double>() / solar_composition["water_to_rock"].get<double>();
+            const double carbon_scale = composition["carbon_to_rock"].get<double>() / solar_composition["carbon_to_rock"].get<double>();
+            const double refractory = std::log10(composition["rock_mass_per_Si"].get<double>()
+                / solar_composition["rock_mass_per_Si"].get<double>()) + actual["Si"] - reference["Si"];
+            if (!std::isfinite(water_scale) || !std::isfinite(carbon_scale) || !std::isfinite(refractory)) continue;
+            composition.update({{"source", item.key()}, {"solar_scale", text_field(bundle, "solar_scale")},
+                {"measured_elements", measured}, {"scaled_solar_assumptions", std::move(inferred)},
+                {"element_measurements", elements}, {"solar_log_epsilon", solar},
+                {"water_inventory_scale", water_scale}, {"carbon_inventory_scale", carbon_scale},
+                {"refractory_abundance_dex", refractory}, {"iron_abundance_dex", iron},
+                {"refractory_minus_iron_dex", refractory - iron},
+                {"assumptions", "Metallic_Fe;Mg_Si_oxides;CO_CO2_CH4_partition;excess_oxygen_can_form_ice;not_a_planet_surface_water_fraction"}});
+            alternatives.push_back(composition);
+            if (measured > best_count)
+            {
+                best_count = measured;
+                selected = std::move(composition);
+            }
+        }
+    }
+    if (!selected.is_object())
+    {
+        cached = {{"applicable", false}, {"water_inventory_scale", 1}, {"carbon_inventory_scale", 1},
+            {"interpretation", "No_resolved_element_ratios;reference_ratios_retained"}};
+        return cached;
+    }
+    selected["applicable"] = best_count > 1;
+    selected["alternatives"] = std::move(alternatives);
+    selected["selection_policy"] = "Most_measured_elements;stable_catalog_order_for_ties;source_scales_are_not_averaged";
+    selected["interpretation"] = "Condensation_scenario;delivery_and_escape_are_separate;unknown_ratios_are_labeled_assumptions";
+    cached = std::move(selected);
+    return cached;
+}
+
 MetallicityPrior alienorum::planet_envelope_prior(const Star& host, double earth_masses, double irradiation, double mass_relative_error)
 {
     MetallicityPrior result;
-    const json model = classification_model();
+    const json& model = classification_model();
     const json scenario = model.value("formation_prior", json::object());
     double metal, error;
     const bool calibrated_abundance = host.calibrated_iron_abundance(metal, error);
@@ -395,7 +489,14 @@ MetallicityPrior alienorum::planet_envelope_prior(const Star& host, double earth
         formation.formation_scenario = true;
         formation.empirical_weight = 0;
         formation.baseline = logistic(baseline);
-        formation.probability = logistic(baseline + metal_slope * metal);
+        const json& chemistry = planet_formation_chemistry(host);
+        // Alpha-enhanced refractories can counteract an iron-only deficit. Extra ice
+        // supplies a competing water-rich solid scenario rather than proving an H/He envelope.
+        // These log-odds shifts are formation assumptions, not fitted occurrence rates.
+        const double chemical_shift = chemistry.value("applicable", false)
+            ? std::clamp(metal_slope * (chemistry.value("refractory_abundance_dex", metal) - metal)
+                - std::log(std::clamp(chemistry.value("water_inventory_scale", 1.0), .2, 5.0)), -1.5, 1.5) : 0;
+        formation.probability = logistic(baseline + metal_slope * metal + chemical_shift);
         formation.reason = irradiation <= cool_flux ? "cool_formation_envelope_prior" : "formation_envelope_prior";
     }
     const double temperature = host.temperature > 0 ? host.temperature

@@ -187,6 +187,53 @@ protected:
     }
 };
 
+TEST_F(PlanetClassificationEvidenceTest, ElementRatiosAllocateOxygenAndChangeInventoriesWithoutAnIronShortcut)
+{
+    Star* host = make_star();
+    host->metallicity = 0;
+    host->metallicity_ratio = "[Fe/H]";
+    json elements = json::object();
+    for (const char* element : {"Fe", "Mg", "Si", "C", "O"})
+        elements[element] = {{"dex", 0}, {"ratio", "[" + std::string(element) + "/H]"}, {"quality", "accepted"}};
+    host->stellar_abundances = {{"Fixture", {{"solar_scale", "asplund09"}, {"elements", elements},
+        {"solar", {{"Fe", 7.50}, {"Mg", 7.60}, {"Si", 7.51}, {"C", 8.43}, {"O", 8.69}}}}}};
+    Planet* world = make_planet(host);
+    const json solar = planet_formation_chemistry(*host);
+    ASSERT_TRUE(solar["applicable"].get<bool>());
+    EXPECT_DOUBLE_EQ(solar["water_inventory_scale"].get<double>(), 1);
+    EXPECT_DOUBLE_EQ(solar["carbon_inventory_scale"].get<double>(), 1);
+    const auto solar_prior = planet_envelope_prior(*host, 6, .3);
+    host->metallicity = -.2;
+    const auto same_bundle_prior = planet_envelope_prior(*host, 6, .3);
+    EXPECT_NEAR(solar_prior.probability, same_bundle_prior.probability, 1e-12);
+    host->metallicity = 0;
+    const auto reference = CosmicShore::default_inventory(*host, *world);
+    host->stellar_abundances["Fixture"]["elements"]["O"]["dex"] = .3;
+    const json oxygen_rich = planet_formation_chemistry(*host);
+    const auto wet = CosmicShore::default_inventory(*host, *world);
+    EXPECT_GT(wet.water_mass_fraction, reference.water_mass_fraction);
+    EXPECT_DOUBLE_EQ(wet.co2_mass_fraction, reference.co2_mass_fraction);
+    const json oxygen = oxygen_rich["oxygen_per_Si"];
+    EXPECT_NEAR(oxygen["total"].get<double>(), oxygen["silicates"].get<double>()
+        + oxygen["carbon_molecules"].get<double>() + oxygen["water"].get<double>(), 1e-12);
+    const auto wet_prior = planet_envelope_prior(*host, 6, .3);
+    host->stellar_abundances["Fixture"]["elements"]["O"]["dex"] = 0;
+    host->stellar_abundances["Fixture"]["elements"]["C"]["dex"] = .3;
+    const auto carbon_rich = CosmicShore::default_inventory(*host, *world);
+    EXPECT_LT(carbon_rich.water_mass_fraction, reference.water_mass_fraction);
+    EXPECT_GT(carbon_rich.co2_mass_fraction, reference.co2_mass_fraction);
+    const auto carbon_prior = planet_envelope_prior(*host, 6, .3);
+    ASSERT_TRUE(wet_prior.applicable);
+    ASSERT_TRUE(carbon_prior.applicable);
+    EXPECT_LT(wet_prior.probability, carbon_prior.probability);
+    host->stellar_abundances["Fixture"]["elements"]["Mg"]["dex"] = .4;
+    EXPECT_GT(planet_formation_chemistry(*host)["Mg_Si"].get<double>(), 2);
+    host->stellar_abundances["Fixture"]["elements"].erase("O");
+    const json partial = planet_formation_chemistry(*host);
+    EXPECT_EQ(partial["measured_elements"], 4);
+    EXPECT_EQ(partial["scaled_solar_assumptions"], json::array({"O"}));
+}
+
 TEST_F(PlanetClassificationEvidenceTest, PrimordialEnvelopeLedgerTracksEscapeAgeAndIrradiation)
 {
     Star* host = make_star();

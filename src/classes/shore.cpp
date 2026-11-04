@@ -198,6 +198,7 @@ AtmosphericEstimate CosmicShore::estimate_atmosphere(Star& s, Planet& p)
     auto estimate = estimate_atmosphere(s, p, inventory);
     estimate.diagnostics["default_inventory"] = inventory.to_json();
     estimate.diagnostics["stellar_age"] = s.age_diagnostics();
+    estimate.diagnostics["elemental_inventory_prior"] = planet_formation_chemistry(s);
     estimate.diagnostics["age_origin"] = s.fictional_origin.is_object()
         && s.fictional_origin.contains("age_gyr") && s.fictional_origin["age_gyr"].is_number()
         && s.fictional_origin["age_gyr"] == default_inventory(s).age_gyr
@@ -208,6 +209,12 @@ AtmosphericEstimate CosmicShore::estimate_atmosphere(Star& s, Planet& p)
 AtmosphericInventory CosmicShore::default_inventory(Star& s, Planet& p)
 {
     auto inventory = default_inventory(s);
+    const json& chemistry = planet_formation_chemistry(s);
+    if (chemistry.value("applicable", false))
+    {
+        inventory.water_mass_fraction = std::min(.5, inventory.water_mass_fraction * chemistry.value("water_inventory_scale", 1.0));
+        inventory.co2_mass_fraction = std::min(.05, inventory.co2_mass_fraction * chemistry.value("carbon_inventory_scale", 1.0));
+    }
     if (std::isfinite(calculate_escape_velocity(p)) && cold_volatile_regime(p, stellar_flux(s, p)))
     {
         // N2-equivalent nitrogen released from ammonia/organics in ice-rich interiors.

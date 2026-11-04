@@ -2362,6 +2362,8 @@ TEST_F(CatalogParsingTest, MetalPoorRvCatalogPlanetsUseChemistryAfterCacheAndInc
             host->metallicity_error_upper = .02;
             host->metallicity_error_lower = -.02;
             TestCatalogReader reader;
+            reader.apply_stellar_abundances(host);
+            ASSERT_TRUE(host->stellar_abundances.is_object());
             bool valid = false;
             ExoRow row = reader.exorow_from_json(*found, &valid);
             ASSERT_TRUE(valid);
@@ -2390,6 +2392,7 @@ TEST_F(CatalogParsingTest, MetalPoorRvCatalogPlanetsUseChemistryAfterCacheAndInc
             EXPECT_TRUE(body->classification_evidence["catalog_radius"].is_object());
             EXPECT_NEAR(body->mass / earth_mass, tau ? 6.8618 : 7.5977, .001);
             EXPECT_TRUE(body->classification_evidence["metallicity_applied"].get<bool>());
+            EXPECT_TRUE(body->classification_evidence["formation_chemistry"]["applicable"].get<bool>());
             EXPECT_EQ(body->classification_evidence["metallicity_model"], "cool_formation_envelope_prior");
             EXPECT_FALSE(body->classification_evidence["density_observed"].get<bool>());
             EXPECT_FALSE(body->classification_evidence.contains("large_radius_probability"));
@@ -2397,6 +2400,7 @@ TEST_F(CatalogParsingTest, MetalPoorRvCatalogPlanetsUseChemistryAfterCacheAndInc
             EXPECT_DOUBLE_EQ(body->surface_water_model["basis"]["mass_g"].get<double>(), body->mass);
             const double radius = body->volumetric_mean_radius;
             host->metallicity = 0;
+            host->stellar_abundances = nullptr;
             body->classify(false, false, true);
             EXPECT_EQ(body->type, ice_giant);
             EXPECT_GT(body->volumetric_mean_radius, radius);

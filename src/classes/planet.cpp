@@ -707,6 +707,7 @@ void Planet::classify(bool HZ, bool mnrk, bool ck)
         equilibrium = pow(irradiation * (1.0 - bond) / (4.0 * STEFAN_BOLTZMANN_NORM), 0.25);
         classification_evidence["host"] = host->name;
         classification_evidence["stellar_chemistry"] = host->chemistry_diagnostics();
+        classification_evidence["formation_chemistry"] = planet_formation_chemistry(*host);
         classification_evidence["bond_albedo"] = bond;
     }
     const double surface_temperature = std::isfinite(temperature) && temperature > 0 ? temperature : equilibrium;
