@@ -4968,6 +4968,7 @@ TEST_F(RenderingRegressionTest, DiscScatteringIncludesMoonsAndPreservesGiantAndC
         target->temperature = 1000;
         target->location.local_position = target->tmprel = Point(0, 0, 5 * earth_radius);
         target->surf_map = new SceneryTestMap();
+        target->looked_for_maps = true;
         auto* air = target->ensure_atmosphere();
         air->surface_pressure = 700e5;
         air->ensure_composition()->CO2_portion = 1;
@@ -5010,6 +5011,56 @@ TEST_F(RenderingRegressionTest, DiscScatteringIncludesMoonsAndPreservesGiantAndC
                 air->surface_pressure = 700e5;
             }
         }
+    }
+}
+
+TEST_F(RenderingRegressionTest, OpaqueCloudDeckHidesDenseLowerAtmosphere)
+{
+    auto* host = make_star();
+    host->location.local_position = host->tmprel = Point(0, 0, -AU);
+    auto* world = make_planet(host);
+    world->type = rocky;
+    world->temperature = 737;
+    world->location.local_position = world->tmprel = Point(0, 0, 5 * earth_radius);
+    world->surf_map = new SceneryTestMap();
+    world->cloud_map = new SceneryTestMap();
+    world->looked_for_maps = true;
+    world->transparent_clouds = false;
+    world->overcast = true;
+    auto* air = world->ensure_atmosphere();
+    air->surface_pressure = 93e5;
+    air->ensure_composition()->CO2_portion = 1;
+    set(show_clouds, true);
+    set(sky_grad, std::map<int, RGB3>{});
+    const size_t center = (render_height / 2 * render_width + render_width / 2) * 4;
+    for (ViewMode mode : {vm_spaceship, vm_system, vm_horizon})
+    {
+        view_mode = mode;
+        world->drawnx = dispcx;
+        world->drawny = dispcy;
+        const auto capture = [&]()
+        {
+            impostor_begin_frame();
+            EXPECT_GT(draw_sphere_gpu(world, 20), 0);
+            auto pixels = render();
+            ImGui::NewFrame();
+            return pixels;
+        };
+        const auto cloudy = capture();
+        // The brown cloud texture survives; the full CO2 column turns it blue.
+        EXPECT_GT(cloudy[center], cloudy[center + 2] + 20) << mode;
+        EXPECT_GT(cloudy[center], 100) << mode;
+        air->surface_pressure = 700e5;
+        const auto deeper = capture();
+        EXPECT_NEAR(cloudy[center], deeper[center], 3) << mode;
+        air->surface_pressure = 93e5;
+        Map* clouds = world->cloud_map;
+        world->cloud_map = nullptr;
+        const auto transparent = capture();
+        #if DISC_SCATTERING
+        EXPECT_GT(image_difference(cloudy, transparent), 10) << mode;
+        #endif
+        world->cloud_map = clouds;
     }
 }
 

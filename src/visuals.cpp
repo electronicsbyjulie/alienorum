@@ -338,7 +338,7 @@ bool bugged = false;
 // rejects everything outside the object's own system on a single pointer comparison.
 // Defined further down, with the rest of the atmosphere code: both an eclipse's copper light
 // and a planet's own glowing limb are colored from a world's air.
-static void atmosphere_colors(Planet *pl, double out_high[3], double out_low[3], double out_umbra[3]);
+static void atmosphere_colors(Planet *pl, double out_high[3], double out_low[3], double out_umbra[3], bool external_view = false);
 
 // Brightness of the light an Earth-thick atmosphere refracts into its own shadow, as a fraction
 // of direct sunlight -- see the shader's UMBRA_REFRACTION comment for why this is a legibility
@@ -871,11 +871,26 @@ static void collect_eclipse_casters(SphereImpostorInput &in, CelestialObject *ce
 //             limb and bend inwards to reach the shadow at all.
 // Each is normalized to a brightest channel of 1 and then scaled by how much air there is, so
 // a thin atmosphere is not merely paler but dimmer.
-static void atmosphere_colors(Planet *pl, double out_high[3], double out_low[3], double out_umbra[3])
+static bool visible_opaque_cloud_deck(Planet* planet)
+{
+    return show_clouds && planet->cloud_map && planet->cloud_map->is_complete()
+        && !planet->transparent_clouds;
+}
+
+static double visible_atmospheric_pressure(Planet* planet)
+{
+    const double pressure = planet->get_surface_pressure();
+    // An opaque deck hides the lower column. Its altitude is not constrained, so
+    // use a 0.1-atmosphere cloud-top scenario rather than the surface pressure.
+    return uses_rocky_map(planet->type) && visible_opaque_cloud_deck(planet)
+        ? fmin(pressure, .1 * oneatm) : pressure;
+}
+
+static void atmosphere_colors(Planet *pl, double out_high[3], double out_low[3], double out_umbra[3], bool external_view)
 {
     for (int i = 0; i < 3; i++) out_high[i] = out_low[i] = out_umbra[i] = 0;
 
-    double pressure = pl->get_surface_pressure();
+    double pressure = external_view ? visible_atmospheric_pressure(pl) : pl->get_surface_pressure();
     if (pressure <= 0) return;
 
     // For gas giants and ice giants, most of that atmosphere is below the
@@ -1265,14 +1280,17 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
         {
             in.atmosphere_height = kAtmosphereScaleHeights * scale_height;
             double umbra_unused[3];
-            atmosphere_colors(pl, in.atmosphere_color, in.atmosphere_low_color, umbra_unused);
+            atmosphere_colors(pl, in.atmosphere_color, in.atmosphere_low_color, umbra_unused, true);
             #if DISC_SCATTERING
             if (show_clouds && uses_rocky_map(pl->type))
             {
                 double column_height = 0;
                 const auto scattering = planetary_pressure_scattering(pl, true, &column_height);
+                const double surface_pressure = pl->get_surface_pressure();
+                const double visible_fraction = surface_pressure > 0
+                    ? visible_atmospheric_pressure(pl) / surface_pressure : 0;
                 for (int channel = 0; channel < 3; ++channel)
-                    in.atmosphere_optical_depth[channel] = scattering.extinction[channel] * column_height;
+                    in.atmosphere_optical_depth[channel] = scattering.extinction[channel] * column_height * visible_fraction;
             }
             #endif
         }
