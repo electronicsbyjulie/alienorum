@@ -276,8 +276,27 @@ No repeatable regression was established, but the measured saving did not
 justify the larger geometry cache and associated invalidation logic.
 Raw results: /tmp/horizon-trial-09-native/ and /tmp/horizon-trial-09-confirm/.
 
+Item 10: Blend rock fog before emitting facet vertices
+=====================================================
+Status: rejected for insufficient benefit; prototype removed.
+
+The prototype applied the existing byte-rounded haze/opacity operation to each
+opaque facet color before triangle emission, then omitted those vertices from
+the second fog pass. Plants, pebbles, and glowing lava rims retained their prior
+paths. Transmission remained once per rock. Twenty-nine focused image tests
+passed; the seven-scene, five-mode eight-pair matrix matched images and strides.
+
+The affected scenes showed no supported completed-frame median gain. The ocean
+walking result improved, but the changed rock path is inactive there, so that
+result is not attributed to the candidate. Forest walking flagged +1.85%; a fresh
+twelve-pair repetition was unresolved (+0.98%, interval -1.45 to +2.18%). Lava
+stationary p95 initially flagged +10.31%; twelve fresh pairs did not repeat it:
+-5.71%, interval -16.16 to +2.02%. No reproducible regression was established,
+but there was no convincing target-workload improvement to retain.
+Raw results: /tmp/horizon-trial-10-native/,
+/tmp/horizon-trial-10-forest-confirm/, and /tmp/horizon-trial-10-lava-confirm/.
+
 Remaining sequence
 ==================
-10. Avoid the second CPU scenery fog pass.
 11. Reduce raster work for rejected spans.
 12. Remove repeated immutable GL state traffic and small allocations.
