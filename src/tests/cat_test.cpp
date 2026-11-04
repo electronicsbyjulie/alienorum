@@ -2386,7 +2386,8 @@ TEST_F(CatalogParsingTest, MetalPoorRvCatalogPlanetsUseChemistryAfterCacheAndInc
             Planet* body = static_cast<Planet*>(cels[planets.at(host->seqno).front()]);
             EXPECT_EQ(body->type, rocky) << target;
             EXPECT_EQ(body->radius_evidence, PlanetMeasurement::estimated);
-            EXPECT_TRUE(body->radius_estimate_supplied);
+            EXPECT_FALSE(body->radius_estimate_supplied);
+            EXPECT_TRUE(body->classification_evidence["catalog_radius"].is_object());
             EXPECT_NEAR(body->mass / earth_mass, tau ? 6.870596 : 7.596236, .001);
             EXPECT_TRUE(body->classification_evidence["metallicity_applied"].get<bool>());
             EXPECT_EQ(body->classification_evidence["metallicity_model"], "cool_formation_envelope_prior");
@@ -2398,7 +2399,7 @@ TEST_F(CatalogParsingTest, MetalPoorRvCatalogPlanetsUseChemistryAfterCacheAndInc
             host->metallicity = 0;
             body->classify(false, false, true);
             EXPECT_EQ(body->type, ice_giant);
-            EXPECT_DOUBLE_EQ(body->volumetric_mean_radius, radius);
+            EXPECT_GT(body->volumetric_mean_radius, radius);
             delete_the_universe();
         }
     }

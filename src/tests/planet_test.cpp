@@ -1235,11 +1235,13 @@ TEST_F(PlanetClassificationEvidenceTest, CoolMetalPoorRvPlanetsUseFormationPrior
             EXPECT_LT(body->classification_evidence["envelope_score"].get<double>(), .5);
             EXPECT_GT(body->classification_evidence["baseline_envelope_score"].get<double>(), .5);
             EXPECT_FALSE(body->classification_evidence["density_observed"].get<bool>());
-            EXPECT_DOUBLE_EQ(body->volumetric_mean_radius, 2.04 * earth_radius);
+            EXPECT_NEAR(body->volumetric_mean_radius / earth_radius, 1.02 * pow(mass, .27), 1e-12);
+            EXPECT_DOUBLE_EQ(body->classification_evidence["catalog_radius"]["value_m"].get<double>(), 2.04 * earth_radius);
         }
         Planet restored;
         ASSERT_TRUE(restored.from_json(body->to_json()));
-        EXPECT_TRUE(restored.radius_estimate_supplied);
+        EXPECT_FALSE(restored.radius_estimate_supplied);
+        EXPECT_EQ(restored.classification_evidence["catalog_radius"], body->classification_evidence["catalog_radius"]);
         EXPECT_EQ(restored.radius_evidence, PlanetMeasurement::estimated);
         host->metallicity = 0;
         body->classify(false, false, true);

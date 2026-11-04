@@ -604,6 +604,16 @@ void Planet::classify(bool HZ, bool mnrk, bool ck)
         return;
     }
     const cel_obj_type previous_type = type;
+    json catalog_radius = classification_evidence.is_object()
+        ? classification_evidence.value("catalog_radius", json(nullptr)) : json(nullptr);
+    if (radius_estimate_supplied && !catalog_radius.is_object()
+        && std::isfinite(volumetric_mean_radius) && volumetric_mean_radius > 0)
+    {
+        catalog_radius = {{"value_m", volumetric_mean_radius}, {"evidence", "supplied_estimate"},
+            {"use", "provenance_only_when_a_composition_radius_is_available"}};
+        if (std::isfinite(radius_error_upper)) catalog_radius["error_upper_m"] = radius_error_upper;
+        if (std::isfinite(radius_error_lower)) catalog_radius["error_lower_m"] = radius_error_lower;
+    }
     if (mnrk)
     {
         if (mass_evidence == PlanetMeasurement::unknown && std::isfinite(mass) && mass > 0)
@@ -637,6 +647,7 @@ void Planet::classify(bool HZ, bool mnrk, bool ck)
             : lower_density_bound ? "minimum_mass_and_observed_radius" : "adopted_mass_and_observed_radius"},
         {"metallicity_applied", false}
     };
+    if (catalog_radius.is_object()) classification_evidence["catalog_radius"] = std::move(catalog_radius);
 
     Star* host = nullptr;
     Orbit* stellar_orbit = nullptr;
@@ -741,7 +752,8 @@ void Planet::classify(bool HZ, bool mnrk, bool ck)
         else type = gas_giant;
     }
     classification_evidence["class_code"] = static_cast<int>(type);
-    if (valid_mass && (!valid_radius || (radius_evidence == PlanetMeasurement::estimated
+    const bool replace_catalog_radius = radius_estimate_supplied && valid_mass && mass < giant_mass_cutoff;
+    if (valid_mass && (!valid_radius || replace_catalog_radius || (radius_evidence == PlanetMeasurement::estimated
         && !radius_estimate_supplied && previous_type != type)))
     {
         estimate_radius();
@@ -752,6 +764,10 @@ void Planet::classify(bool HZ, bool mnrk, bool ck)
             classification_evidence["density_estimated"] = true;
         }
     }
+    if (classification_evidence.contains("catalog_radius") && !radius_estimate_supplied
+        && radius_evidence == PlanetMeasurement::estimated)
+        classification_evidence["radius_model"] = uses_rocky_map(type)
+            ? "composition_conditional_compact_mass_radius" : "composition_conditional_envelope_mass_radius";
     if (!ck) set_color_from_type(HZ);
 }
 
@@ -985,6 +1001,7 @@ void Planet::estimate_radius()
 {
     radius_estimate_supplied = false;
     radius_evidence = PlanetMeasurement::estimated;
+    radius_error_upper = radius_error_lower = NAN;
     // https://doi.org/10.1051/0004-6361/202348690
     if ((mass < rocky_mass_cutoff && !uses_gaseous_map(type))
         || uses_rocky_map(type))
