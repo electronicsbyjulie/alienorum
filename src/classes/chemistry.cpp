@@ -315,8 +315,8 @@ const json& alienorum::planet_formation_chemistry(const Star& host)
     static thread_local json last_input, cached;
     if (!cached.is_null() && last_input == host.stellar_abundances) return cached;
     last_input = host.stellar_abundances;
-    json alternatives = json::array(), selected = nullptr;
-    int best_count = 0;
+    json alternatives = json::array(), selected = nullptr, nitrogen = nullptr;
+    int best_count = 0, nitrogen_count = -1;
     if (host.stellar_abundances.is_object())
     {
         for (const auto& item : host.stellar_abundances.items())
@@ -325,8 +325,18 @@ const json& alienorum::planet_formation_chemistry(const Star& host)
             if (!bundle.is_object() || !bundle.contains("elements") || !bundle.contains("solar")) continue;
             const json& elements = bundle["elements"], solar = bundle["solar"];
             if (!elements.is_object() || !solar.is_object()) continue;
-            const double iron = abundance_log(elements, solar, "Fe") - numeric(solar, "Fe");
-            if (!std::isfinite(iron)) continue;
+            double iron = abundance_log(elements, solar, "Fe") - numeric(solar, "Fe");
+            const bool iron_measured = std::isfinite(iron);
+            if (!iron_measured)
+            {
+                iron = std::isfinite(host.metallicity) && (host.metallicity_ratio == "[Fe/H]" || host.metallicity_ratio == "[M/H]")
+                    ? host.metallicity : 0;
+            }
+            double nitrogen_log = abundance_log(elements, solar, "N");
+            if (!std::isfinite(nitrogen_log) && elements.contains("N") && elements["N"].is_object()
+                && text_field(elements["N"], "quality") == "accepted" && text_field(elements["N"], "ratio") == "[N/Fe]")
+                nitrogen_log = numeric(elements["N"], "dex") + iron + numeric(solar, "N");
+            if (!iron_measured && !std::isfinite(nitrogen_log)) continue;
             std::map<std::string, double> actual, reference;
             json inferred = json::array();
             int measured = 0;
@@ -374,6 +384,15 @@ const json& alienorum::planet_formation_chemistry(const Star& host)
             const double refractory = std::log10(composition["rock_mass_per_Si"].get<double>()
                 / solar_composition["rock_mass_per_Si"].get<double>()) + actual["Si"] - reference["Si"];
             if (!std::isfinite(water_scale) || !std::isfinite(carbon_scale) || !std::isfinite(refractory)) continue;
+            if (std::isfinite(nitrogen_log) && measured > nitrogen_count)
+            {
+                nitrogen_count = measured;
+                nitrogen = {{"source", item.key()}, {"measurement", elements["N"]},
+                    {"nitrogen_inventory_scale", std::pow(10.0, nitrogen_log - numeric(solar, "N") - refractory)},
+                    {"iron_normalization_assumed", !iron_measured},
+                    {"refractory_abundance_dex", refractory}, {"scaled_solar_assumptions", inferred},
+                    {"interpretation", "Measured_stellar_N_per_refractory_mass;planetary_delivery_and_depletion_remain_scenarios"}};
+            }
             composition.update({{"source", item.key()}, {"solar_scale", text_field(bundle, "solar_scale")},
                 {"measured_elements", measured}, {"scaled_solar_assumptions", std::move(inferred)},
                 {"element_measurements", elements}, {"solar_log_epsilon", solar},
@@ -392,12 +411,21 @@ const json& alienorum::planet_formation_chemistry(const Star& host)
     if (!selected.is_object())
     {
         cached = {{"applicable", false}, {"water_inventory_scale", 1}, {"carbon_inventory_scale", 1},
-            {"interpretation", "No_resolved_element_ratios;reference_ratios_retained"}};
+            {"interpretation", "No_resolved_rock_forming_ratios;reference_ratios_retained"}};
+        if (nitrogen.is_object())
+        {
+            cached["nitrogen_prior"] = nitrogen;
+            cached["nitrogen_inventory_scale"] = nitrogen["nitrogen_inventory_scale"];
+        }
         return cached;
     }
     selected["applicable"] = best_count > 1;
     selected["alternatives"] = std::move(alternatives);
     selected["selection_policy"] = "Most_measured_elements;stable_catalog_order_for_ties;source_scales_are_not_averaged";
+    selected["nitrogen_inventory_scale"] = nitrogen.is_object() ? nitrogen["nitrogen_inventory_scale"]
+        : selected["carbon_inventory_scale"];
+    selected["nitrogen_prior"] = nitrogen.is_object() ? nitrogen
+        : json{{"source", "carbon_delivery_analogue"}, {"interpretation", "No_N_measurement;reference_N_C_delivery_ratio_assumed"}};
     selected["interpretation"] = "Condensation_scenario;delivery_and_escape_are_separate;unknown_ratios_are_labeled_assumptions";
     cached = std::move(selected);
     return cached;

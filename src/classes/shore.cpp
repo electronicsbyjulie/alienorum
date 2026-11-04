@@ -60,6 +60,44 @@ namespace
         return std::isfinite(density) && density > 0 && density < 3000 && flux < 0.08;
     }
 
+    struct FormationDelivery
+    {
+        double mass_factor = 1, water_factor = 1, heavy_factor = 1;
+        double orbit_au = 1, snowline_au = 2.7, outer_fraction = 0, ice_fraction = 0;
+        bool cold = false;
+    };
+
+    FormationDelivery formation_delivery(Star& s, Planet& p)
+    {
+        FormationDelivery result;
+        const CelestialObject* body = &p;
+        int depth = 0;
+        while (body->orbit && body->orbit->center && body->orbit->center != &s && ++depth < 32) body = body->orbit->center;
+        if (body->orbit && body->orbit->center == &s && body->orbit->semimajor_axis > 0)
+            result.orbit_au = body->orbit->semimajor_axis / AU;
+        const double stellar_mass = std::isfinite(s.mass) && s.mass > 0 ? s.mass / solar_mass : 1;
+        // Young-disc luminosity ~Mstar^2 and a 2.7 AU Solar reference are weak formation priors.
+        // Present orbit is not a measured birth location: migration alternatives remain open.
+        // Water delivery review: https://arxiv.org/abs/1801.05456.
+        result.snowline_au = 2.7 * std::clamp(stellar_mass, .08, 10.0);
+        result.outer_fraction = 1 / (1 + std::pow(result.snowline_au / result.orbit_au, 4));
+        const double reference_outer = 1 / (1 + std::pow(2.7, 4));
+        result.water_factor = (.001 + .02 * result.outer_fraction) / (.001 + .02 * reference_outer);
+        const double mass = std::isfinite(p.mass) && p.mass > 0 ? p.mass / earth_mass : 1;
+        // A broad accretion/impact-retention proxy, normalized at Earth; not an occurrence fit.
+        result.mass_factor = std::pow(std::clamp(mass, .0001, 100.0), .25);
+        result.heavy_factor = result.mass_factor * (.5 + .5 * std::sqrt(result.water_factor));
+        result.cold = std::isfinite(CosmicShore::calculate_escape_velocity(p)) && cold_volatile_regime(p, stellar_flux(s, p));
+        if (result.cold)
+        {
+            const double density = p.mass * .001 / sphere_volume(p.volumetric_mean_radius);
+            // Additive specific volumes for compressed water/ice and rock. This is an
+            // interior scenario, not a unique inversion of bulk density.
+            result.ice_fraction = std::clamp((1 / density - 1.0 / 3500) / (1.0 / 1300 - 1.0 / 3500), .05, .7);
+        }
+        return result;
+    }
+
     double nitrogen_vapor_pressure(double temperature)
     {
         if (temperature >= 126.19) return INFINITY;
@@ -204,6 +242,27 @@ AtmosphericEstimate CosmicShore::estimate_atmosphere(Star& s, Planet& p)
     estimate.diagnostics["default_inventory"] = inventory.to_json();
     estimate.diagnostics["stellar_age"] = s.age_diagnostics();
     estimate.diagnostics["elemental_inventory_prior"] = planet_formation_chemistry(s);
+    if (!uses_gaseous_map(p.type))
+    {
+        const auto delivery = formation_delivery(s, p);
+        auto& diagnostic = estimate.diagnostics["formation_inventory"];
+        diagnostic["model"] = "chemical_delivery_scenario_v1";
+        diagnostic["current_orbit_as_weak_birth_location_proxy"] = true;
+        diagnostic["stellar_orbit_au"] = delivery.orbit_au;
+        diagnostic["young_disc_snowline_proxy_au"] = delivery.snowline_au;
+        diagnostic["outer_disc_prior_weight"] = delivery.outer_fraction;
+        diagnostic["mass_delivery_factor"] = delivery.mass_factor;
+        diagnostic["water_delivery_factor"] = delivery.water_factor;
+        diagnostic["heavy_volatile_delivery_factor"] = delivery.heavy_factor;
+        diagnostic["cold_body_ice_fraction_scenario"] = delivery.ice_fraction;
+        diagnostic["nitrogen_source"] = delivery.cold ? "ice_ammonia_and_organics" : "reference_N_C_delivery_ratio";
+        const auto& chemistry = estimate.diagnostics["elemental_inventory_prior"];
+        if (!delivery.cold && chemistry.contains("nitrogen_prior"))
+            diagnostic["nitrogen_source"] = chemistry["nitrogen_prior"].value("source", "reference_N_C_delivery_ratio");
+        diagnostic["water_inventory_range"] = json::array({inventory.water_mass_fraction * .1,
+            std::min(.7, inventory.water_mass_fraction * 10)});
+        diagnostic["range_interpretation"] = "Volatile_poor_to_ice_delivery_alternatives;not_statistical_error_bars";
+    }
     estimate.diagnostics["age_origin"] = s.fictional_origin.is_object()
         && s.fictional_origin.contains("age_gyr") && s.fictional_origin["age_gyr"].is_number()
         && s.fictional_origin["age_gyr"] == default_inventory(s).age_gyr
@@ -215,16 +274,22 @@ AtmosphericInventory CosmicShore::default_inventory(Star& s, Planet& p)
 {
     auto inventory = default_inventory(s);
     const json& chemistry = planet_formation_chemistry(s);
+    const auto delivery = formation_delivery(s, p);
     if (chemistry.value("applicable", false))
     {
         inventory.water_mass_fraction = std::min(.5, inventory.water_mass_fraction * chemistry.value("water_inventory_scale", 1.0));
         inventory.co2_mass_fraction = std::min(.05, inventory.co2_mass_fraction * chemistry.value("carbon_inventory_scale", 1.0));
     }
-    if (std::isfinite(calculate_escape_velocity(p)) && cold_volatile_regime(p, stellar_flux(s, p)))
+    const double nitrogen_scale = chemistry.value("nitrogen_inventory_scale", chemistry.value("carbon_inventory_scale", 1.0));
+    inventory.water_mass_fraction = std::min(.5, inventory.water_mass_fraction * delivery.mass_factor * delivery.water_factor);
+    inventory.co2_mass_fraction = std::min(.05, inventory.co2_mass_fraction * delivery.heavy_factor);
+    inventory.nitrogen_mass_fraction = std::min(.01, inventory.nitrogen_mass_fraction * delivery.heavy_factor * nitrogen_scale);
+    if (delivery.cold)
     {
         // N2-equivalent nitrogen released from ammonia/organics in ice-rich interiors.
         // The accessible inventory is a Titan-scale scenario calibration, not bulk ice content.
-        inventory.nitrogen_mass_fraction = 1.35e-4;
+        inventory.water_mass_fraction = delivery.ice_fraction;
+        inventory.nitrogen_mass_fraction = std::min(.01, 1.35e-4 * delivery.ice_fraction / .51 * nitrogen_scale);
     }
     return inventory;
 }

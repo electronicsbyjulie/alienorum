@@ -9,12 +9,32 @@ import subprocess
 import sys
 import tempfile
 
-from import_stellar_abundances import bake_catalog, catalog_index, consolidate_abundance_aliases, galah_measurements, import_hypatia, match_record
+from import_stellar_abundances import bake_catalog, catalog_index, consolidate_abundance_aliases, galah_measurements, import_hypatia, import_hypatia_nitrogen, match_record
 from calibrate_planet_classifier import calibrate, fold, sample
 from test_stellar_metallicity import star
 
 
 class AbundanceImportTest(unittest.TestCase):
+    def test_nitrogen_import_preserves_existing_elements_and_uses_zero(self):
+        index = catalog_index([star("Bright Host", 12)])
+        table = dict(rows=[dict(name="HD12", hd=12, elements=dict(Fe=dict(dex=-.2)))], solar={})
+        def response(url):
+            if "/data/" in url:
+                return dict(values=[dict(name="HD12")])
+            return [dict(name="HD12", all_names=["HD12"], element="N", solarnorm="asplund09", median_value=0)]
+        original = Path.cwd()
+        with tempfile.TemporaryDirectory() as directory:
+            try:
+                os.chdir(directory)
+                with patch("import_stellar_abundances.read_json", side_effect=response):
+                    result = import_hypatia_nitrogen(table, index)
+                self.assertEqual(len(result["rows"]), 1)
+                self.assertEqual(result["rows"][0]["elements"]["Fe"]["dex"], -.2)
+                self.assertEqual(result["rows"][0]["elements"]["N"]["dex"], 0)
+                self.assertEqual(result["solar"]["N"], 7.83)
+            finally:
+                os.chdir(original)
+
     def test_aliases_merge_into_one_record_without_losing_older_measurements(self):
         index = catalog_index([star("Bright Host", 12)])
         rows = [dict(name="HD12", hd=12, elements=dict(Fe=dict(dex=-.2))),

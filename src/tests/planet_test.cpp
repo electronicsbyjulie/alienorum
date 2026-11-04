@@ -234,6 +234,41 @@ TEST_F(PlanetClassificationEvidenceTest, ElementRatiosAllocateOxygenAndChangeInv
     EXPECT_EQ(partial["scaled_solar_assumptions"], json::array({"O"}));
 }
 
+TEST_F(PlanetClassificationEvidenceTest, InitialInventoriesRespondToDeliveryMassAndPublishedNitrogen)
+{
+    Star* host = make_star();
+    Planet* world = make_planet(host);
+    const auto reference = CosmicShore::default_inventory(*host, *world);
+    EXPECT_DOUBLE_EQ(reference.water_mass_fraction, 2.3e-4);
+    EXPECT_DOUBLE_EQ(reference.co2_mass_fraction, 1.45e-4);
+    EXPECT_DOUBLE_EQ(reference.nitrogen_mass_fraction, 1e-6);
+    world->mass *= 4;
+    world->volumetric_mean_radius *= 1.5;
+    const auto massive = CosmicShore::default_inventory(*host, *world);
+    EXPECT_GT(massive.water_mass_fraction, reference.water_mass_fraction);
+    EXPECT_GT(massive.nitrogen_mass_fraction, reference.nitrogen_mass_fraction);
+    world->orbit->semimajor_axis *= 3;
+    const auto outer = CosmicShore::default_inventory(*host, *world);
+    EXPECT_GT(outer.water_mass_fraction, massive.water_mass_fraction);
+    EXPECT_GT(outer.co2_mass_fraction, massive.co2_mass_fraction);
+    host->stellar_abundances = {{"Fixture", {{"solar_scale", "asplund09"},
+        {"solar", {{"Fe", 7.50}, {"Mg", 7.60}, {"Si", 7.51}, {"C", 8.43}, {"O", 8.69}, {"N", 7.83}}},
+        {"elements", {{"N", {{"dex", .3}, {"quality", "accepted"}, {"ratio", "[N/H]"}}}}}}}};
+    const auto nitrogen = CosmicShore::default_inventory(*host, *world);
+    EXPECT_NEAR(nitrogen.nitrogen_mass_fraction / outer.nitrogen_mass_fraction, pow(10.0, .3), 1e-12);
+    EXPECT_DOUBLE_EQ(nitrogen.water_mass_fraction, outer.water_mass_fraction);
+    EXPECT_DOUBLE_EQ(nitrogen.co2_mass_fraction, outer.co2_mass_fraction);
+    const json chemistry = planet_formation_chemistry(*host);
+    EXPECT_EQ(chemistry["nitrogen_prior"]["source"], "Fixture");
+    EXPECT_EQ(chemistry["nitrogen_prior"]["scaled_solar_assumptions"].size(), 5u);
+    host->metallicity = -.4;
+    host->metallicity_ratio = "[Fe/H]";
+    host->stellar_abundances["Fixture"]["elements"]["N"]["ratio"] = "[N/Fe]";
+    const auto relative_nitrogen = CosmicShore::default_inventory(*host, *world);
+    EXPECT_NEAR(relative_nitrogen.nitrogen_mass_fraction / outer.nitrogen_mass_fraction, pow(10.0, .3), 1e-12);
+    EXPECT_TRUE(planet_formation_chemistry(*host)["nitrogen_prior"]["iron_normalization_assumed"].get<bool>());
+}
+
 TEST_F(PlanetClassificationEvidenceTest, PrimordialEnvelopeLedgerTracksEscapeAgeAndIrradiation)
 {
     Star* host = make_star();
@@ -407,7 +442,7 @@ TEST_F(PlanetClassificationEvidenceTest, ColdInventoryScenariosPersistAndConserv
     world->apply_cosmic_shoreline();
     ASSERT_NE(world->atm, nullptr);
     EXPECT_EQ(world->atm->pressure_model["inventory_source"], "default_scenario");
-    EXPECT_DOUBLE_EQ(world->atm->pressure_model["inventory"]["nitrogen_mass_fraction"].get<double>(), 1.35e-4);
+    EXPECT_NEAR(world->atm->pressure_model["inventory"]["nitrogen_mass_fraction"].get<double>(), 1.1e-4, 2e-6);
     const double pressure = world->get_surface_pressure();
     world->apply_cosmic_shoreline();
     EXPECT_DOUBLE_EQ(world->get_surface_pressure(), pressure);

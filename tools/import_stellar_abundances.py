@@ -21,7 +21,7 @@ ELEMENTS = ("Fe", "Mg", "Si", "C", "O")
 HYPATIA = "https://hypatiacatalog.com/hypatia/api/v2/"
 VIZIER = "https://tapvizier.cds.unistra.fr/TAPVizieR/tap/sync"
 GAIA = "https://gea.esac.esa.int/tap-server/tap/sync"
-SOLAR = dict(Fe=7.50, Mg=7.60, Si=7.51, C=8.43, O=8.69)
+SOLAR = dict(Fe=7.50, Mg=7.60, Si=7.51, C=8.43, O=8.69, N=7.83)
 GALAH_SOLAR = dict(Fe=7.45, Mg=7.53, Si=7.51, C=8.39, O=8.66)
 
 
@@ -212,6 +212,44 @@ def import_hypatia(index, refresh):
     return table
 
 
+def import_hypatia_nitrogen(table, index):
+    if table.get("nitrogen_import_version") == 1:
+        return table
+    params = dict(mode="scatter", xaxis1="N", yaxis1="N", zaxis1="N", solarnorm="asplund09")
+    available = read_json(HYPATIA + "data/?" + urllib.parse.urlencode(params))
+    names = sorted({row["name"] for row in available.get("values", []) if row.get("name")})
+    def batch(group):
+        params = [(key, value) for name in group for key, value in
+                  (("name", name), ("element", "n"), ("solarnorm", "asplund09"))]
+        return read_json(HYPATIA + "composition?" + urllib.parse.urlencode(params))
+    groups = [names[start:start + 25] for start in range(0, len(names), 25)]
+    rows = list(table["rows"])
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        for entries in pool.map(batch, groups):
+            for entry in entries:
+                value = entry.get("median_value")
+                if entry.get("element") != "N" or entry.get("solarnorm") != "asplund09" or not finite(value):
+                    continue
+                name = entry.get("name") or entry.get("requested_name")
+                ids = identifier_fields(entry.get("all_names", []) + [name, entry.get("requested_name")])
+                if not ids:
+                    continue
+                error = entry.get("plusminus")
+                references = sorted({item.get("catalog", {}).get("id") for item in entry.get("median", [])
+                                     if item.get("catalog", {}).get("id")})
+                measurement = dict(dex=value, ratio="[N/H]", quality="accepted",
+                    error=error if finite(error) and error >= 0 else None,
+                    error_kind="literature_half_range_or_representative", references=references,
+                    measurement_count=len(entry.get("all_values", [])))
+                rows.append(dict(name=name, elements=dict(N=measurement), **ids))
+    table["rows"] = consolidate_abundance_aliases(rows, index)
+    table["solar"]["N"] = SOLAR["N"]
+    table["nitrogen_import_version"] = 1
+    print("Published nitrogen measurements:", sum("N" in row["elements"] for row in table["rows"]), flush=True)
+    write_json(Path("catalogs/Hypatia/stellar_abundances.json"), table)
+    return table
+
+
 def galah_measurements(row):
     if any(row.get(flag) != 0 for flag in ("flagSp", "flagSpFit", "flagRed", "f_[Fe/H]")):
         return {}
@@ -327,7 +365,7 @@ def main():
     index = catalog_index(lines)
     tables = []
     if arguments.source in ("Hypatia", "all"):
-        tables.append(import_hypatia(index, arguments.refresh))
+        tables.append(import_hypatia_nitrogen(import_hypatia(index, arguments.refresh), index))
     if arguments.source in ("GALAH", "all"):
         tables.append(import_galah(arguments.refresh))
     for table in tables:

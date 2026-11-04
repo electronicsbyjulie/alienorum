@@ -17,9 +17,9 @@
 
 - [fixed] The exoplanet load slowed way down. What the fuck? It used to take just a second or two.
 
-- The volatiles budget does not infer planets' initial water/carbon/nitrogen inventory, rather it flops in Earth defaults. If there's any way to make better guesses than that, make them.
+- [fixed] The volatiles budget does not infer planets' initial water/carbon/nitrogen inventory, rather it flops in Earth defaults. If there's any way to make better guesses than that, make them.
+
+- Atmospheres above cloud decks are showing much too dense. See snapshot depicting a VERY WRONG rendition of Venus.
 
 - Apply any other items from section 11 of the ocean worlds audit that I have not mentioned here.
-
-
 
