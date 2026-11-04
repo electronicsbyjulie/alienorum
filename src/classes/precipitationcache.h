@@ -13,6 +13,9 @@ namespace alienorum
     struct PrecipitationStats
     {
         double cpu_milliseconds = 0;
+        double horizon_cpu_milliseconds = 0;
+        bool ground_cache_active = false, ground_cache_hit = false;
+        const char* ground_cache_reason = "unused";
         size_t particles = 0, flakes = 0;
     };
     inline PrecipitationStats precipitation_stats;

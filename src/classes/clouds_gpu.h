@@ -19,6 +19,7 @@ namespace alienorum
         double render_ms = 0;
         double composite_ms = 0;
         double tile_cpu_ms = 0;
+        double overhead_cpu_ms = 0;
         unsigned int geometry_builds = 0;
         unsigned int image_builds = 0;
         unsigned int image_hits = 0;

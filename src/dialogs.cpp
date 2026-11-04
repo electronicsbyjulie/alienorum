@@ -21,6 +21,7 @@
 #include "loaders.h"
 #include "housekeeping.h"
 #include "classes/clouds_gpu.h"
+#include "classes/precipitationcache.h"
 #include "classes/orbit_spacing.h"
 #include "classes/neighborhoodfilter.h"
 #include "classes/watercoverage.h"
@@ -622,7 +623,12 @@ void draw_status_window(ImGuiIO& io)            // the S panel
             {
                 ImGui::TextUnformatted("Cloud GPU timers unavailable");
             }
-            ImGui::Text("Cloud clusters: %u; per tile %.1f mean, %u max", cloud.clusters,
+            ImGui::Text("Overhead probe CPU: %.2f ms; rain/snow CPU: %.2f ms", cloud.overhead_cpu_ms,
+                precipitation_stats.cpu_milliseconds);
+            ImGui::Text("Horizon preparation CPU: %.2f ms", precipitation_stats.horizon_cpu_milliseconds);
+            ImGui::Text("Ground painting cache: %s", !precipitation_stats.ground_cache_active ? "unused"
+                : precipitation_stats.ground_cache_reason);
+            ImGui::Text("Cloud candidate cells: %u; per tile %.1f mean, %u max", cloud.clusters,
                 cloud.mean_tile_clusters, cloud.max_tile_clusters);
             ImGui::Text("Cloud builds: %u geometry, %u image; %u image hits",
                 cloud.geometry_builds, cloud.image_builds, cloud.image_hits);

@@ -7,6 +7,66 @@
 
 using namespace alienorum;
 
+namespace
+{
+    // Memoize a small Cartesian cell only when every displaced point in it maps
+    // to the same atlas pixel. Bounds preserve exact colors and material tags.
+    bool certified_surface_cell(Map* map, SurfaceBiomes& field, double radius, double strength,
+        double latitude, double longitude, std::pair<RGB3, SurfaceMaterial>& result)
+    {
+        if (surface_uniform_reference || generating_fic_texture || !map->is_complete()
+            || !std::isfinite(radius) || radius <= 0 || radius > 1e12 || !std::isfinite(strength)
+            || !std::isfinite(latitude) || !std::isfinite(longitude) || fabs(latitude) > half_pi - .001) return false;
+        constexpr double spacing = .5;
+        const double minimum_radius = radius - SurfaceBiomes::maximum_displacement(strength);
+        if (!(minimum_radius > 2)) return false;
+        struct Entry
+        {
+            std::array<int64_t, 3> cell{};
+            bool attempted = false, uniform = false;
+            std::pair<RGB3, SurfaceMaterial> value;
+        };
+        static thread_local std::array<Entry, 16384> entries;
+        using Key = std::tuple<Map*, unsigned int, uint32_t, double, double>;
+        static thread_local Key previous;
+        const Key key = {map, map->gen, field.world_id(), radius, strength};
+        if (key != previous)
+        {
+            for (auto& entry : entries) entry.attempted = false;
+            previous = key;
+        }
+        const double horizontal = radius * cos(latitude);
+        const std::array<double, 3> point = {horizontal * cos(longitude), horizontal * sin(longitude), radius * sin(latitude)};
+        std::array<int64_t, 3> cell{};
+        uint64_t hash = 1469598103934665603ULL;
+        for (int axis = 0; axis < 3; ++axis)
+        {
+            cell[axis] = static_cast<int64_t>(floor(point[axis] / spacing));
+            hash = (hash ^ static_cast<uint64_t>(cell[axis])) * 1099511628211ULL;
+        }
+        auto& entry = entries[hash & (entries.size() - 1)];
+        if (!entry.attempted || entry.cell != cell)
+        {
+            entry.cell = cell;
+            entry.attempted = true;
+            entry.uniform = false;
+            const double x = (cell[0] + .5) * spacing, y = (cell[1] + .5) * spacing, z = (cell[2] + .5) * spacing;
+            const double length = hypot(hypot(x, y), z);
+            if (!(length > 0)) return false;
+            const auto center = field.coordinates(radius, asin(std::clamp(z / length, -1.0, 1.0)), atan2(y, x), strength);
+            // Projecting a cube midpoint onto the sphere moves it at most another
+            // half diagonal. The displacement Jacobian is bounded by 1 + 3G.
+            const double chord = sqrt(3.0) * spacing * (1 + 3 * SurfaceBiomes::gradient_bound(strength));
+            const double angle = 2 * asin(std::min(1.0, chord / (2 * minimum_radius))) + 1e-10;
+            RGB3 color;
+            entry.uniform = map->color_within_cap(center.first, center.second, angle, color, false);
+            if (entry.uniform) entry.value = {color, map->material_at(center.first, center.second)};
+        }
+        if (entry.uniform) result = entry.value;
+        return entry.uniform;
+    }
+}
+
 SurfaceSampler::SurfaceSampler(Planet *body, Map *surface, SurfaceBiomes &noise, double world_radius, double displacement)
     : planet(body), map(surface), field(noise), radius(world_radius), strength(displacement),
       bound(SurfaceBiomes::angular_bound(world_radius, displacement))
@@ -39,6 +99,8 @@ std::pair<RGB3, SurfaceMaterial> SurfaceSampler::info(double latitude, double lo
                 && map->color_within_cap(approximate.first, approximate.second, error_angle, certified, true))
                 return {certified, map->material_at(approximate.first, approximate.second)};
         }
+        std::pair<RGB3, SurfaceMaterial> certified;
+        if (certified_surface_cell(map, field, radius, strength, latitude, longitude, certified)) return certified;
         const auto coord = field.coordinates(radius, latitude, longitude, strength);
         latitude = coord.first;
         longitude = coord.second;

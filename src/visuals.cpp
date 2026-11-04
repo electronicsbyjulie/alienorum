@@ -5793,6 +5793,15 @@ void draw_local_rings()
 void draw_horizon()
 {
     precipitation_stats = {};
+    struct PreparationTimer
+    {
+        std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
+        ~PreparationTimer()
+        {
+            precipitation_stats.horizon_cpu_milliseconds = std::chrono::duration<double, std::milli>(
+                std::chrono::steady_clock::now() - start).count();
+        }
+    } preparation_timer;
     scenery_shadow_stats = {};
     if (performance_enabled(36)) surface_prefetch.clear();
     local_surface_tile_active = false;
@@ -7009,9 +7018,85 @@ void draw_horizon()
                     min_hz_y_at_x, base_top, terrain_mesh, gpu_haze);
             }
             #endif
-            const auto gpu_tile_color = [&](int left, int top, int right, int bottom, RGB3 &color)
+            // Retain completed base painting independently of animated waves/scenery.
+            // Small walking steps retain base colors; geometry masks, waves and
+            // scenery still update each frame. Physical/lighting edits invalidate it.
+            struct PaintedGroundRect { ImVec2 low, high; ImU32 color; };
+            static std::vector<PaintedGroundRect> saved_cpu_rectangles;
+            static std::vector<HorizonGroundRect> saved_gpu_rectangles;
+            static double painted_latitude = 0, painted_longitude = 0;
+            static std::array<bool, 256> painted_channels{};
+            static std::array<int, 256> painted_lighting{};
+            const auto remember_channels = [&](const RGB3& color)
             {
-                double near_distance = surface_range, far_distance = surface_range;
+                painted_channels[color.r] = painted_channels[color.g] = painted_channels[color.b] = true;
+            };
+            std::vector<double> ground_inputs =
+            {
+                double(whereami), double(cel->type), double(map ? map->gen : 0), double(gpu_ground),
+                0, 0, surface_eye, surface_radius, surface_range, surface_lift,
+                azimuth, altitude, zoom, dispcx, dispcy, double(paint_biomes ? 0 : unveiled_terraincol),
+                double(dragging ? int(192 - 128 * is_day) : 255),
+                double(paint_biomes), double(surface_biomes), double(terrain_mesh), double(dragging),
+                double(redlight_mode), double(show_terrain), double(horizon_terrain_cpu_reference),
+                double(horizon_ground_gpu_reference), double(shared_surface), double(generating_fic_texture),
+                double(p->has_water), p->m_bump_scale, double(p->vegetation_r), double(p->vegetation_g),
+                double(p->vegetation_b), double(performance_enabled(29)), double(performance_enabled(37))
+            };
+            // Only channels present in this painting can change its displayed colors.
+            bool same_lighting = true;
+            for (int channel = 0; channel < 256; ++channel)
+                if (painted_channels[channel] && painted_lighting[channel] != std::clamp(int(channel * is_day), 0, 255))
+                    same_lighting = false;
+            ground_inputs.insert(ground_inputs.end(), haze.extinction.begin(), haze.extinction.end());
+            for (double light : haze.light) ground_inputs.push_back(std::clamp(int(light), 0, 255));
+            ground_inputs.push_back(dev_dial);
+            ground_inputs.push_back(azimuth_correction);
+            ground_inputs.push_back(surface_uniform_reference);
+            for (bool reference : performance_reference) ground_inputs.push_back(reference);
+            auto ground_key = std::make_tuple(cel, map, std::move(ground_inputs));
+            static decltype(ground_key) saved_ground_key;
+            static bool ground_cache_valid = false;
+            const double latitude_step = viewer_lat - painted_latitude;
+            const double longitude_step = std::remainder(viewer_lon - painted_longitude, 2 * _pi);
+            const double travel = ground_cache_valid ? surface_radius * hypot(latitude_step,
+                cos((viewer_lat + painted_latitude) * .5) * longitude_step) : INFINITY;
+            // Two metres avoids rebuilding for every Home/End step. Near a pole,
+            // retain exact positions because the north/east basis turns rapidly.
+            const bool position_reusable = travel < std::min(2.0, surface_radius * .001)
+                && (fabs(viewer_lat) < half_pi - .001 || (latitude_step == 0 && longitude_step == 0));
+            const bool reuse_ground = ground_cache_valid && position_reusable && same_lighting && ground_key == saved_ground_key;
+            const char* cache_reason = "first painting";
+            if (ground_cache_valid)
+            {
+                cache_reason = !position_reusable ? "travel" : "surface/lighting";
+                if (std::get<0>(ground_key) != std::get<0>(saved_ground_key)
+                    || std::get<1>(ground_key) != std::get<1>(saved_ground_key)) cache_reason = "world/map";
+                else
+                {
+                    const auto& old = std::get<2>(saved_ground_key);
+                    const auto& current = std::get<2>(ground_key);
+                    if (old.size() == current.size())
+                    {
+                        if (old[3] != current[3]) cache_reason = "GPU path";
+                        else if (!std::equal(old.begin() + 34, old.end(), current.begin() + 34)) cache_reason = "lighting/settings";
+                    }
+                }
+            }
+            if (ground_cache_valid && !same_lighting) cache_reason = "lighting";
+            precipitation_stats.ground_cache_reason = reuse_ground ? "reused" : cache_reason;
+            precipitation_stats.ground_cache_active = true;
+            precipitation_stats.ground_cache_hit = reuse_ground;
+            bool retain_ground = true;
+            const auto paint_ground_rect = [&](ImVec2 low, ImVec2 high, ImU32 color)
+            {
+                ground->AddRectFilled(low, high, color);
+                if (saved_cpu_rectangles.size() < 1048576) saved_cpu_rectangles.push_back({low, high, color});
+                else retain_ground = false;
+            };
+            const auto gpu_tile_color = [&](int left, int top, int right, int bottom, RGB3 &color, bool nearby = false)
+            {
+                double near_distance = surface_range, far_distance = nearby ? 0 : surface_range;
                 if (terrain_mesh)
                 {
                     const auto &depths = terrain_raster.distances();
@@ -7039,6 +7124,7 @@ void draw_horizon()
                 {
                     // Subpixel source contrast cannot affect the displayed result.
                     color = RGB3(0, 0, 0);
+                    remember_channels(color);
                     return true;
                 }
                 double low_bearing = 10, high_bearing = -10;
@@ -7059,7 +7145,9 @@ void draw_horizon()
                     + (surface_biomes ? biome_angle : 0.0) + 1.0e-10;
                 const auto center = surface_coord(0.5 * (near_distance + far_distance),
                     azimuth + 0.5 * (low_bearing + high_bearing));
-                return map->color_within_cap(center.first, center.second, angle, color, true);
+                const bool uniform = map->color_within_cap(center.first, center.second, angle, color, true);
+                if (uniform) remember_channels(color);
+                return uniform;
             };
             const auto ground_color = [&](double x, double y)
             {
@@ -7072,6 +7160,7 @@ void draw_horizon()
                 {
                     const auto coord = ground_coord(x, y);
                     const RGB3 sample = surface_sample(coord.first, coord.second);
+                    remember_channels(sample);
                     color = rgba_apply_redlight(IM_COL32(fmin(255, is_day * sample.r),
                         fmin(255, is_day * sample.g), fmin(255, is_day * sample.b),
                         dragging ? (192 - 128 * is_day) : 255));
@@ -7138,13 +7227,25 @@ void draw_horizon()
                             {
                                 if (previous & IM_COL32_A_MASK)
                                 {
-                                    ground->AddRectFilled(ImVec2(run_left, y), ImVec2(x, y + 1), previous);
+                                    paint_ground_rect(ImVec2(run_left, y), ImVec2(x, y + 1), previous);
                                 }
                                 run_left = x;
                                 previous = current;
                             }
                         }
                     }
+                    return;
+                }
+                // Certify nearby map colors before testing shaded corners. The GPU
+                // supplies exact coverage and optional distance haze without splitting
+                // constant source regions into individual CPU-painted pixels.
+                RGB3 nearby_color;
+                if (gpu_ground && gpu_tile_color(left, top, right, bottom, nearby_color, true))
+                {
+                    gpu_rectangles.push_back({left, top, right, bottom,
+                        rgba_apply_redlight(IM_COL32(fmin(255, is_day * nearby_color.r),
+                            fmin(255, is_day * nearby_color.g), fmin(255, is_day * nearby_color.b),
+                            dragging ? (192 - 128 * is_day) : 255))});
                     return;
                 }
                 const ImU32 color = ground_color((left + right) * 0.5, (top + bottom) * 0.5);
@@ -7158,7 +7259,7 @@ void draw_horizon()
                     const double clipped_top = fmax(top, horizon_max);
                     if (clipped_top < bottom)
                     {
-                        ground->AddRectFilled(ImVec2(left, clipped_top), ImVec2(right, bottom), color);
+                        paint_ground_rect(ImVec2(left, clipped_top), ImVec2(right, bottom), color);
                     }
                     return;
                 }
@@ -7182,20 +7283,42 @@ void draw_horizon()
                     self(self, left, mid_y, right, bottom);
                 }
             };
-            if (gpu_ground && !paint_biomes)
+            if (reuse_ground)
             {
-                // Dry worlds retain their local ground color, without sampling distant
-                // atlas pixels. One GPU rectangle supplies continuous distance veiling.
-                gpu_rectangles.push_back({0, 0, screen_w, ground_height, unveiled_terraincol});
+                for (const auto& rectangle : saved_cpu_rectangles)
+                    ground->AddRectFilled(rectangle.low, rectangle.high, rectangle.color);
+                gpu_rectangles = saved_gpu_rectangles;
             }
             else
             {
-                for (int x = 0; x < screen_w; x += 32)
+                saved_cpu_rectangles.clear();
+                painted_channels.fill(false);
+                if (gpu_ground && !paint_biomes)
                 {
-                    for (int y = 0; y < dispcy * 2.0; y += 32)
+                    // Dry worlds retain their local ground color, without sampling distant
+                    // atlas pixels. One GPU rectangle supplies continuous distance veiling.
+                    gpu_rectangles.push_back({0, 0, screen_w, ground_height, unveiled_terraincol});
+                }
+                else
+                {
+                    for (int x = 0; x < screen_w; x += 32)
                     {
-                        patch(patch, x, y, std::min(screen_w, x + 32), std::min((int)(dispcy * 2.0), y + 32));
+                        for (int y = 0; y < dispcy * 2.0; y += 32)
+                        {
+                            patch(patch, x, y, std::min(screen_w, x + 32), std::min((int)(dispcy * 2.0), y + 32));
+                        }
                     }
+                }
+                ground_cache_valid = retain_ground && map && map->is_complete() && !generating_fic_texture
+                    && gpu_rectangles.size() <= 1048576;
+                if (ground_cache_valid)
+                {
+                    saved_ground_key = std::move(ground_key);
+                    painted_latitude = viewer_lat;
+                    painted_longitude = viewer_lon;
+                    for (int channel = 0; channel < 256; ++channel)
+                        painted_lighting[channel] = std::clamp(int(channel * is_day), 0, 255);
+                    saved_gpu_rectangles = gpu_rectangles;
                 }
             }
             if (gpu_ground) queue_horizon_ground_gpu(std::move(gpu_rectangles));

@@ -328,7 +328,9 @@ int main (int argc, char** argv)
 #ifdef _WIN32
     ::SetProcessDPIAware();
 #endif
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_GAMECONTROLLER | SDL_INIT_AUDIO) != 0)
+    // SoundManager opens audio on first playback. An unavailable audio server
+    // must not block window creation and catalog loading.
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_GAMECONTROLLER) != 0)
     {
         printf("Error: %s\n", SDL_GetError());
         return 1;

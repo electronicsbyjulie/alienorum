@@ -7,6 +7,7 @@
 #include <string>
 #include <chrono>
 #include <cstdint>
+#include <numeric>
 #include "SDL.h"
 #include "clouds_gpu.h"
 #include "imgui.h"
@@ -446,29 +447,33 @@ void main()
             }
         }
 #endif
-        // Longitude follows the wind; latitude runs across it. Using a
-        // circular longitude pair keeps the strands continuous at the map seam.
-        // A tangent flow avoids the rounded patches produced when the old
-        // anisotropic XYZ field pointed vertically at the observer.
-        vec2 flow = shell * vec2(sin(lon), cos(lon));
-        float bend = 0.35 * noise(hit * 0.65 + vec3(17.0));
-        float crosswind = lat * shell + bend;
-        // A planet-fixed gradient field at the original cloud-mass frequency.
-        // Logarithmic scaling keeps the factor in [5, 50], favoring lower values.
-        float wisp_field = clamp(0.5 + 0.5 * wisp_perlin(hit*0.1 + vec3(83.0, 127.0, 191.0)), 0.0, 1.0);
-        float wispiness = 0.001 * pow(10.0, wisp_field*3);
-        float strand = noise(vec3(flow * (0.26 * wispiness), crosswind * 18.0) + vec3(17.0));
-        float fiber = noise(vec3(flow * (0.65 * wispiness), crosswind * 43.0 + strand * 0.65) + vec3(31.0));
-        float veil = smoothstep(-0.18, 0.28, noise(hit * 0.15 + vec3(17.0)));
-        // Narrow threads fade independently before they become subpixel.
-        // Their broad envelopes taper into clear sky rather than solid lobes.
-        float strands = smoothstep(0.02, 0.65, strand)
-            * (1.0 - smoothstep(0.12, 0.80, footprint * 18.0));
-        float fibers = smoothstep(0.10, 0.72, fiber)
-            * (1.0 - smoothstep(0.12, 0.80, footprint * 43.0));
-        float feather = strands * (0.48 + 0.52 * fibers) + 0.22 * fibers;
-        float cirrus = 0.42 * veil * feather
-            * smoothstep(0.0, 0.12, coverage) * (1.0 - smoothstep(0.55, 0.80, coverage));
+        float cirrus = 0.0;
+        if (coverage > 0.0 && coverage < 0.80)
+        {
+            // Longitude follows the wind; latitude runs across it. Using a
+            // circular longitude pair keeps the strands continuous at the map seam.
+            // A tangent flow avoids the rounded patches produced when the old
+            // anisotropic XYZ field pointed vertically at the observer.
+            vec2 flow = shell * vec2(sin(lon), cos(lon));
+            float bend = 0.35 * noise(hit * 0.65 + vec3(17.0));
+            float crosswind = lat * shell + bend;
+            // A planet-fixed gradient field at the original cloud-mass frequency.
+            // Logarithmic scaling keeps the factor in [5, 50], favoring lower values.
+            float wisp_field = clamp(0.5 + 0.5 * wisp_perlin(hit*0.1 + vec3(83.0, 127.0, 191.0)), 0.0, 1.0);
+            float wispiness = 0.001 * pow(10.0, wisp_field*3);
+            float strand = noise(vec3(flow * (0.26 * wispiness), crosswind * 18.0) + vec3(17.0));
+            float fiber = noise(vec3(flow * (0.65 * wispiness), crosswind * 43.0 + strand * 0.65) + vec3(31.0));
+            float veil = smoothstep(-0.18, 0.28, noise(hit * 0.15 + vec3(17.0)));
+            // Narrow threads fade independently before they become subpixel.
+            // Their broad envelopes taper into clear sky rather than solid lobes.
+            float strands = smoothstep(0.02, 0.65, strand)
+                * (1.0 - smoothstep(0.12, 0.80, footprint * 18.0));
+            float fibers = smoothstep(0.10, 0.72, fiber)
+                * (1.0 - smoothstep(0.12, 0.80, footprint * 43.0));
+            float feather = strands * (0.48 + 0.52 * fibers) + 0.22 * fibers;
+            cirrus = 0.42 * veil * feather
+                * smoothstep(0.0, 0.12, coverage) * (1.0 - smoothstep(0.55, 0.80, coverage));
+        }
         // The map is the unresolved bank behind the resolved lobes. Preserve
         // that background at soft lobe edges instead of exposing clear sky.
         // The shell is an approximation of the same cloud mass, so it must
@@ -586,7 +591,7 @@ void main()
     {
     };
     static bool s_geometry_valid = false;
-    static double s_refraction_span = 0;
+    static float s_inverse_table[1025];
     using Vec3 = std::array<double, 3>;
     struct CloudCell
     {
@@ -998,16 +1003,24 @@ void main()
     {
         if (!s_cache_valid || width != s_output_width || height != s_output_height
             || p.texture != s_cached_params.texture || p.revision != s_cached_params.revision
-            || p.geometry_mode != s_cached_params.geometry_mode
-            || std::memcmp(p.camera, s_cached_params.camera, sizeof(p.camera)) != 0
-            || std::memcmp(p.world, s_cached_params.world, sizeof(p.world)) != 0)
+            || p.geometry_mode != s_cached_params.geometry_mode)
         {
             return false;
         }
+        // Slow tracking can move by far less than a pixel between frames. Bound
+        // the angular reuse error at the most magnified part of the perspective view.
+        const double fx = p.camera[2], fy = p.camera[3];
+        const double angle_tolerance = .1 * std::min(2 * std::fabs(fx) / width, 2 * std::fabs(fy) / height)
+            / (1 + fx * fx + fy * fy);
         for (int i = 0; i < 16; ++i)
         {
-            // Sub-byte illumination changes can reuse the displayed layer.
-            const float tolerance = (i < 2 || i == 5) ? 1.0f / 512.0f : 0.0f;
+            const double camera_tolerance = i < 2 ? angle_tolerance : 0;
+            if (std::fabs(p.camera[i] - s_cached_params.camera[i]) > camera_tolerance) return false;
+            // Airlight and filtered stellar tint drift with the simulation clock.
+            // Compare against the last rendered image so small changes accumulate.
+            const float airlight_tolerance = i >= 12 && i <= 14 ? 1.0f / 512.0f : 0.0f;
+            if (std::fabs(p.world[i] - s_cached_params.world[i]) > airlight_tolerance) return false;
+            const float tolerance = (i < 2 || i == 5 || (i >= 12 && i <= 14)) ? 1.0f / 512.0f : 0.0f;
             if (std::fabs(p.light[i] - s_cached_params.light[i]) > tolerance)
             {
                 return false;
@@ -1200,14 +1213,14 @@ void main()
         struct ClusterCone
         {
             Vec3 axis;
-            double angle, sine, cosine;
+            double angle, sine, cosine, distance;
         };
         std::vector<ClusterCone> cluster_cones;
         for (const auto &cell : s_cells)
         {
             ClusterCone cone;
             cone.axis = difference(cell.center, eye);
-            const double distance = std::sqrt(dot3(cone.axis, cone.axis));
+            const double distance = cone.distance = std::sqrt(dot3(cone.axis, cone.axis));
             const double radius = 1.40 + p.world[1] * 2e-6;
             cone.sine = std::min(1.0, radius / std::max(1e-15, distance));
             cone.cosine = std::sqrt(std::max(0.0, 1.0 - cone.sine * cone.sine));
@@ -1218,6 +1231,12 @@ void main()
             }
             cluster_cones.push_back(cone);
         }
+        std::vector<size_t> order(s_cells.size());
+        std::iota(order.begin(), order.end(), 0);
+        std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b)
+        {
+            return cluster_cones[a].distance < cluster_cones[b].distance;
+        });
         unsigned int total = 0, maximum = 0;
         for (int ty = 0; ty < rows; ++ty)
         {
@@ -1244,9 +1263,18 @@ void main()
                         cone = std::max(cone, std::acos(std::clamp(dot3(axis, camera_ray(p, x, y)), -1.0, 1.0)));
                     }
                 }
-                // Every refracted ray lies inside the perspective tile cone
-                // plus the largest angular shift in the inverse curve.
-                cone += s_refraction_span + 0.0001;
+                // Bound refraction only over this tile's altitude interval. The
+                // full-sky maximum badly inflates high-altitude tiles in dense air.
+                // A linear lookup's largest shift occurs at an interval endpoint.
+                const Vec3 up = {p.camera[12], p.camera[13], p.camera[14]};
+                const double altitude = std::asin(std::clamp(dot3(axis, up), -1.0, 1.0));
+                constexpr double pi = 3.141592653589793;
+                const int low = std::clamp((int)std::floor((altitude - cone + pi * .5) * 1024 / pi), 0, 1024);
+                const int high = std::clamp((int)std::ceil((altitude + cone + pi * .5) * 1024 / pi), 0, 1024);
+                double shift = 0;
+                for (int sample = low; sample <= high; ++sample)
+                    shift = std::max(shift, std::fabs(s_inverse_table[sample] - (-pi * .5 + sample * pi / 1024)));
+                cone += shift + 0.0001;
                 if (cone >= 1.570796326794897)
                 {
                     // A cone wider than a hemisphere is not convex; retain all
@@ -1256,8 +1284,9 @@ void main()
                 const double cosine = std::cos(cone), sine = std::sin(cone);
                 const size_t base = (size_t)(ty * columns + tx) * stride;
                 unsigned int count = 0;
-                for (size_t cluster = 0; cluster < s_cells.size(); ++cluster)
+                for (size_t cluster : order)
                 {
+                    // Front-to-back candidates let opaque billows reject hidden masses.
                     // Bounds include the whole sphere, even across the camera
                     // plane or with the observer inside it. No center culling.
                     const auto &cluster_cone = cluster_cones[cluster];
@@ -1429,6 +1458,8 @@ void main()
 
     static void sample_rain_cover(const CloudSkyGpuParams &p)
     {
+        s_stats.overhead_cpu_ms = 0;
+        const auto started = std::chrono::steady_clock::now();
         using GetFloatvFn = void (APIENTRY *)(GLenum, GLfloat*);
         using GetBooleanvFn = void (APIENTRY *)(GLenum, GLboolean*);
         using ColorMaskFn = void (APIENTRY *)(GLboolean, GLboolean, GLboolean, GLboolean);
@@ -1540,6 +1571,8 @@ void main()
         {
             glEnable(GL_CULL_FACE);
         }
+        s_stats.overhead_cpu_ms = std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - started).count();
     }
 
     bool queue_cloud_sky_gpu(const CloudSkyGpuInput &in)
@@ -1552,10 +1585,9 @@ void main()
         if (!s_inverse_valid || std::memcmp(s_table, in.refraction, sizeof(s_table)) != 0)
         {
             std::memcpy(s_table, in.refraction, sizeof(s_table));
-            float inverse[1025];
+            float* inverse = s_inverse_table;
             int index = 0;
             constexpr double pi = 3.141592653589793;
-            s_refraction_span = 0;
             for (int i = 0; i <= 1024; ++i)
             {
                 const double altitude = -pi * 0.5 + i * pi / 1024.0;
@@ -1566,7 +1598,6 @@ void main()
                 const double interval = in.refraction[index + 1] - in.refraction[index];
                 const double fraction = std::clamp((altitude - in.refraction[index]) / std::max(1e-7, interval), 0.0, 1.0);
                 inverse[i] = (float)(-pi * 0.5 + (index + fraction) * pi / 1024.0);
-                s_refraction_span = std::max(s_refraction_span, std::fabs(inverse[i] - altitude));
             }
             s_inverse_valid = true;
             s_cache_valid = false;
@@ -1607,6 +1638,7 @@ void main()
         {
             s_rain_cover = CloudRainCover();
             s_rain_cached = false;
+            s_stats.overhead_cpu_ms = 0;
         }
         ImDrawList *dl = ImGui::GetBackgroundDrawList();
         dl->AddCallback(render_cloud_sky_gpu, p);

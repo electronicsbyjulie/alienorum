@@ -19,5 +19,5 @@
 
 - [fixed] Apply any other items from section 11 of the ocean worlds audit that I have not mentioned here.
 
-- The view from 82 Eridani d's surface puts a giant damper on the frame rate. What happened? It's all in the clouds; with clouds turned off I get a little over 7 fps, but with them on it drops to 2. Anything under 5 is unacceptable.
+- The view from 82 Eridani d's surface puts a giant damper on the frame rate. What happened? It's all in the clouds and horizon; with clouds turned off I get a little over 7 fps, but with them on it drops to 2, yet if I look up to the zenith it bounces back to 8 fps. Anything under 5 is unacceptable.
 
