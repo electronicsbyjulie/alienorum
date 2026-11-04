@@ -296,7 +296,25 @@ but there was no convincing target-workload improvement to retain.
 Raw results: /tmp/horizon-trial-10-native/,
 /tmp/horizon-trial-10-forest-confirm/, and /tmp/horizon-trial-10-lava-confirm/.
 
+Item 11: Skip rejected terminal raster spans
+============================================
+Status: rejected for insufficient benefit; prototype removed.
+
+The prototype skipped barycentric additions only for rejected spans at the end
+of a row block. Those updated values have no later consumer; intermediate spans
+retained the exact recurrence. Twenty-nine focused raster/ground/haze tests
+passed, including exact tiled/scalar depth and coverage comparisons. Eight paired
+rounds across seven scenes and five modes matched images and sampling strides.
+
+No moving median gain was established on ice or Earth. Ice panning was
+34.48 -> 35.72 ms (+3.33%, unresolved); Earth panning 66.30 -> 66.29 ms (-0.31%,
+unresolved). No moving slowdown was supported either. Stationary ice p95 and
+Venus stationary median flagged small increases, but the retained raster avoids
+executing this changed raster loop in stationary timed frames; those flags were
+not attributed to the candidate. The exact shortcut did not show a convincing
+gain in the workload it targets, so it was removed.
+Raw results: /tmp/horizon-trial-11-native/.
+
 Remaining sequence
 ==================
-11. Reduce raster work for rejected spans.
 12. Remove repeated immutable GL state traffic and small allocations.
