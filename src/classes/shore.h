@@ -51,7 +51,8 @@ namespace alienorum
         static constexpr double pressure_ceiling = 1e8;
         static AtmosphericInventory default_inventory(const Star& s);
         static AtmosphericInventory default_inventory(Star& s, Planet& p);
-        static json envelope_scenario(Star& s, Planet& p, const AtmosphericInventory& inventory);
+        static json input_state(Star& s, Planet& p, const AtmosphericInventory& inventory);
+        static const json& envelope_scenario(Star& s, Planet& p, const AtmosphericInventory& inventory);
         static AtmosphericEstimate estimate_atmosphere(Star& s, Planet& p);
         static AtmosphericEstimate estimate_atmosphere(Star& s, Planet& p,
             const AtmosphericInventory& inventory);

@@ -1714,6 +1714,11 @@ json Star::age_diagnostics() const
 
 double Star::estimate_age_gyr() const
 {
+    if (stellar_age.is_object() && stellar_age.contains("value_gyr") && stellar_age["value_gyr"].is_number())
+    {
+        const double age = stellar_age["value_gyr"];
+        if (std::isfinite(age) && age >= 0) return age;
+    }
     return age_diagnostics().at("value_gyr").get<double>();
 }
 

@@ -15,7 +15,7 @@
 
 - [fixed] Low [Fe/H] does not independently establish a rocky planet, a dry planet, or an ocean world. Relative O/C/Mg/Si/Fe abundances can shift the physical priors in different directions. Our present model's fixed 230-ppm water inventory does not exploit that chemistry, and it should. Its fitted large-radius score is a proxy trained on another irradiation regime, and the model should be corrected.
 
-- The exoplanet load slowed way down. What the fuck? It used to take just a second or two.
+- [fixed] The exoplanet load slowed way down. What the fuck? It used to take just a second or two.
 
 - The volatiles budget does not infer planets' initial water/carbon/nitrogen inventory, rather it flops in Earth defaults. If there's any way to make better guesses than that, make them.
 

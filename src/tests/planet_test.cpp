@@ -775,6 +775,34 @@ TEST_F(PlanetClassificationEvidenceTest, WaterEstimationPreservesSuppliedLevelsA
     EXPECT_TRUE(world->atm->pressure_supplied);
 }
 
+TEST_F(PlanetClassificationEvidenceTest, WaterBudgetReuseInvalidatesOnGeometryAndInventoryEdits)
+{
+    Star* host = make_star();
+    Planet* world = make_planet(host);
+    world->user_added = true;
+    world->apply_cosmic_shoreline();
+    ASSERT_EQ(world->surface_water_model["input_state"], world->atm->pressure_model["input_state"]);
+    const json original = world->surface_water_model["input_state"];
+    world->mass *= 1.4;
+    ASSERT_TRUE(world->estimate_surface_water());
+    EXPECT_NE(world->surface_water_model["input_state"], original);
+    EXPECT_DOUBLE_EQ(world->surface_water_model["basis"]["mass_g"].get<double>(), world->mass);
+    const double depth = world->surface_water_model["equivalent_depth_m"];
+    world->atm->pressure_model["inventory"]["water_mass_fraction"] = .001;
+    ASSERT_TRUE(world->estimate_surface_water());
+    EXPECT_GT(world->surface_water_model["equivalent_depth_m"].get<double>(), depth);
+    const json previous = world->surface_water_model["input_state"];
+    world->orbit->semimajor_axis *= 4;
+    ASSERT_TRUE(world->estimate_surface_water());
+    EXPECT_NE(world->surface_water_model["input_state"], previous);
+    AtmosphericInventory inventory;
+    ASSERT_TRUE(inventory.from_json(world->atm->pressure_model["inventory"]));
+    const auto fresh = CosmicShore::estimate_atmosphere(*host, *world, inventory);
+    const auto water = CosmicShore::estimate_surface_water(*world, fresh.diagnostics);
+    EXPECT_DOUBLE_EQ(water.diagnostics["equivalent_depth_m"].get<double>(),
+        world->surface_water_model["equivalent_depth_m"].get<double>());
+}
+
 TEST_F(PlanetClassificationEvidenceTest, SurfaceWaterInputsAndCalibratedLevelsSurviveAllSaveForms)
 {
     Planet* world = make_planet(make_star());

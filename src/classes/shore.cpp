@@ -2,6 +2,7 @@
 #include "numeric.h"
 #include "chemistry.h"
 #include <algorithm>
+#include <array>
 #include <cmath>
 
 using namespace alienorum;
@@ -154,15 +155,19 @@ bool AtmosphericInventory::from_json(const json& value)
 
 json AtmosphericInventory::to_json() const
 {
-    return
-    {
-        {"age_gyr", age_gyr}, {"co2_mass_fraction", co2_mass_fraction},
-        {"nitrogen_mass_fraction", nitrogen_mass_fraction}, {"water_mass_fraction", water_mass_fraction},
-        {"weathering_efficiency", weathering_efficiency}, {"xuv_scale", xuv_scale},
-        {"surface_water_share", surface_water_share}, {"basin_relief_m", basin_relief_m},
-        {"nitrogen_frost_albedo", nitrogen_frost_albedo},
-        {"nitrogen_frost_emissivity", nitrogen_frost_emissivity}, {"cold_temperature_k", cold_temperature_k}
-    };
+    json result = json::object();
+    result["age_gyr"] = age_gyr;
+    result["co2_mass_fraction"] = co2_mass_fraction;
+    result["nitrogen_mass_fraction"] = nitrogen_mass_fraction;
+    result["water_mass_fraction"] = water_mass_fraction;
+    result["weathering_efficiency"] = weathering_efficiency;
+    result["xuv_scale"] = xuv_scale;
+    result["surface_water_share"] = surface_water_share;
+    result["basin_relief_m"] = basin_relief_m;
+    result["nitrogen_frost_albedo"] = nitrogen_frost_albedo;
+    result["nitrogen_frost_emissivity"] = nitrogen_frost_emissivity;
+    result["cold_temperature_k"] = cold_temperature_k;
+    return result;
 }
 
 double CosmicShore::calculate_escape_velocity(const Planet& p)
@@ -224,12 +229,22 @@ AtmosphericInventory CosmicShore::default_inventory(Star& s, Planet& p)
     return inventory;
 }
 
-json CosmicShore::envelope_scenario(Star& s, Planet& p, const AtmosphericInventory& inventory)
+json CosmicShore::input_state(Star& s, Planet& p, const AtmosphericInventory& inventory)
 {
+    const auto number = [](double value) { return std::isfinite(value) ? json(value) : json(nullptr); };
+    return json::array({number(p.mass), number(p.volumetric_mean_radius), static_cast<int>(p.type),
+        number(stellar_flux(s, p)), number(s.mass), number(s.metallicity), s.metallicity_ratio,
+        s.is_main_sequence(), number(p.albedo), inventory.to_json()});
+}
+
+const json& CosmicShore::envelope_scenario(Star& s, Planet& p, const AtmosphericInventory& inventory)
+{
+    static const json unavailable = {{"applicable", false}};
     const double mass = p.mass / earth_mass;
     const double flux = stellar_flux(s, p);
     if (p.typeclass() != class_planet || !std::isfinite(mass) || mass < .1 || mass >= giant_mass_cutoff / earth_mass
-        || !std::isfinite(flux) || flux <= 0) return {{"applicable", false}};
+        || !std::isfinite(flux) || flux <= 0 || !std::isfinite(inventory.age_gyr) || inventory.age_gyr < 0
+        || !std::isfinite(inventory.xuv_scale) || inventory.xuv_scale < 0) return unavailable;
     const double core_radius = 1.02 * earth_radius * std::pow(mass, .27);
     // Initial fractions describe competing formation scenarios, not measured abundances.
     const double initial = std::clamp(.015 * std::pow(mass / 5, 1.5), 1e-5, .2);
@@ -268,17 +283,25 @@ json CosmicShore::envelope_scenario(Star& s, Planet& p, const AtmosphericInvento
     const bool selected = score >= .5;
     const double present_radius = core_radius + envelope_radius(retained, inventory.age_gyr);
     const double base_pressure = G * p.mass * (p.mass * .001) * retained / (4 * _pi * std::pow(core_radius, 4));
-    return {{"applicable", true}, {"model", "primordial_envelope_v1"},
+    const bool apply = !p.lock_type && !measured && p.mass_evidence != PlanetMeasurement::unknown;
+    const std::array<double, 9> inputs = {mass, flux, inventory.age_gyr, inventory.xuv_scale, stellar_mass,
+        metal_used ? s.metallicity : 0, initial_score, measured ? 1.0 : 0.0, apply ? 1.0 : 0.0};
+    static thread_local std::array<double, 9> previous{};
+    static thread_local json cached;
+    if (!cached.is_null() && previous == inputs) return cached;
+    previous = inputs;
+    cached = {{"applicable", true}, {"model", "primordial_envelope_v1"},
         {"initial_mass_fraction", initial}, {"retained_mass_fraction", retained}, {"escaped_mass_fraction", initial - retained},
         {"energy_limited_loss_fraction", energy_loss}, {"xuv_radius_assumed_m", xuv_radius},
         {"hydrogen_binding_parameter", binding}, {"initial_envelope_score", initial_score}, {"retained_envelope_score", score},
         {"core_radius_m", core_radius}, {"envelope_radius_m", present_radius}, {"base_pressure_pa", base_pressure},
         {"outcome", selected ? "mini_neptune" : "secondary_atmosphere"},
-        {"selection_applied", !p.lock_type && !measured && p.mass_evidence != PlanetMeasurement::unknown},
+        {"selection_applied", apply},
         {"observed_radius_overrides_scenario", measured},
         {"alternatives", json::array({"compact_rock_and_secondary_volatiles", "rock_with_primordial_H_He"})},
         {"interpretation", "Relative_scenario_score_not_a_calibrated_probability"},
         {"limitations", "Unknown_disc_lifetime_and_initial_entropy;fixed_early_XUV_radius;no_core_powered_loss_or_tidal_escape_correction;radius_fit_extrapolated_outside_1_to_20_Earth_masses"}};
+    return cached;
 }
 
 AtmosphericEstimate CosmicShore::estimate_atmosphere(Star& s, Planet& p, const AtmosphericInventory& inventory)
@@ -291,7 +314,8 @@ AtmosphericEstimate CosmicShore::estimate_atmosphere(Star& s, Planet& p, const A
         {"interpretation", "approximate_scenario_not_a_measured_pressure_or_calibrated_confidence_interval"}
     };
     AtmosphericInventory checked;
-    if (!checked.from_json(inventory.to_json())) return result;
+    if (!checked.from_json(result.diagnostics["inventory"])) return result;
+    result.diagnostics["input_state"] = input_state(s, p, inventory);
     result.diagnostics["primordial_envelope"] = envelope_scenario(s, p, inventory);
     if (uses_gaseous_map(p.type))
     {
@@ -401,22 +425,27 @@ AtmosphericEstimate CosmicShore::estimate_atmosphere(Star& s, Planet& p, const A
     result.co2_moles = co2 / 0.044;
     result.nitrogen_moles = nitrogen / 0.028;
     result.water_moles = water / 0.018;
-    result.diagnostics.update
-    (
-        {
-            {"status", "estimated"}, {"pressure_pa", result.pressure}, {"uncapped_pressure_pa", pressure},
-            {"pressure_capped", pressure > pressure_ceiling}, {"flux_earth", flux},
-            {"climate_proxy_k", climate_k}, {"age_origin", "scenario_inventory"},
-            {"stellar_mass_assumed", !stellar_mass_known}, {"metallicity_used", metallicity_used},
-            {"metallicity_activity_sensitivity_assumed", 0.3}, {"xuv_dose_solar", dose},
-            {"heavy_release_and_retention", heavy_retention}, {"water_release_and_retention", water_retention},
-            {"carbon_atmospheric_share", carbon_air},
-            {"regime", cold ? "cold_volatiles" : "terrestrial"},
-            {"column_weight_pa", {{"CO2", co2}, {"N2", nitrogen}, {"H2O", water}}},
-            {"shoreline_metric", calculate_unified_metric(s, p)},
-            {"limitations", "Solar_System_scale_calibration;unknown_formation_and_rotation_history;secondary_inventory_and_primordial_H_He_are_alternative_scenarios;climate_proxy"}
-        }
-    );
+    auto& diagnostic = result.diagnostics;
+    diagnostic["status"] = "estimated";
+    diagnostic["pressure_pa"] = result.pressure;
+    diagnostic["uncapped_pressure_pa"] = pressure;
+    diagnostic["pressure_capped"] = pressure > pressure_ceiling;
+    diagnostic["flux_earth"] = flux;
+    diagnostic["climate_proxy_k"] = climate_k;
+    diagnostic["age_origin"] = "scenario_inventory";
+    diagnostic["stellar_mass_assumed"] = !stellar_mass_known;
+    diagnostic["metallicity_used"] = metallicity_used;
+    diagnostic["metallicity_activity_sensitivity_assumed"] = .3;
+    diagnostic["xuv_dose_solar"] = dose;
+    diagnostic["heavy_release_and_retention"] = heavy_retention;
+    diagnostic["water_release_and_retention"] = water_retention;
+    diagnostic["carbon_atmospheric_share"] = carbon_air;
+    diagnostic["regime"] = cold ? "cold_volatiles" : "terrestrial";
+    diagnostic["column_weight_pa"]["CO2"] = co2;
+    diagnostic["column_weight_pa"]["N2"] = nitrogen;
+    diagnostic["column_weight_pa"]["H2O"] = water;
+    diagnostic["shoreline_metric"] = calculate_unified_metric(s, p);
+    diagnostic["limitations"] = "Solar_System_scale_calibration;unknown_formation_and_rotation_history;secondary_inventory_and_primordial_H_He_are_alternative_scenarios;climate_proxy";
     if (cold)
     {
         result.diagnostics["cold_volatiles"] =

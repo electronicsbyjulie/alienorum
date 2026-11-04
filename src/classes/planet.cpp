@@ -293,7 +293,7 @@ void alienorum::Planet::apply_cosmic_shoreline()
             custom_inventory = !unchanged_default && !legacy_default;
             if (custom_inventory) inventory = saved;
         }
-        const json envelope = CosmicShore::envelope_scenario(host, *this, inventory);
+        const json& envelope = CosmicShore::envelope_scenario(host, *this, inventory);
         if (envelope.value("applicable", false) && envelope.value("selection_applied", false))
         {
             if (radius_estimate_supplied && std::isfinite(volumetric_mean_radius) && volumetric_mean_radius > 0
@@ -319,7 +319,8 @@ void alienorum::Planet::apply_cosmic_shoreline()
                 radius_estimate_supplied = false;
                 radius_error_upper = radius_error_lower = NAN;
             }
-            classification_evidence["primordial_envelope"] = envelope;
+            if (!classification_evidence.contains("primordial_envelope") || classification_evidence["primordial_envelope"] != envelope)
+                classification_evidence["primordial_envelope"] = envelope;
             classification_evidence["class_code"] = static_cast<int>(type);
             classification_evidence["density_g_cm3"] = mass / sphere_volume(volumetric_mean_radius) * 1e-6;
             if (old_type != type) classification_evidence["basis"] = "volatile_structure_scenarios";
@@ -371,10 +372,24 @@ bool Planet::estimate_surface_water(bool replace_supplied, const std::vector<dou
     else if (surface_water_model.is_object() && surface_water_model.contains("inventory"))
         scenario = &surface_water_model["inventory"];
     if (scenario && !inventory.from_json(*scenario)) return false;
-    const auto budget = CosmicShore::estimate_atmosphere(host, *this, inventory);
-    if (!budget.valid) return false;
-    const auto estimate = CosmicShore::estimate_surface_water(*this, budget.diagnostics, heights);
+    const json inputs = CosmicShore::input_state(host, *this, inventory);
+    if (!replace_supplied && heights.empty() && surface_water_model.is_object()
+        && surface_water_model.value("input_state", json(nullptr)) == inputs
+        && surface_water_model.contains("level") && surface_water_model["level"].is_number()
+        && has_water == surface_water_model["level"].get<float>()) return true;
+    AtmosphericEstimate fresh;
+    const json* budget = nullptr;
+    if (atm && atm->pressure_model.is_object() && atm->pressure_model.value("input_state", json(nullptr)) == inputs
+        && atm->pressure_model.value("status", "") == "estimated") budget = &atm->pressure_model;
+    else
+    {
+        fresh = CosmicShore::estimate_atmosphere(host, *this, inventory);
+        if (!fresh.valid) return false;
+        budget = &fresh.diagnostics;
+    }
+    auto estimate = CosmicShore::estimate_surface_water(*this, *budget, heights);
     if (!estimate.valid) return false;
+    estimate.diagnostics["input_state"] = inputs;
     // Keep a calibrated terrain waterline while its physical budget is unchanged.
     if (!replace_supplied && heights.empty() && surface_water_model.is_object()
         && surface_water_model.contains("basis") && surface_water_model["basis"] == estimate.diagnostics["basis"]
@@ -665,19 +680,19 @@ void Planet::classify(bool HZ, bool mnrk, bool ck)
     const double minimum_density = std::isfinite(minimum_mass)
         ? minimum_mass / sphere_volume(volumetric_mean_radius) * 1e-6 : NAN;
     const double density_constraint = measured_radius && valid_mass ? density : NAN;
-    classification_evidence =
-    {
-        {"mass_evidence", static_cast<int>(mass_evidence)}, {"radius_evidence", static_cast<int>(radius_evidence)},
-        {"density_g_cm3", std::isfinite(density) ? json(density) : json(nullptr)},
-        {"density_observed", measured_density}, {"density_is_lower_bound", lower_density_bound},
-        {"density_estimated", std::isfinite(density) && !measured_density && !lower_density_bound},
-        {"minimum_density_g_cm3", std::isfinite(minimum_density) ? json(minimum_density) : json(nullptr)},
-        {"density_constraint_g_cm3", std::isfinite(density_constraint) ? json(density_constraint) : json(nullptr)},
-        {"density_constraint_basis", !std::isfinite(density_constraint) ? "radius_unmeasured_or_mass_absent"
-            : measured_density ? "observed_mass_and_radius"
-            : lower_density_bound ? "minimum_mass_and_observed_radius" : "adopted_mass_and_observed_radius"},
-        {"metallicity_applied", false}
-    };
+    classification_evidence = json::object();
+    classification_evidence["mass_evidence"] = static_cast<int>(mass_evidence);
+    classification_evidence["radius_evidence"] = static_cast<int>(radius_evidence);
+    classification_evidence["density_g_cm3"] = std::isfinite(density) ? json(density) : json(nullptr);
+    classification_evidence["density_observed"] = measured_density;
+    classification_evidence["density_is_lower_bound"] = lower_density_bound;
+    classification_evidence["density_estimated"] = std::isfinite(density) && !measured_density && !lower_density_bound;
+    classification_evidence["minimum_density_g_cm3"] = std::isfinite(minimum_density) ? json(minimum_density) : json(nullptr);
+    classification_evidence["density_constraint_g_cm3"] = std::isfinite(density_constraint) ? json(density_constraint) : json(nullptr);
+    classification_evidence["density_constraint_basis"] = !std::isfinite(density_constraint) ? "radius_unmeasured_or_mass_absent"
+        : measured_density ? "observed_mass_and_radius"
+        : lower_density_bound ? "minimum_mass_and_observed_radius" : "adopted_mass_and_observed_radius";
+    classification_evidence["metallicity_applied"] = false;
     if (catalog_radius.is_object()) classification_evidence["catalog_radius"] = std::move(catalog_radius);
 
     Star* host = nullptr;
@@ -763,15 +778,18 @@ void Planet::classify(bool HZ, bool mnrk, bool ck)
     }
     else classification_evidence["metallicity_model"] = "direct_observations_or_no_eligible_host";
 
-    json envelope = nullptr;
+    bool envelope_selection = false;
+    double structure_radius = NAN;
     if (host && valid_mass)
     {
-        envelope = CosmicShore::envelope_scenario(*host, *this, CosmicShore::default_inventory(*host));
+        const json& envelope = CosmicShore::envelope_scenario(*host, *this, CosmicShore::default_inventory(*host));
         classification_evidence["primordial_envelope"] = envelope;
-        if (envelope.value("applicable", false) && envelope.value("selection_applied", false))
+        envelope_selection = envelope.value("applicable", false) && envelope.value("selection_applied", false);
+        if (envelope_selection)
         {
             solid = envelope.value("outcome", "") != "mini_neptune";
             compact_prior = solid;
+            structure_radius = envelope.at(solid ? "core_radius_m" : "envelope_radius_m").get<double>();
         }
     }
     if (solid)
@@ -811,11 +829,9 @@ void Planet::classify(bool HZ, bool mnrk, bool ck)
         && radius_evidence == PlanetMeasurement::estimated)
         classification_evidence["radius_model"] = uses_rocky_map(type)
             ? "composition_conditional_compact_mass_radius" : "composition_conditional_envelope_mass_radius";
-    const bool envelope_selection = envelope.is_object() && envelope.value("applicable", false)
-        && envelope.value("selection_applied", false);
     if (envelope_selection && !measured_radius)
     {
-        volumetric_mean_radius = envelope.at(solid ? "core_radius_m" : "envelope_radius_m").get<double>();
+        volumetric_mean_radius = structure_radius;
         radius_evidence = PlanetMeasurement::estimated;
         radius_estimate_supplied = false;
         classification_evidence["radius_evidence"] = static_cast<int>(radius_evidence);
