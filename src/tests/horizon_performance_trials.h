@@ -116,6 +116,7 @@ TEST_F(HorizonTrialTest, PairedHorizonPaths)
     const std::string scene = std::getenv("ALIENORUM_HORIZON_SCENE") ? std::getenv("ALIENORUM_HORIZON_SCENE") : "earth";
     const int frames = std::getenv("ALIENORUM_HORIZON_FRAMES") ? std::atoi(std::getenv("ALIENORUM_HORIZON_FRAMES")) : 6;
     const int rounds = std::getenv("ALIENORUM_HORIZON_ROUNDS") ? std::atoi(std::getenv("ALIENORUM_HORIZON_ROUNDS")) : 3;
+    const bool inspect_every_pose = std::getenv("ALIENORUM_HORIZON_INSPECT_EVERY_POSE") != nullptr;
     Planet* world = configure_scene(scene);
     const double origin_lat = scene == "earth" ? 21.656 * fiftyseventh : .0001;
     const double origin_lon = scene == "earth" ? 63.281 * fiftyseventh : .4;
@@ -137,6 +138,7 @@ TEST_F(HorizonTrialTest, PairedHorizonPaths)
         for (int round = 0; round < rounds; ++round)
         {
             std::vector<unsigned char> original;
+            std::vector<std::vector<unsigned char>> pose_images;
             std::vector<int> original_strides;
             for (int arm = 0; arm < 2; ++arm)
             {
@@ -177,6 +179,14 @@ TEST_F(HorizonTrialTest, PairedHorizonPaths)
                             << (reference ? "before" : "after") << ',' << frame - 3 << ','
                             << milliseconds(start, prepared) << ',' << cpu << ',' << milliseconds(start, finished)
                             << ',' << precipitation_stats.ground_sample_stride << '\n';
+                    }
+                    if (inspect_every_pose)
+                    {
+                        std::vector<unsigned char> pixels(render_width * render_height * 4);
+                        glReadPixels(0, 0, render_width, render_height, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+                        if (arm == 0) pose_images.push_back(std::move(pixels));
+                        else EXPECT_EQ(image_difference(pixels, pose_images[frame + 2], 1), 0)
+                            << scene << ' ' << mode << ' ' << round << ' ' << frame;
                     }
                     if (frame + 1 == frames + 3)
                     {

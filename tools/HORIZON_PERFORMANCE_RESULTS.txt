@@ -210,9 +210,34 @@ assertion verifies skipped work against the original path's exact pixels.
 Raw results: /tmp/horizon-trial-06-native/, /tmp/horizon-trial-06-confirm/, and
 /tmp/horizon-trial-06-lava-confirm/.
 
+Item 7: Translate retained terrain patches during short walks
+============================================================
+Status: rejected on image consistency; prototype removed.
+
+The prototype retained world-fixed sampled rings over a short travel interval,
+translated horizontal coordinates for the current observer, adjusted the height
+datum, and rerasterized every changed pose. Source/physical changes rebuilt the
+mesh. The first two-metre version improved the three-pair ice walking median
+35.49 -> 29.14 ms (-16.10%) and Earth walking 44.78 -> 33.67 ms (-24.83%).
+Ice final images differed at one or two pixels beyond the one-level RGB tolerance.
+
+A quarter-metre interval passed final-pose checks at both six and seventeen timed
+frames. Its six-frame pilot improved normal walking by 12.31% on ice and 22.38%
+on Earth. Tenfold walking rebuilt the mesh and showed no established gain.
+However, checking every replayed pose exposed a repeatable one-pixel difference
+on ice at early normal-walking poses in all three rounds. This is a small image
+change, not evidence of a conspicuous coastline shift, but the translated patch
+does not exactly reproduce observer-centered sampling. It was removed rather
+than relaxing the image criterion. No eight-pair acceptance claim is made.
+
+The harness retains optional every-pose inspection, outside timed samples, via
+ALIENORUM_HORIZON_INSPECT_EVERY_POSE=1. Raw logs:
+/tmp/horizon-trial-07-pilot/, /tmp/horizon-trial-07-earth-pilot/,
+/tmp/horizon-trial-07-tight-pilot/, /tmp/horizon-trial-07-long-pilot/, and
+/tmp/horizon-trial-07-every-pose/.
+
 Remaining sequence
 ==================
-7. Improve terrain mesh reuse while walking.
 8. Reject zero-effect scenery shadows and hoist light factors.
 9. Retain rock facet geometry and ordering.
 10. Avoid the second CPU scenery fog pass.
