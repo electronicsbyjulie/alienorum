@@ -614,26 +614,7 @@ void draw_status_window(ImGuiIO& io)            // the S panel
         if (view_mode == vm_horizon)
         {
             const auto &cloud = cloud_sky_gpu_stats();
-            if (cloud.timers_available)
-            {
-                ImGui::Text("Cloud GPU: %.2f ms; composite %.2f ms", cloud.render_ms, cloud.composite_ms);
-                ImGui::Text("Cloud geometry build: %.2f ms; tiles CPU %.2f ms", cloud.geometry_ms, cloud.tile_cpu_ms);
-            }
-            else
-            {
-                ImGui::TextUnformatted("Cloud GPU timers unavailable");
-            }
-            ImGui::Text("Overhead probe CPU: %.2f ms; rain/snow CPU: %.2f ms", cloud.overhead_cpu_ms,
-                precipitation_stats.cpu_milliseconds);
             ImGui::Text("Horizon preparation CPU: %.2f ms", precipitation_stats.horizon_cpu_milliseconds);
-            ImGui::Text("Ground setup: %.2f ms; painting: %.2f ms", precipitation_stats.ground_setup_milliseconds,
-                precipitation_stats.ground_paint_milliseconds);
-            ImGui::Text("Ground painting cache: %s", !precipitation_stats.ground_cache_active ? "unused"
-                : precipitation_stats.ground_cache_reason);
-            ImGui::Text("Cloud candidate cells: %u; per tile %.1f mean, %u max", cloud.clusters,
-                cloud.mean_tile_clusters, cloud.max_tile_clusters);
-            ImGui::Text("Cloud builds: %u geometry, %u image; %u image hits",
-                cloud.geometry_builds, cloud.image_builds, cloud.image_hits);
         }
     }
 
