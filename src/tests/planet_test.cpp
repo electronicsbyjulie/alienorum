@@ -187,6 +187,62 @@ protected:
     }
 };
 
+TEST_F(PlanetClassificationEvidenceTest, PrimordialEnvelopeLedgerTracksEscapeAgeAndIrradiation)
+{
+    Star* host = make_star();
+    Planet* world = make_planet(host, "Envelope candidate", .5 * AU);
+    world->mass = 8 * earth_mass;
+    world->mass_evidence = PlanetMeasurement::observed;
+    world->radius_evidence = PlanetMeasurement::estimated;
+    AtmosphericInventory inventory;
+    inventory.age_gyr = .1;
+    const json young = CosmicShore::envelope_scenario(*host, *world, inventory);
+    inventory.age_gyr = 10;
+    const json old = CosmicShore::envelope_scenario(*host, *world, inventory);
+    ASSERT_TRUE(old["applicable"].get<bool>());
+    EXPECT_GT(old["retained_mass_fraction"].get<double>(), 0);
+    EXPECT_GE(young["retained_mass_fraction"].get<double>(), old["retained_mass_fraction"].get<double>());
+    EXPECT_NEAR(old["initial_mass_fraction"].get<double>(), old["retained_mass_fraction"].get<double>()
+        + old["escaped_mass_fraction"].get<double>(), 1e-14);
+    EXPECT_GT(old["envelope_radius_m"].get<double>(), old["core_radius_m"].get<double>());
+    world->orbit->semimajor_axis = .01 * AU;
+    const json hot = CosmicShore::envelope_scenario(*host, *world, inventory);
+    EXPECT_DOUBLE_EQ(hot["retained_mass_fraction"].get<double>(), 0);
+    EXPECT_EQ(hot["outcome"], "secondary_atmosphere");
+    world->radius_evidence = PlanetMeasurement::observed;
+    EXPECT_FALSE(CosmicShore::envelope_scenario(*host, *world, inventory)["selection_applied"].get<bool>());
+}
+
+TEST_F(PlanetClassificationEvidenceTest, EnvelopeOutcomeChangesClassRadiusAndOnlyUnlockedColors)
+{
+    Star* host = make_star();
+    for (bool lock_color : {false, true})
+    {
+        Planet* world = make_planet(host, "Envelope candidate", .5 * AU);
+        world->user_added = true;
+        world->mass = 8 * earth_mass;
+        world->mass_evidence = PlanetMeasurement::observed;
+        world->radius_evidence = PlanetMeasurement::estimated;
+        world->BV_color = 1.234;
+        world->lock_bv_color = lock_color;
+        world->classify(false, false, true);
+        EXPECT_EQ(world->type, ice_giant);
+        EXPECT_DOUBLE_EQ(world->BV_color, lock_color ? 1.234 : .49);
+        world->apply_cosmic_shoreline();
+        ASSERT_NE(world->atm, nullptr);
+        EXPECT_EQ(world->atm->pressure_model["primordial_envelope"]["outcome"], "mini_neptune");
+        EXPECT_EQ(world->atm->pressure_model["status"], "conventional_1_bar_level");
+        const double enveloped_radius = world->volumetric_mean_radius;
+        world->atm->pressure_model["inventory"]["xuv_scale"] = 1e7;
+        world->apply_cosmic_shoreline();
+        EXPECT_EQ(world->type, rocky);
+        EXPECT_LT(world->volumetric_mean_radius, enveloped_radius);
+        EXPECT_EQ(world->atm->pressure_model["primordial_envelope"]["outcome"], "secondary_atmosphere");
+        if (lock_color) EXPECT_DOUBLE_EQ(world->BV_color, 1.234);
+        else EXPECT_NE(world->BV_color, .49);
+    }
+}
+
 TEST_F(PlanetClassificationEvidenceTest, VolatileBudgetReproducesTerrestrialPressureScalesWithoutNames)
 {
     Star* host = make_star();
@@ -1139,7 +1195,7 @@ TEST_F(PlanetClassificationEvidenceTest, SyntheticModelExercisesValidationAndApp
     EXPECT_FALSE(planet_envelope_prior(*host, 3, 1, 0.1).applicable);
 }
 
-TEST_F(PlanetClassificationEvidenceTest, ShippedBalancedModelDrivesUnmeasuredRadiusClassification)
+TEST_F(PlanetClassificationEvidenceTest, ShippedBalancedModelSuppliesAPriorBeforeEnvelopeEscape)
 {
     Star* host = make_star("Balanced model host");
     host->metallicity_ratio = "[Fe/H]";
@@ -1165,7 +1221,9 @@ TEST_F(PlanetClassificationEvidenceTest, ShippedBalancedModelDrivesUnmeasuredRad
         EXPECT_GT(prior.probability, previous_score);
         previous_score = prior.probability;
         planet->classify(false, false, true);
-        EXPECT_EQ(uses_rocky_map(planet->type), metal < 0);
+        EXPECT_TRUE(uses_rocky_map(planet->type));
+        EXPECT_EQ(planet->classification_evidence["primordial_envelope"]["outcome"], "secondary_atmosphere");
+        EXPECT_DOUBLE_EQ(planet->classification_evidence["primordial_envelope"]["retained_mass_fraction"].get<double>(), 0);
         EXPECT_TRUE(planet->classification_evidence["metallicity_applied"].get<bool>());
         EXPECT_NEAR(planet->classification_evidence["large_radius_score"].get<double>(), prior.probability, 1e-10);
         EXPECT_FALSE(planet->classification_evidence.contains("large_radius_probability"));

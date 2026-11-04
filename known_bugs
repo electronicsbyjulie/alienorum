@@ -11,7 +11,7 @@
 
 - [fixed] Jupiter-unit planet radii and masses currently take precedence over Earth-unit values. Investigate which set of values is more reliable and use that. When consolidating sources, determine whether J(NASA), J(EU), E(NASA), and E(EU) all agree for each of mass and radius; if 3 out of 4 agree, or if one is missing and 2 out of 3 agree, drop the oddball and average the remaining ones; if all 4 disagree or 2 are missing and the 2 remaining values disagree, decide which values are most likely to be correct and write the precedence order into the code.
 
-- Hydrogen-rich mini-Neptunes remain a serious alternative. Our budget never tests this alternative. It better. If the budget estimates that a mini-Neptune is the most likely outcome, then reclassify the damn planet! And its BV color too unless locked.
+- [fixed] Hydrogen-rich mini-Neptunes remain a serious alternative. Our budget never tests this alternative. It better. If the budget estimates that a mini-Neptune is the most likely outcome, then reclassify the damn planet! And its BV color too unless locked.
 
 - Low [Fe/H] does not independently establish a rocky planet, a dry planet, or an ocean world. Relative O/C/Mg/Si/Fe abundances can shift the physical priors in different directions. Our present model's fixed 230-ppm water inventory does not exploit that chemistry, and it should. Its fitted large-radius score is a proxy trained on another irradiation regime, and the model should be corrected.
 

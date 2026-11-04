@@ -1,5 +1,6 @@
 #include "shore.h"
 #include "numeric.h"
+#include "chemistry.h"
 #include <algorithm>
 #include <cmath>
 
@@ -216,6 +217,63 @@ AtmosphericInventory CosmicShore::default_inventory(Star& s, Planet& p)
     return inventory;
 }
 
+json CosmicShore::envelope_scenario(Star& s, Planet& p, const AtmosphericInventory& inventory)
+{
+    const double mass = p.mass / earth_mass;
+    const double flux = stellar_flux(s, p);
+    if (p.typeclass() != class_planet || !std::isfinite(mass) || mass < .1 || mass >= giant_mass_cutoff / earth_mass
+        || !std::isfinite(flux) || flux <= 0) return {{"applicable", false}};
+    const double core_radius = 1.02 * earth_radius * std::pow(mass, .27);
+    // Initial fractions describe competing formation scenarios, not measured abundances.
+    const double initial = std::clamp(.015 * std::pow(mass / 5, 1.5), 1e-5, .2);
+    const auto envelope_radius = [&](double fraction, double age)
+    {
+        // Lopez & Fortney (2014), Eq. 4, https://arxiv.org/abs/1311.0329.
+        return 2.06 * earth_radius * std::pow(mass, -.21) * std::pow(fraction / .05, .59)
+            * std::pow(flux, .044) * std::pow(std::max(.1, age) / 5, -.18);
+    };
+    const double xuv_radius = std::max(2 * core_radius, core_radius + envelope_radius(initial, .1));
+    const double stellar_mass = std::isfinite(s.mass) && s.mass > 0 ? s.mass / solar_mass : 1;
+    const bool metal_used = std::isfinite(s.metallicity) && (s.metallicity_ratio == "[Fe/H]" || s.metallicity_ratio == "[M/H]")
+        && stellar_mass >= .7 && stellar_mass <= 1.3 && s.is_main_sequence();
+    const double saturation = std::clamp(.1 * std::pow(stellar_mass, -2.5)
+        * (metal_used ? std::pow(10.0, std::clamp(.3 * s.metallicity, -6.0, 6.0)) : 1), .01, 5.0);
+    // Energy-limited escape: eta*pi*R_XUV^3*integral(F_XUV dt)/(G*M^2).
+    // Saturated L_XUV/L_bol=1e-3 and heating efficiency=0.1 are scenario choices.
+    // A fixed expanded early radius is a conservative loss proxy, not a cooling integration.
+    const double xuv_energy = 1361 * flux * 1e-3 * activity_integral(inventory.age_gyr, saturation)
+        * 1e9 * oneyear * inventory.xuv_scale;
+    const double mass_kg = p.mass * .001;
+    const double energy_loss = .1 * _pi * std::pow(xuv_radius, 3) * xuv_energy / (G * 1000 * mass_kg * mass_kg);
+    const double equilibrium = 255 * std::pow(flux, .25);
+    const double binding = G * p.mass * .0023 / (8.314462618 * std::max(2.7, equilibrium) * xuv_radius);
+    // Smooth compactness gate motivated by post-disc boil-off (Owen & Wu 2016).
+    // https://arxiv.org/abs/1506.02049; the transition is an explicit approximation.
+    const double bound = initial * transition((binding - 20) / 3);
+    const double retained = std::max(0.0, bound - energy_loss);
+    const double relative_error = std::isfinite(p.mass_error_upper) && std::isfinite(p.mass_error_lower)
+        ? std::max(fabs(p.mass_error_upper), fabs(p.mass_error_lower)) / p.mass : NAN;
+    const auto prior = planet_envelope_prior(s, mass, flux, relative_error);
+    const double initial_score = prior.applicable ? prior.probability
+        : transition(2 * std::log(mass / 4.37) - .5 * std::log1p(std::max(0.0, flux - 1) / 100));
+    const double score = initial_score * retained / (retained + .001);
+    const bool measured = p.radius_evidence == PlanetMeasurement::observed;
+    const bool selected = score >= .5;
+    const double present_radius = core_radius + envelope_radius(retained, inventory.age_gyr);
+    const double base_pressure = G * p.mass * (p.mass * .001) * retained / (4 * _pi * std::pow(core_radius, 4));
+    return {{"applicable", true}, {"model", "primordial_envelope_v1"},
+        {"initial_mass_fraction", initial}, {"retained_mass_fraction", retained}, {"escaped_mass_fraction", initial - retained},
+        {"energy_limited_loss_fraction", energy_loss}, {"xuv_radius_assumed_m", xuv_radius},
+        {"hydrogen_binding_parameter", binding}, {"initial_envelope_score", initial_score}, {"retained_envelope_score", score},
+        {"core_radius_m", core_radius}, {"envelope_radius_m", present_radius}, {"base_pressure_pa", base_pressure},
+        {"outcome", selected ? "mini_neptune" : "secondary_atmosphere"},
+        {"selection_applied", !p.lock_type && !measured && p.mass_evidence != PlanetMeasurement::unknown},
+        {"observed_radius_overrides_scenario", measured},
+        {"alternatives", json::array({"compact_rock_and_secondary_volatiles", "rock_with_primordial_H_He"})},
+        {"interpretation", "Relative_scenario_score_not_a_calibrated_probability"},
+        {"limitations", "Unknown_disc_lifetime_and_initial_entropy;fixed_early_XUV_radius;no_core_powered_loss_or_tidal_escape_correction;radius_fit_extrapolated_outside_1_to_20_Earth_masses"}};
+}
+
 AtmosphericEstimate CosmicShore::estimate_atmosphere(Star& s, Planet& p, const AtmosphericInventory& inventory)
 {
     AtmosphericEstimate result;
@@ -227,6 +285,7 @@ AtmosphericEstimate CosmicShore::estimate_atmosphere(Star& s, Planet& p, const A
     };
     AtmosphericInventory checked;
     if (!checked.from_json(inventory.to_json())) return result;
+    result.diagnostics["primordial_envelope"] = envelope_scenario(s, p, inventory);
     if (uses_gaseous_map(p.type))
     {
         result.valid = true;
@@ -348,7 +407,7 @@ AtmosphericEstimate CosmicShore::estimate_atmosphere(Star& s, Planet& p, const A
             {"regime", cold ? "cold_volatiles" : "terrestrial"},
             {"column_weight_pa", {{"CO2", co2}, {"N2", nitrogen}, {"H2O", water}}},
             {"shoreline_metric", calculate_unified_metric(s, p)},
-            {"limitations", "Solar_System_scale_calibration;unknown_formation_and_rotation_history;no_biology_or_primordial_H_He;climate_proxy"}
+            {"limitations", "Solar_System_scale_calibration;unknown_formation_and_rotation_history;secondary_inventory_and_primordial_H_He_are_alternative_scenarios;climate_proxy"}
         }
     );
     if (cold)

@@ -293,6 +293,37 @@ void alienorum::Planet::apply_cosmic_shoreline()
             custom_inventory = !unchanged_default && !legacy_default;
             if (custom_inventory) inventory = saved;
         }
+        const json envelope = CosmicShore::envelope_scenario(host, *this, inventory);
+        if (envelope.value("applicable", false) && envelope.value("selection_applied", false))
+        {
+            if (radius_estimate_supplied && std::isfinite(volumetric_mean_radius) && volumetric_mean_radius > 0
+                && (!classification_evidence.is_object() || !classification_evidence.contains("catalog_radius")))
+            {
+                classification_evidence["catalog_radius"] = {{"value_m", volumetric_mean_radius},
+                    {"evidence", "supplied_estimate"}, {"use", "provenance_only_when_a_composition_radius_is_available"}};
+                if (std::isfinite(radius_error_upper)) classification_evidence["catalog_radius"]["error_upper_m"] = radius_error_upper;
+                if (std::isfinite(radius_error_lower)) classification_evidence["catalog_radius"]["error_lower_m"] = radius_error_lower;
+            }
+            const bool gaseous = envelope.value("outcome", "") == "mini_neptune";
+            const cel_obj_type old_type = type;
+            if (gaseous != uses_gaseous_map(type))
+            {
+                type = gaseous ? ice_giant : rocky;
+                estimate_radius();
+                set_color_from_type(is_in_con_HZ());
+            }
+            if (radius_evidence != PlanetMeasurement::observed)
+            {
+                volumetric_mean_radius = envelope.at(gaseous ? "envelope_radius_m" : "core_radius_m").get<double>();
+                radius_evidence = PlanetMeasurement::estimated;
+                radius_estimate_supplied = false;
+                radius_error_upper = radius_error_lower = NAN;
+            }
+            classification_evidence["primordial_envelope"] = envelope;
+            classification_evidence["class_code"] = static_cast<int>(type);
+            classification_evidence["density_g_cm3"] = mass / sphere_volume(volumetric_mean_radius) * 1e-6;
+            if (old_type != type) classification_evidence["basis"] = "volatile_structure_scenarios";
+        }
         AtmosphericEstimate estimate = custom_inventory ? CosmicShore::estimate_atmosphere(host, *this, inventory)
             : CosmicShore::estimate_atmosphere(host, *this);
         // Incomplete geometry/illumination must not erase an existing estimate.
@@ -731,6 +762,17 @@ void Planet::classify(bool HZ, bool mnrk, bool ck)
     }
     else classification_evidence["metallicity_model"] = "direct_observations_or_no_eligible_host";
 
+    json envelope = nullptr;
+    if (host && valid_mass)
+    {
+        envelope = CosmicShore::envelope_scenario(*host, *this, CosmicShore::default_inventory(*host));
+        classification_evidence["primordial_envelope"] = envelope;
+        if (envelope.value("applicable", false) && envelope.value("selection_applied", false))
+        {
+            solid = envelope.value("outcome", "") != "mini_neptune";
+            compact_prior = solid;
+        }
+    }
     if (solid)
     {
         if (std::isfinite(surface_temperature) && surface_temperature > lava_T_cutoff) type = lavaworld;
@@ -768,7 +810,19 @@ void Planet::classify(bool HZ, bool mnrk, bool ck)
         && radius_evidence == PlanetMeasurement::estimated)
         classification_evidence["radius_model"] = uses_rocky_map(type)
             ? "composition_conditional_compact_mass_radius" : "composition_conditional_envelope_mass_radius";
-    if (!ck) set_color_from_type(HZ);
+    const bool envelope_selection = envelope.is_object() && envelope.value("applicable", false)
+        && envelope.value("selection_applied", false);
+    if (envelope_selection && !measured_radius)
+    {
+        volumetric_mean_radius = envelope.at(solid ? "core_radius_m" : "envelope_radius_m").get<double>();
+        radius_evidence = PlanetMeasurement::estimated;
+        radius_estimate_supplied = false;
+        classification_evidence["radius_evidence"] = static_cast<int>(radius_evidence);
+        classification_evidence["density_estimated"] = true;
+        classification_evidence["density_g_cm3"] = mass / sphere_volume(volumetric_mean_radius) * 1e-6;
+        classification_evidence["radius_model"] = solid ? "compact_core_mass_radius" : "Lopez_Fortney_2014_envelope_scenario";
+    }
+    if (!ck || (envelope_selection && previous_type != type)) set_color_from_type(HZ);
 }
 
 LocalClimate Planet::local_climate()
