@@ -1883,6 +1883,75 @@ TEST_F(RenderingRegressionTest, CloseExteriorPlanetMatchesItsAngularSilhouetteIn
     }
 }
 
+TEST_F(RenderingRegressionTest, SkyMapDiscsUseBaseColorUntilTexturePixelsAreComplete)
+{
+    extern double sphresolution;
+    Star *star = make_star("Sky map star");
+    star->looked_for_maps = true;
+    star->location.local_position = star->tmprel = Point(0, 0, 2 * solar_radius);
+    star->location.equatorial_plane = Rotation();
+    set(view_mode, vm_skymap);
+    set(whereami, -1);
+    set(here, CelestialLocation());
+    set(myeq, 0.0);
+    set(sphresolution, 0.001);
+    system_bloom.assign(2, 20);
+    set(bloomrad_cache, system_bloom.data());
+    draw_sphere(star, _pi / 6);
+    const auto base = render();
+    EXPECT_GT(base[(54 * render_width + 96) * 4 + 3], 250);
+
+    // Allocated RGB buffers can still contain unfinished background generation.
+    star->surf_map = new SceneryTestMap();
+    star->surf_map->gen = 0;
+    star->night_map = new SceneryTestMap();
+    star->night_map->gen = 0;
+    ImGui::NewFrame();
+    draw_sphere(star, _pi / 6);
+    EXPECT_EQ(render(), base);
+
+    star->surf_map->touch_gen();
+    star->night_map->touch_gen();
+    ImGui::NewFrame();
+    draw_sphere(star, _pi / 6);
+    EXPECT_NE(render(), base);
+}
+
+TEST_F(RenderingRegressionTest, SkyMapStellarDiscStaysSmoothAcrossClippedLongitudeRows)
+{
+    Star *star = make_star("Clipped sky map star");
+    star->looked_for_maps = true;
+    star->location.equatorial_plane = Rotation();
+    set(view_mode, vm_skymap);
+    set(whereami, -1);
+    set(here, CelestialLocation());
+    set(myeq, 0.0);
+    set(zoom, 12.0);
+    system_bloom.assign(2, 20);
+    set(bloomrad_cache, system_bloom.data());
+    for (double longitude : {0.0, 2.5, 5.7})
+    {
+        star->location.local_position = star->tmprel = Point::from_ra_dec(longitude, 0, 18 * solar_radius);
+        set(azimuth, -longitude);
+        draw_sphere(star, asin(1.0 / 18) * zoom);
+        const auto pixels = render();
+        double previous = 0;
+        for (int y = 44; y < 64; ++y)
+        {
+            double brightness = 0;
+            for (int x = 88; x < 104; ++x)
+            {
+                const int pixel = (y * render_width + x) * 4;
+                EXPECT_GT(pixels[pixel + 3], 245) << longitude << ", " << x << ", " << y;
+                brightness += pixels[pixel] / 16.0;
+            }
+            if (y > 44) EXPECT_NEAR(brightness, previous, 6) << longitude << ", row " << y;
+            previous = brightness;
+        }
+        ImGui::NewFrame();
+    }
+}
+
 TEST_F(RenderingRegressionTest, ClosePlanetAngularRadiusMatchesTheTangentRay)
 {
     Planet* world = surface();

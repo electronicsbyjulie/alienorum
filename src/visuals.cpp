@@ -1676,13 +1676,7 @@ int draw_sphere(CelestialObject* cel, double arad)
     // to borrow the disc's.
     use_gpu_ring = (/* !dragging && */ view_mode != vm_skymap);
 #endif
-    // lastm carries the previous iteration's m across the mesh loop, and the gap-filling quad
-    // below reads it before anything has written it: the block that assigns it is gated on
-    // perline, which is zero for the whole of the first latitude band, so the first iteration of
-    // the second band read an indeterminate value. Zero is the conservative start -- the gap fill
-    // it guards is bounds-checked independently ("m > 1 && m < l"), so the worst a stale compare
-    // can now do on that one iteration is paint a redundant quad over vertices that are really
-    // there, instead of branching on stack garbage.
+    // Gap filling tracks adjacent vertices within the preceding latitude row.
     int i, j, l, m, lastm = 0, n, result=0;
     Cartesian2D prev, zdes;
     std::vector<ImVec2> todraw;
@@ -1820,6 +1814,9 @@ int draw_sphere(CelestialObject* cel, double arad)
 
     Map *map = cel->get_day_map();
     Map *nmap = cel->get_night_map();
+    // Background generation publishes buffers before all their pixels are initialized.
+    if (map && !map->is_complete()) map = nullptr;
+    if (nmap && !nmap->is_complete()) nmap = nullptr;
     double night_illum = nmap ? 0 : starlight;
     Color base_color = cls == class_star
         ? Color::color_from_star(4.2, (Star*)cel, cel->BV_color)
@@ -1854,8 +1851,10 @@ int draw_sphere(CelestialObject* cel, double arad)
                 ? fmax(fmin(_pi*sphresolution/arad*fiftyseventh, fiftyseventh*15), fiftyseventh*0.2)
                 : fiftyseventh * 3
               ),
-        stepcoslat, invlaststepcoslat = 1.0 / step;
-    int perline=0, dx1, dy1, dx2, dy2;
+        stepcoslat;
+    int perline = 0;
+    // Preserve subpixel positions when adjacent mesh rows project less than a pixel apart.
+    double dx1, dy1, dx2, dy2;
     double polyr = 0, polyg = 0, polyb = 0, lum, lum1;
     l = 0;
 
@@ -1881,14 +1880,15 @@ int draw_sphere(CelestialObject* cel, double arad)
     for (lat=-half_pi; lat <= half_pi; lat+=step)
     {
         if (lat < latmin_rad || lat > latmax_rad) continue;
+        const int row_start = l;
+        const int previous_start = row_start - perline;
+        lastm = previous_start;
         prev_valid = false;
-        n = 0;
         stepcoslat = step / (cos(lat) + 0.1);
         for (lon=0; lon<=_pi*2; lon+=stepcoslat)
         {
             lon360 = lonmin_crosses_zero && lon > _pi ? (lon - _pi*2) : lon;
             if (filter_longitudes && (lon360 < (lonmin_rad - stepcoslat) || lon360 > (lonmax_rad + stepcoslat))) continue;
-            n++;
             elevation = (map && bs) ? (map->elevation_at(lat, lon)) : 0;
             land = Point::from_ra_dec(lon+_pi, lat, dwh ? 1 : (equatorial_radius + elevation), 0);
 
@@ -1931,7 +1931,6 @@ int draw_sphere(CelestialObject* cel, double arad)
                 continue;
             }
 
-            if (lon)
             {
                 land += cel->location.local_position;
                 vtheta = fabs(fmod(find_3D_angle(land, here.local_position, cel->location.local_position), _pi*2));
@@ -1982,10 +1981,13 @@ int draw_sphere(CelestialObject* cel, double arad)
                     tdlat.push_back(lat);
                     tdlon.push_back(lon);
 
-                    if (!wireframe && (lat>-half_pi) && !dragging && perline)
+                    if (!wireframe && (lat>-half_pi) && !dragging && perline && l > row_start)
                     {
-                        m = l - n - perline + round(lon*invlaststepcoslat) + 2;
-                        if (m > 1 && tdvalid[l-1] && m < l && tdvalid[m] && tdvalid[m-1])
+                        // Visible rows can start partway around the sphere. Match their stored
+                        // longitudes instead of assuming an unclipped row starting at zero.
+                        m = std::lower_bound(tdlon.begin() + previous_start,
+                            tdlon.begin() + row_start, lon) - tdlon.begin();
+                        if (m > previous_start && tdvalid[l-1] && m < row_start && tdvalid[m] && tdvalid[m-1])
                         {
                             if (self_luminous)
                             {
@@ -2079,7 +2081,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                             imcol = rgba_apply_redlight(IM_COL32(polyr, polyg, polyb, 255));
 
                             ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(points, 4, imcol);
-                            if (m > lastm+1 && tdvalid[m-2])
+                            if (m > lastm+1 && m > previous_start+1 && tdvalid[m-2])
                             {
                                 points[2] = todraw[m-2];
                                 points[3] = todraw[m-1];
@@ -2092,14 +2094,13 @@ int draw_sphere(CelestialObject* cel, double arad)
                     } // if not wireframe
                 } // if within horizon angle
                 l++;
-            } // if lon
+            }
 
             prev = zdes;
             prev_valid = true;
         } // for lon
 
-        perline = max(0, n);
-        invlaststepcoslat = 1.0/stepcoslat;
+        perline = l - row_start;
     } // for lat
 
     if (!wireframe && !dragging && (l > perline*2))
@@ -2108,7 +2109,7 @@ int draw_sphere(CelestialObject* cel, double arad)
         n = 0;
         for (i=0; i<perline; i++)
         {
-            j = l-perline-i-1;
+            j = l-i-1;
             if (!tdvalid[j]) continue;
             points[n++] = todraw[j];
         }
