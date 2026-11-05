@@ -176,7 +176,11 @@ bool AtmosphericInventory::from_json(const json& value)
         {"basin_relief_m", &AtmosphericInventory::basin_relief_m, INFINITY},
         {"nitrogen_frost_albedo", &AtmosphericInventory::nitrogen_frost_albedo, 1},
         {"nitrogen_frost_emissivity", &AtmosphericInventory::nitrogen_frost_emissivity, 1},
-        {"cold_temperature_k", &AtmosphericInventory::cold_temperature_k, INFINITY}
+        {"cold_temperature_k", &AtmosphericInventory::cold_temperature_k, INFINITY},
+        {"impact_flux_scale", &AtmosphericInventory::impact_flux_scale, 1000},
+        {"impactor_water_fraction", &AtmosphericInventory::impactor_water_fraction, 1},
+        {"impactor_co2_fraction", &AtmosphericInventory::impactor_co2_fraction, 1},
+        {"impactor_nitrogen_fraction", &AtmosphericInventory::impactor_nitrogen_fraction, 1}
     };
     for (const Field& field : fields)
     {
@@ -187,6 +191,7 @@ bool AtmosphericInventory::from_json(const json& value)
         parsed.*(field.member) = number;
     }
     if (parsed.co2_mass_fraction + parsed.nitrogen_mass_fraction + parsed.water_mass_fraction > 1) return false;
+    if (parsed.impactor_water_fraction + parsed.impactor_co2_fraction + parsed.impactor_nitrogen_fraction > 1) return false;
     if (parsed.nitrogen_frost_emissivity <= 0) return false;
     *this = parsed;
     return true;
@@ -206,7 +211,17 @@ json AtmosphericInventory::to_json() const
     result["nitrogen_frost_albedo"] = nitrogen_frost_albedo;
     result["nitrogen_frost_emissivity"] = nitrogen_frost_emissivity;
     result["cold_temperature_k"] = cold_temperature_k;
+    result["impact_flux_scale"] = impact_flux_scale;
+    result["impactor_water_fraction"] = impactor_water_fraction;
+    result["impactor_co2_fraction"] = impactor_co2_fraction;
+    result["impactor_nitrogen_fraction"] = impactor_nitrogen_fraction;
     return result;
+}
+
+double CosmicShore::debris_bombardment_factor(const Star& s)
+{
+    if (!s.has_disk || !std::isfinite(s.disk_inner_edge_sma) || s.disk_inner_edge_sma <= 0) return 1;
+    return std::clamp(std::sqrt(30 * AU / s.disk_inner_edge_sma), 1.0, 4.0);
 }
 
 double CosmicShore::calculate_escape_velocity(const Planet& p)
@@ -309,9 +324,9 @@ AtmosphericInventory CosmicShore::default_inventory(Star& s, Planet& p)
 json CosmicShore::input_state(Star& s, Planet& p, const AtmosphericInventory& inventory)
 {
     const auto number = [](double value) { return std::isfinite(value) ? json(value) : json(nullptr); };
-    return json::array({"volatile_budget_v3", number(p.mass), number(p.volumetric_mean_radius), static_cast<int>(p.type),
+    return json::array({"volatile_budget_v4", number(p.mass), number(p.volumetric_mean_radius), static_cast<int>(p.type),
         number(stellar_flux(s, p)), number(s.mass), number(s.metallicity), s.metallicity_ratio,
-        s.is_main_sequence(), number(p.albedo), inventory.to_json()});
+        s.is_main_sequence(), number(p.albedo), inventory.to_json(), s.has_disk, number(s.disk_inner_edge_sma)});
 }
 
 const json& CosmicShore::envelope_scenario(Star& s, Planet& p, const AtmosphericInventory& inventory)
@@ -386,7 +401,7 @@ AtmosphericEstimate CosmicShore::estimate_atmosphere(Star& s, Planet& p, const A
     AtmosphericEstimate result;
     result.diagnostics =
     {
-        {"model", "volatile_budget_v3"}, {"inventory", inventory.to_json()},
+        {"model", "volatile_budget_v4"}, {"inventory", inventory.to_json()},
         {"status", "invalid_input"},
         {"interpretation", "approximate_scenario_not_a_measured_pressure_or_calibrated_confidence_interval"}
     };
@@ -448,54 +463,149 @@ AtmosphericEstimate CosmicShore::estimate_atmosphere(Star& s, Planet& p, const A
     const double steam = transition((flux - 1.15) / 0.025);
     const double water_retention = released_and_retained(inventory.age_gyr, release_time,
         cold ? 0 : loss_rate * (1 + 500 * steam));
-    const double water_reservoir = inventory.water_mass_fraction * water_retention;
-
-    // A fixed reference albedo avoids interpreting Venus's bright clouds as proof of an
-    // ocean climate. This smooth climate proxy is independent of cached/rendered temperature,
-    // procedural composition, and previous pressure estimates, so repeated calls are stable.
-    const double temperate = transition((flux - 0.65) / 0.035) * (1 - steam);
-    const double accessible_water = water_reservoir * inventory.surface_water_share;
-    const double wet = temperate * accessible_water / (accessible_water + 1e-6);
-    const double carbon_air = std::exp(-3 * inventory.age_gyr * wet
-        * inventory.weathering_efficiency * std::min(1.0, std::sqrt(planet_mass)));
-    double climate_k = std::max(2.7, 255 * std::pow(flux, 0.25) + 33 * temperate + 450 * steam);
-    // Convert retained mass fractions to atmospheric column weights, in Pa.
+    const double original_water = inventory.water_mass_fraction * water_retention;
+    const double deep_water = original_water * (1 - inventory.surface_water_share);
+    std::array<double, 3> pools = {inventory.co2_mass_fraction * heavy_retention,
+        inventory.nitrogen_mass_fraction * heavy_retention, original_water * inventory.surface_water_share};
     const double earth_column = G * earth_mass * (earth_mass * 0.001)
         / (4 * _pi * std::pow(earth_radius, 4));
     const double column = earth_column * std::pow(planet_mass, 2) / std::pow(radius, 4);
     if (!std::isfinite(column) || column <= 0 || !std::isfinite(loss_rate)) return result;
-    double co2 = column * inventory.co2_mass_fraction * heavy_retention * carbon_air;
-    double nitrogen = column * inventory.nitrogen_mass_fraction * heavy_retention;
-    double water = column * accessible_water;
-    const std::array<double, 3> available_columns = {co2, nitrogen, water};
-    bool nitrogen_frost = false;
-    if (cold)
+    struct Phase
     {
-        const double gravity = G * p.mass / std::pow(p.volumetric_mean_radius, 2);
-        // Bounded net IR proxy for N2 collision absorption and trace greenhouse gases/haze.
-        const double raw_tau = std::pow(std::min(nitrogen, pressure_ceiling) / 1.5e5, 2) * 1.35 / gravity;
-        const double tau = 10 * raw_tau / (10 + raw_tau);
-        climate_k *= std::pow(1 + 0.75 * tau, 0.25);
-        nitrogen_frost = nitrogen > nitrogen_vapor_pressure(climate_k);
-        if (nitrogen_frost) climate_k = nitrogen_frost_temperature(flux, inventory);
-        if (inventory.cold_temperature_k > 0) climate_k = inventory.cold_temperature_k;
-        nitrogen_frost = nitrogen > nitrogen_vapor_pressure(climate_k);
-    }
-    // Cold trapping limits water in cold, dry climates; humidity is a 50% scenario prior.
-    const double water_saturation = (0.5 * temperate + steam) * vapor_pressure(climate_k, 273.16, 611.657,
-        climate_k < 273.16 ? 51060 : 45050, 647.10);
-    const double co2_saturation = vapor_pressure(climate_k, 216.59, 518500,
-        climate_k < 216.59 ? 25000 : 16000, 304.13);
-    const double nitrogen_saturation = nitrogen_vapor_pressure(climate_k);
-    // Alternating caps account for changes in the mixture while condensation proceeds.
-    for (int iteration = 0; iteration < 24; ++iteration)
+        std::array<double, 3> gas{}, available{};
+        double climate = 0, carbon_air = 1, nitrogen_saturation = 0;
+        bool nitrogen_frost = false;
+    };
+    const auto partition = [&](const std::array<double, 3>& retained)
     {
-        const double previous = co2 + nitrogen + water;
-        condense(water, co2 + nitrogen, co2 / 0.044 + nitrogen / 0.028, 0.018, water_saturation);
-        condense(co2, nitrogen + water, nitrogen / 0.028 + water / 0.018, 0.044, co2_saturation);
-        condense(nitrogen, co2 + water, co2 / 0.044 + water / 0.018, 0.028, nitrogen_saturation);
-        if (previous - co2 - nitrogen - water <= 1e-10 * std::max(1.0, previous)) break;
+        Phase phase;
+        const double temperate = transition((flux - 0.65) / 0.035) * (1 - steam);
+        const double wet = temperate * retained[2] / (retained[2] + 1e-6);
+        phase.carbon_air = std::exp(-3 * inventory.age_gyr * wet
+            * inventory.weathering_efficiency * std::min(1.0, std::sqrt(planet_mass)));
+        phase.climate = std::max(2.7, 255 * std::pow(flux, 0.25) + 33 * temperate + 450 * steam);
+        double co2 = column * retained[0] * phase.carbon_air;
+        double nitrogen = column * retained[1];
+        double water = column * retained[2];
+        phase.available = {co2, nitrogen, water};
+        if (cold)
+        {
+            const double gravity = G * p.mass / std::pow(p.volumetric_mean_radius, 2);
+            const double raw_tau = std::pow(std::min(nitrogen, pressure_ceiling) / 1.5e5, 2) * 1.35 / gravity;
+            const double tau = 10 * raw_tau / (10 + raw_tau);
+            phase.climate *= std::pow(1 + 0.75 * tau, 0.25);
+            if (nitrogen > nitrogen_vapor_pressure(phase.climate)) phase.climate = nitrogen_frost_temperature(flux, inventory);
+            if (inventory.cold_temperature_k > 0) phase.climate = inventory.cold_temperature_k;
+            phase.nitrogen_frost = nitrogen > nitrogen_vapor_pressure(phase.climate);
+        }
+        const double water_saturation = (0.5 * temperate + steam) * vapor_pressure(phase.climate, 273.16, 611.657,
+            phase.climate < 273.16 ? 51060 : 45050, 647.10);
+        const double co2_saturation = vapor_pressure(phase.climate, 216.59, 518500,
+            phase.climate < 216.59 ? 25000 : 16000, 304.13);
+        phase.nitrogen_saturation = nitrogen_vapor_pressure(phase.climate);
+        for (int iteration = 0; iteration < 24; ++iteration)
+        {
+            const double previous = co2 + nitrogen + water;
+            condense(water, co2 + nitrogen, co2 / 0.044 + nitrogen / 0.028, 0.018, water_saturation);
+            condense(co2, nitrogen + water, nitrogen / 0.028 + water / 0.018, 0.044, co2_saturation);
+            condense(nitrogen, co2 + water, co2 / 0.044 + water / 0.018, 0.028, phase.nitrogen_saturation);
+            if (previous - co2 - nitrogen - water <= 1e-10 * std::max(1.0, previous)) break;
+        }
+        phase.gas = {co2, nitrogen, water};
+        return phase;
+    };
+    Phase phase = partition(pools);
+    const double belt = debris_bombardment_factor(s);
+    const double incoming = std::min(.01, 1e-5 * (belt - 1) * inventory.impact_flux_scale * (inventory.age_gyr / reference_age));
+    std::array<double, 3> arrived{}, impact_lost{}, delivery_lost{}, delivery_retained{};
+    auto& impacts = result.diagnostics["impacts"];
+    impacts = {{"model", "excess_late_bombardment_v1"}, {"belt_factor", belt},
+        {"excess_factor", belt - 1}, {"active", incoming > 0},
+        {"impactor_mass_fraction", incoming}, {"reference_mass_fraction_per_4_5_gyr", 1e-5},
+        {"mass_fraction_capped", incoming == .01},
+        {"interpretation", "Excess_above_Solar_calibration;belt_proximity_is_not_a_measured_impact_flux"},
+        {"assumptions", "Constant_excess_flux;comet_like_speeds;fixed_planet_mass;mid_history_phase_exposure;no_individual_giant_impacts"},
+        {"source", "https://arxiv.org/abs/1910.10731"},
+        {"calibration", "Heuristic_coefficients_not_the_published_impact_shoreline_fit"}};
+    if (incoming > 0)
+    {
+        const auto formation = formation_delivery(s, p);
+        // A comet-like encounter speed. q is approach speed / escape speed,
+        // distinct from the gravitationally accelerated surface impact speed.
+        const double q2 = std::min(1e6, G * stellar_mass * solar_mass
+            / (formation.orbit_au * AU * velocity * velocity));
+        const double capture = 1 / (1 + q2);
+        const double erosion_efficiency = std::min(1.0, .03 * q2);
+        const double capacity = incoming * erosion_efficiency;
+        const std::array<double, 3> composition = {inventory.impactor_co2_fraction,
+            inventory.impactor_nitrogen_fraction, inventory.impactor_water_fraction};
+        auto middle = pools;
+        for (int i = 0; i < 3; ++i)
+        {
+            arrived[i] = incoming * composition[i];
+            middle[i] += .5 * arrived[i] * capture;
+        }
+        const Phase reference = partition(middle);
+        std::array<double, 3> gas_mass{}, mobile_mass{};
+        double gas_total = 0, mobile_total = 0;
+        for (int i = 0; i < 3; ++i)
+        {
+            gas_mass[i] = reference.gas[i] / column;
+            mobile_mass[i] = std::max(0.0, reference.available[i] / column - gas_mass[i]);
+            gas_total += gas_mass[i];
+            mobile_total += mobile_mass[i];
+        }
+        // Allocate a finite erosion mass capacity: 90% gas, 10% mobile condensate.
+        // Carbonates and deep water are outside these exposed pools. No pressure
+        // suppression from crater rendering enters the physical impact exposure.
+        const double gas_dose = .9 * capacity / std::max(1e-30, gas_total);
+        const double surface_dose = .1 * capacity / std::max(1e-30, mobile_total);
+        const auto survival = [](double dose)
+        {
+            return dose > 1e-8 ? -std::expm1(-dose) / dose : 1 - .5 * dose;
+        };
+        const char* species[] = {"CO2", "N2", "H2O"};
+        for (int i = 0; i < 3; ++i)
+        {
+            const double gas_share = middle[i] > 0 ? std::clamp(gas_mass[i] / middle[i], 0.0, 1.0) : 0;
+            const double surface_share = middle[i] > 0
+                ? std::clamp(mobile_mass[i] / middle[i], 0.0, 1 - gas_share) : 0;
+            const double protected_share = std::max(0.0, 1 - gas_share - surface_share);
+            impact_lost[i] = pools[i] * (gas_share * -std::expm1(-gas_dose)
+                + surface_share * -std::expm1(-surface_dose));
+            const double escape_dose = inventory.age_gyr * (i == 2
+                ? (cold ? 0 : loss_rate * (1 + 500 * steam)) : loss_rate);
+            // Continuous late delivery has a distribution of residence times;
+            // do not expose every delivered molecule to a full system age.
+            delivery_retained[i] = arrived[i] * capture * (protected_share
+                + gas_share * survival(gas_dose + escape_dose)
+                + surface_share * survival(surface_dose + (i == 2 ? escape_dose : 0)));
+            delivery_lost[i] = arrived[i] - delivery_retained[i];
+            pools[i] = std::max(0.0, pools[i] - impact_lost[i]) + delivery_retained[i];
+            impacts["species"][species[i]] = {{"arrived_mass_fraction", arrived[i]},
+                {"prompt_escape_mass_fraction", arrived[i] * (1 - capture)},
+                {"later_escape_mass_fraction", std::max(0.0, delivery_lost[i] - arrived[i] * (1 - capture))},
+                {"retained_delivery_mass_fraction", delivery_retained[i]},
+                {"original_impact_escape_mass_fraction", impact_lost[i]},
+                {"gas_exposure_share", gas_share}, {"mobile_condensate_share", surface_share},
+                {"protected_share", protected_share}};
+        }
+        impacts["approach_over_escape_speed"] = std::sqrt(q2);
+        impacts["impact_over_escape_speed"] = std::sqrt(1 + q2);
+        impacts["impactor_capture_fraction"] = capture;
+        impacts["erosion_mass_per_impactor_mass"] = erosion_efficiency;
+        impacts["erosion_capacity_mass_fraction"] = capacity;
+        impacts["atmospheric_turnover_dose"] = gas_dose;
+        impacts["condensate_turnover_dose"] = surface_dose;
+        phase = partition(pools);
     }
+    const double co2 = phase.gas[0], nitrogen = phase.gas[1], water = phase.gas[2];
+    const double carbon_air = phase.carbon_air, climate_k = phase.climate;
+    const double nitrogen_saturation = phase.nitrogen_saturation;
+    const bool nitrogen_frost = phase.nitrogen_frost;
+    const auto& available_columns = phase.available;
+    const double accessible_water = pools[2];
     const double pressure = co2 + nitrogen + water;
     if (!std::isfinite(pressure)) return result;
     result.valid = true;
@@ -519,6 +629,7 @@ AtmosphericEstimate CosmicShore::estimate_atmosphere(Star& s, Planet& p, const A
     diagnostic["xuv_dose_solar"] = dose;
     diagnostic["heavy_release_and_retention"] = heavy_retention;
     diagnostic["water_release_and_retention"] = water_retention;
+    diagnostic["release_and_retention_stage"] = "Before_excess_late_bombardment";
     diagnostic["carbon_atmospheric_share"] = carbon_air;
     diagnostic["regime"] = cold ? "cold_volatiles" : "terrestrial";
     diagnostic["column_weight_pa"]["CO2"] = co2;
@@ -542,20 +653,21 @@ AtmosphericEstimate CosmicShore::estimate_atmosphere(Star& s, Planet& p, const A
     // pressure ceiling is a rendering bound and does not destroy material in this ledger.
     const double mantle_share = std::exp(-inventory.age_gyr / release_time);
     result.diagnostics["reservoir_mass_fractions"] = json::object();
-    const auto ledger = [&](const char* species, double initial, double retained, double air_weight)
+    const auto ledger = [&](int index, const char* species, double initial, double retained, double air_weight)
     {
         const double atmospheric = air_weight / column;
         result.diagnostics["reservoir_mass_fractions"][species] =
         {
-            {"initial", initial}, {"mantle", initial * mantle_share}, {"atmosphere", atmospheric},
-            {"surface_storage", std::max(0.0, initial * retained - atmospheric)},
-            {"escaped", std::max(0.0, initial * (1 - mantle_share - retained))}
+            {"initial", initial}, {"delivered", arrived[index]},
+            {"mantle", initial * mantle_share}, {"atmosphere", atmospheric},
+            {"surface_storage", std::max(0.0, pools[index] + (index == 2 ? deep_water : 0) - atmospheric)},
+            {"escaped", std::max(0.0, initial * (1 - mantle_share - retained))
+                + impact_lost[index] + delivery_lost[index]}
         };
     };
-    ledger("CO2", inventory.co2_mass_fraction, heavy_retention, co2);
-    ledger("N2", inventory.nitrogen_mass_fraction, heavy_retention, nitrogen);
-    ledger("H2O", inventory.water_mass_fraction, water_retention, water);
-    const double deep_water = water_reservoir * (1 - inventory.surface_water_share);
+    ledger(0, "CO2", inventory.co2_mass_fraction, heavy_retention, co2);
+    ledger(1, "N2", inventory.nitrogen_mass_fraction, heavy_retention, nitrogen);
+    ledger(2, "H2O", inventory.water_mass_fraction, water_retention, water);
     diagnostic["water_partition"] =
     {
         {"interior_recycled_mass_fraction", deep_water},
@@ -737,7 +849,9 @@ SurfaceWaterEstimate CosmicShore::estimate_surface_water(const Planet& p, const 
     if (!reservoirs.is_object() || !reservoirs.contains("H2O") || !reservoirs["H2O"].is_object()
         || !reservoirs["H2O"].contains("surface_storage") || !reservoirs["H2O"]["surface_storage"].is_number()) return result;
     const double condensed = reservoirs["H2O"]["surface_storage"].get<double>();
-    if (!std::isfinite(condensed) || condensed < 0 || condensed > inventory.water_mass_fraction) return result;
+    const double supplied_water = inventory.water_mass_fraction + reservoirs["H2O"].value("delivered", 0.0);
+    if (!std::isfinite(supplied_water) || supplied_water < inventory.water_mass_fraction
+        || !std::isfinite(condensed) || condensed < 0 || condensed > supplied_water) return result;
     double surface_fraction = condensed * inventory.surface_water_share;
     if (budget.contains("water_partition") && budget["water_partition"].is_object())
         surface_fraction = budget["water_partition"].value("surface_condensed_mass_fraction", surface_fraction);

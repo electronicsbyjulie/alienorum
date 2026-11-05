@@ -774,6 +774,219 @@ TEST_F(PlanetClassificationEvidenceTest, GiantPressureIsACloudReferenceRatherTha
     EXPECT_DOUBLE_EQ(reference.pressure, 1e5);
 }
 
+TEST_F(PlanetClassificationEvidenceTest, DebrisImpactsPreserveSolarReferenceAndValidateScenarioInputs)
+{
+    Star* host = make_star();
+    Planet* world = make_planet(host);
+    const auto baseline = CosmicShore::estimate_atmosphere(*host, *world);
+    for (double edge : {0.0, -AU, 30 * AU, 100 * AU,
+        std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::infinity()})
+    {
+        host->has_disk = true;
+        host->disk_inner_edge_sma = edge;
+        EXPECT_DOUBLE_EQ(CosmicShore::debris_bombardment_factor(*host), 1);
+        const auto same = CosmicShore::estimate_atmosphere(*host, *world);
+        EXPECT_DOUBLE_EQ(same.pressure, baseline.pressure);
+        EXPECT_EQ(same.diagnostics["reservoir_mass_fractions"], baseline.diagnostics["reservoir_mass_fractions"]);
+    }
+    host->disk_inner_edge_sma = 30 * AU / 16;
+    EXPECT_DOUBLE_EQ(CosmicShore::debris_bombardment_factor(*host), 4);
+    host->has_disk = false;
+    EXPECT_DOUBLE_EQ(CosmicShore::debris_bombardment_factor(*host), 1);
+    AtmosphericInventory parsed;
+    EXPECT_TRUE(parsed.from_json({{"impact_flux_scale", "0?"}, {"impactor_water_fraction", "0.2?"}}));
+    EXPECT_DOUBLE_EQ(parsed.impact_flux_scale, 0);
+    EXPECT_DOUBLE_EQ(parsed.impactor_water_fraction, .2);
+    EXPECT_FALSE(parsed.from_json({{"impactor_water_fraction", .99}, {"impactor_co2_fraction", .5}}));
+    EXPECT_FALSE(parsed.from_json({{"impact_flux_scale", -1}}));
+    AtmosphericInventory restored;
+    ASSERT_TRUE(restored.from_json(parsed.to_json()));
+    EXPECT_EQ(restored.to_json(), parsed.to_json());
+    host->has_disk = true;
+    host->disk_inner_edge_sma = 1.5e12;
+    const json saved_host = host->to_json();
+    for (const json& record : {saved_host, Serialization::expand_output_record(Serialization::output_record(saved_host))})
+    {
+        Serialization::SaveContext context;
+        Star restored_host;
+        ASSERT_TRUE(restored_host.from_json(Serialization::expand_record(Serialization::compact_record(record, context), context.header)));
+        EXPECT_TRUE(restored_host.has_disk);
+        EXPECT_DOUBLE_EQ(restored_host.disk_inner_edge_sma, host->disk_inner_edge_sma);
+    }
+    Star approximate;
+    ASSERT_TRUE(approximate.from_json({{"debris_belt", {{"present", true}, {"inner_edge_m", "1.5e12?"}}}}));
+    EXPECT_DOUBLE_EQ(approximate.disk_inner_edge_sma, 1.5e12);
+}
+
+TEST_F(PlanetClassificationEvidenceTest, DryDebrisErodesAtmospheresButProtectsDeepWaterAndRespectsCapacity)
+{
+    Star* host = make_star();
+    Planet* world = make_planet(host);
+    host->has_disk = true;
+    host->disk_inner_edge_sma = 30 * AU / 16;
+    AtmosphericInventory scenario;
+    scenario.xuv_scale = 0;
+    scenario.co2_mass_fraction = 0;
+    scenario.surface_water_share = .1;
+    scenario.impactor_water_fraction = scenario.impactor_co2_fraction = scenario.impactor_nitrogen_fraction = 0;
+    scenario.impact_flux_scale = 0;
+    const auto baseline = CosmicShore::estimate_atmosphere(*host, *world, scenario);
+    scenario.impact_flux_scale = 1;
+    const auto impacted = CosmicShore::estimate_atmosphere(*host, *world, scenario);
+    ASSERT_TRUE(impacted.valid);
+    EXPECT_LT(impacted.nitrogen_moles, baseline.nitrogen_moles);
+    EXPECT_EQ(impacted.diagnostics["water_partition"]["interior_recycled_mass_fraction"],
+        baseline.diagnostics["water_partition"]["interior_recycled_mass_fraction"]);
+    double lost = 0;
+    for (const auto& species : impacted.diagnostics["impacts"]["species"])
+        lost += species["original_impact_escape_mass_fraction"].get<double>();
+    EXPECT_LE(lost, impacted.diagnostics["impacts"]["erosion_capacity_mass_fraction"].get<double>());
+    scenario.impact_flux_scale = 2;
+    EXPECT_LT(CosmicShore::estimate_atmosphere(*host, *world, scenario).nitrogen_moles, impacted.nitrogen_moles);
+}
+
+TEST_F(PlanetClassificationEvidenceTest, WetDebrisCanSupplyAnEmptyPlanetAndItsSurfaceWaterBudget)
+{
+    Star* host = make_star();
+    Planet* world = make_planet(host, "Strong retention", 10 * AU);
+    world->mass = 10 * earth_mass;
+    world->volumetric_mean_radius = 2 * earth_radius;
+    AtmosphericInventory scenario;
+    scenario.co2_mass_fraction = scenario.nitrogen_mass_fraction = scenario.water_mass_fraction = 0;
+    scenario.xuv_scale = 0;
+    const auto empty = CosmicShore::estimate_atmosphere(*host, *world, scenario);
+    EXPECT_DOUBLE_EQ(empty.pressure, 0);
+    host->has_disk = true;
+    host->disk_inner_edge_sma = 3 * AU;
+    const auto delivered = CosmicShore::estimate_atmosphere(*host, *world, scenario);
+    ASSERT_TRUE(delivered.valid);
+    EXPECT_GT(delivered.pressure, 0);
+    EXPECT_GT(delivered.diagnostics["reservoir_mass_fractions"]["H2O"]["surface_storage"].get<double>(), 0);
+    const auto surface = CosmicShore::estimate_surface_water(*world, delivered.diagnostics);
+    ASSERT_TRUE(surface.valid);
+    EXPECT_GT(surface.diagnostics["equivalent_depth_m"].get<double>(), 0);
+}
+
+TEST_F(PlanetClassificationEvidenceTest, DebrisBudgetsConserveDeliveredAndOriginalSpeciesAcrossRegimes)
+{
+    Star* host = make_star();
+    Planet* world = make_planet(host);
+    host->has_disk = true;
+    host->disk_inner_edge_sma = 1.5e12;
+    for (double distance : {.1, 1.0, 10.0, 50.0})
+    {
+        world->orbit->semimajor_axis = distance * AU;
+        for (double mass : {.1, 1.0, 8.0})
+        {
+            world->mass = mass * earth_mass;
+            world->volumetric_mean_radius = std::pow(mass, .4) * earth_radius;
+            for (double age : {0.0, .01, 4.5, 13.8})
+            {
+                AtmosphericInventory inventory;
+                inventory.age_gyr = age;
+                inventory.surface_water_share = .2;
+                const auto estimate = CosmicShore::estimate_atmosphere(*host, *world, inventory);
+                ASSERT_TRUE(estimate.valid) << estimate.diagnostics.dump();
+                EXPECT_TRUE(std::isfinite(estimate.pressure));
+                for (const auto& ledger : estimate.diagnostics["reservoir_mass_fractions"])
+                {
+                    double total = 0;
+                    for (const char* key : {"mantle", "atmosphere", "surface_storage", "escaped"})
+                    {
+                        const double value = ledger[key].get<double>();
+                        EXPECT_GE(value, 0);
+                        total += value;
+                    }
+                    EXPECT_NEAR(total, ledger["initial"].get<double>() + ledger["delivered"].get<double>(), 1e-14);
+                }
+                EXPECT_EQ(json::parse(estimate.diagnostics.dump()), estimate.diagnostics);
+            }
+        }
+    }
+}
+
+TEST_F(PlanetClassificationEvidenceTest, BeltEditsInvalidateWaterBudgetsAndPreserveAuthoredValues)
+{
+    Star* host = make_star();
+    Planet* world = make_planet(host);
+    world->user_added = true;
+    world->apply_cosmic_shoreline();
+    const json original_state = world->atm->pressure_model["input_state"];
+    const double original_pressure = world->get_surface_pressure();
+    host->has_disk = true;
+    host->disk_inner_edge_sma = 1.5e12;
+    ASSERT_TRUE(world->estimate_surface_water());
+    EXPECT_NE(world->surface_water_model["input_state"], original_state);
+    world->apply_cosmic_shoreline();
+    EXPECT_NE(world->get_surface_pressure(), original_pressure);
+    const double new_pressure = world->get_surface_pressure();
+    world->apply_cosmic_shoreline();
+    EXPECT_DOUBLE_EQ(world->get_surface_pressure(), new_pressure);
+    Serialization::SaveContext context;
+    Planet restored;
+    ASSERT_TRUE(restored.from_json(Serialization::expand_record(
+        Serialization::compact_record(world->to_json(), context), context.header)));
+    EXPECT_EQ(restored.atm->pressure_model, world->atm->pressure_model);
+    world->atm->pressure_supplied = true;
+    world->atm->surface_pressure = 12345;
+    world->has_water_supplied = true;
+    world->has_water = .42;
+    host->disk_inner_edge_sma = AU;
+    world->apply_cosmic_shoreline();
+    EXPECT_FALSE(world->estimate_surface_water());
+    EXPECT_DOUBLE_EQ(world->get_surface_pressure(), 12345);
+    EXPECT_FLOAT_EQ(world->has_water, .42f);
+}
+
+TEST_F(PlanetClassificationEvidenceTest, TauCetiBeltChangesSecondaryReservoirsWithConservedWater)
+{
+    Star* host = make_star("Tau Ceti", .783 * solar_mass);
+    strcpy(host->spectral_type, "G8.5 V");
+    host->temperature = 5344;
+    host->absolute_magnitude = 3.5 - 5 * std::log10(3.65) + 5;
+    host->metallicity = -.52;
+    host->metallicity_ratio = "[Fe/H]";
+    host->stellar_age = {{"value_gyr", 7.63}, {"source", "Pagano_2015_Tau_Ceti"}, {"estimated", false}};
+    host->has_disk = true;
+    host->disk_inner_edge_sma = 1.5e12;
+    Planet* world = make_planet(host, "Tau Ceti f scenario", 1.334 * AU);
+    world->orbit->eccentricity = .16;
+    world->mass = 6.870596 * earth_mass;
+    world->volumetric_mean_radius = 1.7 * earth_radius;
+    AtmosphericInventory inventory = CosmicShore::default_inventory(*host, *world);
+    inventory.impact_flux_scale = 0;
+    const auto baseline = CosmicShore::estimate_atmosphere(*host, *world, inventory);
+    inventory.impact_flux_scale = 1;
+    const auto impacted = CosmicShore::estimate_atmosphere(*host, *world, inventory);
+    ASSERT_TRUE(impacted.valid);
+    EXPECT_TRUE(impacted.diagnostics["impacts"]["active"].get<bool>());
+    EXPECT_NE(impacted.nitrogen_moles, baseline.nitrogen_moles);
+    EXPECT_EQ(impacted.diagnostics["water_partition"]["interior_recycled_mass_fraction"],
+        baseline.diagnostics["water_partition"]["interior_recycled_mass_fraction"]);
+    std::cout << "Tau Ceti f physical-input scenario: " << json({
+        {"before_bar", baseline.pressure / 1e5}, {"after_bar", impacted.pressure / 1e5},
+        {"before_water", baseline.diagnostics["water_partition"]},
+        {"after_water", impacted.diagnostics["water_partition"]},
+        {"impacts", impacted.diagnostics["impacts"]}}).dump() << '\n';
+}
+
+TEST_F(PlanetClassificationEvidenceTest, LegacyDefaultInventoriesStillFollowNewStellarInputs)
+{
+    Star* host = make_star();
+    Planet* world = make_planet(host);
+    world->user_added = true;
+    world->apply_cosmic_shoreline();
+    for (const char* field : {"impact_flux_scale", "impactor_water_fraction", "impactor_co2_fraction", "impactor_nitrogen_fraction"})
+    {
+        world->atm->pressure_model["inventory"].erase(field);
+        world->atm->pressure_model["default_inventory"].erase(field);
+    }
+    host->stellar_age = {{"value_gyr", 10.0}, {"source", "test_age"}, {"estimated", false}};
+    world->apply_cosmic_shoreline();
+    EXPECT_DOUBLE_EQ(world->atm->pressure_model["inventory"]["age_gyr"].get<double>(), 10);
+    EXPECT_EQ(world->atm->pressure_model["inventory_source"], "default_scenario");
+}
+
 TEST_F(PlanetClassificationEvidenceTest, ReservoirDiagnosticsConserveInventoriesAcrossAgeAndIrradiation)
 {
     Star* host = make_star();

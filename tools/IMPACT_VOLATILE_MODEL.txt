@@ -1,0 +1,105 @@
+EXCESS BOMBARDMENT AND SECONDARY VOLATILES
+
+Scope
+=====
+The secondary atmosphere/water budget uses the same belt-proximity factor as
+procedural crater generation. This is a scenario model, not a measured impact
+flux. The supplied pressure and water-level overrides retain their authority.
+Gas/ice giants still use their existing cloud-reference treatment.
+
+Shared belt factor: B = clamp(sqrt(30 AU / inner belt radius), 1, 4).
+Absent or unusable belt geometry selects B=1. The atmospheric suppression used
+to draw fewer craters is not used in the volatile calculation.
+
+The Solar-reference impact history is already absorbed into the previous
+Solar-scale calibration. Only B-1 adds explicit late bombardment. Thus Solar
+controls and systems without a closer known belt retain the calibrated budget.
+
+Adopted numerical scenario
+==========================
+Incoming impactor mass / planet mass:
+  min(0.01, 1e-5 * (B-1) * impact_flux_scale * age_gyr / 4.5).
+This constant excess flux is a chosen normalization. The one-percent cap bounds
+the approximation that the planet's mass and radius remain fixed.
+
+Approach speed is the host-orbit circular speed sqrt(G Mstar / a); moons use
+their parent body's stellar orbit. Let q = approach speed / escape speed.
+Surface impact speed / escape speed is sqrt(1+q^2), including focusing.
+The comet-like approach-speed choice follows the scenario in Wyatt, Kral and
+Sinclair, https://arxiv.org/abs/1910.10731, section 3.5.1. The outcome functions
+below are heuristic coefficients, not that paper's published fitted prescription.
+
+Retained fraction of incoming material: 1/(1+q^2).
+Erosion mass capacity / incoming impactor mass: min(1, 0.03*q^2).
+Defaults for arriving mass are 10% H2O, 1% CO2-equivalent, and 0.1% N2-equivalent;
+the remainder is outside the tracked volatile species. This describes a mixed
+icy/rubble population on comet-like trajectories, not a universal comet mixture.
+
+Reservoir evolution
+===================
+1. Preserve the original mantle-release and stellar-escape calculation.
+2. Separate retained H2O into surface-accessible and deep/interior storage.
+3. Estimate phase exposure at an intermediate pool containing original retained
+   volatiles plus half of the captured late delivery. This avoids treating an
+   initially empty atmosphere as incapable of retaining any delivered gases.
+4. Assign 90% of erosion capacity to atmospheric gas and 10% to mobile surface
+   condensates. Each turnover dose is its capacity divided by the respective
+   exposed pool. Weathered carbon storage and deep H2O remain protected from
+   this excess-impact term. Their pre-existing stellar-escape model is unchanged.
+5. Original exposed material survives a turnover dose d by exp(-d). Continuous
+   incoming delivery uses (1-exp(-d))/d instead, accounting for its distribution
+   of arrival times. Newly delivered gases also face the existing stellar loss
+   rate; water uses the existing steam-sensitive loss proxy.
+6. Recalculate weathering and condensation from the resulting pools. Delivery
+   can increase water/ice storage even while atmospheric nitrogen is eroded.
+   Vaporization alone is not counted as permanent escape.
+
+For every species:
+  initial + delivered = mantle + atmosphere + surface_storage + escaped.
+The existing surface_storage ledger includes non-atmospheric retained material;
+water_partition separately identifies its protected interior and accessible
+condensed subdivisions. Incoming material lost immediately or subsequently is
+included in escaped, with both contributions visible in impacts.species.
+The pressure ceiling changes rendering pressure, not conservation accounting.
+
+Scenario controls and persistence
+=================================
+Inventory fields impact_flux_scale, impactor_water_fraction,
+impactor_co2_fraction, and impactor_nitrogen_fraction are serialized and validated.
+Setting impact_flux_scale to zero recovers the prior calibrated scenario.
+Zero initial inventory still permits incoming delivery; zero impactor volatile
+fractions select dry bombardment. Species sums cannot exceed incoming mass.
+
+The volatile-budget cache version is v4. The host's belt presence and radius
+are part of its input key. Star saves retain debris_belt.present and
+debris_belt.inner_edge_m; uncertain numerical annotations use the supplied value.
+Legacy default inventories are normalized before deciding whether they were
+edited, so added controls do not freeze an old default into a custom scenario.
+
+Limits
+======
+No explicit impactor size spectrum, scattering dynamics, time-dependent belt
+depletion, giant-impact stochasticity, impact heat clock, or biological damage
+is simulated. Intermediate phase exposure is an approximation, not a coupled
+time integration. The belt factor describes proximity, not total belt mass.
+The numerical constants are exposed assumptions rather than confidence bounds.
+
+Validation example
+===================
+A controlled Tau Ceti f scenario uses host mass 0.783 Solar, temperature 5344 K,
+absolute visual magnitude 5.6885, [Fe/H] -0.52, age 7.63 Gyr, belt radius 1.5e12 m,
+and a planet of 6.870596 Earth masses, 1.7 Earth radii, a=1.334 AU, e=0.16.
+Other stellar abundance ratios are unspecified in this fixture. This isolates
+the added term; a loaded world's additional inputs can give different values.
+
+The belt factor is 1.72973; arriving impactors total 1.23729e-5 planet masses.
+Pressure changes from 14.72605 to 12.79977 bar (-13.08%). Surface condensed water
+changes from 4.8792464e-4 to 4.8851061e-4 planet masses (+0.1201%). Protected deep
+water remains 2.5578787e-3 planet masses. In this case impacts erode atmospheric
+nitrogen while retained icy delivery slightly outweighs surface-water erosion.
+
+All 146 planet tests pass, including Solar controls, dry erosion, delivery onto
+an initially empty world, conservation across temperature/mass/age regimes,
+authored-value preservation, budget invalidation, and ordinary/compact saves.
+All ten selected stellar-orbit catalog tests pass, including reading the actual
+Tau Ceti belt record and observing an active impact term in its planet budget.

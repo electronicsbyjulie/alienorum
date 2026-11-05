@@ -320,8 +320,10 @@ void alienorum::Planet::apply_cosmic_shoreline()
             AtmosphericInventory saved = inventory;
             if (!saved.from_json(atm->pressure_model["inventory"])) return;
             const json& model = atm->pressure_model;
+            AtmosphericInventory previous_default = inventory;
             const bool unchanged_default = model.contains("default_inventory")
-                && saved.to_json() == model["default_inventory"];
+                && previous_default.from_json(model["default_inventory"])
+                && saved.to_json() == previous_default.to_json();
             const bool legacy_default = model.value("model", "") == "volatile_budget_v1"
                 && model.value("inventory_source", "") == "default_scenario"
                 && saved.to_json() == CosmicShore::default_inventory(host).to_json();

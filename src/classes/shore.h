@@ -22,6 +22,10 @@ namespace alienorum
         double nitrogen_frost_albedo = 0.8;
         double nitrogen_frost_emissivity = 0.67;
         double cold_temperature_k = 0; // Zero selects the independent energy-balance proxy.
+        double impact_flux_scale = 1; // Excess above the Solar-reference bombardment history.
+        double impactor_water_fraction = .1;
+        double impactor_co2_fraction = .01;
+        double impactor_nitrogen_fraction = .001;
 
         bool from_json(const json& value);
         json to_json() const;
@@ -49,6 +53,7 @@ namespace alienorum
         public:
         static double calculate_escape_velocity(const Planet &p);
         static double calculate_unified_metric(Star &s, Planet &p);
+        static double debris_bombardment_factor(const Star& s);
         // Simulation ceiling for inferred pressures, in Pa; not a physical maximum.
         static constexpr double pressure_ceiling = 1e8;
         static AtmosphericInventory default_inventory(const Star& s);

@@ -14,6 +14,7 @@
 #include "../classes/cat.h"
 #include "../classes/cons.h"
 #include "../classes/sscimport.h"
+#include "../classes/shore.h"
 #include "../loaders.h"
 #include "../globals.h"
 #include "../housekeeping.h"
@@ -99,6 +100,22 @@ class StellarRotationTest : public CatalogParsingTest
         return value;
     }
 };
+
+TEST_F(StellarRotationTest, TauCetiCatalogBeltFeedsTheVolatileBudget)
+{
+    std::filesystem::copy_file(original / "catalogs/star_orbits.dat", "catalogs/star_orbits.dat");
+    Star* host = target(10700);
+    Planet* world = make_planet(host);
+    const auto before = CosmicShore::estimate_atmosphere(*host, *world);
+    CatalogReader reader;
+    reader.read_star_orbits_dat(cels);
+    ASSERT_TRUE(host->has_disk);
+    EXPECT_DOUBLE_EQ(host->disk_inner_edge_sma, 1.5e12);
+    const auto after = CosmicShore::estimate_atmosphere(*host, *world);
+    ASSERT_TRUE(after.valid);
+    EXPECT_TRUE(after.diagnostics["impacts"]["active"].get<bool>());
+    EXPECT_NE(after.pressure, before.pressure);
+}
 
 TEST_F(StellarRotationTest, VisualCatalogLettersDoNotJoinExplicitSystems)
 {

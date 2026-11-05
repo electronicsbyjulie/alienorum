@@ -3235,14 +3235,10 @@ void Map::stamp_craters(CelestialObject *cel, double bump_scale)
     double atmosphere_factor = 1.0 / (1.0 + p->get_surface_pressure() * inv_oneatm * 3.0);
     double belt_factor = 1.0;
     CelestialObject *lc = p->get_light_center();
-    if (lc && lc->type == star)
+    if (lc && lc->typeclass() == class_star)
     {
         Star *host_star = (Star*)lc;
-        if (host_star->has_disk && host_star->disk_inner_edge_sma > 0)
-        {
-            const double our_kuiper_inner_edge = 30.0 * AU;                 // Neptune's orbit, roughly
-            belt_factor = fmin(4.0, fmax(1.0, sqrt(our_kuiper_inner_edge / host_star->disk_inner_edge_sma)));
-        }
+        belt_factor = CosmicShore::debris_bombardment_factor(*host_star);
     }
     double bombardment_factor = atmosphere_factor * belt_factor;
 

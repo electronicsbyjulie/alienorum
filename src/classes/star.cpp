@@ -1725,6 +1725,12 @@ double Star::estimate_age_gyr() const
 json Star::to_json()
 {
     json towrite = CelestialObject::to_json();
+    if (has_disk || (std::isfinite(disk_inner_edge_sma) && disk_inner_edge_sma > 0))
+    {
+        towrite["debris_belt"] = {{"present", has_disk}};
+        if (std::isfinite(disk_inner_edge_sma) && disk_inner_edge_sma >= 0)
+            towrite["debris_belt"]["inner_edge_m"] = disk_inner_edge_sma;
+    }
     if (stellar_age.is_object()) towrite["stellar_age"] = stellar_age;
     if (is_white_dwarf())
     {
@@ -1824,6 +1830,17 @@ json Star::to_json()
 bool Star::from_json(const json& j)
 {
     CelestialObject::from_json(j);
+    if (j.contains("debris_belt") && j["debris_belt"].is_object())
+    {
+        json belt = j["debris_belt"];
+        normalize_uncertain_numbers(belt);
+        if (belt.contains("present") && belt["present"].is_boolean()) has_disk = belt["present"];
+        if (belt.contains("inner_edge_m") && belt["inner_edge_m"].is_number())
+        {
+            const double edge = belt["inner_edge_m"];
+            if (std::isfinite(edge) && edge >= 0) disk_inner_edge_sma = edge;
+        }
+    }
     stellar_age = j.value("stellar_age", json(nullptr));
     if (stellar_age.is_object()) normalize_uncertain_numbers(stellar_age);
     stellar_abundances = j.contains("stellar_abundances") && j["stellar_abundances"].is_object()
