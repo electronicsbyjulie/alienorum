@@ -1359,6 +1359,8 @@ void main()
         {
             glGetIntegerv(kFramebufferBinding, &framebuffer);
         }
+        // Offscreen geometry and cloud caches cover their whole attachments.
+        // The final screen pass restores the command's scissor test below.
         glDisable(GL_SCISSOR_TEST);
         const bool cached = prepare_cache(viewport[2], viewport[3]);
         if (!cached || !cache_matches(p, viewport[2], viewport[3]))
@@ -1393,6 +1395,7 @@ void main()
                 glBlendEquation(GL_FUNC_ADD);
                 glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
                 glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
+                glEnable(GL_SCISSOR_TEST);
             }
             const GLuint program = geometry ? s_program : s_reference_program;
             glUseProgram(program);
@@ -1434,6 +1437,7 @@ void main()
             glEnable(GL_BLEND);
             glBlendEquation(GL_FUNC_ADD);
             glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+            glEnable(GL_SCISSOR_TEST);
             glUseProgram(s_composite);
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, s_cache_texture);

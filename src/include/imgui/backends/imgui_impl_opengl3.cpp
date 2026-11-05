@@ -124,6 +124,7 @@
 #endif
 
 #include "imgui.h"
+#include <algorithm>
 #ifndef IMGUI_DISABLE
 #include "imgui_impl_opengl3.h"
 #include <stdio.h>
@@ -531,7 +532,20 @@ void    ImGui_ImplOpenGL3_RenderDrawData(ImDrawData* draw_data)
                 if (pcmd->UserCallback == ImGui_ImplOpenGL3_DrawCallback_ResetRenderState)
                     ImGui_ImplOpenGL3_SetupRenderState(draw_data, fb_width, fb_height, vertex_array_object);
                 else
+                {
+                    // Alienorum callbacks draw sky, discs, rings, ground, and scenery.
+                    // Establish their own command clip just as for ordinary draws; the
+                    // previous frame or callback can leave any scissor box behind.
+                    ImVec2 clip_min((pcmd->ClipRect.x - clip_off.x) * clip_scale.x, (pcmd->ClipRect.y - clip_off.y) * clip_scale.y);
+                    ImVec2 clip_max((pcmd->ClipRect.z - clip_off.x) * clip_scale.x, (pcmd->ClipRect.w - clip_off.y) * clip_scale.y);
+                    clip_min.x = std::clamp(clip_min.x, 0.0f, (float)fb_width);
+                    clip_min.y = std::clamp(clip_min.y, 0.0f, (float)fb_height);
+                    clip_max.x = std::clamp(clip_max.x, clip_min.x, (float)fb_width);
+                    clip_max.y = std::clamp(clip_max.y, clip_min.y, (float)fb_height);
+                    GL_CALL(glEnable(GL_SCISSOR_TEST));
+                    GL_CALL(glScissor((int)clip_min.x, (int)((float)fb_height - clip_max.y), (int)(clip_max.x - clip_min.x), (int)(clip_max.y - clip_min.y)));
                     pcmd->UserCallback(draw_list, pcmd);
+                }
             }
             else
             {

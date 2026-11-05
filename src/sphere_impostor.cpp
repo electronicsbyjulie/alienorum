@@ -4,6 +4,7 @@
 #include <deque>
 #include <vector>
 #include <iostream>
+#include "SDL.h"
 #include "sphere_impostor.h"
 #include "classes/misc.h"
 #include "classes/color.h"
@@ -336,6 +337,13 @@ namespace alienorum
         "    {\n"
         "        float r2 = min(1.0, c.r + 0.5*c.g + 0.3*c.b);\n"
         "        c = vec3(r2, c.g/3.0, c.b/3.0);\n"
+        "    }\n"
+        "    if (vFlags.x < 0.5)\n"
+        "    {\n"
+        "        float threshold = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));\n"
+        "        vec3 rounded = floor(clamp(c, 0.0, 1.0) * 255.0 + threshold) / 255.0;\n"
+        "        float dark = 1.0 - smoothstep(0.04, 0.08, max(c.r, max(c.g, c.b)));\n"
+        "        c = mix(c, rounded, dark);\n"
         "    }\n"
         "    return c;\n"
         "}\n"
@@ -821,6 +829,92 @@ namespace alienorum
         return sh;
     }
 
+    static std::vector<std::array<float, 4>> precise_sky_rows;
+    static int precise_sky_frame = -1;
+
+    void queue_dithered_sky(const std::vector<std::array<float, 4>>& rows, bool redlight)
+    {
+        precise_sky_rows = rows;
+        precise_sky_frame = ImGui::GetFrameCount();
+        static std::vector<std::array<float, 4>> background;
+        background = rows;
+        if (redlight)
+        {
+            for (auto& color : background)
+            {
+                color[0] = std::min(color[3], color[0] + .5f * color[1] + .3f * color[2]);
+                color[1] /= 3;
+                color[2] /= 3;
+            }
+        }
+        auto *draw = ImGui::GetBackgroundDrawList();
+        draw->AddCallback([](const ImDrawList*, const ImDrawCmd *command)
+        {
+            const auto& colors = *static_cast<const std::vector<std::array<float, 4>>*>(command->UserCallbackData);
+            static SDL_GLContext context = nullptr;
+            static GLuint program = 0, vao = 0, indices = 0, texture = 0;
+            if (context != SDL_GL_GetCurrentContext())
+            {
+                context = SDL_GL_GetCurrentContext();
+                program = vao = indices = texture = 0;
+            }
+            if (!program)
+            {
+                const char *vertex = R"GLSL(#version 130
+out vec2 uv;
+void main()
+{
+    uv = vec2(float(gl_VertexID & 1), float(gl_VertexID >> 1));
+    gl_Position = vec4(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, 0.0, 1.0);
+}
+)GLSL";
+                const char *fragment = R"GLSL(#version 130
+in vec2 uv;
+out vec4 FragColor;
+uniform sampler2D uRows;
+void main()
+{
+    int row = clamp(int(uv.y * float(textureSize(uRows, 0).y)), 0, textureSize(uRows, 0).y - 1);
+    vec4 color = texelFetch(uRows, ivec2(0, row), 0);
+    if (color.a == 0.0) discard;
+    // Screen-fixed interleaved noise shares one threshold across RGB.
+    float threshold = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+    vec3 rounded = floor(clamp(color.rgb, 0.0, 1.0) * 255.0 + threshold) / 255.0;
+    float dark = 1.0 - smoothstep(0.04, 0.08, max(color.r, max(color.g, color.b)));
+    FragColor = vec4(mix(color.rgb, rounded, dark), color.a);
+}
+)GLSL";
+                GLuint vs = compile_shader(GL_VERTEX_SHADER, vertex);
+                GLuint fs = compile_shader(GL_FRAGMENT_SHADER, fragment);
+                program = glCreateProgram();
+                glAttachShader(program, vs);
+                glAttachShader(program, fs);
+                glLinkProgram(program);
+                glDeleteShader(vs);
+                glDeleteShader(fs);
+                glGenVertexArrays(1, &vao);
+                glGenBuffers(1, &indices);
+                glBindVertexArray(vao);
+                glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indices);
+                const unsigned short order[] = {0, 1, 2, 2, 1, 3};
+                glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(order), order, GL_STREAM_DRAW);
+                glGenTextures(1, &texture);
+            }
+            glUseProgram(program);
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, texture);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            glTexImage2D(GL_TEXTURE_2D, 0, 0x8814 /* GL_RGBA32F */, 1, int(colors.size()),
+                0, GL_RGBA, GL_FLOAT, colors.data());
+            glUniform1i(glGetUniformLocation(program, "uRows"), 0);
+            glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+            glBindVertexArray(vao);
+            glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, nullptr);
+        }, &background);
+        draw->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
+    }
+
     // Floats per vertex: pos(2) rayxy(2) screenY(1) center(3) radii(3) basisX(3) basisY(3)
     // color(4) lightDir(3) tint(3) flags(4) sky(4) texFlags(4) bumpLimb(4) originShift(3) = 46.
     // The eclipse casters are *not* here -- they ride in a mat4 uniform instead (see
@@ -1034,21 +1128,28 @@ namespace alienorum
             if (!s_sky_rows_texture) glGenTextures(1, &s_sky_rows_texture);
             glBindTexture(GL_TEXTURE_2D, s_sky_rows_texture);
             const int height = std::max(1, int(ceil(ImGui::GetIO().DisplaySize.y)));
-            std::vector<unsigned char> rows(height * 4, 0);
+            std::vector<float> rows(height * 4, 0);
             for (const auto &entry : sky_grad)
             {
                 if (entry.first < 0 || entry.first >= height) continue;
                 const size_t index = size_t(entry.first) * 4;
-                rows[index] = entry.second.r;
-                rows[index + 1] = entry.second.g;
-                rows[index + 2] = entry.second.b;
-                rows[index + 3] = 255;
+                rows[index] = entry.second.r / 255.0f;
+                rows[index + 1] = entry.second.g / 255.0f;
+                rows[index + 2] = entry.second.b / 255.0f;
+                rows[index + 3] = 1;
+                if (precise_sky_frame == ImGui::GetFrameCount() && entry.first < int(precise_sky_rows.size()))
+                {
+                    const auto& sky = precise_sky_rows[entry.first];
+                    rows[index] = sky[0];
+                    rows[index + 1] = sky[1];
+                    rows[index + 2] = sky[2];
+                }
             }
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, rows.data());
+            glTexImage2D(GL_TEXTURE_2D, 0, 0x8814 /* GL_RGBA32F */, 1, height, 0, GL_RGBA, GL_FLOAT, rows.data());
             s_sky_rows_uploaded = true;
         }
         glBindTexture(GL_TEXTURE_2D, s_sky_rows_texture);

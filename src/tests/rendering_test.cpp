@@ -467,7 +467,7 @@ class RenderingRegressionTest : public UniverseFixture
     }
 
     std::vector<unsigned char> clouds(unsigned char coverage, double elevation, double field_scale,
-        const CloudTestView &view = CloudTestView())
+        const CloudTestView &view = CloudTestView(), bool pop_clips = false)
     {
         if (!cloud_texture)
         {
@@ -545,6 +545,11 @@ class RenderingRegressionTest : public UniverseFixture
         input.geometry_mode = view.mode;
         input.sample_overhead = view.sample_overhead;
         EXPECT_TRUE(queue_cloud_sky_gpu(input));
+        if (pop_clips)
+        {
+            ImGui::GetBackgroundDrawList()->PopClipRect();
+            ImGui::GetBackgroundDrawList()->PopClipRect();
+        }
         auto pixels = render();
         ImGui::NewFrame();
         return pixels;
@@ -4900,12 +4905,12 @@ TEST_F(RenderingRegressionTest, GroundPaintingCacheRetainsPixelsAndInvalidatesLi
     azimuth_correction = original_correction;
     EXPECT_TRUE(capture().second);
     const double start_latitude = viewer_lat;
-    for (double distance : {.1, .5, 1.5})
+    for (double distance : {.1, .5, 1.5, 3.0, 15.0, 29.5})
     {
         viewer_lat = start_latitude + distance / world->get_equatorial_radius();
         EXPECT_TRUE(capture().second);
     }
-    viewer_lat = start_latitude + 3 / world->get_equatorial_radius();
+    viewer_lat = start_latitude + 31 / world->get_equatorial_radius();
     EXPECT_FALSE(capture().second);
     EXPECT_TRUE(capture().second);
     const std::vector<std::function<void()>> edits =
@@ -5621,6 +5626,306 @@ TEST_F(RenderingRegressionTest, DiscScatteringSuppressesSurfaceContrastTowardThe
     EXPECT_EQ(night[center], 0);
     EXPECT_EQ(night[center + 1], 0);
     EXPECT_EQ(night[center + 2], 0);
+}
+
+TEST_F(RenderingRegressionTest, DarkSkyDitherPreservesFractionalBrightnessAndBlackWithoutFlicker)
+{
+    std::vector<std::array<float, 4>> rows(render_height);
+    for (int y = 0; y < render_height; ++y)
+    {
+        const float value = y < render_height / 2 ? 0.0f : 2.35f / 255;
+        rows[y] = {value, value, value, 1};
+    }
+    queue_dithered_sky(rows);
+    const auto first = render();
+    double sum = 0;
+    int count = 0, low = 0, high = 0;
+    for (int y = 0; y < render_height; ++y)
+    {
+        for (int x = 0; x < render_width; ++x)
+        {
+            const size_t pixel = (y * render_width + x) * 4;
+            EXPECT_EQ(first[pixel], first[pixel + 1]);
+            EXPECT_EQ(first[pixel], first[pixel + 2]);
+            if (y >= render_height / 2)
+            {
+                EXPECT_EQ(first[pixel], 0);
+            }
+            else
+            {
+                sum += first[pixel];
+                ++count;
+                low += first[pixel] == 2;
+                high += first[pixel] == 3;
+            }
+        }
+    }
+    EXPECT_GT(low, 0);
+    EXPECT_GT(high, 0);
+    EXPECT_NEAR(sum / count, 2.35, .03);
+    ImGui::NewFrame();
+    queue_dithered_sky(rows);
+    EXPECT_EQ(first, render());
+    ImGui::NewFrame();
+}
+
+TEST_F(RenderingRegressionTest, DitheredSkyAppliesItsClipInsteadOfThePreviousFrameScissor)
+{
+    const std::vector<std::array<float, 4>> rows(render_height, {3.25f / 255, 2.5f / 255, 1.75f / 255, 1});
+    glDisable(GL_SCISSOR_TEST);
+    glScissor(0, 0, render_width, render_height);
+    queue_dithered_sky(rows);
+    const auto full = render();
+    ImGui::NewFrame();
+
+    // A resized window can retain the old window's scissor box before its
+    // first draw callback. ImGui applies clips automatically only to normal draws.
+    glDisable(GL_SCISSOR_TEST);
+    glScissor(0, 0, render_width * 2 / 3, render_height * 3 / 4);
+    queue_dithered_sky(rows);
+    EXPECT_EQ(image_difference(render(), full), 0);
+    ImGui::NewFrame();
+
+    auto *draw = ImGui::GetBackgroundDrawList();
+    draw->PushClipRect(ImVec2(20, 15), ImVec2(render_width - 15, render_height - 20), true);
+    queue_dithered_sky(rows);
+    draw->PopClipRect();
+    const auto clipped = render();
+    for (int y = 0; y < render_height; ++y)
+    {
+        const int screen_y = render_height - 1 - y;
+        for (int x = 0; x < render_width; ++x)
+        {
+            const size_t pixel = (y * render_width + x) * 4;
+            const bool inside = x >= 20 && x < render_width - 15
+                && screen_y >= 15 && screen_y < render_height - 20;
+            EXPECT_EQ(clipped[pixel], inside ? full[pixel] : 0);
+        }
+    }
+    ImGui::NewFrame();
+}
+
+TEST_F(RenderingRegressionTest, AllGpuDrawCallbacksRespectClipsAfterStaleStateAndResize)
+{
+    set(sky_grad, std::map<int, RGB3>{});
+    set(horizon_ground_gpu_reference, false);
+    set(scenery_gpu_reference, false);
+    const ImVec2 original_scale = ImGui::GetIO().DisplayFramebufferScale;
+    for (int layout = 0; layout < 3; ++layout)
+    {
+        ImGui::EndFrame();
+        render_width = layout == 0 ? 192 : 256;
+        render_height = layout == 0 ? 108 : 144;
+        SDL_SetWindowSize(window, render_width, render_height);
+        const float scale = layout == 2 ? 2 : 1;
+        const float width = render_width / scale, height = render_height / scale;
+        ImGui::GetIO().DisplaySize = ImVec2(width, height);
+        ImGui::GetIO().DisplayFramebufferScale = ImVec2(scale, scale);
+        set(dispcx, double(width / 2));
+        set(dispcy, double(height / 2));
+        ImGui::NewFrame();
+        const ImVec4 full(0, 0, width, height);
+        const std::vector<ImVec4> clips =
+        {
+            full, {1, 1, width - 1, height - 1},
+            {0, 0, width / 2, height}, {width / 2, 0, width, height},
+            {0, 0, width, height / 2}, {0, height / 2, width, height},
+            {0, 0, width / 2, height / 2}, {width / 2, height / 2, width, height},
+            {0, 0, 1, height}, {width - 1, 0, width, height},
+            {0, 0, width, 1}, {0, height - 1, width, height},
+            {width / 2, height / 2, width / 2 + 1, height / 2 + 1},
+            {0, 0, 0, height}, {0, 0, width, 0},
+            {width / 2, height / 2, width / 2, height / 2},
+            {-width, -height, 0, 0}, {width, height, width * 2, height * 2},
+            {-1, -1, width + 1, height + 1},
+            {-width, 0, width / 2, height}, {width / 2, 0, width * 2, height},
+            {0, -height, width, height / 2}, {0, height / 2, width, height * 2},
+            {width + 1, 0, width * 2, height}, {0, height + 1, width, height * 2}
+        };
+        const std::vector<std::array<int, 4>> stale_boxes =
+        {
+            {0, 0, render_width, render_height},
+            {0, 0, render_width * 2 / 3, render_height * 3 / 4},
+            {render_width / 4, render_height / 4, render_width / 2, render_height / 2},
+            {0, 0, 0, 0}, {render_width + 10, render_height + 10, 1, 1}
+        };
+        const auto capture = [&](int renderer, const ImVec4& outer, const ImVec4& inner, int stale)
+        {
+            auto *draw = ImGui::GetBackgroundDrawList();
+            draw->PushClipRect(ImVec2(outer.x, outer.y), ImVec2(outer.z, outer.w), true);
+            draw->PushClipRect(ImVec2(inner.x, inner.y), ImVec2(inner.z, inner.w), true);
+            std::array<int, 5> state{};
+            std::copy(stale_boxes[stale].begin(), stale_boxes[stale].end(), state.begin());
+            state[4] = stale % 2;
+            draw->AddCallback([](const ImDrawList*, const ImDrawCmd *command)
+            {
+                const auto& previous = *static_cast<const std::array<int, 5>*>(command->UserCallbackData);
+                glScissor(previous[0], previous[1], previous[2], previous[3]);
+                if (previous[4]) glEnable(GL_SCISSOR_TEST);
+                else glDisable(GL_SCISSOR_TEST);
+            }, &state);
+            impostor_begin_frame();
+            if (renderer == 0)
+            {
+                queue_dithered_sky(std::vector<std::array<float, 4>>(int(height), {3.25f / 255, 2.5f / 255, 1.75f / 255, 1}));
+            }
+            else if (renderer == 1)
+            {
+                SphereImpostorInput input{};
+                input.cz = 3;
+                input.r = input.axis_x = input.axis_y = input.axis_z = 1;
+                input.basisX[0] = input.basisY[1] = 1;
+                input.fallback_color = IM_COL32(100, 120, 160, 255);
+                input.night_illum = 1;
+                input.light_dir[2] = -1;
+                input.daylight_tint[0] = input.daylight_tint[1] = input.daylight_tint[2] = 1;
+                double xmin, ymin, xmax, ymax;
+                EXPECT_TRUE(queue_sphere_impostor(input, 1, dispcx, dispcy, dispcx, &xmin, &ymin, &xmax, &ymax));
+            }
+            else if (renderer == 2)
+            {
+                RingImpostorInput input{};
+                input.cz = 3;
+                input.inner_r = .5;
+                input.outer_r = 1.4;
+                input.normal[1] = .6;
+                input.normal[2] = .8;
+                input.oblateness = 1;
+                input.fallback_color = IM_COL32(150, 120, 80, 255);
+                input.amt_lit = 1;
+                input.light_dir[2] = -1;
+                EXPECT_TRUE(queue_ring_impostor(input, 1, dispcx, dispcy, dispcx));
+            }
+            else if (renderer == 3)
+            {
+                SunClockGpuInput input{};
+                input.sclk_scale = half_pi / dispcx;
+                input.zoom = 1;
+                input.self_luminous = true;
+                for (int axis = 0; axis < 3; ++axis)
+                {
+                    input.body_axes[axis] = 1;
+                    input.daylight_tint[axis] = 1;
+                    input.fallback_color[axis] = .25;
+                }
+                for (int axis = 0; axis < 4; ++axis) input.rot_matrix[axis * 5] = 1;
+                EXPECT_TRUE(queue_sunclock_gpu(input, dispcx, dispcy));
+            }
+            else if (renderer == 4)
+            {
+                const std::vector<float> depths(int(width * height), 100);
+                const std::vector<double> horizon(int(width), 0);
+                const std::vector<int> top(static_cast<size_t>(width), static_cast<int>(height));
+                EXPECT_TRUE(prepare_horizon_ground_gpu(int(width), int(height), depths, horizon, top, true));
+                queue_horizon_ground_gpu({{0, 0, int(width), int(height), IM_COL32(80, 120, 160, 255)}});
+            }
+            else if (renderer == 5)
+            {
+                if (performance_enabled(42))
+                {
+                    if (prepare_scenery_gpu())
+                    {
+                        SceneryPlantGpu plant;
+                        plant.crown = ImVec4(width / 2, height / 2, width / 3, height / 3);
+                        plant.crown_color = plant.trunk_color = IM_COL32(70, 110, 40, 255);
+                        plant.trunk_visible = 0;
+                        add_scenery_plant_gpu(plant, true, true);
+                        flush_scenery_gpu();
+                    }
+                    else ADD_FAILURE() << "Scenery acceleration unavailable";
+                }
+                else
+                {
+                    // Production uses ordinary ImGui scenery while this optional
+                    // acceleration is disabled. Exercise that route as well.
+                    draw->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
+                    draw->AddCircleFilled(ImVec2(width / 2, height / 2), height / 3, IM_COL32(70, 110, 40, 255));
+                }
+            }
+            glDisable(GL_SCISSOR_TEST);
+            if (renderer == 6)
+            {
+                // The cloud helper also renders and advances the frame, so its
+                // command clip is popped before the next frame starts below.
+                const auto pixels = clouds(200, .5, 1, CloudTestView(), true);
+                return pixels;
+            }
+            draw->PopClipRect();
+            draw->PopClipRect();
+            auto pixels = render();
+            ImGui::NewFrame();
+            return pixels;
+        };
+        for (int renderer = 0; renderer < 7; ++renderer)
+        {
+            SCOPED_TRACE(::testing::Message() << "layout " << layout << ", renderer " << renderer);
+            const auto baseline = capture(renderer, full, full, 0);
+            bool colored = false;
+            for (size_t pixel = 0; pixel < baseline.size(); pixel += 4)
+                colored |= baseline[pixel] > 0 || baseline[pixel + 1] > 0 || baseline[pixel + 2] > 0;
+            EXPECT_TRUE(colored);
+            for (size_t clip = 0; clip < clips.size(); ++clip)
+            {
+                // A second, intersecting clip exercises nested and disjoint clips.
+                const auto& outer = clips[clip];
+                const ImVec4 inner = clip % 2 ? ImVec4(width / 4, height / 4, width * 3 / 4, height * 3 / 4) : full;
+                auto expected = baseline;
+                for (int y = 0; y < render_height; ++y)
+                {
+                    for (int x = 0; x < render_width; ++x)
+                    {
+                        const float sx = x / scale, sy = (render_height - 1 - y) / scale;
+                        const bool inside = sx >= outer.x && sx < outer.z && sy >= outer.y && sy < outer.w
+                            && sx >= inner.x && sx < inner.z && sy >= inner.y && sy < inner.w;
+                        if (!inside) std::fill_n(expected.begin() + (y * render_width + x) * 4, 4, 0);
+                    }
+                }
+                for (int stale = 0; stale < int(stale_boxes.size()); ++stale)
+                {
+                    SCOPED_TRACE(::testing::Message() << "clip " << clip << ", stale " << stale);
+                    // Also rebuild the cloud cache under partial and empty clips.
+                    // Its offscreen contents must remain complete for later frames.
+                    if (renderer == 6 && stale == int(stale_boxes.size()) - 1) ++cloud_epoch;
+                    EXPECT_EQ(image_difference(capture(renderer, outer, inner, stale), expected), 0);
+                }
+            }
+            EXPECT_EQ(image_difference(capture(renderer, full, full, 0), baseline), 0);
+        }
+    }
+    ImGui::EndFrame();
+    ImGui::GetIO().DisplayFramebufferScale = original_scale;
+    ImGui::GetIO().DisplaySize = ImVec2(192, 108);
+    SDL_SetWindowSize(window, 192, 108);
+    ImGui::NewFrame();
+}
+
+TEST_F(RenderingRegressionTest, DarkDiscDitherPreservesFractionalNightLighting)
+{
+    set(sky_grad, std::map<int, RGB3>{});
+    SphereImpostorInput input{};
+    input.cz = 5;
+    input.r = input.axis_x = input.axis_y = input.axis_z = 1;
+    input.basisX[0] = input.basisY[1] = 1;
+    input.fallback_color = IM_COL32(255, 255, 255, 255);
+    input.light_dir[2] = 1;
+    input.night_illum = 2.35 / 255;
+    input.daylight_tint[0] = input.daylight_tint[1] = input.daylight_tint[2] = 1;
+    double xmin, ymin, xmax, ymax;
+    impostor_begin_frame();
+    ASSERT_TRUE(queue_sphere_impostor(input, 1, dispcx, dispcy, dispcx, &xmin, &ymin, &xmax, &ymax));
+    const auto pixels = render();
+    double sum = 0;
+    int count = 0;
+    for (int y = render_height / 2 - 5; y < render_height / 2 + 5; ++y)
+    {
+        for (int x = render_width / 2 - 5; x < render_width / 2 + 5; ++x)
+        {
+            sum += pixels[(y * render_width + x) * 4];
+            ++count;
+        }
+    }
+    EXPECT_NEAR(sum / count, 2.35, .15);
+    ImGui::NewFrame();
 }
 
 TEST_F(RenderingRegressionTest, GpuSphereUsesProjectedSkyRows)

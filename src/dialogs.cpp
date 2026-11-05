@@ -611,11 +611,6 @@ void draw_status_window(ImGuiIO& io)            // the S panel
     if (show_dev_dial)
     {
         ImGui::Text("Dev Dial: %.5f", dev_dial);
-        if (view_mode == vm_horizon)
-        {
-            const auto &cloud = cloud_sky_gpu_stats();
-            ImGui::Text("Horizon preparation CPU: %.2f ms", precipitation_stats.horizon_cpu_milliseconds);
-        }
     }
 
     ImGui::Separator();
@@ -3161,6 +3156,7 @@ void draw_stellar_neighborhood(ImGuiIO &io)
     neighborhood_order = static_cast<NeighborhoodOrder>(order_choice);
     ImGui::SameLine();
     ImGui::Checkbox("Planets##neighb_must_have_planets", &onlyplt);
+    if (!onlyplt) onlyhz = false;
     if (minpl < 1) minpl = 1;
     if (onlyplt && !onlyhz)
     {

@@ -7121,9 +7121,9 @@ void draw_horizon()
             const double longitude_step = std::remainder(viewer_lon - painted_longitude, 2 * _pi);
             const double travel = ground_cache_valid ? surface_radius * hypot(latitude_step,
                 cos((viewer_lat + painted_latitude) * .5) * longitude_step) : INFINITY;
-            // Two metres avoids rebuilding for every Home/End step. Near a pole,
+            // Refresh after thirty metres of accumulated Home/End travel. Near a pole,
             // retain exact positions because the north/east basis turns rapidly.
-            const bool position_reusable = travel < std::min(2.0, surface_radius * .001)
+            const bool position_reusable = travel < std::min(30.0, surface_radius * .001)
                 && (fabs(viewer_lat) < half_pi - .001 || (latitude_step == 0 && longitude_step == 0));
             int ground_stride = 1;
             if (horizon_motion_ground_sampling && gpu_ground && paint_biomes && ground_cache_valid
@@ -9383,7 +9383,6 @@ void draw_sky_gradient()
                 if (rgb.r > 0.7*rgb.b) city_lights = rgb.r;
             }
 
-            int x_extent = dispcx*2-1;
             double skylight = fmin(1, pow(luminous_flux*2.5e-11, 1.0/5.5) + starlight + 0.00125 * city_lights);
             sky_mag_shift = skylight * -10;
 
@@ -9439,6 +9438,7 @@ void draw_sky_gradient()
             const double falloff_r = mineral ? .9985 : .999;
             const double falloff_g = mineral ? .9978 : .9995;
             const double falloff_b = mineral ? .9992 : .9999;
+            std::vector<std::array<float, 4>> sky_rows(int(dispcy * 2));
             for (int y = 0; y < dispcy * 2; ++y)
             {
                 const double vertical = (dispcy - (y + .5)) / (zoom * dispcx);
@@ -9454,10 +9454,10 @@ void draw_sky_gradient()
                 const double bb = b * pow(falloff_b, height) * (1 - row_redden) + sunset_b * row_redden;
                 const RGB3 color(std::clamp(rr * 255, 0.0, 255.0), std::clamp(gg * 255, 0.0, 255.0),
                     std::clamp(bb * 255, 0.0, 255.0));
-                ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, y), ImVec2(x_extent + 1, y + 1),
-                    rgba_apply_redlight(IM_COL32(color.r, color.g, color.b, int(a * 255))));
+                sky_rows[y] = {float(rr * a), float(gg * a), float(bb * a), float(a)};
                 sky_grad[y] = RGB3(color.r * a, color.g * a, color.b * a);
             }
+            queue_dithered_sky(sky_rows, redlight_mode);
         }
     }
 }

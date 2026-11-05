@@ -328,8 +328,6 @@ namespace alienorum
             return;
         }
 
-        glDisable(GL_SCISSOR_TEST);
-
         glUseProgram(s_program);
         glUniformMatrix4fv(s_uParams1Loc, 1, GL_FALSE, p->params1);
         glUniformMatrix4fv(s_uParams2Loc, 1, GL_FALSE, p->params2);

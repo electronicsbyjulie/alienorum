@@ -7,6 +7,8 @@
 // translation unit. Depending on imgui.h alone (for ImVec2/ImU32) keeps that loader out of every
 // file that includes this one.
 #include "imgui.h"
+#include <array>
+#include <vector>
 
 // Set to 0, or compile with -DDISC_SCATTERING=0, to retain the original disc rendering.
 #ifndef DISC_SCATTERING
@@ -75,6 +77,9 @@ namespace alienorum
         double *out_xmin, double *out_ymin, double *out_xmax, double *out_ymax);
 
     void impostor_begin_frame();
+
+    // Floating-point, premultiplied sky rows; alpha zero marks an absent row.
+    void queue_dithered_sky(const std::vector<std::array<float, 4>>& rows, bool redlight = false);
 
     struct RingImpostorInput
     {
