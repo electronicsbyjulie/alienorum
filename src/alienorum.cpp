@@ -1314,8 +1314,8 @@ int main (int argc, char** argv)
 
     SDL_GL_DeleteContext(gl_context);
     SDL_DestroyWindow(window);
-    SoundManager::get_instance().close_audio();
-    SDL_Quit();
+    // A stalled audio worker retains SDL ownership until process exit.
+    if (SoundManager::get_instance().close_audio()) SDL_Quit();
     alienorum::print_catalog_lock_trace(std::cout);
     return 0;
 }

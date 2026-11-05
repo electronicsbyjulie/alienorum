@@ -1,5 +1,9 @@
 #include "../performance_options.h"
 #include <memory>
+#include <atomic>
+#include <chrono>
+#include <future>
+#include <thread>
 #include <gtest/gtest.h>
 #include <fstream>
 #include <nlohmann/json.hpp>
@@ -7,11 +11,24 @@
 #include "../classes/sound.h"
 #include "../classes/celestial.h"
 #include "../classes/planet.h"
+#include "../classes/star.h"
 #include "../classes/misc.h"
 #include "../globals.h"
 
 using namespace alienorum;
 using json = nlohmann::json;
+
+namespace alienorum
+{
+    struct SoundManagerTestAccess
+    {
+        static std::unique_ptr<SoundManager, void(*)(SoundManager*)> create(
+            std::function<void(const std::string&, bool)> backend)
+        {
+            return {new SoundManager(std::move(backend)), [](SoundManager* manager) { delete manager; }};
+        }
+    };
+}
 
 class SoundTest : public ::testing::Test
 {
@@ -102,6 +119,129 @@ TEST_F(SoundTest, HorizonTransitionsResetHistoryOnceAndRearmingStartsFresh)
     target.has_prev_horizon_alt = true;
     manager.reset_horizon_tracking();
     EXPECT_FALSE(target.has_prev_horizon_alt);
+}
+
+TEST_F(SoundTest, RealRiseAndSetCrossingsStayResponsiveWhenAudioStalls)
+{
+    using namespace std::chrono_literals;
+    for (bool rising : {true, false})
+    {
+        SCOPED_TRACE(rising ? "rise" : "set");
+        Planet observer;
+        observer.type = rocky;
+        observer.mass = earth_mass;
+        observer.volumetric_mean_radius = earth_radius;
+        observer.temperature = 288;
+        observer.temperature_supplied = true;
+        observer.ensure_atmosphere()->surface_pressure = oneatm;
+        Star target;
+        CelestialObject* objects[] = {&target, &observer, nullptr};
+        struct RestoreContext
+        {
+            CelestialObject** array = cels;
+            CelestialLocation position = here;
+            ViewMode mode = view_mode;
+            int place = whereami, count = ncelobjs;
+            double latitude = viewer_lat, longitude = viewer_lon;
+            ~RestoreContext()
+            {
+                cels = array;
+                here = position;
+                view_mode = mode;
+                whereami = place;
+                ncelobjs = count;
+                viewer_lat = latitude;
+                viewer_lon = longitude;
+            }
+        } restore;
+        cels = objects;
+        ncelobjs = 2;
+        whereami = 1;
+        view_mode = vm_horizon;
+        viewer_lat = viewer_lon = 0;
+        here = observer.location;
+        here.equatorial_plane.a = 0;
+        struct BlockedAudio
+        {
+            std::promise<void> started, release;
+            std::shared_future<void> released = release.get_future().share();
+            std::atomic<bool> announced{false};
+            std::thread::id thread;
+            std::string path;
+            bool ascending = false;
+        };
+        auto audio = std::make_shared<BlockedAudio>();
+        auto started = audio->started.get_future();
+        auto manager = SoundManagerTestAccess::create([audio](const std::string& path, bool ascending)
+        {
+            if (!audio->announced.exchange(true))
+            {
+                audio->thread = std::this_thread::get_id();
+                audio->path = path;
+                audio->ascending = ascending;
+                audio->started.set_value();
+            }
+            audio->released.wait();
+        });
+        int rises = 0, sets = 0;
+        manager->set_rise_callback([&](CelestialObject* object)
+        {
+            EXPECT_EQ(object, &target);
+            EXPECT_FALSE(object->alert_rise);
+            ++rises;
+        });
+        manager->set_set_callback([&](CelestialObject* object)
+        {
+            EXPECT_EQ(object, &target);
+            EXPECT_FALSE(object->alert_set);
+            ++sets;
+        });
+        target.alert_rise = rising;
+        target.alert_set = !rising;
+        target.location.local_position = Point(0, (rising ? -.02 : .02) * AU, AU);
+        manager->check_rise_set_alerts();
+        EXPECT_EQ(target.prev_horizon_alt < 0, rising);
+        target.location.local_position = Point(0, (rising ? .02 : -.02) * AU, AU);
+        std::thread::id frame_thread;
+        auto frame = std::async(std::launch::async, [&]()
+        {
+            frame_thread = std::this_thread::get_id();
+            manager->check_rise_set_alerts();
+        });
+        const auto status = frame.wait_for(500ms);
+        bool released = false;
+        if (status != std::future_status::ready)
+        {
+            // Release the fault even on failure, so a synchronous regression
+            // produces a failed assertion rather than wedging the test runner.
+            audio->release.set_value();
+            released = true;
+        }
+        EXPECT_EQ(status, std::future_status::ready);
+        frame.get();
+        const auto playback_status = started.wait_for(1s);
+        EXPECT_EQ(playback_status, std::future_status::ready);
+        if (playback_status == std::future_status::ready)
+        {
+            EXPECT_NE(audio->thread, frame_thread);
+            EXPECT_EQ(audio->ascending, rising);
+            EXPECT_EQ(audio->path, rising ? rise_sound_path : set_sound_path);
+        }
+        EXPECT_EQ(rises, rising ? 1 : 0);
+        EXPECT_EQ(sets, rising ? 0 : 1);
+        EXPECT_FALSE(target.alert_rise);
+        EXPECT_FALSE(target.alert_set);
+        manager->check_rise_set_alerts();
+        EXPECT_EQ(rises + sets, 1);
+        if (!released)
+        {
+            const auto before_close = std::chrono::steady_clock::now();
+            EXPECT_FALSE(manager->close_audio());
+            EXPECT_LT(std::chrono::steady_clock::now() - before_close, 500ms);
+            audio->release.set_value();
+        }
+        EXPECT_TRUE(manager->close_audio());
+    }
 }
 
 TEST_F(SoundTest, SoundFilesExistAndValidHeader)

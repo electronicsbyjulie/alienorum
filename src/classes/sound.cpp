@@ -6,6 +6,11 @@
 #include <iostream>
 #include <vector>
 #include <cstring>
+#include <chrono>
+#include <condition_variable>
+#include <deque>
+#include <mutex>
+#include <thread>
 
 extern bool play_rise_set_sound;
 extern std::string rise_sound_path;
@@ -20,9 +25,23 @@ namespace alienorum
 #endif
     }
 
-    SoundManager::SoundManager()
+    namespace
     {
+        struct AudioOutput
+        {
+            SDL_AudioDeviceID audio_device = 0;
+            SDL_AudioSpec device_spec{};
+            bool audio_initialized = false, owns_subsystem = false;
+            bool init_audio();
+            void close_audio();
+            bool play_sound_file(const std::string& filepath);
+            void play_procedural_chime(bool ascending);
+        };
     }
+
+    SoundManager::SoundManager() = default;
+    SoundManager::SoundManager(std::function<void(const std::string&, bool)> backend)
+        : playback_backend(std::move(backend)) {}
 
     SoundManager::~SoundManager()
     {
@@ -35,7 +54,7 @@ namespace alienorum
         return instance;
     }
 
-    bool SoundManager::init_audio()
+    bool AudioOutput::init_audio()
     {
         if (audio_initialized && audio_device > 0)
         {
@@ -48,6 +67,7 @@ namespace alienorum
             {
                 return false;
             }
+            owns_subsystem = true;
         }
 
         SDL_AudioSpec desired;
@@ -68,7 +88,7 @@ namespace alienorum
         return true;
     }
 
-    void SoundManager::close_audio()
+    void AudioOutput::close_audio()
     {
         if (audio_device > 0)
         {
@@ -76,15 +96,15 @@ namespace alienorum
             audio_device = 0;
         }
         audio_initialized = false;
+        if (owns_subsystem)
+        {
+            SDL_QuitSubSystem(SDL_INIT_AUDIO);
+            owns_subsystem = false;
+        }
     }
 
-    bool SoundManager::play_sound_file(const std::string& filepath)
+    bool AudioOutput::play_sound_file(const std::string& filepath)
     {
-        if (!play_rise_set_sound)
-        {
-            return false;
-        }
-
         if (!init_audio())
         {
             return false;
@@ -136,7 +156,7 @@ namespace alienorum
         return true;
     }
 
-    void SoundManager::play_procedural_chime(bool ascending)
+    void AudioOutput::play_procedural_chime(bool ascending)
     {
         if (!init_audio())
         {
@@ -197,48 +217,110 @@ namespace alienorum
         SDL_PauseAudioDevice(audio_device, 0);
     }
 
+    struct SoundManager::PlaybackState
+    {
+        struct Request
+        {
+            std::string path, fallback;
+            bool ascending;
+        };
+        std::mutex mutex;
+        std::condition_variable changed;
+        std::deque<Request> requests;
+        std::thread worker;
+        bool stopping = false, finished = false;
+        std::function<void(const std::string&, bool)> backend;
+
+        void run()
+        {
+            AudioOutput output;
+            for (;;)
+            {
+                Request request;
+                {
+                    std::unique_lock<std::mutex> lock(mutex);
+                    changed.wait(lock, [&]() { return stopping || !requests.empty(); });
+                    if (stopping) break;
+                    request = std::move(requests.front());
+                    requests.pop_front();
+                }
+                // No queue lock, catalog pointer, or mutable UI preference is
+                // held while the audio driver, file I/O, or conversion runs.
+                try
+                {
+                    if (backend) backend(request.path, request.ascending);
+                    else if (!output.play_sound_file(request.path)
+                        && !(request.path != request.fallback && output.play_sound_file(request.fallback)))
+                    {
+                        output.play_procedural_chime(request.ascending);
+                    }
+                }
+                catch (...) { /* A failed notification must not terminate the worker. */ }
+            }
+            output.close_audio();
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                finished = true;
+            }
+            changed.notify_all();
+        }
+    };
+
+    void SoundManager::queue_sound(bool ascending)
+    {
+        if (!play_rise_set_sound) return;
+        if (!playback)
+        {
+            auto state = std::make_shared<PlaybackState>();
+            state->backend = playback_backend;
+            try { state->worker = std::thread([state]() { state->run(); }); }
+            catch (...) { return; }
+            playback = std::move(state);
+        }
+        const auto state = playback;
+        {
+            std::lock_guard<std::mutex> lock(state->mutex);
+            if (state->stopping) return;
+            // Bound pending notifications when several objects cross together.
+            if (state->requests.size() >= 8) state->requests.pop_front();
+            state->requests.push_back({ascending ? rise_sound_path : set_sound_path,
+                ascending ? default_rise_sound_path : default_set_sound_path, ascending});
+        }
+        state->changed.notify_one();
+    }
+
+    bool SoundManager::close_audio()
+    {
+        const auto state = playback;
+        if (!state) return true;
+        std::unique_lock<std::mutex> lock(state->mutex);
+        state->stopping = true;
+        state->requests.clear();
+        state->changed.notify_one();
+        const bool finished = state->changed.wait_for(lock, std::chrono::milliseconds(100),
+            [&]() { return state->finished; });
+        lock.unlock();
+        if (state->worker.joinable())
+        {
+            if (finished) state->worker.join();
+            else state->worker.detach();
+        }
+        // A detached worker retains its state until the backend returns. It
+        // never calls back into the manager or accesses celestial objects.
+        if (finished) playback.reset();
+        return finished;
+    }
+
     void SoundManager::play_rise_sound(CelestialObject* obj)
     {
-        if (on_rise_callback)
-        {
-            on_rise_callback(obj);
-        }
-
-        if (!play_rise_set_sound)
-        {
-            return;
-        }
-
-        if (!play_sound_file(rise_sound_path))
-        {
-            if (rise_sound_path != (default_rise_sound_path) && play_sound_file(default_rise_sound_path))
-            {
-                return;
-            }
-            play_procedural_chime(true);
-        }
+        if (on_rise_callback) on_rise_callback(obj);
+        queue_sound(true);
     }
 
     void SoundManager::play_set_sound(CelestialObject* obj)
     {
-        if (on_set_callback)
-        {
-            on_set_callback(obj);
-        }
-
-        if (!play_rise_set_sound)
-        {
-            return;
-        }
-
-        if (!play_sound_file(set_sound_path))
-        {
-            if (set_sound_path != (default_set_sound_path) && play_sound_file(default_set_sound_path))
-            {
-                return;
-            }
-            play_procedural_chime(false);
-        }
+        if (on_set_callback) on_set_callback(obj);
+        queue_sound(false);
     }
 
     const std::vector<CelestialObject*>& SoundManager::armed_targets()
@@ -335,14 +417,16 @@ namespace alienorum
 
             if (object->alert_rise && object->prev_horizon_alt <= 0.0 && cur_alt > 0.0)
             {
-                play_rise_sound(object);
                 object->alert_rise = false;
+                object->prev_horizon_alt = cur_alt;
+                play_rise_sound(object);
             }
 
             if (object->alert_set && object->prev_horizon_alt >= 0.0 && cur_alt < 0.0)
             {
-                play_set_sound(object);
                 object->alert_set = false;
+                object->prev_horizon_alt = cur_alt;
+                play_set_sound(object);
             }
 
             object->prev_horizon_alt = cur_alt;

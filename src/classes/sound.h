@@ -5,6 +5,7 @@
 #include <vector>
 #include <functional>
 #include <cstdint>
+#include <memory>
 #if defined(__has_include)
   #if __has_include(<SDL2/SDL.h>)
     #include <SDL2/SDL.h>
@@ -23,11 +24,13 @@ namespace alienorum
     {
     private:
         SoundManager();
+        explicit SoundManager(std::function<void(const std::string&, bool)> backend);
         ~SoundManager();
-
-        SDL_AudioDeviceID audio_device = 0;
-        SDL_AudioSpec device_spec;
-        bool audio_initialized = false;
+        friend struct SoundManagerTestAccess;
+        struct PlaybackState;
+        std::shared_ptr<PlaybackState> playback;
+        std::function<void(const std::string&, bool)> playback_backend;
+        void queue_sound(bool ascending);
 
         int last_whereami = -1;
         double last_viewer_lat = 0.0;
@@ -42,18 +45,15 @@ namespace alienorum
         std::function<void(CelestialObject*)> on_rise_callback;
         std::function<void(CelestialObject*)> on_set_callback;
 
-        void play_procedural_chime(bool ascending);
-
     public:
         static SoundManager& get_instance();
 
         SoundManager(const SoundManager&) = delete;
         SoundManager& operator=(const SoundManager&) = delete;
 
-        bool init_audio();
-        void close_audio();
-
-        bool play_sound_file(const std::string& filepath);
+        // False means a stalled backend still owns SDL audio. The caller must
+        // leave global SDL teardown to process exit rather than race that worker.
+        bool close_audio();
         void play_rise_sound(CelestialObject* obj = nullptr);
         void play_set_sound(CelestialObject* obj = nullptr);
 
