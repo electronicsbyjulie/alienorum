@@ -63,8 +63,15 @@ namespace alienorum
 
         if (SDL_WasInit(SDL_INIT_AUDIO) == 0)
         {
+#if defined(__linux__) && SDL_VERSION_ATLEAST(2, 0, 22)
+            // Prefer the native PipeWire path over its PulseAudio compatibility
+            // server, while retaining real-device fallbacks and user overrides.
+            if (!SDL_GetHint(SDL_HINT_AUDIODRIVER))
+                SDL_SetHintWithPriority(SDL_HINT_AUDIODRIVER, "pipewire,pulseaudio,alsa", SDL_HINT_DEFAULT);
+#endif
             if (SDL_InitSubSystem(SDL_INIT_AUDIO) != 0)
             {
+                SDL_LogWarn(SDL_LOG_CATEGORY_AUDIO, "Audio initialization failed: %s", SDL_GetError());
                 return false;
             }
             owns_subsystem = true;
@@ -80,6 +87,7 @@ namespace alienorum
         audio_device = SDL_OpenAudioDevice(nullptr, 0, &desired, &device_spec, 0);
         if (audio_device == 0)
         {
+            SDL_LogWarn(SDL_LOG_CATEGORY_AUDIO, "Audio device failed: %s", SDL_GetError());
             return false;
         }
 
@@ -125,11 +133,12 @@ namespace alienorum
             SDL_ClearQueuedAudio(audio_device);
         }
 
+        bool queued = false;
         if (wav_spec.format == device_spec.format
             && wav_spec.channels == device_spec.channels
             && wav_spec.freq == device_spec.freq)
         {
-            SDL_QueueAudio(audio_device, wav_buffer, wav_length);
+            queued = SDL_QueueAudio(audio_device, wav_buffer, wav_length) == 0;
         }
         else
         {
@@ -144,7 +153,7 @@ namespace alienorum
                     std::memcpy(cvt.buf, wav_buffer, wav_length);
                     if (SDL_ConvertAudio(&cvt) >= 0)
                     {
-                        SDL_QueueAudio(audio_device, cvt.buf, cvt.len_cvt);
+                        queued = SDL_QueueAudio(audio_device, cvt.buf, cvt.len_cvt) == 0;
                     }
                     free(cvt.buf);
                 }
@@ -153,7 +162,7 @@ namespace alienorum
 
         SDL_FreeWAV(wav_buffer);
         SDL_PauseAudioDevice(audio_device, 0);
-        return true;
+        return queued;
     }
 
     void AudioOutput::play_procedural_chime(bool ascending)

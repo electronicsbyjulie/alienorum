@@ -4,6 +4,9 @@
 #include <chrono>
 #include <future>
 #include <thread>
+#include <filesystem>
+#include <algorithm>
+#include <cstdlib>
 #include <gtest/gtest.h>
 #include <fstream>
 #include <nlohmann/json.hpp>
@@ -27,6 +30,44 @@ namespace alienorum
         {
             return {new SoundManager(std::move(backend)), [](SoundManager* manager) { delete manager; }};
         }
+
+        static int verify_pcm_output()
+        {
+            using namespace std::chrono_literals;
+            const auto folder = std::filesystem::temp_directory_path()
+                / ("alienorum_audio_pcm_" + std::to_string(SDL_GetPerformanceCounter()));
+            std::filesystem::create_directories(folder);
+            SDL_setenv("SDL_AUDIODRIVER", "disk", 1);
+            SDL_setenv("SDL_DISKAUDIODELAY", "1", 1);
+            for (bool ascending : {true, false})
+            {
+                const auto file = folder / (ascending ? "rise.raw" : "set.raw");
+                SDL_setenv("SDL_DISKAUDIOFILE", file.string().c_str(), 1);
+                auto manager = create({});
+                if (ascending) manager->play_rise_sound();
+                else manager->play_set_sound();
+                bool audible = false;
+                const auto deadline = std::chrono::steady_clock::now() + 2s;
+                while (!audible && std::chrono::steady_clock::now() < deadline)
+                {
+                    std::ifstream input(file, std::ios::binary);
+                    char samples[8192];
+                    while (input.read(samples, sizeof(samples)) || input.gcount())
+                    {
+                        if (std::any_of(samples, samples + input.gcount(), [](char sample) { return sample != 0; }))
+                        {
+                            audible = true;
+                            break;
+                        }
+                    }
+                    if (!audible) std::this_thread::sleep_for(5ms);
+                }
+                if (!manager->close_audio()) return 2;
+                if (!audible) return 3;
+            }
+            std::filesystem::remove_all(folder);
+            return 0;
+        }
     };
 }
 
@@ -47,6 +88,18 @@ protected:
         SoundManager::get_instance().reset_horizon_tracking();
     }
 };
+
+TEST_F(SoundTest, NativeRiseAndSetPlaybackEmitsNonSilentPcm)
+{
+    bool disk_available = false;
+    for (int i = 0; i < SDL_GetNumAudioDrivers(); ++i)
+        if (std::string(SDL_GetAudioDriver(i)) == "disk") disk_available = true;
+    if (!disk_available) GTEST_SKIP() << "SDL disk audio driver is absent.";
+    const auto previous_style = ::testing::FLAGS_gtest_death_test_style;
+    ::testing::FLAGS_gtest_death_test_style = "threadsafe";
+    ASSERT_EXIT(std::_Exit(SoundManagerTestAccess::verify_pcm_output()), ::testing::ExitedWithCode(0), "");
+    ::testing::FLAGS_gtest_death_test_style = previous_style;
+}
 
 TEST_F(SoundTest, HorizonTransitionsResetHistoryOnceAndRearmingStartsFresh)
 {
