@@ -8,6 +8,7 @@
 #include <curl/curl.h>
 #include "cat.h"
 #include "numeric.h"
+#include "exoplanetstatus.h"
 #include "../globals.h"
 
 using namespace alienorum;
@@ -158,9 +159,13 @@ bool CatalogReader::fetch_stellar_catalog_json(const std::string& url, const std
             << " (" << curl_easy_strerror(status) << ")" << std::endl;
         return false;
     }
-    result = json::parse(response, nullptr, false);
+    if (url.find("exoplanet.eu/catalog/csv/") != std::string::npos)
+        result = parse_eu_planet_status(response);
+    else if (url.find("exoplanetarchive.ipac.caltech.edu/docs/removed_targets.html") != std::string::npos)
+        result = parse_nasa_planet_status(response);
+    else result = json::parse(response, nullptr, false);
     normalize_uncertain_numbers(result);
-    return !result.is_discarded();
+    return !result.is_discarded() && !result.is_null();
 }
 
 void CatalogReader::prepare_stellar_chemistry()

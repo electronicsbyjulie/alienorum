@@ -15,6 +15,7 @@
 #include "../classes/cons.h"
 #include "../classes/sscimport.h"
 #include "../classes/shore.h"
+#include "../classes/exoplanetstatus.h"
 #include "../loaders.h"
 #include "../globals.h"
 #include "../housekeeping.h"
@@ -2615,6 +2616,9 @@ protected:
         std::filesystem::create_directories(temporary / "catalogs");
         std::filesystem::current_path(temporary);
         abort_load = false;
+        // Source-download fixtures have current empty classification feeds by default.
+        std::ofstream("catalogs/exoplanet_rejections_nasa.json") << "[]";
+        std::ofstream("catalogs/exoplanet_rejections_eu.json") << "[]";
     }
     void TearDown() override
     {
@@ -2667,6 +2671,158 @@ protected:
         }
     };
 };
+
+TEST(ExoplanetStatusTest, ParsesQuotedEuClassificationsAndRejectsMalformedExports)
+{
+    const json rows = parse_eu_planet_status("name,planet_status,alternate_names\r\n"
+        "\"Example b\",Retracted,\"Alias b, Other b\"\r\n"
+        "Example c,Controversial,\"Quoted \"\"name\"\" c\"\r\n");
+    ASSERT_TRUE(rows.is_array());
+    ASSERT_EQ(rows.size(), 2u);
+    EXPECT_EQ(rows[0]["alt_target_name"], "Alias b, Other b");
+    EXPECT_TRUE(rejected_exoplanet_status(rows[0]));
+    EXPECT_FALSE(rejected_exoplanet_status(rows[1]));
+    EXPECT_TRUE(parse_eu_planet_status("<html>Service unavailable</html>").is_null());
+    EXPECT_TRUE(parse_eu_planet_status("name,planet_status\nb,Retracted,extra\n").is_null());
+}
+
+TEST(ExoplanetStatusTest, NasaRefutationsExcludeOtherSectionsAndExpandGroupedPlanets)
+{
+    const json rows = parse_nasa_planet_status(
+        "<a name=\"not_peered\"></a><li>Unconfirmed b</li>"
+        "<a name=\"refuted\"></a><ul><li>Old b (<a href=\"https://ui.adsabs.harvard.edu/paper\">Paper</a>)</li></ul>"
+        "<li>Broken b (<a href=\"https://ui.adsabs.harvard.edu/paper\">Paper)</a></li>"
+        "<a name=\"false_pos\"></a><ul><li><a href=\"overview\">Group b &amp; c</a> (Paper)</li>"
+        "<li><a href=\"overview\">HD 10700 e</a> (a.k.a. tau Cet e) &amp; HD 102365 b (Paper)</li></ul>"
+        "<a name=\"reinstated\"></a><li>Restored b</li>");
+    ASSERT_TRUE(rows.is_array());
+    std::set<std::string> names;
+    for (const auto& row : rows) names.insert(row.at("pl_name"));
+    EXPECT_EQ(names, (std::set<std::string>{"Old b", "Broken b", "Group b", "Group c", "HD 10700 e", "tau Cet e", "HD 102365 b"}));
+    EXPECT_TRUE(parse_nasa_planet_status("<html>Maintenance</html>").is_null());
+}
+
+TEST(ExoplanetStatusTest, RejectionTraversesAliasesAcrossBothSourcesWithoutRejectingOtherPlanets)
+{
+    for (const char* provider : {"NASA", "EU"})
+    {
+        ExoplanetRejections rejected;
+        rejected.add({{"pl_name", "Survey b"}, {"planet_status", " reTRACTED "}, {"source_catalog", provider}});
+        rejected.add({{"pl_name", "Survey b"}, {"alt_target_name", "Alias b"}});
+        rejected.add({{"pl_name", "Other b"}, {"alt_target_name", "Alias b"}});
+        rejected.resolve();
+        EXPECT_TRUE(rejected.excludes({{"pl_name", "Other-b"}, {"planet_status", "Confirmed"}}));
+        EXPECT_FALSE(rejected.excludes({{"pl_name", "Survey c"}, {"planet_status", "Candidate"}}));
+        EXPECT_FALSE(rejected.excludes({{"pl_name", "Survey d"}, {"planet_status", "Controversial"}}));
+    }
+    for (const char* status : {"False Positive", "FALSE_POSITIVE", "False Positive Planet", "FPP", "FP", "Refuted"})
+        EXPECT_TRUE(rejected_exoplanet_status({{"planet_status", status}}));
+    EXPECT_FALSE(rejected_exoplanet_status({{"planet_status", nullptr}}));
+    EXPECT_EQ(exoplanet_status_key("42 Dra Ab"), exoplanet_status_key("42 Dra b"));
+    EXPECT_EQ(exoplanet_status_key("42 Dra A b"), exoplanet_status_key("42 Dra b"));
+    EXPECT_NE(exoplanet_status_key("42 Dra B b"), exoplanet_status_key("42 Dra b"));
+}
+
+TEST_F(StellarDownloadTest, RejectionsFromEitherProviderApplyToJsonAndDerivedCaches)
+{
+    struct RestoreNetwork
+    {
+        bool saved = radio_silence;
+        ~RestoreNetwork() { radio_silence = saved; }
+    } restore;
+    radio_silence = true;
+    for (bool nasa : {false, true})
+    {
+        for (bool derived : {false, true})
+        {
+            SCOPED_TRACE(nasa);
+            SCOPED_TRACE(derived);
+            delete_the_universe();
+            make_star("Sol");
+            Star* host = make_star("Status host");
+            const json rows = json::array({
+                {{"pl_name", "Status host b"}, {"hostname", "Status host"}, {"alt_target_name", "Rejected alias b"},
+                    {"pl_orbper", 10}, {"ra", 10}, {"dec", 20}, {"sy_dist", 10}, {"source_catalog", nasa ? "EU" : "NASA"}},
+                {{"pl_name", "Status host c"}, {"hostname", "Status host"}, {"pl_orbper", 20},
+                    {"ra", 10}, {"dec", 20}, {"sy_dist", 10}, {"planet_status", "Candidate"}}
+            });
+            std::ofstream("catalogs/exoplanets.json") << rows;
+            for (const char* path : {"catalogs/exoplanets_stars.dat", "catalogs/exoplanets_planets.dat"})
+                std::filesystem::remove(path);
+            const json veto = json::array({{{"pl_name", "Rejected alias b"}, {"planet_status", "Retracted"}}});
+            std::ofstream("catalogs/exoplanet_rejections_nasa.json") << (nasa ? veto : json::array());
+            std::ofstream("catalogs/exoplanet_rejections_eu.json") << (nasa ? json::array() : veto);
+            if (derived)
+            {
+                FILE* file = fopen("catalogs/exoplanets_planets.dat", "wb");
+                ASSERT_NE(file, nullptr);
+                fputs("# EXO_TRANSIT5\n", file);
+                for (const auto& source : rows)
+                {
+                    bool valid;
+                    const auto row = TestCatalogReader::exorow_from_json(source, &valid);
+                    ASSERT_TRUE(valid);
+                    TestCatalogReader::exorow_write_line(file, row);
+                }
+                fclose(file);
+            }
+            CatalogReader reader;
+            EXPECT_EQ(reader.load_exoplanets_from_tap(false), 1u);
+            ASSERT_EQ(host->pl_indices.size(), 1u);
+            EXPECT_STREQ(cels[host->pl_indices.front()]->name, "Status host c");
+        }
+    }
+}
+
+TEST_F(StellarDownloadTest, StatusRefreshRetainsFailedProviderAndVetoesFreshPlanetRows)
+{
+    struct RestoreNetwork
+    {
+        bool saved = radio_silence;
+        ~RestoreNetwork() { radio_silence = saved; }
+    } restore;
+    radio_silence = false;
+    class StatusReader : public CatalogReader
+    {
+    protected:
+        bool fetch_stellar_catalog_json(const std::string& url, const std::string&, json& result) override
+        {
+            if (url.find("removed_targets.html") != std::string::npos)
+            {
+                result = json::array({{{"pl_name", "NASA rejected b"}, {"planet_status", "False Positive Planet"}}});
+                return true;
+            }
+            if (url.find("/catalog/csv/") != std::string::npos) return false;
+            const bool nasa = url.find("exoplanetarchive") != std::string::npos;
+            result = json::array({
+                {{"pl_name", nasa ? "Status host b" : "Status host d"}, {"hostname", "Status host"},
+                    {"alt_target_name", nasa ? "EU rejected b" : "NASA rejected b"},
+                    {"pl_orbper", nasa ? 10 : 40}, {"ra", 10}, {"dec", 20}, {"sy_dist", 10}},
+                {{"pl_name", nasa ? "Status host c" : "Status host e"}, {"hostname", "Status host"},
+                    {"pl_orbper", nasa ? 20 : 50}, {"ra", 10}, {"dec", 20}, {"sy_dist", 10},
+                    {"planet_status", "Controversial"}}
+            });
+            return true;
+        }
+    };
+    std::filesystem::remove("catalogs/exoplanet_rejections_nasa.json");
+    const json old_eu = json::array({{{"pl_name", "EU rejected b"}, {"planet_status", "Retracted"}}});
+    const char* path = "catalogs/exoplanet_rejections_eu.json";
+    std::ofstream(path) << old_eu;
+    const auto week_old = std::filesystem::file_time_type::clock::now() - std::chrono::hours(168);
+    std::filesystem::last_write_time(path, week_old);
+    StatusReader reader;
+    reader.load_exoplanets_from_tap(true);
+    json persisted, statuses;
+    std::ifstream("catalogs/exoplanets.json") >> persisted;
+    ASSERT_EQ(persisted.size(), 2u);
+    std::set<std::string> names;
+    for (const auto& row : persisted) names.insert(row.at("pl_name"));
+    EXPECT_EQ(names, (std::set<std::string>{"Status host c", "Status host e"}));
+    std::ifstream(path) >> statuses;
+    EXPECT_EQ(statuses, old_eu);
+    EXPECT_EQ(std::filesystem::last_write_time(path), week_old);
+}
 
 TEST_F(StellarDownloadTest, DownloadsMissingSourcesAndAppliesThemBeforeCondensation)
 {
@@ -2724,6 +2880,8 @@ TEST_F(StellarDownloadTest, TapQueriesCanFallBackToGet)
 
 TEST_F(StellarDownloadTest, FailureAndCancellationDoNotPublishPartialSnapshots)
 {
+    std::filesystem::remove("catalogs/exoplanet_rejections_nasa.json");
+    std::filesystem::remove("catalogs/exoplanet_rejections_eu.json");
     Reader reader;
     reader.fail = true;
     reader.prepare_stellar_chemistry();

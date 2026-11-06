@@ -1,5 +1,6 @@
 #include "../catalog_lock_trace.h"
 #include "numeric.h"
+#include "exoplanetstatus.h"
 
 #include <string>
 #include <vector>
@@ -7577,6 +7578,7 @@ ExoRow CatalogReader::exorow_from_json(const json& source, bool* ok)
     reconcile_exoplanet_physical_values(row);
     ExoRow r;
     *ok = false;
+    if (rejected_exoplanet_status(row)) return r;
 
     // Ensure baseline primary keys exist
     auto it_pl = row.find("pl_name");
@@ -7917,9 +7919,7 @@ bool CatalogReader::apply_exoplanet_host_position(ExoRow& row, const std::map<st
 
 bool CatalogReader::accept_exoplanet_source(json& row, bool from_nasa)
 {
-    const std::string disposition = row.value("koi_disposition", "");
-    const std::string status = row.value("planet_status", "");
-    if (disposition == "FALSE POSITIVE" || status == "Retracted" || status == "False Positive") return false;
+    if (rejected_exoplanet_status(row)) return false;
     row["source_catalog"] = from_nasa ? "NASA" : "EU";
     return true;
 }
@@ -9250,6 +9250,59 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
         do_download = false;
     }
 
+    ExoplanetRejections rejections;
+    const auto add_rejection_links = [&](const json& rows)
+    {
+        if (rows.is_array()) for (const auto& row : rows) rejections.add(row);
+    };
+    for (const auto& source : std::vector<std::pair<std::string, std::string>>
+        {
+            {"catalogs/exoplanet_rejections_nasa.json", "https://exoplanetarchive.ipac.caltech.edu/docs/removed_targets.html"},
+            {"catalogs/exoplanet_rejections_eu.json", "https://exoplanet.eu/catalog/csv/?query_f=planet_status%3D%22retracted%22+or+planet_status%3D%22false+positive%22"}
+        })
+    {
+        std::ifstream input(source.first);
+        json statuses = input ? json::parse(input, nullptr, false) : json();
+        const auto valid_statuses = [](const json& rows)
+        {
+            return rows.is_array() && std::all_of(rows.begin(), rows.end(), [](const json& row)
+            {
+                return row.is_object() && row.contains("pl_name") && row["pl_name"].is_string()
+                    && row.contains("planet_status") && row["planet_status"].is_string();
+            });
+        };
+        std::error_code error;
+        const auto modified = fs::last_write_time(source.first, error);
+        const bool expired = error || !valid_statuses(statuses)
+            || fs::file_time_type::clock::now() - modified >= std::chrono::hours(24);
+        if (!radio_silence && !exoplanet_tap_attempted && expired && !abort_load)
+        {
+            json fresh;
+            if (fetch_stellar_catalog_json(source.second, "", fresh) && valid_statuses(fresh) && !abort_load)
+            {
+                statuses = std::move(fresh);
+                const std::string temporary = source.first + ".tmp";
+                std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
+                output << statuses.dump();
+                output.close();
+                if (output && !abort_load) replace_exoplanet_cache(temporary, source.first);
+                fs::remove(temporary, error);
+                do_download = true;
+            }
+            else if (!abort_load)
+                std::cerr << "Planet status refresh failed; retaining saved classifications: " << source.second << std::endl;
+        }
+        add_rejection_links(statuses);
+    }
+    if (abort_load) return 0;
+    for (const char* path : {exocache, nasa_cache, eu_cache})
+    {
+        std::ifstream input(path);
+        if (input) add_rejection_links(json::parse(input, nullptr, false));
+    }
+    add_rejection_links(exoplanet_tap_catalog);
+    rejections.resolve();
+
     // Derived caches also expire when the fixed host supplement changes.
     bool derived_cache_valid = file_exists(derived_cache) &&
                                (!file_exists(exocache) || file_age(derived_cache) <= file_age(exocache) + 60) &&
@@ -9291,6 +9344,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
 
             while (exorow_read_line(fp, row))
             {
+                if (rejections.excludes({{"pl_name", row.pl_name}})) continue;
                 alienorum::CatalogLock catalog_lock(catalog_mutex);
                 if (abort_load)
                 {
@@ -9506,6 +9560,9 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
         };
         source_buffer(nasa_cache, "NASA", readBufferNASA);
         source_buffer(eu_cache, "EU", readBufferEU);
+        for (const auto* buffer : {&readBufferNASA, &readBufferEU})
+            if (!buffer->empty()) add_rejection_links(json::parse(*buffer, nullptr, false));
+        rejections.resolve();
 
         try
         {
@@ -9575,7 +9632,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
             auto register_planet = [&](const json& item, bool from_nasa)
             {
                 json litem = item;
-                if (!accept_exoplanet_source(litem, from_nasa))
+                if (rejections.excludes(litem) || !accept_exoplanet_source(litem, from_nasa))
                 {
                     return;
                 }
@@ -9886,6 +9943,23 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
         }
     }
 
+    add_rejection_links(planets_array);
+    rejections.resolve();
+    const auto before_status_filter = planets_array.size();
+    planets_array.erase(std::remove_if(planets_array.begin(), planets_array.end(), [&](const json& row)
+    {
+        return rejections.excludes(row);
+    }), planets_array.end());
+    if (planets_array.size() != before_status_filter)
+    {
+        const std::string temporary = std::string(exocache) + ".tmp";
+        std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
+        output << planets_array.dump(4);
+        output.close();
+        if (output && !abort_load) replace_exoplanet_cache(temporary, exocache);
+        std::error_code error;
+        fs::remove(temporary, error);
+    }
     exoplanet_tap_catalog = planets_array;
 
     std::string tmp_cache = std::string(derived_cache) + ".tmp";
