@@ -1134,7 +1134,7 @@ void Planet::update_surface_phases()
     {
         const auto entry = active_surface_worlds[cursor++ % count];
         entry.world->update_surface_phase(entry.latitude, entry.longitude);
-        if (std::chrono::steady_clock::now() - started >= std::chrono::milliseconds(2)) break;
+        if (std::chrono::steady_clock::now() - started >= std::chrono::milliseconds(6)) break;
     }
 }
 

@@ -2090,7 +2090,7 @@ bool Map::sync_phase_composite(Map* source, Map* clouds, bool night)
         if (tile.rect.revision) water_phase->revisions.erase(tile.rect.revision);
         tile.rect = patch;
         water_phase->revisions[patch.revision] = key; water_phase->revision = patch.revision;
-        if (std::chrono::steady_clock::now() - started >= std::chrono::milliseconds(1)) break;
+        if (std::chrono::steady_clock::now() - started >= std::chrono::milliseconds(3)) break;
     }
     return true;
 }
@@ -2512,7 +2512,7 @@ std::vector<SurfacePhaseRect> Map::water_phase_patches(uint64_t after, size_t pi
     std::vector<SurfacePhaseRect> result;
     SurfacePhaseRect rect;
     size_t count = 0;
-    while (result.size() < 128 && next_water_phase_patch(after, rect))
+    while (result.size() < 384 && next_water_phase_patch(after, rect))
     {
         if (count + rect.width * rect.height > pixels) break;
         result.push_back(rect);
@@ -2585,7 +2585,7 @@ void Map::update_night_phase(Map* source)
         tile.rect = {left, top, right - left, bottom - top, patch.revision};
         water_phase->revisions[patch.revision] = key;
         water_phase->revision = patch.revision;
-        if (std::chrono::steady_clock::now() - started >= std::chrono::milliseconds(1)) break;
+        if (std::chrono::steady_clock::now() - started >= std::chrono::milliseconds(3)) break;
     }
 }
 
@@ -2625,7 +2625,7 @@ void Map::update_water_phase(const LocalClimate& climate, double epoch, double l
     for (unsigned int iteration = 0; iteration < state.batch_limit; ++iteration)
     {
         update_water_phase_tile(climate, epoch, latitude, longitude, salinity, pressure, water_level, bump_scale, ocean_world);
-        if (std::chrono::steady_clock::now() - started >= std::chrono::milliseconds(2)) break;
+        if (std::chrono::steady_clock::now() - started >= std::chrono::milliseconds(6)) break;
     }
 }
 

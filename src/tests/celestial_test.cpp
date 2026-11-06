@@ -35,7 +35,7 @@ TEST(SurfacePhaseTest, BackgroundSweepCoversBothHemispheresWithoutMovingTheObser
         for (unsigned long column = 0; column < 256; column += 16)
             EXPECT_EQ(map.surface_pixel(column, row).second, SurfaceMaterial::ice) << column << ", " << row;
     EXPECT_FALSE(map.phase_state()->candidates.empty());
-    EXPECT_LE(map.phase_state()->inflight.size(), 128u);
+    EXPECT_LE(map.phase_state()->inflight.size(), 384u);
     std::cout << "Global freeze sweep: " << std::chrono::duration<double, std::milli>(
         std::chrono::steady_clock::now() - started).count() << " ms" << std::endl;
     // A large warming jump still revisits ice outside the screening band.

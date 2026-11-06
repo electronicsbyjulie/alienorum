@@ -201,7 +201,7 @@ namespace alienorum
         bool submit(const std::shared_ptr<SurfacePhaseJob>& job)
         {
             std::unique_lock<std::mutex> lock(mutex, std::try_to_lock);
-            if (!lock || jobs.size() >= 256) return false;
+            if (!lock || jobs.size() >= 768) return false;
             if (job->survey) jobs.push_front(job);
             else jobs.push_back(job);
             lock.unlock();
@@ -237,7 +237,7 @@ namespace alienorum
         std::vector<uint64_t> candidates;
         size_t candidate_cursor = 0;
         uint64_t revisit_revision = 0;
-        unsigned int batch_limit = 128;
+        unsigned int batch_limit = 384;
         std::chrono::steady_clock::time_point surveyed{};
         LocalClimate climate;
         double climate_epoch = NAN, salinity = 35, pressure = 101325;

@@ -75,10 +75,10 @@ namespace alienorum
     static void upload_phase_patch(Map* map, GpuTexEntry& entry)
     {
         auto& api = phase_gl();
-        if (!api.valid() || api.bytes >= 262144 || api.patches >= 256 || !entry.phase_fence || !entry.phase_width || !entry.phase_height) return;
+        if (!api.valid() || api.bytes >= 786432 || api.patches >= 768 || !entry.phase_fence || !entry.phase_width || !entry.phase_height) return;
         const GLenum status = api.wait(entry.phase_fence, 0, 0);
         if (status != 0x911A && status != 0x911C) return;
-        auto patches = map->water_phase_patches(entry.phase_revision, std::min(size_t(16384), (262144 - api.bytes) / 4));
+        auto patches = map->water_phase_patches(entry.phase_revision, std::min(size_t(49152), (786432 - api.bytes) / 4));
         if (patches.empty()) return;
         const uint64_t revision = patches.back().revision;
         std::sort(patches.begin(), patches.end(), [](const auto& a, const auto& b)
@@ -92,7 +92,7 @@ namespace alienorum
                 && merged.back().x + merged.back().width == patch.x) merged.back().width += patch.width;
             else merged.push_back(patch);
         }
-        if (api.patches + merged.size() > 256) return;
+        if (api.patches + merged.size() > 768) return;
         api.erase(entry.phase_fence);
         entry.phase_fence = nullptr;
         const unsigned long source_width = map->get_width(), source_height = map->get_height();
