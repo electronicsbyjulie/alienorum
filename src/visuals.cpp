@@ -7124,7 +7124,12 @@ void draw_horizon()
                 cos((viewer_lat + painted_latitude) * .5) * longitude_step) : INFINITY;
             // Refresh after two metres of accumulated Home/End travel. Near a pole,
             // retain exact positions because the north/east basis turns rapidly.
-            const bool position_reusable = travel < std::min(2.0, surface_radius * .001)
+            // Certify the entire 100 m neighborhood, including procedural biome
+            // displacement, so shorelines and every terrain/material transition refresh.
+            SurfaceSampler::Sample boundary_sample;
+            const bool clear_of_boundary = !paint_biomes
+                || surface.uniform_sample(viewer_lat, viewer_lon, 100.0 / surface_radius + 1e-10, boundary_sample);
+            const bool position_reusable = clear_of_boundary && travel < std::min(2.0, surface_radius * .001)
                 && (fabs(viewer_lat) < half_pi - .001 || (latitude_step == 0 && longitude_step == 0));
             int ground_stride = 1;
             if (horizon_motion_ground_sampling && gpu_ground && paint_biomes && ground_cache_valid
