@@ -7122,9 +7122,9 @@ void draw_horizon()
             const double longitude_step = std::remainder(viewer_lon - painted_longitude, 2 * _pi);
             const double travel = ground_cache_valid ? surface_radius * hypot(latitude_step,
                 cos((viewer_lat + painted_latitude) * .5) * longitude_step) : INFINITY;
-            // Refresh after thirty metres of accumulated Home/End travel. Near a pole,
+            // Refresh after two metres of accumulated Home/End travel. Near a pole,
             // retain exact positions because the north/east basis turns rapidly.
-            const bool position_reusable = travel < std::min(30.0, surface_radius * .001)
+            const bool position_reusable = travel < std::min(2.0, surface_radius * .001)
                 && (fabs(viewer_lat) < half_pi - .001 || (latitude_step == 0 && longitude_step == 0));
             int ground_stride = 1;
             if (horizon_motion_ground_sampling && gpu_ground && paint_biomes && ground_cache_valid
