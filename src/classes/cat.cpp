@@ -9194,6 +9194,24 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
     }();
 
     const char* exocache = "catalogs/exoplanets.json";
+    const char* nasa_cache = "catalogs/exoplanets_nasa.json";
+    const char* eu_cache = "catalogs/exoplanets_eu.json";
+    const auto valid_source = [](const json& rows)
+    {
+        return rows.is_array() && !rows.empty() && std::all_of(rows.begin(), rows.end(), [](const json& row)
+        {
+            return row.is_object() && row.contains("pl_name") && row["pl_name"].is_string()
+                && row.contains("hostname") && (row["hostname"].is_string() || row["hostname"].is_null());
+        });
+    };
+    const auto recent_source = [&](const char* path)
+    {
+        std::error_code error;
+        const auto modified = fs::last_write_time(path, error);
+        if (error || fs::file_time_type::clock::now() - modified >= std::chrono::hours(24)) return false;
+        std::ifstream input(path);
+        return input && valid_source(json::parse(input, nullptr, false));
+    };
     const char* derived_cache = stars_only ? "catalogs/exoplanets_stars.dat" : "catalogs/exoplanets_planets.dat";
     const char* position_catalog = "catalogs/exoplanet_host_positions.dat";
     const auto host_positions = read_exoplanet_host_positions(position_catalog);
@@ -9204,8 +9222,8 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
     loading_msg = lmss.str();
     mtx.unlock();
 
-    // Any recent source or derived cache suppresses network refresh for both passes.
-    // Cache schema and host-position changes can still trigger local reconstruction.
+    // Legacy installations use the combined cache age. Independent source snapshots
+    // override it so a successful provider cannot conceal a stale failed provider.
     const auto cache_now = fs::file_time_type::clock::now();
     for (const char* path : {exocache, "catalogs/exoplanets_stars.dat", "catalogs/exoplanets_planets.dat"})
     {
@@ -9213,6 +9231,19 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
         if (!fs::is_regular_file(path, error)) continue;
         const auto modified = fs::last_write_time(path, error);
         if (!error && cache_now - modified < std::chrono::hours(24)) do_download = false;
+    }
+    if (file_exists(nasa_cache) || file_exists(eu_cache))
+    {
+        do_download = !recent_source(nasa_cache) || !recent_source(eu_cache);
+        // Recover a combined catalog after an interrupted merge or a removed cache.
+        std::error_code error;
+        const auto combined_time = fs::last_write_time(exocache, error);
+        if (error) do_download = true;
+        for (const char* path : {nasa_cache, eu_cache})
+        {
+            const auto modified = fs::last_write_time(path, error);
+            if (!error && modified > combined_time) do_download = true;
+        }
     }
     if (radio_silence)
     {
@@ -9414,7 +9445,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                                "st_mass,st_rad,sy_dist,ra,dec,sy_vmag,st_spectype,st_teff,st_lum,st_rotp,st_age,st_ageerr1,st_ageerr2,st_agelim,st_met,st_meterr1,st_meterr2,st_metlim,st_metratio+"
                                "from+pscomppars+order+by+pl_name+asc&format=json";
 
-        if (!fetch_tap(nasa_url, readBufferNASA))
+        if (!recent_source(nasa_cache) && !fetch_tap(nasa_url, readBufferNASA))
         {
             std::cerr << "NASA TAP Query failed." << std::endl;
         }
@@ -9432,18 +9463,49 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                              "star_metallicity+as+st_met,'[Fe/H]'+as+st_metratio+"
                              "from+exoplanet.epn_core+where+publication_status='Published+in+a+refereed+paper'+order+by+target_name+asc";
 
-        if (!fetch_tap(eu_url, readBufferEU))
+        if (!recent_source(eu_cache) && !fetch_tap(eu_url, readBufferEU))
         {
             std::cerr << "Exoplanet.eu TAP Query failed." << std::endl;
         }
 
         if (abort_load) return 0;
-        if (readBufferNASA.empty() || readBufferEU.empty())
+        // Retain independent source snapshots so a failed service never blocks
+        // fresh data from the other service or erases its own older measurements.
+        json legacy;
         {
-            // A single-source refresh cannot replace a combined-source snapshot.
-            readBufferNASA.clear();
-            readBufferEU.clear();
+            std::ifstream input(exocache);
+            if (input) legacy = json::parse(input, nullptr, false);
         }
+        const auto source_buffer = [&](const char* path, const char* provider, std::string& buffer)
+        {
+            if (!buffer.empty())
+            {
+                const std::string temporary = std::string(path) + ".tmp";
+                std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
+                output << buffer;
+                output.close();
+                if (output && !abort_load) replace_exoplanet_cache(temporary, path);
+                std::error_code error;
+                fs::remove(temporary, error);
+                return;
+            }
+            std::ifstream input(path);
+            json saved = input ? json::parse(input, nullptr, false) : json();
+            if (!valid_source(saved))
+            {
+                saved = json::array();
+                if (legacy.is_array())
+                    for (const auto& row : legacy)
+                    {
+                        const json originals = row.value("source_measurements", json::array({row}));
+                        for (const auto& original : originals)
+                            if (original.value("source_catalog", "") == provider) saved.push_back(original);
+                    }
+            }
+            if (!saved.empty()) buffer = saved.dump();
+        };
+        source_buffer(nasa_cache, "NASA", readBufferNASA);
+        source_buffer(eu_cache, "EU", readBufferEU);
 
         try
         {

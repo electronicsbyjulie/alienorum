@@ -3918,7 +3918,7 @@ TEST_F(StellarDownloadTest, ExoplanetRefreshStartsOnlyAfterAllFilesExpire)
     }
 }
 
-TEST_F(StellarDownloadTest, ExoplanetRefreshRequiresBothSourcesAndPreservesSavedDataOnFailure)
+TEST_F(StellarDownloadTest, ExoplanetRefreshCombinesFreshAndSavedSources)
 {
     struct OfflineContext
     {
@@ -3967,6 +3967,8 @@ TEST_F(StellarDownloadTest, ExoplanetRefreshRequiresBothSourcesAndPreservesSaved
     {
         SCOPED_TRACE(scenario);
         abort_load = false;
+        std::filesystem::remove("catalogs/exoplanets_nasa.json");
+        std::filesystem::remove("catalogs/exoplanets_eu.json");
         std::ofstream("catalogs/exoplanets.json") << saved;
         std::filesystem::last_write_time("catalogs/exoplanets.json",
             std::filesystem::file_time_type::clock::now() - std::chrono::hours(24));
@@ -3976,16 +3978,94 @@ TEST_F(StellarDownloadTest, ExoplanetRefreshRequiresBothSourcesAndPreservesSaved
         reader.load_exoplanets_from_tap(true);
         json persisted;
         std::ifstream("catalogs/exoplanets.json") >> persisted;
-        if (scenario < 4) EXPECT_EQ(persisted, saved);
+        if (scenario == 3) EXPECT_EQ(persisted, saved);
         else
         {
-            ASSERT_EQ(persisted.size(), 2u);
+            ASSERT_EQ(persisted.size(), scenario == 1 || scenario == 2 ? 1u : 2u);
             std::set<std::string> sources;
             for (const auto& row : persisted) sources.insert(row["source_catalog"]);
-            EXPECT_EQ(sources, (std::set<std::string>{"NASA", "EU"}));
+            EXPECT_EQ(sources, (scenario == 1 || scenario == 2
+                ? std::set<std::string>{"NASA"} : std::set<std::string>{"NASA", "EU"}));
+            for (const auto& row : persisted)
+                EXPECT_EQ(row.at("pl_name"), scenario == 0 && row.at("source_catalog") == "NASA"
+                    ? "Saved host b" : row.at("source_catalog") == "NASA" ? "NASA host b" : "EU host b");
         }
         EXPECT_FALSE(std::filesystem::exists("catalogs/exoplanets.json.tmp"));
+        if (scenario == 4)
+        {
+            std::filesystem::remove("catalogs/exoplanets.json");
+            std::filesystem::remove("catalogs/exoplanets_stars.dat");
+            DownloadReader recovery;
+            recovery.scenario = 3;
+            recovery.load_exoplanets_from_tap(true);
+            EXPECT_EQ(recovery.requests, 0);
+            json rebuilt;
+            std::ifstream("catalogs/exoplanets.json") >> rebuilt;
+            EXPECT_EQ(rebuilt, persisted);
+        }
         abort_load = false;
+        delete_the_universe();
+        make_star("Sol");
+    }
+}
+
+TEST_F(StellarDownloadTest, SourceRefreshUsesIndependentAgesAndRetainsOldMeasurements)
+{
+    struct RestoreNetwork
+    {
+        bool saved = radio_silence;
+        ~RestoreNetwork() { radio_silence = saved; }
+    } restore;
+    radio_silence = false;
+    class DownloadReader : public CatalogReader
+    {
+    public:
+        bool fail_nasa = false;
+        std::vector<std::string> requests;
+    protected:
+        bool fetch_stellar_catalog_json(const std::string& url, const std::string&, json& result) override
+        {
+            const bool nasa = url.find("exoplanetarchive") != std::string::npos;
+            requests.push_back(nasa ? "NASA" : "EU");
+            if (nasa == fail_nasa) return false;
+            result = json::array({{{"pl_name", nasa ? "NASA fresh b" : "EU fresh b"},
+                {"hostname", nasa ? "NASA fresh" : "EU fresh"}, {"pl_orbper", 10},
+                {"sy_dist", 10}, {"ra", 10}, {"dec", 20}}});
+            return true;
+        }
+    };
+    for (bool fail_nasa : {false, true})
+    {
+        SCOPED_TRACE(fail_nasa);
+        const json old_nasa = json::array({{{"pl_name", "NASA old b"}, {"hostname", "NASA old"},
+            {"pl_orbper", 20}, {"sy_dist", 10}, {"ra", 11}, {"dec", 21}}});
+        const json old_eu = json::array({{{"pl_name", "EU old b"}, {"hostname", "EU old"},
+            {"pl_orbper", 30}, {"sy_dist", 10}, {"ra", 12}, {"dec", 22}}});
+        std::ofstream("catalogs/exoplanets_nasa.json") << old_nasa;
+        std::ofstream("catalogs/exoplanets_eu.json") << old_eu;
+        const auto week_old = std::filesystem::file_time_type::clock::now() - std::chrono::hours(168);
+        for (const char* path : {"catalogs/exoplanets_nasa.json", "catalogs/exoplanets_eu.json"})
+            std::filesystem::last_write_time(path, week_old);
+        // A recent combined catalog must not conceal an old failed source.
+        std::ofstream("catalogs/exoplanets.json") << "[]";
+        DownloadReader reader;
+        reader.fail_nasa = fail_nasa;
+        reader.load_exoplanets_from_tap(true);
+        json combined, retained;
+        std::ifstream("catalogs/exoplanets.json") >> combined;
+        ASSERT_EQ(combined.size(), 2u);
+        std::set<std::string> names;
+        for (const auto& row : combined) names.insert(row.at("pl_name"));
+        EXPECT_EQ(names, (fail_nasa ? std::set<std::string>{"NASA old b", "EU fresh b"}
+            : std::set<std::string>{"NASA fresh b", "EU old b"}));
+        const char* failed = fail_nasa ? "catalogs/exoplanets_nasa.json" : "catalogs/exoplanets_eu.json";
+        std::ifstream(failed) >> retained;
+        EXPECT_EQ(retained, fail_nasa ? old_nasa : old_eu);
+        EXPECT_EQ(std::filesystem::last_write_time(failed), week_old);
+        DownloadReader retry;
+        retry.fail_nasa = fail_nasa;
+        retry.load_exoplanets_from_tap(true);
+        EXPECT_EQ(retry.requests, (std::vector<std::string>{fail_nasa ? "NASA" : "EU", fail_nasa ? "NASA" : "EU"}));
         delete_the_universe();
         make_star("Sol");
     }
