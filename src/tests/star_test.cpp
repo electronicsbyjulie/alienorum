@@ -15,6 +15,157 @@
 
 using namespace alienorum;
 
+TEST(StellarAgeTest, EvolvedStarsUseTheirHrPositionInsteadOfDwarfMasses)
+{
+    Star::load_main_seq_dat();
+    for (const char* spectrum : {"G5III", "K0III", "K1III", "M1: comp"})
+    {
+        Star giant;
+        strcpy(giant.spectral_type, spectrum);
+        giant.temperature = 4900;
+        giant.BV_color = 1.0;
+        giant.absolute_magnitude = 0;
+        giant.mass = .85 * solar_mass;
+        const json age = giant.age_diagnostics();
+        EXPECT_EQ(age["source"], "MIST_1.2_HR_diagram_fit") << spectrum;
+        EXPECT_TRUE(age["estimated"].get<bool>());
+        EXPECT_GT(age["mass_solar"].get<double>(), 1) << spectrum;
+        EXPECT_LT(age["value_gyr"].get<double>(), 13) << spectrum;
+        EXPECT_LE(age["lower_gyr"].get<double>(), age["value_gyr"].get<double>());
+        EXPECT_GE(age["upper_gyr"].get<double>(), age["value_gyr"].get<double>());
+    }
+}
+
+TEST(StellarAgeTest, PublishedAndAuthoredAgesKeepZeroUncertaintyAndOlderValues)
+{
+    for (double supplied : {0.0, .7, 8.7, 15.0})
+    {
+        Star star;
+        star.stellar_age = {{"value_gyr", supplied}, {"source", "supplied"}, {"estimated", true}};
+        EXPECT_DOUBLE_EQ(star.estimate_age_gyr(), supplied);
+        Star restored;
+        ASSERT_TRUE(restored.from_json(star.to_json()));
+        EXPECT_DOUBLE_EQ(restored.estimate_age_gyr(), supplied);
+    }
+    Star scenario;
+    scenario.fictional_origin = {{"age_gyr", 0.0}};
+    EXPECT_DOUBLE_EQ(scenario.estimate_age_gyr(), 0);
+    Star uncertain;
+    ASSERT_TRUE(uncertain.from_json({{"stellar_age", {{"value_gyr", "8.7?"}, {"estimated", true}}}}));
+    EXPECT_DOUBLE_EQ(uncertain.estimate_age_gyr(), 8.7);
+    uncertain.stellar_age = {{"value_gyr", "8.7?"}, {"estimated", true}};
+    EXPECT_DOUBLE_EQ(uncertain.estimate_age_gyr(), 8.7);
+}
+
+TEST(StellarAgeTest, CompanionsInheritPublishedSystemAgesWithoutReplacingTheirOwnData)
+{
+    Star primary;
+    primary.stellar_age = {{"value_gyr", .7}, {"source", "published_system_fit"},
+        {"lower_gyr", .6}, {"upper_gyr", .8}};
+    Star companion;
+    companion.orbit = new Orbit();
+    companion.orbit->center = &primary;
+    const json inherited = companion.age_diagnostics();
+    EXPECT_DOUBLE_EQ(companion.estimate_age_gyr(), .7);
+    EXPECT_EQ(inherited["system_age_source"], "published_system_fit");
+    EXPECT_EQ(inherited["source"], "coeval_stellar_system");
+    EXPECT_EQ(inherited["lower_gyr"], .6);
+    companion.stellar_age = {{"value_gyr", 0.0}, {"source", "authored"}};
+    EXPECT_DOUBLE_EQ(companion.estimate_age_gyr(), 0);
+}
+
+TEST(StellarAgeTest, EveryEvolutionaryClassHasAFiniteAgeScenario)
+{
+    Star::load_main_seq_dat();
+    struct Example { const char* spectrum; double temperature, magnitude, mass; };
+    for (const auto& example : {Example{"O5V", 40000, -5, 40}, {"B2III", 20000, -4, 12},
+        {"A5IV", 8000, 1, 2}, {"G2V", 5772, 4.83, 1}, {"K1III", 4500, -1, .85},
+        {"M2Iab", 3500, -6, 12}, {"DA", 10000, 12, .6}, {"L5", 1800, 18, .05},
+        {"F5VI", 6400, 6, .8}, {"G0VII", 10000, 12, .6},
+        {"", 0, 1e29, 0}})
+    {
+        Star star;
+        strcpy(star.spectral_type, example.spectrum);
+        star.temperature = example.temperature;
+        star.absolute_magnitude = example.magnitude;
+        star.mass = example.mass * solar_mass;
+        const double age = star.estimate_age_gyr();
+        EXPECT_TRUE(std::isfinite(age)) << example.spectrum;
+        EXPECT_GE(age, 0) << example.spectrum;
+        EXPECT_LE(age, 13.8) << example.spectrum;
+        if (!strcmp(example.spectrum, "G0VII")) EXPECT_GE(star.age_diagnostics()["phase"].get<int>(), 100);
+        if (!example.spectrum[0]) EXPECT_EQ(star.age_diagnostics()["upper_gyr"], 13.8);
+    }
+}
+
+TEST(StellarAgeTest, WhiteDwarfCoolingAndWolfRayetStagesRemainDistinct)
+{
+    Star::load_main_seq_dat();
+    Star remnant;
+    strcpy(remnant.spectral_type, "DA");
+    remnant.mass = .6 * solar_mass;
+    remnant.volumetric_mean_radius = Star::degenerate_radius(remnant.mass);
+    remnant.temperature = 20000;
+    const double young = remnant.estimate_age_gyr();
+    remnant.temperature = 5000;
+    const json old = remnant.age_diagnostics();
+    EXPECT_EQ(old["source"], "Bedard_2020_cooling_and_progenitor_prior");
+    EXPECT_EQ(old["phase"], 101);
+    EXPECT_GT(old["value_gyr"].get<double>(), young);
+    EXPECT_GT(old["value_gyr"].get<double>(), 1);
+    strcpy(remnant.spectral_type, "DB");
+    EXPECT_EQ(remnant.age_diagnostics()["phase"], 102);
+    Star massive;
+    strcpy(massive.spectral_type, "WN5");
+    massive.temperature = 80000;
+    massive.mass = 30 * solar_mass;
+    massive.absolute_magnitude = 4.74 - 15 - Star::bolometric_correction(massive.temperature);
+    const json age = massive.age_diagnostics();
+    EXPECT_EQ(age["source"], "MIST_1.2_HR_diagram_fit");
+    EXPECT_LT(age["phase"].get<int>(), 100);
+    EXPECT_LT(age["value_gyr"].get<double>(), .1);
+}
+
+TEST(StellarAgeTest, UncertainRotationUsesTheSameValueAndInvalidClocksDoNotHitACeiling)
+{
+    Star::load_main_seq_dat();
+    Star star;
+    strcpy(star.spectral_type, "G2V");
+    star.temperature = 5772;
+    star.absolute_magnitude = 4.83;
+    star.mass = solar_mass;
+    star.BV_color = .65;
+    star.sidereal_rotational_period = 25 * oneday;
+    star.stellar_rotation = {{"period_seconds", 25 * oneday}, {"estimated", false}};
+    const double measured = star.estimate_age_gyr();
+    star.stellar_rotation["estimated"] = true;
+    EXPECT_DOUBLE_EQ(star.estimate_age_gyr(), measured);
+    star.stellar_rotation["period_seconds"] = std::to_string(25 * oneday) + "?";
+    EXPECT_DOUBLE_EQ(star.estimate_age_gyr(), measured);
+    star.sidereal_rotational_period = 1000 * oneday;
+    const json limited = star.age_diagnostics();
+    EXPECT_EQ(limited["source"], "MIST_1.2_HR_diagram_fit");
+    EXPECT_LT(limited["value_gyr"].get<double>(), 13.8);
+    EXPECT_GT(limited["rotation_age_gyr"].get<double>(), 13.8);
+}
+
+TEST(StellarAgeTest, CachedDwarfMassesAreRepairedWithoutChangingAuthoredMasses)
+{
+    Star::load_main_seq_dat();
+    Star star;
+    strcpy(star.spectral_type, "K0III");
+    star.temperature = 4900;
+    star.absolute_magnitude = 0;
+    star.mass = Star::interpolate_mseq_mass(Star::get_mseqidx_from_sptyp(star.spectral_type)) * solar_mass;
+    const double old_mass = star.mass;
+    star.repair_estimated_mass();
+    EXPECT_GT(star.mass, old_mass * 1.3);
+    star.mass = old_mass;
+    star.user_edited = true;
+    star.repair_estimated_mass();
+    EXPECT_DOUBLE_EQ(star.mass, old_mass);
+}
+
 static json chemistry_bundle(bool relative)
 {
     json bundle;

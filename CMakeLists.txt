@@ -152,7 +152,8 @@ endif()
 if(WIN32)
 	install(TARGETS alienorum RUNTIME DESTINATION .)
 
-    # One explicit payload for both installer preflight and CMake installation.
+    # One explicit payload for both installer preflight and CMake installation,
+    # including the stellar evolution grid used for catalog-wide age estimation.
     # Do not install whole source directories: they contain development artifacts.
     set(runtime_manifest "${CMAKE_SOURCE_DIR}/package/runtime_files.txt")
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${runtime_manifest}")

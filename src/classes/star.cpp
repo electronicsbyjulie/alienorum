@@ -8,11 +8,13 @@
 #include <sstream>
 #include <mutex>
 #include <set>
+#include "stellarevolution.h"
 #include "cons.h"
 #include "planet.h"
 #include "fictionalstars.h"
 #include "wdcolor.h"
 #include "numeric.h"
+#include "neighborhoodfilter.h"
 #include "../globals.h"
 
 using namespace alienorum;
@@ -1671,12 +1673,138 @@ void Star::gotta_be_named_something()
     if (orbit && orbit->center) origcenname = orbit->center->name;
 }
 
+static bool stellar_nonnegative_value(const json& record, const char* field, double& value)
+{
+    if (!record.is_object() || !record.contains(field)) return false;
+    const auto& supplied = record.at(field);
+    double parsed = 0;
+    if (supplied.is_number()) parsed = supplied.get<double>();
+    else if (!supplied.is_string() || !parse_numeric_value(supplied.get<std::string>(), parsed)) return false;
+    if (!std::isfinite(parsed) || parsed < 0) return false;
+    value = parsed;
+    return true;
+}
+
+json Star::evolution_diagnostics() const
+{
+    static std::array<std::mutex, 64> locks;
+    std::lock_guard<std::mutex> guard(locks[(reinterpret_cast<std::uintptr_t>(this) >> 5) % locks.size()]);
+    double effective = temperature;
+    if (!(effective > 0) || !std::isfinite(effective))
+    {
+        const double index = get_mseqidx_from_BV(BV_color);
+        effective = interpolate_mseq_temp(index);
+        if (!(effective > 0) || !std::isfinite(effective)) effective = 5772;
+    }
+    double luminosity;
+    bool luminosity_assumed = false;
+    if (std::isfinite(absolute_magnitude) && fabs(absolute_magnitude) < 99)
+        luminosity = pow(10.0, .4 * (4.74 - absolute_magnitude - bolometric_correction(effective)));
+    else if (volumetric_mean_radius > 0 && std::isfinite(volumetric_mean_radius))
+        luminosity = pow(volumetric_mean_radius / solar_radius, 2) * pow(effective / 5772, 4);
+    else
+    {
+        luminosity_assumed = true;
+        luminosity = interpolate_mseq_lum(get_mseqidx_from_temp(effective));
+    }
+    if (!(luminosity > 0) || !std::isfinite(luminosity)) luminosity = 1;
+    int group = 0;
+    const auto classification = neighborhood_spectrum(spectral_type);
+    const auto luminosity_class = classification.luminosity;
+    if (is_white_dwarf() || luminosity_class == NeighborhoodLuminosity::vii)
+    {
+        group = spectral_type[0] == 'D' && spectral_type[1] == 'A' ? 3
+            : spectral_type[0] == 'D' && (spectral_type[1] == 'B' || spectral_type[1] == 'Q' || spectral_type[1] == 'O') ? 4 : 5;
+        const double radius = volumetric_mean_radius > 0 ? volumetric_mean_radius
+            : degenerate_radius(mass > 0 ? mass : .6 * solar_mass);
+        if (radius > 0 && std::isfinite(radius))
+            luminosity = pow(radius / solar_radius, 2) * pow(effective / 5772, 4);
+        if (mass > 0 && std::isfinite(mass)) luminosity_assumed = false;
+    }
+    else if (luminosity_class == NeighborhoodLuminosity::v) group = 1;
+    else if (luminosity_class == NeighborhoodLuminosity::iv || luminosity_class == NeighborhoodLuminosity::iii_iv
+        || luminosity_class == NeighborhoodLuminosity::iii || luminosity_class == NeighborhoodLuminosity::ii
+        || luminosity_class == NeighborhoodLuminosity::i) group = 2;
+    // A composite or incomplete classification can hide an evolved star. Its measured
+    // HR-diagram position carries more information than a dwarf temperature lookup.
+    const double sequence = interpolate_mseq_lum(get_mseqidx_from_temp(effective));
+    const bool above_sequence = group < 3 && sequence > 0 && luminosity > 4 * sequence;
+    if (above_sequence && group != 2) group = 0;
+    const double abundance = group < 3 && std::isfinite(metallicity) ? metallicity : 0;
+    double supplied_mass = mass > 0 && std::isfinite(mass) ? mass / solar_mass : 0;
+    double mass_index = get_mseqidx_from_sptyp(spectral_type);
+    if (mass_index < mseqmin || mass_index > mseqmax) mass_index = get_mseqidx_from_BV(BV_color);
+    const double dwarf_mass = interpolate_mseq_mass(mass_index);
+    if ((group == 2 || above_sequence) && dwarf_mass > 0 && fabs(supplied_mass / dwarf_mass - 1) < .0002)
+        supplied_mass = 0;
+    double supplied_age = -1;
+    stellar_nonnegative_value(stellar_age, "value_gyr", supplied_age);
+    const std::array<double, 6> inputs{{log10(effective), log10(luminosity), abundance, double(group), supplied_mass, supplied_age}};
+    const auto result_with_provenance = [&]()
+    {
+        json result = evolution_result;
+        if (luminosity_assumed && result.contains("value_gyr"))
+        {
+            result["lower_gyr"] = 0;
+            result["upper_gyr"] = 13.8;
+            result["interpretation"] = "Missing_luminosity_broad_age_scenario";
+        }
+        return result;
+    };
+    if (inputs == evolution_inputs && evolution_result.is_object()) return result_with_provenance();
+    evolution_inputs = inputs;
+    const auto fit = StellarEvolutionGrid::instance().fit(inputs[0], inputs[1], abundance, group, supplied_mass, supplied_age);
+    evolution_result = json::object();
+    if (fit.valid)
+    {
+        evolution_result =
+        {
+            {"value_gyr", fit.age}, {"lower_gyr", fit.lower}, {"upper_gyr", fit.upper},
+            {"mass_solar", fit.mass}, {"initial_mass_solar", fit.initial_mass}, {"phase", fit.phase},
+            {"estimated", true}, {"source", fit.phase >= 100
+                ? "Bedard_2020_cooling_and_progenitor_prior" : "MIST_1.2_HR_diagram_fit"}, {"fit_distance", fit.distance},
+            {"interpretation", "Model_scenario_with_HR_diagram_and_evolutionary_phase_uncertainty"}
+        };
+        if (fit.phase >= 100)
+            evolution_result["interpretation"] = fit.mass < .5 ? "Cooling_sequence_with_broad_binary_history_prior"
+                : "Cooling_sequence_with_initial_final_mass_and_progenitor_lifetime_prior";
+        if (fit.distance > 25)
+        {
+            evolution_result["lower_gyr"] = 0;
+            evolution_result["upper_gyr"] = 13.8;
+            evolution_result["interpretation"] = "Outside_model_grid_broad_age_scenario";
+        }
+    }
+    return result_with_provenance();
+}
+
+void Star::repair_estimated_mass()
+{
+    if (user_edited || user_added || is_white_dwarf() || !(mass > 0)) return;
+    if (stellar_system.is_object() && stellar_system.contains("mass")) return;
+    const auto classification = neighborhood_spectrum(spectral_type);
+    if ((classification.luminosity == NeighborhoodLuminosity::v
+        || classification.luminosity == NeighborhoodLuminosity::unknown)
+        && neighborhood_dwarf_magnitude(*this, classification)) return;
+    double index = get_mseqidx_from_sptyp(spectral_type);
+    if (index < mseqmin || index > mseqmax) index = get_mseqidx_from_BV(BV_color);
+    const double legacy = interpolate_mseq_mass(index) * solar_mass;
+    // Old condensed catalogs stored inferred dwarf masses without provenance. Repair
+    // only their recognizable rounded values; retain independently supplied masses.
+    if (!(legacy > 0) || fabs(mass / legacy - 1) > .0002) return;
+    const json fit = evolution_diagnostics();
+    if (fit.contains("phase") && fit.at("phase").get<int>() > 0 && fit.contains("mass_solar"))
+        mass = fit.at("mass_solar").get<double>() * solar_mass;
+}
+
 json Star::age_diagnostics() const
 {
-    if (stellar_age.is_object() && stellar_age.contains("value_gyr") && stellar_age["value_gyr"].is_number())
+    double supplied_age = -1;
+    if (stellar_nonnegative_value(stellar_age, "value_gyr", supplied_age))
     {
-        const double age = stellar_age["value_gyr"];
-        if (std::isfinite(age) && age >= 0) return stellar_age;
+        json result = stellar_age;
+        result["value_gyr"] = supplied_age;
+        return result;
     }
     if (fictional_origin.is_object() && fictional_origin.contains("age_gyr") && fictional_origin["age_gyr"].is_number())
     {
@@ -1684,19 +1812,51 @@ json Star::age_diagnostics() const
         if (std::isfinite(age) && age >= 0)
             return {{"value_gyr", age}, {"estimated", true}, {"source", "stellar_formation_scenario"}};
     }
-    const double stellar_mass = mass > 0 && std::isfinite(mass) ? mass / solar_mass : 1;
+    std::set<const Star*> ancestors{this};
+    const CelestialObject* parent = orbit ? orbit->center : nullptr;
+    while (parent && parent->typeclass() == class_star)
+    {
+        const Star* primary = static_cast<const Star*>(parent);
+        if (!ancestors.insert(primary).second) break;
+        double value = -1;
+        if (stellar_nonnegative_value(primary->stellar_age, "value_gyr", value))
+        {
+            json result = primary->stellar_age;
+            result["value_gyr"] = value;
+            result["system_age_source"] = result.value("source", "supplied_system_age");
+            result["source"] = "coeval_stellar_system";
+            result["estimated"] = true;
+            return result;
+        }
+        parent = primary->orbit ? primary->orbit->center : nullptr;
+    }
+    const json evolution = evolution_diagnostics();
+    const double stellar_mass = evolution.contains("mass_solar") ? evolution.at("mass_solar").get<double>()
+        : mass > 0 && std::isfinite(mass) ? mass / solar_mass : 1;
     const double lifetime = 10 * std::pow(std::clamp(stellar_mass, .08, 100.0), -2.5);
     double age = .45 * std::min(13.8, lifetime);
     std::string source = "main_sequence_lifetime_prior";
-    if (is_main_sequence() && stellar_rotation.is_object() && !stellar_rotation.value("estimated", true)
+    double declared_period = 0;
+    const bool rotation_supplied = (stellar_nonnegative_value(stellar_rotation, "period_seconds", declared_period)
+        && declared_period > 0) || (stellar_rotation.is_object() && !stellar_rotation.contains("period_seconds")
+            && !stellar_rotation.value("estimated", true));
+    if (is_main_sequence() && rotation_supplied
         && sidereal_rotational_period > 0 && BV_color > .5 && BV_color < .9)
     {
         // Mamajek & Hillenbrand (2008), https://arxiv.org/abs/0807.1686.
         const double period = sidereal_rotational_period / oneday;
         age = std::pow(period / (.407 * std::pow(BV_color - .495, .325)), 1 / .566) / 1000;
+        if (evolution.contains("value_gyr") && (!std::isfinite(age) || age < .01 || age > std::min(13.8, lifetime)))
+        {
+            json result = evolution;
+            if (std::isfinite(age)) result["rotation_age_gyr"] = age;
+            result["rotation_interpretation"] = "Rotation_clock_outside_stellar_lifetime_domain";
+            return result;
+        }
         age = std::clamp(age, .01, std::min(13.8, lifetime));
         source = "gyrochronology_Mamajek_Hillenbrand_2008";
     }
+    else if (evolution.contains("value_gyr")) return evolution;
     else if (is_white_dwarf())
     {
         const double effective = temperature > 0 ? temperature : 9000;
@@ -1705,20 +1865,18 @@ json Star::age_diagnostics() const
     }
     else if (!is_main_sequence())
     {
-        age = std::min(13.8, 1.05 * lifetime);
-        source = "evolved_stellar_lifetime_prior";
+        age = .5 * std::min(13.8, lifetime);
+        source = "unconstrained_stellar_age_prior";
     }
     return {{"value_gyr", age}, {"estimated", true}, {"source", source},
+        {"lower_gyr", 0}, {"upper_gyr", std::min(13.8, lifetime)},
         {"interpretation", "Broad_age_scenario_from_available_stellar_properties"}};
 }
 
 double Star::estimate_age_gyr() const
 {
-    if (stellar_age.is_object() && stellar_age.contains("value_gyr") && stellar_age["value_gyr"].is_number())
-    {
-        const double age = stellar_age["value_gyr"];
-        if (std::isfinite(age) && age >= 0) return age;
-    }
+    double age = -1;
+    if (stellar_nonnegative_value(stellar_age, "value_gyr", age)) return age;
     return age_diagnostics().at("value_gyr").get<double>();
 }
 
@@ -2109,6 +2267,11 @@ void Star::make_companion_of(Star *A, char comp)
 
 double Star::estimate_mass()
 {
+    const json evolution = evolution_diagnostics();
+    // The dwarf calibration remains valid on the main sequence. Evolved, young,
+    // and compact stages use their evolutionary track instead of borrowing it.
+    if (evolution.contains("mass_solar") && evolution.value("phase", 0) != 0)
+        return mass = evolution.at("mass_solar").get<double>() * solar_mass;
     double msqi = -1.0;
     if (spectral_type[0])
     {

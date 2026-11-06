@@ -44,6 +44,28 @@ class StellarAgeImportTest(unittest.TestCase):
             self.assertEqual(other["lower_gyr"], 3)
             self.assertEqual(other["upper_gyr"], 6)
 
+            # New surveys use stable identifiers and retain every conflicting estimate.
+            line = star("Host", 12)
+            paths["catalog"].write_text(line[:120] + "1234  " + line[126:])
+            paths["gaia_ages"] = root / "gaia"
+            paths["gaia_ages"].write_text(json.dumps(dict(
+                metadata=[dict(name=key) for key in ("hip", "source_id", "age_flame",
+                                                     "age_flame_lower", "age_flame_upper")],
+                data=[[1234, 1234567890123456789, "0?", 0, .1]])))
+            paths["giant_ages"] = root / "giants"
+            paths["giant_ages"].write_text(
+                "#Table one\nName\tHD\tHIP\nunits\n---\nObject\t12\t1234\n"
+                "#Table two\nName\tBAge\tDAge\tYAge\t<Age>\nunits\n---\n"
+                "Object\t1.1\t2.2\t3.3\t2.2\n")
+            result = build(SimpleNamespace(**paths))
+            host = result["rows"][0]
+            self.assertEqual(host["source"], "Luck_2015_mean")
+            self.assertEqual(host["value_gyr"], 2.2)
+            self.assertTrue(host["estimated"])
+            self.assertEqual(len(host["alternatives"]), 8)
+            self.assertTrue(any(row["value_gyr"] == 0 and row["source"] == "Gaia_DR3_FLAME_phot"
+                                for row in host["alternatives"]))
+
 
 if __name__ == "__main__":
     unittest.main()

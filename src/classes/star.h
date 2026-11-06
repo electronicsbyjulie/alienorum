@@ -3,6 +3,7 @@
 #define _Star
 
 #include <cstdint>
+#include <array>
 #include <map>
 #include <math.h>
 #include "celestial.h"
@@ -28,6 +29,10 @@ namespace alienorum
         json stellar_abundances = nullptr;
         json stellar_rotation = nullptr;             // Period provenance and supplied/assumed pole fields.
         json stellar_age = nullptr;                  // Published age, uncertainties and source alternatives.
+        mutable std::array<double, 6> evolution_inputs{{NAN, NAN, NAN, NAN, NAN, NAN}};
+        mutable json evolution_result = nullptr;
+        json evolution_diagnostics() const;
+        void repair_estimated_mass();
         json age_diagnostics() const;
         double estimate_age_gyr() const;
         json fictional_origin = nullptr;           // Stable fictional identity and generation provenance.

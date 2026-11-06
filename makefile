@@ -339,6 +339,9 @@ $(OBJINT)/fictionalstars_ui.o: src/fictionalstars_ui.cpp
 $(BIN)/audit_fictional_population: tools/audit_fictional_population.cpp $(OBJS)
 	$(CPP) $< $(OBJS) $(CPPFLAGS) $(LIBS) -o $@
 
+$(BIN)/audit_stellar_ages: tools/audit_stellar_ages.cpp $(OBJS) | $(BIN)
+	$(CPP) $< $(OBJS) $(CPPFLAGS) $(LIBS) -o $@
+
 $(OBJINT)/scenery_gpu.o: src/scenery_gpu.cpp
 	$(CPP) src/scenery_gpu.cpp $(CPPFLAGS) -c -o $(OBJINT)/scenery_gpu.o
 

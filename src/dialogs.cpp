@@ -1112,8 +1112,28 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
         if (s && cls == class_star)
         {
             const json age = s->age_diagnostics();
-            ImGui::Text("Age:     %s%.2f Gy", age.value("estimated", false) ? "~" : "", s->estimate_age_gyr());
-            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", age.value("source", "").c_str());
+            double est_age_scaled = s->estimate_age_gyr();
+            std::string units = "Gy";
+
+            if (est_age_scaled < 1e-3)
+            {
+                est_age_scaled *= 1e6;
+                units = "Ky";
+            }
+            else if (est_age_scaled < 1)
+            {
+                est_age_scaled *= 1e3;
+                units = "My";
+            }
+
+            ImGui::Text("Age:     %s%.2f %s", age.value("estimated", false) ? "~" : "", est_age_scaled, units.c_str());
+            if (ImGui::IsItemHovered())
+            {
+                if (age.contains("lower_gyr") && age.contains("upper_gyr"))
+                    ImGui::SetTooltip("%s\nAge range: %.3g to %.3g Gy", age.value("source", "").c_str(),
+                        age.at("lower_gyr").get<double>(), age.at("upper_gyr").get<double>());
+                else ImGui::SetTooltip("%s", age.value("source", "").c_str());
+            }
         }
 
         if (i >= 0 && cels[i]->mass)

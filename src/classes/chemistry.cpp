@@ -9,6 +9,7 @@
 #include "chemistry.h"
 #include "cat.h"
 #include "star.h"
+#include "numeric.h"
 
 using namespace alienorum;
 
@@ -181,8 +182,14 @@ void CatalogReader::apply_stellar_abundances(Star* host)
             std::ifstream input(path);
             const json catalog = input ? json::parse(input, nullptr, false) : json();
             json index = json::object();
+            index["$published_sources"] = json::object();
             if (catalog.is_object() && catalog.contains("rows") && catalog["rows"].is_array())
                 for (const auto& row : catalog["rows"])
+                {
+                    if (row.contains("source")) index["$published_sources"][row["source"].get<std::string>()] = true;
+                    for (const auto& alternative : row.value("alternatives", json::array()))
+                        if (alternative.contains("source"))
+                            index["$published_sources"][alternative["source"].get<std::string>()] = true;
                     for (const char* id : {"hip", "hd", "gaia", "name"})
                         if (row.contains(id))
                         {
@@ -191,9 +198,15 @@ void CatalogReader::apply_stellar_abundances(Star* host)
                             if (!index.contains(key)) index[key] = row;
                             else if (index[key] != row) index[key] = nullptr;
                         }
+                }
             table = age_tables.emplace(path, std::move(index)).first;
         }
-        if (!host->stellar_age.is_object())
+        normalize_uncertain_numbers(host->stellar_age);
+        const bool valid_age = std::isfinite(numeric(host->stellar_age, "value_gyr"))
+            && numeric(host->stellar_age, "value_gyr") >= 0;
+        const bool published = host->stellar_age.is_object() && !host->user_edited && !host->user_added
+            && table->second["$published_sources"].contains(host->stellar_age.value("source", ""));
+        if (!valid_age || published)
         {
             for (const auto& key : {"hip:" + std::to_string(host->HIP), "hd:" + std::to_string(host->HD),
                 "gaia:" + std::to_string(host->gaia_source_id), "name:" + normalized(host->name)})
@@ -203,7 +216,22 @@ void CatalogReader::apply_stellar_abundances(Star* host)
                     if ((host->HIP && candidate.contains("hip") && candidate["hip"] != host->HIP)
                         || (host->HD && candidate.contains("hd") && candidate["hd"] != host->HD)
                         || (host->gaia_source_id && candidate.contains("gaia") && candidate["gaia"] != host->gaia_source_id)) continue;
+                    const json previous = host->stellar_age;
                     host->stellar_age = candidate;
+                    if (previous.is_object())
+                    {
+                        auto append = [&](json value)
+                        {
+                            if (!value.is_object()) return;
+                            for (const char* field : {"alternatives", "name", "hip", "hd", "gaia"}) value.erase(field);
+                            auto& alternatives = host->stellar_age["alternatives"];
+                            if (!alternatives.is_array()) alternatives = json::array();
+                            if (std::find(alternatives.begin(), alternatives.end(), value) == alternatives.end())
+                                alternatives.push_back(std::move(value));
+                        };
+                        for (const auto& value : previous.value("alternatives", json::array())) append(value);
+                        if (valid_age) append(previous);
+                    }
                     break;
                 }
         }

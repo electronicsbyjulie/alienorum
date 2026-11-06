@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "sources": {
+    "Connelly_2012_Solar_System_chronology": "https://doi.org/10.1126/science.1226919",
+    "Pagano_2015_Tau_Ceti": "https://doi.org/10.1088/0004-637X/803/2/89",
+    "Medhi_2026_HD20794": "https://doi.org/10.1093/mnras/stag802",
+    "Torres_2015_Capella": "https://doi.org/10.1088/0004-637X/807/1/26",
+    "Marini_2023_Capella": "https://doi.org/10.1051/0004-6361/202346758"
+  },
+  "rows": [
+    {"name": "Sun", "value_gyr": 4.5673, "source": "Connelly_2012_Solar_System_chronology"},
+    {"hip": 8102, "hd": 10700, "value_gyr": 7.63, "lower_gyr": 6.13, "upper_gyr": 8.50, "source": "Pagano_2015_Tau_Ceti"},
+    {"hip": 15510, "hd": 20794, "value_gyr": 9.0, "source": "Medhi_2026_HD20794"},
+    {"hip": 24608, "hd": 34029, "value_gyr": 0.620, "lower_gyr": 0.590, "upper_gyr": 0.650, "source": "Torres_2015_Capella"},
+    {"hip": 24608, "hd": 34029, "value_gyr": 0.710, "source": "Marini_2023_Capella", "priority": 7},
+    {"name": "GJ 194 B", "value_gyr": 0.620, "lower_gyr": 0.590, "upper_gyr": 0.650, "source": "Torres_2015_Capella"},
+    {"name": "GJ 194 B", "value_gyr": 0.710, "source": "Marini_2023_Capella", "priority": 7}
+  ]
+}

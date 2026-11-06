@@ -2873,11 +2873,19 @@ TEST_F(CatalogParsingTest, PublishedAgeSupplementCoversTheCatalogAndMatchesIdent
     Star* tau = make_star("Unrelated display label");
     tau->HD = 10700;
     tau->HIP = 8102;
+    tau->stellar_age = json::object();
     CatalogReader reader;
     reader.apply_stellar_abundances(tau);
     EXPECT_DOUBLE_EQ(tau->estimate_age_gyr(), 7.63);
     EXPECT_EQ(tau->stellar_age["source"], "Pagano_2015_Tau_Ceti");
     EXPECT_GE(tau->stellar_age["alternatives"].size(), 4u);
+    tau->stellar_age = {{"value_gyr", 1.23}, {"source", "XHIP_V_137D"}, {"estimated", true}};
+    reader.apply_stellar_abundances(tau);
+    EXPECT_DOUBLE_EQ(tau->estimate_age_gyr(), 7.63);
+    bool retained = false;
+    for (const auto& alternative : tau->stellar_age["alternatives"])
+        if (alternative.value("value_gyr", -1.0) == 1.23) retained = true;
+    EXPECT_TRUE(retained);
     Star* supplied = make_star("82 Eridani");
     supplied->HD = 20794;
     supplied->stellar_age = {{"value_gyr", 8.75}, {"source", "authored"}};

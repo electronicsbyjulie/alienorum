@@ -1295,7 +1295,10 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
 
         // 436-447  A12   ---     SpType    Spectral type
         read_field_onebased(buffer, 436, 447, field);
-        if (trim(field).size()) strcpy(s->spectral_type, trim(field).c_str());
+        const std::string spectrum = trim(field);
+        const bool classified = s->spectral_type[0] && strpbrk(s->spectral_type, "IV");
+        if (!spectrum.empty() && !(classified && spectrum.find("comp") != std::string::npos))
+            strcpy(s->spectral_type, spectrum.c_str());
 
         s->gotta_be_named_something();
         s->estimate_radius();
@@ -7161,7 +7164,11 @@ int alienorum::CatalogReader::read_condensed_star_cat()
 
     fclose(fp);
     ((Star*)cels[0])->distance_known = true;
-    for (Star* object : catalog_stars) apply_stellar_abundances(object);
+    for (Star* object : catalog_stars)
+    {
+        apply_stellar_abundances(object);
+        object->repair_estimated_mass();
+    }
 
     const auto find_saved_star = [&](const json& key) -> Star*
     {
