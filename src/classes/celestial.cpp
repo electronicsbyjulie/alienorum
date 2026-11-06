@@ -150,6 +150,7 @@ Map* CelestialObject::get_day_map()
 
 Map* CelestialObject::get_night_map()
 {
+    if (night_map && surf_map) night_map->update_night_phase(surf_map);
     if (show_clouds && transparent_clouds && cloud_map && cloud_map->is_complete() && (night_map || uses_rocky_map(type)))
     {
         if (!merged_night_map || merged_night_cloud_gen != cloud_map->gen || (night_map && merged_night_map_gen != night_map->gen))
@@ -165,6 +166,8 @@ Map* CelestialObject::get_night_map()
             merged_night_cloud_gen = cloud_map->gen;
             merged_night_map_gen = night_map ? night_map->gen : 0;
         }
+        else if (night_map && merged_night_map->water_phase_revision() != night_map->water_phase_revision())
+            merged_night_map->create_merged_night(night_map, cloud_map);
         return merged_night_map;
     }
     return night_map;
@@ -2065,6 +2068,33 @@ double Map::mean_cloud_opacity()
     return cached_cloud_opacity;
 }
 
+bool Map::sync_phase_composite(Map* source, Map* clouds, bool night)
+{
+    if (!is_complete() || !source || !clouds || !water_phase || !water_phase->composite || water_phase->generation != gen
+        || water_phase->source_generation != source->gen || water_phase->cloud_generation != clouds->gen) return false;
+    const auto started = std::chrono::steady_clock::now();
+    for (const auto& patch : source->water_phase_patches(water_phase->revision))
+    {
+        for (unsigned long y = patch.y; y < patch.y + patch.height; ++y)
+            for (unsigned long x = patch.x; x < patch.x + patch.width; ++x)
+            {
+                const size_t index = y * image_width + x;
+                RGB3 cloud = clouds->color_at(half_pi - (y + .5) * inv_lat_scale, (x + .5) * inv_lon_scale - _pi);
+                const double alpha = std::clamp(cloud.luminance() / 255.0, 0.0, 1.0);
+                red_data[index] = std::clamp(int(source->red_data[index] * (1 - alpha) + (night ? 12 * alpha : cloud.r)), 0, 255);
+                green_data[index] = std::clamp(int(source->green_data[index] * (1 - alpha) + (night ? 18 * alpha : cloud.g)), 0, 255);
+                blue_data[index] = std::clamp(int(source->blue_data[index] * (1 - alpha) + (night ? 36 * alpha : cloud.b)), 0, 255);
+            }
+        const auto key = SurfacePhase::key(patch.x / SurfacePhase::tile_width, patch.y / SurfacePhase::tile_height);
+        auto& tile = water_phase->tiles[key];
+        if (tile.rect.revision) water_phase->revisions.erase(tile.rect.revision);
+        tile.rect = patch;
+        water_phase->revisions[patch.revision] = key; water_phase->revision = patch.revision;
+        if (std::chrono::steady_clock::now() - started >= std::chrono::milliseconds(1)) break;
+    }
+    return true;
+}
+
 bool Map::create_merged_day(Map *surf, Map *clouds)
 {
     if (!surf || !surf->has_rgb_data() || !clouds || !clouds->is_complete())
@@ -2072,33 +2102,7 @@ bool Map::create_merged_day(Map *surf, Map *clouds)
         return false;
     }
 
-    if (is_complete() && water_phase && water_phase->composite && water_phase->generation == gen
-        && water_phase->source_generation == surf->gen && water_phase->cloud_generation == clouds->gen)
-    {
-        SurfacePhaseRect patch;
-        if (!surf->next_water_phase_patch(water_phase->revision, patch)) return true;
-        for (unsigned long y = patch.y; y < patch.y + patch.height; ++y)
-            for (unsigned long x = patch.x; x < patch.x + patch.width; ++x)
-            {
-                const unsigned long index = y * image_width + x;
-                const double latitude = half_pi - (y + .5) * inv_lat_scale;
-                const double longitude = (x + .5) * inv_lon_scale - _pi;
-                RGB3 cloud = clouds->color_at(latitude, longitude);
-                const double alpha = std::clamp(cloud.luminance() / 255.0, 0.0, 1.0);
-                red_data[index] = std::clamp(int(surf->red_data[index] * (1 - alpha) + cloud.r), 0, 255);
-                green_data[index] = std::clamp(int(surf->green_data[index] * (1 - alpha) + cloud.g), 0, 255);
-                blue_data[index] = std::clamp(int(surf->blue_data[index] * (1 - alpha) + cloud.b), 0, 255);
-            }
-        SurfacePhaseTile tile;
-        tile.rect = patch;
-        const auto key = SurfacePhase::key(patch.x / SurfacePhase::tile_width, patch.y / SurfacePhase::tile_height);
-        const auto previous = water_phase->tiles.find(key);
-        if (previous != water_phase->tiles.end()) water_phase->revisions.erase(previous->second.rect.revision);
-        water_phase->tiles[key] = std::move(tile);
-        water_phase->revisions[patch.revision] = key;
-        water_phase->revision = patch.revision;
-        return true;
-    }
+    if (sync_phase_composite(surf, clouds, false)) return true;
 
     unsigned long w = surf->get_width();
     unsigned long h = surf->get_height();
@@ -2174,6 +2178,8 @@ bool Map::create_merged_night(Map *night, Map *clouds)
     {
         return false;
     }
+
+    if (night && sync_phase_composite(night, clouds, true)) return true;
 
     unsigned long w = 0, h = 0;
     if (night && night->has_rgb_data())
@@ -2251,6 +2257,10 @@ bool Map::create_merged_night(Map *night, Map *clouds)
     }
 
     touch_gen();
+    water_phase = std::make_shared<SurfacePhase>();
+    water_phase->generation = gen; water_phase->composite = true;
+    water_phase->source_generation = night ? night->gen : 0; water_phase->cloud_generation = clouds->gen;
+    water_phase->revision = night ? night->water_phase_revision() : 0;
     return true;
 }
 
@@ -2438,7 +2448,7 @@ uint64_t Map::water_phase_revision() const
 
 SurfaceMaterial Map::phase_material(unsigned long column, unsigned long row, SurfaceMaterial base) const
 {
-    if (!water_phase || water_phase->generation != gen) return base;
+    if (!water_phase || water_phase->generation != gen || water_phase->composite) return base;
     const auto found = water_phase->tiles.find(SurfacePhase::key(column / SurfacePhase::tile_width,
         row / SurfacePhase::tile_height));
     if (found == water_phase->tiles.end() || !found->second.rect.revision) return base;
@@ -2497,7 +2507,129 @@ bool Map::next_water_phase_patch(uint64_t after, SurfacePhaseRect& rect) const
     return true;
 }
 
+std::vector<SurfacePhaseRect> Map::water_phase_patches(uint64_t after, size_t pixels) const
+{
+    std::vector<SurfacePhaseRect> result;
+    SurfacePhaseRect rect;
+    size_t count = 0;
+    while (result.size() < 128 && next_water_phase_patch(after, rect))
+    {
+        if (count + rect.width * rect.height > pixels) break;
+        result.push_back(rect);
+        count += rect.width * rect.height;
+        after = rect.revision;
+    }
+    return result;
+}
+
+RGB3 Map::original_phase_color(unsigned long column, unsigned long row) const
+{
+    if (water_phase && water_phase->generation == gen)
+    {
+        const auto found = water_phase->tiles.find(SurfacePhase::key(column / SurfacePhase::tile_width, row / SurfacePhase::tile_height));
+        if (found != water_phase->tiles.end())
+        {
+            const auto& tile = found->second;
+            const size_t index = (row - tile.rect.y) * tile.rect.width + column - tile.rect.x;
+            if (index < tile.pixels.size())
+            {
+                const auto& color = tile.pixels[index].original;
+                return RGB3(color[0], color[1], color[2]);
+            }
+            if (index < tile.packed.size() / 15)
+            {
+                const auto* color = tile.packed.data() + index * 15 + 6;
+                return RGB3(color[0], color[1], color[2]);
+            }
+        }
+    }
+    return surface_pixel(column, row).first;
+}
+
+void Map::update_night_phase(Map* source)
+{
+    if (!source || source == this || !is_complete() || !source->water_phase_revision()) return;
+    if (!water_phase || water_phase->generation != gen || water_phase->source_generation != source->gen)
+    {
+        water_phase = std::make_shared<SurfacePhase>();
+        water_phase->generation = gen; water_phase->source_generation = source->gen; water_phase->composite = true;
+    }
+    const auto started = std::chrono::steady_clock::now();
+    for (const auto& patch : source->water_phase_patches(water_phase->revision))
+    {
+        const auto key = SurfacePhase::key(patch.x / SurfacePhase::tile_width, patch.y / SurfacePhase::tile_height);
+        auto& tile = water_phase->tiles[key];
+        const unsigned long left = (patch.x * image_width + source->image_width - 1) / source->image_width;
+        const unsigned long top = (patch.y * image_height + source->image_height - 1) / source->image_height;
+        const unsigned long right = ((patch.x + patch.width) * image_width + source->image_width - 1) / source->image_width;
+        const unsigned long bottom = ((patch.y + patch.height) * image_height + source->image_height - 1) / source->image_height;
+        const bool fresh = tile.packed.empty();
+        if (fresh) tile.packed.resize((right - left) * (bottom - top) * 3);
+        for (unsigned long y = top; y < bottom; ++y)
+            for (unsigned long x = left; x < right; ++x)
+            {
+                const size_t index = y * image_width + x, local = (y - top) * (right - left) + x - left;
+                auto* baseline = tile.packed.data() + local * 3;
+                if (fresh)
+                {
+                    baseline[0] = red_data[index]; baseline[1] = green_data[index]; baseline[2] = blue_data[index];
+                }
+                const unsigned long sx = x * source->image_width / image_width, sy = y * source->image_height / image_height;
+                const RGB3 original = source->original_phase_color(sx, sy), current = source->surface_pixel(sx, sy).first;
+                // Apply only the surface reflectance delta, preserving authored city lights.
+                red_data[index] = std::clamp(std::lround(baseline[0] + .20 * (int(current.r) - original.r)), 0l, 255l);
+                green_data[index] = std::clamp(std::lround(baseline[1] + .25 * (int(current.g) - original.g)), 0l, 255l);
+                blue_data[index] = std::clamp(std::lround(baseline[2] + .29 * (int(current.b) - original.b)), 0l, 255l);
+            }
+        if (tile.rect.revision) water_phase->revisions.erase(tile.rect.revision);
+        tile.rect = {left, top, right - left, bottom - top, patch.revision};
+        water_phase->revisions[patch.revision] = key;
+        water_phase->revision = patch.revision;
+        if (std::chrono::steady_clock::now() - started >= std::chrono::milliseconds(1)) break;
+    }
+}
+
 void Map::update_water_phase(const LocalClimate& climate, double epoch, double latitude, double longitude,
+    double salinity, double pressure, double water_level, double bump_scale, bool ocean_world)
+{
+    if (!is_complete() || generating_fic_texture || !image_width || !image_height) return;
+    if (!water_phase || water_phase->generation != gen)
+    {
+        water_phase = std::make_shared<SurfacePhase>();
+        water_phase->generation = gen;
+    }
+    auto& state = *water_phase;
+    const auto started = std::chrono::steady_clock::now();
+    if (state.survey && state.survey->ready.load(std::memory_order_acquire))
+    {
+        state.candidates = std::move(state.survey->candidates);
+        state.survey.reset();
+    }
+    if (!state.survey && (state.surveyed.time_since_epoch().count() == 0
+        || started - state.surveyed >= std::chrono::seconds(1)))
+    {
+        auto survey = std::make_shared<SurfacePhaseSurvey>();
+        survey->climate = climate; survey->width = image_width; survey->height = image_height;
+        survey->lat_scale = lat_scale; survey->lon_scale = lon_scale;
+        survey->freezing = seawater_freezing_k(salinity, pressure); survey->epoch = epoch;
+        auto job = std::make_shared<SurfacePhaseJob>();
+        job->survey = survey;
+        if (SurfacePhaseWorker::instance().submit(job))
+        {
+            state.survey = std::move(survey);
+            state.surveyed = started;
+        }
+    }
+    // Keep source snapshots and publication below a short render-thread budget.
+    // Many independent jobs can finish between frames instead of waiting for a round trip per pixel patch.
+    for (unsigned int iteration = 0; iteration < state.batch_limit; ++iteration)
+    {
+        update_water_phase_tile(climate, epoch, latitude, longitude, salinity, pressure, water_level, bump_scale, ocean_world);
+        if (std::chrono::steady_clock::now() - started >= std::chrono::milliseconds(2)) break;
+    }
+}
+
+void Map::update_water_phase_tile(const LocalClimate& climate, double epoch, double latitude, double longitude,
     double salinity, double pressure, double water_level, double bump_scale, bool ocean_world)
 {
     if (!is_complete() || generating_fic_texture || !std::isfinite(epoch) || !std::isfinite(latitude)
@@ -2508,10 +2640,15 @@ void Map::update_water_phase(const LocalClimate& climate, double epoch, double l
         water_phase->generation = gen;
     }
     auto& state = *water_phase;
-    if (state.pending)
+    if (state.pending && state.pending->ready.load(std::memory_order_acquire))
     {
-        if (!state.pending->ready.load(std::memory_order_acquire)) return;
         auto job = std::move(state.pending);
+        if (!state.queued.empty())
+        {
+            state.pending = std::move(state.queued.front());
+            state.queued.pop_front();
+        }
+        state.inflight.erase(SurfacePhase::key(job->tile.rect.x / SurfacePhase::tile_width, job->tile.rect.y / SurfacePhase::tile_height));
         if (job->generation != gen) return;
         // Publishing one 16x8 patch is bounded; all thermal work ran on the worker.
         auto tile = std::move(job->tile);
@@ -2564,27 +2701,48 @@ void Map::update_water_phase(const LocalClimate& climate, double epoch, double l
         state.active.push_front(key);
         tile.lru = state.active.begin();
         state.tiles[key] = std::move(tile);
+        // Queued jobs can finish together; enforce the active bound at publication too.
+        if (state.active.size() > SurfacePhase::tile_limit)
+        {
+            const auto victim = state.active.back();
+            state.active.pop_back();
+            auto retired = state.tiles.find(victim);
+            if (retired != state.tiles.end())
+            {
+                if (retired->second.rect.revision) pack_phase_tile(retired->second);
+                else state.tiles.erase(retired);
+            }
+        }
     }
-    // Three quarters of visits favor a small neighborhood around the observer.
+    if (state.inflight.size() >= state.batch_limit) return;
+    // One eighth of visits favor the observer; the rest continuously traverse the screened globe.
     const unsigned long columns = (image_width + SurfacePhase::tile_width - 1) / SurfacePhase::tile_width;
     const unsigned long rows = (image_height + SurfacePhase::tile_height - 1) / SurfacePhase::tile_height;
     const uint64_t visit = state.scan++;
     unsigned long tx = 0, ty = 0;
-    if (visit % 4 != 3)
+    if (visit % 8 == 7 && !state.revisions.empty())
+    {
+        auto revisit = state.revisions.upper_bound(state.revisit_revision);
+        if (revisit == state.revisions.end()) revisit = state.revisions.begin();
+        state.revisit_revision = revisit->first;
+        tx = static_cast<uint32_t>(revisit->second); ty = revisit->second >> 32;
+    }
+    else if (visit % 8 == 0 || state.candidates.empty())
     {
         const unsigned int focus = idx_of(latitude, longitude);
         if (focus == idx_not_ready || focus >= allocated) return;
-        const int offset = static_cast<int>((visit / 4) % 25);
-        const long dx = offset % 5 - 2, dy = offset / 5 - 2;
+        const int offset = static_cast<int>((visit / 8) % 25);
+        const long dx = offset == 0 ? 0 : (offset - 1) % 5 - 2, dy = offset == 0 ? 0 : (offset - 1) / 5 - 2;
         tx = (long(focus % image_width / SurfacePhase::tile_width) + dx + columns) % columns;
         ty = std::clamp(long(focus / image_width / SurfacePhase::tile_height) + dy, 0l, long(rows - 1));
     }
     else
     {
-        const auto index = (visit / 4) % (columns * rows);
-        tx = index % columns; ty = index / columns;
+        const uint64_t candidate = state.candidates[state.candidate_cursor++ % state.candidates.size()];
+        tx = static_cast<uint32_t>(candidate); ty = candidate >> 32;
     }
     const auto key = SurfacePhase::key(tx, ty);
+    if (state.inflight.count(key)) return;
     auto existing = state.tiles.find(key);
     if (existing != state.tiles.end() && std::isfinite(existing->second.epoch)
         && epoch >= existing->second.epoch && epoch - existing->second.epoch < 30) return;
@@ -2674,7 +2832,12 @@ void Map::update_water_phase(const LocalClimate& climate, double epoch, double l
                 pixel.ice = original_ice;
             }
     }
-    if (SurfacePhaseWorker::instance().submit(job)) state.pending = std::move(job);
+    if (SurfacePhaseWorker::instance().submit(job))
+    {
+        state.inflight.insert(key);
+        if (state.pending) state.queued.push_back(std::move(job));
+        else state.pending = std::move(job);
+    }
 }
 
 json Map::water_phase_to_json() const

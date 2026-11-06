@@ -682,6 +682,7 @@ int main (int argc, char** argv)
             set_viewer_location_and_plane();
             compute_object_draw_coordinates();
             ExoConsGenerator::update_frame();
+            Planet::update_surface_phases();
             if (view_mode == vm_horizon)
             {
                 find_horizon();

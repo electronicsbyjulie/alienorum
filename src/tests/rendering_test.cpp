@@ -701,6 +701,35 @@ TEST_F(RenderingRegressionTest, SunclockIncludesBrightCompanionsWithoutDuplicati
     ImGui::NewFrame();
 }
 
+TEST_F(RenderingRegressionTest, SunclockAdvancesGlobalIceAndShortcutTogglesIt)
+{
+    auto* world = surface(true);
+    delete world->surf_map;
+    world->surf_map = new WaterPhaseTestMap();
+    world->night_map = new WaterPhaseTestMap();
+    world->temperature = 250; world->temperature_supplied = true;
+    set(view_mode, vm_sunclock);
+    set(selected_locale, static_cast<Locale*>(nullptr));
+    set(show_clouds, false);
+    ASSERT_FALSE(dynamic_surface_ice);
+    process_key_cmd_ctrl_char('I');
+    ASSERT_TRUE(dynamic_surface_ice);
+    for (int frame = 0; frame < 40; ++frame)
+    {
+        draw_sunclock();
+        render();
+        gputex_finish_frame();
+        ImGui::NewFrame();
+        if (world->surf_map->surface_pixel(0, 0).second == SurfaceMaterial::ice
+            && world->surf_map->surface_pixel(63, 31).second == SurfaceMaterial::ice) break;
+    }
+    EXPECT_EQ(world->surf_map->surface_pixel(0, 0).second, SurfaceMaterial::ice);
+    EXPECT_EQ(world->surf_map->surface_pixel(63, 31).second, SurfaceMaterial::ice);
+    EXPECT_GT(world->night_map->surface_pixel(0, 0).first.r, 20);
+    process_key_cmd_ctrl_char('I');
+    EXPECT_FALSE(dynamic_surface_ice);
+}
+
 TEST_F(RenderingRegressionTest, SunclockWithoutNightMapKeepsSurfaceVisibleThroughCloudGaps)
 {
     Planet *world = surface();
@@ -7939,6 +7968,59 @@ TEST_F(RenderingRegressionTest, FrameScratchPreservesFreshImagesAcrossMapsViewsA
         EXPECT_EQ(image_difference(image(false), expected), 0) << step;
         EXPECT_EQ(image_difference(image(false), expected), 0) << step;
     }
+}
+
+TEST_F(RenderingRegressionTest, GlobalIceUploadsCoalescePatchesWithoutFullTextureWork)
+{
+    gputex_clear_cache();
+    WaterPhaseTestMap map(256, 128);
+    const GLuint texture = gputex_for(&map);
+    for (int frame = 0; frame < 1000; ++frame)
+    {
+        map.update_water_phase(uniform_phase_climate(250), 100, .3, .3, 35, oneatm, .5, 1000, false);
+        if (map.phase_state()->tiles.size() == 256 && !map.phase_state()->pending) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    ASSERT_EQ(map.phase_state()->tiles.size(), 256u);
+    gputex_for(&map);
+    gputex_finish_frame();
+    glFinish();
+    reset_gputex_upload_stats();
+    for (int frame = 0; frame < 4; ++frame)
+    {
+        EXPECT_EQ(gputex_for(&map), texture);
+        gputex_finish_frame();
+        glFinish();
+    }
+    const auto stats = gputex_upload_stats();
+    EXPECT_GT(stats.phase_bytes, 512u);
+    EXPECT_LE(stats.phase_bytes, 256u * 128u * 4u);
+    EXPECT_LT(stats.phase_patches, 256u);
+    EXPECT_EQ(stats.allocations, 0u);
+    EXPECT_EQ(stats.updates, 0u);
+    EXPECT_EQ(stats.mipmap_rebuilds, 0u);
+    std::vector<unsigned char> actual(256 * 128 * 4), expected(actual.size());
+    map.export_rgba(expected.data());
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, actual.data());
+    EXPECT_EQ(actual, expected);
+    WaterPhaseTestMap reference(256, 128);
+    reference.copy_surface(map);
+    const GLuint fresh = gputex_for(&reference);
+    unsigned long width = 256, height = 128;
+    for (int level = 1; width > 1 || height > 1; ++level)
+    {
+        width = std::max(1ul, width / 2); height = std::max(1ul, height / 2);
+        actual.resize(width * height * 4); expected.resize(actual.size());
+        glBindTexture(GL_TEXTURE_2D, texture);
+        glGetTexImage(GL_TEXTURE_2D, level, GL_RGBA, GL_UNSIGNED_BYTE, actual.data());
+        glBindTexture(GL_TEXTURE_2D, fresh);
+        glGetTexImage(GL_TEXTURE_2D, level, GL_RGBA, GL_UNSIGNED_BYTE, expected.data());
+        for (size_t index = 0; index < actual.size(); ++index)
+            ASSERT_LE(abs(int(actual[index]) - int(expected[index])), 1) << level;
+    }
+    EXPECT_EQ(glGetError(), GLenum(GL_NO_ERROR));
+    gputex_clear_cache();
 }
 
 TEST_F(RenderingRegressionTest, WaterPhasePatchesRetainStorageAndUpdateMipRegions)

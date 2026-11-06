@@ -4982,6 +4982,9 @@ void draw_sunclock()
 
     spawn_texture_load(cel);
 
+    if (cls == class_planet || cls == class_moon)
+        static_cast<Planet*>(cel)->update_surface_phase(viewer_lat, viewer_lon);
+
     Color c = cls == class_star
         ? Color::color_from_star(0, (Star*)cel, cel->BV_color)
         : Color::color_from_magnitude_indices(0, cel->BV_color);
@@ -4999,6 +5002,7 @@ void draw_sunclock()
     const bool hide_cloud_deck = cel->surf_map && (cel->overcast || !cel->transparent_clouds
         || (cel->cloud_map && cel->cloud_map->mean_cloud_opacity() >= cloud_opacity_threshold));
     Map *map = hide_cloud_deck ? cel->surf_map : cel->get_day_map();
+    if (cel->night_map && cel->surf_map) cel->night_map->update_night_phase(cel->surf_map);
     // Without a night texture, dim the combined surface and clouds together.
     // A synthetic cloud-only night map would hide the surface behind black.
     Map *nmap = cel->night_map ? (hide_cloud_deck ? cel->night_map : cel->get_night_map()) : nullptr;

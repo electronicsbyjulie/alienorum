@@ -53,7 +53,8 @@ inline bool publish_water_phase(alienorum::Map& map, const alienorum::LocalClima
     while (std::chrono::steady_clock::now() < deadline)
     {
         if (auto state = map.phase_state()) state->scan = 0;
-        map.update_water_phase(climate, epoch, .3, .3, 35, 101325, .5, 1000, false);
+        if (auto state = map.phase_state()) state->batch_limit = 1;
+        map.update_water_phase_tile(climate, epoch, .3, .3, 35, 101325, .5, 1000, false);
         if (map.water_phase_revision() != before) return true;
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }

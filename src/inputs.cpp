@@ -562,10 +562,9 @@ void show_menu()
                 process_key_cmd_ctrl_char('t');
                 menu_clicked = true;
             }
-            if (ImGui::MenuItem("Dynamic Surface Ice", nullptr, dynamic_surface_ice))
+            if (ImGui::MenuItem("Dynamic Surface Ice", "Ctrl+Shift+I", dynamic_surface_ice))
             {
-                dynamic_surface_ice = !dynamic_surface_ice;
-                viewchanged = true;
+                process_key_cmd_ctrl_char('I');
                 menu_clicked = true;
             }
             if (ImGui::MenuItem("Clouds", "Ctrl+C", show_clouds))
@@ -1182,6 +1181,7 @@ void process_key_cmd_ctrl_char(char c)
         case 'f': activate_find_shore(); break;
         case 'g': vplane_mode = vplane_galactic; break;
         case 'i': vplane_mode = vplane_ICRF; break;
+        case 'I': dynamic_surface_ice = !dynamic_surface_ice; viewchanged = true; break;
         case 'l': vplane_mode = vplane_local; break;
 
         case 'o':

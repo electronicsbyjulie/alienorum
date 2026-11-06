@@ -11,6 +11,7 @@
 #include <mutex>
 #include <thread>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 #include "climate.h"
 #include "salinity.h"
@@ -79,6 +80,15 @@ namespace alienorum
         return pixels;
     }
 
+    struct SurfacePhaseSurvey
+    {
+        LocalClimate climate;
+        unsigned long width = 0, height = 0;
+        double lat_scale = 0, lon_scale = 0, freezing = 271.23, epoch = 0;
+        std::vector<uint64_t> candidates;
+        std::atomic<bool> ready{false};
+    };
+
     struct SurfacePhaseJob
     {
         SurfacePhaseTile tile;
@@ -86,6 +96,7 @@ namespace alienorum
         unsigned int generation = 0;
         double epoch = 0, salinity = 35, pressure = 101325;
         std::atomic<bool> ready{false};
+        std::shared_ptr<SurfacePhaseSurvey> survey;
     };
 
     inline double surface_ice_step(double ice, double temperature, double salinity, double pressure,
@@ -97,6 +108,8 @@ namespace alienorum
         if (!std::isfinite(elapsed) || elapsed < 0)
         {
             if (!ocean) return std::clamp((freezing + .25 - temperature) / .5, 0.0, 1.0);
+            if (temperature >= seawater_freezing_k(salinity, pressure)) return 0;
+            if (temperature <= seawater_freezing_k(salinity > 0 ? 264 : 0, pressure)) return 1;
             double low = 0, high = 1;
             for (int iteration = 0; iteration < 16; ++iteration)
             {
@@ -135,6 +148,33 @@ namespace alienorum
                     job = jobs.front();
                     jobs.pop_front();
                 }
+                if (job->survey)
+                {
+                    auto& survey = *job->survey;
+                    // Screen geographic tiles on the worker, without reading any map.
+                    // The broad band includes seasonal forcing and elevation margins.
+                    for (unsigned long y = 0; y < survey.height; y += 64)
+                        for (unsigned long x = 0; x < survey.width; x += 128)
+                        {
+                            double low = INFINITY, high = -INFINITY;
+                            for (const auto offset : {std::make_pair(0.0, 0.0), std::make_pair(128.0, 0.0),
+                                std::make_pair(0.0, 64.0), std::make_pair(128.0, 64.0), std::make_pair(64.0, 32.0)})
+                            {
+                                const double lat = std::clamp(half_pi - (y + offset.second) / survey.lat_scale, -half_pi, half_pi);
+                                const double lon = (x + offset.first) / survey.lon_scale - _pi;
+                                const double temperature = survey.climate.temperature(-cos(lat) * cos(lon), -cos(lat) * sin(lon),
+                                    sin(lat), survey.climate.sea_level_m);
+                                low = std::min(low, temperature); high = std::max(high, temperature);
+                            }
+                            if (low <= survey.freezing + 60 && high >= survey.freezing - 60)
+                                for (unsigned long row = y; row < std::min(y + 64, survey.height); row += 8)
+                                    for (unsigned long column = x; column < std::min(x + 128, survey.width); column += 16)
+                                        survey.candidates.push_back((uint64_t(row / 8) << 32) | (column / 16));
+                        }
+                    survey.ready.store(true, std::memory_order_release);
+                    job->ready.store(true, std::memory_order_release);
+                    continue;
+                }
                 const double elapsed = std::isfinite(job->tile.epoch) ? job->epoch - job->tile.epoch : -1;
                 for (auto& pixel : job->tile.pixels)
                 {
@@ -161,8 +201,9 @@ namespace alienorum
         bool submit(const std::shared_ptr<SurfacePhaseJob>& job)
         {
             std::unique_lock<std::mutex> lock(mutex, std::try_to_lock);
-            if (!lock || jobs.size() >= 8) return false;
-            jobs.push_back(job);
+            if (!lock || jobs.size() >= 256) return false;
+            if (job->survey) jobs.push_front(job);
+            else jobs.push_back(job);
             lock.unlock();
             wake.notify_one();
             return true;
@@ -190,6 +231,14 @@ namespace alienorum
         mutable double focus_lat = NAN, focus_lon = NAN, focus_radius = 0, focus_distance = 0;
         mutable uint64_t focus_checked = 0, focus_revision = 0;
         std::shared_ptr<SurfacePhaseJob> pending;
+        std::deque<std::shared_ptr<SurfacePhaseJob>> queued;
+        std::unordered_set<uint64_t> inflight;
+        std::shared_ptr<SurfacePhaseSurvey> survey;
+        std::vector<uint64_t> candidates;
+        size_t candidate_cursor = 0;
+        uint64_t revisit_revision = 0;
+        unsigned int batch_limit = 128;
+        std::chrono::steady_clock::time_point surveyed{};
         LocalClimate climate;
         double climate_epoch = NAN, salinity = 35, pressure = 101325;
         std::chrono::steady_clock::time_point prepared{};

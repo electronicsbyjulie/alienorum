@@ -1109,11 +1109,46 @@ json Planet::ocean_chemistry()
     return result;
 }
 
+namespace
+{
+    struct ActiveSurfaceWorld
+    {
+        Planet* world;
+        unsigned int index;
+        double latitude, longitude;
+    };
+    std::vector<ActiveSurfaceWorld> active_surface_worlds;
+}
+
+void Planet::update_surface_phases()
+{
+    if (!dynamic_surface_ice) return;
+    active_surface_worlds.erase(std::remove_if(active_surface_worlds.begin(), active_surface_worlds.end(), [](const auto& entry)
+    {
+        return !cels || entry.index >= ncelobjs || cels[entry.index] != entry.world;
+    }), active_surface_worlds.end());
+    static size_t cursor = 0;
+    const auto started = std::chrono::steady_clock::now();
+    const size_t count = active_surface_worlds.size();
+    for (size_t visit = 0; visit < count; ++visit)
+    {
+        const auto entry = active_surface_worlds[cursor++ % count];
+        entry.world->update_surface_phase(entry.latitude, entry.longitude);
+        if (std::chrono::steady_clock::now() - started >= std::chrono::milliseconds(2)) break;
+    }
+}
+
 void Planet::update_surface_phase(double latitude, double longitude)
 {
     if (!dynamic_surface_ice || !surf_map || !surf_map->is_complete() || !uses_rocky_map(type) || type == lavaworld
         || !(has_water > 0) || get_surface_pressure() < 611.657 || generating_fic_texture
         || texture_loads_pending.load() != 0) return;
+    const auto registered = std::find_if(active_surface_worlds.begin(), active_surface_worlds.end(), [&](const auto& entry)
+    {
+        return entry.world == this;
+    });
+    if (registered == active_surface_worlds.end()) active_surface_worlds.push_back({this, static_cast<unsigned int>(seqno), latitude, longitude});
+    else { registered->latitude = latitude; registered->longitude = longitude; }
     auto phase = surf_map->phase_state();
     const auto now = std::chrono::steady_clock::now();
     const bool cached = phase && phase->generation == surf_map->gen && std::isfinite(phase->climate_epoch)
@@ -1129,6 +1164,7 @@ void Planet::update_surface_phase(double latitude, double longitude)
     const double bump = m_bump_scale > 0 ? m_bump_scale : estimate_bump_scale();
     surf_map->update_water_phase(climate, simnow, latitude, longitude, salinity, get_surface_pressure(),
         has_water, bump, type == waterworld || type == hycean);
+    if (night_map) night_map->update_night_phase(surf_map);
     phase = surf_map->phase_state();
     if (phase && !cached)
     {

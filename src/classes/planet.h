@@ -41,6 +41,7 @@ namespace alienorum
         json saved_water_phase = nullptr;
         json ocean_chemistry();
         void update_surface_phase(double latitude, double longitude);
+        static void update_surface_phases();
         std::mutex saved_render_mutex;
         PlanetMeasurement mass_evidence = PlanetMeasurement::unknown;
         PlanetMeasurement radius_evidence = PlanetMeasurement::unknown;

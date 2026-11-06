@@ -21,6 +21,113 @@
 using namespace alienorum;
 using json = nlohmann::json;
 
+TEST(SurfacePhaseTest, BackgroundSweepCoversBothHemispheresWithoutMovingTheObserver)
+{
+    WaterPhaseTestMap map(256, 128);
+    const auto started = std::chrono::steady_clock::now();
+    for (int frame = 0; frame < 1000; ++frame)
+    {
+        map.update_water_phase(uniform_phase_climate(250), 100, .3, .3, 35, oneatm, .5, 1000, false);
+        if (map.phase_state()->tiles.size() == 256 && !map.phase_state()->pending) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    for (unsigned long row = 0; row < 128; row += 8)
+        for (unsigned long column = 0; column < 256; column += 16)
+            EXPECT_EQ(map.surface_pixel(column, row).second, SurfaceMaterial::ice) << column << ", " << row;
+    EXPECT_FALSE(map.phase_state()->candidates.empty());
+    EXPECT_LE(map.phase_state()->inflight.size(), 128u);
+    std::cout << "Global freeze sweep: " << std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - started).count() << " ms" << std::endl;
+    // A large warming jump still revisits ice outside the screening band.
+    map.phase_state()->surveyed = {};
+    for (int frame = 0; frame < 1000; ++frame)
+    {
+        map.update_water_phase(uniform_phase_climate(400), 864100, .3, .3, 35, oneatm, .5, 1000, false);
+        if (map.surface_pixel(0, 0).second == SurfaceMaterial::water
+            && map.surface_pixel(240, 120).second == SurfaceMaterial::water) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    EXPECT_EQ(map.surface_pixel(0, 0).second, SurfaceMaterial::water);
+    EXPECT_EQ(map.surface_pixel(240, 120).second, SurfaceMaterial::water);
+}
+
+TEST(SurfacePhaseTest, ScreeningRejectsHotAndDeepColdAreas)
+{
+    for (double temperature : {150.0, 450.0, 271.0})
+    {
+        WaterPhaseTestMap map(256, 128);
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+        do
+        {
+            map.update_water_phase(uniform_phase_climate(temperature), 100, .3, .3, 35, oneatm, .5, 1000, false);
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        } while (map.phase_state()->survey && std::chrono::steady_clock::now() < deadline);
+        ASSERT_FALSE(map.phase_state()->survey);
+        EXPECT_EQ(map.phase_state()->candidates.empty(), temperature != 271.0);
+    }
+}
+
+TEST(SurfacePhaseTest, EarthResolutionSweepHasBoundedPublicationAndReachesEveryLongitude)
+{
+    WaterPhaseTestMap map(1280, 640);
+    const auto started = std::chrono::steady_clock::now();
+    double longest = 0;
+    int frames = 0;
+    for (; frames < 2000; ++frames)
+    {
+        const auto frame_start = std::chrono::steady_clock::now();
+        map.update_water_phase(uniform_phase_climate(250), 100, .3, .3, 35, oneatm, .5, 1000, false);
+        longest = std::max(longest, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - frame_start).count());
+        if (map.phase_state()->tiles.size() == 6400 && !map.phase_state()->pending) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    ASSERT_EQ(map.phase_state()->tiles.size(), 6400u);
+    for (unsigned long row = 0; row < 640; row += 8)
+        for (unsigned long column = 0; column < 1280; column += 16)
+            ASSERT_EQ(map.surface_pixel(column, row).second, SurfaceMaterial::ice) << column << ", " << row;
+    EXPECT_LE(map.phase_state()->active.size(), SurfacePhase::tile_limit);
+    std::cout << "Earth resolution sweep: " << frames << " visits, " << std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - started).count() << " ms elapsed, " << longest << " ms longest publication" << std::endl;
+}
+
+TEST(SurfacePhaseTest, NightSurfaceAndCloudsTrackIceWithoutErasingCityLights)
+{
+    WaterPhaseTestMap day, night, clouds;
+    Map merged;
+    ASSERT_TRUE(merged.create_merged_night(&night, &clouds));
+    const auto generation = night.gen, merged_generation = merged.gen;
+    ASSERT_TRUE(publish_water_phase(day, uniform_phase_climate(250), 0));
+    SurfacePhaseRect patch;
+    ASSERT_TRUE(day.next_water_phase_patch(0, patch));
+    const RGB3 baseline = night.surface_pixel(patch.x, patch.y).first;
+    night.update_night_phase(&day);
+    const RGB3 frozen = night.surface_pixel(patch.x, patch.y).first;
+    EXPECT_GT(frozen.r, baseline.r);
+    EXPECT_GT(frozen.g, baseline.g);
+    EXPECT_GT(frozen.b, baseline.b);
+    EXPECT_EQ(night.surface_pixel(63, 31).first.r, 20);
+    EXPECT_EQ(night.gen, generation);
+    ASSERT_TRUE(merged.create_merged_night(&night, &clouds));
+    EXPECT_EQ(merged.water_phase_revision(), night.water_phase_revision());
+    EXPECT_EQ(merged.gen, merged_generation);
+    ASSERT_TRUE(publish_water_phase(day, uniform_phase_climate(290), 864000));
+    night.update_night_phase(&day);
+    EXPECT_EQ(night.surface_pixel(patch.x, patch.y).first.r, baseline.r);
+    EXPECT_EQ(night.surface_pixel(patch.x, patch.y).first.g, baseline.g);
+    EXPECT_EQ(night.surface_pixel(patch.x, patch.y).first.b, baseline.b);
+
+    WaterPhaseTestMap odd_day(65, 33), larger_night(128, 64);
+    ASSERT_TRUE(publish_water_phase(odd_day, uniform_phase_climate(250), 0));
+    larger_night.update_night_phase(&odd_day);
+    for (unsigned long row = 0; row < 64; ++row)
+        for (unsigned long column = 0; column < 128; ++column)
+        {
+            const auto source = odd_day.surface_pixel(column * 65 / 128, row * 33 / 64).first;
+            EXPECT_EQ(larger_night.surface_pixel(column, row).first.r, std::lround(20 + .20 * (int(source.r) - 20)))
+                << column << ", " << row;
+        }
+}
+
 TEST(SurfacePhaseTest, FreezeAndThawModifyOnlyOnePatchAndPreserveElevationAndGeneration)
 {
     WaterPhaseTestMap map;

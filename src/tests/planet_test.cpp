@@ -121,6 +121,27 @@ TEST_F(OceanPersistenceTest, PlanetClimateDrivesFreezingAndRuntimeToggleStopsUpd
     EXPECT_EQ(world->surf_map->water_phase_revision(), revision);
 }
 
+TEST_F(OceanPersistenceTest, RegisteredWorldContinuesUpdatingWithoutAnotherViewCall)
+{
+    const bool original = dynamic_surface_ice;
+    dynamic_surface_ice = true;
+    Planet* world = make_planet(make_star());
+    world->has_water = 1; world->temperature = 250; world->temperature_supplied = true;
+    world->ensure_atmosphere()->surface_pressure = oneatm;
+    world->surf_map = new WaterPhaseTestMap(256, 128);
+    world->update_surface_phase(.3, .3);
+    for (int frame = 0; frame < 1000; ++frame)
+    {
+        Planet::update_surface_phases();
+        if (world->surf_map->surface_pixel(0, 0).second == SurfaceMaterial::ice
+            && world->surf_map->surface_pixel(255, 127).second == SurfaceMaterial::ice) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    EXPECT_EQ(world->surf_map->surface_pixel(0, 0).second, SurfaceMaterial::ice);
+    EXPECT_EQ(world->surf_map->surface_pixel(255, 127).second, SurfaceMaterial::ice);
+    dynamic_surface_ice = original;
+}
+
 TEST(VegetationClimateTest, TemperatureAdaptationIsPartialRepeatableAndVaried)
 {
     for (unsigned int seed = 0; seed < 100; ++seed)
