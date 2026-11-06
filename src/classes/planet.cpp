@@ -1152,6 +1152,7 @@ void Planet::update_surface_phase(double latitude, double longitude)
     auto phase = surf_map->phase_state();
     const auto now = std::chrono::steady_clock::now();
     const bool cached = phase && phase->generation == surf_map->gen && std::isfinite(phase->climate_epoch)
+        && phase->clock_revision == surface_phase_clock.load()
         && simnow >= phase->climate_epoch && simnow - phase->climate_epoch < 1800
         && now - phase->prepared < std::chrono::milliseconds(250);
     const LocalClimate climate = cached ? phase->climate : current_local_climate();

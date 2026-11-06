@@ -38,6 +38,7 @@ MSYS2 (Run in MINGW64 environment):
 * White background mode for taking printer-friendly snapshots;
 * A large diverse set of display themes named after constellations;
 * Keyboard shortcut that turns off all annotations, effectively creating a "realism" mode;
+* Automatic freezing and thawing of bodies of water based on estimated local temperatures;
 * Configurable audible alerts when a given object rises or sets;
 * Robust set of star labeling options, including brightest, nearest, sunlike, presence of planets, and specialized labeling for Bayer, Flamsteed, and Gould;
 * Spaceflight feature with time dilation and warp speed capability;

@@ -21,6 +21,146 @@
 using namespace alienorum;
 using json = nlohmann::json;
 
+TEST(SurfacePhaseTest, RepeatedDayAndMonthSeeksMatchTheDestinationClimateAcrossAllTiles)
+{
+    WaterPhaseTestMap map(256, 128), reference(256, 128);
+    const auto settle = [](Map& surface, double temperature, double epoch)
+    {
+        for (int frame = 0; frame < 1000; ++frame)
+        {
+            surface.update_water_phase(uniform_phase_climate(temperature), epoch, .3, .3, 35, oneatm, .5, 1000, false);
+            auto state = surface.phase_state();
+            bool complete = state && state->tiles.size() == 256 && !state->pending;
+            if (complete)
+                for (const auto& tile : state->tiles)
+                    if (tile.second.timeline != state->timeline) complete = false;
+            if (complete) return true;
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        return false;
+    };
+    ASSERT_TRUE(settle(map, 250, 100));
+    double epoch = 100;
+    for (double step : {30.0, -1.0, 1.0, -30.0, 1.0, 30.0, -1.0, -30.0})
+    {
+        epoch += step * oneday;
+        // Interrupt each sweep, as when rapidly tapping day/month controls.
+        surface_phase_clock.fetch_add(1);
+        map.update_water_phase(uniform_phase_climate(step > 0 ? 290 : 260), epoch, .3, .3, 35, oneatm, .5, 1000, false);
+    }
+    surface_phase_clock.fetch_add(1);
+    ASSERT_TRUE(settle(map, 268, epoch + oneday));
+    ASSERT_TRUE(settle(reference, 268, epoch + oneday));
+    std::vector<unsigned char> actual(256 * 128 * 4), expected(actual.size());
+    map.export_rgba(actual.data()); reference.export_rgba(expected.data());
+    EXPECT_EQ(actual, expected);
+    for (const auto& tile : map.phase_state()->tiles)
+        EXPECT_NEAR(tile.second.pixels.front().ice, surface_ice_step(0, 268, 35, oneatm, -1, true), 1e-5);
+}
+
+TEST(SurfacePhaseTest, ReadyWorkFromAnEarlierDateCannotPublishAfterASeek)
+{
+    WaterPhaseTestMap map;
+    for (int visit = 0; visit < 100; ++visit)
+    {
+        map.update_water_phase_tile(uniform_phase_climate(290), 100, .3, .3, 35, oneatm, .5, 1000, false);
+        if (map.phase_state() && !map.phase_state()->tiles.empty()) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    auto state = map.phase_state();
+    ASSERT_FALSE(state->tiles.empty());
+    const auto& tile = state->tiles.begin()->second;
+    auto obsolete = std::make_shared<SurfacePhaseJob>();
+    obsolete->tile = tile; obsolete->generation = map.gen; obsolete->timeline = state->timeline;
+    for (auto& pixel : obsolete->tile.pixels) pixel.ice = 1;
+    obsolete->ready.store(true);
+    state->pending = obsolete;
+    const auto revision = map.water_phase_revision();
+    surface_phase_clock.fetch_add(1);
+    map.update_water_phase_tile(uniform_phase_climate(290), 100 + oneday, .3, .3, 35, oneatm, .5, 1000, false);
+    EXPECT_EQ(map.water_phase_revision(), revision);
+    EXPECT_EQ(map.surface_pixel(tile.rect.x, tile.rect.y).first.r, 20);
+    EXPECT_NE(obsolete->timeline, state->timeline);
+}
+
+TEST(SurfacePhaseTest, PostSeekBudgetsCatchUpAndReturnToTheNormalSlice)
+{
+    struct RestoreBudget
+    {
+        unsigned int value = surface_phase_seek_budget_ms;
+        ~RestoreBudget() { surface_phase_seek_budget_ms = value; }
+    } restore;
+    for (unsigned int budget : {6u, 12u, 20u, 40u})
+    {
+        SCOPED_TRACE(budget);
+        surface_phase_seek_budget_ms = budget;
+        WaterPhaseTestMap map(1280, 640);
+        for (int visit = 0; visit < 2000; ++visit)
+        {
+            map.update_water_phase(uniform_phase_climate(250), 100, .3, .3, 35, oneatm, .5, 1000, false);
+            if (map.phase_state()->tiles.size() == 6400 && !map.phase_state()->pending) break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        ASSERT_EQ(map.phase_state()->tiles.size(), 6400u);
+        surface_phase_clock.fetch_add(1);
+        const auto started = std::chrono::steady_clock::now();
+        double longest = 0, total = 0;
+        int visits = 0;
+        for (; visits < 2000; ++visits)
+        {
+            const auto before = std::chrono::steady_clock::now();
+            map.update_water_phase(uniform_phase_climate(268), 100 + 30 * oneday, .3, .3, 35, oneatm, .5, 1000, false);
+            const double elapsed = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - before).count();
+            longest = std::max(longest, elapsed); total += elapsed;
+            if (!map.phase_state()->catching_up && !map.phase_state()->pending) break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        ASSERT_LT(visits, 2000);
+        EXPECT_FALSE(map.phase_state()->catching_up);
+        for (const auto& entry : map.phase_state()->tiles)
+            ASSERT_EQ(entry.second.timeline, map.phase_state()->timeline);
+        std::cout << "Seek budget " << budget << " ms: " << visits << " visits, "
+            << std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count()
+            << " ms elapsed, " << total << " ms refresh work, " << longest << " ms longest call" << std::endl;
+    }
+}
+
+TEST(SurfacePhaseTest, CheckpointDuringASeekRetainsPendingThermalReconstruction)
+{
+    WaterPhaseTestMap map;
+    ASSERT_TRUE(publish_water_phase(map, uniform_phase_climate(250), 100));
+    map.phase_state()->sync_epoch(100 + oneday);
+    WaterPhaseTestMap restored;
+    restored.water_phase_from_json(map.water_phase_to_json());
+    // A second save serializes unknown thermal epochs as JSON null.
+    WaterPhaseTestMap reloaded;
+    ASSERT_NO_THROW(reloaded.water_phase_from_json(json::parse(restored.water_phase_to_json().dump())));
+    ASSERT_TRUE(publish_water_phase(reloaded, uniform_phase_climate(268), 100 + oneday));
+    EXPECT_NEAR(reloaded.phase_state()->tiles.begin()->second.pixels.front().ice,
+        surface_ice_step(0, 268, 35, oneatm, -1, true), 1e-5);
+}
+
+TEST(SurfacePhaseTest, CatchupSliceIsLatchedUntilAnotherTimeJump)
+{
+    struct RestoreBudget
+    {
+        unsigned int value = surface_phase_seek_budget_ms;
+        ~RestoreBudget() { surface_phase_seek_budget_ms = value; }
+    } restore;
+    SurfacePhase phase;
+    phase.sync_epoch(100);
+    surface_phase_seek_budget_ms = 20;
+    surface_phase_clock.fetch_add(1);
+    phase.sync_epoch(160);
+    EXPECT_EQ(phase.catchup_budget_ms, 20u);
+    surface_phase_seek_budget_ms = 40;
+    phase.sync_epoch(161);
+    EXPECT_EQ(phase.catchup_budget_ms, 20u);
+    surface_phase_clock.fetch_add(1);
+    phase.sync_epoch(221);
+    EXPECT_EQ(phase.catchup_budget_ms, 40u);
+}
+
 TEST(SurfacePhaseTest, BackgroundSweepCoversBothHemispheresWithoutMovingTheObserver)
 {
     WaterPhaseTestMap map(256, 128);
@@ -35,7 +175,7 @@ TEST(SurfacePhaseTest, BackgroundSweepCoversBothHemispheresWithoutMovingTheObser
         for (unsigned long column = 0; column < 256; column += 16)
             EXPECT_EQ(map.surface_pixel(column, row).second, SurfaceMaterial::ice) << column << ", " << row;
     EXPECT_FALSE(map.phase_state()->candidates.empty());
-    EXPECT_LE(map.phase_state()->inflight.size(), 384u);
+    EXPECT_LE(map.phase_state()->inflight.size(), 3840u);
     std::cout << "Global freeze sweep: " << std::chrono::duration<double, std::milli>(
         std::chrono::steady_clock::now() - started).count() << " ms" << std::endl;
     // A large warming jump still revisits ice outside the screening band.

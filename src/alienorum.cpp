@@ -30,6 +30,7 @@
 #include "classes/sscimport.h"
 #include "classes/exocons.h"
 #include "classes/sound.h"
+#include "classes/surfacephase.h"
 // Learn more about ImGui here: https://github.com/ocornut/imgui/blob/master/docs/FAQ.md
 
 using namespace alienorum;
@@ -682,6 +683,7 @@ int main (int argc, char** argv)
             set_viewer_location_and_plane();
             compute_object_draw_coordinates();
             ExoConsGenerator::update_frame();
+            surface_phase_seek_budget_ms = io.DeltaTime >= .1f ? 40 : 20;
             Planet::update_surface_phases();
             if (view_mode == vm_horizon)
             {

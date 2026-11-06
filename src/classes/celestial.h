@@ -278,7 +278,7 @@ namespace alienorum
             double salinity, double pressure, double water_level, double bump_scale, bool ocean_world);
         void update_water_phase_tile(const LocalClimate& climate, double epoch, double latitude, double longitude,
             double salinity, double pressure, double water_level, double bump_scale, bool ocean_world);
-        std::vector<SurfacePhaseRect> water_phase_patches(uint64_t after, size_t pixels = 65536) const;
+        std::vector<SurfacePhaseRect> water_phase_patches(uint64_t after, size_t pixels = 655360) const;
         RGB3 original_phase_color(unsigned long column, unsigned long row) const;
         void update_night_phase(Map* source);
         bool sync_phase_composite(Map* source, Map* clouds, bool night);

@@ -562,7 +562,7 @@ void show_menu()
                 process_key_cmd_ctrl_char('t');
                 menu_clicked = true;
             }
-            if (ImGui::MenuItem("Dynamic Surface Ice", "Ctrl+Shift+I", dynamic_surface_ice))
+            if (ImGui::MenuItem("Dynamically Update Surface Ice", "Ctrl+Shift+I", dynamic_surface_ice))
             {
                 process_key_cmd_ctrl_char('I');
                 menu_clicked = true;
@@ -638,6 +638,7 @@ void step_simulation_time(double days, bool preserve_solar_time)
     }
     JDnow = target;
     set_epoch(target);
+    if (target != original) surface_phase_clock.fetch_add(1, std::memory_order_release);
     viewchanged = true;
     if (fabs(days) >= 365) redo_proper_motions = true;
     compute_object_draw_coordinates();

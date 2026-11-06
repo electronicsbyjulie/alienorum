@@ -19,6 +19,8 @@
 namespace alienorum
 {
     inline bool dynamic_surface_ice = true;
+    inline std::atomic<uint64_t> surface_phase_clock{0};
+    inline unsigned int surface_phase_seek_budget_ms = 20;
     struct SurfacePhaseRect
     {
         unsigned long x = 0, y = 0, width = 0, height = 0;
@@ -42,6 +44,7 @@ namespace alienorum
         std::list<uint64_t>::iterator lru;
         double epoch = NAN;
         uint64_t last_use = 0;
+        uint64_t timeline = 0;
     };
 
     inline void pack_phase_tile(SurfacePhaseTile& tile)
@@ -97,6 +100,8 @@ namespace alienorum
         double epoch = 0, salinity = 35, pressure = 101325;
         std::atomic<bool> ready{false};
         std::shared_ptr<SurfacePhaseSurvey> survey;
+        uint64_t timeline = 0;
+        std::shared_ptr<std::atomic<uint64_t>> timeline_token;
     };
 
     inline double surface_ice_step(double ice, double temperature, double salinity, double pressure,
@@ -147,6 +152,11 @@ namespace alienorum
                     if (stopping && jobs.empty()) return;
                     job = jobs.front();
                     jobs.pop_front();
+                }
+                if (job->timeline_token && job->timeline_token->load(std::memory_order_acquire) != job->timeline)
+                {
+                    job->ready.store(true, std::memory_order_release);
+                    continue;
                 }
                 if (job->survey)
                 {
@@ -201,7 +211,7 @@ namespace alienorum
         bool submit(const std::shared_ptr<SurfacePhaseJob>& job)
         {
             std::unique_lock<std::mutex> lock(mutex, std::try_to_lock);
-            if (!lock || jobs.size() >= 768) return false;
+            if (!lock || jobs.size() >= 7680) return false;
             if (job->survey) jobs.push_front(job);
             else jobs.push_back(job);
             lock.unlock();
@@ -237,12 +247,39 @@ namespace alienorum
         std::vector<uint64_t> candidates;
         size_t candidate_cursor = 0;
         uint64_t revisit_revision = 0;
-        unsigned int batch_limit = 384;
+        unsigned int batch_limit = 3840;
+        uint64_t timeline = 0, clock_revision = surface_phase_clock.load();
+        double requested_epoch = NAN;
+        std::shared_ptr<std::atomic<uint64_t>> timeline_token = std::make_shared<std::atomic<uint64_t>>(0);
+        bool catching_up = false, catchup_surveyed = false, catchup_revisited = false;
+        unsigned int catchup_budget_ms = 20;
+        uint64_t catchup_revision = 0;
+        size_t catchup_remaining = 0;
         std::chrono::steady_clock::time_point surveyed{};
         LocalClimate climate;
         double climate_epoch = NAN, salinity = 35, pressure = 101325;
         std::chrono::steady_clock::time_point prepared{};
         uint64_t published_pixels = 0, published_patches = 0;
+        void sync_epoch(double epoch)
+        {
+            const uint64_t current_clock = surface_phase_clock.load();
+            if (std::isfinite(requested_epoch) && (current_clock != clock_revision
+                || epoch < requested_epoch || epoch - requested_epoch > 3600))
+            {
+                ++timeline;
+                timeline_token->store(timeline, std::memory_order_release);
+                catching_up = true; catchup_surveyed = false;
+                catchup_budget_ms = surface_phase_seek_budget_ms;
+                catchup_revisited = revisions.empty(); catchup_revision = revision;
+                catchup_remaining = revisions.size();
+                survey.reset();
+                candidates.clear();
+                candidate_cursor = 0; revisit_revision = 0; scan = 0;
+                surveyed = {};
+            }
+            requested_epoch = epoch;
+            clock_revision = current_clock;
+        }
         static uint64_t key(unsigned long x, unsigned long y) { return (uint64_t(y) << 32) | x; }
         unsigned char original_material(unsigned long column, unsigned long row, unsigned char fallback) const
         {

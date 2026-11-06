@@ -142,6 +142,55 @@ TEST_F(OceanPersistenceTest, RegisteredWorldContinuesUpdatingWithoutAnotherViewC
     dynamic_surface_ice = original;
 }
 
+TEST_F(OceanPersistenceTest, SmallExplicitSeeksRefreshClimateWhileContinuousTimeRetainsInertia)
+{
+    struct Restore
+    {
+        bool enabled = dynamic_surface_ice;
+        double epoch = simnow;
+        ~Restore() { dynamic_surface_ice = enabled; simnow = epoch; }
+    } restore;
+    dynamic_surface_ice = true;
+    Planet* world = make_planet(make_star());
+    world->has_water = 1; world->temperature = 250; world->temperature_supplied = true;
+    world->ensure_atmosphere()->surface_pressure = oneatm;
+    world->surf_map = new WaterPhaseTestMap();
+    for (int frame = 0; frame < 200; ++frame)
+    {
+        world->update_surface_phase(.3, .3);
+        if (world->surf_map->phase_state() && world->surf_map->phase_state()->tiles.size() == 16
+            && !world->surf_map->phase_state()->pending) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    auto phase = world->surf_map->phase_state();
+    ASSERT_EQ(phase->tiles.size(), 16u);
+    const uint64_t key = phase->tiles.begin()->first;
+    world->temperature = 290;
+    phase->prepared = {};
+    simnow += 60;
+    for (int frame = 0; frame < 200; ++frame)
+    {
+        world->update_surface_phase(.3, .3);
+        if (phase->tiles.at(key).epoch == simnow) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    EXPECT_GT(phase->tiles.at(key).pixels.front().ice, .9);
+    EXPECT_LT(phase->tiles.at(key).pixels.front().ice, 1);
+    const uint64_t timeline = phase->timeline;
+    surface_phase_clock.fetch_add(1);
+    simnow += 60;
+    for (int frame = 0; frame < 200; ++frame)
+    {
+        world->update_surface_phase(.3, .3);
+        if (!phase->pending && !phase->catching_up) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    EXPECT_GT(phase->timeline, timeline);
+    const auto& updated = phase->tiles.at(key);
+    EXPECT_EQ(world->surf_map->surface_pixel(updated.rect.x, updated.rect.y).second, SurfaceMaterial::water);
+    EXPECT_NEAR(phase->tiles.at(key).pixels.front().ice, 0, 1e-5);
+}
+
 TEST(VegetationClimateTest, TemperatureAdaptationIsPartialRepeatableAndVaried)
 {
     for (unsigned int seed = 0; seed < 100; ++seed)
