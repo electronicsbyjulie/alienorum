@@ -13,12 +13,136 @@
 #include "../classes/surfacenavigation.h"
 #include "../classes/watercoverage.h"
 #include "../classes/cloudclimate.h"
+#include "surface_phase_fixture.h"
 #include "universe_fixture.h"
 #include "../loaders.h"
 #include <functional>
 
 using namespace alienorum;
 using json = nlohmann::json;
+
+TEST(SurfacePhaseTest, FreezeAndThawModifyOnlyOnePatchAndPreserveElevationAndGeneration)
+{
+    WaterPhaseTestMap map;
+    const auto generation = map.gen;
+    std::vector<float> before(map.get_width() * map.get_height()), after(before.size());
+    map.export_bump(before.data());
+    ASSERT_TRUE(publish_water_phase(map, uniform_phase_climate(250), 0));
+    SurfacePhaseRect patch;
+    ASSERT_TRUE(map.next_water_phase_patch(0, patch));
+    EXPECT_LE(patch.width * patch.height, 128u);
+    EXPECT_EQ(map.surface_pixel(patch.x, patch.y).second, SurfaceMaterial::ice);
+    EXPECT_GT(map.surface_pixel(patch.x, patch.y).first.r, 180);
+    EXPECT_EQ(map.surface_pixel(map.get_width() - 1, map.get_height() - 1).first.r, 20);
+    EXPECT_EQ(map.gen, generation);
+    ASSERT_TRUE(publish_water_phase(map, uniform_phase_climate(290), 864000));
+    EXPECT_EQ(map.surface_pixel(patch.x, patch.y).second, SurfaceMaterial::water);
+    EXPECT_EQ(map.surface_pixel(patch.x, patch.y).first.r, 20);
+    EXPECT_EQ(map.surface_pixel(patch.x, patch.y).first.g, 70);
+    EXPECT_EQ(map.surface_pixel(patch.x, patch.y).first.b, 140);
+    map.export_bump(after.data());
+    EXPECT_EQ(before, after);
+    EXPECT_EQ(map.gen, generation);
+}
+
+TEST(SurfacePhaseTest, SparseCheckpointRestoresThermalStateAndOriginalColors)
+{
+    WaterPhaseTestMap original;
+    ASSERT_TRUE(publish_water_phase(original, uniform_phase_climate(250), 100));
+    const json checkpoint = original.water_phase_to_json();
+    ASSERT_EQ(checkpoint["tiles"].size(), 1u);
+    WaterPhaseTestMap restored;
+    restored.water_phase_from_json(checkpoint);
+    ASSERT_TRUE(publish_water_phase(restored, uniform_phase_climate(250), 200));
+    SurfacePhaseRect rect;
+    ASSERT_TRUE(restored.next_water_phase_patch(0, rect));
+    EXPECT_EQ(restored.surface_pixel(rect.x, rect.y).second, SurfaceMaterial::ice);
+    ASSERT_TRUE(publish_water_phase(restored, uniform_phase_climate(290), 864000));
+    EXPECT_EQ(restored.surface_pixel(rect.x, rect.y).second, SurfaceMaterial::water);
+    EXPECT_EQ(restored.surface_pixel(rect.x, rect.y).first.b, 140);
+    WaterPhaseTestMap incompatible(32, 16);
+    incompatible.water_phase_from_json(checkpoint);
+    EXPECT_FALSE(incompatible.phase_state());
+}
+
+TEST(SurfacePhaseTest, UniformCertificatesAndWaterSamplingFollowIce)
+{
+    WaterPhaseTestMap map;
+    RGB3 color;
+    EXPECT_TRUE(map.color_within_cap(.3, .3, .01, color, true));
+    ASSERT_TRUE(publish_water_phase(map, uniform_phase_climate(250), 100));
+    SurfacePhaseRect rect;
+    ASSERT_TRUE(map.next_water_phase_patch(0, rect));
+    const double latitude = half_pi - (rect.y + 2) * _pi / map.get_height();
+    const double longitude = (rect.x + 2) * 2 * _pi / map.get_width() - _pi;
+    EXPECT_EQ(map.material_at(latitude, longitude), SurfaceMaterial::ice);
+    EXPECT_EQ(map.surface_at(latitude, longitude).second, SurfaceMaterial::ice);
+    EXPECT_GT(map.water_phase_near(latitude, longitude, earth_radius, 100), 0u);
+    EXPECT_EQ(map.water_phase_near(-latitude, longitude + _pi, earth_radius, 100), 0u);
+}
+
+TEST(SurfacePhaseTest, ArchivedPatchesRetainOriginalColorsAndExactIceState)
+{
+    WaterPhaseTestMap map;
+    ASSERT_TRUE(publish_water_phase(map, uniform_phase_climate(250), 100));
+    auto state = map.phase_state();
+    ASSERT_EQ(state->tiles.size(), 1u);
+    auto& tile = state->tiles.begin()->second;
+    const float ice = tile.pixels.front().ice;
+    pack_phase_tile(tile);
+    state->active.clear();
+    EXPECT_TRUE(tile.pixels.empty());
+    EXPECT_LE(tile.packed.size(), 16u * 8u * 15u);
+    const auto decoded = unpack_phase_tile(tile);
+    ASSERT_FALSE(decoded.empty());
+    EXPECT_FLOAT_EQ(decoded.front().ice, ice);
+    EXPECT_EQ(decoded.front().base[2], 140);
+    ASSERT_TRUE(publish_water_phase(map, uniform_phase_climate(290), 864000));
+    SurfacePhaseRect rect;
+    ASSERT_TRUE(map.next_water_phase_patch(0, rect));
+    EXPECT_EQ(map.surface_pixel(rect.x, rect.y).second, SurfaceMaterial::water);
+    EXPECT_EQ(map.surface_pixel(rect.x, rect.y).first.b, 140);
+}
+
+TEST(SurfacePhaseTest, CloudCompositesReceivePatchesWithoutRegeneratingTheirMap)
+{
+    WaterPhaseTestMap surface;
+    WaterPhaseTestMap clouds;
+    Map merged;
+    ASSERT_TRUE(merged.create_merged_day(&surface, &clouds));
+    const auto generation = merged.gen;
+    const auto distant = merged.surface_pixel(63, 31).first;
+    ASSERT_TRUE(publish_water_phase(surface, uniform_phase_climate(250), 100));
+    ASSERT_TRUE(merged.create_merged_day(&surface, &clouds));
+    EXPECT_EQ(merged.gen, generation);
+    EXPECT_EQ(merged.water_phase_revision(), surface.water_phase_revision());
+    SurfacePhaseRect rect;
+    ASSERT_TRUE(merged.next_water_phase_patch(0, rect));
+    EXPECT_GT(merged.surface_pixel(rect.x, rect.y).first.r, 100);
+    EXPECT_EQ(merged.surface_pixel(63, 31).first.r, distant.r);
+    EXPECT_EQ(merged.surface_pixel(63, 31).first.b, distant.b);
+}
+
+TEST(SurfacePhaseTest, ThawingFrozenLandDoesNotTurnElevatedRockIntoOcean)
+{
+    WaterPhaseTestMap map(64, 32, true);
+    ASSERT_TRUE(publish_water_phase(map, uniform_phase_climate(250), 0));
+    auto climate = uniform_phase_climate(250);
+    climate.current_conditions = true;
+    climate.water_fraction = .5;
+    climate.land_seasonal_flux.fill(std::pow(290.0 / 250.0, 4));
+    climate.water_seasonal_flux = climate.land_seasonal_flux;
+    for (int iteration = 0; iteration < 200; ++iteration)
+    {
+        map.phase_state()->scan = 28;
+        map.update_water_phase(climate, 864000, .3, .3, 35, oneatm, .5, 1000, false);
+        if (map.surface_pixel(32, 0).first.r < 160) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    EXPECT_EQ(map.surface_pixel(32, 0).second, SurfaceMaterial::ground);
+    EXPECT_LT(map.surface_pixel(32, 0).first.r, 160);
+    EXPECT_DOUBLE_EQ(map.elevation_at(half_pi, 0), 500);
+}
 
 class ShoreTestMap : public Map
 {

@@ -1557,6 +1557,13 @@ int draw_sphere(CelestialObject* cel, double arad)
     if (view_mode == vm_system) cel->tmprel = Point(AU, 0, 0);
     double d = cel->tmprel.magnitude(), horizon_angle, elevation = 0;
     cel_obj_class cls = cel->typeclass();
+    if ((cls == class_planet || cls == class_moon) && arad * dispcx >= 16)
+    {
+        Point local = to_viewer_plane(center - cel->tmprel, -1);
+        local = rotate3D(local, center, cel->location.equatorial_plane.v, cel->location.equatorial_plane.a);
+        local = rotate3D(local, center, yaxis, cel->timeofday());
+        static_cast<Planet*>(cel)->update_surface_phase(atan2(local.y, hypot(local.x, local.z)), atan2(-local.x, local.z));
+    }
     bool airy_rock = view_mode == vm_horizon && whereami > 0 && uses_rocky_map(cels[whereami]->type) && ((Planet*)cels[whereami])->get_surface_pressure();
 
     if (d > light_year*zoom) return 0;
@@ -5850,6 +5857,7 @@ void draw_horizon()
         }
         static SurfaceBiomes biome_field;
         biome_field.set_world(static_cast<uint32_t>(whereami));
+        if (p) p->update_surface_phase(viewer_lat, viewer_lon);
         SurfaceSampler surface(p, map, biome_field, surface_radius, shore_displacement);
         const bool water_favorable = surface.water_favorable();
         const bool surface_biomes = surface.has_biomes();
@@ -5873,6 +5881,9 @@ void draw_horizon()
         // Keep terrain sampling on the geometric horizon ring, with visual lift in projection.
         // Enlarging this ring inflates relief and separates the sea mesh from the horizon.
         const double surface_range = sqrt(2.0 * surface_radius * surface_eye);
+        const double phase_reach = std::max(surface_range, fmin(fmax(60000.0, surface_range * 8), surface_radius * .15));
+        const uint64_t local_phase_revision = map ? map->water_phase_near(viewer_lat, viewer_lon, surface_radius, phase_reach) : 0;
+        const unsigned int local_surface_revision = (map ? map->gen : 0u) ^ static_cast<unsigned int>(local_phase_revision * 2654435761u);
         struct HorizonSurfaceContext
         {
             double cos_alt, sin_alt, cos_lat, sin_lat, focal, curvature;
@@ -6561,8 +6572,8 @@ void draw_horizon()
                         const double bump = map->has_bump_data()
                             ? fmax(0.0, map->elevation_at_bilinear(coord.first, coord.second) - base_elevation) : 0.0;
                         row_relief[column] = (procedural + bump) * ramp;
-                        row_water[column] = (horizon_terrain_cpu_reference || !performance_enabled(20)) ? water_at(coord.first, coord.second)
-                            : surface.water_at(coord.first, coord.second, water_patches[sample]);
+                        row_water[column] = (horizon_terrain_cpu_reference || !performance_enabled(20)) ? surface.basin_at(coord.first, coord.second)
+                            : surface.water_at(coord.first, coord.second, water_patches[sample], true);
                         HorizonTerrainVertex &vertex = mesh[row * terrain_columns + column];
                         vertex.distance = distance;
                         vertex.bearing = bearing;
@@ -7114,6 +7125,7 @@ void draw_horizon()
             ground_inputs.push_back(surface_uniform_reference);
             for (bool reference : performance_reference) ground_inputs.push_back(reference);
             ground_inputs.push_back(uniform_lit_source);
+            ground_inputs.push_back(double(local_phase_revision));
             ground_inputs.push_back(1); // Base-color sample stride; masks and haze stay at full resolution.
             auto ground_key = std::make_tuple(cel, map, std::move(ground_inputs));
             static decltype(ground_key) saved_ground_key;
@@ -7700,7 +7712,7 @@ void draw_horizon()
                 wave_valid = true;
             }
 
-            auto bounds_key = std::make_tuple(viewer_lat, viewer_lon, map, map ? map->gen : 0u,
+            auto bounds_key = std::make_tuple(viewer_lat, viewer_lon, map, local_surface_revision,
                 map && map->is_complete(), generating_fic_texture, water_favorable, surface_biomes,
                 ocean_world, p ? p->has_water : 0.0f, cel->type, terrain_mesh, shore_displacement,
                 p ? p->vegetation_r : 0, p ? p->vegetation_g : 0, p ? p->vegetation_b : 0, water_cpu_reference, bool(PERF_P052_WAVES && performance_enabled(52)));
@@ -8233,7 +8245,7 @@ void draw_horizon()
                 const auto &scenery = scenery_cache.update(R_planet, viewer_lat, viewer_lon,
                     scenery_range + canopy_margin, scenery_spacing, static_cast<std::uint64_t>(whereami), !performance_enabled(40));
                 auto scenery_key = std::make_tuple(whereami, scenery_cache.generation(), R_planet,
-                    map ? map->gen : 0u, generating_fic_texture, water_favorable,
+                    local_surface_revision, generating_fic_texture, water_favorable,
                     p ? p->has_water : 0.0f, p ? p->type : cel->type,
                     p ? p->vegetation_r : 0, p ? p->vegetation_g : 0, p ? p->vegetation_b : 0,
                     crown_scale, scenery_range);

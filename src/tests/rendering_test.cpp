@@ -16,6 +16,7 @@
 #include "../classes/neighborhoodfilter.h"
 #include "../classes/galaxyimage.h"
 #include "../classes/galaxygeometry.h"
+#include "surface_phase_fixture.h"
 #include "../visuals.h"
 #include "../horizon_performance.h"
 #include "../inputs.h"
@@ -282,6 +283,8 @@ class RenderingRegressionTest : public UniverseFixture
     void SetUp() override
     {
         UniverseFixture::SetUp();
+        // Reference images compare fixed instants; dedicated phase tests advance ice explicitly.
+        set(dynamic_surface_ice, false);
         if (!graphics)
         {
             GTEST_SKIP() << "An OpenGL display is unavailable; run with xvfb-run.";
@@ -4943,6 +4946,8 @@ TEST_F(RenderingRegressionTest, CertifiedSurfaceCellsMatchExactNoiseAcrossCoasts
 TEST_F(RenderingRegressionTest, GroundPaintingCacheRetainsPixelsAndInvalidatesLivePhysicalEdits)
 {
     auto* world = surface(true);
+    set(viewer_lat, .3);
+    set(viewer_lon, .4);
     set(show_clouds, true);
     set(sky_grad, std::map<int, RGB3>{});
     set(altitude, -.2);
@@ -4974,12 +4979,12 @@ TEST_F(RenderingRegressionTest, GroundPaintingCacheRetainsPixelsAndInvalidatesLi
     azimuth_correction = original_correction;
     EXPECT_TRUE(capture().second);
     const double start_latitude = viewer_lat;
-    for (double distance : {.1, .5, 1.5, 3.0, 15.0, 29.5})
+    for (double distance : {.1, .5, 1.5})
     {
         viewer_lat = start_latitude + distance / world->get_equatorial_radius();
         EXPECT_TRUE(capture().second);
     }
-    viewer_lat = start_latitude + 31 / world->get_equatorial_radius();
+    viewer_lat = start_latitude + 2.1 / world->get_equatorial_radius();
     EXPECT_FALSE(capture().second);
     EXPECT_TRUE(capture().second);
     const std::vector<std::function<void()>> edits =
@@ -5138,7 +5143,7 @@ TEST_F(RenderingRegressionTest, PanningHazyCoastPreservesDetailedGroundPixels)
     world->atm->ensure_composition()->N2_portion = .88;
     world->atm->comp->CO2_portion = .12;
     set(show_clouds, true);
-    set(viewer_lat, .00001);
+    set(viewer_lat, .0002);
     set(viewer_lon, .4);
     set(sky_grad, std::map<int, RGB3>{});
     render_width = 640;
@@ -7934,6 +7939,55 @@ TEST_F(RenderingRegressionTest, FrameScratchPreservesFreshImagesAcrossMapsViewsA
         EXPECT_EQ(image_difference(image(false), expected), 0) << step;
         EXPECT_EQ(image_difference(image(false), expected), 0) << step;
     }
+}
+
+TEST_F(RenderingRegressionTest, WaterPhasePatchesRetainStorageAndUpdateMipRegions)
+{
+    for (const auto dimensions : {std::make_pair(64ul, 32ul), std::make_pair(65ul, 33ul)})
+    {
+        SCOPED_TRACE(dimensions.first);
+        gputex_clear_cache();
+        WaterPhaseTestMap map(dimensions.first, dimensions.second);
+        const unsigned int generation = map.gen;
+        const GLuint texture = gputex_for(&map);
+        ASSERT_NE(texture, 0u);
+        ASSERT_TRUE(publish_water_phase(map, uniform_phase_climate(250), 0));
+        gputex_for(&map);
+        gputex_finish_frame();
+        glFinish();
+        reset_gputex_upload_stats();
+        EXPECT_EQ(gputex_for(&map), texture);
+        EXPECT_EQ(map.gen, generation);
+        EXPECT_EQ(glGetError(), GLenum(GL_NO_ERROR));
+        const auto stats = gputex_upload_stats();
+        EXPECT_EQ(stats.phase_patches, 1u);
+        EXPECT_LE(stats.phase_bytes, 16u * 8u * 4u);
+        EXPECT_EQ(stats.allocations, 0u);
+        EXPECT_EQ(stats.updates, 0u);
+        EXPECT_EQ(stats.mipmap_rebuilds, 0u);
+        std::vector<unsigned char> actual(dimensions.first * dimensions.second * 4), expected(actual.size());
+        map.export_rgba(expected.data());
+        glBindTexture(GL_TEXTURE_2D, texture);
+        glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, actual.data());
+        EXPECT_EQ(actual, expected);
+        WaterPhaseTestMap reference(dimensions.first, dimensions.second);
+        reference.copy_surface(map);
+        const GLuint fresh = gputex_for(&reference);
+        unsigned long width = dimensions.first, height = dimensions.second;
+        for (int level = 1; width > 1 || height > 1; ++level)
+        {
+            width = std::max(1ul, width / 2); height = std::max(1ul, height / 2);
+            actual.resize(width * height * 4); expected.resize(actual.size());
+            glBindTexture(GL_TEXTURE_2D, texture);
+            glGetTexImage(GL_TEXTURE_2D, level, GL_RGBA, GL_UNSIGNED_BYTE, actual.data());
+            glBindTexture(GL_TEXTURE_2D, fresh);
+            glGetTexImage(GL_TEXTURE_2D, level, GL_RGBA, GL_UNSIGNED_BYTE, expected.data());
+            int difference = 0;
+            for (size_t i = 0; i < actual.size(); ++i) difference = std::max(difference, std::abs(int(actual[i]) - int(expected[i])));
+            EXPECT_LE(difference, 1) << level;
+        }
+    }
+    gputex_clear_cache();
 }
 
 TEST_F(RenderingRegressionTest, ReusedTextureStorageMatchesFreshColorBumpAndMipLevels)

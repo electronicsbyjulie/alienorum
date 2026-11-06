@@ -1135,6 +1135,17 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
             }
         }
 
+        if (i >= 0 && (cls == class_planet || cls == class_moon) && static_cast<Planet*>(cels[i])->has_water > 0)
+        {
+            const json ocean = static_cast<Planet*>(cels[i])->ocean_chemistry();
+            ImGui::Text("Salinity: %s%.1f g/kg", ocean.value("estimated", true) ? "~" : "", ocean.at("salinity_g_kg").get<double>());
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("%s\nNa: %s; Cl: %s", ocean.value("source", "").c_str(),
+                    ocean.value("Na_proxy", "supplied").c_str(), ocean.value("Cl_proxy", "supplied").c_str());
+            ImGui::Text("Freezes:  %.2f K", ocean.at("freezing_k").get<double>());
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("Bulk ocean freezing point. Ice formation concentrates salt in the remaining brine.");
+        }
+
         if (i >= 0 && cels[i]->mass)
         {
             if (cls == class_star)

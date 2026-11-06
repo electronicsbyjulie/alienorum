@@ -13,6 +13,7 @@
 
 #include "planet.h"
 #include "numeric.h"
+#include "surfacephase.h"
 #include "thermalclimate.h"
 #include "moon.h"
 #include "chemistry.h"
@@ -1092,6 +1093,50 @@ LocalClimate Planet::current_local_climate(bool include_supplied)
     return climate;
 }
 
+json Planet::ocean_chemistry()
+{
+    const CelestialObject* light = get_light_center();
+    const Star* host = light && light->typeclass() == class_star ? static_cast<const Star*>(light) : nullptr;
+    double water_scale = 1;
+    double condensed = ocean_numeric(surface_water_model, "surface_mass_fraction");
+    if (!std::isfinite(condensed) && atm && atm->pressure_model.is_object() && atm->pressure_model.contains("water_partition"))
+        condensed = ocean_numeric(atm->pressure_model["water_partition"], "surface_condensed_mass_fraction");
+    if (std::isfinite(condensed) && condensed >= 0) water_scale = condensed / 2.3e-4;
+    json result = estimate_ocean_chemistry(host ? host->stellar_abundances : json(), host ? host->metallicity : NAN,
+        ocean_salinity_g_kg, water_scale);
+    result["freezing_k"] = seawater_freezing_k(result.at("salinity_g_kg").get<double>(), get_surface_pressure());
+    result["brine_model"] = "seawater_fit_to_120_g_kg_then_NaCl_eutectic_scenario";
+    return result;
+}
+
+void Planet::update_surface_phase(double latitude, double longitude)
+{
+    if (!dynamic_surface_ice || !surf_map || !surf_map->is_complete() || !uses_rocky_map(type) || type == lavaworld
+        || !(has_water > 0) || get_surface_pressure() < 611.657 || generating_fic_texture
+        || texture_loads_pending.load() != 0) return;
+    auto phase = surf_map->phase_state();
+    const auto now = std::chrono::steady_clock::now();
+    const bool cached = phase && phase->generation == surf_map->gen && std::isfinite(phase->climate_epoch)
+        && simnow >= phase->climate_epoch && simnow - phase->climate_epoch < 1800
+        && now - phase->prepared < std::chrono::milliseconds(250);
+    const LocalClimate climate = cached ? phase->climate : current_local_climate();
+    const double salinity = cached ? phase->salinity : ocean_chemistry().at("salinity_g_kg").get<double>();
+    if (saved_water_phase.is_object())
+    {
+        surf_map->water_phase_from_json(saved_water_phase);
+        saved_water_phase = nullptr;
+    }
+    const double bump = m_bump_scale > 0 ? m_bump_scale : estimate_bump_scale();
+    surf_map->update_water_phase(climate, simnow, latitude, longitude, salinity, get_surface_pressure(),
+        has_water, bump, type == waterworld || type == hycean);
+    phase = surf_map->phase_state();
+    if (phase && !cached)
+    {
+        phase->climate = climate; phase->climate_epoch = simnow; phase->prepared = now;
+        phase->salinity = salinity; phase->pressure = get_surface_pressure();
+    }
+}
+
 double Planet::est_current_local_temp(double lat, double lon)
 {
     const LocalClimate climate = current_local_climate();
@@ -2165,6 +2210,9 @@ json Planet::to_json()
     towrite["has_water"] = has_water;
     towrite["has_water_supplied"] = has_water_supplied;
     if (surface_water_model.is_object()) towrite["surface_water_model"] = surface_water_model;
+    if (std::isfinite(ocean_salinity_g_kg)) towrite["ocean_salinity_g_kg"] = ocean_salinity_g_kg;
+    const json phases = surf_map && surf_map->phase_state() ? surf_map->water_phase_to_json() : saved_water_phase;
+    if (phases.is_object()) towrite["surface_phase_state"] = phases;
     towrite["ring_status_known"] = ring_status_known;
     towrite["cloud_map_url"] = cloud_map_url;
     towrite["static_clouds"] = static_clouds;
@@ -2218,6 +2266,8 @@ bool Planet::from_json(const json& j)
 {
     temperature = 0;
     CelestialObject::from_json(j);
+    ocean_salinity_g_kg = ocean_numeric(j, "ocean_salinity_g_kg");
+    saved_water_phase = j.value("surface_phase_state", json());
     temperature_supplied = j.value("temperature_supplied", temperature > 0);
     inferred_mean_temperature = temperature > 0 && !temperature_supplied ? temperature : NAN;
     lock_system_plane = j.value("lock_system_plane", false);

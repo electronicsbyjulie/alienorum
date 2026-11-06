@@ -18,7 +18,7 @@ namespace
     const std::string nasa = "https://exoplanetarchive.ipac.caltech.edu/TAP/sync";
     const std::string vizier = "https://tapvizier.cds.unistra.fr/TAPVizieR/tap/sync";
     const std::string hypatia = "https://hypatiacatalog.com/hypatia/api/v2/";
-    const std::vector<std::string> elements = {"Fe", "Mg", "Si", "C", "O"};
+    const std::vector<std::string> elements = {"Fe", "Mg", "Si", "C", "O", "Na", "S", "Cl"};
 
     double number(const json& row, const std::string& key)
     {
@@ -349,7 +349,7 @@ void CatalogReader::prepare_stellar_chemistry()
             save_snapshot(hypatia_path,
             {
                 {"schema", 1}, {"source", "Hypatia"}, {"solar_scale", "asplund09"},
-                {"solar", {{"Fe", 7.50}, {"Mg", 7.60}, {"Si", 7.51}, {"C", 8.43}, {"O", 8.69}}},
+                {"solar", {{"Fe", 7.50}, {"Mg", 7.60}, {"Si", 7.51}, {"C", 8.43}, {"O", 8.69}, {"Na", 6.24}, {"S", 7.12}, {"Cl", 5.50}}},
                 {"reference", "https://www.hypatiacatalog.com/api"}, {"rows", std::move(rows)}
             });
         }
@@ -383,7 +383,7 @@ void CatalogReader::prepare_stellar_chemistry()
         std::string query = "select \"GaiaDR3\",\"flagSp\",\"flagSpFit\",\"flagRed\",\"SNRpxCCD3\",\"[Fe/H]\",\"e_[Fe/H]\",\"f_[Fe/H]\"";
         for (const auto& element : elements)
         {
-            if (element == "Fe") continue;
+            if (element == "Fe" || element == "S" || element == "Cl") continue;
             const std::string column = "[" + element + "/Fe]";
             query += ",\"" + column + "\",\"e_" + column + "\",\"f_" + column + "\"";
         }
@@ -409,7 +409,8 @@ void CatalogReader::prepare_stellar_chemistry()
                 for (const auto& element : elements)
                 {
                     const std::string column = "[" + element + "/Fe]";
-                    if (element == "Fe" || number(row, "f_" + column) != 0 || !std::isfinite(number(row, column))) continue;
+                    if (element == "Fe" || element == "S" || element == "Cl"
+                        || number(row, "f_" + column) != 0 || !std::isfinite(number(row, column))) continue;
                     composition[element] = measurement(number(row, column), number(row, "e_" + column), column, "reported_standard_error");
                 }
                 accepted.push_back({{"hip", identities[id]}, {"gaia", id}, {"elements", std::move(composition)}});
@@ -420,7 +421,7 @@ void CatalogReader::prepare_stellar_chemistry()
             save_snapshot(galah_path,
             {
                 {"schema", 1}, {"source", "GALAH DR4"}, {"solar_scale", "grevesse07"},
-                {"solar", {{"Fe", 7.45}, {"Mg", 7.53}, {"Si", 7.51}, {"C", 8.39}, {"O", 8.66}}},
+                {"solar", {{"Fe", 7.45}, {"Mg", 7.53}, {"Si", 7.51}, {"C", 8.39}, {"O", 8.66}, {"Na", 6.17}}},
                 {"reference", "https://www.galah-survey.org/dr4/"}, {"rows", std::move(accepted)}
             });
     }

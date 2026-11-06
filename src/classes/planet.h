@@ -37,6 +37,10 @@ namespace alienorum
         std::vector<double> conditions_cache_key;
         double cloud_epoch = NAN;
         uint32_t weather_revision = 0;
+        double ocean_salinity_g_kg = NAN;
+        json saved_water_phase = nullptr;
+        json ocean_chemistry();
+        void update_surface_phase(double latitude, double longitude);
         std::mutex saved_render_mutex;
         PlanetMeasurement mass_evidence = PlanetMeasurement::unknown;
         PlanetMeasurement radius_evidence = PlanetMeasurement::unknown;

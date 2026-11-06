@@ -8,6 +8,7 @@
 #include <iostream>
 #include "gputex.h"
 #include "classes/galaxy.h"
+#include "classes/surfacephase.h"
 
 using namespace alienorum;
 
@@ -26,13 +27,17 @@ namespace alienorum
     static void gputex_generate_mipmap(GLenum target)
     {
         static PFN_alienorum_glGenerateMipmap fn = (PFN_alienorum_glGenerateMipmap)SDL_GL_GetProcAddress("glGenerateMipmap");
-        if (fn) fn(target);
+        if (fn) { fn(target); ++upload_stats.mipmap_rebuilds; }
     }
 
     struct GpuTexEntry
     {
         GLuint tex = 0;
         unsigned int gen = 0;
+        GLsizei phase_width = 0, phase_height = 0;
+        uint64_t phase_revision = 0;
+        bool phase_used = false;
+        void* phase_fence = nullptr;
         #if PERF_P090
         GLsizei width = 0, height = 0;
         GLenum format = 0;
@@ -41,6 +46,113 @@ namespace alienorum
 
     // Only ever touched from the main/render thread.
     static std::unordered_map<Map*, GpuTexEntry> gputex_cache;
+
+    struct PhaseGl
+    {
+        using Fence = void* (APIENTRYP)(GLenum, GLbitfield);
+        using Wait = GLenum (APIENTRYP)(void*, GLbitfield, uint64_t);
+        using DeleteFence = void (APIENTRYP)(void*);
+        using GenFrames = void (APIENTRYP)(GLsizei, GLuint*);
+        using BindFrame = void (APIENTRYP)(GLenum, GLuint);
+        using Attach = void (APIENTRYP)(GLenum, GLenum, GLenum, GLuint, GLint);
+        using Blit = void (APIENTRYP)(GLint, GLint, GLint, GLint, GLint, GLint, GLint, GLint, GLbitfield, GLenum);
+        Fence fence = reinterpret_cast<Fence>(SDL_GL_GetProcAddress("glFenceSync"));
+        Wait wait = reinterpret_cast<Wait>(SDL_GL_GetProcAddress("glClientWaitSync"));
+        DeleteFence erase = reinterpret_cast<DeleteFence>(SDL_GL_GetProcAddress("glDeleteSync"));
+        GenFrames generate = reinterpret_cast<GenFrames>(SDL_GL_GetProcAddress("glGenFramebuffers"));
+        GenFrames delete_frames = reinterpret_cast<GenFrames>(SDL_GL_GetProcAddress("glDeleteFramebuffers"));
+        BindFrame bind = reinterpret_cast<BindFrame>(SDL_GL_GetProcAddress("glBindFramebuffer"));
+        BindFrame buffer = reinterpret_cast<BindFrame>(SDL_GL_GetProcAddress("glBindBuffer"));
+        Attach attach = reinterpret_cast<Attach>(SDL_GL_GetProcAddress("glFramebufferTexture2D"));
+        Blit blit = reinterpret_cast<Blit>(SDL_GL_GetProcAddress("glBlitFramebuffer"));
+        GLuint frames[2]{};
+        unsigned int patches = 0;
+        bool valid() const { return fence && wait && erase && generate && delete_frames && bind && buffer && attach && blit; }
+    };
+    static PhaseGl& phase_gl() { static PhaseGl value; return value; }
+
+    static void upload_phase_patch(Map* map, GpuTexEntry& entry)
+    {
+        auto& api = phase_gl();
+        if (!api.valid() || api.patches >= 2 || !entry.phase_fence || !entry.phase_width || !entry.phase_height) return;
+        const GLenum status = api.wait(entry.phase_fence, 0, 0);
+        if (status != 0x911A && status != 0x911C) return;
+        SurfacePhaseRect patch;
+        if (!map->next_water_phase_patch(entry.phase_revision, patch)) return;
+        api.erase(entry.phase_fence);
+        entry.phase_fence = nullptr;
+        const unsigned long source_width = map->get_width(), source_height = map->get_height();
+        const int width = entry.phase_width, height = entry.phase_height;
+        int left = patch.x * width / source_width, top = patch.y * height / source_height;
+        int right = std::min(width, int(((patch.x + patch.width) * width + source_width - 1) / source_width));
+        int bottom = std::min(height, int(((patch.y + patch.height) * height + source_height - 1) / source_height));
+        if (left >= right || top >= bottom) { entry.phase_revision = patch.revision; return; }
+        std::vector<unsigned char> rgba((right - left) * (bottom - top) * 4);
+        for (int y = top; y < bottom; ++y)
+            for (int x = left; x < right; ++x)
+            {
+                const auto sample = map->surface_pixel(std::min(source_width - 1, (unsigned long)x * source_width / width),
+                    std::min(source_height - 1, (unsigned long)y * source_height / height));
+                const size_t index = ((y - top) * (right - left) + x - left) * 4;
+                rgba[index] = sample.first.r; rgba[index + 1] = sample.first.g; rgba[index + 2] = sample.first.b; rgba[index + 3] = 255;
+            }
+        GLint previous_texture = 0, previous_read = 0, previous_draw = 0, row_length = 0, alignment = 0, unpack_buffer = 0;
+        GLint scissor_box[4]{};
+        glGetIntegerv(GL_TEXTURE_BINDING_2D, &previous_texture);
+        glGetIntegerv(0x8CAA, &previous_read); glGetIntegerv(0x8CA6, &previous_draw);
+        glGetIntegerv(GL_UNPACK_ROW_LENGTH, &row_length); glGetIntegerv(GL_UNPACK_ALIGNMENT, &alignment);
+        glGetIntegerv(0x88EF, &unpack_buffer); glGetIntegerv(GL_SCISSOR_BOX, scissor_box);
+        const bool scissor = glIsEnabled(GL_SCISSOR_TEST);
+        glDisable(GL_SCISSOR_TEST);
+        glBindTexture(GL_TEXTURE_2D, entry.tex);
+        api.buffer(0x88EC, 0);
+        glPixelStorei(GL_UNPACK_ROW_LENGTH, 0); glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, left, top, right - left, bottom - top, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());
+        if (!api.frames[0]) api.generate(2, api.frames);
+        int parent_width = width, parent_height = height;
+        for (int level = 1; parent_width > 1 || parent_height > 1; ++level)
+        {
+            const int child_width = std::max(1, parent_width / 2), child_height = std::max(1, parent_height / 2);
+            const int x0 = std::max(0, left * child_width / parent_width - 1);
+            const int y0 = std::max(0, top * child_height / parent_height - 1);
+            const int x1 = std::min(child_width, (right * child_width + parent_width - 1) / parent_width + 1);
+            const int y1 = std::min(child_height, (bottom * child_height + parent_height - 1) / parent_height + 1);
+            api.bind(0x8CA8, api.frames[0]); api.attach(0x8CA8, 0x8CE0, GL_TEXTURE_2D, entry.tex, level - 1);
+            api.bind(0x8CA9, api.frames[1]); api.attach(0x8CA9, 0x8CE0, GL_TEXTURE_2D, entry.tex, level);
+            glReadBuffer(0x8CE0); glDrawBuffer(0x8CE0);
+            // Scissor restricts writes to this footprint; the full coordinate
+            // transform keeps filtering consistent even for odd texture sizes.
+            glEnable(GL_SCISSOR_TEST);
+            glScissor(x0, y0, x1 - x0, y1 - y0);
+            api.blit(0, 0, parent_width, parent_height, 0, 0, child_width, child_height, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+            left = x0; top = y0; right = x1; bottom = y1;
+            parent_width = child_width; parent_height = child_height;
+        }
+        api.attach(0x8CA8, 0x8CE0, GL_TEXTURE_2D, 0, 0); api.attach(0x8CA9, 0x8CE0, GL_TEXTURE_2D, 0, 0);
+        api.bind(0x8CA8, previous_read); api.bind(0x8CA9, previous_draw);
+        glScissor(scissor_box[0], scissor_box[1], scissor_box[2], scissor_box[3]);
+        if (!scissor) glDisable(GL_SCISSOR_TEST);
+        glPixelStorei(GL_UNPACK_ROW_LENGTH, row_length); glPixelStorei(GL_UNPACK_ALIGNMENT, alignment);
+        glBindTexture(GL_TEXTURE_2D, previous_texture);
+        api.buffer(0x88EC, unpack_buffer);
+        entry.phase_revision = patch.revision;
+        ++api.patches; ++upload_stats.phase_patches; upload_stats.phase_bytes += rgba.size();
+    }
+
+    void gputex_finish_frame()
+    {
+        auto& api = phase_gl();
+        if (!api.valid()) return;
+        for (auto& item : gputex_cache)
+        {
+            auto& entry = item.second;
+            if (!entry.phase_used) continue;
+            if (entry.phase_fence) api.erase(entry.phase_fence);
+            entry.phase_fence = api.fence(0x9117, 0);
+            entry.phase_used = false;
+        }
+        api.patches = 0;
+    }
 
     GLuint gputex_for(Map* map)
     {
@@ -54,7 +166,12 @@ namespace alienorum
         if (!map || !map->gen || !map->has_rgb_data()) return 0;
 
         GpuTexEntry &entry = gputex_cache[map];
-        if (entry.tex && entry.gen == map->gen) return entry.tex;
+        entry.phase_used = map->water_phase_revision() > 0 || (map->phase_state() && map->phase_state()->pending);
+        if (entry.tex && entry.gen == map->gen)
+        {
+            if (entry.phase_revision != map->water_phase_revision()) upload_phase_patch(map, entry);
+            return entry.tex;
+        }
 
         unsigned long w = map->get_width(), h = map->get_height();
         std::vector<unsigned char> rgba(w * h * 4);
@@ -134,6 +251,8 @@ namespace alienorum
         gputex_generate_mipmap(GL_TEXTURE_2D);
 
         entry.gen = map->gen;
+        entry.phase_width = w; entry.phase_height = h;
+        entry.phase_revision = map->water_phase_revision();
         return entry.tex;
     }
 
@@ -681,12 +800,20 @@ namespace alienorum
     {
         for (auto &[map, entry] : gputex_cache)
         {
+            if (entry.phase_fence && phase_gl().erase) phase_gl().erase(entry.phase_fence);
             if (entry.tex)
             {
                 glDeleteTextures(1, &entry.tex);
             }
         }
         gputex_cache.clear();
+        if (SDL_GL_GetCurrentContext())
+        {
+            auto& api = phase_gl();
+            if (api.frames[0] && api.delete_frames) api.delete_frames(2, api.frames);
+            api.frames[0] = api.frames[1] = 0;
+            api.patches = 0;
+        }
         for (auto &[map, entry] : gpubumptex_cache)
         {
             if (entry.tex)

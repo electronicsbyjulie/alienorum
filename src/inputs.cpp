@@ -16,6 +16,7 @@
 #include "classes/timesteps.h"
 #include "classes/satellite.h"
 #include "classes/surfacenavigation.h"
+#include "classes/surfacephase.h"
 
 using namespace alienorum;
 
@@ -559,6 +560,12 @@ void show_menu()
             if (ImGui::MenuItem("Terrain", "Ctrl+T", show_terrain))
             {
                 process_key_cmd_ctrl_char('t');
+                menu_clicked = true;
+            }
+            if (ImGui::MenuItem("Dynamic Surface Ice", nullptr, dynamic_surface_ice))
+            {
+                dynamic_surface_ice = !dynamic_surface_ice;
+                viewchanged = true;
                 menu_clicked = true;
             }
             if (ImGui::MenuItem("Clouds", "Ctrl+C", show_clouds))

@@ -22,6 +22,7 @@
 #include "dialogs.h"
 #include "visuals.h"
 #include "sphere_impostor.h"
+#include "gputex.h"
 #include "horizon_ground_gpu.h"
 #include "scenery_gpu.h"
 #include "horizon_terrain_gpu.h"
@@ -1098,6 +1099,7 @@ int main (int argc, char** argv)
         glClearColor(background.x * background.w, background.y * background.w, background.z * background.w, background.w);
         glClear(GL_COLOR_BUFFER_BIT);
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        gputex_finish_frame();
         if (PERF_P095 && !layout_path.empty() && io.WantSaveIniSettings)
         {
             size_t size = 0;
