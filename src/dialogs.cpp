@@ -1112,26 +1112,25 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
         if (s && cls == class_star)
         {
             const json age = s->age_diagnostics();
-            double est_age_scaled = s->estimate_age_gyr();
-            std::string units = "Gy";
-
-            if (est_age_scaled < 1e-3)
+            const auto scale_age = [](double value) -> std::pair<double, const char*>
             {
-                est_age_scaled *= 1e6;
-                units = "Ky";
-            }
-            else if (est_age_scaled < 1)
-            {
-                est_age_scaled *= 1e3;
-                units = "My";
-            }
+                if (value < 1e-3) return {value * 1e6, "Ky"};
+                if (value < 1) return {value * 1e3, "My"};
+                return {value, "Gy"};
+            };
+            const auto displayed_age = scale_age(age.at("value_gyr").get<double>());
 
-            ImGui::Text("Age:     %s%.2f %s", age.value("estimated", false) ? "~" : "", est_age_scaled, units.c_str());
+            ImGui::Text("Age:     %s%.2f %s", age.value("estimated", false) ? "~" : "",
+                displayed_age.first, displayed_age.second);
             if (ImGui::IsItemHovered())
             {
                 if (age.contains("lower_gyr") && age.contains("upper_gyr"))
-                    ImGui::SetTooltip("%s\nAge range: %.3g to %.3g Gy", age.value("source", "").c_str(),
-                        age.at("lower_gyr").get<double>(), age.at("upper_gyr").get<double>());
+                {
+                    const auto lower = scale_age(age.at("lower_gyr").get<double>());
+                    const auto upper = scale_age(age.at("upper_gyr").get<double>());
+                    ImGui::SetTooltip("%s\nAge range: %.3g %s to %.3g %s", age.value("source", "").c_str(),
+                        lower.first, lower.second, upper.first, upper.second);
+                }
                 else ImGui::SetTooltip("%s", age.value("source", "").c_str());
             }
         }
