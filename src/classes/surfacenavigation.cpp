@@ -24,6 +24,7 @@ namespace
         {
             std::array<int64_t, 3> cell{};
             bool attempted = false, uniform = false;
+            unsigned int revision = 0;
             std::pair<RGB3, SurfaceMaterial> value;
         };
         static thread_local std::array<Entry, 16384> entries;
@@ -45,9 +46,10 @@ namespace
             hash = (hash ^ static_cast<uint64_t>(cell[axis])) * 1099511628211ULL;
         }
         auto& entry = entries[hash & (entries.size() - 1)];
-        if (!entry.attempted || entry.cell != cell)
+        if (!entry.attempted || entry.cell != cell || entry.revision != map->surface_revision())
         {
             entry.cell = cell;
+            entry.revision = map->surface_revision();
             entry.attempted = true;
             entry.uniform = false;
             const double x = (cell[0] + .5) * spacing, y = (cell[1] + .5) * spacing, z = (cell[2] + .5) * spacing;
@@ -160,13 +162,31 @@ bool SurfaceSampler::water_at(double latitude, double longitude)
     return water && water_sample(info(latitude, longitude));
 }
 
-bool SurfaceSampler::water_at(double latitude, double longitude, WaterPatch& patch)
+bool SurfaceSampler::basin_at(double latitude, double longitude)
 {
+    if (!water || !map) return false;
+    const auto value = info(latitude, longitude);
+    if (water_sample(value) || value.second == SurfaceMaterial::ice) return true;
+    if (value.second == SurfaceMaterial::frost) return false;
+    const auto coordinate = biomes ? field.coordinates(radius, latitude, longitude, strength)
+        : std::make_pair(latitude, longitude);
+    if (map->phase_ocean_at(coordinate.first, coordinate.second)) return true;
+    if (map->procedurally_generated && map->has_bump_data() && planet && planet->has_water > 0)
+    {
+        const double level = planet->m_bump_scale * (planet->has_water - .5);
+        return map->elevation_at(coordinate.first, coordinate.second) <= level;
+    }
+    return false;
+}
+
+bool SurfaceSampler::water_at(double latitude, double longitude, WaterPatch& patch, bool include_frozen_basins)
+{
+    const auto classify = [&]() { return include_frozen_basins ? basin_at(latitude, longitude) : water_at(latitude, longitude); };
     if (!water || !map || !planet || !(radius > 0) || !std::isfinite(radius)
         || !std::isfinite(latitude) || !std::isfinite(longitude) || fabs(latitude) > half_pi)
-        return water_at(latitude, longitude);
-    const WaterPatch::Key key = {map, map->gen, planet, radius, strength, biomes, ocean, favorable,
-        planet->has_water != 0, planet->type, planet->vegetation_r, planet->vegetation_g, planet->vegetation_b};
+        return classify();
+    const WaterPatch::Key key = {map, include_frozen_basins ? map->gen : map->surface_revision(), planet, radius, strength, biomes, ocean, favorable,
+        planet->has_water != 0, planet->type, planet->vegetation_r, planet->vegetation_g, planet->vegetation_b, include_frozen_basins};
     const double padding = std::min(32.0, radius * .001);
     const double latitude_delta = sin((latitude - patch.latitude) * .5);
     const double longitude_delta = sin((longitude - patch.longitude) * .5);
@@ -177,7 +197,7 @@ bool SurfaceSampler::water_at(double latitude, double longitude, WaterPatch& pat
     if (patch.attempted && patch.key == key && fabs(longitude - patch.longitude) <= _pi && separation <= limit)
     {
         if (patch.uniform && !generating_fic_texture) return patch.value;
-        return water_at(latitude, longitude);
+        return classify();
     }
     patch.key = key;
     patch.latitude = latitude;
@@ -188,10 +208,10 @@ bool SurfaceSampler::water_at(double latitude, double longitude, WaterPatch& pat
         (biomes ? bound : 0) + padding / radius, color, true);
     if (patch.uniform)
     {
-        patch.value = water_sample({color, map->material_at(latitude, longitude)});
+        patch.value = include_frozen_basins ? basin_at(latitude, longitude) : water_sample({color, map->material_at(latitude, longitude)});
         return patch.value;
     }
-    return water_at(latitude, longitude);
+    return classify();
 }
 
 bool SurfaceSampler::base_water(unsigned long column, unsigned long row) const

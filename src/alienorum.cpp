@@ -22,6 +22,7 @@
 #include "dialogs.h"
 #include "visuals.h"
 #include "sphere_impostor.h"
+#include "gputex.h"
 #include "horizon_ground_gpu.h"
 #include "scenery_gpu.h"
 #include "horizon_terrain_gpu.h"
@@ -29,6 +30,7 @@
 #include "classes/sscimport.h"
 #include "classes/exocons.h"
 #include "classes/sound.h"
+#include "classes/surfacephase.h"
 // Learn more about ImGui here: https://github.com/ocornut/imgui/blob/master/docs/FAQ.md
 
 using namespace alienorum;
@@ -681,6 +683,8 @@ int main (int argc, char** argv)
             set_viewer_location_and_plane();
             compute_object_draw_coordinates();
             ExoConsGenerator::update_frame();
+            surface_phase_seek_budget_ms = io.DeltaTime >= .1f ? 40 : 20;
+            Planet::update_surface_phases();
             if (view_mode == vm_horizon)
             {
                 find_horizon();
@@ -1098,6 +1102,7 @@ int main (int argc, char** argv)
         glClearColor(background.x * background.w, background.y * background.w, background.z * background.w, background.w);
         glClear(GL_COLOR_BUFFER_BIT);
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        gputex_finish_frame();
         if (PERF_P095 && !layout_path.empty() && io.WantSaveIniSettings)
         {
             size_t size = 0;

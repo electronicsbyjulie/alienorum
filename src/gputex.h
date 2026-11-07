@@ -9,6 +9,7 @@ namespace alienorum
     struct GpuTexUploadStats
     {
         uint64_t allocations = 0, updates = 0;
+        uint64_t phase_patches = 0, phase_bytes = 0, mipmap_rebuilds = 0;
     };
     GpuTexUploadStats gputex_upload_stats();
     void reset_gputex_upload_stats();
@@ -18,6 +19,7 @@ namespace alienorum
     // Returns 0 if map is null or has no RGB pixel data yet (e.g. still loading
     // asynchronously -- see draw_sphere()'s load_textures thread).
     GLuint gputex_for(Map* map);
+    void gputex_finish_frame();
 
     // Same idea, for the map's bump/elevation data (Map::bump_data) instead of its color --
     // a single-channel GL_R32F texture holding real-world elevation values in meters (same

@@ -30,7 +30,7 @@ namespace alienorum
         };
         struct WaterPatch
         {
-            using Key = std::tuple<Map*, unsigned int, Planet*, double, double, bool, bool, bool, bool, int, int, int, int>;
+            using Key = std::tuple<Map*, unsigned int, Planet*, double, double, bool, bool, bool, bool, int, int, int, int, bool>;
             Key key;
             double latitude = 0, longitude = 0;
             bool attempted = false, uniform = false, value = false;
@@ -44,7 +44,8 @@ namespace alienorum
         bool vegetation_color(const RGB3 &sample) const;
         bool vegetation_at(double latitude, double longitude);
         bool water_at(double latitude, double longitude);
-        bool water_at(double latitude, double longitude, WaterPatch& patch);
+        bool basin_at(double latitude, double longitude);
+        bool water_at(double latitude, double longitude, WaterPatch& patch, bool include_frozen_basins = false);
         bool base_water(unsigned long column, unsigned long row) const;
         bool water_favorable() const { return favorable; }
         bool has_biomes() const { return biomes; }

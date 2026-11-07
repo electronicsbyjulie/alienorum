@@ -13,12 +13,383 @@
 #include "../classes/surfacenavigation.h"
 #include "../classes/watercoverage.h"
 #include "../classes/cloudclimate.h"
+#include "surface_phase_fixture.h"
 #include "universe_fixture.h"
 #include "../loaders.h"
 #include <functional>
 
 using namespace alienorum;
 using json = nlohmann::json;
+
+TEST(SurfacePhaseTest, RepeatedDayAndMonthSeeksMatchTheDestinationClimateAcrossAllTiles)
+{
+    WaterPhaseTestMap map(256, 128), reference(256, 128);
+    const auto settle = [](Map& surface, double temperature, double epoch)
+    {
+        for (int frame = 0; frame < 1000; ++frame)
+        {
+            surface.update_water_phase(uniform_phase_climate(temperature), epoch, .3, .3, 35, oneatm, .5, 1000, false);
+            auto state = surface.phase_state();
+            bool complete = state && state->tiles.size() == 256 && !state->pending;
+            if (complete)
+                for (const auto& tile : state->tiles)
+                    if (tile.second.timeline != state->timeline) complete = false;
+            if (complete) return true;
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        return false;
+    };
+    ASSERT_TRUE(settle(map, 250, 100));
+    double epoch = 100;
+    for (double step : {30.0, -1.0, 1.0, -30.0, 1.0, 30.0, -1.0, -30.0})
+    {
+        epoch += step * oneday;
+        // Interrupt each sweep, as when rapidly tapping day/month controls.
+        surface_phase_clock.fetch_add(1);
+        map.update_water_phase(uniform_phase_climate(step > 0 ? 290 : 260), epoch, .3, .3, 35, oneatm, .5, 1000, false);
+    }
+    surface_phase_clock.fetch_add(1);
+    ASSERT_TRUE(settle(map, 268, epoch + oneday));
+    ASSERT_TRUE(settle(reference, 268, epoch + oneday));
+    std::vector<unsigned char> actual(256 * 128 * 4), expected(actual.size());
+    map.export_rgba(actual.data()); reference.export_rgba(expected.data());
+    EXPECT_EQ(actual, expected);
+    for (const auto& tile : map.phase_state()->tiles)
+        EXPECT_NEAR(tile.second.pixels.front().ice, surface_ice_step(0, 268, 35, oneatm, -1, true), 1e-5);
+}
+
+TEST(SurfacePhaseTest, ReadyWorkFromAnEarlierDateCannotPublishAfterASeek)
+{
+    WaterPhaseTestMap map;
+    for (int visit = 0; visit < 100; ++visit)
+    {
+        map.update_water_phase_tile(uniform_phase_climate(290), 100, .3, .3, 35, oneatm, .5, 1000, false);
+        if (map.phase_state() && !map.phase_state()->tiles.empty()) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    auto state = map.phase_state();
+    ASSERT_FALSE(state->tiles.empty());
+    const auto& tile = state->tiles.begin()->second;
+    auto obsolete = std::make_shared<SurfacePhaseJob>();
+    obsolete->tile = tile; obsolete->generation = map.gen; obsolete->timeline = state->timeline;
+    for (auto& pixel : obsolete->tile.pixels) pixel.ice = 1;
+    obsolete->ready.store(true);
+    state->pending = obsolete;
+    const auto revision = map.water_phase_revision();
+    surface_phase_clock.fetch_add(1);
+    map.update_water_phase_tile(uniform_phase_climate(290), 100 + oneday, .3, .3, 35, oneatm, .5, 1000, false);
+    EXPECT_EQ(map.water_phase_revision(), revision);
+    EXPECT_EQ(map.surface_pixel(tile.rect.x, tile.rect.y).first.r, 20);
+    EXPECT_NE(obsolete->timeline, state->timeline);
+}
+
+TEST(SurfacePhaseTest, PostSeekBudgetsCatchUpAndReturnToTheNormalSlice)
+{
+    struct RestoreBudget
+    {
+        unsigned int value = surface_phase_seek_budget_ms;
+        ~RestoreBudget() { surface_phase_seek_budget_ms = value; }
+    } restore;
+    for (unsigned int budget : {6u, 12u, 20u, 40u})
+    {
+        SCOPED_TRACE(budget);
+        surface_phase_seek_budget_ms = budget;
+        WaterPhaseTestMap map(1280, 640);
+        for (int visit = 0; visit < 2000; ++visit)
+        {
+            map.update_water_phase(uniform_phase_climate(250), 100, .3, .3, 35, oneatm, .5, 1000, false);
+            if (map.phase_state()->tiles.size() == 6400 && !map.phase_state()->pending) break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        ASSERT_EQ(map.phase_state()->tiles.size(), 6400u);
+        surface_phase_clock.fetch_add(1);
+        const auto started = std::chrono::steady_clock::now();
+        double longest = 0, total = 0;
+        int visits = 0;
+        for (; visits < 2000; ++visits)
+        {
+            const auto before = std::chrono::steady_clock::now();
+            map.update_water_phase(uniform_phase_climate(268), 100 + 30 * oneday, .3, .3, 35, oneatm, .5, 1000, false);
+            const double elapsed = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - before).count();
+            longest = std::max(longest, elapsed); total += elapsed;
+            if (!map.phase_state()->catching_up && !map.phase_state()->pending) break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        ASSERT_LT(visits, 2000);
+        EXPECT_FALSE(map.phase_state()->catching_up);
+        for (const auto& entry : map.phase_state()->tiles)
+            ASSERT_EQ(entry.second.timeline, map.phase_state()->timeline);
+        std::cout << "Seek budget " << budget << " ms: " << visits << " visits, "
+            << std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count()
+            << " ms elapsed, " << total << " ms refresh work, " << longest << " ms longest call" << std::endl;
+    }
+}
+
+TEST(SurfacePhaseTest, CheckpointDuringASeekRetainsPendingThermalReconstruction)
+{
+    WaterPhaseTestMap map;
+    ASSERT_TRUE(publish_water_phase(map, uniform_phase_climate(250), 100));
+    map.phase_state()->sync_epoch(100 + oneday);
+    WaterPhaseTestMap restored;
+    restored.water_phase_from_json(map.water_phase_to_json());
+    // A second save serializes unknown thermal epochs as JSON null.
+    WaterPhaseTestMap reloaded;
+    ASSERT_NO_THROW(reloaded.water_phase_from_json(json::parse(restored.water_phase_to_json().dump())));
+    ASSERT_TRUE(publish_water_phase(reloaded, uniform_phase_climate(268), 100 + oneday));
+    EXPECT_NEAR(reloaded.phase_state()->tiles.begin()->second.pixels.front().ice,
+        surface_ice_step(0, 268, 35, oneatm, -1, true), 1e-5);
+}
+
+TEST(SurfacePhaseTest, CatchupSliceIsLatchedUntilAnotherTimeJump)
+{
+    struct RestoreBudget
+    {
+        unsigned int value = surface_phase_seek_budget_ms;
+        ~RestoreBudget() { surface_phase_seek_budget_ms = value; }
+    } restore;
+    SurfacePhase phase;
+    phase.sync_epoch(100);
+    surface_phase_seek_budget_ms = 20;
+    surface_phase_clock.fetch_add(1);
+    phase.sync_epoch(160);
+    EXPECT_EQ(phase.catchup_budget_ms, 20u);
+    surface_phase_seek_budget_ms = 40;
+    phase.sync_epoch(161);
+    EXPECT_EQ(phase.catchup_budget_ms, 20u);
+    surface_phase_clock.fetch_add(1);
+    phase.sync_epoch(221);
+    EXPECT_EQ(phase.catchup_budget_ms, 40u);
+}
+
+TEST(SurfacePhaseTest, BackgroundSweepCoversBothHemispheresWithoutMovingTheObserver)
+{
+    WaterPhaseTestMap map(256, 128);
+    const auto started = std::chrono::steady_clock::now();
+    for (int frame = 0; frame < 1000; ++frame)
+    {
+        map.update_water_phase(uniform_phase_climate(250), 100, .3, .3, 35, oneatm, .5, 1000, false);
+        if (map.phase_state()->tiles.size() == 256 && !map.phase_state()->pending) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    for (unsigned long row = 0; row < 128; row += 8)
+        for (unsigned long column = 0; column < 256; column += 16)
+            EXPECT_EQ(map.surface_pixel(column, row).second, SurfaceMaterial::ice) << column << ", " << row;
+    EXPECT_FALSE(map.phase_state()->candidates.empty());
+    EXPECT_LE(map.phase_state()->inflight.size(), 3840u);
+    std::cout << "Global freeze sweep: " << std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - started).count() << " ms" << std::endl;
+    // A large warming jump still revisits ice outside the screening band.
+    map.phase_state()->surveyed = {};
+    for (int frame = 0; frame < 1000; ++frame)
+    {
+        map.update_water_phase(uniform_phase_climate(400), 864100, .3, .3, 35, oneatm, .5, 1000, false);
+        if (map.surface_pixel(0, 0).second == SurfaceMaterial::water
+            && map.surface_pixel(240, 120).second == SurfaceMaterial::water) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    EXPECT_EQ(map.surface_pixel(0, 0).second, SurfaceMaterial::water);
+    EXPECT_EQ(map.surface_pixel(240, 120).second, SurfaceMaterial::water);
+}
+
+TEST(SurfacePhaseTest, ScreeningRejectsHotAndDeepColdAreas)
+{
+    for (double temperature : {150.0, 450.0, 271.0})
+    {
+        WaterPhaseTestMap map(256, 128);
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+        do
+        {
+            map.update_water_phase(uniform_phase_climate(temperature), 100, .3, .3, 35, oneatm, .5, 1000, false);
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        } while (map.phase_state()->survey && std::chrono::steady_clock::now() < deadline);
+        ASSERT_FALSE(map.phase_state()->survey);
+        EXPECT_EQ(map.phase_state()->candidates.empty(), temperature != 271.0);
+    }
+}
+
+TEST(SurfacePhaseTest, EarthResolutionSweepHasBoundedPublicationAndReachesEveryLongitude)
+{
+    WaterPhaseTestMap map(1280, 640);
+    const auto started = std::chrono::steady_clock::now();
+    double longest = 0;
+    int frames = 0;
+    for (; frames < 2000; ++frames)
+    {
+        const auto frame_start = std::chrono::steady_clock::now();
+        map.update_water_phase(uniform_phase_climate(250), 100, .3, .3, 35, oneatm, .5, 1000, false);
+        longest = std::max(longest, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - frame_start).count());
+        if (map.phase_state()->tiles.size() == 6400 && !map.phase_state()->pending) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    ASSERT_EQ(map.phase_state()->tiles.size(), 6400u);
+    for (unsigned long row = 0; row < 640; row += 8)
+        for (unsigned long column = 0; column < 1280; column += 16)
+            ASSERT_EQ(map.surface_pixel(column, row).second, SurfaceMaterial::ice) << column << ", " << row;
+    EXPECT_LE(map.phase_state()->active.size(), SurfacePhase::tile_limit);
+    std::cout << "Earth resolution sweep: " << frames << " visits, " << std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - started).count() << " ms elapsed, " << longest << " ms longest publication" << std::endl;
+}
+
+TEST(SurfacePhaseTest, NightSurfaceAndCloudsTrackIceWithoutErasingCityLights)
+{
+    WaterPhaseTestMap day, night, clouds;
+    Map merged;
+    ASSERT_TRUE(merged.create_merged_night(&night, &clouds));
+    const auto generation = night.gen, merged_generation = merged.gen;
+    ASSERT_TRUE(publish_water_phase(day, uniform_phase_climate(250), 0));
+    SurfacePhaseRect patch;
+    ASSERT_TRUE(day.next_water_phase_patch(0, patch));
+    const RGB3 baseline = night.surface_pixel(patch.x, patch.y).first;
+    night.update_night_phase(&day);
+    const RGB3 frozen = night.surface_pixel(patch.x, patch.y).first;
+    EXPECT_GT(frozen.r, baseline.r);
+    EXPECT_GT(frozen.g, baseline.g);
+    EXPECT_GT(frozen.b, baseline.b);
+    EXPECT_EQ(night.surface_pixel(63, 31).first.r, 20);
+    EXPECT_EQ(night.gen, generation);
+    ASSERT_TRUE(merged.create_merged_night(&night, &clouds));
+    EXPECT_EQ(merged.water_phase_revision(), night.water_phase_revision());
+    EXPECT_EQ(merged.gen, merged_generation);
+    ASSERT_TRUE(publish_water_phase(day, uniform_phase_climate(290), 864000));
+    night.update_night_phase(&day);
+    EXPECT_EQ(night.surface_pixel(patch.x, patch.y).first.r, baseline.r);
+    EXPECT_EQ(night.surface_pixel(patch.x, patch.y).first.g, baseline.g);
+    EXPECT_EQ(night.surface_pixel(patch.x, patch.y).first.b, baseline.b);
+
+    WaterPhaseTestMap odd_day(65, 33), larger_night(128, 64);
+    ASSERT_TRUE(publish_water_phase(odd_day, uniform_phase_climate(250), 0));
+    larger_night.update_night_phase(&odd_day);
+    for (unsigned long row = 0; row < 64; ++row)
+        for (unsigned long column = 0; column < 128; ++column)
+        {
+            const auto source = odd_day.surface_pixel(column * 65 / 128, row * 33 / 64).first;
+            EXPECT_EQ(larger_night.surface_pixel(column, row).first.r, std::lround(20 + .20 * (int(source.r) - 20)))
+                << column << ", " << row;
+        }
+}
+
+TEST(SurfacePhaseTest, FreezeAndThawModifyOnlyOnePatchAndPreserveElevationAndGeneration)
+{
+    WaterPhaseTestMap map;
+    const auto generation = map.gen;
+    std::vector<float> before(map.get_width() * map.get_height()), after(before.size());
+    map.export_bump(before.data());
+    ASSERT_TRUE(publish_water_phase(map, uniform_phase_climate(250), 0));
+    SurfacePhaseRect patch;
+    ASSERT_TRUE(map.next_water_phase_patch(0, patch));
+    EXPECT_LE(patch.width * patch.height, 128u);
+    EXPECT_EQ(map.surface_pixel(patch.x, patch.y).second, SurfaceMaterial::ice);
+    EXPECT_GT(map.surface_pixel(patch.x, patch.y).first.r, 180);
+    EXPECT_EQ(map.surface_pixel(map.get_width() - 1, map.get_height() - 1).first.r, 20);
+    EXPECT_EQ(map.gen, generation);
+    ASSERT_TRUE(publish_water_phase(map, uniform_phase_climate(290), 864000));
+    EXPECT_EQ(map.surface_pixel(patch.x, patch.y).second, SurfaceMaterial::water);
+    EXPECT_EQ(map.surface_pixel(patch.x, patch.y).first.r, 20);
+    EXPECT_EQ(map.surface_pixel(patch.x, patch.y).first.g, 70);
+    EXPECT_EQ(map.surface_pixel(patch.x, patch.y).first.b, 140);
+    map.export_bump(after.data());
+    EXPECT_EQ(before, after);
+    EXPECT_EQ(map.gen, generation);
+}
+
+TEST(SurfacePhaseTest, SparseCheckpointRestoresThermalStateAndOriginalColors)
+{
+    WaterPhaseTestMap original;
+    ASSERT_TRUE(publish_water_phase(original, uniform_phase_climate(250), 100));
+    const json checkpoint = original.water_phase_to_json();
+    ASSERT_EQ(checkpoint["tiles"].size(), 1u);
+    WaterPhaseTestMap restored;
+    restored.water_phase_from_json(checkpoint);
+    ASSERT_TRUE(publish_water_phase(restored, uniform_phase_climate(250), 200));
+    SurfacePhaseRect rect;
+    ASSERT_TRUE(restored.next_water_phase_patch(0, rect));
+    EXPECT_EQ(restored.surface_pixel(rect.x, rect.y).second, SurfaceMaterial::ice);
+    ASSERT_TRUE(publish_water_phase(restored, uniform_phase_climate(290), 864000));
+    EXPECT_EQ(restored.surface_pixel(rect.x, rect.y).second, SurfaceMaterial::water);
+    EXPECT_EQ(restored.surface_pixel(rect.x, rect.y).first.b, 140);
+    WaterPhaseTestMap incompatible(32, 16);
+    incompatible.water_phase_from_json(checkpoint);
+    EXPECT_FALSE(incompatible.phase_state());
+}
+
+TEST(SurfacePhaseTest, UniformCertificatesAndWaterSamplingFollowIce)
+{
+    WaterPhaseTestMap map;
+    RGB3 color;
+    EXPECT_TRUE(map.color_within_cap(.3, .3, .01, color, true));
+    ASSERT_TRUE(publish_water_phase(map, uniform_phase_climate(250), 100));
+    SurfacePhaseRect rect;
+    ASSERT_TRUE(map.next_water_phase_patch(0, rect));
+    const double latitude = half_pi - (rect.y + 2) * _pi / map.get_height();
+    const double longitude = (rect.x + 2) * 2 * _pi / map.get_width() - _pi;
+    EXPECT_EQ(map.material_at(latitude, longitude), SurfaceMaterial::ice);
+    EXPECT_EQ(map.surface_at(latitude, longitude).second, SurfaceMaterial::ice);
+    EXPECT_GT(map.water_phase_near(latitude, longitude, earth_radius, 100), 0u);
+    EXPECT_EQ(map.water_phase_near(-latitude, longitude + _pi, earth_radius, 100), 0u);
+}
+
+TEST(SurfacePhaseTest, ArchivedPatchesRetainOriginalColorsAndExactIceState)
+{
+    WaterPhaseTestMap map;
+    ASSERT_TRUE(publish_water_phase(map, uniform_phase_climate(250), 100));
+    auto state = map.phase_state();
+    ASSERT_EQ(state->tiles.size(), 1u);
+    auto& tile = state->tiles.begin()->second;
+    const float ice = tile.pixels.front().ice;
+    pack_phase_tile(tile);
+    state->active.clear();
+    EXPECT_TRUE(tile.pixels.empty());
+    EXPECT_LE(tile.packed.size(), 16u * 8u * 15u);
+    const auto decoded = unpack_phase_tile(tile);
+    ASSERT_FALSE(decoded.empty());
+    EXPECT_FLOAT_EQ(decoded.front().ice, ice);
+    EXPECT_EQ(decoded.front().base[2], 140);
+    ASSERT_TRUE(publish_water_phase(map, uniform_phase_climate(290), 864000));
+    SurfacePhaseRect rect;
+    ASSERT_TRUE(map.next_water_phase_patch(0, rect));
+    EXPECT_EQ(map.surface_pixel(rect.x, rect.y).second, SurfaceMaterial::water);
+    EXPECT_EQ(map.surface_pixel(rect.x, rect.y).first.b, 140);
+}
+
+TEST(SurfacePhaseTest, CloudCompositesReceivePatchesWithoutRegeneratingTheirMap)
+{
+    WaterPhaseTestMap surface;
+    WaterPhaseTestMap clouds;
+    Map merged;
+    ASSERT_TRUE(merged.create_merged_day(&surface, &clouds));
+    const auto generation = merged.gen;
+    const auto distant = merged.surface_pixel(63, 31).first;
+    ASSERT_TRUE(publish_water_phase(surface, uniform_phase_climate(250), 100));
+    ASSERT_TRUE(merged.create_merged_day(&surface, &clouds));
+    EXPECT_EQ(merged.gen, generation);
+    EXPECT_EQ(merged.water_phase_revision(), surface.water_phase_revision());
+    SurfacePhaseRect rect;
+    ASSERT_TRUE(merged.next_water_phase_patch(0, rect));
+    EXPECT_GT(merged.surface_pixel(rect.x, rect.y).first.r, 100);
+    EXPECT_EQ(merged.surface_pixel(63, 31).first.r, distant.r);
+    EXPECT_EQ(merged.surface_pixel(63, 31).first.b, distant.b);
+}
+
+TEST(SurfacePhaseTest, ThawingFrozenLandDoesNotTurnElevatedRockIntoOcean)
+{
+    WaterPhaseTestMap map(64, 32, true);
+    ASSERT_TRUE(publish_water_phase(map, uniform_phase_climate(250), 0));
+    auto climate = uniform_phase_climate(250);
+    climate.current_conditions = true;
+    climate.water_fraction = .5;
+    climate.land_seasonal_flux.fill(std::pow(290.0 / 250.0, 4));
+    climate.water_seasonal_flux = climate.land_seasonal_flux;
+    for (int iteration = 0; iteration < 200; ++iteration)
+    {
+        map.phase_state()->scan = 28;
+        map.update_water_phase(climate, 864000, .3, .3, 35, oneatm, .5, 1000, false);
+        if (map.surface_pixel(32, 0).first.r < 160) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    EXPECT_EQ(map.surface_pixel(32, 0).second, SurfaceMaterial::ground);
+    EXPECT_LT(map.surface_pixel(32, 0).first.r, 160);
+    EXPECT_DOUBLE_EQ(map.elevation_at(half_pi, 0), 500);
+}
 
 class ShoreTestMap : public Map
 {

@@ -5,6 +5,7 @@
 #include <cmath>
 #include <vector>
 #include "surfacenavigation.h"
+#include "surfacephase.h"
 
 namespace alienorum
 {
@@ -33,8 +34,11 @@ namespace alienorum
             LocalClimate climate = planet->local_climate();
             const double radius = planet->get_equatorial_radius();
             const double bump_scale = planet->m_bump_scale > 0 ? planet->m_bump_scale : planet->estimate_bump_scale();
+            auto first_material = static_cast<unsigned char>(surface->surface_pixel(0, 0).second);
+            const auto phase = surface->phase_state();
+            if (phase && phase->generation == surface->gen) first_material = phase->original_material(0, 0, first_material);
             const bool generated = surface->has_bump_data()
-                && surface->surface_pixel(0, 0).second != SurfaceMaterial::unknown;
+                && first_material != static_cast<unsigned char>(SurfaceMaterial::unknown);
             const bool ocean = planet->type == waterworld || planet->type == hycean;
             const bool editable = surface->has_bump_data() && !ocean && bump_scale > 0;
             const std::array<double, 17> current =
@@ -63,7 +67,15 @@ namespace alienorum
                 for (int column = 0; column < columns; ++column)
                 {
                     const double longitude = -_pi + 2 * _pi * (column + .5) / columns;
-                    if (!generated_surface) measured += sampler.water_at(latitude, longitude) ? 100.0 / samples : 0;
+                    if (!generated_surface)
+                    {
+                        bool inventory_water = sampler.water_at(latitude, longitude);
+                        if (!inventory_water && phase && phase->generation == surface->gen)
+                        {
+                            inventory_water = surface->phase_ocean_at(latitude, longitude);
+                        }
+                        measured += inventory_water ? 100.0 / samples : 0;
+                    }
                     if (!adjustable) continue;
                     const auto coordinate = field.coordinates(radius, latitude, longitude, displacement);
                     const double height = surface->elevation_at(coordinate.first, coordinate.second) / bump_scale + .5;

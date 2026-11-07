@@ -20,6 +20,8 @@
 #include "../classes/thermalclimate.h"
 #include "../classes/habitablezone.h"
 #include "../classes/watercoverage.h"
+#include "../classes/surfacephase.h"
+#include "surface_phase_fixture.h"
 #include "../classes/surfacenavigation.h"
 #include "../visuals.h"
 #include "../loaders.h"
@@ -27,6 +29,168 @@
 
 using namespace alienorum;
 using json = nlohmann::json;
+
+TEST(OceanChemistryTest, SuppliedFreshWaterAndEarthFallbackRemainDistinct)
+{
+    const auto earth = estimate_ocean_chemistry(nullptr, NAN);
+    EXPECT_DOUBLE_EQ(earth.at("salinity_g_kg"), 35);
+    EXPECT_NEAR(seawater_freezing_k(35), 271.23, .1);
+    EXPECT_DOUBLE_EQ(seawater_freezing_k(0), 273.15);
+    EXPECT_LT(seawater_freezing_k(35, 2e6), seawater_freezing_k(35));
+    const auto fresh = estimate_ocean_chemistry(nullptr, NAN, 0);
+    EXPECT_DOUBLE_EQ(fresh.at("salinity_g_kg"), 0);
+    EXPECT_FALSE(fresh.at("estimated"));
+}
+
+TEST(OceanChemistryTest, MeasuredElementsOutrankProxiesAndWaterDilutesRetainedSalt)
+{
+    json bundles = {{"Example", {{"elements", {
+        {"Mg", {{"dex", .3}, {"ratio", "[Mg/H]"}}},
+        {"S", {{"dex", .3}, {"ratio", "[S/H]"}}}}}}}};
+    const auto estimated = estimate_ocean_chemistry(bundles, 0);
+    EXPECT_EQ(estimated.at("Na_proxy"), "Mg");
+    EXPECT_EQ(estimated.at("Cl_proxy"), "S");
+    EXPECT_GT(estimated.at("salinity_g_kg").get<double>(), 35);
+    EXPECT_LT(estimate_ocean_chemistry(bundles, 0, NAN, 2).at("salinity_g_kg").get<double>(), estimated.at("salinity_g_kg").get<double>());
+    bundles["Example"]["elements"]["Na"] = {{"dex", "0?"}, {"ratio", "[Na/H]"}};
+    bundles["Example"]["elements"]["Cl"] = {{"dex", 0}, {"ratio", "[Cl/H]"}};
+    const auto measured = estimate_ocean_chemistry(bundles, 0);
+    EXPECT_EQ(measured.at("Na_proxy"), "Na"); EXPECT_EQ(measured.at("Cl_proxy"), "Cl");
+    EXPECT_NEAR(measured.at("salinity_g_kg").get<double>(), 35, 1e-10);
+}
+
+TEST(OceanChemistryTest, IceRespondsGraduallyAndBrinesRetainLiquidBelowBulkFreezing)
+{
+    EXPECT_NEAR(surface_ice_step(0, 290, 35, oneatm, -1, true), 0, 1e-4);
+    EXPECT_NEAR(surface_ice_step(0, 250, 35, oneatm, -1, true), 1, 1e-4);
+    const double brine_ice = surface_ice_step(0, 268, 35, oneatm, -1, true);
+    EXPECT_GT(brine_ice, .1); EXPECT_LT(brine_ice, .99);
+    const double growing = surface_ice_step(0, 260, 35, oneatm, 3600, true);
+    EXPECT_GT(growing, 0); EXPECT_LT(growing, .1);
+    const double melting = surface_ice_step(1, 290, 35, oneatm, 3600, true);
+    EXPECT_GT(melting, .9); EXPECT_LT(melting, 1);
+    EXPECT_NEAR(surface_ice_step(.8, 290, 35, oneatm, -3600, true), 0, 1e-4);
+}
+
+class OceanPersistenceTest : public UniverseFixture {};
+
+TEST_F(OceanPersistenceTest, SuppliedZeroAndUncertainSalinitySurvivePlanetSerialization)
+{
+    Planet* world = make_planet(make_star());
+    world->has_water = .5;
+    world->ensure_atmosphere()->surface_pressure = oneatm;
+    world->ocean_salinity_g_kg = 0;
+    const json saved = world->to_json();
+    ASSERT_TRUE(saved.contains("ocean_salinity_g_kg"));
+    Planet restored;
+    ASSERT_TRUE(restored.from_json(saved));
+    EXPECT_DOUBLE_EQ(restored.ocean_salinity_g_kg, 0);
+    EXPECT_DOUBLE_EQ(restored.ocean_chemistry().at("salinity_g_kg"), 0);
+    json uncertain = saved;
+    uncertain["ocean_salinity_g_kg"] = "35?";
+    ASSERT_TRUE(restored.from_json(uncertain));
+    EXPECT_DOUBLE_EQ(restored.ocean_salinity_g_kg, 35);
+    EXPECT_NEAR(restored.ocean_chemistry().at("freezing_k").get<double>(), 271.23, .1);
+}
+
+TEST_F(OceanPersistenceTest, PlanetClimateDrivesFreezingAndRuntimeToggleStopsUpdates)
+{
+    struct Restore
+    {
+        bool enabled = dynamic_surface_ice;
+        double epoch = simnow;
+        ~Restore() { dynamic_surface_ice = enabled; simnow = epoch; }
+    } restore;
+    dynamic_surface_ice = true;
+    Planet* world = make_planet(make_star());
+    world->has_water = 1;
+    world->temperature = 250;
+    world->temperature_supplied = true;
+    world->ensure_atmosphere()->surface_pressure = oneatm;
+    world->surf_map = new WaterPhaseTestMap();
+    for (int i = 0; i < 200 && !world->surf_map->water_phase_revision(); ++i)
+    {
+        world->update_surface_phase(.3, .3);
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    ASSERT_GT(world->surf_map->water_phase_revision(), 0u);
+    const auto revision = world->surf_map->water_phase_revision();
+    dynamic_surface_ice = false;
+    simnow += 864000;
+    world->temperature = 290;
+    world->update_surface_phase(.3, .3);
+    EXPECT_EQ(world->surf_map->water_phase_revision(), revision);
+}
+
+TEST_F(OceanPersistenceTest, RegisteredWorldContinuesUpdatingWithoutAnotherViewCall)
+{
+    const bool original = dynamic_surface_ice;
+    dynamic_surface_ice = true;
+    Planet* world = make_planet(make_star());
+    world->has_water = 1; world->temperature = 250; world->temperature_supplied = true;
+    world->ensure_atmosphere()->surface_pressure = oneatm;
+    world->surf_map = new WaterPhaseTestMap(256, 128);
+    world->update_surface_phase(.3, .3);
+    for (int frame = 0; frame < 1000; ++frame)
+    {
+        Planet::update_surface_phases();
+        if (world->surf_map->surface_pixel(0, 0).second == SurfaceMaterial::ice
+            && world->surf_map->surface_pixel(255, 127).second == SurfaceMaterial::ice) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    EXPECT_EQ(world->surf_map->surface_pixel(0, 0).second, SurfaceMaterial::ice);
+    EXPECT_EQ(world->surf_map->surface_pixel(255, 127).second, SurfaceMaterial::ice);
+    dynamic_surface_ice = original;
+}
+
+TEST_F(OceanPersistenceTest, SmallExplicitSeeksRefreshClimateWhileContinuousTimeRetainsInertia)
+{
+    struct Restore
+    {
+        bool enabled = dynamic_surface_ice;
+        double epoch = simnow;
+        ~Restore() { dynamic_surface_ice = enabled; simnow = epoch; }
+    } restore;
+    dynamic_surface_ice = true;
+    Planet* world = make_planet(make_star());
+    world->has_water = 1; world->temperature = 250; world->temperature_supplied = true;
+    world->ensure_atmosphere()->surface_pressure = oneatm;
+    world->surf_map = new WaterPhaseTestMap();
+    for (int frame = 0; frame < 200; ++frame)
+    {
+        world->update_surface_phase(.3, .3);
+        if (world->surf_map->phase_state() && world->surf_map->phase_state()->tiles.size() == 16
+            && !world->surf_map->phase_state()->pending) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    auto phase = world->surf_map->phase_state();
+    ASSERT_EQ(phase->tiles.size(), 16u);
+    const uint64_t key = phase->tiles.begin()->first;
+    world->temperature = 290;
+    phase->prepared = {};
+    simnow += 60;
+    for (int frame = 0; frame < 200; ++frame)
+    {
+        world->update_surface_phase(.3, .3);
+        if (phase->tiles.at(key).epoch == simnow) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    EXPECT_GT(phase->tiles.at(key).pixels.front().ice, .9);
+    EXPECT_LT(phase->tiles.at(key).pixels.front().ice, 1);
+    const uint64_t timeline = phase->timeline;
+    surface_phase_clock.fetch_add(1);
+    simnow += 60;
+    for (int frame = 0; frame < 200; ++frame)
+    {
+        world->update_surface_phase(.3, .3);
+        if (!phase->pending && !phase->catching_up) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    EXPECT_GT(phase->timeline, timeline);
+    const auto& updated = phase->tiles.at(key);
+    EXPECT_EQ(world->surf_map->surface_pixel(updated.rect.x, updated.rect.y).second, SurfaceMaterial::water);
+    EXPECT_NEAR(phase->tiles.at(key).pixels.front().ice, 0, 1e-5);
+}
 
 TEST(VegetationClimateTest, TemperatureAdaptationIsPartialRepeatableAndVaried)
 {
@@ -637,6 +801,7 @@ TEST_F(PlanetClassificationEvidenceTest, SetupPreservesConservedGasAndReportsCli
 TEST_F(PlanetClassificationEvidenceTest, WaterPartitionSeparatesDeepStorageAndRetainsAllSurfaceAlternative)
 {
     Star* host = make_star();
+    host->stellar_age = {{"value_gyr", 4.5}, {"source", "Earth_calibration_fixture"}};
     Planet* world = make_planet(host);
     auto scenario = CosmicShore::default_inventory(*host, *world);
     const auto estimate = CosmicShore::estimate_atmosphere(*host, *world, scenario);

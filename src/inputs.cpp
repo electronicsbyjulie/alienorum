@@ -16,6 +16,7 @@
 #include "classes/timesteps.h"
 #include "classes/satellite.h"
 #include "classes/surfacenavigation.h"
+#include "classes/surfacephase.h"
 
 using namespace alienorum;
 
@@ -561,6 +562,11 @@ void show_menu()
                 process_key_cmd_ctrl_char('t');
                 menu_clicked = true;
             }
+            if (ImGui::MenuItem("Dynamically Update Surface Ice", "Ctrl+Shift+I", dynamic_surface_ice))
+            {
+                process_key_cmd_ctrl_char('I');
+                menu_clicked = true;
+            }
             if (ImGui::MenuItem("Clouds", "Ctrl+C", show_clouds))
             {
                 process_key_cmd_ctrl_char('c');
@@ -632,6 +638,7 @@ void step_simulation_time(double days, bool preserve_solar_time)
     }
     JDnow = target;
     set_epoch(target);
+    if (target != original) surface_phase_clock.fetch_add(1, std::memory_order_release);
     viewchanged = true;
     if (fabs(days) >= 365) redo_proper_motions = true;
     compute_object_draw_coordinates();
@@ -1175,6 +1182,7 @@ void process_key_cmd_ctrl_char(char c)
         case 'f': activate_find_shore(); break;
         case 'g': vplane_mode = vplane_galactic; break;
         case 'i': vplane_mode = vplane_ICRF; break;
+        case 'I': dynamic_surface_ice = !dynamic_surface_ice; viewchanged = true; break;
         case 'l': vplane_mode = vplane_local; break;
 
         case 'o':

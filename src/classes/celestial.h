@@ -9,6 +9,7 @@
 #include <unordered_map>
 #include <cstdint>
 #include <array>
+#include <memory>
 #include "jpeglib.h"
 #include "png.h"
 #include "point.h"
@@ -17,6 +18,9 @@
 
 namespace alienorum
 {
+    class SurfacePhase;
+    struct SurfacePhaseRect;
+    struct LocalClimate;
     enum cel_obj_type
     {
         // The types are numbered by hierarchy in case of name conflicts, so that e.g. stars cannot orbit moons etc.
@@ -220,7 +224,9 @@ namespace alienorum
         unknown,
         ground,
         water,
-        vegetation
+        vegetation,
+        ice,
+        frost
     };
 
     class Map
@@ -232,6 +238,7 @@ namespace alienorum
         unsigned char *red_data = nullptr, *green_data = nullptr, *blue_data = nullptr;
         double *bump_data = nullptr;
         std::vector<SurfaceMaterial> surface_materials;
+        std::shared_ptr<SurfacePhase> water_phase;
         std::unordered_map<std::uint64_t, std::uint32_t> uniform_regions;
         unsigned int uniform_region_generation = 0;
         unsigned int cloud_opacity_generation = 0;
@@ -262,6 +269,23 @@ namespace alienorum
         void set_owner(CelestialObject* owner) { mcel = owner; }
 
         void touch_gen() { gen = next_gen(); }
+        unsigned int surface_revision() const;
+        uint64_t water_phase_revision() const;
+        std::shared_ptr<SurfacePhase> phase_state() const { return water_phase; }
+        uint64_t water_phase_near(double latitude, double longitude, double radius_m, double distance_m) const;
+        bool next_water_phase_patch(uint64_t after, SurfacePhaseRect& rect) const;
+        void update_water_phase(const LocalClimate& climate, double epoch, double latitude, double longitude,
+            double salinity, double pressure, double water_level, double bump_scale, bool ocean_world);
+        void update_water_phase_tile(const LocalClimate& climate, double epoch, double latitude, double longitude,
+            double salinity, double pressure, double water_level, double bump_scale, bool ocean_world);
+        std::vector<SurfacePhaseRect> water_phase_patches(uint64_t after, size_t pixels = 655360) const;
+        RGB3 original_phase_color(unsigned long column, unsigned long row) const;
+        void update_night_phase(Map* source);
+        bool sync_phase_composite(Map* source, Map* clouds, bool night);
+        SurfaceMaterial phase_material(unsigned long column, unsigned long row, SurfaceMaterial base) const;
+        bool phase_ocean_at(double latitude, double longitude);
+        json water_phase_to_json() const;
+        void water_phase_from_json(const json& saved);
 
         bool load_from_bmp(std::string filename, bool as_bump = false, double bump_scale = 20000);
         bool load_from_jpeg(std::string filename, bool as_bump = false, double bump_scale = 20000);

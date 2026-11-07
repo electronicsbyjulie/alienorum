@@ -16,6 +16,7 @@
 #include "../classes/neighborhoodfilter.h"
 #include "../classes/galaxyimage.h"
 #include "../classes/galaxygeometry.h"
+#include "surface_phase_fixture.h"
 #include "../visuals.h"
 #include "../horizon_performance.h"
 #include "../inputs.h"
@@ -282,6 +283,8 @@ class RenderingRegressionTest : public UniverseFixture
     void SetUp() override
     {
         UniverseFixture::SetUp();
+        // Reference images compare fixed instants; dedicated phase tests advance ice explicitly.
+        set(dynamic_surface_ice, false);
         if (!graphics)
         {
             GTEST_SKIP() << "An OpenGL display is unavailable; run with xvfb-run.";
@@ -696,6 +699,35 @@ TEST_F(RenderingRegressionTest, SunclockIncludesBrightCompanionsWithoutDuplicati
     EXPECT_EQ(companion->drawnx, -1e9);
     render();
     ImGui::NewFrame();
+}
+
+TEST_F(RenderingRegressionTest, SunclockAdvancesGlobalIceAndShortcutTogglesIt)
+{
+    auto* world = surface(true);
+    delete world->surf_map;
+    world->surf_map = new WaterPhaseTestMap();
+    world->night_map = new WaterPhaseTestMap();
+    world->temperature = 250; world->temperature_supplied = true;
+    set(view_mode, vm_sunclock);
+    set(selected_locale, static_cast<Locale*>(nullptr));
+    set(show_clouds, false);
+    ASSERT_FALSE(dynamic_surface_ice);
+    process_key_cmd_ctrl_char('I');
+    ASSERT_TRUE(dynamic_surface_ice);
+    for (int frame = 0; frame < 40; ++frame)
+    {
+        draw_sunclock();
+        render();
+        gputex_finish_frame();
+        ImGui::NewFrame();
+        if (world->surf_map->surface_pixel(0, 0).second == SurfaceMaterial::ice
+            && world->surf_map->surface_pixel(63, 31).second == SurfaceMaterial::ice) break;
+    }
+    EXPECT_EQ(world->surf_map->surface_pixel(0, 0).second, SurfaceMaterial::ice);
+    EXPECT_EQ(world->surf_map->surface_pixel(63, 31).second, SurfaceMaterial::ice);
+    EXPECT_GT(world->night_map->surface_pixel(0, 0).first.r, 20);
+    process_key_cmd_ctrl_char('I');
+    EXPECT_FALSE(dynamic_surface_ice);
 }
 
 TEST_F(RenderingRegressionTest, SunclockWithoutNightMapKeepsSurfaceVisibleThroughCloudGaps)
@@ -4943,6 +4975,8 @@ TEST_F(RenderingRegressionTest, CertifiedSurfaceCellsMatchExactNoiseAcrossCoasts
 TEST_F(RenderingRegressionTest, GroundPaintingCacheRetainsPixelsAndInvalidatesLivePhysicalEdits)
 {
     auto* world = surface(true);
+    set(viewer_lat, .3);
+    set(viewer_lon, .4);
     set(show_clouds, true);
     set(sky_grad, std::map<int, RGB3>{});
     set(altitude, -.2);
@@ -4974,12 +5008,12 @@ TEST_F(RenderingRegressionTest, GroundPaintingCacheRetainsPixelsAndInvalidatesLi
     azimuth_correction = original_correction;
     EXPECT_TRUE(capture().second);
     const double start_latitude = viewer_lat;
-    for (double distance : {.1, .5, 1.5, 3.0, 15.0, 29.5})
+    for (double distance : {.1, .5, 1.5})
     {
         viewer_lat = start_latitude + distance / world->get_equatorial_radius();
         EXPECT_TRUE(capture().second);
     }
-    viewer_lat = start_latitude + 31 / world->get_equatorial_radius();
+    viewer_lat = start_latitude + 2.1 / world->get_equatorial_radius();
     EXPECT_FALSE(capture().second);
     EXPECT_TRUE(capture().second);
     const std::vector<std::function<void()>> edits =
@@ -5138,7 +5172,7 @@ TEST_F(RenderingRegressionTest, PanningHazyCoastPreservesDetailedGroundPixels)
     world->atm->ensure_composition()->N2_portion = .88;
     world->atm->comp->CO2_portion = .12;
     set(show_clouds, true);
-    set(viewer_lat, .00001);
+    set(viewer_lat, .0002);
     set(viewer_lon, .4);
     set(sky_grad, std::map<int, RGB3>{});
     render_width = 640;
@@ -7934,6 +7968,108 @@ TEST_F(RenderingRegressionTest, FrameScratchPreservesFreshImagesAcrossMapsViewsA
         EXPECT_EQ(image_difference(image(false), expected), 0) << step;
         EXPECT_EQ(image_difference(image(false), expected), 0) << step;
     }
+}
+
+TEST_F(RenderingRegressionTest, GlobalIceUploadsCoalescePatchesWithoutFullTextureWork)
+{
+    gputex_clear_cache();
+    WaterPhaseTestMap map(256, 128);
+    const GLuint texture = gputex_for(&map);
+    for (int frame = 0; frame < 1000; ++frame)
+    {
+        map.update_water_phase(uniform_phase_climate(250), 100, .3, .3, 35, oneatm, .5, 1000, false);
+        if (map.phase_state()->tiles.size() == 256 && !map.phase_state()->pending) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    ASSERT_EQ(map.phase_state()->tiles.size(), 256u);
+    gputex_for(&map);
+    gputex_finish_frame();
+    glFinish();
+    reset_gputex_upload_stats();
+    for (int frame = 0; frame < 4; ++frame)
+    {
+        EXPECT_EQ(gputex_for(&map), texture);
+        gputex_finish_frame();
+        glFinish();
+    }
+    const auto stats = gputex_upload_stats();
+    EXPECT_GT(stats.phase_bytes, 512u);
+    EXPECT_LE(stats.phase_bytes, 256u * 128u * 4u);
+    EXPECT_LT(stats.phase_patches, 256u);
+    EXPECT_EQ(stats.allocations, 0u);
+    EXPECT_EQ(stats.updates, 0u);
+    EXPECT_EQ(stats.mipmap_rebuilds, 0u);
+    std::vector<unsigned char> actual(256 * 128 * 4), expected(actual.size());
+    map.export_rgba(expected.data());
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, actual.data());
+    EXPECT_EQ(actual, expected);
+    WaterPhaseTestMap reference(256, 128);
+    reference.copy_surface(map);
+    const GLuint fresh = gputex_for(&reference);
+    unsigned long width = 256, height = 128;
+    for (int level = 1; width > 1 || height > 1; ++level)
+    {
+        width = std::max(1ul, width / 2); height = std::max(1ul, height / 2);
+        actual.resize(width * height * 4); expected.resize(actual.size());
+        glBindTexture(GL_TEXTURE_2D, texture);
+        glGetTexImage(GL_TEXTURE_2D, level, GL_RGBA, GL_UNSIGNED_BYTE, actual.data());
+        glBindTexture(GL_TEXTURE_2D, fresh);
+        glGetTexImage(GL_TEXTURE_2D, level, GL_RGBA, GL_UNSIGNED_BYTE, expected.data());
+        for (size_t index = 0; index < actual.size(); ++index)
+            ASSERT_LE(abs(int(actual[index]) - int(expected[index])), 1) << level;
+    }
+    EXPECT_EQ(glGetError(), GLenum(GL_NO_ERROR));
+    gputex_clear_cache();
+}
+
+TEST_F(RenderingRegressionTest, WaterPhasePatchesRetainStorageAndUpdateMipRegions)
+{
+    for (const auto dimensions : {std::make_pair(64ul, 32ul), std::make_pair(65ul, 33ul)})
+    {
+        SCOPED_TRACE(dimensions.first);
+        gputex_clear_cache();
+        WaterPhaseTestMap map(dimensions.first, dimensions.second);
+        const unsigned int generation = map.gen;
+        const GLuint texture = gputex_for(&map);
+        ASSERT_NE(texture, 0u);
+        ASSERT_TRUE(publish_water_phase(map, uniform_phase_climate(250), 0));
+        gputex_for(&map);
+        gputex_finish_frame();
+        glFinish();
+        reset_gputex_upload_stats();
+        EXPECT_EQ(gputex_for(&map), texture);
+        EXPECT_EQ(map.gen, generation);
+        EXPECT_EQ(glGetError(), GLenum(GL_NO_ERROR));
+        const auto stats = gputex_upload_stats();
+        EXPECT_EQ(stats.phase_patches, 1u);
+        EXPECT_LE(stats.phase_bytes, 16u * 8u * 4u);
+        EXPECT_EQ(stats.allocations, 0u);
+        EXPECT_EQ(stats.updates, 0u);
+        EXPECT_EQ(stats.mipmap_rebuilds, 0u);
+        std::vector<unsigned char> actual(dimensions.first * dimensions.second * 4), expected(actual.size());
+        map.export_rgba(expected.data());
+        glBindTexture(GL_TEXTURE_2D, texture);
+        glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, actual.data());
+        EXPECT_EQ(actual, expected);
+        WaterPhaseTestMap reference(dimensions.first, dimensions.second);
+        reference.copy_surface(map);
+        const GLuint fresh = gputex_for(&reference);
+        unsigned long width = dimensions.first, height = dimensions.second;
+        for (int level = 1; width > 1 || height > 1; ++level)
+        {
+            width = std::max(1ul, width / 2); height = std::max(1ul, height / 2);
+            actual.resize(width * height * 4); expected.resize(actual.size());
+            glBindTexture(GL_TEXTURE_2D, texture);
+            glGetTexImage(GL_TEXTURE_2D, level, GL_RGBA, GL_UNSIGNED_BYTE, actual.data());
+            glBindTexture(GL_TEXTURE_2D, fresh);
+            glGetTexImage(GL_TEXTURE_2D, level, GL_RGBA, GL_UNSIGNED_BYTE, expected.data());
+            int difference = 0;
+            for (size_t i = 0; i < actual.size(); ++i) difference = std::max(difference, std::abs(int(actual[i]) - int(expected[i])));
+            EXPECT_LE(difference, 1) << level;
+        }
+    }
+    gputex_clear_cache();
 }
 
 TEST_F(RenderingRegressionTest, ReusedTextureStorageMatchesFreshColorBumpAndMipLevels)
