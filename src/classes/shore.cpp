@@ -138,17 +138,29 @@ namespace
         return 35.61; // Coexisting solid phases provide a thermal plateau.
     }
 
-    // q holds each constituent's weight per unit area in Pa, not its mole partial pressure.
-    // For a well mixed atmosphere, x_i * sum(q) is its surface partial pressure. Solve
-    // that expression for q_i to impose saturation without confusing mass and mole fractions.
-    void condense(double& q, double other_weight, double other_moles, double molar_mass, double saturation)
+    // Columns are weights in Pa, while saturation constrains mole partial pressure.
+    // q_i = min(available_i, saturation_i * molar_mass_i / mean_molar_mass).
+    // Solve the mixture's mean mass simultaneously: sequential clipping can leave
+    // a gas undersaturated after another constituent condenses out of the mixture.
+    std::array<double, 3> equilibrium_gases(const std::array<double, 3>& available,
+        const std::array<double, 3>& saturation)
     {
-        if (std::isinf(saturation)) return;
-        const double b = other_weight - saturation;
-        const double c = saturation * molar_mass * other_moles;
-        const double root = std::hypot(b, 2 * std::sqrt(c));
-        const double limit = b > 0 ? 2 * c / (root + b) : (root - b) * 0.5;
-        q = std::min(q, std::max(0.0, limit));
+        constexpr std::array<double, 3> molar = {.044, .028, .018};
+        std::array<double, 3> gas{};
+        double low = .018, high = .044;
+        for (int iteration = 0; iteration < 52; ++iteration)
+        {
+            const double mean = (low + high) * .5;
+            double closure = 0;
+            for (size_t i = 0; i < gas.size(); ++i)
+            {
+                gas[i] = std::min(available[i], saturation[i] * molar[i] / mean);
+                closure += gas[i] * (1 - mean / molar[i]);
+            }
+            if (closure > 0) low = mean;
+            else high = mean;
+        }
+        return gas;
     }
 }
 
@@ -171,6 +183,7 @@ bool AtmosphericInventory::from_json(const json& value)
         {"nitrogen_mass_fraction", &AtmosphericInventory::nitrogen_mass_fraction, 1},
         {"water_mass_fraction", &AtmosphericInventory::water_mass_fraction, 1},
         {"weathering_efficiency", &AtmosphericInventory::weathering_efficiency, 1},
+        {"water_column_humidity", &AtmosphericInventory::water_column_humidity, 1},
         {"xuv_scale", &AtmosphericInventory::xuv_scale, INFINITY},
         {"surface_water_share", &AtmosphericInventory::surface_water_share, 1},
         {"basin_relief_m", &AtmosphericInventory::basin_relief_m, INFINITY},
@@ -205,6 +218,7 @@ json AtmosphericInventory::to_json() const
     result["nitrogen_mass_fraction"] = nitrogen_mass_fraction;
     result["water_mass_fraction"] = water_mass_fraction;
     result["weathering_efficiency"] = weathering_efficiency;
+    result["water_column_humidity"] = water_column_humidity;
     result["xuv_scale"] = xuv_scale;
     result["surface_water_share"] = surface_water_share;
     result["basin_relief_m"] = basin_relief_m;
@@ -324,9 +338,13 @@ AtmosphericInventory CosmicShore::default_inventory(Star& s, Planet& p)
 json CosmicShore::input_state(Star& s, Planet& p, const AtmosphericInventory& inventory)
 {
     const auto number = [](double value) { return std::isfinite(value) ? json(value) : json(nullptr); };
-    return json::array({"volatile_budget_v4", number(p.mass), number(p.volumetric_mean_radius), static_cast<int>(p.type),
+    const bool authored = p.atm && p.atm->comp && (!p.atm->pressure_model.is_object()
+        || p.atm->pressure_model.value("generated_composition", json(nullptr)) != p.atm->comp->to_json());
+    return json::array({"volatile_budget_v5", number(p.mass), number(p.volumetric_mean_radius), static_cast<int>(p.type),
         number(stellar_flux(s, p)), number(s.mass), number(s.metallicity), s.metallicity_ratio,
-        s.is_main_sequence(), number(p.albedo), inventory.to_json(), s.has_disk, number(s.disk_inner_edge_sma)});
+        s.is_main_sequence(), number(p.albedo), inventory.to_json(), s.has_disk, number(s.disk_inner_edge_sma),
+        number(p.equilibrium_temperature()), p.has_supplied_mean_temperature() ? number(p.temperature) : json(nullptr),
+        authored ? p.atm->comp->to_json() : json(nullptr)});
 }
 
 const json& CosmicShore::envelope_scenario(Star& s, Planet& p, const AtmosphericInventory& inventory)
@@ -396,12 +414,46 @@ const json& CosmicShore::envelope_scenario(Star& s, Planet& p, const Atmospheric
     return cached;
 }
 
+double CosmicShore::radiative_temperature(Planet& p, double pressure_pa,
+    const AtmosphereComposition* composition, bool nitrogen_frost, const AtmosphericInventory* inventory)
+{
+    double equilibrium = p.equilibrium_temperature();
+    double tau = composition ? atmospheric_tau(pressure_pa * 0.000009869,
+        composition->CO2_portion, composition->CH4_portion, composition->H2O_portion, composition->N2O_portion,
+        composition->O3_portion, composition->SO2_portion, composition->H2S_portion, composition->CO_portion,
+        composition->HCN_portion, composition->H2_portion, composition->NH3_portion, composition->C2H6_portion) : 0;
+    CelestialObject* light = p.get_light_center();
+    const double flux = light && light->typeclass() == class_star ? stellar_flux(*static_cast<Star*>(light), p) : NAN;
+    if (inventory && cold_volatile_regime(p, flux))
+    {
+        if (inventory->cold_temperature_k > 0) return inventory->cold_temperature_k;
+        // Temperature is referenced to the stellar semimajor axis; seasonal
+        // forcing applies the eccentric distance variation afterwards.
+        if (nitrogen_frost) equilibrium = nitrogen_frost_temperature(p.est_bolometric_flux(), *inventory);
+        if (composition)
+        {
+            // Preserve the cold-body nitrogen CIA scenario in both radiation paths.
+            AtmosphereComposition mixture = *composition;
+            const double nitrogen_share = composition->N2_portion * .028014 / mixture.mean_molar_mass();
+            const double nitrogen = std::clamp(pressure_pa * nitrogen_share, 0.0, pressure_ceiling);
+            const double gravity = G * p.mass / std::pow(p.volumetric_mean_radius, 2);
+            const double raw_tau = std::pow(nitrogen / 1.5e5, 2) * 1.35 / gravity;
+            tau += (10 * raw_tau / (10 + raw_tau)) / 2.4;
+        }
+    }
+    const double surface = equilibrium * std::pow(1 + 1.8 * tau, .25);
+    const double warming = surface - equilibrium;
+    // Empirical high-pressure extrapolation guard, shared with rendering.
+    // This is not a runaway-greenhouse criterion.
+    return warming <= 500 ? surface : equilibrium + 500 + 100 * std::tanh((warming - 500) / 100);
+}
+
 AtmosphericEstimate CosmicShore::estimate_atmosphere(Star& s, Planet& p, const AtmosphericInventory& inventory)
 {
     AtmosphericEstimate result;
     result.diagnostics =
     {
-        {"model", "volatile_budget_v4"}, {"inventory", inventory.to_json()},
+        {"model", "volatile_budget_v5"}, {"inventory", inventory.to_json()},
         {"status", "invalid_input"},
         {"interpretation", "approximate_scenario_not_a_measured_pressure_or_calibrated_confidence_interval"}
     };
@@ -476,44 +528,112 @@ AtmosphericEstimate CosmicShore::estimate_atmosphere(Star& s, Planet& p, const A
         std::array<double, 3> gas{}, available{};
         double climate = 0, carbon_air = 1, nitrogen_saturation = 0;
         bool nitrogen_frost = false;
+        double residual = INFINITY;
+        double radiative_residual = INFINITY;
+        bool converged = false;
+        json equilibria = json::array();
     };
+    const bool authored_composition = p.atm && p.atm->comp && (!p.atm->pressure_model.is_object()
+        || p.atm->pressure_model.value("generated_composition", json(nullptr)) != p.atm->comp->to_json());
+    const bool supplied_temperature = p.has_supplied_mean_temperature();
     const auto partition = [&](const std::array<double, 3>& retained)
     {
-        Phase phase;
         const double temperate = transition((flux - 0.65) / 0.035) * (1 - steam);
-        const double wet = temperate * retained[2] / (retained[2] + 1e-6);
-        phase.carbon_air = std::exp(-3 * inventory.age_gyr * wet
-            * inventory.weathering_efficiency * std::min(1.0, std::sqrt(planet_mass)));
-        phase.climate = std::max(2.7, 255 * std::pow(flux, 0.25) + 33 * temperate + 450 * steam);
-        double co2 = column * retained[0] * phase.carbon_air;
-        double nitrogen = column * retained[1];
-        double water = column * retained[2];
-        phase.available = {co2, nitrogen, water};
+        const auto at_temperature = [&](double temperature)
+        {
+            Phase phase;
+            phase.climate = temperature;
+            // Wet weathering follows the candidate climate, including warm outer
+            // orbits. The transition widths remain explicit scenario assumptions.
+            const double liquid = transition((temperature - 273.15) / 5)
+                * (1 - transition((temperature - 360) / 10));
+            const double wet = liquid * retained[2] / (retained[2] + 1e-6);
+            const double carbon_air = std::exp(-3 * inventory.age_gyr * wet
+                * inventory.weathering_efficiency * std::min(1.0, std::sqrt(planet_mass)));
+            phase.carbon_air = carbon_air;
+            double co2 = column * retained[0] * carbon_air;
+            double nitrogen = column * retained[1];
+            double water = column * retained[2];
+            phase.available = {co2, nitrogen, water};
+            // A gray, well-mixed column cannot use surface humidity directly.
+            // The .15 reference corresponds to Earth's roughly .0025 vapor mole
+            // fraction versus .017 surface saturation at 288 K and one bar.
+            const double humidity = inventory.water_column_humidity;
+            const double water_saturation = humidity > 0 ? humidity * vapor_pressure(temperature, 273.16, 611.657,
+                temperature < 273.16 ? 51060 : 45050, 647.10) : 0;
+            const double co2_saturation = vapor_pressure(temperature, 216.59, 518500,
+                temperature < 216.59 ? 25000 : 16000, 304.13);
+            phase.nitrogen_saturation = nitrogen_vapor_pressure(temperature);
+            phase.gas = equilibrium_gases(phase.available, {co2_saturation, phase.nitrogen_saturation, water_saturation});
+            co2 = phase.gas[0]; nitrogen = phase.gas[1]; water = phase.gas[2];
+            phase.nitrogen_frost = cold && phase.available[1] - nitrogen > 1e-10 * std::max(1.0, phase.available[1]);
+            phase.gas = {co2, nitrogen, water};
+            AtmosphereComposition mixture(&p);
+            const double total = co2 / .044 + nitrogen / .028 + water / .018;
+            if (total > 0)
+            {
+                mixture.CO2_portion = co2 / .044 / total;
+                mixture.N2_portion = nitrogen / .028 / total;
+                mixture.H2O_portion = water / .018 / total;
+            }
+            const double radiative = radiative_temperature(p, std::min(pressure_ceiling, co2 + nitrogen + water),
+                authored_composition ? p.atm->comp : &mixture, phase.nitrogen_frost, &inventory);
+            const double target = supplied_temperature ? p.temperature : radiative;
+            phase.radiative_residual = temperature - radiative;
+            phase.residual = temperature - target;
+            phase.converged = std::abs(phase.residual) < 1e-6;
+            return phase;
+        };
+        if (supplied_temperature || (cold && inventory.cold_temperature_k > 0))
+            return at_temperature(supplied_temperature ? p.temperature : inventory.cold_temperature_k);
+
+        // Bracket all sign changes instead of accepting an oscillating fixed-point
+        // iteration. Reset gas from the conserved pools at every temperature, so
+        // warming can re-evaporate condensates as well as cooling can freeze them.
+        double seed = std::max(2.7, 255 * std::pow(flux, .25) + 33 * temperate + 450 * steam);
         if (cold)
         {
+            const double nitrogen = column * retained[1];
             const double gravity = G * p.mass / std::pow(p.volumetric_mean_radius, 2);
             const double raw_tau = std::pow(std::min(nitrogen, pressure_ceiling) / 1.5e5, 2) * 1.35 / gravity;
-            const double tau = 10 * raw_tau / (10 + raw_tau);
-            phase.climate *= std::pow(1 + 0.75 * tau, 0.25);
-            if (nitrogen > nitrogen_vapor_pressure(phase.climate)) phase.climate = nitrogen_frost_temperature(flux, inventory);
-            if (inventory.cold_temperature_k > 0) phase.climate = inventory.cold_temperature_k;
-            phase.nitrogen_frost = nitrogen > nitrogen_vapor_pressure(phase.climate);
+            seed *= std::pow(1 + .75 * (10 * raw_tau / (10 + raw_tau)), .25);
+            if (nitrogen > nitrogen_vapor_pressure(seed)) seed = nitrogen_frost_temperature(flux, inventory);
         }
-        const double water_saturation = (0.5 * temperate + steam) * vapor_pressure(phase.climate, 273.16, 611.657,
-            phase.climate < 273.16 ? 51060 : 45050, 647.10);
-        const double co2_saturation = vapor_pressure(phase.climate, 216.59, 518500,
-            phase.climate < 216.59 ? 25000 : 16000, 304.13);
-        phase.nitrogen_saturation = nitrogen_vapor_pressure(phase.climate);
-        for (int iteration = 0; iteration < 24; ++iteration)
+        const double ceiling = std::max(p.equilibrium_temperature(), seed) + 650;
+        Phase best = at_temperature(2.7);
+        Phase previous = best;
+        std::vector<Phase> roots;
+        json alternatives = json::array();
+        constexpr int samples = 128;
+        for (int sample = 1; sample <= samples; ++sample)
         {
-            const double previous = co2 + nitrogen + water;
-            condense(water, co2 + nitrogen, co2 / 0.044 + nitrogen / 0.028, 0.018, water_saturation);
-            condense(co2, nitrogen + water, nitrogen / 0.028 + water / 0.018, 0.044, co2_saturation);
-            condense(nitrogen, co2 + water, co2 / 0.044 + water / 0.018, 0.028, phase.nitrogen_saturation);
-            if (previous - co2 - nitrogen - water <= 1e-10 * std::max(1.0, previous)) break;
+            Phase next = at_temperature(2.7 + (ceiling - 2.7) * sample / samples);
+            if (std::abs(next.residual) < std::abs(best.residual)) best = next;
+            if ((previous.residual <= 0 && next.residual >= 0) || (previous.residual >= 0 && next.residual <= 0))
+            {
+                const bool stable = previous.residual <= next.residual;
+                Phase low = previous, high = next, root = previous;
+                for (int iteration = 0; iteration < 64; ++iteration)
+                {
+                    root = at_temperature((low.climate + high.climate) * .5);
+                    if (std::abs(root.residual) < 1e-8 || high.climate - low.climate < 1e-9) break;
+                    if ((low.residual <= 0) == (root.residual <= 0)) low = root;
+                    else high = root;
+                }
+                alternatives.push_back({{"temperature_k", root.climate}, {"residual_k", root.residual},
+                    {"stable_crossing", stable}, {"converged", root.converged}});
+                if (stable && root.converged) roots.push_back(root);
+                if (std::abs(root.residual) < std::abs(best.residual)) best = root;
+            }
+            previous = next;
         }
-        phase.gas = {co2, nitrogen, water};
-        return phase;
+        if (!roots.empty())
+            best = *std::min_element(roots.begin(), roots.end(), [seed](const Phase& a, const Phase& b)
+            {
+                return std::abs(a.climate - seed) < std::abs(b.climate - seed);
+            });
+        best.equilibria = std::move(alternatives);
+        return best;
     };
     Phase phase = partition(pools);
     const double belt = debris_bombardment_factor(s);
@@ -620,8 +740,21 @@ AtmosphericEstimate CosmicShore::estimate_atmosphere(Star& s, Planet& p, const A
     diagnostic["pressure_capped"] = pressure > pressure_ceiling;
     diagnostic["flux_earth"] = flux;
     diagnostic["climate_proxy_k"] = climate_k;
+    diagnostic["water_column_humidity"] = inventory.water_column_humidity;
     diagnostic["phase_available_column_pa"] = available_columns;
-    diagnostic["climate_model"] = "Independent_phase_proxy_not_a_self_consistent_radiative_climate";
+    diagnostic["climate_model"] = "coupled_gray_radiation_and_volatile_partition_v1";
+    diagnostic["climate_solution"] =
+    {
+        {"temperature_k", climate_k}, {"residual_k", phase.residual}, {"converged", phase.converged},
+        {"radiative_residual_k", phase.radiative_residual},
+        {"composition_source", authored_composition ? "supplied_mixture_with_equivalent_volatile_budget" : "conserved_volatile_budget"},
+        {"temperature_reference", "stellar_semimajor_axis"},
+        {"constraint", supplied_temperature ? "supplied_mean_temperature"
+            : cold && inventory.cold_temperature_k > 0 ? "supplied_cold_temperature" : "radiative_equilibrium"},
+        {"equilibria", phase.equilibria},
+        {"selection", "Stable_sign_crossing_nearest_legacy_initial_state;minimum_residual_if_no_stable_root"},
+        {"limitations", "Empirical_gray_opacity;prescribed_weathering_law_and_column_humidity;no_runaway_or_ice_albedo_feedback"}
+    };
     diagnostic["age_origin"] = "scenario_inventory";
     diagnostic["stellar_mass_assumed"] = !stellar_mass_known;
     diagnostic["metallicity_used"] = metallicity_used;
@@ -636,7 +769,7 @@ AtmosphericEstimate CosmicShore::estimate_atmosphere(Star& s, Planet& p, const A
     diagnostic["column_weight_pa"]["N2"] = nitrogen;
     diagnostic["column_weight_pa"]["H2O"] = water;
     diagnostic["shoreline_metric"] = calculate_unified_metric(s, p);
-    diagnostic["limitations"] = "Solar_System_scale_calibration;unknown_formation_and_rotation_history;secondary_inventory_and_primordial_H_He_are_alternative_scenarios;climate_proxy";
+    diagnostic["limitations"] = "Solar_System_scale_calibration;unknown_formation_and_rotation_history;secondary_inventory_and_primordial_H_He_are_alternative_scenarios;empirical_gray_climate";
     if (cold)
     {
         result.diagnostics["cold_volatiles"] =
@@ -645,7 +778,7 @@ AtmosphericEstimate CosmicShore::estimate_atmosphere(Star& s, Planet& p, const A
             {"effective_loss_rate_gyr", loss_rate}, {"release_time_gyr", release_time},
             {"nitrogen_frost", nitrogen_frost},
             {"nitrogen_saturation_pa", std::isfinite(nitrogen_saturation) ? json(nitrogen_saturation) : json(nullptr)},
-            {"temperature_source", inventory.cold_temperature_k > 0 ? "scenario" : "energy_balance_proxy"},
+            {"temperature_source", inventory.cold_temperature_k > 0 ? "scenario" : "coupled_radiation_and_partition"},
             {"assumptions", "Titan_scale_nitrogen_inventory_and_effective_escape;N2_frost_energy_balance;no_explicit_methane_cycle_or_magnetospheric_sputtering"}
         };
     }
@@ -714,11 +847,13 @@ json CosmicShore::seasonal_volatiles(const json& budget, const ThermalOrbit& orb
     constexpr size_t count = 256;
     struct Phase { double temperature = 0; std::array<double, 3> gas{}; };
     static thread_local std::array<Phase, count> curve{};
-    static thread_local std::array<double, 9> previous{};
+    const double humidity = budget.value("water_column_humidity", 1.0);
+    if (!std::isfinite(humidity) || humidity < 0 || humidity > 1) return nullptr;
+    static thread_local std::array<double, 10> previous{};
     static thread_local bool cached = false;
     static thread_local json summary;
-    const std::array<double, 9> key = {available[0], available[1], available[2], orbit.eccentricity,
-        orbit.period, mean_k, response_seconds, flux_reference, 1};
+    const std::array<double, 10> key = {available[0], available[1], available[2], orbit.eccentricity,
+        orbit.period, mean_k, response_seconds, flux_reference, humidity, 2};
     if (!cached || previous != key)
     {
         const double step = orbit.period / count;
@@ -741,19 +876,12 @@ json CosmicShore::seasonal_volatiles(const json& budget, const ThermalOrbit& orb
             const double temperature = curve[i].temperature = std::max(2.7, mean_k * std::pow(std::max(0.0, middle_flux), .25));
             auto& q = equilibrium[i];
             q = available;
-            const double water_saturation = vapor_pressure(temperature, 273.16, 611.657,
-                temperature < 273.16 ? 51060 : 45050, 647.10);
+            const double water_saturation = humidity > 0 ? humidity * vapor_pressure(temperature, 273.16, 611.657,
+                temperature < 273.16 ? 51060 : 45050, 647.10) : 0;
             const double co2_saturation = vapor_pressure(temperature, 216.59, 518500,
                 temperature < 216.59 ? 25000 : 16000, 304.13);
             const double nitrogen_saturation = nitrogen_vapor_pressure(temperature);
-            for (int iteration = 0; iteration < 24; ++iteration)
-            {
-                const double old = q[0] + q[1] + q[2];
-                condense(q[2], q[0] + q[1], q[0] / .044 + q[1] / .028, .018, water_saturation);
-                condense(q[0], q[1] + q[2], q[1] / .028 + q[2] / .018, .044, co2_saturation);
-                condense(q[1], q[0] + q[2], q[0] / .044 + q[2] / .018, .028, nitrogen_saturation);
-                if (old - q[0] - q[1] - q[2] <= 1e-10 * std::max(1.0, old)) break;
-            }
+            q = equilibrium_gases(available, {co2_saturation, nitrogen_saturation, water_saturation});
         }
         // Finite exchange gives distinct warming/cooling states at the same temperature.
         // Three-day condensation and thirty-day evaporation are explicit mixing scenarios,
@@ -765,7 +893,15 @@ json CosmicShore::seasonal_volatiles(const json& budget, const ThermalOrbit& orb
         {
             // The cycle map is monotone and contractive. Bracketing its fixed point
             // also works for short orbits whose exchange time spans many years.
-            double low = 0, high = available[species];
+            // The periodic state lies within the extrema of its forcing. A
+            // constant zero target therefore stays exactly zero, without vapor
+            // introduced by the finite precision of a wider search interval.
+            double low = INFINITY, high = 0;
+            for (const auto& target : equilibrium)
+            {
+                low = std::min(low, target[species]);
+                high = std::max(high, target[species]);
+            }
             for (int iteration = 0; iteration < 48; ++iteration)
             {
                 double gas = (low + high) * .5, change = 0;
@@ -808,7 +944,7 @@ json CosmicShore::seasonal_volatiles(const json& budget, const ThermalOrbit& orb
             {"all_accessible_water_vapor_time_fraction", steam}, {"periodic_closure_relative", closure},
             {"phase_samples", count}, {"condensation_seconds", 3 * 86400}, {"evaporation_seconds", 30 * 86400},
             {"interpretation", "Global_seasonal_scenario_not_local_weather_or_a_measured_liquid_ocean"},
-            {"limitations", "Fixed_radiative_feedback_and_heat_capacity;no_latent_heat_or_ice_albedo_feedback;mean_reservoir_and_render_temperatures_remain_separate"}
+            {"limitations", "Fixed_seasonal_feedback_and_heat_capacity;local_surface_ice_is_integrated_separately"}
         };
         previous = key;
         cached = true;

@@ -3525,7 +3525,10 @@ void Map::generate_rocky_map(CelestialObject *cel)
             }
         }
 
-        if (!p->preserve_loaded_parameters && !p->lock_bv_color) cel->BV_color = 0.9 - p->has_water;
+        // A terrain waterline is not a new albedo measurement. Recoloring BV here
+        // would change the coupled climate and water budget after basin calibration.
+        if (!p->preserve_loaded_parameters && !p->lock_bv_color && !p->surface_water_model.is_object())
+            cel->BV_color = 0.9 - p->has_water;
 
     }
     catch (...)

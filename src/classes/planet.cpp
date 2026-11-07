@@ -270,7 +270,7 @@ static void record_climate_consistency(Planet& planet)
     {
         {"reservoir_proxy_k", proxy}, {"rendered_mean_k", rendered}, {"difference_k", rendered - proxy},
         {"frozen_water_disagreement", (proxy < water_freezing) != (rendered < water_freezing)},
-        {"interpretation", "Separate_phase_and_render_models;not_a_converged_coupled_climate"}
+        {"interpretation", "Shared_radiation_and_partition;residual_and_constraints_in_climate_solution"}
     };
     if (planet.atm->comp)
     {
@@ -292,7 +292,7 @@ void alienorum::Planet::setup_atm_ring_props()
         else ensure_atmosphere()->ensure_composition()->generate_fictitious_for_planet(type);
     }
 
-    temperature = 0;
+    if (!has_supplied_mean_temperature()) temperature = 0;
     estimate_surface_temperature();
     record_climate_consistency(*this);
 
@@ -391,7 +391,7 @@ void alienorum::Planet::apply_cosmic_shoreline()
                 atmosphere->pressure_model["generated_composition"] = composition->to_json();
             }
         }
-        temperature = 0;
+        if (!has_supplied_mean_temperature()) temperature = 0;
         estimate_surface_temperature();
         estimate_surface_water();
         record_climate_consistency(*this);
@@ -464,7 +464,7 @@ bool alienorum::Planet::estimate_habitability()
     double press = get_surface_pressure();
     if (press < 150) return false;
 
-    temperature = 0;            // force refresh
+    if (!has_supplied_mean_temperature()) temperature = 0;            // force refresh
     double T_surf = estimate_surface_temperature();
     const double Tboil = water_freezing+100;                                     // at reference pressure
 
@@ -493,7 +493,7 @@ bool alienorum::Planet::estimate_habitability()
             if (!show_taucalc) ac->generate_fictitious_habitable();
             press = get_surface_pressure();
             atm->calculate_tau(press);
-            temperature = 0;            // force refresh
+            if (!has_supplied_mean_temperature()) temperature = 0;            // force refresh
             T_surf = estimate_surface_temperature();
         }
         else if (!show_taucalc) ac->generate_fictitious_for_planet(type);
@@ -508,7 +508,7 @@ bool alienorum::Planet::estimate_habitability()
 
     if (life_possible)
     {
-        temperature = 0;        // force refresh
+        if (!has_supplied_mean_temperature()) temperature = 0;        // force refresh
         T_surf = estimate_surface_temperature();
         #ifdef DEBUG
             /*std::cout << "Surface pressure: " << (press / 101325) << " atm." << std::endl << std::flush;
@@ -530,7 +530,7 @@ bool alienorum::Planet::estimate_habitability()
         }
 
         if (ac && !constrained_atmospheric_composition(*this)) ac->H2O_portion = 0.014 * has_water;
-        temperature = 0;        // force refresh
+        if (!has_supplied_mean_temperature()) temperature = 0;        // force refresh
         if (atm) atm->calculate_tau(press);
         T_surf = estimate_surface_temperature();
 
@@ -550,7 +550,7 @@ bool alienorum::Planet::estimate_habitability()
         }
     }
 
-    temperature = 0;                    // force refresh
+    if (!has_supplied_mean_temperature()) temperature = 0;                    // force refresh
     press = get_surface_pressure();     // just in case
     if (atm) atm->calculate_tau(press);
     T_surf = estimate_surface_temperature();
@@ -1786,30 +1786,15 @@ double Planet::condense_atmosphere(double equilibrium_k, double surface_k)
 
 double Planet::temperature_at_pressure(double pressure_pa)
 {
-    double t_eq = equilibrium_temperature();
-
     get_atmospheric_tau();
-    double tau = (atm && atm->comp) ? atmospheric_tau(pressure_pa * 0.000009869,
-        atm->comp->CO2_portion, atm->comp->CH4_portion, atm->comp->H2O_portion, atm->comp->N2O_portion,
-        atm->comp->O3_portion,  atm->comp->SO2_portion, atm->comp->H2S_portion, atm->comp->CO_portion,
-        atm->comp->HCN_portion, atm->comp->H2_portion,  atm->comp->NH3_portion, atm->comp->C2H6_portion) : 0;
-
-    // Apply the Eddington Gray-Atmosphere Approximation
-    double empirical_tau_scale = 2.4;
-    double greenhouse_factor = 1.0 + (0.75 * tau * empirical_tau_scale);
-
-    const double gray_surface = t_eq * std::pow(greenhouse_factor, 0.25);
-    const double warming = gray_surface - t_eq;
-    // Conservative extrapolation guard for an inferred temperature, not a physical bound.
-    // The fixed-composition gray opacity grows quadratically at high pressures, outside
-    // its Venus-scale calibration. Preserve ordinary warming, then join with unit slope
-    // to a smooth asymptote. Only the greenhouse increment is limited: stellar heating
-    // can still produce a lava world. Supplied temperatures bypass this estimator.
-    constexpr double warming_knee_k = 500;
-    constexpr double warming_tail_k = 100;
-    if (warming <= warming_knee_k) return gray_surface;
-    return t_eq + warming_knee_k
-        + warming_tail_k * std::tanh((warming - warming_knee_k) / warming_tail_k);
+    AtmosphericInventory inventory;
+    const bool modeled = atm && atm->pressure_model.is_object()
+        && atm->pressure_model.value("status", "") == "estimated";
+    const bool frost = modeled && atm->pressure_model.contains("cold_volatiles")
+        && atm->pressure_model["cold_volatiles"].value("nitrogen_frost", false);
+    if (modeled && atm->pressure_model.contains("inventory")) inventory.from_json(atm->pressure_model["inventory"]);
+    return CosmicShore::radiative_temperature(*this, pressure_pa, atm ? atm->comp : nullptr,
+        frost, modeled ? &inventory : nullptr);
 }
 
 // The altitude-independent half of atmospheric_refraction(), computed once per epoch per planet

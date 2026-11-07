@@ -16,12 +16,13 @@ namespace alienorum
         double nitrogen_mass_fraction = 1e-6;
         double water_mass_fraction = 2.3e-4;
         double weathering_efficiency = 1;
+        double water_column_humidity = .15; // Effective mixed-column vapor relative to surface saturation.
         double xuv_scale = 1;
         double surface_water_share = 1;
         double basin_relief_m = 2500; // RMS relief at Earth gravity; a scenario assumption.
         double nitrogen_frost_albedo = 0.8;
         double nitrogen_frost_emissivity = 0.67;
-        double cold_temperature_k = 0; // Zero selects the independent energy-balance proxy.
+        double cold_temperature_k = 0; // Zero selects the coupled radiative estimate.
         double impact_flux_scale = 1; // Excess above the Solar-reference bombardment history.
         double impactor_water_fraction = .1;
         double impactor_co2_fraction = .01;
@@ -63,6 +64,9 @@ namespace alienorum
         static AtmosphericEstimate estimate_atmosphere(Star& s, Planet& p);
         static AtmosphericEstimate estimate_atmosphere(Star& s, Planet& p,
             const AtmosphericInventory& inventory);
+        static double radiative_temperature(Planet& p, double pressure_pa,
+            const AtmosphereComposition* composition, bool nitrogen_frost = false,
+            const AtmosphericInventory* inventory = nullptr);
         // Periodic thermal and phase history for the currently inspected body.
         static json seasonal_volatiles(const json& budget, const ThermalOrbit& orbit,
             double mean_k, double response_seconds, double flux_reference = 1);

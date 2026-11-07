@@ -15,6 +15,12 @@
 - A supplied value followed by `?` must always be used exactly as the same value without `?`, including angles, periods, unit conversions, status flags, rendering, and saved/reloaded data. Preserve uncertainty annotations or provenance where supported without withholding the value from the simulation.
 - Missing values remain distinct from supplied estimates: a standalone `?` does not invent a value, and explicit zero is valid data. Retain validation for malformed input and impossible representations; uncertainty alone is never a validation failure.
 
+## README Readability
+- The target demographic for this app is popular science enthusiasts, not career programmers, though the latter are also welcome.
+- Don't pollute the README file with a bunch of hard-to-read, dry, information dense, boring details about the program internals.
+- Don't fill the README with all kinds of details about the code, the calculations, code files, or specifics that most users won't care about.
+- Keep the documentation at a family science center level of writing.
+
 ## References Folder
 - The `refs` folder contains scientific publications that may be protected by copyright. Don't commit anything from this folder into Git.
 - If doing research for a task and you use information from a published article, drop that article's PDF in this folder if you have access.
