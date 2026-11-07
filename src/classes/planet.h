@@ -128,7 +128,7 @@ namespace alienorum
         double condense_atmosphere(double equilibrium_k, double surface_k);
         double temperature_at_pressure(double pressure_pa);  // Same greenhouse formula, at an arbitrary reference level.
         bool set_habitable_orbit();
-        bool is_in_con_HZ();                                // True if planet is within the conservative habitable zone.
+        bool is_in_con_HZ();                                // Conservative 1D HZ, using orbit-averaged stellar flux.
         double estimate_bump_scale();
         double estimate_scale_height();                     // meters; 0 if airless
         void refresh_host_display_designation();
@@ -151,6 +151,7 @@ namespace alienorum
         double cached_in_cons_hz = -1;
         Star* cached_hz_host = nullptr;
         double cached_hz_mass = -1, cached_hz_temperature = -1, cached_hz_magnitude = -1, cached_hz_stellar_sma = -1;
+        double cached_hz_eccentricity = -1;
         Star* statistics_host = nullptr;
         int statistics_host_index = -1;
         bool statistics_hz = false;

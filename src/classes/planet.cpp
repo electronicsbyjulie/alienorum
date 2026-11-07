@@ -14,6 +14,7 @@
 #include "planet.h"
 #include "numeric.h"
 #include "thermalclimate.h"
+#include "habitablezone.h"
 #include "moon.h"
 #include "chemistry.h"
 #include "star.h"
@@ -1426,6 +1427,7 @@ void Planet::refresh_host_statistics_if_changed()
         && orbit && orbit->center == statistics_host
         && cached_hz_host == statistics_host && cached_in_cons_hz == orbit->semimajor_axis
         && cached_hz_stellar_sma == orbit->semimajor_axis && cached_hz_mass == mass
+        && cached_hz_eccentricity == orbit->eccentricity
         && cached_hz_temperature == statistics_host->temperature
         && cached_hz_magnitude == statistics_host->absolute_magnitude
         && statistics_hz == cache_in_cons_hz && !statistics_host->pl_indices.empty()
@@ -1993,59 +1995,33 @@ bool Planet::is_in_con_HZ()
     Star *s = (Star*)lc;
     const CelestialObject* outer = this;
     while (outer->orbit && outer->orbit->center && outer->orbit->center != s) outer = outer->orbit->center;
-    const double stellar_sma = outer->orbit ? outer->orbit->semimajor_axis : 0;
+    if (!outer->orbit || outer->orbit->center != s) return false;
+    const double stellar_sma = outer->orbit->semimajor_axis;
+    const double eccentricity = outer->orbit->eccentricity;
+    const double t_eff = s->estimate_temperature();
+    if (!std::isfinite(stellar_sma) || stellar_sma <= 0 || !std::isfinite(t_eff) || t_eff <= 0
+        || std::isinf(eccentricity)
+        || (std::isfinite(eccentricity) && (eccentricity < 0 || eccentricity >= 1))) return false;
     if (cached_in_cons_hz == orbit->semimajor_axis && cached_hz_host == s && cached_hz_mass == mass
-        && cached_hz_temperature == s->temperature && cached_hz_magnitude == s->absolute_magnitude
-        && cached_hz_stellar_sma == stellar_sma) return cache_in_cons_hz;
+        && cached_hz_temperature == t_eff && cached_hz_magnitude == s->absolute_magnitude
+        && cached_hz_stellar_sma == stellar_sma && cached_hz_eccentricity == eccentricity) return cache_in_cons_hz;
 
-    // Mathematical model to approximate this chart: https://personal.ems.psu.edu/~jfk4/ruk15/planets/T_Seff_HZ_plusTRAPPIST_ALL__MM_10202020v2.jpg
-    double t_eff = s->estimate_temperature();
-    double t_star = t_eff - sun_temp;
-
-    // Calculate the baseline flux for the given mass
-    // Coefficients from Kopparapu et al. (2014)
-    double rg_SeffSun = 0.0;
-    double mg_SeffSun = 0.0;
-    double planet_mass = mass/earth_mass;
-
-    if (planet_mass >= 1.0 && planet_mass <= 5.0)
-    {
-        rg_SeffSun = 1.107 - 0.0214 * (planet_mass - 1.0);
-        mg_SeffSun = 0.356 - 0.0038 * (planet_mass - 1.0);
-    }
-    else if (planet_mass >= 0.1 && planet_mass < 1.0)
-    {
-        rg_SeffSun = 1.107 - 0.0242 * (1.0 - planet_mass);
-        mg_SeffSun = 0.356 - 0.0053 * (1.0 - planet_mass);
-    }
-    else
-    {
-        // Fallback to 1 Earth mass baseline if out of bounds.
-        rg_SeffSun = 1.107;
-        mg_SeffSun = 0.356;
-    }
-
-    // Stellar temperature coefficients
-    double rg_a = 1.332e-4;  double rg_b = 1.580e-8;  double rg_c = -8.308e-12; double rg_d = -1.931e-15;
-    double mg_a = 6.171e-5;  double mg_b = 1.698e-9;  double mg_c = -3.198e-12; double mg_d = -5.575e-16;
-
-    // Apply the temperature polynomial to the mass-adjusted baseline
-    double inner_limit = rg_SeffSun + (rg_a * t_star) + (rg_b * std::pow(t_star, 2)) + 
-                        (rg_c * std::pow(t_star, 3)) + (rg_d * std::pow(t_star, 4));
-
-    double outer_limit = mg_SeffSun + (mg_a * t_star) + (mg_b * std::pow(t_star, 2)) + 
-                        (mg_c * std::pow(t_star, 3)) + (mg_d * std::pow(t_star, 4));
-
+    const ConservativeHZ limits = conservative_hz(t_eff, mass / earth_mass);
     double planet_illumination = est_bolometric_flux(t_eff);
+    // Time-average L/r^2 over the stellar orbit, as in Bohl et al. (2026),
+    // https://arxiv.org/abs/2501.14054 . A moon uses its parent's stellar orbit.
+    // Missing eccentricity retains the circular approximation; supplied values apply.
+    if (std::isfinite(eccentricity)) planet_illumination /= std::sqrt(1 - eccentricity * eccentricity);
 
     // Check habitability bounds
-    cache_in_cons_hz = (planet_illumination >= outer_limit && planet_illumination <= inner_limit);
+    cache_in_cons_hz = (planet_illumination >= limits.outer_flux && planet_illumination <= limits.inner_flux);
     cached_in_cons_hz = orbit->semimajor_axis;
     cached_hz_host = s;
     cached_hz_mass = mass;
-    cached_hz_temperature = s->temperature;
+    cached_hz_temperature = t_eff;
     cached_hz_magnitude = s->absolute_magnitude;
     cached_hz_stellar_sma = stellar_sma;
+    cached_hz_eccentricity = eccentricity;
 
     return cache_in_cons_hz;
 }

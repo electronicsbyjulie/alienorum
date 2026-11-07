@@ -145,6 +145,8 @@ Procedural clouds use current conditions even when a mean temperature is supplie
 
 #### Exoplanet estimates and uncertainty
 
+The HZ indicator uses the conservative one-dimensional runaway-greenhouse and maximum-greenhouse limits from [Kopparapu et al. (2014)](https://arxiv.org/abs/1404.5292). All inner-edge coefficients are interpolated between the published 0.1, 1, and 5 Earth-mass cases; the outer boundary is independent of mass. Masses and stellar temperatures outside the published ranges use the nearest endpoint approximation, while unavailable mass uses the Earth-mass reference. Irradiation is averaged over the eccentric stellar orbit; moons use their parent's orbit around the star. This classification does not resolve seasonal melting. The [Bohl et al. (2026) catalog](https://arxiv.org/abs/2501.14054) and its associated diagram also show empirical and 3D limits, which differ from this conservative 1D definition.
+
 Alienorum's exoplanet simulations are illustrative estimates based on the limited information available, rather than predictions of actual conditions. Depicted atmospheres, clouds, water, ice, and life represent plausible scenarios under the model's assumptions; they are not evidence that these features exist on a particular planet. Atmospheric pressures, temperatures, surface water coverage, and planet types can be highly uncertain, especially when masses, radii, compositions, or stellar histories are poorly constrained. Vegetation and other signs of life are speculative visualizations, not detections or estimates of the probability of life.
 
 

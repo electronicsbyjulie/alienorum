@@ -18,6 +18,7 @@
 #include "../classes/chemistry.h"
 #include "../classes/shore.h"
 #include "../classes/thermalclimate.h"
+#include "../classes/habitablezone.h"
 #include "../classes/watercoverage.h"
 #include "../classes/surfacenavigation.h"
 #include "../visuals.h"
@@ -1402,8 +1403,10 @@ TEST_F(PlanetClassificationEvidenceTest, OrbitEditsUpdateHzCountsWithoutFollowin
     for (double phase : {0.0, .25, .5, .75})
     {
         planet->update_location(J2000_TIME_T + phase * planet->orbit->period);
-        EXPECT_EQ(host->has_hz_planets, 1);
+        // At one AU, e=0.7 raises mean irradiation beyond the inner boundary.
+        EXPECT_EQ(host->has_hz_planets, 0);
     }
+    planet->orbit->eccentricity = 0;
     planet->orbit->semimajor_axis = 4 * AU;
     planet->update_location(J2000_TIME_T);
     EXPECT_EQ(host->has_hz_planets, 0);
@@ -2860,6 +2863,117 @@ TEST(PlanetPhotometryTest, CloudierWorldsFadeMoreGently)
 
 class PlanetHabitabilityTest : public UniverseFixture {};
 
+TEST(ConservativeHZTest, PublishedMassAndStellarTemperatureAnchors)
+{
+    // Table 1 polynomials evaluated at the solar reference and two cool stars.
+    // These anchors exercise all five mass-dependent coefficients, not just S_eff.
+    const std::vector<std::array<double, 5>> anchors =
+    {
+        {5780, 0.99, 1.107, 1.188, 0.356},
+        {2600, 0.81088746094512, 0.91289858126544, 0.98020135742016, 0.2227622194148},
+        {3000, 0.81946576061872, 0.92197461158864, 0.98975333842496, 0.2329794468388},
+        {5344, 0.940509463641781, 1.052547119698972, 1.129434114761082, 0.32966213309075},
+        {7200, 1.16178355208752, 1.29636373033424, 1.39175471030336, 0.4356285302308}
+    };
+    for (const auto& row : anchors)
+    {
+        for (size_t i = 0; i < 3; ++i)
+        {
+            const double mass = std::array<double, 3>{0.1, 1, 5}[i];
+            const auto limits = conservative_hz(row[0], mass);
+            EXPECT_NEAR(limits.inner_flux, row[i + 1], 1e-12);
+            EXPECT_NEAR(limits.outer_flux, row[4], 1e-12);
+        }
+    }
+    EXPECT_NEAR(conservative_hz(5780, .55).inner_flux, 1.0485, 1e-12);
+    EXPECT_NEAR(conservative_hz(5780, 3).inner_flux, 1.1475, 1e-12);
+    EXPECT_DOUBLE_EQ(conservative_hz(5780, NAN).inner_flux, 1.107);
+    EXPECT_DOUBLE_EQ(conservative_hz(5780, 0).inner_flux, 1.107);
+    EXPECT_DOUBLE_EQ(conservative_hz(5780, .01).inner_flux, conservative_hz(5780, .1).inner_flux);
+    EXPECT_DOUBLE_EQ(conservative_hz(5780, 10).inner_flux, conservative_hz(5780, 5).inner_flux);
+    EXPECT_DOUBLE_EQ(conservative_hz(2000, 1).inner_flux, conservative_hz(2600, 1).inner_flux);
+    EXPECT_DOUBLE_EQ(conservative_hz(9000, 1).inner_flux, conservative_hz(7200, 1).inner_flux);
+}
+
+TEST_F(PlanetHabitabilityTest, MassChangesTheInnerBoundaryButNotTheOuterBoundary)
+{
+    Star* host = make_star();
+    host->temperature = 5780;
+    host->absolute_magnitude = 4.74 - Star::bolometric_correction(host->temperature);
+    Planet* world = make_planet(host);
+    world->orbit->semimajor_axis = AU / std::sqrt(1.15);
+    EXPECT_FALSE(world->is_in_con_HZ());
+    world->mass = 5 * earth_mass;
+    EXPECT_TRUE(world->is_in_con_HZ());
+    world->mass = .1 * earth_mass;
+    EXPECT_FALSE(world->is_in_con_HZ());
+    for (double mass : {.1, 1.0, 5.0, 10.0})
+    {
+        world->mass = mass * earth_mass;
+        world->orbit->semimajor_axis = AU / std::sqrt(.35);
+        EXPECT_FALSE(world->is_in_con_HZ());
+        world->orbit->semimajor_axis = AU / std::sqrt(.36);
+        EXPECT_TRUE(world->is_in_con_HZ());
+    }
+    delete_the_universe();
+}
+
+TEST_F(PlanetHabitabilityTest, EccentricityChangesAveragedFluxAndInvalidatesMoonCache)
+{
+    Star* host = make_star();
+    host->temperature = 5780;
+    host->absolute_magnitude = 4.74 - Star::bolometric_correction(host->temperature);
+    Planet* world = make_planet(host, "Outer world", AU / std::sqrt(.34));
+    Moon* moon = new Moon();
+    moon->mass = earth_mass;
+    moon->orbit = new Orbit();
+    moon->orbit->center = world;
+    moon->orbit->semimajor_axis = 4e8;
+    moon->orbit->eccentricity = .8;
+    EXPECT_FALSE(world->is_in_con_HZ());
+    EXPECT_FALSE(moon->is_in_con_HZ());
+    world->orbit->eccentricity = .4;
+    EXPECT_TRUE(world->is_in_con_HZ());
+    EXPECT_TRUE(moon->is_in_con_HZ());
+    world->orbit->semimajor_axis = AU / std::sqrt(1.05);
+    world->orbit->eccentricity = 0;
+    EXPECT_TRUE(world->is_in_con_HZ());
+    world->orbit->eccentricity = .4;
+    EXPECT_FALSE(world->is_in_con_HZ());
+    EXPECT_FALSE(moon->is_in_con_HZ());
+    world->orbit->eccentricity = NAN;
+    EXPECT_TRUE(world->is_in_con_HZ());
+    world->orbit->eccentricity = 1;
+    EXPECT_FALSE(world->is_in_con_HZ());
+    world->orbit->eccentricity = INFINITY;
+    EXPECT_FALSE(world->is_in_con_HZ());
+    delete moon;
+    delete_the_universe();
+}
+
+TEST_F(PlanetHabitabilityTest, EmpiricalChartCandidatesAreNotAutomaticallyConservativeMembers)
+{
+    Star* host = make_star("GJ 1061");
+    host->temperature = 2953;
+    const double luminosity = 1.4 * .035 * .035;
+    host->absolute_magnitude = 4.74 - 2.5 * std::log10(luminosity)
+        - Star::bolometric_correction(host->temperature);
+    Planet* world = make_planet(host, "GJ 1061 c", .035 * AU);
+    world->mass = 1.74 * earth_mass;
+    EXPECT_FALSE(world->is_in_con_HZ());
+    host->temperature = 5344;
+    host->absolute_magnitude = 4.74 - 2.5 * std::log10(.52)
+        - Star::bolometric_correction(host->temperature);
+    world->mass = 6.870596 * earth_mass;
+    world->orbit->semimajor_axis = 1.334 * AU;
+    world->orbit->eccentricity = .16;
+    EXPECT_FALSE(world->is_in_con_HZ());
+    // Seasonal periastron entry does not imply orbit-averaged membership.
+    world->orbit->eccentricity = .6;
+    EXPECT_TRUE(world->is_in_con_HZ());
+    delete_the_universe();
+}
+
 TEST_F(PlanetHabitabilityTest, EarthIsInTheZoneAndItsNeighboursAreNot)
 {
     Star* sun = make_star("Sol");
@@ -2905,10 +3019,8 @@ TEST_F(PlanetHabitabilityTest, TheZoneFollowsTheStar)
     double sun_inner = 0, sun_outer = 0;
     find_zone(sun, sun_inner, sun_outer);
 
-    // The conservative zone's inner edge sits almost exactly at the Earth's orbit in this model --
-    // the runaway greenhouse limit is about 0.99 AU -- so the band is checked to a step of the
-    // scan rather than to a sharp figure. That the Earth itself is inside it is asserted above,
-    // at exactly one AU, where it can be checked without any sampling at all.
+    // The solar runaway boundary is about 0.95 AU for one Earth mass. Allow for
+    // the coarse scan; Earth's membership is checked at exactly one AU above.
     ASSERT_GT(sun_inner, 0) << "a G2V star has a habitable zone";
     EXPECT_LT(sun_inner, 1.1);
     EXPECT_GT(sun_outer, 1.1) << "and it reaches out past the Earth";
