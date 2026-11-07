@@ -9,6 +9,7 @@
 #include <mutex>
 #include <memory>
 #include <random>
+#include <future>
 
 // Not sure about this number at all.
 #define phase_exponent 1.319507911
@@ -35,6 +36,10 @@ namespace alienorum
         std::shared_ptr<LocalClimate> cloud_climate_snapshot;
         std::shared_ptr<LocalClimate> conditions_cache;
         std::vector<double> conditions_cache_key;
+        std::shared_ptr<const IceSeason> ice_season_cache;
+        std::shared_future<std::shared_ptr<const IceSeason>> ice_season_pending;
+        std::vector<double> ice_season_inputs, ice_pending_inputs;
+        void prepare_surface_ice(LocalClimate& climate, const ThermalOrbit& orbit, double reference, double air_capacity);
         double cloud_epoch = NAN;
         uint32_t weather_revision = 0;
         double ocean_salinity_g_kg = NAN;

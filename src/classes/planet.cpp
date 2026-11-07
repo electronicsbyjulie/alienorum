@@ -934,6 +934,88 @@ bool Planet::has_supplied_mean_temperature() const
         || temperature != inferred_mean_temperature));
 }
 
+void Planet::prepare_surface_ice(LocalClimate& climate, const ThermalOrbit& orbit, double reference, double air_capacity)
+{
+    if (!(has_water > 0) || get_surface_pressure() < 611.657 || !uses_rocky_map(type) || type == lavaworld) return;
+    const double absorbed = est_bolometric_flux() * 1361 * (1 - std::clamp(estimate_bond_albedo(), 0.0, .99)) / 4;
+    if (!(absorbed > 0) || !std::isfinite(absorbed)) return;
+    climate.ice_pending = true;
+    IceColumn column;
+    column.salinity = ocean_chemistry().at("salinity_g_kg").get<double>();
+    column.pressure = get_surface_pressure();
+    if (!has_water_supplied && surface_water_model.is_object())
+    {
+        const double depth = ocean_numeric(surface_water_model, "equivalent_depth_m");
+        const double coverage = ocean_numeric(surface_water_model, "coverage_fraction");
+        if (std::isfinite(depth) && depth > 0 && std::isfinite(coverage) && coverage > 0) column.depth = depth / coverage;
+    }
+    column.atmospheric_capacity = air_capacity;
+    const double feedback = 4 * absorbed / climate.mean_k;
+    const std::vector<double> key =
+    {
+        column.depth, column.salinity, column.pressure, column.atmospheric_capacity,
+        climate.mean_k, climate.contrast_k, climate.redistribution, climate.regional_k, absorbed, feedback,
+        orbit.eccentricity, orbit.period, orbit.pole_u, orbit.pole_v, reference, double(climate.stellar_locked)
+    };
+    if (ice_season_pending.valid() && ice_season_pending.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
+    {
+        ice_season_cache = ice_season_pending.get();
+        ice_season_inputs = ice_pending_inputs;
+        ice_season_pending = {};
+    }
+    const auto same_inputs = [&]()
+    {
+        if (ice_season_inputs.size() != key.size()) return false;
+        for (size_t index = 0; index < key.size(); ++index)
+        {
+            // Interpolated orbital elements and precession vary each frame. Small
+            // geometric changes can reuse a history while the current phase stays
+            // exact; otherwise background preparation chases a moving key forever.
+            double tolerance = 0;
+            if (index == 10 || index == 14) tolerance = .000001;
+            if (index == 11) tolerance = .00001 * std::abs(key[index]);
+            if (index == 12 || index == 13) tolerance = .0001;
+            if (std::abs(ice_season_inputs[index] - key[index]) > tolerance) return false;
+        }
+        return true;
+    };
+    if (ice_season_cache && same_inputs())
+    {
+        climate.ice_season = ice_season_cache;
+        climate.ice_pending = false;
+        climate.ice_mean_anomaly = orbit.mean_anomaly;
+        if (atm && atm->pressure_model.is_object())
+        {
+            atm->pressure_model["surface_ice_climate"] =
+            {
+                {"model", "conductive_enthalpy_and_ice_albedo_v3"}, {"converged", ice_season_cache->converged},
+                {"periodic_closure_relative", ice_season_cache->closure_relative},
+                {"annual_open_water_fraction", ice_season_cache->annual_liquid_fraction},
+                {"maximum_ice_thickness_m", ice_season_cache->maximum_thickness},
+                {"representative_water_depth_m", column.depth}, {"mixed_layer_m", std::min(column.depth, column.mixed_layer)},
+                {"ice_albedo", column.ice_albedo}, {"water_albedo", column.water_albedo},
+                {"ice_albedo_transition_m", column.albedo_thickness}, {"temperature_sampling_tolerance_k", .1},
+                {"transported_heat", "separate_nonreflective_flux"},
+                {"regional_temperature_amplitude_k", climate.regional_k},
+                {"albedo_visibility", column.albedo_visibility}, {"basal_heat_flux_w_m2", column.basal_flux},
+                {"limitations", "Representative_columns;prescribed_atmosphere;no_ice_transport_snow_or_melt_pond_drainage;albedo_and_cloud_mask_are_scenarios"}
+            };
+        }
+    }
+    else if (!ice_season_pending.valid())
+    {
+        ice_pending_inputs = key;
+        const double mean = climate.mean_k, contrast = climate.contrast_k, transport = climate.redistribution;
+        const double regional = climate.regional_k;
+        const bool locked = climate.stellar_locked;
+        ice_season_pending = IceSeasonQueue::instance().submit([column, orbit, mean, contrast, absorbed, feedback, transport, reference, locked, regional]()
+            -> std::shared_ptr<const IceSeason>
+        {
+            return std::make_shared<IceSeason>(column, orbit, mean, contrast, absorbed, feedback, transport, reference, true, locked, regional);
+        });
+    }
+}
+
 LocalClimate Planet::current_local_climate(bool include_supplied)
 {
     if (include_supplied && cloud_climate_snapshot) return *cloud_climate_snapshot;
@@ -1030,11 +1112,10 @@ LocalClimate Planet::current_local_climate(bool include_supplied)
     }
     const double cp = mixture_mass > 0 ? cp_molar / mixture_mass : 1005;
     const double atmosphere_capacity = std::max(0.0, get_surface_pressure()) / gravity * cp;
-    // Seasonal mixed layer: 50 m liquid water; 2 m ice. A 5 m freezing layer buffers
-    // the phase transition over a 20 K interval. These depths are scenario assumptions.
+    // Sensible heat only: the separate enthalpy columns carry freezing/melting
+    // energy explicitly. Do not add the former artificial latent-heat buffer here.
     const double liquid = std::clamp((climate.mean_k - 263.15) / 20, 0.0, 1.0);
-    const double water_capacity = 2.09e8 * liquid + 3.85e6 * (1 - liquid)
-        + 8.35e7 * std::exp(-std::pow((climate.mean_k - 273.15) / 10, 2));
+    const double water_capacity = 2.09e8;
     const double stellar_flux = est_bolometric_flux() * 1361;
     const double feedback = std::max(0.01, stellar_flux * (1 - std::clamp(estimate_bond_albedo(), 0.0, 0.99)) / climate.mean_k);
     const double actual_distance = location.distance_to(source->location);
@@ -1051,13 +1132,15 @@ LocalClimate Planet::current_local_climate(bool include_supplied)
     const bool phase_pending = atm && atm->pressure_model.is_object()
         && atm->pressure_model.contains("phase_available_column_pa")
         && !atm->pressure_model.contains("seasonal_conditions");
-    if (conditions_cache && conditions_cache_key == cache_key && !phase_pending) return *conditions_cache;
+    const double reference = supplied ? std::sqrt(1 - eccentricity * eccentricity) : 1;
+    prepare_surface_ice(climate, forcing, reference, atmosphere_capacity);
+    if (conditions_cache && conditions_cache_key == cache_key && !phase_pending
+        && conditions_cache->ice_season == climate.ice_season) return *conditions_cache;
     const double land_capacity = 2e6 + atmosphere_capacity + ocean * climate.redistribution * water_capacity * 0.3;
     const double ocean_capacity = atmosphere_capacity + water_capacity;
     const ThermalHistory land_history(forcing, land_capacity / feedback);
     const ThermalHistory ocean_history(forcing, ocean_capacity / feedback);
     const ThermalHistory global_history(forcing, ((1 - ocean) * land_capacity + ocean * ocean_capacity) / feedback);
-    const double reference = supplied ? std::sqrt(1 - eccentricity * eccentricity) : 1;
     climate.current_mean_k = climate.mean_k * std::pow(global_history.global_flux * reference, 0.25);
     climate.instantaneous_flux = reference / std::pow(1 - eccentricity * std::cos(current_e), 2);
     if (std::isfinite(actual_distance) && actual_distance > 0)
@@ -1084,6 +1167,25 @@ LocalClimate Planet::current_local_climate(bool include_supplied)
     climate.water_diurnal_seconds = (4.18e6 * liquid + 1.93e6 * (1 - liquid) + 0.05 * atmosphere_capacity) / feedback;
     climate.water_fraction = ocean;
     climate.current_conditions = true;
+    if (climate.ice_season)
+    {
+        double water_mean = 0;
+        for (size_t row = 0; row < IceSeason::rows; ++row)
+        {
+            const double z = -1 + 2.0 * row / (IceSeason::rows - 1);
+            const double weight = row == 0 || row + 1 == IceSeason::rows ? .5 : 1;
+            for (size_t lon = 0; lon < climate.ice_season->columns; ++lon)
+            {
+                const double longitude = 2 * IceSeason::pi * lon / climate.ice_season->columns;
+                water_mean += weight * climate.ice_season->column.state(
+                    climate.ice_season->energy_at(z, longitude, forcing.mean_anomaly),
+                    climate.ice_season->forcing_at(z, longitude, forcing.mean_anomaly)).temperature
+                    / ((IceSeason::rows - 1) * climate.ice_season->columns);
+            }
+        }
+        const double land_mean = climate.mean_k * std::pow(land_history.global_flux * reference, .25);
+        climate.current_mean_k = (1 - ocean) * land_mean + ocean * water_mean;
+    }
     if (atm && atm->pressure_model.is_object() && atm->pressure_model.value("status", "") == "estimated")
     {
         atm->pressure_model["seasonal_conditions"] = CosmicShore::seasonal_volatiles(atm->pressure_model,
@@ -1156,7 +1258,8 @@ void Planet::update_surface_phase(double latitude, double longitude)
         && phase->clock_revision == surface_phase_clock.load()
         && simnow >= phase->climate_epoch && simnow - phase->climate_epoch < 1800
         && now - phase->prepared < std::chrono::milliseconds(250);
-    const LocalClimate climate = cached ? phase->climate : current_local_climate();
+    const LocalClimate climate = cached ? phase->climate : current_local_climate(true);
+    if (climate.ice_pending) return;
     const double salinity = cached ? phase->salinity : ocean_chemistry().at("salinity_g_kg").get<double>();
     if (saved_water_phase.is_object())
     {
@@ -1168,6 +1271,9 @@ void Planet::update_surface_phase(double latitude, double longitude)
         has_water, bump, type == waterworld || type == hycean);
     if (night_map) night_map->update_night_phase(surf_map);
     phase = surf_map->phase_state();
+    // Playback keeps queued geographic work alive. Explicit date controls still
+    // increment the clock revision and cancel incompatible snapshots.
+    if (phase) phase->continuous_clock = true;
     if (phase && !cached)
     {
         phase->climate = climate; phase->climate_epoch = simnow; phase->prepared = now;

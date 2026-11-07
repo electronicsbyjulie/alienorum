@@ -2455,12 +2455,12 @@ SurfaceMaterial Map::phase_material(unsigned long column, unsigned long row, Sur
     const auto& tile = found->second;
     const size_t index = (row - tile.rect.y) * tile.rect.width + column - tile.rect.x;
     if (index < tile.pixels.size()) return static_cast<SurfaceMaterial>(tile.pixels[index].material);
-    if (index < tile.packed.size() / 15)
+    if (index < tile.packed.size() / SurfacePhasePixel::packed_bytes)
     {
-        const auto* bytes = tile.packed.data() + index * 15;
+        const auto* bytes = tile.packed.data() + index * SurfacePhasePixel::packed_bytes;
         float ice = 0;
         std::memcpy(&ice, bytes + 11, sizeof(float));
-        return ice >= .5 ? ((bytes[10] & 2) ? SurfaceMaterial::ice : SurfaceMaterial::frost)
+        return (bytes[10] & 4) || ice >= .5 ? ((bytes[10] & 2) ? SurfaceMaterial::ice : SurfaceMaterial::frost)
             : (bytes[10] & 2) ? SurfaceMaterial::water : static_cast<SurfaceMaterial>(bytes[9]);
     }
     return base;
@@ -2536,9 +2536,9 @@ RGB3 Map::original_phase_color(unsigned long column, unsigned long row) const
                 const auto& color = tile.pixels[index].original;
                 return RGB3(color[0], color[1], color[2]);
             }
-            if (index < tile.packed.size() / 15)
+            if (index < tile.packed.size() / SurfacePhasePixel::packed_bytes)
             {
-                const auto* color = tile.packed.data() + index * 15 + 6;
+                const auto* color = tile.packed.data() + index * SurfacePhasePixel::packed_bytes + 6;
                 return RGB3(color[0], color[1], color[2]);
             }
         }
@@ -2603,9 +2603,13 @@ void Map::update_water_phase(const LocalClimate& climate, double epoch, double l
     state.sync_epoch(epoch);
     if (state.survey && state.survey->ready.load(std::memory_order_acquire))
     {
+        if (state.survey->timeline == state.timeline)
+        {
+            if (state.catching_up && !state.catchup_surveyed) state.catchup_candidate_start = state.candidate_cursor;
+            state.catchup_surveyed = true;
+        }
         state.candidates = std::move(state.survey->candidates);
         state.survey.reset();
-        state.catchup_surveyed = true;
     }
     if (!state.survey && (state.surveyed.time_since_epoch().count() == 0
         || started - state.surveyed >= std::chrono::seconds(1)))
@@ -2614,6 +2618,7 @@ void Map::update_water_phase(const LocalClimate& climate, double epoch, double l
         survey->climate = climate; survey->width = image_width; survey->height = image_height;
         survey->lat_scale = lat_scale; survey->lon_scale = lon_scale;
         survey->freezing = seawater_freezing_k(salinity, pressure); survey->epoch = epoch;
+        survey->timeline = state.timeline;
         auto job = std::make_shared<SurfacePhaseJob>();
         job->survey = survey;
         job->timeline = state.timeline; job->timeline_token = state.timeline_token;
@@ -2632,7 +2637,8 @@ void Map::update_water_phase(const LocalClimate& climate, double epoch, double l
         if (std::chrono::steady_clock::now() - started >= std::chrono::milliseconds(budget)) break;
     }
     if (state.catching_up && state.catchup_surveyed && state.catchup_revisited && !state.catchup_remaining
-        && state.candidate_cursor >= state.candidates.size() && !state.pending) state.catching_up = false;
+        && state.candidate_cursor - state.catchup_candidate_start >= state.candidates.size()
+        && !state.pending) state.catching_up = false;
 }
 
 void Map::update_water_phase_tile(const LocalClimate& climate, double epoch, double latitude, double longitude,
@@ -2656,7 +2662,16 @@ void Map::update_water_phase_tile(const LocalClimate& climate, double epoch, dou
             state.queued.pop_front();
         }
         state.inflight.erase(SurfacePhase::key(job->tile.rect.x / SurfacePhase::tile_width, job->tile.rect.y / SurfacePhase::tile_height));
-        if (job->generation != gen || job->timeline != state.timeline) return;
+        if (job->generation != gen || job->timeline != state.timeline)
+        {
+            if (job->generation == gen && state.retries.size() < state.batch_limit)
+            {
+                const auto missed = SurfacePhase::key(job->tile.rect.x / SurfacePhase::tile_width,
+                    job->tile.rect.y / SurfacePhase::tile_height);
+                if (state.retry_keys.insert(missed).second) state.retries.push_back(missed);
+            }
+            return;
+        }
         // Publishing one 16x8 patch is bounded; all thermal work ran on the worker.
         auto tile = std::move(job->tile);
         bool changed = false;
@@ -2671,7 +2686,7 @@ void Map::update_water_phase_tile(const LocalClimate& climate, double epoch, dou
                 for (int channel = 0; channel < 3; ++channel)
                     color[channel] = static_cast<unsigned char>(std::clamp(std::lround(
                         pixel.base[channel] * (1 - pixel.ice) + pixel.frost[channel] * pixel.ice), 0l, 255l));
-                const auto material = pixel.ice >= .5 ? (pixel.ocean ? SurfaceMaterial::ice : SurfaceMaterial::frost)
+                const auto material = pixel.frozen_surface || pixel.ice >= .5 ? (pixel.ocean ? SurfaceMaterial::ice : SurfaceMaterial::frost)
                     : pixel.ocean ? SurfaceMaterial::water : static_cast<SurfaceMaterial>(pixel.original_material);
                 const bool material_changed = pixel.material != static_cast<unsigned char>(material);
                 pixel.material = static_cast<unsigned char>(material);
@@ -2710,6 +2725,7 @@ void Map::update_water_phase_tile(const LocalClimate& climate, double epoch, dou
         state.active.push_front(key);
         tile.lru = state.active.begin();
         state.tiles[key] = std::move(tile);
+        state.retry_keys.erase(key);
         // Queued jobs can finish together; enforce the active bound at publication too.
         if (state.active.size() > SurfacePhase::tile_limit)
         {
@@ -2730,7 +2746,16 @@ void Map::update_water_phase_tile(const LocalClimate& climate, double epoch, dou
     const uint64_t visit = state.scan++;
     unsigned long tx = 0, ty = 0;
     bool global_candidate = false;
-    if (visit % 8 == 7 && !state.revisions.empty())
+    bool retry_candidate = false;
+    while (!state.retries.empty() && !state.retry_keys.count(state.retries.front())) state.retries.pop_front();
+    if (visit % 4 == 1 && !state.retries.empty())
+    {
+        const auto missed = state.retries.front();
+        state.retries.pop_front(); state.retry_keys.erase(missed);
+        tx = static_cast<uint32_t>(missed); ty = missed >> 32;
+        retry_candidate = true;
+    }
+    else if (visit % 8 == 7 && !state.revisions.empty())
     {
         auto revisit = state.revisions.upper_bound(state.revisit_revision);
         if (revisit == state.revisions.end())
@@ -2758,6 +2783,9 @@ void Map::update_water_phase_tile(const LocalClimate& climate, double epoch, dou
         tx = static_cast<uint32_t>(candidate); ty = candidate >> 32;
     }
     const auto key = SurfacePhase::key(tx, ty);
+    // A normal sweep must not place a missed patch at the back of the worker
+    // queue before its retry reaches the front, recreating the same starvation.
+    if (!retry_candidate && state.retry_keys.count(key)) return;
     if (state.inflight.count(key)) return;
     auto existing = state.tiles.find(key);
     if (existing != state.tiles.end() && existing->second.timeline == state.timeline && std::isfinite(existing->second.epoch)
@@ -2858,6 +2886,7 @@ void Map::update_water_phase_tile(const LocalClimate& climate, double epoch, dou
         else state.pending = std::move(job);
     }
     else if (global_candidate) --state.candidate_cursor;
+    else if (retry_candidate && state.retry_keys.insert(key).second) state.retries.push_back(key);
 }
 
 json Map::water_phase_to_json() const
@@ -2873,20 +2902,23 @@ json Map::water_phase_to_json() const
         for (const auto& pixel : saved_pixels)
             pixels.push_back({pixel.base[0], pixel.base[1], pixel.base[2], pixel.frost[0], pixel.frost[1], pixel.frost[2],
                 pixel.original[0], pixel.original[1], pixel.original[2], pixel.original_material,
-                (pixel.eligible ? 1 : 0) | (pixel.ocean ? 2 : 0), pixel.ice});
+                (pixel.eligible ? 1 : 0) | (pixel.ocean ? 2 : 0) | (pixel.frozen_surface ? 4 : 0), pixel.ice,
+                std::isfinite(pixel.energy) ? json(pixel.energy) : json(nullptr)});
         tiles.push_back({{"x", tile.rect.x}, {"y", tile.rect.y}, {"width", tile.rect.width}, {"height", tile.rect.height},
             {"epoch", tile.epoch}, {"thermal_current", tile.timeline == water_phase->timeline && std::isfinite(tile.epoch)}, {"pixels", std::move(pixels)}});
     }
-    return {{"schema", 1}, {"width", image_width}, {"height", image_height}, {"tiles", std::move(tiles)}};
+    return {{"schema", 2}, {"ice_model", IceSeason::checkpoint_model},
+        {"width", image_width}, {"height", image_height}, {"tiles", std::move(tiles)}};
 }
 
 void Map::water_phase_from_json(const json& saved)
 {
-    if (!is_complete() || !saved.is_object() || saved.value("schema", 0) != 1
+    if (!is_complete() || !saved.is_object() || (saved.value("schema", 0) != 1 && saved.value("schema", 0) != 2)
         || saved.value("width", 0ul) != image_width || saved.value("height", 0ul) != image_height
         || !saved.contains("tiles") || !saved["tiles"].is_array()) return;
     water_phase = std::make_shared<SurfacePhase>();
     water_phase->generation = gen;
+    const bool current_energy_model = saved.contains("ice_model") && saved["ice_model"] == IceSeason::checkpoint_model;
     for (const auto& entry : saved["tiles"])
     {
         SurfacePhaseTile tile;
@@ -2900,21 +2932,25 @@ void Map::water_phase_from_json(const json& saved)
         tile.epoch = ocean_numeric(entry, "epoch");
         if (!entry.value("thermal_current", true)) tile.epoch = NAN;
         bool valid = true;
-        for (const auto& value : entry["pixels"])
+        json values = entry["pixels"];
+        normalize_uncertain_numbers(values);
+        for (const auto& value : values)
         {
-            if (!value.is_array() || value.size() != 12) { valid = false; break; }
-            for (const auto& number : value) if (!number.is_number()) valid = false;
+            if (!value.is_array() || (value.size() != 12 && value.size() != 13)) { valid = false; break; }
+            for (size_t index = 0; index < 12; ++index) if (!value[index].is_number()) valid = false;
+            if (value.size() == 13 && !value[12].is_null()
+                && (!value[12].is_number() || !std::isfinite(value[12].get<double>()))) valid = false;
             if (!valid) break;
             for (int channel = 0; channel < 9; ++channel)
                 if (value[channel].get<double>() < 0 || value[channel].get<double>() > 255) valid = false;
             if (value[9].get<double>() < 0 || value[9].get<double>() > 5
-                || value[10].get<double>() < 0 || value[10].get<double>() > 3
+                || value[10].get<double>() < 0 || value[10].get<double>() > 7
                 || !std::isfinite(value[11].get<double>()) || value[11].get<double>() < 0 || value[11].get<double>() > 1) valid = false;
         }
         if (!valid) continue;
-        for (size_t i = 0; i < entry["pixels"].size(); ++i)
+        for (size_t i = 0; i < values.size(); ++i)
         {
-            const auto& value = entry["pixels"][i];
+            const auto& value = values[i];
             SurfacePhasePixel pixel;
             for (int channel = 0; channel < 3; ++channel)
             {
@@ -2926,7 +2962,13 @@ void Map::water_phase_from_json(const json& saved)
             pixel.material = pixel.original_material;
             const int flags = value[10];
             pixel.eligible = flags & 1; pixel.ocean = flags & 2;
+            pixel.frozen_surface = flags & 4;
             pixel.ice = std::clamp(value[11].get<float>(), 0.0f, 1.0f);
+            if (value.size() == 13 && value[12].is_number()) pixel.energy = value[12].get<double>();
+            // Keep the stored energy, but reconstruct its current-date replacement
+            // before publication if it came from the superseded ice calculation.
+            if (std::isfinite(pixel.energy) && !current_energy_model)
+                tile.epoch = NAN;
             const unsigned long column = tile.rect.x + i % tile.rect.width, row = tile.rect.y + i / tile.rect.width;
             const double lat = half_pi - row / lat_scale, lon = column / lon_scale - _pi;
             pixel.x = -cos(lat) * cos(lon); pixel.y = -cos(lat) * sin(lon); pixel.z = sin(lat);

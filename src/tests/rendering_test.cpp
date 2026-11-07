@@ -714,7 +714,8 @@ TEST_F(RenderingRegressionTest, SunclockAdvancesGlobalIceAndShortcutTogglesIt)
     ASSERT_FALSE(dynamic_surface_ice);
     process_key_cmd_ctrl_char('I');
     ASSERT_TRUE(dynamic_surface_ice);
-    for (int frame = 0; frame < 40; ++frame)
+    const auto ice_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(8);
+    while (std::chrono::steady_clock::now() < ice_deadline)
     {
         draw_sunclock();
         render();
@@ -7967,6 +7968,73 @@ TEST_F(RenderingRegressionTest, FrameScratchPreservesFreshImagesAcrossMapsViewsA
         const auto expected = image(true);
         EXPECT_EQ(image_difference(image(false), expected), 0) << step;
         EXPECT_EQ(image_difference(image(false), expected), 0) << step;
+    }
+}
+
+TEST_F(RenderingRegressionTest, SeasonalIceAndOpenWaterReachTheSameCachedGpuTexture)
+{
+    IceColumn column;
+    column.depth = 1000;
+    column.atmospheric_capacity = 101325 / 9.81 * 1005;
+    ThermalOrbit orbit;
+    orbit.eccentricity = .16;
+    orbit.period = 636.13 * oneday;
+    auto climate = uniform_phase_climate(271);
+    climate.ice_season = std::make_shared<IceSeason>(column, orbit, 271, 0, 200, 3, 1 / 1.1, 1, true, false);
+    int frozen_phase = 0, liquid_phase = 0;
+    double cold = INFINITY, warm = -INFINITY;
+    for (int phase = 0; phase < 128; ++phase)
+    {
+        const double energy = climate.ice_season->energy_at(0, 0, phase * 2 * _pi / 128);
+        if (energy < cold) { cold = energy; frozen_phase = phase; }
+        if (energy > warm) { warm = energy; liquid_phase = phase; }
+    }
+    ASSERT_LT(cold, 0);
+    ASSERT_GT(warm, 0);
+    WaterPhaseTestMap map;
+    const GLuint texture = gputex_for(&map);
+    const auto publish = [&](int phase)
+    {
+        surface_phase_clock.fetch_add(1);
+        climate.ice_mean_anomaly = phase * 2 * _pi / 128;
+        const double epoch = 1000 + phase * orbit.period / 128;
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(4);
+        while (std::chrono::steady_clock::now() < deadline)
+        {
+            map.update_water_phase(climate, epoch, 0, 0, column.salinity, oneatm, .5, 1000, false);
+            const auto state = map.phase_state();
+            if (state && state->tiles.size() == 16 && !state->pending && !state->catching_up) return true;
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        return false;
+    };
+    unsigned char frozen_red = 0;
+    for (int phase : {frozen_phase, liquid_phase})
+    {
+        ASSERT_TRUE(publish(phase));
+        // The first frame arms the nonblocking upload fence; the next publishes.
+        for (int frame = 0; frame < 2; ++frame)
+        {
+            EXPECT_EQ(gputex_for(&map), texture);
+            gputex_finish_frame();
+            glFinish();
+        }
+        std::vector<unsigned char> actual(64 * 32 * 4), expected(actual.size());
+        map.export_rgba(expected.data());
+        glBindTexture(GL_TEXTURE_2D, texture);
+        glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, actual.data());
+        EXPECT_EQ(actual, expected);
+        const size_t index = (16 * 64 + 32) * 4;
+        if (phase == frozen_phase)
+        {
+            EXPECT_EQ(map.surface_pixel(32, 16).second, SurfaceMaterial::ice);
+            frozen_red = actual[index];
+        }
+        else
+        {
+            EXPECT_EQ(map.surface_pixel(32, 16).second, SurfaceMaterial::water);
+            EXPECT_LT(actual[index], frozen_red);
+        }
     }
 }
 

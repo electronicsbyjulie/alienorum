@@ -29,10 +29,12 @@ namespace alienorum
 
     struct SurfacePhasePixel
     {
+        static constexpr size_t packed_bytes = 23;
         std::array<unsigned char, 3> base{}, frost{}, original{};
         unsigned char material = 0, original_material = 0;
-        bool ocean = false, eligible = false;
+        bool ocean = false, eligible = false, frozen_surface = false;
         float ice = 0;
+        double energy = NAN;
         float x = 0, y = 0, z = 0, elevation = 0;
     };
 
@@ -49,36 +51,39 @@ namespace alienorum
 
     inline void pack_phase_tile(SurfacePhaseTile& tile)
     {
-        tile.packed.resize(tile.pixels.size() * 15);
+        tile.packed.resize(tile.pixels.size() * SurfacePhasePixel::packed_bytes);
         for (size_t i = 0; i < tile.pixels.size(); ++i)
         {
             const auto& pixel = tile.pixels[i];
-            auto* bytes = tile.packed.data() + i * 15;
+            auto* bytes = tile.packed.data() + i * SurfacePhasePixel::packed_bytes;
             for (int channel = 0; channel < 3; ++channel)
             {
                 bytes[channel] = pixel.base[channel]; bytes[channel + 3] = pixel.frost[channel]; bytes[channel + 6] = pixel.original[channel];
             }
             bytes[9] = pixel.original_material;
-            bytes[10] = (pixel.eligible ? 1 : 0) | (pixel.ocean ? 2 : 0);
+            bytes[10] = (pixel.eligible ? 1 : 0) | (pixel.ocean ? 2 : 0) | (pixel.frozen_surface ? 4 : 0);
             std::memcpy(bytes + 11, &pixel.ice, sizeof(float));
+            std::memcpy(bytes + 15, &pixel.energy, sizeof(double));
         }
         std::vector<SurfacePhasePixel>().swap(tile.pixels);
     }
 
     inline std::vector<SurfacePhasePixel> unpack_phase_tile(const SurfacePhaseTile& tile)
     {
-        std::vector<SurfacePhasePixel> pixels(tile.packed.size() / 15);
+        std::vector<SurfacePhasePixel> pixels(tile.packed.size() / SurfacePhasePixel::packed_bytes);
         for (size_t i = 0; i < pixels.size(); ++i)
         {
             auto& pixel = pixels[i];
-            const auto* bytes = tile.packed.data() + i * 15;
+            const auto* bytes = tile.packed.data() + i * SurfacePhasePixel::packed_bytes;
             for (int channel = 0; channel < 3; ++channel)
             {
                 pixel.base[channel] = bytes[channel]; pixel.frost[channel] = bytes[channel + 3]; pixel.original[channel] = bytes[channel + 6];
             }
             pixel.original_material = bytes[9]; pixel.eligible = bytes[10] & 1; pixel.ocean = bytes[10] & 2;
+            pixel.frozen_surface = bytes[10] & 4;
             std::memcpy(&pixel.ice, bytes + 11, sizeof(float));
-            pixel.material = pixel.ice >= .5 ? (pixel.ocean ? 4 : 5) : pixel.ocean ? 2 : pixel.original_material;
+            std::memcpy(&pixel.energy, bytes + 15, sizeof(double));
+            pixel.material = pixel.frozen_surface || pixel.ice >= .5 ? (pixel.ocean ? 4 : 5) : pixel.ocean ? 2 : pixel.original_material;
         }
         return pixels;
     }
@@ -88,6 +93,7 @@ namespace alienorum
         LocalClimate climate;
         unsigned long width = 0, height = 0;
         double lat_scale = 0, lon_scale = 0, freezing = 271.23, epoch = 0;
+        uint64_t timeline = 0;
         std::vector<uint64_t> candidates;
         std::atomic<bool> ready{false};
     };
@@ -153,7 +159,7 @@ namespace alienorum
                     job = jobs.front();
                     jobs.pop_front();
                 }
-                if (job->timeline_token && job->timeline_token->load(std::memory_order_acquire) != job->timeline)
+                if (!job->survey && job->timeline_token && job->timeline_token->load(std::memory_order_acquire) != job->timeline)
                 {
                     job->ready.store(true, std::memory_order_release);
                     continue;
@@ -190,7 +196,33 @@ namespace alienorum
                 {
                     if (!pixel.eligible) continue;
                     const double temperature = job->climate.temperature(pixel.x, pixel.y, pixel.z, pixel.elevation);
-                    pixel.ice = surface_ice_step(pixel.ice, temperature, job->salinity, job->pressure, elapsed, pixel.ocean);
+                    if (pixel.ocean && job->climate.ice_season)
+                    {
+                        const auto& history = *job->climate.ice_season;
+                        const double longitude = job->climate.ice_longitude(pixel.x, pixel.y);
+                        const double phase = job->climate.ice_mean_anomaly;
+                        const double regional = job->climate.regional_temperature(pixel.x, pixel.y, pixel.z);
+                        const double reconstructed = history.energy_at(pixel.z, longitude, phase, regional);
+                        auto forcing = history.forcing_at(pixel.z, longitude, phase, regional);
+                        const double background = history.column.state(reconstructed, forcing).temperature;
+                        // Preserve the existing local day/night and terrain perturbations
+                        // as boundary forcing, without treating their temperature as melt.
+                        forcing.outgoing_at_freezing -= forcing.feedback * (temperature - background);
+                        // Fast playback can skip several orbital samples. Use the
+                        // resolved enthalpy history instead of applying the final
+                        // sunlight to the entire skipped interval.
+                        if (!std::isfinite(pixel.energy) || elapsed < 0 || elapsed > history.orbit.period / IceSeason::phases)
+                            pixel.energy = reconstructed;
+                        else pixel.energy = history.column.advance(pixel.energy, forcing, elapsed);
+                        const auto state = history.column.state(pixel.energy, forcing);
+                        pixel.ice = state.cover;
+                        pixel.frozen_surface = state.thickness >= .001;
+                    }
+                    else
+                    {
+                        pixel.frozen_surface = false;
+                        pixel.ice = surface_ice_step(pixel.ice, temperature, job->salinity, job->pressure, elapsed, pixel.ocean);
+                    }
                 }
                 job->tile.epoch = job->epoch;
                 job->ready.store(true, std::memory_order_release);
@@ -243,12 +275,16 @@ namespace alienorum
         std::shared_ptr<SurfacePhaseJob> pending;
         std::deque<std::shared_ptr<SurfacePhaseJob>> queued;
         std::unordered_set<uint64_t> inflight;
+        std::deque<uint64_t> retries;
+        std::unordered_set<uint64_t> retry_keys;
         std::shared_ptr<SurfacePhaseSurvey> survey;
         std::vector<uint64_t> candidates;
         size_t candidate_cursor = 0;
+        size_t catchup_candidate_start = 0;
         uint64_t revisit_revision = 0;
         unsigned int batch_limit = 3840;
         uint64_t timeline = 0, clock_revision = surface_phase_clock.load();
+        bool continuous_clock = false;
         double requested_epoch = NAN;
         std::shared_ptr<std::atomic<uint64_t>> timeline_token = std::make_shared<std::atomic<uint64_t>>(0);
         bool catching_up = false, catchup_surveyed = false, catchup_revisited = false;
@@ -264,7 +300,7 @@ namespace alienorum
         {
             const uint64_t current_clock = surface_phase_clock.load();
             if (std::isfinite(requested_epoch) && (current_clock != clock_revision
-                || epoch < requested_epoch || epoch - requested_epoch > 3600))
+                || (!continuous_clock && (epoch < requested_epoch || epoch - requested_epoch > 3600))))
             {
                 ++timeline;
                 timeline_token->store(timeline, std::memory_order_release);
@@ -272,9 +308,10 @@ namespace alienorum
                 catchup_budget_ms = surface_phase_seek_budget_ms;
                 catchup_revisited = revisions.empty(); catchup_revision = revision;
                 catchup_remaining = revisions.size();
-                survey.reset();
-                candidates.clear();
-                candidate_cursor = 0; revisit_revision = 0; scan = 0;
+                // Screening contains coordinates, not dated pixel results. Keep
+                // its work and traversal alive during repeated date controls.
+                catchup_candidate_start = candidate_cursor;
+                revisit_revision = 0;
                 surveyed = {};
             }
             requested_epoch = epoch;
@@ -287,7 +324,8 @@ namespace alienorum
             if (tile == tiles.end()) return fallback;
             const size_t index = (row - tile->second.rect.y) * tile->second.rect.width + column - tile->second.rect.x;
             if (index < tile->second.pixels.size()) return tile->second.pixels[index].original_material;
-            return index < tile->second.packed.size() / 15 ? tile->second.packed[index * 15 + 9] : fallback;
+            return index < tile->second.packed.size() / SurfacePhasePixel::packed_bytes
+                ? tile->second.packed[index * SurfacePhasePixel::packed_bytes + 9] : fallback;
         }
         bool underlying_ocean(unsigned long column, unsigned long row) const
         {
@@ -295,7 +333,8 @@ namespace alienorum
             if (tile == tiles.end()) return false;
             const size_t index = (row - tile->second.rect.y) * tile->second.rect.width + column - tile->second.rect.x;
             if (index < tile->second.pixels.size()) return tile->second.pixels[index].ocean;
-            return index < tile->second.packed.size() / 15 && (tile->second.packed[index * 15 + 10] & 2);
+            return index < tile->second.packed.size() / SurfacePhasePixel::packed_bytes
+                && (tile->second.packed[index * SurfacePhasePixel::packed_bytes + 10] & 2);
         }
     };
 }

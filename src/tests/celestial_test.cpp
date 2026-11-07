@@ -312,6 +312,222 @@ TEST(SurfacePhaseTest, SparseCheckpointRestoresThermalStateAndOriginalColors)
     EXPECT_FALSE(incompatible.phase_state());
 }
 
+TEST(SurfacePhaseTest, ThinFrozenWaterRetainsItsMaterialAndEnergyThroughCheckpoints)
+{
+    IceColumn column;
+    column.depth = .05;
+    column.salinity = 0;
+    ThermalOrbit orbit;
+    orbit.period = 31557600;
+    auto climate = uniform_phase_climate(250);
+    climate.ice_season = std::make_shared<IceSeason>(column, orbit, 250, 0, 200, 3, 1, 1, false, false);
+    WaterPhaseTestMap original;
+    ASSERT_TRUE(publish_water_phase(original, climate, 100));
+    const auto& tile = original.phase_state()->tiles.begin()->second;
+    ASSERT_LT(tile.pixels.front().ice, .5);
+    EXPECT_TRUE(tile.pixels.front().frozen_surface);
+    EXPECT_EQ(original.surface_pixel(tile.rect.x, tile.rect.y).second, SurfaceMaterial::ice);
+    auto checkpoint = original.water_phase_to_json();
+    WaterPhaseTestMap restored;
+    restored.water_phase_from_json(checkpoint);
+    const auto& saved = restored.phase_state()->tiles.begin()->second.pixels.front();
+    EXPECT_DOUBLE_EQ(saved.energy, tile.pixels.front().energy);
+    EXPECT_TRUE(saved.frozen_surface);
+    EXPECT_DOUBLE_EQ(restored.phase_state()->tiles.begin()->second.epoch, tile.epoch);
+    auto obsolete = checkpoint;
+    obsolete.erase("ice_model");
+    obsolete["tiles"][0]["pixels"][0][12] = -1e12;
+    WaterPhaseTestMap migrated;
+    migrated.water_phase_from_json(obsolete);
+    ASSERT_TRUE(migrated.phase_state());
+    EXPECT_DOUBLE_EQ(migrated.phase_state()->tiles.begin()->second.pixels.front().energy, -1e12);
+    EXPECT_TRUE(std::isnan(migrated.phase_state()->tiles.begin()->second.epoch));
+    ASSERT_TRUE(publish_water_phase(migrated, climate, 200));
+    EXPECT_NE(migrated.phase_state()->tiles.begin()->second.pixels.front().energy, -1e12);
+    checkpoint["tiles"][0]["pixels"][0][12] = "0?";
+    WaterPhaseTestMap zero;
+    zero.water_phase_from_json(checkpoint);
+    ASSERT_TRUE(zero.phase_state());
+    EXPECT_DOUBLE_EQ(zero.phase_state()->tiles.begin()->second.pixels.front().energy, 0);
+    checkpoint["schema"] = 1;
+    for (auto& pixel : checkpoint["tiles"][0]["pixels"]) pixel.erase(12);
+    WaterPhaseTestMap legacy;
+    legacy.water_phase_from_json(checkpoint);
+    ASSERT_TRUE(legacy.phase_state());
+    EXPECT_TRUE(std::isnan(legacy.phase_state()->tiles.begin()->second.pixels.front().energy));
+}
+
+TEST(SurfacePhaseTest, ReconstructedIceMarginsVaryAlongTheSameLatitude)
+{
+    IceColumn column;
+    column.depth = .05;
+    column.salinity = 0;
+    ThermalOrbit orbit;
+    orbit.period = oneyear;
+    auto climate = uniform_phase_climate(273.15);
+    climate.contrast_k = 30;
+    climate.regional_k = 8;
+    climate.ice_season = std::make_shared<IceSeason>(column, orbit, 273.15, 30, 200, 3, 1, 1, true, false, 8);
+    WaterPhaseTestMap map(256, 128);
+    for (int frame = 0; frame < 2000; ++frame)
+    {
+        map.update_water_phase(climate, 100, .3, .3, 0, oneatm, .5, 1000, false);
+        if (map.phase_state()->tiles.size() == 256 && !map.phase_state()->pending) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    ASSERT_EQ(map.phase_state()->tiles.size(), 256u);
+    bool mixed_margin = false;
+    for (unsigned long row = 0; row < map.get_height(); ++row)
+    {
+        bool frozen = false, liquid = false;
+        for (unsigned long column = 0; column < map.get_width(); ++column)
+        {
+            const auto material = map.surface_pixel(column, row).second;
+            frozen = frozen || material == SurfaceMaterial::ice;
+            liquid = liquid || material == SurfaceMaterial::water;
+        }
+        mixed_margin = mixed_margin || (frozen && liquid);
+    }
+    EXPECT_TRUE(mixed_margin);
+}
+
+TEST(SurfacePhaseTest, AxialAndEccentricSeasonsPublishBothIceAndOpenWaterAtTheSamePixel)
+{
+    for (bool eccentric : {false, true})
+    {
+        SCOPED_TRACE(eccentric ? "eccentric year" : "axial seasons");
+        IceColumn column;
+        column.depth = eccentric ? 1000 : 50;
+        column.atmospheric_capacity = 101325 / 9.81 * 1005;
+        ThermalOrbit orbit;
+        orbit.period = eccentric ? 636.13 * oneday : oneyear;
+        orbit.eccentricity = eccentric ? .16 : .0167086;
+        orbit.pole_v = eccentric ? 0 : std::sin(23.45 * _pi / 180);
+        auto climate = uniform_phase_climate(eccentric ? 271 : 288);
+        climate.contrast_k = eccentric ? 0 : 47.52;
+        climate.regional_k = eccentric ? 0 : 3.14;
+        climate.ice_season = std::make_shared<IceSeason>(column, orbit, climate.mean_k, climate.contrast_k,
+            eccentric ? 200 : 240, eccentric ? 3 : 4 * 240 / 288.0, 1 / 1.1, 1, true, false, climate.regional_k);
+        WaterPhaseTestMap map(128, 64);
+        unsigned long selected_x = 0, selected_y = 0;
+        int frozen_phase = 0, liquid_phase = 0;
+        bool seasonal_pixel = false;
+        for (unsigned long y = 1; y < 32 && !seasonal_pixel; ++y)
+        for (unsigned long x = 0; x < 128 && !seasonal_pixel; ++x)
+        {
+            const double lat = half_pi - y * _pi / 64, lon = x * 2 * _pi / 128 - _pi;
+            const double px = -std::cos(lat) * std::cos(lon), py = -std::cos(lat) * std::sin(lon), z = std::sin(lat);
+            const double regional = climate.regional_temperature(px, py, z);
+            double low = INFINITY, high = -INFINITY;
+            for (int phase = 0; phase < 32; ++phase)
+            {
+                const double energy = climate.ice_season->energy_at(z, climate.ice_longitude(px, py), phase * 2 * _pi / 32, regional);
+                if (energy < low) { low = energy; frozen_phase = phase; }
+                if (energy > high) { high = energy; liquid_phase = phase; }
+            }
+            if (low < -.1 * IceColumn::ice_density * IceColumn::latent_per_kg && high > 0)
+            {
+                selected_x = x; selected_y = y; seasonal_pixel = true;
+            }
+        }
+        ASSERT_TRUE(seasonal_pixel);
+        const auto publish = [&](int phase)
+        {
+            surface_phase_clock.fetch_add(1);
+            climate.ice_mean_anomaly = phase * 2 * _pi / 32;
+            const double epoch = 1000 + phase * orbit.period / 32;
+            const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(4);
+            while (std::chrono::steady_clock::now() < deadline)
+            {
+                map.update_water_phase(climate, epoch, .5, 0, column.salinity, oneatm, .5, 1000, false);
+                const auto state = map.phase_state();
+                if (state && state->tiles.size() == 64 && !state->pending && !state->catching_up) return true;
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+            return false;
+        };
+        ASSERT_TRUE(publish(frozen_phase));
+        EXPECT_EQ(map.surface_pixel(selected_x, selected_y).second, SurfaceMaterial::ice);
+        const auto frozen_color = map.surface_pixel(selected_x, selected_y).first;
+        ASSERT_TRUE(publish(liquid_phase));
+        EXPECT_EQ(map.surface_pixel(selected_x, selected_y).second, SurfaceMaterial::water);
+        EXPECT_LT(map.surface_pixel(selected_x, selected_y).first.r, frozen_color.r);
+        ASSERT_TRUE(publish(frozen_phase));
+        EXPECT_EQ(map.surface_pixel(selected_x, selected_y).second, SurfaceMaterial::ice);
+    }
+}
+
+TEST(SurfacePhaseTest, PlaybackAndRepeatedDateStepsVisitTheGlobeAndShowFreezeThaw)
+{
+    for (bool date_steps : {false, true})
+    {
+        SCOPED_TRACE(date_steps ? "repeated explicit date steps" : "continuous playback");
+        IceColumn column;
+        column.depth = 1000;
+        column.atmospheric_capacity = 101325 / 9.81 * 1005;
+        ThermalOrbit orbit;
+        orbit.eccentricity = .16;
+        orbit.period = 636.13 * oneday;
+        auto climate = uniform_phase_climate(271);
+        climate.ice_season = std::make_shared<IceSeason>(column, orbit, 271, 0, 200, 3, 1 / 1.1, 1, true, false);
+        WaterPhaseTestMap map(512, 256);
+        map.update_water_phase(climate, 1000, 0, 0, 35, oneatm, .5, 1000, false);
+        auto state = map.phase_state();
+        ASSERT_TRUE(state);
+        state->continuous_clock = true;
+        const auto timeline = state->timeline;
+        bool frozen = false, thawed = false, refrozen = false;
+        for (int frame = 1; frame <= 240; ++frame)
+        {
+            if (date_steps) surface_phase_clock.fetch_add(1);
+            climate.ice_mean_anomaly = frame * 2 * _pi / 64;
+            map.update_water_phase(climate, 1000 + frame * orbit.period / 64, 0, 0, 35, oneatm, .5, 1000, false);
+            const bool ice = map.surface_pixel(256, 128).second == SurfaceMaterial::ice;
+            if (thawed && ice) refrozen = true;
+            if (frozen && !ice) thawed = true;
+            if (ice) frozen = true;
+            // Give the worker a display-frame interval without holding the date fixed.
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        const auto playback_timeline = state->timeline;
+        if (date_steps) EXPECT_GT(playback_timeline, timeline);
+        else EXPECT_EQ(playback_timeline, timeline);
+        if (!date_steps) EXPECT_EQ(state->tiles.size(), 1024u);
+        else
+        {
+            // Explicit seeks reject obsolete pixel results. Check that every
+            // location was visited or queued while dates kept changing, then
+            // require complete current-date publication when stepping stops.
+            std::unordered_set<uint64_t> visited;
+            for (const auto& tile : state->tiles) visited.insert(tile.first);
+            visited.insert(state->inflight.begin(), state->inflight.end());
+            visited.insert(state->retry_keys.begin(), state->retry_keys.end());
+            EXPECT_EQ(visited.size(), 1024u);
+        }
+        EXPECT_TRUE(frozen);
+        EXPECT_TRUE(thawed);
+        EXPECT_TRUE(refrozen);
+        const double last = state->requested_epoch;
+        map.update_water_phase(climate, last - orbit.period / 64, 0, 0, 35, oneatm, .5, 1000, false);
+        EXPECT_EQ(state->timeline, playback_timeline);
+        surface_phase_clock.fetch_add(1);
+        map.update_water_phase(climate, last, 0, 0, 35, oneatm, .5, 1000, false);
+        EXPECT_GT(state->timeline, playback_timeline);
+        bool complete = false;
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(4);
+        while (std::chrono::steady_clock::now() < deadline)
+        {
+            map.update_water_phase(climate, last, 0, 0, 35, oneatm, .5, 1000, false);
+            complete = state->tiles.size() == 1024 && !state->pending && !state->catching_up;
+            for (const auto& tile : state->tiles)
+                if (tile.second.timeline != state->timeline || tile.second.epoch != last) complete = false;
+            if (complete) break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        EXPECT_TRUE(complete);
+    }
+}
+
 TEST(SurfacePhaseTest, UniformCertificatesAndWaterSamplingFollowIce)
 {
     WaterPhaseTestMap map;
@@ -336,13 +552,17 @@ TEST(SurfacePhaseTest, ArchivedPatchesRetainOriginalColorsAndExactIceState)
     ASSERT_EQ(state->tiles.size(), 1u);
     auto& tile = state->tiles.begin()->second;
     const float ice = tile.pixels.front().ice;
+    tile.pixels.front().energy = -123456789.125;
+    tile.pixels.front().frozen_surface = true;
     pack_phase_tile(tile);
     state->active.clear();
     EXPECT_TRUE(tile.pixels.empty());
-    EXPECT_LE(tile.packed.size(), 16u * 8u * 15u);
+    EXPECT_LE(tile.packed.size(), 16u * 8u * 23u);
     const auto decoded = unpack_phase_tile(tile);
     ASSERT_FALSE(decoded.empty());
     EXPECT_FLOAT_EQ(decoded.front().ice, ice);
+    EXPECT_DOUBLE_EQ(decoded.front().energy, -123456789.125);
+    EXPECT_TRUE(decoded.front().frozen_surface);
     EXPECT_EQ(decoded.front().base[2], 140);
     ASSERT_TRUE(publish_water_phase(map, uniform_phase_climate(290), 864000));
     SurfacePhaseRect rect;

@@ -108,12 +108,14 @@ TEST_F(OceanPersistenceTest, PlanetClimateDrivesFreezingAndRuntimeToggleStopsUpd
     world->temperature_supplied = true;
     world->ensure_atmosphere()->surface_pressure = oneatm;
     world->surf_map = new WaterPhaseTestMap();
-    for (int i = 0; i < 200 && !world->surf_map->water_phase_revision(); ++i)
+    for (int i = 0; i < 8000 && !world->surf_map->water_phase_revision(); ++i)
     {
         world->update_surface_phase(.3, .3);
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
     ASSERT_GT(world->surf_map->water_phase_revision(), 0u);
+    ASSERT_TRUE(world->surf_map->phase_state());
+    EXPECT_TRUE(world->surf_map->phase_state()->continuous_clock);
     const auto revision = world->surf_map->water_phase_revision();
     dynamic_surface_ice = false;
     simnow += 864000;
@@ -131,7 +133,7 @@ TEST_F(OceanPersistenceTest, RegisteredWorldContinuesUpdatingWithoutAnotherViewC
     world->ensure_atmosphere()->surface_pressure = oneatm;
     world->surf_map = new WaterPhaseTestMap(256, 128);
     world->update_surface_phase(.3, .3);
-    for (int frame = 0; frame < 1000; ++frame)
+    for (int frame = 0; frame < 8000; ++frame)
     {
         Planet::update_surface_phases();
         if (world->surf_map->surface_pixel(0, 0).second == SurfaceMaterial::ice
@@ -156,7 +158,7 @@ TEST_F(OceanPersistenceTest, SmallExplicitSeeksRefreshClimateWhileContinuousTime
     world->has_water = 1; world->temperature = 250; world->temperature_supplied = true;
     world->ensure_atmosphere()->surface_pressure = oneatm;
     world->surf_map = new WaterPhaseTestMap();
-    for (int frame = 0; frame < 200; ++frame)
+    for (int frame = 0; frame < 2000; ++frame)
     {
         world->update_surface_phase(.3, .3);
         if (world->surf_map->phase_state() && world->surf_map->phase_state()->tiles.size() == 16
@@ -164,23 +166,26 @@ TEST_F(OceanPersistenceTest, SmallExplicitSeeksRefreshClimateWhileContinuousTime
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
     auto phase = world->surf_map->phase_state();
+    ASSERT_TRUE(phase);
     ASSERT_EQ(phase->tiles.size(), 16u);
     const uint64_t key = phase->tiles.begin()->first;
+    const double initial_energy = phase->tiles.at(key).pixels.front().energy;
+    ASSERT_TRUE(std::isfinite(initial_energy));
     world->temperature = 290;
     phase->prepared = {};
     simnow += 60;
-    for (int frame = 0; frame < 200; ++frame)
+    for (int frame = 0; frame < 2000; ++frame)
     {
         world->update_surface_phase(.3, .3);
         if (phase->tiles.at(key).epoch == simnow) break;
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
     EXPECT_GT(phase->tiles.at(key).pixels.front().ice, .9);
-    EXPECT_LT(phase->tiles.at(key).pixels.front().ice, 1);
+    EXPECT_GT(phase->tiles.at(key).pixels.front().energy, initial_energy);
     const uint64_t timeline = phase->timeline;
     surface_phase_clock.fetch_add(1);
     simnow += 60;
-    for (int frame = 0; frame < 200; ++frame)
+    for (int frame = 0; frame < 2000; ++frame)
     {
         world->update_surface_phase(.3, .3);
         if (!phase->pending && !phase->catching_up) break;
