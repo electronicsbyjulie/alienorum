@@ -17,9 +17,9 @@
 
 ## README Readability
 - The target demographic for this app is popular science enthusiasts, not career programmers, though the latter are also welcome.
-- Don't pollute the README file with a bunch of hard-to-read, dry, information dense, boring details about the program internals.
-- Don't fill the README with all kinds of details about the code, the calculations, code files, or specifics that most users won't care about.
+- Don't pollute the main part of the README file with a bunch of hard-to-read, dry, information dense, boring details about the program internals, or details about the code, the calculations, code files, or specifics that most users won't care about. Leave that stuff for the For Developers section, and even then, before adding anything, ask if it will truly be useful to developers working on the project or if it is just code documentation that we might one day designate  aplace for but it isn't the README.
 - Keep the documentation at a family science center level of writing.
+- Keep anything required to build and run the app.
 
 ## References Folder
 - The `refs` folder contains scientific publications that may be protected by copyright. Don't commit anything from this folder into Git.

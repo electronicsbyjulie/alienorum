@@ -30,7 +30,7 @@ MSYS2 (Run in MINGW64 environment):
 
 * OpenGL rendering;
 * Spaceship mode with pan and zoom, RA/dec grid, and constellation lines;
-* Internal condensed star catalog compiled from professional star catalogs, and automatic downloading of professional catalogs when condensed catalog is absent;
+* Uses star data from professional astronomical catalogs;
 * Multiple viewing modes: spaceship, planetary surface, sun clock, sky atlas, and system view;
 * Red light mode for preserving night vision;
 * Snapshot feature that saves everything in the viewport;
@@ -58,8 +58,8 @@ MSYS2 (Run in MINGW64 environment):
 * Ability to add fictional planets, moons, and spacecraft, including an orbital resonance calculator;
 * Generation of fictional stellar neighborhoods in the Milky Way and in other galaxies, with optional planets, moons, and open clusters;
 * Stellar proper motions, orbits, and variability;
-* Unified star catalog with an internal star designation system based on magnitude and color;
-* Each edited universe is saved to a portable JSON file that can be edited to customize each object;
+* Internal star numbering system based on magnitude and color;
+* Each edited universe is saved to portable files that can be edited to customize each object;
 * Multiple universes may be loaded together, each generated universe preserving its stars and related objects in its own separate save files;
 * Ability to load SSC files for cross-application compatibility;
 * More coming soon...
@@ -143,7 +143,7 @@ On Earth, there is a live satellite cloud map; elsewhere, clouds are generated b
 
 #### Exoplanet estimates and uncertainty
 
-Alienorum's exoplanet simulations are illustrative estimates based on the limited information available, rather than predictions of actual conditions. Depicted atmospheres, clouds, water, ice, and life represent plausible scenarios under the model's assumptions; they are not evidence that these features exist on a particular planet. Atmospheric pressures, temperatures, surface water coverage, and planet types can be highly uncertain, especially when masses, radii, compositions, or stellar histories are poorly constrained. Vegetation and other signs of life are speculative visualizations, not detections or estimates of the probability of life.
+What might it be like to visit an exoplanet? Alienorum combines what astronomers have discovered with estimates to fill in the gaps. The clouds, oceans, and ice you see show possibilities to explore, but we don't yet know whether those worlds really look that way. Any vegetation is an imaginative touch: we haven't discovered life beyond Earth, and Alienorum can't tell us how likely it is to be there.
 
 
 ### Sun Clock
@@ -161,7 +161,7 @@ declination (Y axis).
 
 To add a satellite, press ^ (Shift+6 on US keyboards). A searchable list will appear; you can search by satellite name, e.g. ISS or HST, or by category, e.g. gps-ops or iridium-next. The search is not case sensitive. Once a satellite has been loaded, it will be selected and, if having clicked the first button, the satellite will be centered in the view. Pressing O takes you to the satellite, where the orbit center (usually Earth) appears at the nadir of the view. The resulting effect is if you choose an LEO (low Earth orbit) satellite and O to it, you will see the Earth along the bottom of the view as if you were up in the satellite positioned so that Earth is "down". LEO views make great background views to leave open; they slowly change over time and you can enable realism mode by pressing ! (Shift+1 on US keyboards) and close all dialog windows for maximum immersion.
 
-Alienorum auto-downloads satellite data from CelesTrak (https://celestrak.org/). Automatic download is set to only happen at most once per day. You can override this by opening `catalogs/sat/sources.json` and changing one of the "LastAccessed" days to a date in the past like "2000-01-01 00:00:00", then deleting whichever local .csv file that JSON entry is for. The next time you run Alienorum it will re-fetch the file. CAUTION: CelesTrak's data only update every two hours, and the site admin has limited bandwidth. Fetching the same file(s) too frequently may result in CelesTrak blocking your IP. This can be avoided by letting Alienorum manage the downloads.
+Alienorum auto-downloads satellite data from CelesTrak (https://celestrak.org/), at most once per day to avoid overloading the service. Although CelesTrak's data update every two hours, and you technically can force another download by deleting downloaded CSV files, we don't recommend doing this because CelesTrak has limited bandwidth, and the site admin expresses understandable frustration when his website gets too many requests. We don't want CelesTrak blocking your IP, so it's best to let Alienorum manage the downloads.
 
 
 ## Editing and Saving Objects
@@ -170,7 +170,7 @@ To edit a celestial object, select it and press Shift+E, or choose Object > Edit
 
 To add a new object, first select its intended orbit center and press Shift+A, or choose Object > Add Object. The dialog supports galaxies, stars, planets, moons, and custom spacecraft (artificial satellites). Click Go to create the object with default properties and open its editor. To load real artificial satellites from the downloaded catalogs, use Object > Add Satellite... (^) instead.
 
-Use Ctrl+P or Object > Populate Region... to generate a fictional stellar neighborhood. Choose a galaxy and a suggested or specified location, then set the region radius, star count, catalog prefix, center-star type, and random seed. Open clusters, planetary systems, and moons are optional. Catalog prefixes contain 1–8 letters or digits, and catalog numbers are unique within each prefix. Minimum spacing varies between systems from 1–5 light years; close companions within a system retain their orbital separation. Click Generate Preview to review a population, then Add Stars to install it in the current session.
+Use Ctrl+P or Object > Populate Region... to generate a fictional stellar neighborhood. Choose a galaxy and a suggested or specified location, then set the region radius, star count, catalog prefix, center-star type, and random seed. Open clusters, planetary systems, and moons are optional. You can set your own catalog prefix if you'd like. Click Generate Preview to review a population, then Add Stars to install it in the current session.
 
 For worlds without supplied texture maps, Alienorum generates fictional maps. The editor's texture controls include a Save button to write map images to `maps/`, a Reload button to reload existing map files, an Update button to regenerate maps using the current settings, and a Regenerate button to choose a new random seed and regenerate them. Reseed resets the random seed back to the object's default. Map Height controls the generated map resolution. Allow generation and saving to finish before copying map files.
 
@@ -274,9 +274,6 @@ Some of Alienorum's status messages and error mesages are output to the terminal
 
 If a JSON file fails to load, you can use any third party JSON syntax checker to find and fix whatever might be wrong with it. JSON files can be edited in any text editor.
 
-If you see a message in your terminal that reads `Bump map must have same resolution as surface map.`, check and see if you have both the normal `maps/Moon_surf.png` map and the full sized `maps/Moon_surf.jpg` map. If so, then it's safe to delete the .jpg file. Alternatively, if you wish to keep the higher resolution, you can delete the .png instead (it's just a scaled down version of the .jpg) and use your favorite image editor to
-resample the `maps/Moon_bump.jpg` map up to 2048x1024 resolution.
-
 
 ## For Developers
 
@@ -339,9 +336,6 @@ To cut a new release, bump `VERSION` in the `project(alienorum VERSION x.y.z ...
 The installer payload is listed explicitly in `package/runtime_files.txt`. CMake and the installer script use the same list. It contains the expanded `soles_alienorum.dat`, runtime support catalogs and JSON definitions, the fitted classification model, names and locales, texture maps, ephemerides, the two fonts the app loads, sounds, themes, startup images, and font license/attribution texts. The application executable is installed separately by CMake.
 
 Developer tools, Python scripts, intermediate catalog snapshots, benchmark data, unused fonts, font editor source, and build products are excluded. Only developers rebuild `soles_alienorum`; its source snapshots are not installer inputs. Other runtime JSON files, including `planets.json` and `classification_model.json`, remain part of the payload because the app reads them directly. Large catalogs and additional maps with live URLs are downloaded by the app when applicable.
-
-When adding a static runtime asset, track it in Git and add its path to `package/runtime_files.txt`. The build script rejects missing or untracked payload entries. No directory-wide copies or file globs are used for the installer payload.
-
 
 Important Rule for Contributors / Future Sessions: Any time new runtime files (catalogs, data files, fonts, images, etc.) are added to the repository that are not auto-generated or downloaded dynamically from the internet at runtime, they MUST also be added to the CMake/vcpkg installer configuration (`CMakeLists.txt`) so they are bundled into the release installer.
 
