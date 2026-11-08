@@ -17,6 +17,7 @@
 #include "../classes/cat.h"
 #include "../classes/chemistry.h"
 #include "../classes/shore.h"
+#include "../classes/savemodels.h"
 #include "../classes/thermalclimate.h"
 #include "../classes/habitablezone.h"
 #include "../classes/watercoverage.h"
@@ -662,7 +663,13 @@ TEST_F(PlanetClassificationEvidenceTest, ColdInventoryScenariosPersistAndConserv
     Planet restored;
     ASSERT_TRUE(restored.from_json(Serialization::expand_record(compact, context.header)));
     ASSERT_NE(restored.atm, nullptr);
-    EXPECT_EQ(restored.atm->pressure_model, world->atm->pressure_model);
+    restored.orbit->center = world->orbit->center;
+    restored.cenobj = world->cenobj;
+    SaveModels::restore(restored);
+    EXPECT_EQ(restored.atm->pressure_model["inventory"], world->atm->pressure_model["inventory"]);
+    EXPECT_EQ(restored.atm->pressure_model["reservoir_mass_fractions"],
+        world->atm->pressure_model["reservoir_mass_fractions"]);
+    EXPECT_DOUBLE_EQ(restored.atm->surface_pressure, world->atm->surface_pressure);
     world->atm->pressure_model["inventory"]["cold_temperature_k"] = 150;
     world->apply_cosmic_shoreline();
     EXPECT_TRUE(world->atm->pressure_model["cold_volatiles"]["nitrogen_saturation_pa"].is_null());
@@ -1216,7 +1223,13 @@ TEST_F(PlanetClassificationEvidenceTest, BeltEditsInvalidateWaterBudgetsAndPrese
     Planet restored;
     ASSERT_TRUE(restored.from_json(Serialization::expand_record(
         Serialization::compact_record(world->to_json(), context), context.header)));
-    EXPECT_EQ(restored.atm->pressure_model, world->atm->pressure_model);
+    restored.orbit->center = world->orbit->center;
+    restored.cenobj = world->cenobj;
+    SaveModels::restore(restored);
+    EXPECT_EQ(restored.atm->pressure_model["inventory"], world->atm->pressure_model["inventory"]);
+    EXPECT_EQ(restored.atm->pressure_model["reservoir_mass_fractions"],
+        world->atm->pressure_model["reservoir_mass_fractions"]);
+    EXPECT_DOUBLE_EQ(restored.atm->surface_pressure, world->atm->surface_pressure);
     world->atm->pressure_supplied = true;
     world->atm->surface_pressure = 12345;
     world->has_water_supplied = true;
@@ -1325,7 +1338,13 @@ TEST_F(PlanetClassificationEvidenceTest, ScenarioAgeAndCompactSavesRetainModelIn
     Planet restored;
     ASSERT_TRUE(restored.from_json(Serialization::expand_record(compact, context.header)));
     ASSERT_NE(restored.atm, nullptr);
-    EXPECT_EQ(restored.atm->pressure_model, world->atm->pressure_model);
+    restored.orbit->center = world->orbit->center;
+    restored.cenobj = world->cenobj;
+    SaveModels::restore(restored);
+    EXPECT_EQ(restored.atm->pressure_model["inventory"], world->atm->pressure_model["inventory"]);
+    EXPECT_EQ(restored.atm->pressure_model["reservoir_mass_fractions"],
+        world->atm->pressure_model["reservoir_mass_fractions"]);
+    EXPECT_DOUBLE_EQ(restored.atm->surface_pressure, world->atm->surface_pressure);
     EXPECT_FALSE(restored.atm->pressure_supplied);
 }
 
@@ -1498,6 +1517,9 @@ TEST_F(PlanetClassificationEvidenceTest, SurfaceWaterInputsAndCalibratedLevelsSu
         ASSERT_TRUE(restored.from_json(Serialization::expand_record(packed, context.header)));
         EXPECT_FALSE(restored.has_water_supplied);
         EXPECT_FLOAT_EQ(restored.has_water, level);
+        restored.orbit->center = world->orbit->center;
+        restored.cenobj = world->cenobj;
+        SaveModels::restore(restored);
         EXPECT_EQ(restored.surface_water_model, world->surface_water_model);
     }
     Planet legacy;

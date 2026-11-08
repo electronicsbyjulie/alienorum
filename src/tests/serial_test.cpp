@@ -7,11 +7,85 @@
 #include <gtest/gtest.h>
 #include "../classes/cons.h"
 #include "../classes/cat.h"
+#include "../classes/shore.h"
 #include "../loaders.h"
 #include "universe_fixture.h"
 
 using namespace alienorum;
 using json = nlohmann::json;
+
+TEST(OrbitSerializationTest, OptionalZeroFieldsAreOmittedAndClearPriorValues)
+{
+    Orbit orbit;
+    const json empty = orbit.to_json();
+    for (const char* key : {"laplace", "T_periapsis", "heliocentric_inclination", "heliocentric_node",
+        "prec_node", "proc_argperi"}) EXPECT_FALSE(empty.contains(key)) << key;
+    orbit.T_periapsis = 2451234.5;
+    orbit.heliocentric_inclination = .2;
+    orbit.heliocentric_node = .3;
+    orbit.prec_node = -.01 / oneyear;
+    orbit.proc_argperi = .02 / oneyear;
+    orbit.laplace.v = Point(0, 0, 1);
+    const json populated = orbit.to_json();
+    ASSERT_TRUE(populated.contains("laplace"));
+    Orbit restored;
+    ASSERT_TRUE(restored.from_json(populated));
+    EXPECT_DOUBLE_EQ(restored.T_periapsis, orbit.T_periapsis);
+    EXPECT_NEAR(restored.heliocentric_inclination, orbit.heliocentric_inclination, 1e-15);
+    EXPECT_NEAR(restored.heliocentric_node, orbit.heliocentric_node, 1e-15);
+    EXPECT_NEAR(restored.prec_node, orbit.prec_node, 1e-24);
+    EXPECT_NEAR(restored.proc_argperi, orbit.proc_argperi, 1e-24);
+    EXPECT_DOUBLE_EQ(restored.laplace.a, 0);
+    EXPECT_DOUBLE_EQ(restored.laplace.v.z, 1);
+    ASSERT_TRUE(restored.from_json(empty));
+    EXPECT_DOUBLE_EQ(restored.T_periapsis, 0);
+    EXPECT_DOUBLE_EQ(restored.heliocentric_inclination, 0);
+    EXPECT_DOUBLE_EQ(restored.heliocentric_node, 0);
+    EXPECT_DOUBLE_EQ(restored.prec_node, 0);
+    EXPECT_DOUBLE_EQ(restored.proc_argperi, 0);
+    EXPECT_DOUBLE_EQ(restored.laplace.a, 0);
+    EXPECT_DOUBLE_EQ(restored.laplace.v.x, 0);
+    EXPECT_DOUBLE_EQ(restored.laplace.v.y, 0);
+    EXPECT_DOUBLE_EQ(restored.laplace.v.z, 0);
+    orbit.laplace.v = Point();
+    orbit.laplace.a = .1;
+    EXPECT_TRUE(orbit.to_json().contains("laplace"));
+}
+
+TEST(SaveSummaryTest, AbundancesNormalizeReferencesAndRetainSpreadWithoutCitations)
+{
+    Star star;
+    star.stellar_age = {{"value_gyr", "8.7?"}, {"lower_gyr", 7}, {"upper_gyr", 10},
+        {"estimated", true}, {"source", "published"}, {"alternatives", {{{"value_gyr", 9}}}}};
+    const auto bundle = [](double reference, double iron, double magnesium, bool relative)
+    {
+        return json{{"solar", {{"Fe", reference}, {"Mg", 7.6}}}, {"solar_scale", "fixture"},
+            {"elements", {{"Fe", {{"dex", iron}, {"error", .1}, {"quality", "accepted"},
+                {"ratio", "[Fe/H]"}, {"references", {"long citation"}}}},
+                {"Mg", {{"dex", magnesium}, {"error", .2}, {"quality", "accepted"},
+                    {"ratio", relative ? "[Mg/Fe]" : "[Mg/H]"}}}}}};
+    };
+    star.stellar_abundances = {{"A", bundle(7.5, .1, .2, false)}, {"B", bundle(7.4, .4, .2, true)}};
+    const json saved = Serialization::expand_output_record(Serialization::output_record(star.to_json()));
+    EXPECT_FALSE(saved["stellar_age"].contains("alternatives"));
+    EXPECT_EQ(saved["stellar_age"]["value_gyr"], "8.7?");
+    const auto& chemistry = saved["stellar_abundances"];
+    ASSERT_EQ(chemistry.size(), 1u);
+    const auto& elements = chemistry["Summary"]["elements"];
+    EXPECT_NEAR(elements["Fe"]["dex"].get<double>(), .2, 1e-12);
+    EXPECT_NEAR(elements["Mg"]["dex"].get<double>(), .4, 1e-12);
+    EXPECT_NEAR(elements["Mg"]["min_dex"].get<double>(), .2, 1e-12);
+    EXPECT_NEAR(elements["Mg"]["max_dex"].get<double>(), .6, 1e-12);
+    EXPECT_EQ(saved.dump().find("long citation"), std::string::npos);
+    EXPECT_EQ(Serialization::output_record(saved), Serialization::output_record(star.to_json()));
+    Star restored;
+    ASSERT_TRUE(restored.from_json(saved));
+    EXPECT_DOUBLE_EQ(restored.estimate_age_gyr(), 8.7);
+    ASSERT_EQ(restored.chemistry_diagnostics().size(), 1u);
+    star.stellar_abundances["B"]["elements"]["Fe"]["quality"] = "flagged";
+    const json fallback = Serialization::expand_output_record(Serialization::output_record(star.to_json()));
+    EXPECT_EQ(fallback["stellar_abundances"], star.stellar_abundances);
+}
 
 static std::string temp_universe(const char* stem)
 {
@@ -64,6 +138,148 @@ class SerializationTest : public UniverseFixture
         return nullptr;
     }
 };
+
+TEST_F(SerializationTest, ThinModelsRestoreDiagnosticsAndPreservePhysicalState)
+{
+    Star* host = make_star("Thin host");
+    host->stellar_age = {{"value_gyr", 7.63}, {"lower_gyr", 6}, {"upper_gyr", 9},
+        {"source", "fixture"}, {"estimated", false}, {"alternatives", json::array()}};
+    Planet* world = make_planet(host, "Thin world");
+    world->user_added = true;
+    world->apply_cosmic_shoreline();
+    ASSERT_NE(world->atm, nullptr);
+    ASSERT_EQ(world->atm->pressure_model["model"], "volatile_budget_v5");
+    ASSERT_TRUE(world->estimate_surface_water(false, {.1, .2, .5, .8, .9}));
+    const json original = world->to_json();
+    const double pressure = world->atm->surface_pressure;
+    const float water = world->has_water;
+    const json inventory = world->atm->pressure_model["inventory"];
+    const json coverage = world->surface_water_model["coverage_fraction"];
+    const json records = {{"host", host->to_json()}, {"world", original}};
+    for (bool packed : {false, true})
+    {
+        json document;
+        if (packed) document = Serialization::compact_document(records);
+        else
+        {
+            document = records;
+            for (auto& record : document) record = Serialization::output_record(record);
+        }
+        const json expanded = Serialization::expand_document(document);
+        const auto& model = expanded["world"]["atmosphere"]["pressure_model"];
+        EXPECT_EQ(model["save_format"], 1);
+        EXPECT_TRUE(model["age_from_host"].get<bool>());
+        EXPECT_FALSE(model["inventory"].contains("age_gyr"));
+        EXPECT_FALSE(model.contains("stellar_age"));
+        EXPECT_FALSE(model.contains("elemental_inventory_prior"));
+        EXPECT_FALSE(expanded["world"]["surface_water_model"].contains("inventory"));
+        EXPECT_LT(expanded["world"].dump().size(), original.dump().size() / 2);
+        ASSERT_TRUE(Serialization::load_document(document, cels, MAX_CELOBJS, false));
+        EXPECT_DOUBLE_EQ(world->atm->surface_pressure, pressure);
+        EXPECT_FLOAT_EQ(world->has_water, water);
+        EXPECT_EQ(world->atm->pressure_model["inventory"], inventory);
+        EXPECT_TRUE(world->atm->pressure_model.contains("reservoir_mass_fractions"));
+        EXPECT_TRUE(world->atm->pressure_model.contains("phase_available_column_pa"));
+        EXPECT_EQ(world->surface_water_model["coverage_fraction"], coverage);
+        EXPECT_EQ(world->surface_water_model["terrain"], "equal_area_samples");
+        EXPECT_FALSE(world->has_water_supplied);
+        EXPECT_FALSE(world->atm->pressure_supplied);
+        const auto repeated = Serialization::expand_output_record(Serialization::output_record(world->to_json()));
+        EXPECT_TRUE(repeated["atmosphere"]["pressure_model"]["age_from_host"].get<bool>());
+    }
+    // An explicit zero age and a dry inventory are scenario values, not missing data.
+    world->atm->pressure_model["inventory"]["age_gyr"] = 0;
+    world->atm->pressure_model["inventory"]["water_mass_fraction"] = 0;
+    world->apply_cosmic_shoreline();
+    const auto custom = Serialization::output_record(world->to_json());
+    const auto expanded = Serialization::expand_output_record(custom);
+    EXPECT_FALSE(expanded["atmosphere"]["pressure_model"].contains("age_from_host"));
+    ASSERT_TRUE(Serialization::load_document({{"world", custom}}, cels, MAX_CELOBJS, false));
+    EXPECT_DOUBLE_EQ(world->atm->pressure_model["inventory"]["age_gyr"].get<double>(), 0);
+    EXPECT_DOUBLE_EQ(world->atm->pressure_model["inventory"]["water_mass_fraction"].get<double>(), 0);
+    EXPECT_DOUBLE_EQ(host->estimate_age_gyr(), 7.63);
+    delete_the_universe();
+}
+
+TEST_F(SerializationTest, ThinModelsPreserveAuthoredMixturesAndUnknownModels)
+{
+    Star* host = make_star("Mixture host");
+    host->stellar_age = {{"value_gyr", 4.5}};
+    Planet* world = make_planet(host, "Mixture world");
+    world->user_added = true;
+    world->temperature = 280;
+    world->temperature_supplied = true;
+    auto* composition = world->ensure_atmosphere()->ensure_composition();
+    composition->N2_portion = .8;
+    composition->O2_portion = .2;
+    world->apply_cosmic_shoreline();
+    const double pressure = world->atm->surface_pressure;
+    ASSERT_TRUE(save_and_reload("thin_authored"));
+    world = static_cast<Planet*>(find_loaded("Mixture world"));
+    ASSERT_NE(world, nullptr);
+    EXPECT_DOUBLE_EQ(world->atm->surface_pressure, pressure);
+    EXPECT_DOUBLE_EQ(world->temperature, 280);
+    EXPECT_TRUE(world->temperature_supplied);
+    EXPECT_FALSE(world->atm->pressure_model.contains("generated_composition"));
+    EXPECT_EQ(world->atm->pressure_model["climate_solution"]["composition_source"],
+        "supplied_mixture_with_equivalent_volatile_budget");
+    world->atm->pressure_model = {{"model", "external_model"}, {"inventory", {{"custom", 0}}}};
+    const json unknown = world->atm->pressure_model;
+    const auto saved = Serialization::expand_output_record(Serialization::output_record(world->to_json()));
+    EXPECT_EQ(saved["atmosphere"]["pressure_model"], unknown);
+    delete_the_universe();
+    std::filesystem::remove(temp_universe("thin_authored"));
+}
+
+TEST_F(SerializationTest, ThinModelsRestoreMoonsCloudLevelsAndIndependentWaterScenarios)
+{
+    Star* host = make_star("Scenario host");
+    host->stellar_age = {{"value_gyr", 0}, {"estimated", true}};
+    Planet* parent = make_planet(host, "Scenario parent");
+    parent->user_added = true;
+    parent->apply_cosmic_shoreline();
+    Moon* moon = new Moon;
+    strcpy(moon->name, "Scenario moon");
+    moon->user_added = true;
+    moon->mass = 7.3e25;
+    moon->volumetric_mean_radius = 1.7e6;
+    moon->type = rocky;
+    moon->orbit = new Orbit;
+    moon->orbit->center = parent;
+    moon->orbit->center_name = parent->name;
+    moon->orbit->semimajor_axis = 4e8;
+    moon->orbit->compute_period(moon->mass);
+    moon->cenobj = host;
+    append_cel(moon);
+    moon->apply_cosmic_shoreline();
+    ASSERT_NE(moon->atm, nullptr);
+    const double moon_pressure = moon->atm->surface_pressure;
+    Planet* gas = make_planet(host, "Scenario giant", 5 * AU);
+    gas->type = ice_giant;
+    gas->mass = 12 * earth_mass;
+    gas->volumetric_mean_radius = 3 * earth_radius;
+    const auto atmosphere = CosmicShore::estimate_atmosphere(*host, *gas);
+    ASSERT_TRUE(atmosphere.valid);
+    gas->ensure_atmosphere()->pressure_model = atmosphere.diagnostics;
+    gas->atm->surface_pressure = atmosphere.pressure;
+    // This independent water scenario must not be replaced by the pressure inventory.
+    parent->surface_water_model["inventory"]["water_mass_fraction"] = .001;
+    ASSERT_TRUE(save_and_reload("thin_moons"));
+    moon = static_cast<Moon*>(find_loaded("Scenario moon"));
+    gas = static_cast<Planet*>(find_loaded("Scenario giant"));
+    parent = static_cast<Planet*>(find_loaded("Scenario parent"));
+    ASSERT_NE(moon, nullptr);
+    ASSERT_NE(gas, nullptr);
+    ASSERT_NE(parent, nullptr);
+    EXPECT_DOUBLE_EQ(moon->atm->surface_pressure, moon_pressure);
+    EXPECT_EQ(moon->atm->pressure_model["inventory"]["age_gyr"], 0);
+    EXPECT_TRUE(moon->atm->pressure_model.contains("reservoir_mass_fractions"));
+    EXPECT_EQ(gas->atm->pressure_model["status"], "conventional_1_bar_level");
+    EXPECT_DOUBLE_EQ(gas->atm->surface_pressure, 1e5);
+    EXPECT_DOUBLE_EQ(parent->surface_water_model["inventory"]["water_mass_fraction"].get<double>(), .001);
+    delete_the_universe();
+    std::filesystem::remove(temp_universe("thin_moons"));
+}
 
 TEST_F(SerializationTest, AnnotatedNumericValuesLoadAndRoundTrip)
 {

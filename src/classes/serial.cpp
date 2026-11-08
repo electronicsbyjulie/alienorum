@@ -16,6 +16,7 @@
 #include "serial.h"
 #include "cons.h"
 #include "wdcolor.h"
+#include "savemodels.h"
 #include "../background_file.h"
 #include "../catalog_capture.h"
 
@@ -982,6 +983,7 @@ namespace
 
 json Serialization::compact_record(json record, SaveContext& context)
 {
+    SaveModels::compact(record);
     json& header = context.header;
     const int cls = record.at("typeclass").get<int>();
     const std::string cls_key = std::to_string(cls);
@@ -1189,6 +1191,7 @@ json Serialization::compact_document(json records)
 
 json Serialization::output_record(json record)
 {
+    SaveModels::compact(record);
     const int cls = record.at("typeclass").get<int>();
     const bool stellar = cls == class_star;
     const bool fictional = stellar && (record.value("fic", 0) == 1
@@ -1383,6 +1386,8 @@ static bool save_object_record(CelestialObject* cel, json& allobjs, const std::s
         s = (Star*)cel;
         s->gotta_be_named_something();                            // I am sick of these massive-flaring stars with no massive-flaring names!
         allobjs[l] = s->to_json();
+        if (!allobjs[l].contains("stellar_age") && s->fictional_origin.is_object()
+            && s->fictional_origin.contains("age_gyr")) allobjs[l]["stellar_age"] = s->age_diagnostics();
         break;
 
         case class_planet:
@@ -1858,6 +1863,11 @@ bool Serialization::load_document(json allobj, CelestialObject **cels, unsigned 
             if (!star->fictional_origin.is_object()) continue;
             favestars.erase(std::remove(favestars.begin(), favestars.end(), star), favestars.end());
             if (star->is_faved) favestars.push_back(star);
+        }
+        for (int index : loaded)
+        {
+            if (cels[index]->typeclass() == class_planet || cels[index]->typeclass() == class_moon)
+                SaveModels::restore(*static_cast<Planet*>(cels[index]));
         }
         Planet::rebuild_host_statistics();
         std::lock_guard<std::mutex> lock(mtx);

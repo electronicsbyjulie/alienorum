@@ -1135,29 +1135,32 @@ json Orbit::to_json()
 {
     std::string cenname;
     if (center) cenname = center->name;
-    return
+    json record =
     {
         {"center_name", cenname},
         {"ascending_node", ascending_node*fiftyseven},
         {"inclination", inclination*fiftyseven},
-        {"heliocentric_inclination", heliocentric_inclination*fiftyseven},
-        {"heliocentric_node", heliocentric_node*fiftyseven},
         {"semimajor_axis", semimajor_axis},
         {"eccentricity", eccentricity},
         {"arg_periapsis", arg_periapsis*fiftyseven},
-        {"prec_node", prec_node*fiftyseven*oneyear},
-        {"proc_argperi", proc_argperi*fiftyseven*oneyear},
         {"mean_anomaly", mean_anomaly*fiftyseven},
         {"epoch", epoch},
         {"period", period/oneday},
-        {"periapsis_distance", periapsis_distance},
-        {"T_periapsis", T_periapsis},
-        {"laplace", laplace.to_json()}
+        {"periapsis_distance", periapsis_distance}
     };
+    if (heliocentric_inclination) record["heliocentric_inclination"] = heliocentric_inclination*fiftyseven;
+    if (heliocentric_node) record["heliocentric_node"] = heliocentric_node*fiftyseven;
+    if (prec_node) record["prec_node"] = prec_node*fiftyseven*oneyear;
+    if (proc_argperi) record["proc_argperi"] = proc_argperi*fiftyseven*oneyear;
+    if (T_periapsis) record["T_periapsis"] = T_periapsis;
+    if (laplace.a || laplace.v.x || laplace.v.y || laplace.v.z) record["laplace"] = laplace.to_json();
+    return record;
 }
 
 bool Orbit::from_json(json j)
 {
+    T_periapsis = prec_node = proc_argperi = 0;
+    laplace = Rotation();
     try { j.at("center_name").get_to(center_name); } catch (...) { ; }
     try { j.at("ascending_node").get_to(ascending_node); ascending_node *= fiftyseventh; } catch (...) { ; }
     try { j.at("inclination").get_to(inclination); inclination *= fiftyseventh; } catch (...) { ; }

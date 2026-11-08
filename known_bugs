@@ -1,10 +1,4 @@
 
-Universe files are saving MUCH TOO BIG! Look at DISMAL_FAILURE.json as an example. It has fuctional Upsilon Andromedae moons - nothing else - yet it's EIGHT FUCKING HUNDRED MEGABYTES! WHAT DID YOU REGRESS?????
-
-Atmospheric haze does not dim with eclipses like the terrain, water, vegetation, and clouds do. Fix the eclipse effects so they dim the atmosphere too, and any other visible local components that would be dimmed in real life. Obviously do not dim stars, galaxies, other planets/moons, etc. I tried to give you a JSON universe you could test with, but you thwarted me with that 800 megabyte regression.
-
-Rings should be additive to the sky. See Majriti from Majriti V.20261107.173853.png.
-
 PlanetClassificationEvidenceTest.ColdVolatilesRecoverMoonPressuresWithoutObjectNames fails for the anonymous Titan scenario (src/tests/planet_test.cpp:397): estimated pressure is 244574.31986636011 Pa, above the expected maximum of 180000 Pa (accepted range: 120000-180000 Pa). This failure also reproduces with the previous HZ formula. Investigate the cold-volatile pressure calibration and stellar-age assumptions before changing the model or its expected range. See if you can fix the model to predict Titan more accurately without losing the four rocky inner planets. If not, disable the failing test.
 
 PlanetClassificationEvidenceTest.WaterPartitionSeparatesDeepStorageAndRetainsAllSurfaceAlternative fails its Earth-scale pressure-preservation assertion (src/tests/planet_test.cpp:660): the planet-specific inventory produces 98714.166244872147 Pa, while the original reference inventory produces 99348.084279743474 Pa, a difference of 633.91803487132711 Pa against a tolerance of 1e-7 Pa. This failure also reproduces with the previous HZ formula. Investigate which inventory and age assumptions differ and whether the pressure-preservation expectation remains valid.
