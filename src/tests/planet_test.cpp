@@ -2751,6 +2751,64 @@ TEST_F(SavedPlanetMapTest, RandomizedPigmentsAlsoAdaptTemperatureWithoutRerollin
     EXPECT_EQ(std::make_pair(world->veg_min_temp, world->veg_max_temp), adapted);
 }
 
+TEST_F(SavedPlanetMapTest, RegenerateReplacesReliefWhileUpdatePreservesItOnWetWorldsAndMoons)
+{
+    Star* host = make_star("Terrain host");
+    Planet* parent = make_planet(host, "Terrain parent");
+    parent->mass = 300 * earth_mass;
+    parent->volumetric_mean_radius = 11 * earth_radius;
+    const auto relief = [](Map* map)
+    {
+        std::vector<double> result;
+        for (int row = 0; row < 16; ++row)
+            for (int column = 0; column < 32; ++column)
+                result.push_back(map->elevation_at(-half_pi + (row + .5) * _pi / 16,
+                    -_pi + (column + .5) * 2 * _pi / 32));
+        return result;
+    };
+    for (bool moon : {false, true})
+        for (double water : {0.0, .4, 1.0})
+        {
+            SCOPED_TRACE(::testing::Message() << "moon=" << moon << " water=" << water);
+            json record = saved_world(host, rocky);
+            record["typeclass"] = moon ? class_moon : class_planet;
+            record["has_water"] = water;
+            record["has_water_supplied"] = true;
+            Planet* world = moon ? new Moon : new Planet;
+            ASSERT_TRUE(world->from_json(record));
+            world->orbit->center = host;
+            world->cenobj = host;
+            if (moon)
+            {
+                world->orbit->center = parent;
+                world->orbit->semimajor_axis = 4e8;
+                world->orbit->compute_period(world->mass);
+            }
+            ASSERT_TRUE(append_cel(world));
+            world->ignore_map_files = true;
+            load_textures(world);
+            wait_for_texture_tasks();
+            ASSERT_NE(world->surf_map, nullptr);
+            ASSERT_TRUE(world->surf_map->is_complete());
+            const auto original = relief(world->surf_map);
+            world->rnd_seed = 987654;
+            world->mark_all_maps_for_regen();
+            wait_for_texture_tasks();
+            ASSERT_NE(world->surf_map, nullptr);
+            EXPECT_EQ(relief(world->surf_map), original);
+            world->preserve_loaded_parameters = false;
+            world->rnd_seed = 321987;
+            world->mark_all_maps_for_regen(true);
+            load_textures(world);
+            wait_for_texture_tasks();
+            ASSERT_NE(world->surf_map, nullptr);
+            ASSERT_TRUE(world->surf_map->is_complete());
+            EXPECT_NE(relief(world->surf_map), original);
+            EXPECT_FLOAT_EQ(world->has_water, water);
+            EXPECT_TRUE(world->has_water_supplied);
+        }
+}
+
 TEST_F(SavedPlanetMapTest, SavedZerosAirlessWorldsAndMoonPropertiesSurviveGeneration)
 {
     Star* host = make_star();

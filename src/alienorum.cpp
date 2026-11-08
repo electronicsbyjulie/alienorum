@@ -625,9 +625,7 @@ int main (int argc, char** argv)
                     ImGui::Text("downloading data, the application will load faster going forward.");
                 }
                 ImGui::Text("%s", lloadmsg);
-                ImGui::TextUnformatted(default_universe_load_pending()
-                    ? "universe.json queued for loading..."
-                    : "F2: load universe.json after catalog loading.");
+                if (default_universe_load_pending()) ImGui::TextUnformatted("universe.json queued for loading...");
                 ImDrawList* draw_list = ImGui::GetWindowDrawList();
                 ImVec2 canvas_p0 = ImGui::GetCursorScreenPos(), canvas_p1(canvas_p0.x+aspect_width, canvas_p0.y+splash_height);
                 draw_list->AddRectFilled(canvas_p0, canvas_p1, alien_color);

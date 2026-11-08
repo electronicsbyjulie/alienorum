@@ -489,7 +489,8 @@ namespace alienorum
         double Roche_limit(CelestialObject *orbiter = nullptr);
         json to_json();
         bool from_json(const json& j);
-        void mark_all_maps_for_regen();
+        // Update retains elevations; an explicit Regenerate discards them.
+        void mark_all_maps_for_regen(bool discard_surface_bump = false);
         void generate_water_clouds();
 
         bool operator<(const CelestialObject& other) const;

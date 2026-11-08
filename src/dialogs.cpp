@@ -2791,13 +2791,15 @@ void draw_objedit_window(ImGuiIO& io)
                 cel->mark_all_maps_for_regen();
             }
             ImGui::SameLine();
-            if (!generating_fic_texture && ImGui::Button("Regenerate"))
+            if (!generating_fic_texture && texture_loads_pending.load() == 0 && ImGui::Button("Regenerate"))
             {
+                if (save_tex_thread.joinable()) save_tex_thread.join();
                 water_editor.prepare_generation(cel);
                 ((Planet*)cel)->preserve_loaded_parameters = false;
                 cel->rnd_seed = rand();
+                cel->user_edited = true;
                 if (randomize_txgen) ((Planet*)cel)->vegetation_r = ((Planet*)cel)->vegetation_g = ((Planet*)cel)->vegetation_b = 0;     // force regenerate
-                cel->mark_all_maps_for_regen();
+                cel->mark_all_maps_for_regen(true);
             }
             ImGui::SameLine();
             if (!generating_fic_texture && ImGui::Button("Reseed"))

@@ -898,14 +898,14 @@ bool CelestialObject::from_json(const json& j)
     return true;
 }
 
-void alienorum::CelestialObject::mark_all_maps_for_regen()
+void alienorum::CelestialObject::mark_all_maps_for_regen(bool discard_surface_bump)
 {
     looked_for_maps = false;
     ignore_map_files = true;
     merged_day_cloud_gen = merged_day_surf_gen = merged_night_cloud_gen = merged_night_map_gen = 0;
     if (surf_map)
     {
-        surf_map->mark_for_map_regen(this);
+        surf_map->mark_for_map_regen(this, discard_surface_bump);
     }
     if (cloud_map)
     {
