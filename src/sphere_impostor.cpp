@@ -1926,11 +1926,7 @@ void main()
         glBindVertexArray(0);
     }
 
-    // ImDrawCallback -- paired with ImDrawCallback_ResetRenderState the same way
-    // render_sphere_impostor() is (see queue_ring_impostor()). Relies on ImGui's own blend
-    // state (standard alpha blending, already enabled for ImGui's own translucent draws)
-    // rather than touching GL_BLEND itself -- the sphere impostor never had to care since
-    // its output alpha is always ~1; the ring's is not.
+    // The reset callback restores ordinary blending after this additive ring pass.
     static void render_ring_impostor(const ImDrawList*, const ImDrawCmd *cmd)
     {
         RingImpostorParams *p = (RingImpostorParams*)cmd->UserCallbackData;
@@ -1970,6 +1966,7 @@ void main()
         }
 
         glUseProgram(s_ring_program);
+        glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, p->ring_tex);
         glActiveTexture(GL_TEXTURE0 + 1);

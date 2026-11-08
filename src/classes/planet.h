@@ -43,7 +43,6 @@ namespace alienorum
         double cloud_epoch = NAN;
         uint32_t weather_revision = 0;
         double ocean_salinity_g_kg = NAN;
-        json saved_water_phase = nullptr;
         json ocean_chemistry();
         void update_surface_phase(double latitude, double longitude);
         static void update_surface_phases();

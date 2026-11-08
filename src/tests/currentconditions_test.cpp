@@ -89,6 +89,23 @@ TEST(IceEnergyTest, EarthLikeIntermediateLatitudeFormsAndCompletelyMeltsIce)
     EXPECT_TRUE(resolved_cycle);
 }
 
+TEST(IceEnergyTest, OceanTransportWarmsTheIceBaseWithoutAddingEnergy)
+{
+    IceColumn column;
+    const double ice = -2 * IceColumn::ice_density * IceColumn::latent_per_kg;
+    const IceForcing atmosphere{0, 150, 3.3, 70, 0};
+    const IceForcing ocean{0, 150, 3.3, 30, 40};
+    EXPECT_DOUBLE_EQ(column.state(0, atmosphere).net_flux, column.state(0, ocean).net_flux);
+    EXPECT_DOUBLE_EQ(column.state(-column.latent(), atmosphere).net_flux,
+        column.state(-column.latent(), ocean).net_flux);
+    const auto surface = column.state(ice, atmosphere), bottom = column.state(ice, ocean);
+    EXPECT_LT(bottom.temperature, column.freezing());
+    EXPECT_LT(surface.net_flux, 0);
+    EXPECT_GT(bottom.net_flux, 0);
+    const double updated = column.advance(ice, ocean, 86400);
+    EXPECT_NEAR(updated - ice, 86400 * column.state(updated, ocean).net_flux, .01);
+}
+
 TEST(IceEnergyTest, LongEccentricYearMeltsAndRefreezesIceOverADeepOcean)
 {
     IceColumn column;

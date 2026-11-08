@@ -2638,7 +2638,7 @@ void Map::update_water_phase(const LocalClimate& climate, double epoch, double l
     }
     if (state.catching_up && state.catchup_surveyed && state.catchup_revisited && !state.catchup_remaining
         && state.candidate_cursor - state.catchup_candidate_start >= state.candidates.size()
-        && !state.pending) state.catching_up = false;
+        && state.retry_keys.empty() && !state.pending) state.catching_up = false;
 }
 
 void Map::update_water_phase_tile(const LocalClimate& climate, double epoch, double latitude, double longitude,

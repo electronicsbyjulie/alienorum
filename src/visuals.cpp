@@ -375,6 +375,17 @@ static std::vector<EclipseCandidate> eclipse_candidates;
 
 CelestialObject *eclipsed_light = nullptr;
 double eclipsed_fraction = 0;
+double unobscured_luminous_flux = 0;
+
+static double atmospheric_daylight()
+{
+    // Apply eclipse attenuation after the daylight response curve, so bright
+    // stars cannot keep airlight saturated when their discs are obscured.
+    const double flux = std::max(0.0, luminous_flux);
+    const double full_flux = std::max(flux, unobscured_luminous_flux);
+    const double transmission = full_flux > 0 ? flux / full_flux : 1;
+    return std::min(1.0, pow(full_flux * 2.5e-11, 1.0 / 5.5)) * transmission;
+}
 
 // Fraction of one disc hidden behind another, both as angles seen from the same point: R is the
 // light source's angular radius, r the occulter's, d the angle between their centers. This is
@@ -1001,7 +1012,7 @@ static PressureHaze surface_pressure_haze(Planet* planet)
     if (source && source->typeclass() == class_star)
         star = Color::color_from_star(0, static_cast<Star*>(source), source->BV_color);
     star.normalize(1);
-    const double illumination = std::clamp(pow(std::max(0.0, luminous_flux) * 2.5e-11, 1.0 / 5.5)
+    const double illumination = std::clamp(atmospheric_daylight()
         + .01 * std::max(0.0, starlight), 0.0, 1.0);
     const double tint[] = {star.red, star.green, star.blue};
     std::array<double, 3> airlight;
@@ -9405,7 +9416,7 @@ void draw_sky_gradient()
                 if (rgb.r > 0.7*rgb.b) city_lights = rgb.r;
             }
 
-            double skylight = fmin(1, pow(luminous_flux*2.5e-11, 1.0/5.5) + starlight + 0.00125 * city_lights);
+            double skylight = fmin(1, atmospheric_daylight() + starlight + 0.00125 * city_lights);
             sky_mag_shift = skylight * -10;
 
             double r, g, b, a;

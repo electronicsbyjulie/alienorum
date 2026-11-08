@@ -291,6 +291,7 @@ class RenderingRegressionTest : public UniverseFixture
         }
         set(view_mode, vm_spaceship);
         set(whereami, -1);
+        set(unobscured_luminous_flux, 0.0);
         set(zoom, 1.0);
         set(dispcx, 96.0);
         set(dispcy, 54.0);
@@ -699,6 +700,124 @@ TEST_F(RenderingRegressionTest, SunclockIncludesBrightCompanionsWithoutDuplicati
     EXPECT_EQ(companion->drawnx, -1e9);
     render();
     ImGui::NewFrame();
+}
+
+TEST_F(RenderingRegressionTest, ImportedEarthIceChangesAcrossCalendarSeasons)
+{
+    set(here, here);
+    set(redo_proper_motions, redo_proper_motions);
+    set(luminous_flux, luminous_flux);
+    set(viewchanged, viewchanged);
+    set(eclipsed_light, eclipsed_light); set(eclipsed_fraction, eclipsed_fraction);
+    auto* sun = make_star("Sun");
+    auto* earth = make_planet(sun, "Earth");
+    earth->temperature = 288; earth->temperature_supplied = true;
+    earth->has_water = .79; earth->has_water_supplied = true;
+    earth->obliquity = 23.45 * _pi / 180;
+    earth->precession = 2 * _pi / (25791 * oneyear);
+    earth->known_poles = earth->home_world = true;
+    earth->albedo = .434; earth->BV_color = .2;
+    earth->mass_evidence = earth->radius_evidence = PlanetMeasurement::observed;
+    earth->lock_type = earth->lock_bv_color = true;
+    earth->preserve_loaded_parameters = true;
+    earth->looked_for_maps = earth->has_real_maps = true;
+    earth->orbit->eccentricity = .0167086;
+    earth->orbit->arg_periapsis = 114.20783 * _pi / 180;
+    earth->orbit->ascending_node = 348.73936 * _pi / 180;
+    earth->orbit->inclination = .00005 * _pi / 180;
+    earth->orbit->mean_anomaly = 355.51783 * _pi / 180;
+    earth->orbit->period = 31558149.7635;
+    earth->sidereal_rotational_period = 86164.1;
+    auto* atmosphere = earth->ensure_atmosphere();
+    atmosphere->surface_pressure = oneatm; atmosphere->pressure_supplied = true;
+    atmosphere->tau = .262;
+    atmosphere->ensure_composition()->from_json({{"N2", .78}, {"O2", .21}, {"H2O", .009},
+        {"Ar", .00934}, {"CO2", .00043}, {"CH4", .0000017}, {"H2", .0000006}});
+    earth->surf_map = new Map(earth);
+    ASSERT_TRUE(earth->surf_map->load_from_jpeg("maps/Earth_surf.jpg"));
+    ASSERT_TRUE(earth->surf_map->load_from_png("maps/Earth_bump.png", true, earth->estimate_bump_scale()));
+    surface_magnitudes.assign(ncelobjs, 999);
+    set(vmag_cache, surface_magnitudes.data());
+    surface_radii.assign(ncelobjs, 0);
+    set(angular_radius, surface_radii.data());
+    set(whereami, earth->seqno);
+    set(mycenobj, static_cast<CelestialObject*>(sun));
+    set(view_mode, vm_sunclock);
+    set(viewer_lat, .8); set(viewer_lon, 0.0);
+    set(show_clouds, false); set(dynamic_surface_ice, true);
+    set(local_tmstep, true);
+    set(JDnow, J2000); set(simnow, double(J2000_TIME_T));
+    const double dates[] = {2461201.5, 2461351.5, 2461120.5, 2461304.5};
+    const char* names[] = {"june", "november", "march", "september"};
+    double north[4]{}, south[4]{};
+    std::vector<unsigned char> june;
+    for (int date = 0; date < 4; ++date)
+    {
+        SCOPED_TRACE(names[date]);
+        step_simulation_time(dates[date] - JDnow, false);
+        bool complete = false;
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
+        while (std::chrono::steady_clock::now() < deadline)
+        {
+            draw_sunclock(); render(); gputex_finish_frame(); ImGui::NewFrame();
+            const auto state = earth->surf_map->phase_state();
+            complete = state && !state->pending && !state->catching_up && !state->candidates.empty()
+                && state->candidate_cursor >= state->candidates.size();
+            if (state)
+                for (const auto& tile : state->tiles)
+                    if (tile.second.rect.revision && tile.second.timeline != state->timeline) complete = false;
+            if (complete) break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        ASSERT_TRUE(complete);
+        const auto climate = earth->current_local_climate(true);
+        ASSERT_TRUE(climate.ice_season);
+        Point to_sun = sun->location.local_position - earth->location.local_position;
+        to_sun.scale(1);
+        to_sun = rotate3D(to_sun, center, earth->location.equatorial_plane.v, earth->location.equatorial_plane.a);
+        EXPECT_NEAR(climate.sun_z, to_sun.y, 1e-6);
+        const auto& ice_orbit = climate.ice_season->orbit;
+        // Cached pole projections allow 1e-4 drift while the history prepares.
+        EXPECT_NEAR(ice_orbit.declination_sine(ice_orbit.eccentric_anomaly(climate.ice_mean_anomaly)), to_sun.y, 2e-4);
+        const auto width = earth->surf_map->get_width(), height = earth->surf_map->get_height();
+        std::vector<unsigned char> ice(width * height);
+        for (unsigned long row = 0; row < height; ++row)
+        {
+            const double top = half_pi - row * _pi / height, bottom = top - _pi / height;
+            const double area = earth_radius * earth_radius * 2 * _pi / width * (std::sin(top) - std::sin(bottom)) / 1e6;
+            for (unsigned long column = 0; column < width; ++column)
+                if (earth->surf_map->surface_pixel(column, row).second == SurfaceMaterial::ice)
+                {
+                    ice[row * width + column] = 1;
+                    (row < height / 2 ? north[date] : south[date]) += area;
+                }
+        }
+        if (date == 0) june = ice;
+        if (date == 1)
+        {
+            size_t changes = 0;
+            for (size_t index = 0; index < ice.size(); ++index) changes += ice[index] != june[index];
+            EXPECT_GT(changes, 1000u);
+        }
+        for (int frame = 0; frame < 2; ++frame)
+        {
+            gputex_for(earth->surf_map); gputex_finish_frame(); glFinish();
+        }
+        std::vector<unsigned char> expected(width * height * 4), actual(expected.size());
+        earth->surf_map->export_rgba(expected.data());
+        glBindTexture(GL_TEXTURE_2D, gputex_for(earth->surf_map));
+        glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, actual.data());
+        EXPECT_EQ(actual, expected);
+        if (const char* directory = std::getenv("ALIENORUM_ICE_ARTIFACTS"))
+        {
+            std::filesystem::create_directories(directory);
+            EXPECT_TRUE(earth->surf_map->save_to_png(std::string(directory) + "/earth-" + names[date] + ".png"));
+        }
+        std::cout << names[date] << " ocean ice km2: north=" << north[date] << ", south=" << south[date] << std::endl;
+        EXPECT_DOUBLE_EQ(earth->temperature, 288);
+    }
+    EXPECT_GT(north[2] - north[3], 1e6);
+    EXPECT_GT(south[3] - south[2], 1e6);
 }
 
 TEST_F(RenderingRegressionTest, SunclockAdvancesGlobalIceAndShortcutTogglesIt)
@@ -5231,6 +5350,45 @@ TEST_F(RenderingRegressionTest, PanningHazyCoastPreservesDetailedGroundPixels)
     SDL_SetWindowSize(window, 192, 108);
 }
 
+TEST_F(RenderingRegressionTest, RingsAddLightWithoutDarkeningTheSky)
+{
+    const auto capture = [&](bool rings)
+    {
+        impostor_begin_frame();
+        auto* draw = ImGui::GetBackgroundDrawList();
+        draw->AddRectFilled(ImVec2(0, 0), ImVec2(192, 108), IM_COL32(50, 70, 90, 255));
+        if (rings)
+        {
+            RingImpostorInput input{};
+            input.cz = 3;
+            input.inner_r = .5;
+            input.outer_r = 1.4;
+            input.normal[1] = .6;
+            input.normal[2] = .8;
+            input.oblateness = 1;
+            input.fallback_color = IM_COL32(150, 120, 80, 255);
+            input.amt_lit = 1;
+            input.light_dir[2] = -1;
+            EXPECT_TRUE(queue_ring_impostor(input, 1, dispcx, dispcy, dispcx));
+        }
+        const auto pixels = render();
+        ImGui::NewFrame();
+        return pixels;
+    };
+    const auto sky = capture(false);
+    const auto rings = capture(true);
+    int brighter = 0;
+    for (size_t pixel = 0; pixel < sky.size(); pixel += 4)
+    {
+        for (int channel = 0; channel < 3; ++channel)
+        {
+            EXPECT_GE(rings[pixel + channel], sky[pixel + channel]);
+            brighter += rings[pixel + channel] > sky[pixel + channel];
+        }
+    }
+    EXPECT_GT(brighter, 100);
+}
+
 TEST_F(RenderingRegressionTest, PressureHazeVeilsSkyAndSurfaceWithoutLightingTheNight)
 {
     const char* preview = std::getenv("ALIENORUM_HAZE_PREVIEW_DIR");
@@ -5248,6 +5406,7 @@ TEST_F(RenderingRegressionTest, PressureHazeVeilsSkyAndSurfaceWithoutLightingThe
         ImGui::NewFrame();
     }
     Planet* world = surface(true);
+    set(unobscured_luminous_flux, luminous_flux);
     auto* air = world->ensure_atmosphere();
     air->pressure_supplied = true;
     air->ensure_composition()->CO2_portion = 1;
@@ -5281,6 +5440,20 @@ TEST_F(RenderingRegressionTest, PressureHazeVeilsSkyAndSurfaceWithoutLightingThe
     const auto gpu_ground = capture();
     EXPECT_EQ(image_difference(gpu_ground, accelerated, 1), 0);
     EXPECT_GT(horizon_ground_gpu_stats().haze_tiles, 0u);
+    #endif
+    luminous_flux = unobscured_luminous_flux * .0012;
+    const auto eclipsed = capture();
+    #if PRESSURE_HAZE
+    unsigned long daylight_sum = 0, eclipse_sum = 0;
+    for (size_t pixel = 0; pixel < dense.size(); pixel += 4)
+    {
+        for (int channel = 0; channel < 3; ++channel)
+        {
+            daylight_sum += dense[pixel + channel];
+            eclipse_sum += eclipsed[pixel + channel];
+        }
+    }
+    EXPECT_LT(eclipse_sum, daylight_sum / 4);
     #endif
     luminous_flux = 0;
     const auto night = capture();

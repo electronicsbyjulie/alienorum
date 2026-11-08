@@ -74,6 +74,21 @@ TEST(OceanChemistryTest, IceRespondsGraduallyAndBrinesRetainLiquidBelowBulkFreez
 
 class OceanPersistenceTest : public UniverseFixture {};
 
+TEST_F(OceanPersistenceTest, UniverseRecordsDiscardSurfaceThermalHistory)
+{
+    Planet* world = make_planet(make_star());
+    auto* map = new WaterPhaseTestMap();
+    world->surf_map = map;
+    ASSERT_TRUE(publish_water_phase(*map, uniform_phase_climate(250), 100));
+    json saved = world->to_json();
+    EXPECT_FALSE(saved.contains("surface_phase_state"));
+    saved["surface_phase_state"] = map->water_phase_to_json();
+    Planet restored;
+    ASSERT_TRUE(restored.from_json(saved));
+    EXPECT_FALSE(restored.to_json().contains("surface_phase_state"));
+    EXPECT_TRUE(!restored.surf_map || !restored.surf_map->phase_state());
+}
+
 TEST_F(OceanPersistenceTest, SuppliedZeroAndUncertainSalinitySurvivePlanetSerialization)
 {
     Planet* world = make_planet(make_star());

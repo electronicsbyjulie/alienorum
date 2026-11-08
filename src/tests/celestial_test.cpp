@@ -479,15 +479,18 @@ TEST(SurfacePhaseTest, PlaybackAndRepeatedDateStepsVisitTheGlobeAndShowFreezeTha
         bool frozen = false, thawed = false, refrozen = false;
         for (int frame = 1; frame <= 240; ++frame)
         {
-            if (date_steps) surface_phase_clock.fetch_add(1);
+            // Exercise repeated date taps alongside ongoing playback, with
+            // intervening render frames that can publish the selected date.
+            if (date_steps && frame % 4 == 1) surface_phase_clock.fetch_add(1);
             climate.ice_mean_anomaly = frame * 2 * _pi / 64;
             map.update_water_phase(climate, 1000 + frame * orbit.period / 64, 0, 0, 35, oneatm, .5, 1000, false);
             const bool ice = map.surface_pixel(256, 128).second == SurfaceMaterial::ice;
             if (thawed && ice) refrozen = true;
             if (frozen && !ice) thawed = true;
             if (ice) frozen = true;
-            // Give the worker a display-frame interval without holding the date fixed.
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            // Advance dates at a rendered-frame cadence, allowing asynchronous
+            // publication to sample each season without holding the date fixed.
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
         }
         const auto playback_timeline = state->timeline;
         if (date_steps) EXPECT_GT(playback_timeline, timeline);

@@ -950,12 +950,18 @@ void Planet::prepare_surface_ice(LocalClimate& climate, const ThermalOrbit& orbi
         if (std::isfinite(depth) && depth > 0 && std::isfinite(coverage) && coverage > 0) column.depth = depth / coverage;
     }
     column.atmospheric_capacity = air_capacity;
+    // A circulation scenario, not a measured current: allocate a small share of
+    // existing redistributed heat to the ocean, scaled by available ocean area.
+    // Ocean and atmospheric heat act at different ice boundaries (Aylmer et al.
+    // 2020, https://doi.org/10.1175/JCLI-D-19-0761.1).
+    column.ocean_heat_share = .15 * std::clamp(climate.water_fraction, 0.0, 1.0);
     const double feedback = 4 * absorbed / climate.mean_k;
     const std::vector<double> key =
     {
         column.depth, column.salinity, column.pressure, column.atmospheric_capacity,
         climate.mean_k, climate.contrast_k, climate.redistribution, climate.regional_k, absorbed, feedback,
-        orbit.eccentricity, orbit.period, orbit.pole_u, orbit.pole_v, reference, double(climate.stellar_locked)
+        orbit.eccentricity, orbit.period, orbit.pole_u, orbit.pole_v, reference, double(climate.stellar_locked),
+        column.ocean_heat_share
     };
     if (ice_season_pending.valid() && ice_season_pending.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
     {
@@ -984,11 +990,12 @@ void Planet::prepare_surface_ice(LocalClimate& climate, const ThermalOrbit& orbi
         climate.ice_season = ice_season_cache;
         climate.ice_pending = false;
         climate.ice_mean_anomaly = orbit.mean_anomaly;
+        if (atm && atm->pressure_model.is_null()) atm->pressure_model = json::object();
         if (atm && atm->pressure_model.is_object())
         {
             atm->pressure_model["surface_ice_climate"] =
             {
-                {"model", "conductive_enthalpy_and_ice_albedo_v3"}, {"converged", ice_season_cache->converged},
+                {"model", "conductive_enthalpy_and_ice_albedo_v4"}, {"converged", ice_season_cache->converged},
                 {"periodic_closure_relative", ice_season_cache->closure_relative},
                 {"annual_open_water_fraction", ice_season_cache->annual_liquid_fraction},
                 {"maximum_ice_thickness_m", ice_season_cache->maximum_thickness},
@@ -996,6 +1003,8 @@ void Planet::prepare_surface_ice(LocalClimate& climate, const ThermalOrbit& orbi
                 {"ice_albedo", column.ice_albedo}, {"water_albedo", column.water_albedo},
                 {"ice_albedo_transition_m", column.albedo_thickness}, {"temperature_sampling_tolerance_k", .1},
                 {"transported_heat", "separate_nonreflective_flux"},
+                {"ocean_heat_transport_share", column.ocean_heat_share},
+                {"ocean_heat_transport_basis", "Scenario:0.15_times_ocean_area_fraction;reallocated_from_existing_transport;not_a_circulation_solution"},
                 {"regional_temperature_amplitude_k", climate.regional_k},
                 {"albedo_visibility", column.albedo_visibility}, {"basal_heat_flux_w_m2", column.basal_flux},
                 {"limitations", "Representative_columns;prescribed_atmosphere;no_ice_transport_snow_or_melt_pond_drainage;albedo_and_cloud_mask_are_scenarios"}
@@ -1133,6 +1142,7 @@ LocalClimate Planet::current_local_climate(bool include_supplied)
         && atm->pressure_model.contains("phase_available_column_pa")
         && !atm->pressure_model.contains("seasonal_conditions");
     const double reference = supplied ? std::sqrt(1 - eccentricity * eccentricity) : 1;
+    climate.water_fraction = ocean;
     prepare_surface_ice(climate, forcing, reference, atmosphere_capacity);
     if (conditions_cache && conditions_cache_key == cache_key && !phase_pending
         && conditions_cache->ice_season == climate.ice_season) return *conditions_cache;
@@ -1165,7 +1175,6 @@ LocalClimate Planet::current_local_climate(bool include_supplied)
     // The diurnal surface exchanges heat with a shallow atmospheric boundary layer and 1 m of water.
     climate.land_diurnal_seconds = (2e5 + 0.05 * atmosphere_capacity) / feedback;
     climate.water_diurnal_seconds = (4.18e6 * liquid + 1.93e6 * (1 - liquid) + 0.05 * atmosphere_capacity) / feedback;
-    climate.water_fraction = ocean;
     climate.current_conditions = true;
     if (climate.ice_season)
     {
@@ -1261,11 +1270,6 @@ void Planet::update_surface_phase(double latitude, double longitude)
     const LocalClimate climate = cached ? phase->climate : current_local_climate(true);
     if (climate.ice_pending) return;
     const double salinity = cached ? phase->salinity : ocean_chemistry().at("salinity_g_kg").get<double>();
-    if (saved_water_phase.is_object())
-    {
-        surf_map->water_phase_from_json(saved_water_phase);
-        saved_water_phase = nullptr;
-    }
     const double bump = m_bump_scale > 0 ? m_bump_scale : estimate_bump_scale();
     surf_map->update_water_phase(climate, simnow, latitude, longitude, salinity, get_surface_pressure(),
         has_water, bump, type == waterworld || type == hycean);
@@ -2315,8 +2319,6 @@ json Planet::to_json()
     towrite["has_water_supplied"] = has_water_supplied;
     if (surface_water_model.is_object()) towrite["surface_water_model"] = surface_water_model;
     if (std::isfinite(ocean_salinity_g_kg)) towrite["ocean_salinity_g_kg"] = ocean_salinity_g_kg;
-    const json phases = surf_map && surf_map->phase_state() ? surf_map->water_phase_to_json() : saved_water_phase;
-    if (phases.is_object()) towrite["surface_phase_state"] = phases;
     towrite["ring_status_known"] = ring_status_known;
     towrite["cloud_map_url"] = cloud_map_url;
     towrite["static_clouds"] = static_clouds;
@@ -2371,7 +2373,7 @@ bool Planet::from_json(const json& j)
     temperature = 0;
     CelestialObject::from_json(j);
     ocean_salinity_g_kg = ocean_numeric(j, "ocean_salinity_g_kg");
-    saved_water_phase = j.value("surface_phase_state", json());
+    // Thermal history is transient. Ignore legacy surface checkpoints on load.
     temperature_supplied = j.value("temperature_supplied", temperature > 0);
     inferred_mean_temperature = temperature > 0 && !temperature_supplied ? temperature : NAN;
     lock_system_plane = j.value("lock_system_plane", false);

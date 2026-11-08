@@ -18,7 +18,7 @@ namespace alienorum
     struct IceForcing
     {
         double shortwave = 0, outgoing_at_freezing = 0, feedback = 1;
-        double transported = 0;
+        double transported = 0, ocean_heat = 0;
     };
 
     struct IceState
@@ -37,6 +37,7 @@ namespace alienorum
         double atmospheric_capacity = 0, ice_albedo = .6, water_albedo = .07, albedo_visibility = .5;
         double basal_flux = 0, conductivity = 2.2;
         double albedo_thickness = .5;
+        double ocean_heat_share = .1;
         static constexpr double latent_per_kg = 334000, water_density = 1000, ice_density = 917;
 
         double latent() const { return water_density * depth * latent_per_kg; }
@@ -65,7 +66,12 @@ namespace alienorum
             const double climatic_cover = std::tanh(result.thickness / albedo_thickness);
             const double reflection = albedo_visibility * climatic_cover * (ice_albedo - water_albedo) / (1 - water_albedo);
             // Albedo reflects sunlight, not heat carried in from other regions.
-            result.absorbed = forcing.shortwave * (1 - reflection) + forcing.transported;
+            // Ocean transport heats the ice base. As the finite water column
+            // freezes completely, return that allocation to atmospheric transport.
+            // This changes heat placement, never the total incoming energy.
+            const double bottom_heat = forcing.ocean_heat * (1 - fraction);
+            result.absorbed = forcing.shortwave * (1 - reflection) + forcing.transported
+                + forcing.ocean_heat - bottom_heat;
             // Floating ice loses heat through a thickness-dependent conductive
             // resistance. A melting surface stays at the local brine freezing point.
             if (energy < 0 && energy > -latent())
@@ -76,7 +82,7 @@ namespace alienorum
             }
             result.temperature = std::max(2.7, temperature);
             result.net_flux = result.absorbed - forcing.outgoing_at_freezing
-                - forcing.feedback * (result.temperature - freezing()) + basal_flux;
+                - forcing.feedback * (result.temperature - freezing()) + basal_flux + bottom_heat;
             return result;
         }
 
@@ -126,7 +132,7 @@ namespace alienorum
     {
         static constexpr size_t rows = 17, phases = 128;
         static constexpr double pi = 3.14159265358979323846;
-        static constexpr const char* checkpoint_model = "conductive_enthalpy_v3";
+        static constexpr const char* checkpoint_model = "conductive_enthalpy_v4";
         struct Curve
         {
             double baseline = 0, closure = 0;
@@ -177,7 +183,8 @@ namespace alienorum
                 * std::max(0.0, std::sqrt(std::max(0.0, 1 - latitude * latitude)) * std::cos(angle)) : 1;
             return {absorbed_reference * direct * flux,
                 absorbed_reference * baseline_share + feedback * (column.freezing() - baseline), feedback,
-                absorbed_reference * transported * flux};
+                absorbed_reference * transported * flux * (1 - column.ocean_heat_share),
+                absorbed_reference * transported * flux * column.ocean_heat_share};
         }
 
         Curve integrate(size_t row, size_t longitude, double baseline) const
@@ -328,7 +335,8 @@ namespace alienorum
                 return IceForcing{a.shortwave + fraction * (b.shortwave - a.shortwave),
                     a.outgoing_at_freezing + fraction * (b.outgoing_at_freezing - a.outgoing_at_freezing),
                     a.feedback + fraction * (b.feedback - a.feedback),
-                    a.transported + fraction * (b.transported - a.transported)};
+                    a.transported + fraction * (b.transported - a.transported),
+                    a.ocean_heat + fraction * (b.ocean_heat - a.ocean_heat)};
             };
             return blend(blend(forcing(low, left, eccentric, baseline), forcing(low, right, eccentric, baseline), longitude - left),
                 blend(forcing(high, left, eccentric, baseline), forcing(high, right, eccentric, baseline), longitude - left), row - low);

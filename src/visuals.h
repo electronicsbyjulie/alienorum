@@ -187,6 +187,7 @@ double eclipse_illumination(CelestialObject *cel);
 // which is very nearly always.
 extern CelestialObject *eclipsed_light;
 extern double eclipsed_fraction;
+extern double unobscured_luminous_flux;
 
 // NEVER bloom point sources into a giant disc - keep this constant low.
 #define max_bloomrad 3

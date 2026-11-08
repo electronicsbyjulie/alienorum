@@ -843,6 +843,7 @@ void compute_object_draw_coordinates()
     bool airy_rock = view_mode == vm_horizon && whereami > 0 && uses_rocky_map(cels[whereami]->type) && ((Planet*)cels[whereami])->get_surface_pressure();
 
     luminous_flux = cels[1] ? 0 : 1e10;
+    unobscured_luminous_flux = luminous_flux;
     inside_galaxy_idx = -1;
     if (!performance_enabled(3)) for (int index : objects.all) reset_projection(index, cels[index]);
     if (performance_enabled(3)) for (const auto& entry : objects.previous)
@@ -947,6 +948,7 @@ void compute_object_draw_coordinates()
                     else twilight = 0;
 
                     double add_flux = brght * (fmax(0, sin(theta)) + 0.01*twilight);
+                    if (std::isfinite(add_flux) && cels[i]->type != artificial) unobscured_luminous_flux += add_flux;
 
                     // Under a solar eclipse.
                     const double kTotalityFloor = 1.2e-3;
