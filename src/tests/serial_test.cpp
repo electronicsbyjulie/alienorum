@@ -662,6 +662,116 @@ TEST_F(SerializationTest, LegacyIdentityDefaultsRemainStableAcrossRepeatedLoads)
     delete_the_universe();
 }
 
+TEST_F(SerializationTest, HostAliasesAndCatalogLettersMergeRenamedPlanetsAndTheirMoons)
+{
+    Star* host = make_star("82 Eridani");
+    host->HD = 20794;
+    host->add_catalog_alias("82 Eri");
+    Planet* planet = make_planet(host, "82 Eridani b");
+    planet->origname = "82 Eridani b";
+    planet->origcenname.clear();
+    planet->catalog_designation = "HD 20794 b";
+    planet->display_designation = "82 Eridani b";
+    Moon* moon = new Moon;
+    strcpy(moon->name, "82 Eridani b I");
+    moon->origname = moon->name;
+    moon->origcenname = planet->name;
+    moon->type = rocky;
+    moon->mass = .01 * earth_mass;
+    moon->volumetric_mean_radius = 1e6;
+    moon->orbit = new Orbit;
+    moon->orbit->center = planet;
+    moon->orbit->center_name = planet->name;
+    moon->orbit->semimajor_axis = 1e9;
+    moon->orbit->compute_period(moon->mass);
+    ASSERT_TRUE(append_cel(moon));
+    json saved_planet = planet->to_json(), saved_moon = moon->to_json();
+    // Model the legacy file and the catalog's initially blank original host field.
+    planet->origcenname.clear();
+    saved_planet["!name"] = "Santan";
+    saved_planet["!origname"] = "82 Eri b";
+    saved_planet["!origcenname"] = "HD 20794";
+    saved_planet.erase("catalog_designation");
+    saved_planet.erase("display_designation");
+    saved_moon["!name"] = "Santan I";
+    saved_moon["!origcenname"] = "82 Eri b";
+    saved_moon["orbit"]["center_name"] = "Santan";
+    const json records = {{"a_moon", saved_moon}, {"z_planet", saved_planet}};
+    for (int pass = 0; pass < 2; ++pass)
+    {
+        ASSERT_TRUE(Serialization::load_document(records, cels, MAX_CELOBJS));
+        EXPECT_EQ(ncelobjs, 3);
+        EXPECT_EQ(find_loaded("Santan"), planet);
+        EXPECT_EQ(find_loaded("Santan I"), moon);
+        EXPECT_EQ(planet->orbit->center, host);
+        EXPECT_EQ(moon->orbit->center, planet);
+        EXPECT_EQ(planet->catalog_designation, "HD 20794 b");
+    }
+    delete_the_universe();
+}
+
+TEST_F(SerializationTest, QualifiedOriginalNamesIgnoreAChangedOrBlankHostSpelling)
+{
+    Star* host = make_star("Catalog primary");
+    host->add_catalog_alias("Saved primary");
+    Planet* planet = make_planet(host, "Catalog primary d");
+    planet->origname = "Catalog primary d";
+    json saved = planet->to_json();
+    planet->origcenname.clear();
+    saved["!name"] = "Theionia";
+    saved["!origcenname"] = "Saved primary";
+    saved["orbit"]["center_name"] = "Saved primary";
+    ASSERT_TRUE(Serialization::load_document({{"planet", saved}}, cels, MAX_CELOBJS));
+    EXPECT_EQ(ncelobjs, 2);
+    EXPECT_EQ(find_loaded("Theionia"), planet);
+    EXPECT_EQ(planet->orbit->center, host);
+    delete_the_universe();
+}
+
+TEST_F(SerializationTest, CatalogLetterMatchingIsScopedToAnUnambiguousKnownHost)
+{
+    Star* first = make_star("First host");
+    first->add_catalog_alias("First catalog");
+    Star* second = make_star("Second host");
+    second->add_catalog_alias("Second catalog");
+    Planet* first_planet = make_planet(first, "First host b");
+    first_planet->catalog_designation = "First catalog b";
+    Planet* second_planet = make_planet(second, "Second host b");
+    second_planet->catalog_designation = "Second catalog b";
+    json saved = second_planet->to_json();
+    saved["!name"] = "Renamed second planet";
+    saved["!origname"] = "Second catalog b";
+    saved["!origcenname"] = "Second host";
+    ASSERT_TRUE(Serialization::load_document({{"planet", saved}}, cels, MAX_CELOBJS));
+    EXPECT_EQ(ncelobjs, 4);
+    EXPECT_EQ(find_loaded("Renamed second planet"), second_planet);
+    EXPECT_STREQ(first_planet->name, "First host b");
+    saved["!name"] = "Unrelated planet";
+    saved["!origname"] = "Unrecognized host b";
+    ASSERT_TRUE(Serialization::load_document({{"planet", saved}}, cels, MAX_CELOBJS));
+    EXPECT_EQ(ncelobjs, 5);
+    EXPECT_NE(find_loaded("Unrelated planet"), second_planet);
+    delete_the_universe();
+}
+
+TEST_F(SerializationTest, AmbiguousCatalogPlanetIdentitiesRejectWithoutChangingLiveObjects)
+{
+    Star* host = make_star("Host");
+    host->add_catalog_alias("Catalog host");
+    Planet* first = make_planet(host, "First candidate");
+    Planet* second = make_planet(host, "Second candidate");
+    first->catalog_designation = second->catalog_designation = "Catalog host b";
+    json saved = first->to_json();
+    saved["!name"] = "Authored name";
+    saved["!origname"] = "Host b";
+    saved["!origcenname"] = "Host";
+    EXPECT_FALSE(Serialization::load_document({{"planet", saved}}, cels, MAX_CELOBJS));
+    EXPECT_EQ(ncelobjs, 3);
+    EXPECT_STREQ(first->name, "First candidate");
+    EXPECT_STREQ(second->name, "Second candidate");
+    delete_the_universe();
+}
+
 TEST_F(SerializationTest, SharedLoaderWorksWithoutTheDefaultSaveOrOrbitCatalog)
 {
     const auto root = std::filesystem::temp_directory_path() / "alienorum_shared_json_loader";

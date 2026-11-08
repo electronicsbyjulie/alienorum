@@ -1564,6 +1564,138 @@ namespace
             default: throw std::runtime_error("Unknown object class");
         }
     }
+
+    class SavedOrbitIdentityIndex
+    {
+        using Objects = std::set<CelestialObject*>;
+        using BodyKey = std::tuple<cel_obj_class, CelestialObject*, std::string>;
+        std::map<std::string, Objects> exact_hosts, folded_hosts;
+        std::map<BodyKey, Objects> bodies, catalog_letters;
+
+        static std::vector<std::string> aliases(CelestialObject* object)
+        {
+            std::vector<std::string> result = {object->name, object->origname};
+            if (object->typeclass() == class_star)
+            {
+                const auto* star = static_cast<Star*>(object);
+                result.insert(result.end(), star->catalog_aliases.begin(), star->catalog_aliases.end());
+                for (const std::string& name : {star->local_name, std::string(star->Bayer),
+                    std::string(star->Flamsteed), std::string(star->Gliese)}) result.push_back(name);
+                if (star->HD) result.push_back("HD " + std::to_string(star->HD));
+                if (star->HIP) result.push_back("HIP " + std::to_string(star->HIP));
+            }
+            else if (object->typeclass() == class_planet || object->typeclass() == class_moon)
+            {
+                const auto* planet = static_cast<Planet*>(object);
+                result.push_back(planet->catalog_designation);
+                result.push_back(planet->display_designation);
+            }
+            return result;
+        }
+
+        static bool designation(const std::string& name, std::string& host, std::string& letter)
+        {
+            const std::string text = trim(name);
+            if (text.size() < 3 || text.back() < 'b' || text.back() > 'z'
+                || !std::isspace(static_cast<unsigned char>(text[text.size() - 2]))) return false;
+            host = trim(text.substr(0, text.size() - 1));
+            letter = text.back();
+            return !host.empty();
+        }
+
+        static CelestialObject* unique(const Objects& candidates, const std::string& identity)
+        {
+            if (candidates.size() > 1) throw std::runtime_error("Ambiguous saved object identity: " + identity);
+            return candidates.empty() ? nullptr : *candidates.begin();
+        }
+
+    public:
+        SavedOrbitIdentityIndex(CelestialObject** objects, unsigned int count)
+        {
+            Objects parents;
+            for (unsigned int i = 0; i < count; ++i)
+                if (!objects[i]->deleted && (objects[i]->typeclass() == class_planet || objects[i]->typeclass() == class_moon)
+                    && objects[i]->orbit && objects[i]->orbit->center) parents.insert(objects[i]->orbit->center);
+            for (auto* parent : parents)
+                for (const auto& name : aliases(parent))
+                    if (!name.empty())
+                    {
+                        exact_hosts[name].insert(parent);
+                        folded_hosts[stellar_alias_key(name)].insert(parent);
+                    }
+            // Keep only relevant host keys, while recording collisions with other live objects.
+            for (unsigned int i = 0; i < count; ++i)
+            {
+                auto* object = objects[i];
+                if (object->deleted || parents.count(object)) continue;
+                for (const auto& name : aliases(object))
+                {
+                    const auto found = folded_hosts.find(stellar_alias_key(name));
+                    if (found == folded_hosts.end()) continue;
+                    found->second.insert(object);
+                    exact_hosts[name].insert(object);
+                }
+            }
+            for (unsigned int i = 0; i < count; ++i)
+            {
+                auto* object = objects[i];
+                const auto cls = object->typeclass();
+                if (object->deleted || (cls != class_planet && cls != class_moon) || !object->orbit || !object->orbit->center) continue;
+                auto* parent = object->orbit->center;
+                for (const auto& name : aliases(object))
+                {
+                    if (name.empty()) continue;
+                    bodies[{cls, parent, trim(name)}].insert(object);
+                    std::string prefix, letter;
+                    if (cls != class_planet || !designation(name, prefix, letter)) continue;
+                    const auto found = folded_hosts.find(stellar_alias_key(prefix));
+                    if (found != folded_hosts.end() && found->second.count(parent))
+                        catalog_letters[{cls, parent, letter}].insert(object);
+                }
+            }
+        }
+
+        CelestialObject* host(const std::string& name, cel_obj_class child) const
+        {
+            const auto exact = exact_hosts.find(name);
+            const auto folded = folded_hosts.find(stellar_alias_key(name));
+            const Objects* source = exact != exact_hosts.end() ? &exact->second
+                : folded != folded_hosts.end() ? &folded->second : nullptr;
+            Objects candidates;
+            if (source)
+                for (auto* object : *source)
+                {
+                    const auto cls = object->typeclass();
+                    if (cls == class_star || (child == class_moon && (cls == class_planet || cls == class_moon)))
+                        candidates.insert(object);
+                }
+            if (!candidates.empty()) return unique(candidates, name);
+            std::string prefix, letter;
+            if (child == class_moon && designation(name, prefix, letter))
+            {
+                auto* parent = host(prefix, class_planet);
+                const auto found = catalog_letters.find({class_planet, parent, letter});
+                if (parent && found != catalog_letters.end()) return unique(found->second, name);
+            }
+            return nullptr;
+        }
+
+        CelestialObject* match(cel_obj_class cls, const std::string& original, const std::string& center) const
+        {
+            auto* parent = host(center, cls);
+            if (!parent) return nullptr;
+            Objects matches;
+            const auto named = bodies.find({cls, parent, trim(original)});
+            if (named != bodies.end()) return unique(named->second, original + " around " + center);
+            std::string prefix, letter;
+            if (cls == class_planet && designation(original, prefix, letter) && host(prefix, cls) == parent)
+            {
+                const auto catalog = catalog_letters.find({cls, parent, letter});
+                if (catalog != catalog_letters.end()) matches.insert(catalog->second.begin(), catalog->second.end());
+            }
+            return unique(matches, original + " around " + center);
+        }
+    };
 }
 
 bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned int max, bool aua)
@@ -1621,6 +1753,7 @@ bool Serialization::load_document(json allobj, CelestialObject **cels, unsigned 
         }
         std::map<CelestialObject*, int> existing_indices;
         for (unsigned int i = 0; i < count; ++i) existing_indices[cels[i]] = i;
+        const SavedOrbitIdentityIndex orbit_identities(cels, count);
         std::set<std::string> imported_fictional_ids;
         std::set<CelestialObject*> replacements;
         unsigned int additions = 0;
@@ -1656,6 +1789,10 @@ bool Serialization::load_document(json allobj, CelestialObject **cels, unsigned 
             entry.parsed->origcenname = center_name;
             const auto match = identities.find(Identity(cls, original, center_name));
             entry.target = match == identities.end() ? entry.parsed.get() : match->second;
+            if (match == identities.end() && (cls == class_planet || cls == class_moon))
+            {
+                if (auto* existing = orbit_identities.match(cls, original, center_name)) entry.target = existing;
+            }
             if (cls == class_star)
             {
                 const auto& origin = static_cast<Star*>(entry.parsed.get())->fictional_origin;
@@ -1677,6 +1814,14 @@ bool Serialization::load_document(json allobj, CelestialObject **cels, unsigned 
                 entry.index = existing_indices.at(entry.target);
                 data["!origname"] = original;
                 data["!origcenname"] = center_name;
+                if (cls == class_planet || cls == class_moon)
+                {
+                    const auto* planet = static_cast<Planet*>(entry.target);
+                    if (!data.contains("catalog_designation") && !planet->catalog_designation.empty())
+                        data["catalog_designation"] = planet->catalog_designation;
+                    if (!data.contains("display_designation") && !planet->display_designation.empty())
+                        data["display_designation"] = planet->display_designation;
+                }
                 entry.data = std::move(data);
             }
             else
@@ -1745,6 +1890,7 @@ bool Serialization::load_document(json allobj, CelestialObject **cels, unsigned 
                     entry.parent = candidate;
                 }
             }
+            if (!entry.parent) entry.parent = orbit_identities.host(name, entry.parsed->typeclass());
             if (!entry.parent && cels == ::cels)
             {
                 // Explicit saves can reference hosts omitted by deferred exoplanet loading.
