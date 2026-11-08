@@ -93,6 +93,19 @@ static std::string temp_universe(const char* stem)
     return (std::filesystem::temp_directory_path() / (std::string("alienorum_") + stem + ".json")).string();
 }
 
+struct StartupShortcutState
+{
+    bool previous_splash = splash, previous_completed = load_completed.load(), previous_reload = is_reloading.load();
+    bool previous_done = done, previous_abort = abort_load;
+    ~StartupShortcutState()
+    {
+        done = true;
+        process_pending_universe_load();
+        splash = previous_splash; load_completed = previous_completed; is_reloading = previous_reload;
+        done = previous_done; abort_load = previous_abort;
+    }
+};
+
 class SerializationTest : public UniverseFixture
 {
     protected:
@@ -673,6 +686,8 @@ TEST_F(SerializationTest, SharedLoaderWorksWithoutTheDefaultSaveOrOrbitCatalog)
 
 TEST_F(SerializationTest, F2LoadsDefaultUniverseWithoutChangingCatalogLoadingMode)
 {
+    StartupShortcutState startup;
+    splash = false; load_completed = true; is_reloading = false; done = abort_load = false;
     const auto root = std::filesystem::temp_directory_path() / "alienorum_f2_universe";
     std::filesystem::create_directories(root);
     struct RestoreState
@@ -710,6 +725,60 @@ TEST_F(SerializationTest, F2LoadsDefaultUniverseWithoutChangingCatalogLoadingMod
     process_key_F2();
     EXPECT_EQ(load_univ, "retained.json");
     EXPECT_EQ(ncelobjs, 2);
+    delete_the_universe();
+    std::filesystem::current_path(restore.directory);
+    std::filesystem::remove_all(root);
+}
+
+TEST_F(SerializationTest, SplashF2WaitsForCatalogCompletionAndLoadsOnlyOnce)
+{
+    StartupShortcutState startup;
+    struct RestoreDirectory
+    {
+        std::filesystem::path directory = std::filesystem::current_path();
+        std::string universe = load_univ;
+        ~RestoreDirectory() { std::filesystem::current_path(directory); load_univ = universe; }
+    } restore;
+    const auto root = std::filesystem::temp_directory_path() / "alienorum_splash_f2";
+    std::filesystem::create_directories(root);
+    Star* host = make_star("Queued primary");
+    const json record = host->to_json();
+    delete_the_universe();
+    std::filesystem::current_path(root);
+    { std::ofstream output("universe.json"); output << json{{"host", record}}; }
+    splash = true; load_completed = false; is_reloading = false; done = abort_load = false;
+    load_univ = "unchanged.json";
+    process_key_F2();
+    process_key_F2();
+    EXPECT_TRUE(default_universe_load_pending());
+    EXPECT_EQ(ncelobjs, 0);
+    EXPECT_EQ(load_univ, "unchanged.json");
+    splash = false;
+    process_pending_universe_load();
+    EXPECT_TRUE(default_universe_load_pending());
+    EXPECT_EQ(ncelobjs, 0);
+    load_completed = true;
+    is_reloading = true;
+    process_pending_universe_load();
+    EXPECT_EQ(ncelobjs, 0);
+    is_reloading = false;
+    splash = true;
+    process_pending_universe_load();
+    EXPECT_EQ(ncelobjs, 0);
+    splash = false;
+    process_pending_universe_load();
+    EXPECT_FALSE(default_universe_load_pending());
+    EXPECT_EQ(load_univ, "universe.json");
+    ASSERT_EQ(ncelobjs, 1);
+    cels[0]->mass = 2 * solar_mass;
+    process_pending_universe_load();
+    EXPECT_DOUBLE_EQ(cels[0]->mass, 2 * solar_mass);
+    EXPECT_EQ(ncelobjs, 1);
+    splash = true;
+    process_key_F2();
+    abort_load = true;
+    process_pending_universe_load();
+    EXPECT_FALSE(default_universe_load_pending());
     delete_the_universe();
     std::filesystem::current_path(restore.directory);
     std::filesystem::remove_all(root);

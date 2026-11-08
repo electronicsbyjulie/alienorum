@@ -20,6 +20,11 @@
 
 using namespace alienorum;
 
+namespace
+{
+    bool pending_default_universe = false;
+}
+
 static CelestialObject* cloud_refresh_target()
 {
     int index = (view_mode == vm_sunclock || view_mode == vm_horizon) ? whereami
@@ -1226,7 +1231,7 @@ void process_keyboard_commands(ImGuiIO& io)
 {
     editing = keyboard_edit_field_active();
     if (ImGui::IsKeyPressed(ImGuiKey_F1)) process_key_F1();
-    if (ImGui::IsKeyPressed(ImGuiKey_F2)) process_key_F2();
+    if (ImGui::IsKeyPressed(ImGuiKey_F2, false)) process_key_F2();
     if (ImGui::IsKeyPressed(ImGuiKey_F3, false)) process_key_F3();
     if (ImGui::IsKeyPressed(ImGuiKey_F4, false)) process_key_F4();
     if (ImGui::IsKeyPressed(ImGuiKey_F5, false))
@@ -1481,6 +1486,24 @@ void process_key_F1()
 
 void process_key_F2()
 {
+    pending_default_universe = true;
+    process_pending_universe_load();
+}
+
+bool default_universe_load_pending()
+{
+    return pending_default_universe;
+}
+
+void process_pending_universe_load()
+{
+    if (done || abort_load)
+    {
+        pending_default_universe = false;
+        return;
+    }
+    if (!pending_default_universe || !load_completed.load() || is_reloading.load() || splash) return;
+    pending_default_universe = false;
     if (load_universe())
     {
         load_univ = "universe.json";

@@ -380,7 +380,15 @@ int main (int argc, char** argv)
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
     double main_scale = 1; // ImGui_ImplSDL2_GetContentScaleForDisplay(0);
     SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
-    window = SDL_CreateWindow("Alienorum | F1 menu | F2 resume previous universe", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, (int)(1280 * main_scale), (int)(800 * main_scale), window_flags);
+
+    std::string wtitle = "Alienorum";
+    wtitle += " | F1 menu";
+    if (file_exists("universe.json"))
+    {
+        wtitle += " | F2 resume previous universe";
+    }
+
+    window = SDL_CreateWindow(wtitle.c_str(), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, (int)(1280 * main_scale), (int)(800 * main_scale), window_flags);
     if (window == nullptr)
     {
         printf("Error: SDL_CreateWindow(): %s\n", SDL_GetError());
@@ -508,7 +516,7 @@ int main (int argc, char** argv)
     while (!done)
     {
         alienorum::CatalogLock catalog_lock(catalog_mutex, alienorum::CatalogLockSite::frame);
-        const bool loading_frame = splash;
+        const bool loading_frame = !load_completed.load() || is_reloading.load() || splash;
         auto frame_began = std::chrono::steady_clock::now();
         if (hide_mouse && (!is_mouse_over_window || dragging) && !splash
             && !ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopup))
@@ -522,6 +530,8 @@ int main (int argc, char** argv)
         while (SDL_PollEvent(&event))
         {
             ImGui_ImplSDL2_ProcessEvent(&event);
+            if (loading_frame && event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_F2 && !event.key.repeat)
+                process_key_F2();
             if (event.type == SDL_QUIT ||
                 (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE && event.window.windowID == SDL_GetWindowID(window)))
             {
@@ -531,6 +541,7 @@ int main (int argc, char** argv)
             }
         }
         if (done) break;
+        if (!loading_frame) process_pending_universe_load();
         if (SDL_GetWindowFlags(window) & SDL_WINDOW_MINIMIZED)
         {
             catalog_lock.unlock();
@@ -607,13 +618,16 @@ int main (int argc, char** argv)
                 | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings))
             {
                 ImGui::SetWindowPos(ImVec2(left,splash_top));
-                ImGui::SetWindowSize(ImVec2(aspect_width+16, splash_height+(firstrun ? 75 : 35)));
+                ImGui::SetWindowSize(ImVec2(aspect_width+16, splash_height+(firstrun ? 75 : 35) + ImGui::GetTextLineHeightWithSpacing()));
                 if (firstrun)
                 {
                     ImGui::Text("Please be patient, Alienorum is running for the first time. After");
                     ImGui::Text("downloading data, the application will load faster going forward.");
                 }
                 ImGui::Text("%s", lloadmsg);
+                ImGui::TextUnformatted(default_universe_load_pending()
+                    ? "universe.json queued for loading..."
+                    : "F2: load universe.json after catalog loading.");
                 ImDrawList* draw_list = ImGui::GetWindowDrawList();
                 ImVec2 canvas_p0 = ImGui::GetCursorScreenPos(), canvas_p1(canvas_p0.x+aspect_width, canvas_p0.y+splash_height);
                 draw_list->AddRectFilled(canvas_p0, canvas_p1, alien_color);

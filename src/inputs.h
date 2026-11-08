@@ -27,6 +27,8 @@ void process_key_home();
 void process_key_end();
 void process_key_F1();
 void process_key_F2();
+bool default_universe_load_pending();
+void process_pending_universe_load();
 void process_key_F3();
 void process_key_F4();
 void process_key_F5();
