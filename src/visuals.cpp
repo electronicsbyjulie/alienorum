@@ -7156,8 +7156,11 @@ void draw_horizon()
             SurfaceSampler::Sample boundary_sample;
             const bool clear_of_boundary = !paint_biomes
                 || surface.uniform_sample(viewer_lat, viewer_lon, 100.0 / surface_radius + 1e-10, boundary_sample);
-            const bool position_reusable = clear_of_boundary && travel < std::min(2.0, surface_radius * .001)
-                && (fabs(viewer_lat) < half_pi - .001 || (latitude_step == 0 && longitude_step == 0));
+            // An unchanged observer can reuse the exact painting even at a color
+            // or material boundary. Certify a neighborhood only after actual travel.
+            const bool position_reusable = (latitude_step == 0 && longitude_step == 0)
+                || (clear_of_boundary && travel < std::min(2.0, surface_radius * .001)
+                    && fabs(viewer_lat) < half_pi - .001);
             int ground_stride = 1;
             if (horizon_motion_ground_sampling && gpu_ground && paint_biomes && ground_cache_valid
                 && std::get<0>(ground_key) == std::get<0>(saved_ground_key)

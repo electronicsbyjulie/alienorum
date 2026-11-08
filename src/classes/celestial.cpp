@@ -4472,9 +4472,6 @@ void CelestialObject::generate_water_clouds()
         return;
     }
 
-    const Planet* planet = static_cast<Planet*>(this);
-    if (planet->preserve_loaded_parameters && (!transparent_clouds || overcast)) return;
-
     try
     {
         std::unique_ptr<Map> clouds(new Map(this));
@@ -4512,7 +4509,8 @@ bool Map::generate_water_cloud_map(CelestialObject *cel)
     const double storm_activity = reference.convection * std::min(1.0, reference.optical_depth / 3)
         * std::clamp(cloud_climate.rotation, 0.0, 1.0);
 
-    generating_fic_texture = true;
+    // This private map is published only after completion. Keep surface caches
+    // active while the cloud worker builds its replacement.
     // Weather follows simulation time; an explicit refresh advances its independent pattern.
     const double weather_time = std::isfinite(p->cloud_epoch) ? p->cloud_epoch : simnow;
     const std::int64_t weather_hour = static_cast<std::int64_t>(std::floor(weather_time / 3600));

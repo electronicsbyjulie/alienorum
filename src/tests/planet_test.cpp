@@ -2907,11 +2907,13 @@ TEST_F(SavedPlanetMapTest, UniverseImportAndRenderingPreserveAtmosphereAndRingGe
 TEST_F(SavedPlanetMapTest, SavedCloudModesRemainConsistentWithGeneratedTextures)
 {
     Star* host = make_star();
-    for (bool overcast : {false, true})
+    for (int mode = 0; mode < 3; ++mode)
     {
-        SCOPED_TRACE(overcast);
+        SCOPED_TRACE(mode);
+        const bool overcast = mode == 2;
+        const bool transparent = mode == 0;
         json data = saved_world(host, rocky);
-        data["transparent_clouds"] = !overcast;
+        data["transparent_clouds"] = transparent;
         data["overcast"] = overcast;
         Planet* world = new Planet;
         ASSERT_TRUE(world->from_json(data));
@@ -2921,7 +2923,7 @@ TEST_F(SavedPlanetMapTest, SavedCloudModesRemainConsistentWithGeneratedTextures)
         ASSERT_NE(world->cloud_map, nullptr);
         EXPECT_TRUE(world->cloud_map->is_complete());
         EXPECT_EQ(world->overcast, overcast);
-        EXPECT_EQ(world->transparent_clouds, !overcast);
+        EXPECT_EQ(world->transparent_clouds, transparent);
     }
 }
 

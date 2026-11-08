@@ -442,10 +442,12 @@ TEST_F(CurrentConditionsTest, ProceduralCloudsUseCurrentClimateAndPublishAtomica
     phase(planet, 0);
     planet->cloud_map = new Map(planet); // Cached textures can lack procedural provenance.
     Map* original = planet->cloud_map;
+    generating_fic_texture = false;
     ASSERT_TRUE(request_cloud_regeneration(planet));
     EXPECT_EQ(planet->cloud_map, original);
     EXPECT_FALSE(request_cloud_regeneration(planet));
     wait_for_texture_tasks();
+    EXPECT_FALSE(generating_fic_texture);
     publish_regenerated_clouds();
     ASSERT_NE(planet->cloud_map, nullptr);
     EXPECT_TRUE(planet->cloud_map->is_complete());
@@ -455,6 +457,7 @@ TEST_F(CurrentConditionsTest, ProceduralCloudsUseCurrentClimateAndPublishAtomica
     planet->atm->comp->N2_portion = 1;
     ASSERT_TRUE(request_cloud_regeneration(planet));
     wait_for_texture_tasks();
+    EXPECT_FALSE(generating_fic_texture);
     publish_regenerated_clouds();
     EXPECT_EQ(planet->cloud_map, nullptr);
 }

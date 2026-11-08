@@ -1,5 +1,6 @@
 #include "../performance_options.h"
 #define IMGUI_DEFINE_MATH_OPERATORS
+#include "../loaders.h"
 #include <algorithm>
 #include <cstdlib>
 #include <functional>
@@ -8784,4 +8785,35 @@ TEST_F(RenderingRegressionTest, UniformFootprintCacheTracksEditsMaterialsAndMapL
     EXPECT_FALSE(map->color_within_cap(0, .3, .1, color, true));
     generating_fic_texture = true;
     EXPECT_FALSE(map->color_within_cap(0, .3, .1, color, true));
+}
+
+TEST_F(RenderingRegressionTest, CloudRefreshRestoresSurfaceRenderingCaches)
+{
+    auto* world = surface(true);
+    world->temperature = 323.143;
+    world->volumetric_mean_radius = 12439708;
+    world->mass = 4.536601017364529e28;
+    world->fictitious_map_height = 32;
+    auto* air = world->ensure_atmosphere();
+    air->surface_pressure = 663060.6675;
+    air->ensure_composition()->N2_portion = .98;
+    air->comp->H2O_portion = .02;
+    set(generating_fic_texture, false);
+    ASSERT_TRUE(request_cloud_regeneration(world));
+    wait_for_texture_tasks();
+    EXPECT_FALSE(generating_fic_texture);
+    publish_regenerated_clouds();
+    ASSERT_NE(world->cloud_map, nullptr);
+    EXPECT_TRUE(world->cloud_map->is_complete());
+    for (int frame = 0; frame < 3; ++frame)
+    {
+        freeze_surface_time();
+        draw_cloudy_sky();
+        find_horizon();
+        draw_horizon();
+        render();
+        ImGui::NewFrame();
+    }
+    EXPECT_TRUE(precipitation_stats.ground_cache_active);
+    EXPECT_TRUE(precipitation_stats.ground_cache_hit);
 }
