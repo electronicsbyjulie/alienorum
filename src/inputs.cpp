@@ -321,30 +321,11 @@ void show_menu()
             mouse_over_menu = true;
             if (ImGui::MenuItem("Save Snapshot", "F12")) { process_key_F12(); menu_clicked = true; }
             if (ImGui::MenuItem("Save universe files", "U")) { process_key_cmd_char('u'); menu_clicked = true; }
+            if (ImGui::MenuItem("Load universe.json", "F2")) { process_key_F2(); menu_clicked = true; }
             if (ImGui::MenuItem("Load Universe...", "F4")) { process_key_F4(); menu_clicked = true; }
             if (ImGui::MenuItem("Import SSC Add-On...", "F6")) { process_key_F6(); menu_clicked = true; }
             if (ImGui::MenuItem("Overwrite Map Files On Import", nullptr, &last_ssc_import.overwrite_maps)) menu_clicked = true;
             if (ImGui::MenuItem("Write User Settings", "Shift+U")) { process_key_cmd_char('U'); menu_clicked = true; }
-
-            if (noexo || exoplanet_loading.load())
-            {
-                if (exoplanet_loading.load())
-                {
-                    float progress = exoplanet_load_progress.load();
-                    char overlay[64];
-                    snprintf(overlay, sizeof(overlay), "%.0f%%", progress * 100.0f);
-                    ImGui::MenuItem("Loading Exoplanets...", "", false, false);
-                    ImGui::ProgressBar(progress, ImVec2(180, 0), overlay);
-                }
-                else
-                {
-                    if (ImGui::MenuItem("Load Exoplanets", "F2"))
-                    {
-                        start_exoplanet_background_load();
-                        menu_clicked = true;
-                    }
-                }
-            }
 
             if (ImGui::MenuItem("Reload Constellations", "F5"))
             {
@@ -1500,8 +1481,11 @@ void process_key_F1()
 
 void process_key_F2()
 {
-    if (noexo) start_exoplanet_background_load();
-    noexo = false;
+    if (load_universe())
+    {
+        load_univ = "universe.json";
+        if (window) SDL_SetWindowTitle(window, "universe.json - Alienorum");
+    }
 }
 
 void process_key_F3()

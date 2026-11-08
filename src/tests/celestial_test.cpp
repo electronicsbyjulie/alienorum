@@ -21,6 +21,120 @@
 using namespace alienorum;
 using json = nlohmann::json;
 
+TEST(SurfacePhaseTest, SeasonalSeaIceColorsDoNotRetainEarlierWhiteOrBlueBands)
+{
+    class LayeredIceMap : public WaterPhaseTestMap
+    {
+    public:
+        LayeredIceMap()
+        {
+            procedurally_generated = true;
+            const std::array<std::array<unsigned char, 3>, 4> colors =
+            {{{240, 248, 255}, {150, 205, 240}, {15, 75, 170}, {20, 70, 140}}};
+            for (size_t index = 0; index < allocated; ++index)
+            {
+                const auto& color = colors[index % 4];
+                red_data[index] = color[0]; green_data[index] = color[1]; blue_data[index] = color[2];
+                surface_materials[index] = index % 4 == 3 ? SurfaceMaterial::water : SurfaceMaterial::ice;
+            }
+        }
+    } map;
+    double epoch = 100;
+    for (double temperature : {250.0, 290.0, 268.0})
+    {
+        ASSERT_TRUE(publish_water_phase(map, uniform_phase_climate(temperature), epoch));
+        const auto& tile = map.phase_state()->tiles.begin()->second;
+        const auto reference = map.surface_pixel(tile.rect.x, tile.rect.y);
+        for (unsigned long row = tile.rect.y; row < tile.rect.y + tile.rect.height; ++row)
+            for (unsigned long column = tile.rect.x; column < tile.rect.x + tile.rect.width; ++column)
+            {
+                const auto pixel = map.surface_pixel(column, row);
+                EXPECT_EQ(pixel.first.r, reference.first.r);
+                EXPECT_EQ(pixel.first.g, reference.first.g);
+                EXPECT_EQ(pixel.first.b, reference.first.b);
+                EXPECT_EQ(pixel.second, reference.second);
+            }
+        if (temperature == 250) EXPECT_GT(reference.first.r, 200);
+        if (temperature == 290) EXPECT_GT(reference.first.b, reference.first.r + 100);
+        epoch += 30 * oneday;
+    }
+}
+
+TEST(SurfaceClimateTest, HabitatRequiresCoincidentWarmthAndLiquidWater)
+{
+    VegetationHabitat frozen({uniform_phase_climate(200)});
+    VegetationHabitat seasonal({uniform_phase_climate(180), uniform_phase_climate(380)});
+    VegetationHabitat mild({uniform_phase_climate(285)});
+    EXPECT_FALSE(frozen.suitable(1, 0, 0, 0, 223, 310, 273.15, 300));
+    EXPECT_FALSE(seasonal.suitable(1, 0, 0, 0, 223, 310, 273.15, 300));
+    EXPECT_TRUE(mild.suitable(1, 0, 0, 0, 278, 295, 273.15, 300));
+    EXPECT_FALSE(mild.suitable(1, 0, 0, 0, 278, 295, 273.15, 280));
+    std::vector<LocalClimate> seasons(12, uniform_phase_climate(200));
+    seasons[0] = uniform_phase_climate(285);
+    EXPECT_FALSE(VegetationHabitat(seasons).suitable(1, 0, 0, 0, 278, 295, 273.15, 300));
+    seasons[1] = uniform_phase_climate(285);
+    EXPECT_TRUE(VegetationHabitat(seasons).suitable(1, 0, 0, 0, 278, 295, 273.15, 300));
+}
+
+TEST(SurfaceClimateTest, ColdWaterAndVegetationShareTheReportedSurfaceState)
+{
+    auto climate = uniform_phase_climate(190);
+    const auto ocean = local_surface_state(climate, 1, 0, 0, -100, true, 35, 3585);
+    EXPECT_TRUE(ocean.frozen_surface);
+    EXPECT_DOUBLE_EQ(ocean.liquid, 0);
+    EXPECT_FALSE(ocean.vegetation_active);
+    EXPECT_DOUBLE_EQ(ocean.temperature, 190);
+    const auto land = local_surface_state(climate, 1, 0, 0, 500, false, 35, 3585);
+    EXPECT_DOUBLE_EQ(land.ice, 1);
+    EXPECT_FALSE(land.vegetation_active);
+    climate.mean_k = 285;
+    EXPECT_TRUE(local_surface_state(climate, 1, 0, 0, 500, false, 35, 3585).vegetation_active);
+}
+
+TEST(SurfacePhaseTest, VegetationFreezesAndRecoversWithoutLosingItsUnderlyingIdentity)
+{
+    WaterPhaseTestMap map;
+    map.set_material_at(.3, .3, SurfaceMaterial::vegetation);
+    ASSERT_TRUE(publish_water_phase(map, uniform_phase_climate(190), 100));
+    EXPECT_EQ(map.material_at(.3, .3), SurfaceMaterial::frost);
+    const auto cold = map.surface_state_at(.3, .3, uniform_phase_climate(285), 35, oneatm);
+    EXPECT_NEAR(cold.temperature, 190, 1e-5);
+    EXPECT_FALSE(cold.vegetation_active);
+    const auto checkpoint = map.water_phase_to_json();
+    WaterPhaseTestMap restored;
+    restored.water_phase_from_json(checkpoint);
+    EXPECT_EQ(restored.material_at(.3, .3), SurfaceMaterial::frost);
+    EXPECT_NEAR(restored.surface_state_at(.3, .3, uniform_phase_climate(285), 35, oneatm).temperature, 190, 1e-5);
+    ASSERT_TRUE(publish_water_phase(map, uniform_phase_climate(285), 100 + 30 * oneday));
+    EXPECT_EQ(map.material_at(.3, .3), SurfaceMaterial::vegetation);
+    EXPECT_TRUE(map.surface_state_at(.3, .3, uniform_phase_climate(190), 35, oneatm).vegetation_active);
+    const auto revision = map.water_phase_revision();
+    map.water_phase_from_json(checkpoint);
+    EXPECT_GT(map.water_phase_revision(), revision);
+    EXPECT_EQ(map.material_at(.3, .3), SurfaceMaterial::frost);
+    EXPECT_NEAR(map.surface_state_at(.3, .3, uniform_phase_climate(285), 35, oneatm).temperature, 190, 1e-5);
+}
+
+TEST(SurfaceClimateTest, ShorelineSamplingUsesTheRenderedCellAndItsThermalRegime)
+{
+    WaterPhaseTestMap map(64, 32, true);
+    auto climate = uniform_phase_climate(280);
+    climate.water_fraction = .5;
+    climate.current_conditions = true;
+    climate.land_seasonal_flux.fill(.4);
+    climate.water_seasonal_flux.fill(1.2);
+    const auto water = map.surface_state_at(.3, -1e-8, climate, 35, oneatm);
+    const auto land = map.surface_state_at(.3, 1e-8, climate, 35, oneatm);
+    EXPECT_TRUE(water.ocean);
+    EXPECT_FALSE(land.ocean);
+    EXPECT_NEAR(water.temperature, 280 * std::pow(1.2, .25), 1e-9);
+    EXPECT_NEAR(land.temperature, 280 * std::pow(.4, .25), 1e-9);
+    EXPECT_EQ(map.material_at(.3, -1e-8), SurfaceMaterial::water);
+    EXPECT_EQ(map.material_at(.3, 1e-8), SurfaceMaterial::ground);
+    // Two positions within one rendered cell cannot switch regime through interpolated relief.
+    EXPECT_DOUBLE_EQ(map.surface_state_at(.3, 1e-5, climate, 35, oneatm).temperature, land.temperature);
+}
+
 TEST(SurfacePhaseTest, RepeatedDayAndMonthSeeksMatchTheDestinationClimateAcrossAllTiles)
 {
     WaterPhaseTestMap map(256, 128), reference(256, 128);
@@ -183,15 +297,16 @@ TEST(SurfacePhaseTest, BackgroundSweepCoversBothHemispheresWithoutMovingTheObser
     for (int frame = 0; frame < 1000; ++frame)
     {
         map.update_water_phase(uniform_phase_climate(400), 864100, .3, .3, 35, oneatm, .5, 1000, false);
-        if (map.surface_pixel(0, 0).second == SurfaceMaterial::water
-            && map.surface_pixel(240, 120).second == SurfaceMaterial::water) break;
+        if (map.surface_pixel(0, 0).second == SurfaceMaterial::ground
+            && map.surface_pixel(240, 120).second == SurfaceMaterial::ground) break;
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
-    EXPECT_EQ(map.surface_pixel(0, 0).second, SurfaceMaterial::water);
-    EXPECT_EQ(map.surface_pixel(240, 120).second, SurfaceMaterial::water);
+    // At 400 K and one atmosphere the exposed basin has boiled dry.
+    EXPECT_EQ(map.surface_pixel(0, 0).second, SurfaceMaterial::ground);
+    EXPECT_EQ(map.surface_pixel(240, 120).second, SurfaceMaterial::ground);
 }
 
-TEST(SurfacePhaseTest, ScreeningRejectsHotAndDeepColdAreas)
+TEST(SurfacePhaseTest, ScreeningIncludesDeepColdWaterAndRejectsHotAreas)
 {
     for (double temperature : {150.0, 450.0, 271.0})
     {
@@ -203,7 +318,7 @@ TEST(SurfacePhaseTest, ScreeningRejectsHotAndDeepColdAreas)
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         } while (map.phase_state()->survey && std::chrono::steady_clock::now() < deadline);
         ASSERT_FALSE(map.phase_state()->survey);
-        EXPECT_EQ(map.phase_state()->candidates.empty(), temperature != 271.0);
+        EXPECT_EQ(map.phase_state()->candidates.empty(), temperature == 450.0);
     }
 }
 
@@ -350,7 +465,7 @@ TEST(SurfacePhaseTest, ThinFrozenWaterRetainsItsMaterialAndEnergyThroughCheckpoi
     ASSERT_TRUE(zero.phase_state());
     EXPECT_DOUBLE_EQ(zero.phase_state()->tiles.begin()->second.pixels.front().energy, 0);
     checkpoint["schema"] = 1;
-    for (auto& pixel : checkpoint["tiles"][0]["pixels"]) pixel.erase(12);
+    for (auto& pixel : checkpoint["tiles"][0]["pixels"]) pixel.erase(pixel.begin() + 12, pixel.end());
     WaterPhaseTestMap legacy;
     legacy.water_phase_from_json(checkpoint);
     ASSERT_TRUE(legacy.phase_state());
@@ -560,7 +675,7 @@ TEST(SurfacePhaseTest, ArchivedPatchesRetainOriginalColorsAndExactIceState)
     pack_phase_tile(tile);
     state->active.clear();
     EXPECT_TRUE(tile.pixels.empty());
-    EXPECT_LE(tile.packed.size(), 16u * 8u * 23u);
+    EXPECT_LE(tile.packed.size(), 16u * 8u * SurfacePhasePixel::packed_bytes);
     const auto decoded = unpack_phase_tile(tile);
     ASSERT_FALSE(decoded.empty());
     EXPECT_FLOAT_EQ(decoded.front().ice, ice);

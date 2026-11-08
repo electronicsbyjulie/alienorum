@@ -23,7 +23,6 @@ void draw_ast_window(ImGuiIO &io);
 void draw_favestars_window(ImGuiIO &io);
 void draw_comet_window(ImGuiIO &io);
 void draw_sat_window(ImGuiIO &io);
-void draw_exoplanet_load_window(ImGuiIO &io);
 void draw_universe_save_progress(ImGuiIO &io);
 void draw_app_window_template(ImGuiIO &io);
 

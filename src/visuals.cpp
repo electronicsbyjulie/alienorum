@@ -8811,9 +8811,7 @@ void draw_horizon()
                         int pr, pg, pb;
                         if (is_vegetation)
                         {
-                            RGB3 vcol = (p && (p->vegetation_r || p->vegetation_g || p->vegetation_b))
-                                ? RGB3(p->vegetation_r, p->vegetation_g, p->vegetation_b)
-                                : RGB3(40, 140, 50);
+                            const RGB3 vcol = base_map_rgb;
                             pr = fmin(255.0, vcol.r * (amb_light + sun_light * 0.4));
                             pg = fmin(255.0, vcol.g * (amb_light + sun_light * 0.4));
                             pb = fmin(255.0, vcol.b * (amb_light + sun_light * 0.4));
@@ -8857,9 +8855,7 @@ void draw_horizon()
                         double d_az = sun_az_world - azimuth;
                         double sun_cos = cos(d_az + _pi);
 
-                        RGB3 veg_base = (p && (p->vegetation_r || p->vegetation_g || p->vegetation_b))
-                            ? RGB3(p->vegetation_r, p->vegetation_g, p->vegetation_b)
-                            : RGB3(40, 140, 50);
+                        const RGB3 veg_base = base_map_rgb;
 
                         double u_tint = (double)(rk.seed_val & 0xFF) / 255.0;
                         double tint_factor = 0.88 + 0.24 * u_tint;

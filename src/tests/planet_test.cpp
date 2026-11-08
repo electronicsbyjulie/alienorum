@@ -2614,6 +2614,61 @@ TEST_F(SavedPlanetMapTest, LoadedParametersSurviveEverySurfaceGeneratorAndUpdate
     }
 }
 
+TEST_F(SavedPlanetMapTest, ThinAtmosphereSurfaceStatesRemainConsistentAcrossReload)
+{
+    Star* host = make_star("Thin climate host");
+    json record = saved_world(host, rocky);
+    record["temperature"] = 273;
+    record["temperature_supplied"] = false;
+    record["sidereal_rotational_period"] = 15.089;
+    record["atmosphere"]["surface_pressure"] = 3585;
+    std::vector<unsigned char> first_pixels;
+    std::vector<double> first_temperatures;
+    for (int pass = 0; pass < 2; ++pass)
+    {
+        Planet* world = new Planet;
+        ASSERT_TRUE(world->from_json(record));
+        world->orbit->center = host;
+        world->cenobj = host;
+        ASSERT_TRUE(append_cel(world));
+        const json physical = world->to_json();
+        world->surf_map = new Map(world);
+        world->surf_map->generate_rocky_map(world);
+        ASSERT_TRUE(world->surf_map->is_complete());
+        EXPECT_EQ(world->to_json(), physical);
+        const auto climate = world->current_local_climate();
+        const double salinity = world->ocean_chemistry()["salinity_g_kg"];
+        std::vector<double> temperatures;
+        for (int row = 0; row < 16; ++row)
+            for (int col = 0; col < 32; ++col)
+            {
+                const double lat = half_pi - (row + .5) * _pi / 16, lon = -_pi + (col + .5) * 2 * _pi / 32;
+                const auto state = world->surf_map->surface_state_at(lat, lon, climate, salinity, 3585);
+                temperatures.push_back(world->est_current_local_temp(lat, lon));
+                EXPECT_DOUBLE_EQ(temperatures.back(), state.temperature);
+                if (state.temperature < 200) EXPECT_FALSE(state.vegetation_active);
+                if (world->surf_map->material_at(lat, lon) == SurfaceMaterial::water)
+                {
+                    EXPECT_FALSE(state.frozen_surface);
+                    EXPECT_GT(state.liquid, 0);
+                }
+            }
+        std::vector<unsigned char> pixels(world->surf_map->get_width() * world->surf_map->get_height() * 4);
+        world->surf_map->export_rgba(pixels.data());
+        if (pass == 0)
+        {
+            first_pixels = pixels;
+            first_temperatures = temperatures;
+            record = physical;
+        }
+        else
+        {
+            EXPECT_EQ(pixels, first_pixels);
+            EXPECT_EQ(temperatures, first_temperatures);
+        }
+    }
+}
+
 TEST_F(SavedPlanetMapTest, AdaptedWaterBasedVegetationRespectsFrostChemistryAndPressure)
 {
     Star* host = make_star();
@@ -2651,7 +2706,12 @@ TEST_F(SavedPlanetMapTest, AdaptedWaterBasedVegetationRespectsFrostChemistryAndP
                 plants += world->surf_map->material_at(latitude, longitude) == SurfaceMaterial::vegetation;
             }
         }
-        if (temperature == 250 || temperature == 420)
+        if (temperature == 250)
+        {
+            // A tolerant organism still cannot grow where the sampled liquid-water window is absent.
+            EXPECT_EQ(plants, 0);
+        }
+        if (temperature == 420)
         {
             EXPECT_GT(plants, 0) << temperature;
             if (temperature == 420 && atmospheres == 10) pressurized_plants = plants;
@@ -4417,8 +4477,8 @@ TEST_F(PlanetClassificationEvidenceTest, GeneratedOceanUsesTheSameClimateAsTheRe
     EXPECT_GT(north.r, equator.r + 50);
     EXPECT_GT(south.r, equator.r + 50);
     EXPECT_EQ(world->surf_map->material_at(0, 0), SurfaceMaterial::water);
-    EXPECT_EQ(world->surf_map->material_at(80 * fiftyseventh, 0), SurfaceMaterial::ground);
-    EXPECT_EQ(world->surf_map->material_at(-80 * fiftyseventh, 0), SurfaceMaterial::ground);
+    EXPECT_EQ(world->surf_map->material_at(80 * fiftyseventh, 0), SurfaceMaterial::ice);
+    EXPECT_EQ(world->surf_map->material_at(-80 * fiftyseventh, 0), SurfaceMaterial::ice);
 }
 
 TEST_F(PlanetClassificationEvidenceTest, ExplicitRadiusEditsOverrideAnEstimatedEnvelope)

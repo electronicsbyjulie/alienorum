@@ -25,6 +25,11 @@
 
 using namespace alienorum;
 
+namespace
+{
+    constexpr std::array<unsigned char, 3> procedural_sea_ice_color = {224, 240, 252};
+}
+
 CelestialObject **cels, *mycenobj = nullptr;
 std::vector<std::vector<CelestialObject*>> first_letter_index;
 std::map<std::string,std::vector<CelestialObject*>> constellation_index;
@@ -2454,7 +2459,18 @@ SurfaceMaterial Map::phase_material(unsigned long column, unsigned long row, Sur
     if (!water_phase || water_phase->generation != gen || water_phase->composite) return base;
     const auto found = water_phase->tiles.find(SurfacePhase::key(column / SurfacePhase::tile_width,
         row / SurfacePhase::tile_height));
-    if (found == water_phase->tiles.end() || !found->second.rect.revision) return base;
+    if (found == water_phase->tiles.end() || !found->second.rect.revision)
+    {
+        if (base == SurfaceMaterial::vegetation && initial_surface_climate && initial_climate_generation == gen)
+        {
+            const double lat = half_pi - row / lat_scale, lon = column / lon_scale - _pi;
+            const double elevation = bump_data ? bump_data[row * image_width + column] : 0;
+            const auto state = local_surface_state(*initial_surface_climate, -cos(lat)*cos(lon), -cos(lat)*sin(lon),
+                sin(lat), elevation, false, water_phase->salinity, water_phase->pressure);
+            if (state.ice >= .5) return SurfaceMaterial::frost;
+        }
+        return base;
+    }
     const auto& tile = found->second;
     const size_t index = (row - tile.rect.y) * tile.rect.width + column - tile.rect.x;
     if (index < tile.pixels.size()) return static_cast<SurfaceMaterial>(tile.pixels[index].material);
@@ -2464,7 +2480,7 @@ SurfaceMaterial Map::phase_material(unsigned long column, unsigned long row, Sur
         float ice = 0;
         std::memcpy(&ice, bytes + 11, sizeof(float));
         return (bytes[10] & 4) || ice >= .5 ? ((bytes[10] & 2) ? SurfaceMaterial::ice : SurfaceMaterial::frost)
-            : (bytes[10] & 2) ? SurfaceMaterial::water : static_cast<SurfaceMaterial>(bytes[9]);
+            : (bytes[10] & 2) ? ((bytes[10] & 16) ? SurfaceMaterial::ground : SurfaceMaterial::water) : static_cast<SurfaceMaterial>(bytes[9]);
     }
     return base;
 }
@@ -2475,6 +2491,51 @@ bool Map::phase_ocean_at(double latitude, double longitude)
     const auto index = idx_of(latitude, longitude);
     return index != idx_not_ready && index < allocated
         && water_phase->underlying_ocean(index % image_width, index / image_width);
+}
+
+LocalSurfaceState Map::surface_state_at(double latitude, double longitude, const LocalClimate& climate,
+    double salinity, double pressure)
+{
+    const auto index = idx_of(latitude, longitude);
+    if (index == idx_not_ready || index >= allocated)
+        return local_surface_state(climate, -cos(latitude)*cos(longitude), -cos(latitude)*sin(longitude),
+            sin(latitude), climate.sea_level_m, false, salinity, pressure);
+    const auto column = index % image_width, row = index / image_width;
+    const auto material = surface_materials.size() == allocated ? surface_materials[index] : SurfaceMaterial::unknown;
+    const auto original = water_phase && water_phase->generation == gen
+        ? static_cast<SurfaceMaterial>(water_phase->original_material(column, row, static_cast<unsigned char>(material))) : material;
+    const double elevation = bump_data ? bump_data[index] : 0;
+    const bool ocean = original == SurfaceMaterial::water || original == SurfaceMaterial::ice
+        || phase_ocean_at(latitude, longitude)
+        || ((original == SurfaceMaterial::unknown || (procedurally_generated && original == SurfaceMaterial::ground))
+            && climate.water_fraction > 0 && elevation <= climate.sea_level_m);
+    // Use the same cell and representative coordinates as texture publication.
+    const double lat = half_pi - row / lat_scale, lon = column / lon_scale - _pi;
+    const LocalClimate& prepared = initial_surface_climate && initial_climate_generation == gen
+        ? *initial_surface_climate : climate;
+    auto result = local_surface_state(prepared, -cos(lat)*cos(lon), -cos(lat)*sin(lon), sin(lat),
+        elevation, ocean, salinity, pressure);
+    if (!water_phase || water_phase->generation != gen) return result;
+    const auto found = water_phase->tiles.find(SurfacePhase::key(column / SurfacePhase::tile_width, row / SurfacePhase::tile_height));
+    if (found == water_phase->tiles.end() || !std::isfinite(found->second.epoch)) return result;
+    const auto& tile = found->second;
+    const size_t offset = (row - tile.rect.y) * tile.rect.width + column - tile.rect.x;
+    SurfacePhasePixel pixel;
+    if (offset < tile.pixels.size()) pixel = tile.pixels[offset];
+    else if (offset < tile.packed.size() / SurfacePhasePixel::packed_bytes)
+    {
+        const auto* bytes = tile.packed.data() + offset * SurfacePhasePixel::packed_bytes;
+        pixel.ocean = bytes[10] & 2; pixel.frozen_surface = bytes[10] & 4; pixel.active = bytes[10] & 8; pixel.evaporated = bytes[10] & 16;
+        std::memcpy(&pixel.ice, bytes + 11, sizeof(float));
+        std::memcpy(&pixel.energy, bytes + 15, sizeof(double));
+        std::memcpy(&pixel.temperature, bytes + 23, sizeof(float));
+    }
+    if (!std::isfinite(pixel.temperature)) return result;
+    result.temperature = pixel.temperature; result.ice = pixel.ice; result.energy = pixel.energy;
+    result.ocean = pixel.ocean; result.frozen_surface = pixel.frozen_surface; result.evaporated_surface = pixel.evaporated;
+    result.liquid = pixel.ocean && !pixel.frozen_surface && !pixel.evaporated ? 1 - pixel.ice : 0;
+    result.vegetation_active = pixel.active;
+    return result;
 }
 
 uint64_t Map::water_phase_near(double latitude, double longitude, double radius_m, double distance_m) const
@@ -2685,12 +2746,8 @@ void Map::update_water_phase_tile(const LocalClimate& climate, double epoch, dou
                 auto& pixel = tile.pixels[y * tile.rect.width + x];
                 if (!pixel.eligible) continue;
                 const size_t index = (tile.rect.y + y) * image_width + tile.rect.x + x;
-                std::array<unsigned char, 3> color;
-                for (int channel = 0; channel < 3; ++channel)
-                    color[channel] = static_cast<unsigned char>(std::clamp(std::lround(
-                        pixel.base[channel] * (1 - pixel.ice) + pixel.frost[channel] * pixel.ice), 0l, 255l));
-                const auto material = pixel.frozen_surface || pixel.ice >= .5 ? (pixel.ocean ? SurfaceMaterial::ice : SurfaceMaterial::frost)
-                    : pixel.ocean ? SurfaceMaterial::water : static_cast<SurfaceMaterial>(pixel.original_material);
+                const auto color = pixel.color();
+                const auto material = static_cast<SurfaceMaterial>(pixel.surface_material());
                 const bool material_changed = pixel.material != static_cast<unsigned char>(material);
                 pixel.material = static_cast<unsigned char>(material);
                 if (color[0] != red_data[index] || color[1] != green_data[index] || color[2] != blue_data[index] || material_changed)
@@ -2832,8 +2889,8 @@ void Map::update_water_phase_tile(const LocalClimate& climate, double epoch, dou
             std::min(SurfacePhase::tile_width, image_width - tx * SurfacePhase::tile_width),
             std::min(SurfacePhase::tile_height, image_height - ty * SurfacePhase::tile_height), 0};
         tile.pixels.resize(tile.rect.width * tile.rect.height);
-        LocalClimate baseline = climate;
-        baseline.current_conditions = false;
+        LocalClimate baseline = initial_surface_climate && initial_climate_generation == gen ? *initial_surface_climate : climate;
+        if (!initial_surface_climate || initial_climate_generation != gen) baseline.current_conditions = false;
         for (unsigned long y = 0; y < tile.rect.height; ++y)
             for (unsigned long x = 0; x < tile.rect.width; ++x)
             {
@@ -2857,22 +2914,32 @@ void Map::update_water_phase_tile(const LocalClimate& climate, double epoch, dou
                     || (infer_basin && (ocean_world
                         || (bump_data && pixel.elevation <= level && water_level > 0 && (procedurally_generated || blue || white))
                         || (!bump_data && blue && water_level > 0)));
-                pixel.eligible = pixel.ocean || material == SurfaceMaterial::frost
-                    || (procedurally_generated && white && water_level > 0 && material != SurfaceMaterial::vegetation);
+                pixel.eligible = pixel.ocean || material == SurfaceMaterial::frost || material == SurfaceMaterial::vegetation
+                    || (procedurally_generated && water_level > 0);
                 if (!pixel.eligible) continue;
-                const double original_ice = material == SurfaceMaterial::ice || material == SurfaceMaterial::frost ? 1 : procedurally_generated
-                    ? LocalClimate::frost_fraction(baseline.temperature(pixel.x, pixel.y, pixel.z, pixel.elevation)) : white ? 1 : 0;
+                const double original_ice = procedurally_generated
+                    ? local_surface_state(baseline, pixel.x, pixel.y, pixel.z, pixel.elevation, pixel.ocean, salinity, pressure).ice
+                    : material == SurfaceMaterial::ice || material == SurfaceMaterial::frost || white ? 1 : 0;
                 const double grain = std::clamp((red_data[index] - 192.0) / 63.0, .1, .9);
                 pixel.frost = {static_cast<unsigned char>(192 + 63 * grain),
                     static_cast<unsigned char>(224 + 31 * grain), static_cast<unsigned char>(240 + 15 * grain)};
-                if (original_ice > .99 && (white || material == SurfaceMaterial::ice || material == SurfaceMaterial::frost)) pixel.frost = pixel.original;
-                if (pixel.ocean && original_ice > .05)
+                if (procedurally_generated && pixel.ocean) pixel.frost = procedural_sea_ice_color;
+                else if (original_ice > .99 && (white || material == SurfaceMaterial::ice || material == SurfaceMaterial::frost)) pixel.frost = pixel.original;
+                if (pixel.ocean && (procedurally_generated || original_ice > .05))
                 {
                     const double height = bump_scale > 0 ? std::clamp(pixel.elevation / bump_scale + .5, 0.0, 1.0) : .2;
                     const double depth = std::pow(std::clamp(height / std::max(.001, water_level), 0.0, 1.0), 3);
                     pixel.base = {static_cast<unsigned char>(12 + 16 * depth),
                         static_cast<unsigned char>(24 + (ocean_world ? 24 : 168) * depth),
                         static_cast<unsigned char>((ocean_world ? 32 : 192) + (ocean_world ? 128 : 32) * depth)};
+                }
+                else if (procedurally_generated && material == SurfaceMaterial::vegetation && mcel
+                    && (mcel->typeclass() == class_planet || mcel->typeclass() == class_moon))
+                {
+                    const auto* planet = static_cast<Planet*>(mcel);
+                    const double shade = white ? grain : 1;
+                    pixel.base = {static_cast<unsigned char>(planet->vegetation_r * shade),
+                        static_cast<unsigned char>(planet->vegetation_g * shade), static_cast<unsigned char>(planet->vegetation_b * shade)};
                 }
                 else if (!pixel.ocean && original_ice > .05)
                     pixel.base = {static_cast<unsigned char>(80 + 40 * grain),
@@ -2905,22 +2972,26 @@ json Map::water_phase_to_json() const
         for (const auto& pixel : saved_pixels)
             pixels.push_back({pixel.base[0], pixel.base[1], pixel.base[2], pixel.frost[0], pixel.frost[1], pixel.frost[2],
                 pixel.original[0], pixel.original[1], pixel.original[2], pixel.original_material,
-                (pixel.eligible ? 1 : 0) | (pixel.ocean ? 2 : 0) | (pixel.frozen_surface ? 4 : 0), pixel.ice,
-                std::isfinite(pixel.energy) ? json(pixel.energy) : json(nullptr)});
+                (pixel.eligible ? 1 : 0) | (pixel.ocean ? 2 : 0) | (pixel.frozen_surface ? 4 : 0) | (pixel.active ? 8 : 0) | (pixel.evaporated ? 16 : 0), pixel.ice,
+                std::isfinite(pixel.energy) ? json(pixel.energy) : json(nullptr),
+                std::isfinite(pixel.temperature) ? json(pixel.temperature) : json(nullptr)});
         tiles.push_back({{"x", tile.rect.x}, {"y", tile.rect.y}, {"width", tile.rect.width}, {"height", tile.rect.height},
             {"epoch", tile.epoch}, {"thermal_current", tile.timeline == water_phase->timeline && std::isfinite(tile.epoch)}, {"pixels", std::move(pixels)}});
     }
-    return {{"schema", 2}, {"ice_model", IceSeason::checkpoint_model},
+    return {{"schema", 3}, {"ice_model", IceSeason::checkpoint_model},
         {"width", image_width}, {"height", image_height}, {"tiles", std::move(tiles)}};
 }
 
 void Map::water_phase_from_json(const json& saved)
 {
-    if (!is_complete() || !saved.is_object() || (saved.value("schema", 0) != 1 && saved.value("schema", 0) != 2)
+    if (!is_complete() || !saved.is_object() || (saved.value("schema", 0) != 1 && saved.value("schema", 0) != 2 && saved.value("schema", 0) != 3)
         || saved.value("width", 0ul) != image_width || saved.value("height", 0ul) != image_height
         || !saved.contains("tiles") || !saved["tiles"].is_array()) return;
+    const uint64_t previous_revision = water_phase && water_phase->generation == gen ? water_phase->revision : 0;
     water_phase = std::make_shared<SurfacePhase>();
     water_phase->generation = gen;
+    water_phase->revision = previous_revision;
+    uniform_regions.clear();
     const bool current_energy_model = saved.contains("ice_model") && saved["ice_model"] == IceSeason::checkpoint_model;
     for (const auto& entry : saved["tiles"])
     {
@@ -2939,15 +3010,17 @@ void Map::water_phase_from_json(const json& saved)
         normalize_uncertain_numbers(values);
         for (const auto& value : values)
         {
-            if (!value.is_array() || (value.size() != 12 && value.size() != 13)) { valid = false; break; }
+            if (!value.is_array() || (value.size() != 12 && value.size() != 13 && value.size() != 14)) { valid = false; break; }
             for (size_t index = 0; index < 12; ++index) if (!value[index].is_number()) valid = false;
-            if (value.size() == 13 && !value[12].is_null()
+            if (value.size() >= 13 && !value[12].is_null()
                 && (!value[12].is_number() || !std::isfinite(value[12].get<double>()))) valid = false;
+            if (value.size() == 14 && !value[13].is_null()
+                && (!value[13].is_number() || !std::isfinite(value[13].get<double>()))) valid = false;
             if (!valid) break;
             for (int channel = 0; channel < 9; ++channel)
                 if (value[channel].get<double>() < 0 || value[channel].get<double>() > 255) valid = false;
             if (value[9].get<double>() < 0 || value[9].get<double>() > 5
-                || value[10].get<double>() < 0 || value[10].get<double>() > 7
+                || value[10].get<double>() < 0 || value[10].get<double>() > 31
                 || !std::isfinite(value[11].get<double>()) || value[11].get<double>() < 0 || value[11].get<double>() > 1) valid = false;
         }
         if (!valid) continue;
@@ -2966,8 +3039,11 @@ void Map::water_phase_from_json(const json& saved)
             const int flags = value[10];
             pixel.eligible = flags & 1; pixel.ocean = flags & 2;
             pixel.frozen_surface = flags & 4;
+            pixel.active = saved.value("schema", 0) < 3 || (flags & 8);
+            pixel.evaporated = flags & 16;
             pixel.ice = std::clamp(value[11].get<float>(), 0.0f, 1.0f);
-            if (value.size() == 13 && value[12].is_number()) pixel.energy = value[12].get<double>();
+            if (value.size() >= 13 && value[12].is_number()) pixel.energy = value[12].get<double>();
+            if (value.size() == 14 && value[13].is_number()) pixel.temperature = value[13].get<float>();
             // Keep the stored energy, but reconstruct its current-date replacement
             // before publication if it came from the superseded ice calculation.
             if (std::isfinite(pixel.energy) && !current_energy_model)
@@ -2978,7 +3054,21 @@ void Map::water_phase_from_json(const json& saved)
             pixel.elevation = bump_data ? bump_data[row * image_width + column] : 0;
             tile.pixels.push_back(pixel);
         }
+        tile.rect.revision = ++water_phase->revision;
         const auto key = SurfacePhase::key(tile.rect.x / SurfacePhase::tile_width, tile.rect.y / SurfacePhase::tile_height);
+        water_phase->revisions[tile.rect.revision] = key;
+        water_phase->recent.push_back(tile.rect);
+        // Publish colors, materials and temperatures together, including a restored snapshot.
+        for (size_t i = 0; i < tile.pixels.size(); ++i)
+        {
+            auto& pixel = tile.pixels[i];
+            if (!pixel.eligible) continue;
+            const auto index = (tile.rect.y + i / tile.rect.width) * image_width + tile.rect.x + i % tile.rect.width;
+            const auto color = pixel.color();
+            red_data[index] = color[0]; green_data[index] = color[1]; blue_data[index] = color[2];
+            pixel.material = pixel.surface_material();
+            if (surface_materials.size() == allocated) surface_materials[index] = static_cast<SurfaceMaterial>(pixel.material);
+        }
         if (water_phase->active.size() >= SurfacePhase::tile_limit) pack_phase_tile(tile);
         else
         {
@@ -3320,10 +3410,9 @@ void Map::generate_rocky_map(CelestialObject *cel)
             }
             p->estimate_surface_water(false, heights);
         }
-        const LocalClimate climate = p->local_climate();
-        // Water/atmosphere formation still uses terrestrial habitability, but
-        // established vegetation follows its own thermal tolerance, without an HZ veto.
-        const bool life_possible = p->has_water && pressure >= 600 && pressure < oneatm * 2000
+        LocalClimate climate = p->current_local_climate(true);
+        // Habitat follows the sampled year/day cycle; activity follows the current surface state.
+        const bool life_possible = p->has_water && pressure >= 611.657 && pressure < oneatm * 2000
             && p->mass > .02 * earth_mass;
         if (!p->preserve_loaded_parameters && p->has_water && life_possible && randomize_txgen
             && !p->vegetation_r && !p->vegetation_g && !p->vegetation_b)
@@ -3335,14 +3424,16 @@ void Map::generate_rocky_map(CelestialObject *cel)
             p->vegetation_r = veg_color.r;
             p->vegetation_g = veg_color.g;
             p->vegetation_b = veg_color.b;
-            const auto temperatures = vegetation_temperature_range(cel->rng, climate, bump_scale * .5);
+            const auto temperatures = vegetation_temperature_range(cel->rng, p->local_climate(), bump_scale * .5);
             p->veg_min_temp = temperatures.first;
             p->veg_max_temp = temperatures.second;
         }
+        climate.vegetation_min_k = p->veg_min_temp;
+        climate.vegetation_max_k = p->veg_max_temp;
+        const VegetationHabitat habitat(p->vegetation_seasons());
+        const double salinity = p->ocean_chemistry().at("salinity_g_kg").get<double>();
+        const double freezing = seawater_freezing_k(salinity, pressure);
         if (p->has_water) inv_h2o_level = 1.0 / p->has_water;
-
-        bool tidal_locked_to_star = p->orbit && p->orbit->center && p->orbit->center->type == star 
-            && p->is_tidal_locked();
 
         // A small per-planet palette of terrain "provinces" -- bright highlands against darker
         // basalt or tholin -- so the surface reads as distinct patches with ragged borders rather
@@ -3510,7 +3601,10 @@ void Map::generate_rocky_map(CelestialObject *cel)
 
                 if (p && p->has_water)
                 {
-                    T_local = climate.temperature(nx, ny, nz, bump_data[idx]);
+                    const bool ocean = cel->type == waterworld || cel->type == hycean
+                        || p->has_water >= 1 || height_value < p->has_water;
+                    const auto surface = local_surface_state(climate, nx, ny, nz, bump_data[idx], ocean, salinity, pressure);
+                    T_local = surface.temperature;
                     if (cel->type == waterworld || cel->type == hycean)
                     {
                         surface_materials[idx] = SurfaceMaterial::water;
@@ -3520,7 +3614,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
                         blue_data[idx] = fmin(255, 32+128*height_value);
                     }
                     // Biome allocation based on height thresholds
-                    else if ((p->has_water >= 1 || height_value < p->has_water) && T_local < Tboil)
+                    else if (ocean && T_local < Tboil)
                     {   // Ocean
                         surface_materials[idx] = SurfaceMaterial::water;
                         sh = height_value*inv_h2o_level;
@@ -3531,21 +3625,20 @@ void Map::generate_rocky_map(CelestialObject *cel)
                         blue_data[idx] = fmin(255, 192+32*sh);
                         // if (create_bump) bump_data[idx] = 0;
                     }
-                    else if (T_local > p->veg_max_temp)
-                    {   // Beach or desert sand
-                        red_data[idx] = fmin(255, 220 * rmult * r_weight);
-                        green_data[idx] = fmin(255, 200 * gmult * r_weight);
-                        blue_data[idx] = fmin(255, 150 * bmult * r_weight);
-                    }
-                    else if (life_possible && T_local < Tboil
-                        && vegetation_temperature_suitable(T_local, p->veg_min_temp, p->veg_max_temp)
+                    else if (!ocean && life_possible
                         && (p->vegetation_r || p->vegetation_g || p->vegetation_b)
-                        && (!tidal_locked_to_star || nx * climate.sun_x + ny * climate.sun_y + nz * climate.sun_z > 0))                               // vegetation only on the day side
+                        && habitat.suitable(nx, ny, nz, bump_data[idx], p->veg_min_temp, p->veg_max_temp, freezing, Tboil))
                     {   // Forests
                         surface_materials[idx] = SurfaceMaterial::vegetation;
                         red_data[idx] = fmin(255, p->vegetation_r * r_weight);
                         green_data[idx] = fmin(255, p->vegetation_g * r_weight);
                         blue_data[idx] = fmin(255, p->vegetation_b * r_weight);
+                    }
+                    else if (T_local > p->veg_max_temp)
+                    {   // Beach or desert sand
+                        red_data[idx] = fmin(255, 220 * rmult * r_weight);
+                        green_data[idx] = fmin(255, 200 * gmult * r_weight);
+                        blue_data[idx] = fmin(255, 150 * bmult * r_weight);
                     }
                     else
                     {
@@ -3553,12 +3646,24 @@ void Map::generate_rocky_map(CelestialObject *cel)
                         green_data[idx] = fmin(255, 90 * gmult * r_weight);
                         blue_data[idx] = fmin(255, 75 * bmult * r_weight);
                     }
-                    const double frost = LocalClimate::frost_fraction(T_local);
-                    if (frost >= 0.5 && surface_materials[idx] != SurfaceMaterial::vegetation)
+                    if (surface_materials[idx] == SurfaceMaterial::vegetation && !surface.vegetation_active)
+                    {
+                        red_data[idx] = .35 * red_data[idx] + .65 * 105;
+                        green_data[idx] = .35 * green_data[idx] + .65 * 85;
+                        blue_data[idx] = .35 * blue_data[idx] + .65 * 60;
+                    }
+                    const double frost = surface.ice;
+                    if (ocean && (surface.frozen_surface || frost >= .5)) surface_materials[idx] = SurfaceMaterial::ice;
+                    else if (ocean && surface.evaporated_surface)
+                    {
                         surface_materials[idx] = SurfaceMaterial::ground;
-                    red_data[idx] = (1 - frost) * red_data[idx] + frost * (192 + 63 * r_weight);
-                    green_data[idx] = (1 - frost) * green_data[idx] + frost * (224 + 31 * r_weight);
-                    blue_data[idx] = (1 - frost) * blue_data[idx] + frost * (240 + 15 * r_weight);
+                        red_data[idx] = 105 * r_weight;
+                        green_data[idx] = 85 * r_weight;
+                        blue_data[idx] = 60 * r_weight;
+                    }
+                    red_data[idx] = (1 - frost) * red_data[idx] + frost * (ocean ? procedural_sea_ice_color[0] : 192 + 63 * r_weight);
+                    green_data[idx] = (1 - frost) * green_data[idx] + frost * (ocean ? procedural_sea_ice_color[1] : 224 + 31 * r_weight);
+                    blue_data[idx] = (1 - frost) * blue_data[idx] + frost * (ocean ? procedural_sea_ice_color[2] : 240 + 15 * r_weight);
                 }
                 else
                 {
@@ -3569,6 +3674,13 @@ void Map::generate_rocky_map(CelestialObject *cel)
                 }
             }
         }
+
+        water_phase = std::make_shared<SurfacePhase>();
+        water_phase->climate = climate;
+        initial_surface_climate = std::make_shared<LocalClimate>(climate);
+        water_phase->climate_epoch = simnow;
+        water_phase->salinity = salinity;
+        water_phase->pressure = pressure;
 
         // A terrain waterline is not a new albedo measurement. Recoloring BV here
         // would change the coupled climate and water budget after basin calibration.
@@ -3588,6 +3700,8 @@ void Map::generate_rocky_map(CelestialObject *cel)
     if (create_bump) stamp_craters(cel, bump_scale);
     procedurally_generated = true;
     touch_gen();
+    if (water_phase) water_phase->generation = gen;
+    initial_climate_generation = gen;
 
     // Deferred to the end so as to avoid the mutex lock.
     if (want_overcast_sky && !p->cloud_map)

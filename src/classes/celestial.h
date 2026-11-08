@@ -21,6 +21,7 @@ namespace alienorum
     class SurfacePhase;
     struct SurfacePhaseRect;
     struct LocalClimate;
+    struct LocalSurfaceState;
     enum cel_obj_type
     {
         // The types are numbered by hierarchy in case of name conflicts, so that e.g. stars cannot orbit moons etc.
@@ -239,6 +240,8 @@ namespace alienorum
         double *bump_data = nullptr;
         std::vector<SurfaceMaterial> surface_materials;
         std::shared_ptr<SurfacePhase> water_phase;
+        std::shared_ptr<LocalClimate> initial_surface_climate;
+        unsigned int initial_climate_generation = 0;
         std::unordered_map<std::uint64_t, std::uint32_t> uniform_regions;
         unsigned int uniform_region_generation = 0;
         unsigned int cloud_opacity_generation = 0;
@@ -284,6 +287,8 @@ namespace alienorum
         bool sync_phase_composite(Map* source, Map* clouds, bool night);
         SurfaceMaterial phase_material(unsigned long column, unsigned long row, SurfaceMaterial base) const;
         bool phase_ocean_at(double latitude, double longitude);
+        LocalSurfaceState surface_state_at(double latitude, double longitude, const LocalClimate& climate,
+            double salinity, double pressure);
         json water_phase_to_json() const;
         void water_phase_from_json(const json& saved);
 

@@ -9,6 +9,7 @@
 #include "../classes/cat.h"
 #include "../classes/shore.h"
 #include "../loaders.h"
+#include "../inputs.h"
 #include "universe_fixture.h"
 
 using namespace alienorum;
@@ -667,6 +668,50 @@ TEST_F(SerializationTest, SharedLoaderWorksWithoutTheDefaultSaveOrOrbitCatalog)
     EXPECT_EQ(world->get_light_center(), host);
     delete_the_universe();
     std::filesystem::current_path(restore.previous);
+    std::filesystem::remove_all(root);
+}
+
+TEST_F(SerializationTest, F2LoadsDefaultUniverseWithoutChangingCatalogLoadingMode)
+{
+    const auto root = std::filesystem::temp_directory_path() / "alienorum_f2_universe";
+    std::filesystem::create_directories(root);
+    struct RestoreState
+    {
+        std::filesystem::path directory = std::filesystem::current_path();
+        std::string universe = load_univ;
+        bool skip_exoplanets = noexo;
+        ~RestoreState()
+        {
+            std::filesystem::current_path(directory);
+            load_univ = universe;
+            noexo = skip_exoplanets;
+        }
+    } restore;
+    Star* host = make_star("F2 primary");
+    Planet* world = make_planet(host, "F2 planet");
+    const json records = {{"host", host->to_json()}, {"world", world->to_json()}};
+    delete_the_universe();
+    std::filesystem::current_path(root);
+    { std::ofstream output("universe.json"); output << records; }
+    load_univ = "another.json";
+    noexo = true;
+    process_key_F2();
+    EXPECT_EQ(load_univ, "universe.json");
+    EXPECT_TRUE(noexo);
+    ASSERT_EQ(ncelobjs, 2);
+    ASSERT_NE(find_loaded("F2 planet"), nullptr);
+    EXPECT_EQ(find_loaded("F2 planet")->get_light_center(), find_loaded("F2 primary"));
+    noexo = false;
+    process_key_F2();
+    EXPECT_FALSE(noexo);
+    EXPECT_EQ(ncelobjs, 2);
+    std::filesystem::remove("universe.json");
+    load_univ = "retained.json";
+    process_key_F2();
+    EXPECT_EQ(load_univ, "retained.json");
+    EXPECT_EQ(ncelobjs, 2);
+    delete_the_universe();
+    std::filesystem::current_path(restore.directory);
     std::filesystem::remove_all(root);
 }
 

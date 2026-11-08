@@ -66,6 +66,8 @@ bool alienorum::render_saved_planet(CelestialObject* object,
     copy->static_clouds = source->static_clouds;
     copy->weather_revision = source->weather_revision;
     copy->cloud_epoch = source->cloud_epoch;
+    if (object->typeclass() == class_moon) static_cast<Moon*>(copy.get())->update_location(simnow);
+    else copy->update_location(simnow);
     copy->cloud_climate_snapshot = source->cloud_climate_snapshot;
 
     struct TextureTransfer
@@ -889,6 +891,8 @@ void Planet::classify(bool HZ, bool mnrk, bool ck)
 LocalClimate Planet::local_climate()
 {
     LocalClimate climate;
+    climate.vegetation_min_k = veg_min_temp;
+    climate.vegetation_max_k = veg_max_temp;
     climate.mean_k = estimate_surface_temperature();
     if (!std::isfinite(climate.mean_k) || climate.mean_k < 2.7) climate.mean_k = 2.7;
     const double pressure = std::max(0.0, get_surface_pressure()) / oneatm;
@@ -1025,9 +1029,10 @@ void Planet::prepare_surface_ice(LocalClimate& climate, const ThermalOrbit& orbi
     }
 }
 
-LocalClimate Planet::current_local_climate(bool include_supplied)
+LocalClimate Planet::current_local_climate(bool include_supplied, double sample_epoch)
 {
-    if (include_supplied && cloud_climate_snapshot) return *cloud_climate_snapshot;
+    const bool sampling = std::isfinite(sample_epoch);
+    if (!sampling && include_supplied && cloud_climate_snapshot) return *cloud_climate_snapshot;
     // Cloud workers and UI readouts can prepare the same body's cached climate.
     static std::mutex preparation_mutex;
     std::lock_guard<std::mutex> guard(preparation_mutex);
@@ -1042,7 +1047,7 @@ LocalClimate Planet::current_local_climate(bool include_supplied)
         annual = annual->orbit->center;
     }
     if (!annual || !annual->orbit || annual->orbit->center != source) return climate;
-    const double now = std::isfinite(cloud_epoch) ? cloud_epoch : simnow;
+    const double now = sampling ? sample_epoch : std::isfinite(cloud_epoch) ? cloud_epoch : simnow;
     const double jd = J2000 + (now - J2000_TIME_T) / oneday;
     double node, inclination, argument, axis, eccentricity, anomaly, period, node_rate, peri_rate, epoch;
     annual->orbit->interpolate_osculating_e(jd, node, inclination, argument, axis, eccentricity,
@@ -1076,7 +1081,9 @@ LocalClimate Planet::current_local_climate(bool include_supplied)
         + v * (std::sqrt(1 - eccentricity * eccentricity) * std::sin(current_e));
     sunlight.scale(1);
     const double declination = std::asin(std::clamp(sunlight.y, -1.0, 1.0));
-    const Point body_sun = rotate3D(sunlight, center, yaxis, timeofday());
+    const double spin = sampling && sidereal_rotational_period
+        ? 2 * _pi * (now - simnow) / sidereal_rotational_period : 0;
+    const Point body_sun = rotate3D(sunlight, center, yaxis, timeofday() + spin);
     const double longitude = find_angle(body_sun.z, -body_sun.x);
     climate.sun_x = -std::cos(declination) * std::cos(longitude);
     climate.sun_y = -std::cos(declination) * std::sin(longitude);
@@ -1143,8 +1150,8 @@ LocalClimate Planet::current_local_climate(bool include_supplied)
         && !atm->pressure_model.contains("seasonal_conditions");
     const double reference = supplied ? std::sqrt(1 - eccentricity * eccentricity) : 1;
     climate.water_fraction = ocean;
-    prepare_surface_ice(climate, forcing, reference, atmosphere_capacity);
-    if (conditions_cache && conditions_cache_key == cache_key && !phase_pending
+    if (!sampling) prepare_surface_ice(climate, forcing, reference, atmosphere_capacity);
+    if (!sampling && conditions_cache && conditions_cache_key == cache_key && !phase_pending
         && conditions_cache->ice_season == climate.ice_season) return *conditions_cache;
     const double land_capacity = 2e6 + atmosphere_capacity + ocean * climate.redistribution * water_capacity * 0.3;
     const double ocean_capacity = atmosphere_capacity + water_capacity;
@@ -1153,7 +1160,7 @@ LocalClimate Planet::current_local_climate(bool include_supplied)
     const ThermalHistory global_history(forcing, ((1 - ocean) * land_capacity + ocean * ocean_capacity) / feedback);
     climate.current_mean_k = climate.mean_k * std::pow(global_history.global_flux * reference, 0.25);
     climate.instantaneous_flux = reference / std::pow(1 - eccentricity * std::cos(current_e), 2);
-    if (std::isfinite(actual_distance) && actual_distance > 0)
+    if (!sampling && std::isfinite(actual_distance) && actual_distance > 0)
     {
         climate.instantaneous_flux = reference * std::pow(axis / actual_distance, 2);
     }
@@ -1195,14 +1202,30 @@ LocalClimate Planet::current_local_climate(bool include_supplied)
         const double land_mean = climate.mean_k * std::pow(land_history.global_flux * reference, .25);
         climate.current_mean_k = (1 - ocean) * land_mean + ocean * water_mean;
     }
-    if (atm && atm->pressure_model.is_object() && atm->pressure_model.value("status", "") == "estimated")
+    if (!sampling && atm && atm->pressure_model.is_object() && atm->pressure_model.value("status", "") == "estimated")
     {
         atm->pressure_model["seasonal_conditions"] = CosmicShore::seasonal_volatiles(atm->pressure_model,
             forcing, climate.mean_k, ((1 - ocean) * land_capacity + ocean * ocean_capacity) / feedback, reference);
     }
-    conditions_cache = std::make_shared<LocalClimate>(climate);
-    conditions_cache_key = cache_key;
+    if (!sampling)
+    {
+        conditions_cache = std::make_shared<LocalClimate>(climate);
+        conditions_cache_key = cache_key;
+    }
     return climate;
+}
+
+std::vector<LocalClimate> Planet::vegetation_seasons()
+{
+    CelestialObject* annual = this;
+    CelestialObject* light = get_light_center();
+    for (int depth = 0; annual && annual->orbit && annual->orbit->center != light && depth < 64; ++depth)
+        annual = annual->orbit->center;
+    if (!annual || !annual->orbit || !(annual->orbit->period > 0)) return {local_climate()};
+    std::vector<LocalClimate> result;
+    for (int month = 0; month < 12; ++month)
+        result.push_back(current_local_climate(true, J2000_TIME_T + annual->orbit->period * (month + .5) / 12));
+    return result;
 }
 
 json Planet::ocean_chemistry()
@@ -1290,7 +1313,10 @@ double Planet::est_current_local_temp(double lat, double lon)
     const LocalClimate climate = current_local_climate();
     if (!std::isfinite(lat) || !std::isfinite(lon)) return climate.mean_k;
     lat = std::clamp(lat, -half_pi, half_pi);
-    const double elevation = surf_map ? surf_map->elevation_at_bilinear(lat, lon) : climate.sea_level_m;
+    if (surf_map && surf_map->is_complete())
+        return surf_map->surface_state_at(lat, lon, climate, ocean_chemistry().at("salinity_g_kg").get<double>(),
+            get_surface_pressure()).temperature;
+    const double elevation = climate.sea_level_m;
     return climate.temperature(-std::cos(lat) * std::cos(lon), -std::cos(lat) * std::sin(lon), std::sin(lat), elevation);
 }
 

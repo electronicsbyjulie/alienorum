@@ -36,6 +36,10 @@ public:
         }
         touch_gen();
     }
+    void set_material_at(double latitude, double longitude, alienorum::SurfaceMaterial material)
+    {
+        surface_materials[idx_of(latitude, longitude)] = material;
+    }
 };
 
 inline alienorum::LocalClimate uniform_phase_climate(double temperature)
@@ -48,14 +52,14 @@ inline alienorum::LocalClimate uniform_phase_climate(double temperature)
 
 inline bool publish_water_phase(alienorum::Map& map, const alienorum::LocalClimate& climate, double epoch)
 {
-    const uint64_t before = map.water_phase_revision();
+    const uint64_t before = map.phase_state() ? map.phase_state()->visits : 0;
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
     while (std::chrono::steady_clock::now() < deadline)
     {
         if (auto state = map.phase_state()) state->scan = 0;
         if (auto state = map.phase_state()) state->batch_limit = 1;
         map.update_water_phase_tile(climate, epoch, .3, .3, 35, 101325, .5, 1000, false);
-        if (map.water_phase_revision() != before) return true;
+        if (map.phase_state() && map.phase_state()->visits > before) return true;
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
     return false;

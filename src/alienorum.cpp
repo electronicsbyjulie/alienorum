@@ -380,7 +380,7 @@ int main (int argc, char** argv)
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
     double main_scale = 1; // ImGui_ImplSDL2_GetContentScaleForDisplay(0);
     SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
-    window = SDL_CreateWindow("Alienorum", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, (int)(1280 * main_scale), (int)(800 * main_scale), window_flags);
+    window = SDL_CreateWindow("Alienorum | F1 menu | F2 resume previous universe", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, (int)(1280 * main_scale), (int)(800 * main_scale), window_flags);
     if (window == nullptr)
     {
         printf("Error: SDL_CreateWindow(): %s\n", SDL_GetError());
@@ -770,7 +770,6 @@ int main (int argc, char** argv)
             if (locwnd) draw_loc_window(io);
             if (show_favestars) draw_favestars_window(io);
             draw_ssc_import_window(io);
-            draw_exoplanet_load_window(io);
             draw_universe_save_progress(io);
 
             if (just_clicked_menu)
@@ -837,7 +836,11 @@ int main (int argc, char** argv)
             if (trackidx >= 0)
             {
                 double r = here.distance_to(cels[trackidx]->location);
-                if (vm > 0.03*r) velocity.scale(0.9*vm);
+                if (vm > 0.01*r)
+                {
+                    double rgoing = ((Point)here + (Point)velocity).distance_to(cels[trackidx]->location);
+                    if (rgoing <= r) velocity.scale(0.9*vm);
+                }
             }
 
             // Clicking and dragging
@@ -1261,10 +1264,6 @@ int main (int argc, char** argv)
     if (astorb_thread.joinable())
     {
         astorb_thread.join();
-    }
-    if (exoplanet_load_thread.joinable())
-    {
-        exoplanet_load_thread.join();
     }
     close_fictional_region();
     alienorum::ExoConsGenerator::reset();

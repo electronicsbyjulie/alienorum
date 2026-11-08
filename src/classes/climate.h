@@ -28,6 +28,7 @@ namespace alienorum
         std::shared_ptr<const IceSeason> ice_season;
         bool ice_pending = false;
         double ice_mean_anomaly = 0;
+        double vegetation_min_k = 278, vegetation_max_k = 310;
 
         double ice_longitude(double x, double y) const
         {
@@ -44,6 +45,13 @@ namespace alienorum
         }
 
         double temperature(double x, double y, double z, double elevation_m) const
+        {
+            const bool ocean = water_fraction > 0 && (water_fraction > .999 || elevation_m <= sea_level_m);
+            return temperature(x, y, z, elevation_m, ocean);
+        }
+
+        double temperature(double x, double y, double z, double elevation_m, bool ocean,
+            bool include_diurnal = true, bool include_ice = true) const
         {
             double base = mean_k + contrast_k * (1.0 / 3.0 - z * z);
             if (stellar_locked)
@@ -66,11 +74,10 @@ namespace alienorum
                 const double index = std::clamp((z + 1) * 0.5 * (land_seasonal_flux.size() - 1),
                     0.0, double(land_seasonal_flux.size() - 1));
                 const size_t low = static_cast<size_t>(index), high = std::min(low + 1, land_seasonal_flux.size() - 1);
-                const bool water = water_fraction > 0 && (water_fraction > 0.999 || elevation_m < sea_level_m);
+                const bool water = ocean;
                 const auto& seasonal = water ? water_seasonal_flux : land_seasonal_flux;
                 double flux = seasonal[low] + (seasonal[high] - seasonal[low]) * (index - low);
-                const double seasonal_flux = flux;
-                if (!stellar_locked)
+                if (!stellar_locked && include_diurnal)
                 {
                     const double a = z * sun_z;
                     const double b = std::sqrt(std::max(0.0, (1 - z * z) * (1 - sun_z * sun_z)));
@@ -90,14 +97,12 @@ namespace alienorum
                             * std::cos(n * hour - std::atan(response)) / std::sqrt(1 + response * response);
                     }
                 }
-                if (water && ice_season)
+                if (water && ice_season && include_ice)
                 {
                     const double longitude = ice_longitude(x, y);
                     const double energy = ice_season->energy_at(z, longitude, ice_mean_anomaly, regional);
                     const auto forcing = ice_season->forcing_at(z, longitude, ice_mean_anomaly, regional);
-                    const double diurnal = surface * (std::pow(std::max(1e-8, flux), .25)
-                        - std::pow(std::max(1e-8, seasonal_flux), .25));
-                    surface = ice_season->column.state(energy, forcing).temperature + diurnal;
+                    surface = ice_season->column.state(energy, forcing).temperature;
                 }
                 else surface *= std::pow(std::max(1e-8, flux), 0.25);
             }

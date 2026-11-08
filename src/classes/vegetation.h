@@ -4,6 +4,7 @@
 #include <cmath>
 #include <random>
 #include <utility>
+#include <vector>
 #include "climate.h"
 
 // Adjustable, speculative limits for active water-based organic ecosystems, in kelvin.
@@ -23,6 +24,73 @@ namespace alienorum
         return minimum < maximum && temperature >= minimum && temperature <= maximum
             && temperature >= ORGANIC_LIFE_MIN_TEMP_K && temperature <= ORGANIC_LIFE_MAX_TEMP_K;
     }
+
+    class VegetationHabitat
+    {
+        static constexpr size_t rows = 33;
+        size_t columns = 1, count = 0;
+        std::vector<double> temperatures;
+        LocalClimate baseline;
+
+    public:
+        explicit VegetationHabitat(const std::vector<LocalClimate>& seasons)
+        {
+            if (seasons.empty()) return;
+            baseline = seasons.front();
+            columns = baseline.stellar_locked ? 16 : 1;
+            const size_t hours = baseline.stellar_locked ? 1 : 8;
+            count = seasons.size() * hours;
+            temperatures.resize(count * rows * columns);
+            for (size_t season = 0; season < seasons.size(); ++season)
+                for (size_t hour = 0; hour < hours; ++hour)
+                {
+                    LocalClimate climate = seasons[season];
+                    climate.regional_k = climate.lapse_k_m = 0;
+                    climate.ice_season.reset();
+                    const double angle = hour * 6.283185307179586 / hours;
+                    const double sx = climate.sun_x, sy = climate.sun_y;
+                    climate.sun_x = sx * std::cos(angle) - sy * std::sin(angle);
+                    climate.sun_y = sx * std::sin(angle) + sy * std::cos(angle);
+                    for (size_t row = 0; row < rows; ++row)
+                        for (size_t column = 0; column < columns; ++column)
+                        {
+                            const double z = -1 + 2.0 * row / (rows - 1), ring = std::sqrt(std::max(0.0, 1 - z*z));
+                            const double lon = column * 6.283185307179586 / columns;
+                            temperatures[((season * hours + hour) * rows + row) * columns + column]
+                                = climate.temperature(-ring*std::cos(lon), -ring*std::sin(lon), z, climate.sea_level_m, false);
+                        }
+                }
+        }
+
+        bool suitable(double x, double y, double z, double elevation, double minimum, double maximum,
+            double freezing, double boiling) const
+        {
+            if (!count || !(minimum < maximum)) return false;
+            const double low = std::max({minimum, freezing, double(ORGANIC_LIFE_MIN_TEMP_K)});
+            const double high = std::min({maximum, boiling, double(ORGANIC_LIFE_MAX_TEMP_K)});
+            if (!(low < high)) return false;
+            const double latitude = std::clamp((z + 1) * .5 * (rows - 1), 0.0, double(rows - 1));
+            const size_t south = static_cast<size_t>(latitude), north = std::min(south + 1, rows - 1);
+            double longitude = std::atan2(-y, -x) / 6.283185307179586;
+            longitude = (longitude - std::floor(longitude)) * columns;
+            const size_t west = static_cast<size_t>(longitude), east = (west + 1) % columns;
+            const double offset = baseline.regional_temperature(x, y, z)
+                - baseline.lapse_k_m * std::max(0.0, elevation - baseline.sea_level_m);
+            size_t growing = 0;
+            // Scenario rule: at least one tenth of the sampled year/day cycle supports growth.
+            for (size_t sample = 0; sample < count; ++sample)
+            {
+                const auto value = [&](size_t row)
+                {
+                    const size_t base = (sample * rows + row) * columns;
+                    return temperatures[base + west] + (temperatures[base + east] - temperatures[base + west]) * (longitude - west);
+                };
+                const double temperature = value(south) + (value(north) - value(south)) * (latitude - south) + offset;
+                if (temperature >= low && temperature < high && ++growing * 10 >= count) return true;
+            }
+            return false;
+        }
+    };
 
     inline std::pair<double, double> vegetation_temperature_range(std::mt19937& random,
         const LocalClimate& climate, double highland_m)

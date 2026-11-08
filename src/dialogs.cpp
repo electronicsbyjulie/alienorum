@@ -1219,12 +1219,9 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
         ImGui::Separator();
         ImGui::Text("Press F1 for menu");
         ImGui::Text("& key shortcuts.");
-        if (noexo)
-        {
-            ImGui::Separator();
-            ImGui::Text("Press F2 to load");
-            ImGui::Text("exoplanets.");
-        }
+        ImGui::Separator();
+        ImGui::Text("Press F2 to load");
+        ImGui::Text("universe.json.");
         if (view_mode == vm_horizon)
         {
             ImGui::Separator();
@@ -4236,47 +4233,6 @@ void draw_universe_save_progress(ImGuiIO &io)
     }
 }
 
-void draw_exoplanet_load_window(ImGuiIO &io)
-{
-    if (!exoplanet_load_wnd)
-    {
-        return;
-    }
-
-    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    ImGui::Begin("Loading Exoplanets", &exoplanet_load_wnd, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse);
-
-    float progress = exoplanet_load_progress.load();
-    int count = exoplanet_count_loaded.load();
-    char overlay[64];
-    if (count > 0)
-    {
-        snprintf(overlay, sizeof(overlay), "%.1f%% (%d loaded)", progress * 100.0f, count);
-    }
-    else
-    {
-        snprintf(overlay, sizeof(overlay), "%.1f%%", progress * 100.0f);
-    }
-
-    if (exoplanet_loading.load())
-    {
-        ImGui::Text("Loading exoplanet catalogs... Please wait.");
-        ImGui::ProgressBar(progress, ImVec2(380, 0), overlay);
-    }
-    else
-    {
-        exoplanet_load_wnd = false;
-    }
-
-    ImGui::SetWindowSize(ImVec2(0, 0));
-    ImVec2 pos = ImGui::GetWindowPos(), siz = ImGui::GetWindowSize();
-    ImGui::End();
-
-    if (io.MousePos.x >= pos.x && io.MousePos.y >= pos.y && io.MousePos.x < (pos.x+siz.x) && io.MousePos.y < (pos.y+siz.y))
-    {
-        is_mouse_over_window = true;
-    }
-}
 
 
 #if 0

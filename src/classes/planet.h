@@ -111,7 +111,8 @@ namespace alienorum
         LocalClimate local_climate();
         double est_local_temp(double lat, double lon);
         bool has_supplied_mean_temperature() const;
-        LocalClimate current_local_climate(bool include_supplied = false);
+        LocalClimate current_local_climate(bool include_supplied = false, double sample_epoch = NAN);
+        std::vector<LocalClimate> vegetation_seasons();
         double est_current_local_temp(double lat, double lon);
         void set_explicit_mass(double value);
         void set_explicit_radius(double value);

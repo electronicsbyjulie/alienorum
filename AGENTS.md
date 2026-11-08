@@ -27,6 +27,6 @@
 - Do not mention the refs folder in any plan or .md file.
 
 ## When Testing Loading the App
-- If you are not testing anything dependent on exoplanets, you may run the app with the `noexo` CLI arg. That will defer the exoplanet load until/unless press F2, resulting in a significantly faster load time (a few seconds of savings).
+- If you are not testing anything dependent on exoplanets, you may run the app with the `noexo` CLI arg. That skips startup exoplanet loading, resulting in a significantly faster load time (a few seconds of savings). F2 loads `universe.json`.
 - If you are not testing anything dependent on artificial satellites, you may run the app with the `nosat` CLI arg. That will save about 15-20 seconds of load time by skipping satellites altogether, however that feature will be completely unavailable until the app is restarted.
 - The `noexo` and `nosat` args may be combined for maximum loading efficiency.
