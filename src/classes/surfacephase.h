@@ -13,6 +13,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include "misc.h"
 #include "climate.h"
 #include "surfaceclimate.h"
 
@@ -26,6 +27,16 @@ namespace alienorum
         unsigned long x = 0, y = 0, width = 0, height = 0;
         uint64_t revision = 0;
     };
+
+    inline std::array<unsigned char, 3> exposed_basin_color(double x, double y, double z)
+    {
+        // Continuous spherical geology, identical during generation and later drying.
+        const double province = fBm(x * 4 + 71.2, y * 4 + 34.9, z * 4 + 6.1, 4, 2, .5);
+        const double grain = fBm(x * 90 + 91.7, y * 90 + 43.1, z * 90 + 17.9, 4, 2, .5);
+        const double shade = std::clamp(.35 + .55 * province + .35 * grain, .2, 1.0);
+        return {static_cast<unsigned char>(150 * shade), static_cast<unsigned char>(115 * shade),
+            static_cast<unsigned char>(78 * shade)};
+    }
 
     struct SurfacePhasePixel
     {
@@ -43,11 +54,12 @@ namespace alienorum
         std::array<unsigned char, 3> color() const
         {
             std::array<unsigned char, 3> result;
+            const auto basin = ocean && evaporated ? exposed_basin_color(x, y, z) : base;
             for (int channel = 0; channel < 3; ++channel)
             {
                 const bool dormant = original_material == 3 && !active;
                 const double ground = channel == 0 ? 105 : channel == 1 ? 85 : 60;
-                const double unfrozen = ocean && evaporated ? ground
+                const double unfrozen = ocean && evaporated ? basin[channel]
                     : dormant ? .35 * base[channel] + .65 * ground : base[channel];
                 result[channel] = static_cast<unsigned char>(std::clamp(std::lround(
                     unfrozen * (1 - ice) + frost[channel] * ice), 0l, 255l));
@@ -160,26 +172,15 @@ namespace alienorum
                 if (job->survey)
                 {
                     auto& survey = *job->survey;
-                    // Screen geographic tiles on the worker, without reading any map.
-                    // The broad band includes seasonal forcing and elevation margins.
-                    for (unsigned long y = 0; y < survey.height; y += 64)
-                        for (unsigned long x = 0; x < survey.width; x += 128)
+                    // Every temperature can change water or vegetation state. Hot regions
+                    // must participate too, including basins boiling dry for the first time.
+                    for (unsigned long row = 0; row < survey.height; row += 8)
+                    {
+                        for (unsigned long column = 0; column < survey.width; column += 16)
                         {
-                            double low = INFINITY;
-                            for (const auto offset : {std::make_pair(0.0, 0.0), std::make_pair(128.0, 0.0),
-                                std::make_pair(0.0, 64.0), std::make_pair(128.0, 64.0), std::make_pair(64.0, 32.0)})
-                            {
-                                const double lat = std::clamp(half_pi - (y + offset.second) / survey.lat_scale, -half_pi, half_pi);
-                                const double lon = (x + offset.first) / survey.lon_scale - _pi;
-                                const double temperature = survey.climate.temperature(-cos(lat) * cos(lon), -cos(lat) * sin(lon),
-                                    sin(lat), survey.climate.sea_level_m);
-                                low = std::min(low, temperature);
-                            }
-                            if (low <= std::max(survey.freezing, survey.climate.vegetation_max_k) + 60)
-                                for (unsigned long row = y; row < std::min(y + 64, survey.height); row += 8)
-                                    for (unsigned long column = x; column < std::min(x + 128, survey.width); column += 16)
-                                        survey.candidates.push_back((uint64_t(row / 8) << 32) | (column / 16));
+                            survey.candidates.push_back((uint64_t(row / 8) << 32) | (column / 16));
                         }
+                    }
                     survey.ready.store(true, std::memory_order_release);
                     job->ready.store(true, std::memory_order_release);
                     continue;

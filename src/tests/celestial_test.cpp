@@ -306,7 +306,7 @@ TEST(SurfacePhaseTest, BackgroundSweepCoversBothHemispheresWithoutMovingTheObser
     EXPECT_EQ(map.surface_pixel(240, 120).second, SurfaceMaterial::ground);
 }
 
-TEST(SurfacePhaseTest, ScreeningIncludesDeepColdWaterAndRejectsHotAreas)
+TEST(SurfacePhaseTest, GlobalSurveyIncludesColdAndEvaporatingWater)
 {
     for (double temperature : {150.0, 450.0, 271.0})
     {
@@ -318,8 +318,53 @@ TEST(SurfacePhaseTest, ScreeningIncludesDeepColdWaterAndRejectsHotAreas)
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         } while (map.phase_state()->survey && std::chrono::steady_clock::now() < deadline);
         ASSERT_FALSE(map.phase_state()->survey);
-        EXPECT_EQ(map.phase_state()->candidates.empty(), temperature == 450.0);
+        EXPECT_EQ(map.phase_state()->candidates.size(), 256u);
     }
+}
+
+TEST(SurfacePhaseTest, HotBasinsRefreshAcrossTheGlobeAndRecoverWater)
+{
+    WaterPhaseTestMap map(256, 128);
+    const auto sweep = [&](double temperature, double epoch, SurfaceMaterial material)
+    {
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        do
+        {
+            map.update_water_phase(uniform_phase_climate(temperature), epoch, .3, .3, 35, oneatm, .5, 1000, false);
+            bool complete = true;
+            for (unsigned long row = 0; row < 128; ++row)
+            {
+                for (unsigned long column = 0; column < 256; ++column)
+                {
+                    if (map.surface_pixel(column, row).second != material) complete = false;
+                }
+            }
+            if (complete) return true;
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        } while (std::chrono::steady_clock::now() < deadline);
+        return false;
+    };
+    ASSERT_TRUE(sweep(612, 100, SurfaceMaterial::ground));
+    std::set<int> shades;
+    for (unsigned long row = 0; row < 128; ++row)
+    {
+        for (unsigned long column = 0; column < 256; ++column)
+        {
+            shades.insert(map.surface_pixel(column, row).first.r);
+        }
+    }
+    EXPECT_GT(shades.size(), 10u);
+    const auto snapshot = map.water_phase_to_json();
+    WaterPhaseTestMap restored(256, 128);
+    restored.water_phase_from_json(snapshot);
+    for (unsigned long row = 0; row < 128; ++row)
+    {
+        for (unsigned long column = 0; column < 256; ++column)
+        {
+            EXPECT_EQ(map.surface_pixel(column, row).first.r, restored.surface_pixel(column, row).first.r);
+        }
+    }
+    ASSERT_TRUE(sweep(290, 864100, SurfaceMaterial::water));
 }
 
 TEST(SurfacePhaseTest, EarthResolutionSweepHasBoundedPublicationAndReachesEveryLongitude)

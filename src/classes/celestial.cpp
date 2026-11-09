@@ -3657,9 +3657,10 @@ void Map::generate_rocky_map(CelestialObject *cel)
                     else if (ocean && surface.evaporated_surface)
                     {
                         surface_materials[idx] = SurfaceMaterial::ground;
-                        red_data[idx] = 105 * r_weight;
-                        green_data[idx] = 85 * r_weight;
-                        blue_data[idx] = 60 * r_weight;
+                        const auto basin = exposed_basin_color(nx, ny, nz);
+                        red_data[idx] = basin[0];
+                        green_data[idx] = basin[1];
+                        blue_data[idx] = basin[2];
                     }
                     red_data[idx] = (1 - frost) * red_data[idx] + frost * (ocean ? procedural_sea_ice_color[0] : 192 + 63 * r_weight);
                     green_data[idx] = (1 - frost) * green_data[idx] + frost * (ocean ? procedural_sea_ice_color[1] : 224 + 31 * r_weight);
