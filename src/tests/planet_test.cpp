@@ -4703,7 +4703,12 @@ TEST_F(OceanPersistenceTest, SurfaceAirGradientPreservesZeroEstimatesAndMissingV
 
 TEST_F(OceanPersistenceTest, PhysicalAtmosphereSetsTheHorizonAndLiveGradientEditsTakeEffect)
 {
-    set(viewer_eye_height, 1.75);
+    struct RestoreEye
+    {
+        double previous = viewer_eye_height;
+        ~RestoreEye() { viewer_eye_height = previous; }
+    } restore;
+    viewer_eye_height = 1.75;
     Planet* world = make_planet(make_star());
     world->volumetric_mean_radius = 6051800;
     world->mass = 8.87 * 6051800 * 6051800 / G;
