@@ -11,6 +11,7 @@
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp>
 #include "../classes/planet.h"
+#include "../classes/surfacerefraction.h"
 #include "../classes/moon.h"
 #include "../classes/patch.h"
 #include "../classes/orbit_spacing.h"
@@ -4682,4 +4683,40 @@ TEST_F(PlanetClassificationEvidenceTest, DISABLED_IncompleteAbundancesCannotPres
     EXPECT_DOUBLE_EQ(world->get_surface_pressure(), 0);
     EXPECT_DOUBLE_EQ(gases->N2_portion, 0);
     EXPECT_DOUBLE_EQ(gases->CO2_portion, 0);
+}
+
+TEST_F(OceanPersistenceTest, SurfaceAirGradientPreservesZeroEstimatesAndMissingValues)
+{
+    Planet* world = make_planet(make_star());
+    EXPECT_FALSE(world->to_json().contains("surface_air_gradient_k_m"));
+    for (const json value : {json(0), json("0.7?"), json(-.02)})
+    {
+        json record = world->to_json();
+        record["surface_air_gradient_k_m"] = value;
+        Planet restored;
+        ASSERT_TRUE(restored.from_json(record));
+        const double expected = value.is_string() ? .7 : value.get<double>();
+        EXPECT_DOUBLE_EQ(restored.surface_air_gradient_k_m, expected);
+        EXPECT_DOUBLE_EQ(restored.to_json()["surface_air_gradient_k_m"], expected);
+    }
+}
+
+TEST_F(OceanPersistenceTest, PhysicalAtmosphereSetsTheHorizonAndLiveGradientEditsTakeEffect)
+{
+    set(viewer_eye_height, 1.75);
+    Planet* world = make_planet(make_star());
+    world->volumetric_mean_radius = 6051800;
+    world->mass = 8.87 * 6051800 * 6051800 / G;
+    world->temperature = 737;
+    world->temperature_supplied = true;
+    world->ensure_atmosphere()->surface_pressure = 9.2e6;
+    world->atm->ensure_composition()->CO2_portion = 1;
+    const double lift = world->atmospheric_horizon_lift();
+    const auto model = SurfaceRefraction::from_lift(world->get_equatorial_radius(), viewer_eye_height, lift);
+    EXPECT_LT(lift, 0);
+    EXPECT_NEAR(model.range, 511, 15);
+    world->surface_air_gradient_k_m = 0;
+    EXPECT_GT(world->atmospheric_horizon_lift(), lift);
+    world->surface_air_gradient_k_m = .7;
+    EXPECT_NEAR(world->atmospheric_horizon_lift(), lift, 1e-6);
 }

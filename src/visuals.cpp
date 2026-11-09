@@ -1,6 +1,7 @@
 #include "performance_options.h"
 #include "classes/galaxygeometry.h"
 #include "classes/serial.h"
+#include "classes/surfacerefraction.h"
 #include "classes/systemviewcamera.h"
 
 #include "globals.h"
@@ -1028,7 +1029,8 @@ static PressureHaze surface_pressure_haze(Planet* planet)
     return {};
     #else
     if (!show_clouds) return {};
-    PressureHaze haze = planetary_pressure_scattering(planet);
+    double column_height = 0;
+    PressureHaze haze = planetary_pressure_scattering(planet, true, &column_height);
     if (!haze.active()) return haze;
     double high[3], low[3], umbra[3];
     atmosphere_colors(planet, high, low, umbra);
@@ -1056,11 +1058,8 @@ static PressureHaze surface_pressure_haze(Planet* planet)
         }
     }
     // A diffuse illumination closure, not a full radiative-transfer solution.
-    for (int channel = 0; channel < 3; ++channel)
-    {
-        haze.light[channel] = 255 * illumination * tint[channel] * airlight[channel];
-    }
-    haze.cap_light_luminance();
+    for (int channel = 0; channel < 3; ++channel) airlight[channel] *= tint[channel];
+    haze.illuminate(airlight, illumination, column_height);
     return haze;
     #endif
 }
@@ -5899,6 +5898,22 @@ void draw_horizon()
             is_day = fmin(1, is_day);
         }
 
+        const auto ground_light = haze.surface_illumination(is_day);
+        const auto lit_surface_color = [&](const RGB3& sample)
+        {
+            return rgba_apply_redlight(IM_COL32(fmin(255, ground_light[0] * sample.r),
+                fmin(255, ground_light[1] * sample.g), fmin(255, ground_light[2] * sample.b),
+                dragging ? (192 - 128 * is_day) : 255));
+        };
+
+        const auto incident_tint = cel->type == lavaworld
+            ? std::array<double, 3>{1, 1, 1} : haze.illumination_tint();
+        const auto lit_scenery_color = [&](double red, double green, double blue, int alpha)
+        {
+            return rgba_apply_redlight(IM_COL32(red * incident_tint[0], green * incident_tint[1],
+                blue * incident_tint[2], alpha));
+        };
+
         Map *map = gaseous ? cel->cloud_map : cel->surf_map;
         double surface_radius = cel->get_equatorial_radius();
         if (surface_radius <= 0)
@@ -5932,9 +5947,9 @@ void draw_horizon()
 
         const double surface_eye = fmax(0.01, viewer_eye_height);
         const double surface_lift = p && !gaseous ? p->atmospheric_horizon_lift() : 0.0;
-        // Keep terrain sampling on the geometric horizon ring, with visual lift in projection.
-        // Enlarging this ring inflates relief and separates the sea mesh from the horizon.
-        const double surface_range = sqrt(2.0 * surface_radius * surface_eye);
+        const auto surface_refraction = SurfaceRefraction::from_lift(surface_radius, surface_eye, surface_lift);
+        const double surface_range = surface_refraction.range;
+        const double surface_bending = .5 / surface_radius - surface_refraction.curvature;
         const double phase_reach = std::max(surface_range, fmin(fmax(60000.0, surface_range * 8), surface_radius * .15));
         const uint64_t local_phase_revision = map ? map->water_phase_near(viewer_lat, viewer_lon, surface_radius, phase_reach) : 0;
         const unsigned int local_surface_revision = (map ? map->gen : 0u) ^ static_cast<unsigned int>(local_phase_revision * 2654435761u);
@@ -5945,7 +5960,7 @@ void draw_horizon()
         const bool shared_surface = performance_enabled(30) && !horizon_terrain_cpu_reference;
         const HorizonSurfaceContext surface_context = shared_surface
             ? HorizonSurfaceContext{cos(altitude), sin(altitude), cos(viewer_lat), sin(viewer_lat),
-                zoom * dispcx, .5 / surface_radius - surface_lift / surface_range}
+                zoom * dispcx, surface_refraction.curvature}
             : HorizonSurfaceContext{};
         const auto surface_cos_altitude = [&]() { return shared_surface ? surface_context.cos_alt : cos(altitude); };
         const auto surface_sin_altitude = [&]() { return shared_surface ? surface_context.sin_alt : sin(altitude); };
@@ -5954,7 +5969,7 @@ void draw_horizon()
         const auto surface_focal = [&]() { return shared_surface ? surface_context.focal : zoom * dispcx; };
         const auto surface_curvature = [&]()
         {
-            return shared_surface ? surface_context.curvature : .5 / surface_radius - surface_lift / surface_range;
+            return shared_surface ? surface_context.curvature : surface_refraction.curvature;
         };
         const bool terrain_mesh = show_terrain && surface_biomes
             && !ocean_world && cel->type != lavaworld;
@@ -6079,9 +6094,9 @@ void draw_horizon()
             }
         }
 
-        rgb.r = fmin(255, is_day*rgb.r);
-        rgb.g = fmin(255, is_day*rgb.g);
-        rgb.b = fmin(255, is_day*rgb.b);
+        rgb.r = fmin(255, ground_light[0]*rgb.r);
+        rgb.g = fmin(255, ground_light[1]*rgb.g);
+        rgb.b = fmin(255, ground_light[2]*rgb.b);
 
         if (p && p->type == lavaworld && p->night_map)
         {
@@ -6103,6 +6118,7 @@ void draw_horizon()
             static double cached_lat = 1e293, cached_lon = 1e293;
             static int cached_whereami = -2;
             static double cached_eye_height = -1.0;
+            static double cached_surface_lift = NAN;
             static PerlinNoise skyline_noise;
             static SurfaceFieldCache skyline_field;
             static std::array<SurfaceFieldCache::Patch, hznodes> skyline_patches;
@@ -6122,7 +6138,7 @@ void draw_horizon()
             static bool cached_cpu_reference = false;
 
             if (cached_whereami != whereami || cached_lat != viewer_lat || cached_lon != viewer_lon
-                || cached_eye_height != viewer_eye_height || cached_bump_map != cel->surf_map
+                || cached_eye_height != viewer_eye_height || cached_surface_lift != surface_lift || cached_bump_map != cel->surf_map
                 || cached_bump_generation != (cel->surf_map ? cel->surf_map->gen : 0) || cached_radius != surface_radius
                 || cached_cpu_reference != (horizon_terrain_cpu_reference || !performance_enabled(21)))
             {
@@ -6172,9 +6188,9 @@ void draw_horizon()
 
                 bool has_bump = (cel->surf_map && cel->surf_map->has_bump_data());
                 double h_eye = shared_surface ? surface_eye : fmax(0.01, viewer_eye_height);
-                double geom_dist = sqrt(2.0 * R_planet * h_eye);
+                double geom_dist = surface_range;
                 double E0 = has_bump ? cel->surf_map->elevation_at_bilinear(viewer_lat, viewer_lon) : 0.0;
-                double hz_dip = acos(R_planet / (R_planet + h_eye));
+                double hz_dip = surface_refraction.dip;
 
                 std::array<std::array<double, 3>, 8> bump_steps;
                 const double max_dist = fmin(250000.0, R_planet * 0.1);
@@ -6200,7 +6216,7 @@ void draw_horizon()
                             double d_lon = atan2(skyline_directions[j][0] * sine * cos_lat, cosine - sin_lat * sin_phi);
                             double lam = viewer_lon + d_lon;
                             double Es = cel->surf_map->elevation_at_bilinear(phi, lam);
-                            double h_apparent = (Es - E0) - (s * s) / (2.0 * R_planet);
+                            double h_apparent = (Es - E0) - surface_refraction.curvature * s * s;
                             double alpha = (h_apparent - h_eye) / s;
                             if (alpha > max_alpha)
                             {
@@ -6218,6 +6234,7 @@ void draw_horizon()
                 cached_lon = viewer_lon;
                 cached_whereami = whereami;
                 cached_eye_height = viewer_eye_height;
+                cached_surface_lift = surface_lift;
                 cached_bump_map = cel->surf_map;
                 cached_bump_generation = cel->surf_map ? cel->surf_map->gen : 0;
                 cached_radius = surface_radius;
@@ -6670,7 +6687,7 @@ void draw_horizon()
                     for (size_t vertex = 0; vertex < mesh.size(); ++vertex)
                     {
                         const auto& source = mesh[vertex];
-                        const double refraction = surface_lift * fmin(1.0, source.distance / surface_range) * source.distance;
+                        const double refraction = surface_bending * source.distance * source.distance;
                         terrain_up[vertex] = source.elevation - surface_eye
                             - source.distance * source.distance / (2.0 * surface_radius) + refraction;
                     }
@@ -6702,7 +6719,7 @@ void draw_horizon()
                                     {
                                         const int sector = (column + dc) % terrain_columns;
                                         const auto& source = mesh[(row + dr) * terrain_columns + sector];
-                                        const double refraction = surface_lift * fmin(1.0, source.distance / surface_range) * source.distance;
+                                        const double refraction = surface_bending * source.distance * source.distance;
                                         const double up = source.elevation - surface_eye
                                             - source.distance * source.distance / (2.0 * surface_radius) + refraction;
                                         points[dr * 3 + dc] = {source.distance * directions[sector][1],
@@ -6802,7 +6819,7 @@ void draw_horizon()
                         if ((performance_enabled(25) && !horizon_terrain_cpu_reference)) up = terrain_up[vertex];
                         else
                         {
-                            const double refraction = surface_lift * fmin(1.0, source.distance / surface_range) * source.distance;
+                            const double refraction = surface_bending * source.distance * source.distance;
                             up = source.elevation - surface_eye
                                 - source.distance * source.distance / (2.0 * surface_radius) + refraction;
                         }
@@ -6837,7 +6854,7 @@ void draw_horizon()
                             if ((performance_enabled(25) && !horizon_terrain_cpu_reference)) up = terrain_up[vertex];
                             else
                             {
-                                const double refraction = surface_lift * fmin(1.0, source.distance / surface_range) * source.distance;
+                                const double refraction = surface_bending * source.distance * source.distance;
                                 up = source.elevation - surface_eye
                                     - source.distance * source.distance / (2.0 * surface_radius) + refraction;
                             }
@@ -7123,9 +7140,7 @@ void draw_horizon()
                     source_reach / surface_radius + (surface_biomes ? biome_angle : 0) + 1e-8, uniform_source, true);
             const auto uniform_source_color = [&]()
             {
-                return rgba_apply_redlight(IM_COL32(fmin(255, is_day * uniform_source.r),
-                    fmin(255, is_day * uniform_source.g), fmin(255, is_day * uniform_source.b),
-                    dragging ? (192 - 128 * is_day) : 255));
+                return lit_surface_color(uniform_source);
             };
             const auto paint_uniform_source = [&]()
             {
@@ -7171,6 +7186,7 @@ void draw_horizon()
                 same_lighting = true;
                 ground_inputs[16] = ground_inputs[21] = 0;
             }
+            ground_inputs.insert(ground_inputs.end(), ground_light.begin(), ground_light.end());
             ground_inputs.insert(ground_inputs.end(), haze.extinction.begin(), haze.extinction.end());
             for (double light : haze.light) ground_inputs.push_back(uniform_lit_source ? 0 : std::clamp(int(light), 0, 255));
             ground_inputs.push_back(dev_dial);
@@ -7331,9 +7347,7 @@ void draw_horizon()
                     const auto coord = ground_coord(x, y);
                     const RGB3 sample = surface_sample(coord.first, coord.second);
                     remember_channels(sample);
-                    color = rgba_apply_redlight(IM_COL32(fmin(255, is_day * sample.r),
-                        fmin(255, is_day * sample.g), fmin(255, is_day * sample.b),
-                        dragging ? (192 - 128 * is_day) : 255));
+                    color = lit_surface_color(sample);
                 }
                 const double distance = visible_distance(x, y);
                 return pressure_haze_color(haze, color, std::isfinite(distance) ? distance : surface_range);
@@ -7344,8 +7358,7 @@ void draw_horizon()
                 const RGB3 sample = surface_sample(coord.first, coord.second);
                 remember_channels(sample);
                 gpu_rectangles.push_back({left, top, right, bottom,
-                    rgba_apply_redlight(IM_COL32(fmin(255, is_day * sample.r), fmin(255, is_day * sample.g),
-                        fmin(255, is_day * sample.b), dragging ? (192 - 128 * is_day) : 255))});
+                    lit_surface_color(sample)});
             };
             // Subdivide map boundaries while drawing uniform regions as large patches.
             const auto patch = [&](const auto &self, int left, int top, int right, int bottom) -> void
@@ -7388,9 +7401,7 @@ void draw_horizon()
                     if (gpu_ground && gpu_tile_color(left, top, right, bottom, tile_color))
                     {
                         gpu_rectangles.push_back({left, top, right, bottom,
-                            rgba_apply_redlight(IM_COL32(fmin(255, is_day * tile_color.r),
-                                fmin(255, is_day * tile_color.g), fmin(255, is_day * tile_color.b),
-                                dragging ? (192 - 128 * is_day) : 255))});
+                            lit_surface_color(tile_color)});
                         return;
                     }
                     if (gpu_ground && right - left > 4 && bottom - top > 4)
@@ -7445,9 +7456,7 @@ void draw_horizon()
                 if (gpu_ground && gpu_tile_color(left, top, right, bottom, nearby_color, true))
                 {
                     gpu_rectangles.push_back({left, top, right, bottom,
-                        rgba_apply_redlight(IM_COL32(fmin(255, is_day * nearby_color.r),
-                            fmin(255, is_day * nearby_color.g), fmin(255, is_day * nearby_color.b),
-                            dragging ? (192 - 128 * is_day) : 255))});
+                        lit_surface_color(nearby_color)});
                     return;
                 }
                 const ImU32 color = ground_color((left + right) * 0.5, (top + bottom) * 0.5);
@@ -8041,9 +8050,8 @@ void draw_horizon()
                 horizon_lift_rad = shared_surface ? surface_lift : p->atmospheric_horizon_lift();
             }
 
-            // Scenery shares the terrain's geometric horizon ring. Applying the
-            // visual lift to this distance as well suppresses nearby refraction.
-            const double s_horizon = shared_surface ? surface_range : sqrt(2.0 * R_planet * h_eye);
+            const double s_horizon = surface_range;
+            const double scenery_bending = .5 / R_planet - surface_refraction.curvature;
 
             double sun_light = fmax(0.0, sin(sun_elev)) * is_day;
             double amb_light = fmax(0.04, 0.22 * is_day + starlight * 0.4);
@@ -8436,9 +8444,9 @@ void draw_horizon()
                             double y_base_world = -h_eye - curv_drop;
                             double y_crown_world = canopy_h_m - h_eye - curv_drop;
 
-                            if (s_horizon > 0.0 && horizon_lift_rad > 0.0)
+                            if (s_horizon > 0.0)
                             {
-                                double lift = fmin(1.0, dist_m / s_horizon) * horizon_lift_rad * dist_m;
+                                double lift = scenery_bending * dist_m * dist_m;
                                 y_base_world += lift;
                                 y_crown_world += lift;
                             }
@@ -8521,7 +8529,7 @@ void draw_horizon()
                             double delta = atan(h_eye / dist_m) + (dist_m / (2.0 * R_planet));
                             if (s_horizon > 0.0)
                             {
-                                delta -= fmin(1.0, dist_m / s_horizon) * horizon_lift_rad;
+                                delta -= scenery_bending * dist_m;
                             }
                             if (dittrsa)
                             {
@@ -8735,9 +8743,9 @@ void draw_horizon()
 
                             double curv_drop_rock = (rk.ground_dist * rk.ground_dist) / (2.0 * R_planet);
                             double y_base_world = -h_eye - curv_drop_rock;
-                            if (s_horizon > 0.0 && horizon_lift_rad > 0.0)
+                            if (s_horizon > 0.0)
                             {
-                                y_base_world += fmin(1.0, rk.ground_dist / s_horizon) * horizon_lift_rad * rk.ground_dist;
+                                y_base_world += scenery_bending * rk.ground_dist * rk.ground_dist;
                             }
 
                             double z_base_cam = y_base_world * sin_alt + z_base_horiz * cos_alt;
@@ -8749,9 +8757,9 @@ void draw_horizon()
                             double dist_tip = sqrt(u_tip * u_tip + v_tip * v_tip);
                             double curv_drop_tip = (dist_tip * dist_tip) / (2.0 * R_planet);
                             double y_tip_world = -h_eye - curv_drop_tip;
-                            if (s_horizon > 0.0 && horizon_lift_rad > 0.0)
+                            if (s_horizon > 0.0)
                             {
-                                y_tip_world += fmin(1.0, dist_tip / s_horizon) * horizon_lift_rad * dist_tip;
+                                y_tip_world += scenery_bending * dist_tip * dist_tip;
                             }
 
                             double z_tip_cam = y_tip_world * sin_alt + z_tip_horiz * cos_alt;
@@ -8876,7 +8884,7 @@ void draw_horizon()
                             pg = fmin(255.0, (base_map_rgb.g * 0.6) * amb_light);
                             pb = fmin(255.0, (base_map_rgb.b * 0.6) * amb_light);
                         }
-                        ImU32 peb_col = rgba_apply_redlight(IM_COL32(pr, pg, pb, 255));
+                        ImU32 peb_col = lit_scenery_color(pr, pg, pb, 255);
                         double px = is_vegetation ? rk.crown_x : rx;
                         double py = is_vegetation ? rk.crown_y : (ry - rh * 0.5);
                         if (gpu_plants && is_vegetation)
@@ -8936,14 +8944,14 @@ void draw_horizon()
                         int tr = fmin(255.0, PLANT_TRUNK_COLOR_R * trunk_light);
                         int tg = fmin(255.0, PLANT_TRUNK_COLOR_G * trunk_light);
                         int tb = fmin(255.0, PLANT_TRUNK_COLOR_B * trunk_light);
-                        ImU32 trunk_col = rgba_apply_redlight(IM_COL32(tr, tg, tb, 255));
+                        ImU32 trunk_col = lit_scenery_color(tr, tg, tb, 255);
 
                         // Oblate spheroid crown in vegetation color at the top of the stalk
                         double crown_light = amb_light * 0.65 + sun_light * 2.5 * fmax(0.15, (0.55 + 0.45 * sun_cos));
                         int cr = fmin(255.0, veg_base.r * tint_factor * crown_light);
                         int cg = fmin(255.0, veg_base.g * tint_factor * crown_light);
                         int cb = fmin(255.0, veg_base.b * tint_factor * crown_light);
-                        ImU32 crown_col = rgba_apply_redlight(IM_COL32(cr, cg, cb, 255));
+                        ImU32 crown_col = lit_scenery_color(cr, cg, cb, 255);
                         SceneryPlantGpu gpu_plant;
                         gpu_plant.crown = ImVec4(cx, cy, crown_rx, crown_ry);
                         gpu_plant.crown_color = pressure_haze_color(haze, crown_col, haze_distance);
@@ -9179,7 +9187,7 @@ void draw_horizon()
                                 }
                             }
                             #endif
-                            ImU32 fcol = rgba_apply_redlight(IM_COL32(cr, cg, cb, 255));
+                            ImU32 fcol = lit_scenery_color(cr, cg, cb, 255);
 
                             facets_to_draw[facet_count].depth = (v0.z + v1.z + v2.z) / 3.0;
                             facets_to_draw[facet_count].p0 = screen_v[idx0];

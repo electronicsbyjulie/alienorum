@@ -2,6 +2,7 @@
 #define ALIENORUM_HORIZON_BACKGROUND_H
 
 #include "framescratch.h"
+#include "surfacerefraction.h"
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -18,7 +19,8 @@ namespace alienorum
             || !std::isfinite(eye) || !std::isfinite(lift) || !std::isfinite(altitude)) return height;
         const double cosine = cos(altitude), sine = sin(altitude), cy = height * .5, cx = width * .5;
         if (cosine < 0 || cosine - cy / focal * sine <= 0 || cosine + cy / focal * sine <= 0) return height;
-        const double range = sqrt(2 * radius * eye), curvature = .5 / radius - lift / range;
+        const auto refraction = SurfaceRefraction::from_lift(radius, eye, lift);
+        const double range = refraction.range, curvature = refraction.curvature;
         if (!std::isfinite(range) || !std::isfinite(curvature)) return height;
         const auto covered = [&](double sx, double sy)
         {

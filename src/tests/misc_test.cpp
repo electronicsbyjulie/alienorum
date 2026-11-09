@@ -3,6 +3,7 @@
 #include "../classes/misc.h"
 #include "../classes/numeric.h"
 #include "../classes/point.h"
+#include "../classes/surfacerefraction.h"
 #include "../classes/systemviewcamera.h"
 #include "../classes/surfacescatter.h"
 #include "../classes/surfacebiomes.h"
@@ -1235,4 +1236,41 @@ TEST(SystemViewCameraTest, PanningRotatesTheSurfaceAndLightTogetherAndPreservesT
         surface.x * light.x + surface.y * light.y + surface.z * light.z, 1e-12);
     const SystemViewCamera fallback{Point()};
     EXPECT_TRUE(std::isfinite(fallback.to_camera(Point(0, 1, 0)).y));
+}
+
+TEST(SurfaceRefractionTest, DenseHotCarbonDioxideMatchesTheSurfaceCalibration)
+{
+    for (const double eye : {1.0, 1.75})
+    {
+        const auto model = SurfaceRefraction::prepare(6051800, eye, 9.2e6, 737, 8.87, .044, .00045);
+        EXPECT_NEAR(model.gradient, .7, .001);
+        EXPECT_NEAR(model.range, eye == 1 ? 387 : 511, 3);
+        EXPECT_NEAR(model.dip * 180 / _pi, eye == 1 ? .296 : .392, .003);
+        EXPECT_LT(model.lift, 0);
+        // The same projected parabola is tangent to the apparent horizon.
+        EXPECT_NEAR((eye + model.curvature * model.range * model.range) / model.range,
+            tan(model.dip), 1e-12);
+    }
+}
+
+TEST(SurfaceRefractionTest, AirlessAndTerrestrialViewsRetainOrdinaryHorizons)
+{
+    const auto vacuum = SurfaceRefraction::prepare(6371000, 1.75, 0, 288.15, 9.81, .02897, .000293);
+    EXPECT_NEAR(vacuum.range, sqrt(2 * 6371000 * 1.75), .01);
+    const auto air = SurfaceRefraction::prepare(6371000, 1.75, 101325, 288.15, 9.81, .02897, .000293);
+    EXPECT_GT(air.range, vacuum.range);
+    EXPECT_LT(air.range, vacuum.range * 1.2);
+    EXPECT_GT(air.lift, 0);
+}
+
+TEST(SurfaceRefractionTest, SuppliedGradientsOverrideTheEstimateAndReconstructTheSameGeometry)
+{
+    const auto hot = SurfaceRefraction::prepare(6051800, 1.75, 9.2e6, 737, 8.87, .044, .00045, 1);
+    const auto mild = SurfaceRefraction::prepare(6051800, 1.75, 9.2e6, 737, 8.87, .044, .00045, .1);
+    EXPECT_LT(hot.range, mild.range);
+    EXPECT_DOUBLE_EQ(hot.gradient, 1);
+    EXPECT_DOUBLE_EQ(mild.gradient, .1);
+    const auto restored = SurfaceRefraction::from_lift(6051800, 1.75, hot.lift);
+    EXPECT_DOUBLE_EQ(restored.range, hot.range);
+    EXPECT_DOUBLE_EQ(restored.curvature, hot.curvature);
 }

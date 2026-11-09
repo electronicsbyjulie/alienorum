@@ -55,6 +55,49 @@ namespace alienorum
             return result;
         }
 
+        void illuminate(std::array<double, 3> incident, double daylight, double column_height_m)
+        {
+            // Two-stream diffuse transmission replaces a direct-beam exponential:
+            // molecular scattering redistributes light rather than absorbing it.
+            // RGB inputs and outputs are display-space, so encode the linear
+            // transmission before applying it to the incident color.
+            double maximum = 0;
+            for (int channel = 0; channel < 3; ++channel)
+            {
+                const double tau = extinction[channel] * std::max(0.0, column_height_m);
+                incident[channel] = std::max(0.0, incident[channel]) * std::pow(1 / (1 + .75 * tau), 1 / 2.2);
+                maximum = std::max(maximum, incident[channel]);
+            }
+            for (int channel = 0; channel < 3; ++channel)
+            {
+                light[channel] = maximum > 0 ? 255 * std::clamp(daylight, 0.0, 1.0) * incident[channel] / maximum : 0;
+            }
+        }
+
+        std::array<double, 3> illumination_tint() const
+        {
+            std::array<double, 3> result = {1, 1, 1};
+            const double maximum = std::max({light[0], light[1], light[2]});
+            if (!active() || maximum <= 0) return result;
+            for (int channel = 0; channel < 3; ++channel)
+                result[channel] = 1 - sky_opacity + sky_opacity * light[channel] / maximum;
+            return result;
+        }
+
+        std::array<double, 3> surface_illumination(double daylight) const
+        {
+            std::array<double, 3> result{};
+            const double diffuse = active() ? sky_opacity : 0;
+            // Match the scenery's diffuse ambient response (.22 + .35), instead
+            // of lighting the flat terrain at full direct-sun brightness.
+            for (int channel = 0; channel < 3; ++channel)
+            {
+                result[channel] = std::clamp(daylight, 0.0, 1.0) * (1 - diffuse)
+                    + .57 * diffuse * light[channel] / 255;
+            }
+            return result;
+        }
+
         double transmission(double distance_m, int channel) const
         {
             if (!active() || !(distance_m > 0)) return 1;

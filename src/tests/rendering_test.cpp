@@ -7873,8 +7873,9 @@ TEST(HorizonBackgroundTest, CertifiedRowsCoverEveryPixelForPositiveAndNegativeCu
         const float row = opaque_background_bottom(xs, ys, 65, 64, 64, radius, eye, lift, altitude, focal);
         if (row >= 64) continue;
         ++certified;
-        const long double range = sqrtl(2.L * radius * eye);
-        const long double curvature = .5L / radius - lift / range;
+        const long double dip = std::max(1e-8L, acosl(radius / (static_cast<long double>(radius) + eye)) - lift);
+        const long double range = 2.L * eye / tanl(dip);
+        const long double curvature = tanl(dip) * tanl(dip) / (4.L * eye);
         for (int y = static_cast<int>(row); y < 64; ++y)
         for (int x = 0; x < 64; ++x)
         {
@@ -8879,4 +8880,39 @@ TEST_F(UniverseFixture, SystemViewRetainsTheCustomMousePointer)
     std::tie(view_mode, hide_mouse, frames_without_mousemove, cursor_size, circle_size) = previous;
     ImGui::DestroyContext(context);
     ImGui::SetCurrentContext(previous_context);
+}
+
+TEST(PressureHazeTest, DiffuseTransportUsesCompositionAndColumnInsteadOfAPlanetPalette)
+{
+    auto air = PressureHaze::prepare(9.2e6, 737, 2.5, 0, 15000);
+    air.illuminate({1, 1, 1}, 1, 15000);
+    EXPECT_NEAR(air.light[0], 255, 1e-9);
+    EXPECT_GT(air.light[0], air.light[1]);
+    EXPECT_GT(air.light[1], air.light[2]);
+    EXPECT_GT(.2126 * air.light[0] + .7152 * air.light[1] + .0722 * air.light[2], 140);
+    auto light_gas = PressureHaze::prepare(9.2e6, 737, .23, 0, 15000);
+    light_gas.illuminate({1, 1, 1}, 1, 15000);
+    EXPECT_GT(light_gas.light[2], air.light[2]);
+    auto thin = PressureHaze::prepare(101325, 288, 1, 0, 8000);
+    thin.illuminate({1, 1, 1}, 1, 8000);
+    EXPECT_EQ(thin.light, (std::array<double, 3>{255, 255, 255}));
+    EXPECT_EQ(thin.surface_illumination(.8), (std::array<double, 3>{.8, .8, .8}));
+}
+
+TEST(PressureHazeTest, OpaqueDiffuseSkyLightsGroundWithTheSameSpectrumAndLowerBrightness)
+{
+    auto air = PressureHaze::prepare(9.2e6, 737, 2.5, 0, 15000);
+    air.illuminate({1, .9, .5}, 1, 15000);
+    const auto terrain = air.surface_illumination(1);
+    EXPECT_GT(terrain[0], terrain[1]);
+    EXPECT_GT(terrain[1], terrain[2]);
+    for (int channel = 0; channel < 3; ++channel)
+    {
+        EXPECT_LT(terrain[channel], air.light[channel] / 255);
+        EXPECT_GT(terrain[channel], 0);
+    }
+    air.illuminate({1, .9, .5}, 0, 15000);
+    for (const double channel : air.surface_illumination(0)) EXPECT_EQ(channel, 0);
+    air.illuminate({0, 0, 0}, 1, 15000);
+    EXPECT_EQ(air.light, (std::array<double, 3>{0, 0, 0}));
 }
