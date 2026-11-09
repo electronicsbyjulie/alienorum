@@ -8901,6 +8901,48 @@ void CatalogReader::dedup_planets(json& planets_array)
         return c == "A" || c == "B" || c == "C" || c == "D";
     };
 
+    const auto compatible_components = [&](size_t first, size_t second)
+    {
+        const auto& a = candidates[first].comp;
+        const auto& b = candidates[second].comp;
+        return !(is_single_comp(a) && is_single_comp(b) && a != b)
+            && !((a == "AB" && b == "B") || (a == "B" && b == "AB"));
+    };
+    const auto same_host_region = [&](size_t first, size_t second)
+    {
+        const auto& a = candidates[first];
+        const auto& b = candidates[second];
+        if (!compatible_components(first, second)) return false;
+        if (!a.norm_h.empty() && a.norm_h == b.norm_h) return true;
+        if (!a.has_coords || !b.has_coords || fabs(a.dec - b.dec) > .025) return false;
+        double ra = fabs(a.ra - b.ra);
+        if (ra > 180) ra = 360 - ra;
+        return hypot(ra * cos((a.dec + b.dec) * .5 * fiftyseventh), a.dec - b.dec) <= .025;
+    };
+    const auto cross_source_orbit_match = [&](size_t first, size_t second)
+    {
+        const double a = candidates[first].per, b = candidates[second].per;
+        const std::string provider_a = planets_array[first].value("source_catalog", "");
+        const std::string provider_b = planets_array[second].value("source_catalog", "");
+        if (a <= 0 || b <= 0 || provider_a.empty() || provider_b.empty() || provider_a == provider_b) return false;
+        const double difference = fabs(a - b) / std::max(a, b);
+        if (difference > .18) return false;
+        // Different letter schemes can describe the same orbit. Each must be the
+        // other's closest period from the other provider, so tightly packed real
+        // planets are not collapsed just because their periods are similar.
+        for (size_t other = 0; other < n; ++other)
+        {
+            if (other == first || other == second || candidates[other].per <= 0) continue;
+            const double period = candidates[other].per;
+            const std::string provider = planets_array[other].value("source_catalog", "");
+            if (provider == provider_b && same_host_region(first, other)
+                && fabs(a - period) / std::max(a, period) < difference) return false;
+            if (provider == provider_a && same_host_region(second, other)
+                && fabs(b - period) / std::max(b, period) < difference) return false;
+        }
+        return true;
+    };
+
     std::vector<size_t> coord_indices;
     coord_indices.reserve(n);
     for (size_t i = 0; i < n; ++i)
@@ -8974,10 +9016,7 @@ void CatalogReader::dedup_planets(json& planets_array)
             }
 
             // Planet letter protection: 'b' vs 'c'
-            const double period_scale = std::max(candidates[idx1].per, candidates[idx2].per);
-            const bool same_orbit_across_sources = period_scale > 0 && candidates[idx1].per > 0 && candidates[idx2].per > 0
-                && fabs(candidates[idx1].per - candidates[idx2].per) / period_scale < .02
-                && planets_array[idx1].value("source_catalog", "") != planets_array[idx2].value("source_catalog", "");
+            const bool same_orbit_across_sources = cross_source_orbit_match(idx1, idx2);
             if (!same_orbit_across_sources && !candidates[idx1].letter.empty() && !candidates[idx2].letter.empty() &&
                 candidates[idx1].letter != candidates[idx2].letter)
             {
@@ -8996,7 +9035,7 @@ void CatalogReader::dedup_planets(json& planets_array)
                     orbit_match = true;
                 }
             }
-            if (!orbit_match && sma1 > 0 && sma2 > 0)
+            if (!orbit_match && (per1 <= 0 || per2 <= 0) && sma1 > 0 && sma2 > 0)
             {
                 double max_s = std::max(sma1, sma2);
                 if (max_s > 0 && fabs(sma1 - sma2) / max_s <= 0.18)
@@ -9084,10 +9123,7 @@ void CatalogReader::dedup_planets(json& planets_array)
                 {
                     continue;
                 }
-                const double period_scale = std::max(candidates[idx1].per, candidates[idx2].per);
-                const bool same_orbit_across_sources = period_scale > 0 && candidates[idx1].per > 0 && candidates[idx2].per > 0
-                    && fabs(candidates[idx1].per - candidates[idx2].per) / period_scale < .02
-                    && planets_array[idx1].value("source_catalog", "") != planets_array[idx2].value("source_catalog", "");
+                const bool same_orbit_across_sources = cross_source_orbit_match(idx1, idx2);
                 if (!same_orbit_across_sources && !candidates[idx1].letter.empty() && !candidates[idx2].letter.empty() &&
                     candidates[idx1].letter != candidates[idx2].letter)
                 {
@@ -9105,7 +9141,7 @@ void CatalogReader::dedup_planets(json& planets_array)
                         orbit_match = true;
                     }
                 }
-                if (!orbit_match && sma1 > 0 && sma2 > 0)
+                if (!orbit_match && (per1 <= 0 || per2 <= 0) && sma1 > 0 && sma2 > 0)
                 {
                     double max_s = std::max(sma1, sma2);
                     if (max_s > 0 && fabs(sma1 - sma2) / max_s <= 0.18)
@@ -9146,6 +9182,43 @@ void CatalogReader::dedup_planets(json& planets_array)
                 }
             }
         }
+    }
+
+    // Identity can survive a large revision of the fitted orbit. Do this after
+    // orbital matching, which resolves catalogs that assign different letters.
+    const auto providers = [](const json& row)
+    {
+        std::set<std::string> result;
+        for (const auto& original : row.value("source_measurements", json::array({row})))
+        {
+            const std::string provider = original.value("source_catalog", "");
+            if (!provider.empty()) result.insert(provider);
+        }
+        return result;
+    };
+    std::unordered_map<std::string, std::vector<size_t>> identities;
+    for (size_t i = 0; i < n; ++i)
+    {
+        if (removed[i] || candidates[i].letter.size() != 1) continue;
+        const std::string key = exoplanet_status_key(candidates[i].pl_name);
+        auto& matches = identities[key];
+        bool merged = false;
+        for (const size_t previous : matches)
+        {
+            if (!same_host_region(previous, i)) continue;
+            const auto a = providers(planets_array[previous]), b = providers(planets_array[i]);
+            if (a.empty() || b.empty()) continue;
+            bool shared_provider = false;
+            for (const auto& provider : a) if (b.count(provider)) shared_provider = true;
+            // A provider listing both identities is evidence for separate bodies,
+            // even if another catalog gives those bodies the same display name.
+            if (shared_provider) continue;
+            merge_exoplanet_solution(planets_array[previous], planets_array[i]);
+            removed[i] = true;
+            merged = true;
+            break;
+        }
+        if (!merged) matches.push_back(i);
     }
 
     json new_array = json::array();
@@ -9314,7 +9387,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
         std::ifstream cache_header(derived_cache);
         std::string version;
         std::getline(cache_header, version);
-        derived_cache_valid = version == "# EXO_TRANSIT5";
+        derived_cache_valid = version == "# EXO_TRANSIT6";
 
     }
 
@@ -9942,7 +10015,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
     if (cachefp)
     {
         setvbuf(cachefp, cache_io_buf, _IOFBF, sizeof(cache_io_buf));
-        fputs("# EXO_TRANSIT5\n", cachefp);
+        fputs("# EXO_TRANSIT6\n", cachefp);
     }
 
     int rows_written = 0;

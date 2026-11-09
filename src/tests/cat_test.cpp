@@ -2756,7 +2756,7 @@ TEST_F(StellarDownloadTest, RejectionsFromEitherProviderApplyToJsonAndDerivedCac
             {
                 FILE* file = fopen("catalogs/exoplanets_planets.dat", "wb");
                 ASSERT_NE(file, nullptr);
-                fputs("# EXO_TRANSIT5\n", file);
+                fputs("# EXO_TRANSIT6\n", file);
                 for (const auto& source : rows)
                 {
                     bool valid;
@@ -4020,7 +4020,7 @@ TEST_F(StellarDownloadTest, RecentDerivedExoplanetCachesWorkWithoutTheJsonSource
         const char* path = stars_only ? "catalogs/exoplanets_stars.dat" : "catalogs/exoplanets_planets.dat";
         FILE* cache = fopen(path, "wb");
         ASSERT_NE(cache, nullptr);
-        fputs("# EXO_TRANSIT5\n", cache);
+        fputs("# EXO_TRANSIT6\n", cache);
         TestCatalogReader::exorow_write_line(cache, row);
         fclose(cache);
         DownloadReader reader;
@@ -5282,4 +5282,109 @@ TEST_F(CatalogParsingTest, CurrentIauNamesRefreshCachedNamesAndPreserveComponent
     EXPECT_FALSE(was_new);
     EXPECT_DOUBLE_EQ(secondary->mass, .4 * solar_mass);
     delete_the_universe();
+}
+
+TEST_F(CatalogParsingTest, RevisedSourceLettersAndPeriodsRepresentFourMuAraePlanets)
+{
+    json rows = json::array();
+    const double nasa_periods[] = {645, 3947, 9.6392, 307.9};
+    const double eu_periods[] = {643.25, 9.6386, 310.55, 4205.8};
+    for (int i = 0; i < 4; ++i)
+    {
+        rows.push_back({{"pl_name", std::string("GJ 691 ") + char('b' + i)}, {"hostname", "GJ 691"},
+            {"source_catalog", "NASA"}, {"ra", 266.0361585}, {"dec", -51.8348751}, {"pl_orbper", nasa_periods[i]}});
+        rows.push_back({{"pl_name", std::string("mu Ara ") + char('b' + i)}, {"hostname", "mu Ara"},
+            {"source_catalog", "EU"}, {"ra", 266.0333333}, {"dec", -51.8338889}, {"pl_orbper", eu_periods[i]}});
+    }
+    CatalogReader::dedup_planets(rows);
+    ASSERT_EQ(rows.size(), 4u);
+    for (const auto& row : rows) EXPECT_EQ(row["source_measurements"].size(), 2u);
+    const json once = rows;
+    CatalogReader::dedup_planets(rows);
+    EXPECT_EQ(rows, once);
+}
+
+TEST_F(CatalogParsingTest, SourceIdentitySurvivesLargeOrbitRevisionsAndPrimaryComponentSpelling)
+{
+    json rows = json::array({
+        {{"pl_name", "HD 12345 Ac"}, {"hostname", "HD 12345 A"}, {"source_catalog", "EU"}, {"pl_orbper", 100}},
+        {{"pl_name", "HD 12345 c"}, {"hostname", "HD 12345"}, {"source_catalog", "NASA"}, {"pl_orbper", 400}}
+    });
+    CatalogReader::dedup_planets(rows);
+    ASSERT_EQ(rows.size(), 1u);
+    EXPECT_DOUBLE_EQ(rows[0]["pl_orbper"], 400);
+    ASSERT_EQ(rows[0]["source_measurements"].size(), 2u);
+    EXPECT_DOUBLE_EQ(rows[0]["source_measurements"][0]["pl_orbper"], 100);
+}
+
+TEST_F(CatalogParsingTest, MatchingLettersCannotCollapseBodiesListedSeparatelyByEitherProvider)
+{
+    json rows = json::array({
+        {{"pl_name", "TOI-406 c"}, {"hostname", "TOI-406"}, {"source_catalog", "NASA"}, {"pl_orbper", 3.307441},
+            {"source_measurements", json::array({{{"source_catalog", "NASA"}, {"pl_name", "TOI-406 c"}},
+                {{"source_catalog", "EU"}, {"pl_name", "TOI-406 b"}}})}},
+        {{"pl_name", "TOI-406 c"}, {"hostname", "TOI-406"}, {"source_catalog", "EU"}, {"pl_orbper", 13.175682},
+            {"source_measurements", json::array({{{"source_catalog", "NASA"}, {"pl_name", "TOI-406.01"}},
+                {{"source_catalog", "EU"}, {"pl_name", "TOI-406 c"}}})}}
+    });
+    CatalogReader::dedup_planets(rows);
+    EXPECT_EQ(rows.size(), 2u);
+}
+
+TEST_F(CatalogParsingTest, CrossSourceOrbitMatchingKeepsASeparateNearbyPeriod)
+{
+    json rows = json::array({
+        {{"pl_name", "Host b"}, {"hostname", "Host"}, {"source_catalog", "NASA"}, {"pl_orbper", 100}},
+        {{"pl_name", "Host c"}, {"hostname", "Host"}, {"source_catalog", "EU"}, {"pl_orbper", 101}},
+        {{"pl_name", "Host d"}, {"hostname", "Host"}, {"source_catalog", "EU"}, {"pl_orbper", 110}}
+    });
+    CatalogReader::dedup_planets(rows);
+    ASSERT_EQ(rows.size(), 2u);
+    EXPECT_EQ(rows[1]["pl_name"], "Host d");
+    EXPECT_DOUBLE_EQ(rows[1]["pl_orbper"], 110);
+}
+
+TEST_F(StellarDownloadTest, EarlierDerivedCachesRebuildPlanetIdentityFromSavedSourceRows)
+{
+    struct RestoreNetwork
+    {
+        bool previous = radio_silence;
+        ~RestoreNetwork() { radio_silence = previous; }
+    } restore;
+    radio_silence = true;
+    Star* host = make_star("Revision host");
+    const json rows = json::array({
+        {{"pl_name", "Revision host b"}, {"hostname", "Revision host"}, {"source_catalog", "EU"},
+            {"pl_orbper", 100}, {"ra", 10}, {"dec", 20}, {"sy_dist", 10}},
+        {{"pl_name", "Revision host b"}, {"hostname", "Revision host"}, {"source_catalog", "NASA"},
+            {"pl_orbper", 400}, {"ra", 10}, {"dec", 20}, {"sy_dist", 10}}
+    });
+    std::ofstream("catalogs/exoplanets.json") << rows;
+    FILE* file = fopen("catalogs/exoplanets_planets.dat", "wb");
+    ASSERT_NE(file, nullptr);
+    fputs("# EXO_TRANSIT5\n", file);
+    for (const auto& source : rows)
+    {
+        bool valid = false;
+        const auto row = TestCatalogReader::exorow_from_json(source, &valid);
+        ASSERT_TRUE(valid);
+        TestCatalogReader::exorow_write_line(file, row);
+    }
+    fclose(file);
+    CatalogReader reader;
+    EXPECT_EQ(reader.load_exoplanets_from_tap(false), 1u);
+    ASSERT_EQ(host->pl_indices.size(), 1u);
+    EXPECT_NEAR(cels[host->pl_indices[0]]->orbit->period / oneday, 400, 1e-6);
+}
+
+TEST_F(CatalogParsingTest, SeparatePulsarsCannotMergeThroughAContradictorySemimajorAxis)
+{
+    json rows = json::array({
+        {{"pl_name", "M62H b"}, {"hostname", "M62H"}, {"source_catalog", "EU"},
+            {"ra", 255.3}, {"dec", -30.1}, {"pl_orbper", .132935028}, {"pl_orbsmax", .005}},
+        {{"pl_name", "PSR J1701-3006F b"}, {"hostname", "PSR J1701-3006F"}, {"source_catalog", "NASA"},
+            {"ra", 255.3}, {"dec", -30.1}, {"pl_orbper", .2}, {"pl_orbsmax", .005}}
+    });
+    CatalogReader::dedup_planets(rows);
+    EXPECT_EQ(rows.size(), 2u);
 }

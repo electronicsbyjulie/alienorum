@@ -1,6 +1,7 @@
 #include "performance_options.h"
 #include "classes/galaxygeometry.h"
 #include "classes/serial.h"
+#include "classes/systemviewcamera.h"
 
 #include "globals.h"
 #include "visuals.h"
@@ -752,6 +753,21 @@ void refresh_eclipse_casters()
 // relative to its own center in camera space. camera_space is the object's true (unrefracted)
 // camera-space position, since a shadow is cast between two physical bodies and knows nothing
 // about the light path to the observer -- see draw_sphere_gpu()'s own display_space comment.
+static Point system_view_light(CelestialObject* object)
+{
+    CelestialObject* light = object->get_light_center();
+    Point direction = light && light != object
+        ? to_viewer_plane(light->location.local_position - object->location.local_position)
+        : Point(0, 0, -1);
+    const double length = direction.magnitude();
+    return length > 0 && std::isfinite(length) ? direction * (1 / length) : Point(0, 0, -1);
+}
+
+static SystemViewCamera system_view_camera(CelestialObject* object)
+{
+    return SystemViewCamera(system_view_light(object), system_view_yaw, system_view_pitch);
+}
+
 static void collect_eclipse_casters(SphereImpostorInput &in, CelestialObject *cel,
     CelestialObject *lightcen, const Point &camera_space, double bounding_r)
 {
@@ -759,7 +775,9 @@ static void collect_eclipse_casters(SphereImpostorInput &in, CelestialObject *ce
     in.light_angular_radius = 0;
     if (!lightcen || lightcen == cel || eclipse_candidates.empty()) return;
 
-    Point to_light = lightcen->tmprel - cel->tmprel;
+    Point to_light = view_mode == vm_system
+        ? lightcen->location.local_position - cel->location.local_position
+        : lightcen->tmprel - cel->tmprel;
     double d_light = to_light.magnitude();
     double r_light = lightcen->get_equatorial_radius();
     if (d_light <= 0 || r_light <= 0) return;
@@ -784,7 +802,9 @@ static void collect_eclipse_casters(SphereImpostorInput &in, CelestialObject *ce
         const EclipseCandidate &cand = eclipse_candidates[c];
         if (cand.obj == cel || cand.obj == lightcen) continue;
 
-        Point rel = cand.obj->tmprel - cel->tmprel;
+        Point rel = view_mode == vm_system
+            ? cand.obj->location.local_position - cel->location.local_position
+            : cand.obj->tmprel - cel->tmprel;
         double along = rel.x*lhat.x + rel.y*lhat.y + rel.z*lhat.z;
         if (along <= 0) continue;                       // behind us with respect to the light: its shadow points away
 
@@ -828,6 +848,11 @@ static void collect_eclipse_casters(SphereImpostorInput &in, CelestialObject *ce
         Point cam = rotate3D(
             rotate3D(to_viewer_plane(chosen[i]->tmprel), center, yaxis, -(azimuth + azimuth_correction)),
             center, xaxis, altitude);
+        if (view_mode == vm_system)
+        {
+            cam = camera_space + system_view_camera(cel).to_camera(to_viewer_plane(
+                chosen[i]->location.local_position - cel->location.local_position));
+        }
         in.casters[i].dx = cam.x - camera_space.x;
         in.casters[i].dy = cam.y - camera_space.y;
         in.casters[i].dz = cam.z - camera_space.z;
@@ -1098,6 +1123,11 @@ static void draw_pressure_haze_sky(Planet* planet, const PressureHaze& haze)
 // ring shadow that does not line up with the ring casting it is worse than no shadow at all.
 static Point ring_plane_normal(CelestialObject *cel)
 {
+    if (view_mode == vm_system)
+    {
+        return system_view_camera(cel).to_camera(to_viewer_plane(rotate3D(Point(0, 1, 0), center,
+            cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a)));
+    }
     return rotate3D(
         rotate3D(
             to_viewer_plane(rotate3D(Point(0, 1, 0), center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a)),
@@ -1142,8 +1172,15 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
 
     auto undo_to_local = [&](Point p) -> Point
     {
-        p = rotate3D(p, center, xaxis, -altitude);
-        p = rotate3D(p, center, yaxis, azimuth + azimuth_correction);
+        if (view_mode == vm_system)
+        {
+            p = system_view_camera(cel).from_camera(p);
+        }
+        else
+        {
+            p = rotate3D(p, center, xaxis, -altitude);
+            p = rotate3D(p, center, yaxis, azimuth + azimuth_correction);
+        }
         p = to_viewer_plane(p, -1);
         p = rotate3D(p, center, cel->location.equatorial_plane.v, cel->location.equatorial_plane.a);
         p = rotate3D(p, center, yaxis, cel->timeofday());
@@ -1217,7 +1254,7 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
     {
         if (view_mode == vm_system)
         {
-            light_dir = Point(0,0,-AU);
+            light_dir = system_view_camera(cel).to_camera(system_view_light(cel));
         }
         else
         {
@@ -1413,7 +1450,7 @@ void draw_ring_gpu(CelestialObject* cel, double arad)
     {
         if (view_mode == vm_system)
         {
-            light_dir = Point(0, 0, -1);
+            light_dir = system_view_camera(cel).to_camera(system_view_light(cel));
         }
         else
         {
@@ -1439,7 +1476,7 @@ void draw_ring_gpu(CelestialObject* cel, double arad)
     in.fallback_color = IM_COL32(225, 208, 192, 255);   // matches the CPU path's default rgb
     in.light_dir[0] = light_dir.x; in.light_dir[1] = light_dir.y; in.light_dir[2] = light_dir.z;
     in.self_luminous = self_luminous;
-    in.amt_lit = (view_mode == vm_system) ? 1.0 : pl->amt_lit;
+    in.amt_lit = (view_mode == vm_system) ? std::clamp((1 - light_dir.z) * .5, 0.0, 1.0) : pl->amt_lit;
     in.redlight_mode = redlight_mode;
 
     queue_ring_impostor(in,
@@ -1570,7 +1607,9 @@ int draw_sphere(CelestialObject* cel, double arad)
     cel_obj_class cls = cel->typeclass();
     if ((cls == class_planet || cls == class_moon) && arad * dispcx >= 16)
     {
-        Point local = to_viewer_plane(center - cel->tmprel, -1);
+        Point local = view_mode == vm_system
+            ? to_viewer_plane(system_view_camera(cel).from_camera(Point(0, 0, -1)), -1)
+            : to_viewer_plane(center - cel->tmprel, -1);
         local = rotate3D(local, center, cel->location.equatorial_plane.v, cel->location.equatorial_plane.a);
         local = rotate3D(local, center, yaxis, cel->timeofday());
         static_cast<Planet*>(cel)->update_surface_phase(atan2(local.y, hypot(local.x, local.z)), atan2(-local.x, local.z));

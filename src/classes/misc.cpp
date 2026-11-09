@@ -48,6 +48,7 @@ int ncelobjs = 0;
 int nsatobjs = 0;
 int selected = -1, trackidx = -1;
 double azimuth = 0, altitude = 0;
+double system_view_yaw = 0, system_view_pitch = 0;
 double spin = 0;
 double global_gamma = default_gamma, viewer_gamma = global_gamma;
 double zoom = 1, vm, vmfr;

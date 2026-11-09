@@ -142,6 +142,9 @@ apps: alienorum
 $(BIN)/audit_planet_classification: tools/audit_planet_classification.cpp $(OBJS)
 	$(CPP) tools/audit_planet_classification.cpp $(OBJS) $(CPPFLAGS) $(LIBS) -o $@
 
+$(BIN)/audit_exoplanet_duplicates: tools/audit_exoplanet_duplicates.cpp $(OBJS)
+	$(CPP) tools/audit_exoplanet_duplicates.cpp $(OBJS) $(CPPFLAGS) $(LIBS) -o $@
+
 objs: $(OBJS) $(OBJIMGUI) $(OBJIGFD) $(OBJINT)
 
 # Runs every test binary and does not stop at the first one that fails: a single failing suite used

@@ -3,6 +3,7 @@
 #include "../classes/misc.h"
 #include "../classes/numeric.h"
 #include "../classes/point.h"
+#include "../classes/systemviewcamera.h"
 #include "../classes/surfacescatter.h"
 #include "../classes/surfacebiomes.h"
 #include "../classes/horizonterrain.h"
@@ -1202,4 +1203,36 @@ TEST(SurfaceSceneryCacheTest, RearChunksPreserveFrontCandidatesAndExactWalkingTr
             EXPECT_DOUBLE_EQ(objects[i].north, expected_north);
         }
     }
+}
+
+TEST(SystemViewCameraTest, CurrentLightDefinesAThreeQuarterViewAtEveryOrbitalDirection)
+{
+    for (Point light : {Point(1, 0, 0), Point(-1, 0, 0), Point(0, 0, 1), Point(0, 0, -1),
+        Point(0, 1, 0), Point(0, -1, 0), Point(3, 4, -5)})
+    {
+        const SystemViewCamera camera(light);
+        const Point projected = camera.to_camera(light * (1 / light.magnitude()));
+        EXPECT_NEAR(projected.z, -sqrt(.5), 1e-12);
+        EXPECT_NEAR(projected.x, -sqrt(.5), 1e-12);
+        EXPECT_NEAR(projected.y, 0, 1e-12);
+        EXPECT_NEAR(projected.magnitude(), 1, 1e-12);
+        const Point observer = camera.from_camera(Point(0, 0, -1));
+        EXPECT_NEAR((observer.x * light.x + observer.y * light.y + observer.z * light.z)
+            / light.magnitude(), sqrt(.5), 1e-12);
+    }
+}
+
+TEST(SystemViewCameraTest, PanningRotatesTheSurfaceAndLightTogetherAndPreservesTheInverse)
+{
+    const Point light(3, 4, -5), surface(-2, 3, 1);
+    const SystemViewCamera initial(light), panned(light, .7, -.3);
+    const Point before = initial.to_camera(light), after = panned.to_camera(light);
+    EXPECT_GT((before - after).magnitude(), .1);
+    const Point recovered = panned.from_camera(panned.to_camera(surface));
+    EXPECT_NEAR((recovered - surface).magnitude(), 0, 1e-12);
+    const Point transformed = panned.to_camera(surface);
+    EXPECT_NEAR(transformed.x * after.x + transformed.y * after.y + transformed.z * after.z,
+        surface.x * light.x + surface.y * light.y + surface.z * light.z, 1e-12);
+    const SystemViewCamera fallback{Point()};
+    EXPECT_TRUE(std::isfinite(fallback.to_camera(Point(0, 1, 0)).y));
 }

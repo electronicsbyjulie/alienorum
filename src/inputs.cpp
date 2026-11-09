@@ -192,7 +192,9 @@ void identify_object_under_cursor(ImGuiIO& io)
 
 void pan_with_crosshairs(ImGuiIO& io)
 {
-    if (trackidx >= 0) return;
+    if (trackidx >= 0 && view_mode != vm_system) return;
+    double& pan_yaw = view_mode == vm_system ? system_view_yaw : azimuth;
+    double& pan_pitch = view_mode == vm_system ? system_view_pitch : altitude;
     double amount = 1;
     if (view_mode == vm_skymap) amount = 3;
     else if (view_mode == vm_sunclock) amount = 5;
@@ -200,42 +202,54 @@ void pan_with_crosshairs(ImGuiIO& io)
 
     if (ImGui::IsMouseDown(2))
     {
-        azimuth -= 0.01 * amount * fiftyseventh * io.MouseDelta.x / zoom;
-        altitude += 0.01 * amount * fiftyseventh * io.MouseDelta.y / zoom;
-        enforce_y_pan_limit();
+        pan_yaw -= 0.01 * amount * fiftyseventh * io.MouseDelta.x / zoom;
+        pan_pitch += 0.01 * amount * fiftyseventh * io.MouseDelta.y / zoom;
+        if (view_mode == vm_system) pan_pitch = std::clamp(pan_pitch, -half_pi, half_pi);
+        else enforce_y_pan_limit();
         spin = 0;
         viewchanged = true;
 
-        ImVec2 topcen(dispcx, 0), botcen(dispcx, (int)io.DisplaySize.y-1),
-            leftcen(0, dispcy), rightcen((int)io.DisplaySize.x-1, dispcy);
-        ImGui::GetBackgroundDrawList()->AddLine(topcen, botcen, rgba_apply_redlight(IM_COL32(0, 0, 255, 128)), 1);
-        ImGui::GetBackgroundDrawList()->AddLine(leftcen, rightcen, rgba_apply_redlight(IM_COL32(0, 0, 255, 128)), 1);
+        if (view_mode != vm_system)
+        {
+            ImVec2 topcen(dispcx, 0), botcen(dispcx, (int)io.DisplaySize.y-1),
+                leftcen(0, dispcy), rightcen((int)io.DisplaySize.x-1, dispcy);
+            ImGui::GetBackgroundDrawList()->AddLine(topcen, botcen, rgba_apply_redlight(IM_COL32(0, 0, 255, 128)), 1);
+            ImGui::GetBackgroundDrawList()->AddLine(leftcen, rightcen, rgba_apply_redlight(IM_COL32(0, 0, 255, 128)), 1);
+        }
     }
     else if (ImGui::IsMouseDown(1))
     {
-        azimuth -= 0.03 * amount * fiftyseventh * io.MouseDelta.x / zoom;
-        altitude += 0.03 * amount * fiftyseventh * io.MouseDelta.y / zoom;
-        enforce_y_pan_limit();
+        pan_yaw -= 0.03 * amount * fiftyseventh * io.MouseDelta.x / zoom;
+        pan_pitch += 0.03 * amount * fiftyseventh * io.MouseDelta.y / zoom;
+        if (view_mode == vm_system) pan_pitch = std::clamp(pan_pitch, -half_pi, half_pi);
+        else enforce_y_pan_limit();
         spin = 0;
         viewchanged = true;
 
-        ImVec2 topcen(dispcx, 0), botcen(dispcx, (int)io.DisplaySize.y-1),
-            leftcen(0, dispcy), rightcen((int)io.DisplaySize.x-1, dispcy);
-        ImGui::GetBackgroundDrawList()->AddLine(topcen, botcen, rgba_apply_redlight(IM_COL32(0, 255, 0, 64)), 1);
-        ImGui::GetBackgroundDrawList()->AddLine(leftcen, rightcen, rgba_apply_redlight(IM_COL32(0, 255, 0, 64)), 1);
+        if (view_mode != vm_system)
+        {
+            ImVec2 topcen(dispcx, 0), botcen(dispcx, (int)io.DisplaySize.y-1),
+                leftcen(0, dispcy), rightcen((int)io.DisplaySize.x-1, dispcy);
+            ImGui::GetBackgroundDrawList()->AddLine(topcen, botcen, rgba_apply_redlight(IM_COL32(0, 255, 0, 64)), 1);
+            ImGui::GetBackgroundDrawList()->AddLine(leftcen, rightcen, rgba_apply_redlight(IM_COL32(0, 255, 0, 64)), 1);
+        }
     }
     else if (ImGui::IsMouseDown(0))
     {
-        azimuth -= 0.1 * amount * fiftyseventh * io.MouseDelta.x / zoom;
-        altitude += 0.1 * amount * fiftyseventh * io.MouseDelta.y / zoom;
-        enforce_y_pan_limit();
+        pan_yaw -= 0.1 * amount * fiftyseventh * io.MouseDelta.x / zoom;
+        pan_pitch += 0.1 * amount * fiftyseventh * io.MouseDelta.y / zoom;
+        if (view_mode == vm_system) pan_pitch = std::clamp(pan_pitch, -half_pi, half_pi);
+        else enforce_y_pan_limit();
         spin = 0;
         viewchanged = true;
 
-        ImVec2 topcen(dispcx, 0), botcen(dispcx, (int)io.DisplaySize.y-1),
-            leftcen(0, dispcy), rightcen((int)io.DisplaySize.x-1, dispcy);
-        ImGui::GetBackgroundDrawList()->AddLine(topcen, botcen, rgba_apply_redlight(IM_COL32(255, 96, 0, 96)), 1);
-        ImGui::GetBackgroundDrawList()->AddLine(leftcen, rightcen, rgba_apply_redlight(IM_COL32(255, 96, 0, 96)), 1);
+        if (view_mode != vm_system)
+        {
+            ImVec2 topcen(dispcx, 0), botcen(dispcx, (int)io.DisplaySize.y-1),
+                leftcen(0, dispcy), rightcen((int)io.DisplaySize.x-1, dispcy);
+            ImGui::GetBackgroundDrawList()->AddLine(topcen, botcen, rgba_apply_redlight(IM_COL32(255, 96, 0, 96)), 1);
+            ImGui::GetBackgroundDrawList()->AddLine(leftcen, rightcen, rgba_apply_redlight(IM_COL32(255, 96, 0, 96)), 1);
+        }
     }
     else
     {
@@ -1204,6 +1218,7 @@ void process_key_cmd_ctrl_char(char c)
         case 'v':
         if (!mycenobj) return;
         view_mode = vm_system;
+        system_view_yaw = system_view_pitch = 0;
         statuswnd = false;
         // explorer = false;
         lbl_localsys = true;

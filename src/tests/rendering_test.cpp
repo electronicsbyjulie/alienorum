@@ -8817,3 +8817,66 @@ TEST_F(RenderingRegressionTest, CloudRefreshRestoresSurfaceRenderingCaches)
     EXPECT_TRUE(precipitation_stats.ground_cache_active);
     EXPECT_TRUE(precipitation_stats.ground_cache_hit);
 }
+
+TEST(SystemViewInputTest, MousePanningRotatesPlanetsWithoutDrawingCrosshairsOrMovingTheSkyCamera)
+{
+    ImGuiContext* previous_context = ImGui::GetCurrentContext();
+    ImGuiContext* context = ImGui::CreateContext();
+    const auto previous = std::make_tuple(view_mode, system_view_yaw, system_view_pitch,
+        azimuth, altitude, spin, zoom, trackidx, viewchanged);
+    view_mode = vm_system;
+    system_view_yaw = system_view_pitch = 0;
+    azimuth = .4; altitude = .2; zoom = 1; trackidx = -1;
+    ImGuiIO& io = ImGui::GetIO();
+    io.IniFilename = nullptr;
+    io.DisplaySize = ImVec2(1280, 720);
+    io.DeltaTime = 1.0f / 60;
+    unsigned char* pixels;
+    int width, height;
+    io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
+    ImGui::NewFrame();
+    io.MousePos = ImVec2(640, 360);
+    io.MouseDown[0] = true;
+    io.MouseDelta = ImVec2(10, 5);
+    ImDrawList* draw = ImGui::GetBackgroundDrawList();
+    const int vertices = draw->VtxBuffer.Size;
+    pan_with_crosshairs(io);
+    EXPECT_NE(system_view_yaw, 0);
+    EXPECT_NE(system_view_pitch, 0);
+    EXPECT_DOUBLE_EQ(azimuth, .4);
+    EXPECT_DOUBLE_EQ(altitude, .2);
+    EXPECT_EQ(draw->VtxBuffer.Size, vertices);
+    ImGui::EndFrame();
+    std::tie(view_mode, system_view_yaw, system_view_pitch, azimuth, altitude, spin, zoom, trackidx, viewchanged) = previous;
+    ImGui::DestroyContext(context);
+    ImGui::SetCurrentContext(previous_context);
+}
+
+TEST_F(UniverseFixture, SystemViewRetainsTheCustomMousePointer)
+{
+    make_star("Sol");
+    make_star("Pointer host");
+    ImGuiContext* previous_context = ImGui::GetCurrentContext();
+    ImGuiContext* context = ImGui::CreateContext();
+    const auto previous = std::make_tuple(view_mode, hide_mouse, frames_without_mousemove, cursor_size, circle_size);
+    view_mode = vm_system;
+    hide_mouse = true;
+    frames_without_mousemove = 0;
+    ImGuiIO& io = ImGui::GetIO();
+    io.IniFilename = nullptr;
+    io.DisplaySize = ImVec2(1280, 720);
+    io.DeltaTime = 1.0f / 60;
+    unsigned char* pixels;
+    int width, height;
+    io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
+    ImGui::NewFrame();
+    io.MousePos = ImVec2(640, 360);
+    ImDrawList* draw = ImGui::GetBackgroundDrawList();
+    const int before = draw->VtxBuffer.Size;
+    draw_mouse_cursor(io);
+    EXPECT_GT(draw->VtxBuffer.Size, before);
+    ImGui::EndFrame();
+    std::tie(view_mode, hide_mouse, frames_without_mousemove, cursor_size, circle_size) = previous;
+    ImGui::DestroyContext(context);
+    ImGui::SetCurrentContext(previous_context);
+}
