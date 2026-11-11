@@ -23,6 +23,7 @@ namespace alienorum
         bool current_conditions = false;
         double current_mean_k = 0, water_fraction = 0;
         double instantaneous_flux = 1;
+        double internal_flux_fraction = 0;
         double solar_frequency = 0, land_diurnal_seconds = 0, water_diurnal_seconds = 0;
         std::array<double, 33> land_seasonal_flux{}, water_seasonal_flux{};
         std::shared_ptr<const IceSeason> ice_season;
@@ -57,7 +58,8 @@ namespace alienorum
             if (stellar_locked)
             {
                 const double illumination = std::max(0.0, x * sun_x + y * sun_y + z * sun_z);
-                const double flux = redistribution + (1.0 - redistribution) * 4.0 * illumination;
+                const double flux = internal_flux_fraction + (1 - internal_flux_fraction)
+                    * (redistribution + (1.0 - redistribution) * 4.0 * illumination);
                 base = mean_k * std::sqrt(std::sqrt(std::max(0.0, flux)));
             }
             // Smooth spherical variation avoids seams and ruler-straight frost boundaries.
@@ -104,7 +106,13 @@ namespace alienorum
                     const auto forcing = ice_season->forcing_at(z, longitude, ice_mean_anomaly, regional);
                     surface = ice_season->column.state(energy, forcing).temperature;
                 }
-                else surface *= std::pow(std::max(1e-8, flux), 0.25);
+                else
+                {
+                    // Seasonal and diurnal forcing modulate sunlight only.
+                    const double internal = std::pow(mean_k, 4) * internal_flux_fraction;
+                    surface = std::pow(std::max(0.0, std::pow(std::max(0.0, surface), 4) - internal)
+                        * std::max(1e-8, flux) + internal, .25);
+                }
             }
             return std::max(2.7, surface - lapse_k_m * altitude);
         }

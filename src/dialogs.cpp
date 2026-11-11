@@ -2744,9 +2744,16 @@ void draw_objedit_window(ImGuiIO& io)
                 }
 
                 ImGui::Text(uses_gaseous_map(p->type)
-                        ? "Equilibrium temperature: %.2fK"
+                        ? "Effective temperature: %.2fK"
                         : "Surface temperature: %.2fK",
                     p->estimate_surface_temperature());
+                const double tidal_flux = p->tidal_heat_flux();
+                if (tidal_flux > 0)
+                {
+                    ImGui::Text("Estimated tidal heat: %.3g W/m^2", tidal_flux);
+                    if (ImGui::IsItemHovered()) ImGui::SetTooltip(
+                        "Heat from orbital flexing and asynchronous rotation. Interior dissipation is uncertain.");
+                }
             }
 
             ImGui::Text("%s", "Texture");

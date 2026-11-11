@@ -20,6 +20,7 @@
 #include "../classes/shore.h"
 #include "../classes/savemodels.h"
 #include "../classes/thermalclimate.h"
+#include "../classes/tidalheat.h"
 #include "../classes/habitablezone.h"
 #include "../classes/watercoverage.h"
 #include "../classes/surfacephase.h"
@@ -31,6 +32,147 @@
 
 using namespace alienorum;
 using json = nlohmann::json;
+
+TEST(TidalHeatingModelTest, IoScaleMatchesTheSynchronousSmallEccentricityLimit)
+{
+    const double parent = 1.89813e27, radius = 1821600, axis = 421700000;
+    const double motion = 2 * _pi / (1.769137786 * oneday), eccentricity = .0041;
+    const double flux = tidal_surface_heat_flux(parent, radius, axis, eccentricity, motion, motion, .015);
+    const double reference = 10.5 * .015 * (G * 1000) * parent * parent * std::pow(radius, 3)
+        * motion * eccentricity * eccentricity / (4 * _pi * std::pow(axis, 6));
+    EXPECT_NEAR(flux, reference, reference * .001);
+    EXPECT_GT(flux, 2);
+    EXPECT_LT(flux, 2.5);
+    EXPECT_DOUBLE_EQ(tidal_surface_heat_flux(parent, radius, axis, 0, motion, motion, .015), 0);
+    EXPECT_GT(tidal_surface_heat_flux(parent, radius, axis, 0, motion, motion * 2, .015), 0);
+    EXPECT_DOUBLE_EQ(tidal_surface_heat_flux(parent, radius, axis, eccentricity, motion, motion, 0), 0);
+    EXPECT_DOUBLE_EQ(tidal_surface_heat_flux(parent, radius, axis, 1, motion, motion, .015), 0);
+    EXPECT_GT(tidal_surface_heat_flux(parent, radius, axis, .6, motion, motion, .015), flux * 10000);
+    EXPECT_GT(tidal_surface_heat_flux(parent, radius, axis, eccentricity, motion, 0, .015), 0);
+}
+
+class TidalHeatingTest : public UniverseFixture {};
+
+TEST_F(TidalHeatingTest, MoonUsesItsPlanetAndAddsFluxBeforeAtmosphericWarming)
+{
+    auto* sun = make_star();
+    auto* parent = make_planet(sun, "Giant", 5.2 * AU);
+    parent->mass = 1.89813e30;
+    Moon moon;
+    moon.type = rocky;
+    moon.mass = 8.9319e25;
+    moon.volumetric_mean_radius = 1821600;
+    moon.albedo = .3;
+    moon.orbit = new Orbit();
+    moon.orbit->center = parent;
+    moon.orbit->semimajor_axis = 421700000;
+    moon.orbit->period = 1.769137786 * oneday;
+    moon.orbit->eccentricity = .0041;
+    moon.sidereal_rotational_period = moon.orbit->period;
+    moon.tidal_k2_over_q = .015;
+    moon.ensure_atmosphere()->surface_pressure = 0;
+    moon.atm->pressure_supplied = true;
+    const double stellar = moon.equilibrium_temperature();
+    const double heat = moon.tidal_heat_flux();
+    EXPECT_NEAR(heat, 2.2384, .003);
+    const double warm = moon.estimate_surface_temperature();
+    EXPECT_GT(warm, stellar);
+    EXPECT_NEAR(std::pow(warm, 4) - std::pow(stellar, 4), heat / STEFAN_BOLTZMANN, .01);
+    EXPECT_DOUBLE_EQ(moon.equilibrium_temperature(), stellar);
+    moon.tidal_k2_over_q = 0;
+    EXPECT_NEAR(moon.estimate_surface_temperature(), stellar, 1e-9);
+    moon.tidal_k2_over_q = .015;
+    EXPECT_NEAR(moon.estimate_surface_temperature(), warm, 1e-9);
+    moon.temperature = 180;
+    moon.temperature_supplied = true;
+    EXPECT_DOUBLE_EQ(moon.estimate_surface_temperature(), 180);
+}
+
+TEST_F(TidalHeatingTest, DissipationInputsRetainEstimatesAndExplicitZeroAcrossJson)
+{
+    auto* world = make_planet(make_star(), "Warm orbit", .02 * AU);
+    world->orbit->eccentricity = .1;
+    json record = world->to_json();
+    record["tidal_k2_over_q"] = "0.015?";
+    Planet restored;
+    ASSERT_TRUE(restored.from_json(record));
+    restored.orbit->center = world->orbit->center;
+    EXPECT_DOUBLE_EQ(restored.tidal_k2_over_q, .015);
+    EXPECT_GT(restored.tidal_heat_flux(), 0);
+    EXPECT_DOUBLE_EQ(restored.to_json()["tidal_k2_over_q"], .015);
+    record["tidal_k2_over_q"] = "0?";
+    ASSERT_TRUE(restored.from_json(record));
+    restored.orbit->center = world->orbit->center;
+    EXPECT_DOUBLE_EQ(restored.tidal_heat_flux(), 0);
+    EXPECT_DOUBLE_EQ(restored.to_json()["tidal_k2_over_q"], 0);
+    record.erase("tidal_k2_over_q");
+    ASSERT_TRUE(restored.from_json(record));
+    restored.orbit->center = world->orbit->center;
+    EXPECT_TRUE(std::isnan(restored.tidal_k2_over_q));
+    EXPECT_GT(restored.tidal_heat_flux(), 0);
+}
+
+TEST(TidalHeatingModelTest, InternalHeatSurvivesDarknessAndSeasonalFluxChanges)
+{
+    LocalClimate climate;
+    climate.mean_k = 100;
+    climate.contrast_k = climate.regional_k = climate.dry_belt_k = climate.lapse_k_m = 0;
+    climate.stellar_locked = true;
+    climate.redistribution = 0;
+    climate.internal_flux_fraction = .25;
+    const double night = climate.temperature(1, 0, 0, 0, false);
+    EXPECT_NEAR(night, 100 * std::pow(.25, .25), 1e-10);
+    climate.current_conditions = true;
+    climate.land_seasonal_flux.fill(.01);
+    EXPECT_NEAR(climate.temperature(1, 0, 0, 0, false, false), night, 1e-10);
+    climate.land_seasonal_flux.fill(100);
+    EXPECT_NEAR(climate.temperature(1, 0, 0, 0, false, false), night, 1e-10);
+}
+
+TEST(TidalHeatingModelTest, IceEnergyBalanceCountsInternalHeatOnce)
+{
+    IceColumn column;
+    column.basal_flux = 20;
+    ThermalOrbit orbit;
+    orbit.period = oneyear;
+    IceSeason season(column, orbit, 290, 0, 200, 3, 1, 1, false, false, 0, 20.0 / 220);
+    const auto forcing = season.forcing(8, 0, 0);
+    const auto state = column.state(column.initial_energy(290), forcing);
+    EXPECT_NEAR(state.net_flux, 0, 1e-10);
+    EXPECT_DOUBLE_EQ(state.temperature, 290);
+}
+
+TEST_F(TidalHeatingTest, InternalHeatWarmsAStarlessMoonAndStellarTidesStaySmallAtEarth)
+{
+    auto* sun = make_star();
+    auto* earth = make_planet(sun);
+    earth->sidereal_rotational_period = oneday;
+    EXPECT_GT(earth->tidal_heat_flux(), 0);
+    EXPECT_LT(earth->tidal_heat_flux(), .001);
+    Planet parent;
+    parent.mass = 1.89813e30;
+    Planet moon;
+    moon.type = rocky;
+    moon.mass = 8.9319e25;
+    moon.volumetric_mean_radius = 1821600;
+    moon.orbit = new Orbit();
+    moon.orbit->center = &parent;
+    moon.orbit->semimajor_axis = 421700000;
+    moon.orbit->period = 1.769137786 * oneday;
+    moon.orbit->eccentricity = .0041;
+    moon.sidereal_rotational_period = moon.orbit->period;
+    moon.tidal_k2_over_q = .015;
+    moon.ensure_atmosphere()->surface_pressure = 0;
+    moon.atm->pressure_supplied = true;
+    EXPECT_DOUBLE_EQ(moon.equilibrium_temperature(), 0);
+    const double temperature = moon.estimate_surface_temperature();
+    EXPECT_GT(temperature, 70);
+    EXPECT_LT(temperature, 90);
+    const auto climate = moon.local_climate();
+    EXPECT_DOUBLE_EQ(climate.internal_flux_fraction, 1);
+    EXPECT_NEAR(climate.temperature(1, 0, 0, 0), temperature, 1e-10);
+    EXPECT_NEAR(climate.temperature(0, 0, 1, 0), temperature, 1e-10);
+}
 
 TEST(OceanChemistryTest, SuppliedFreshWaterAndEarthFallbackRemainDistinct)
 {

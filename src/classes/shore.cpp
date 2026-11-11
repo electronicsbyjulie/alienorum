@@ -344,7 +344,7 @@ json CosmicShore::input_state(Star& s, Planet& p, const AtmosphericInventory& in
         number(stellar_flux(s, p)), number(s.mass), number(s.metallicity), s.metallicity_ratio,
         s.is_main_sequence(), number(p.albedo), inventory.to_json(), s.has_disk, number(s.disk_inner_edge_sma),
         number(p.equilibrium_temperature()), p.has_supplied_mean_temperature() ? number(p.temperature) : json(nullptr),
-        authored ? p.atm->comp->to_json() : json(nullptr)});
+        authored ? p.atm->comp->to_json() : json(nullptr), number(p.tidal_heat_flux())});
 }
 
 const json& CosmicShore::envelope_scenario(Star& s, Planet& p, const AtmosphericInventory& inventory)
@@ -417,7 +417,7 @@ const json& CosmicShore::envelope_scenario(Star& s, Planet& p, const Atmospheric
 double CosmicShore::radiative_temperature(Planet& p, double pressure_pa,
     const AtmosphereComposition* composition, bool nitrogen_frost, const AtmosphericInventory* inventory)
 {
-    double equilibrium = p.equilibrium_temperature();
+    double equilibrium = p.effective_radiating_temperature();
     double tau = composition ? atmospheric_tau(pressure_pa * 0.000009869,
         composition->CO2_portion, composition->CH4_portion, composition->H2O_portion, composition->N2O_portion,
         composition->O3_portion, composition->SO2_portion, composition->H2S_portion, composition->CO_portion,
@@ -429,7 +429,11 @@ double CosmicShore::radiative_temperature(Planet& p, double pressure_pa,
         if (inventory->cold_temperature_k > 0) return inventory->cold_temperature_k;
         // Temperature is referenced to the stellar semimajor axis; seasonal
         // forcing applies the eccentric distance variation afterwards.
-        if (nitrogen_frost) equilibrium = nitrogen_frost_temperature(p.est_bolometric_flux(), *inventory);
+        if (nitrogen_frost)
+        {
+            const double stellar = nitrogen_frost_temperature(p.est_bolometric_flux(), *inventory);
+            equilibrium = std::pow(std::pow(stellar, 4) + p.tidal_heat_flux() / STEFAN_BOLTZMANN, .25);
+        }
         if (composition)
         {
             // Preserve the cold-body nitrogen CIA scenario in both radiation paths.
@@ -599,7 +603,7 @@ AtmosphericEstimate CosmicShore::estimate_atmosphere(Star& s, Planet& p, const A
             seed *= std::pow(1 + .75 * (10 * raw_tau / (10 + raw_tau)), .25);
             if (nitrogen > nitrogen_vapor_pressure(seed)) seed = nitrogen_frost_temperature(flux, inventory);
         }
-        const double ceiling = std::max(p.equilibrium_temperature(), seed) + 650;
+        const double ceiling = std::max(p.effective_radiating_temperature(), seed) + 650;
         Phase best = at_temperature(2.7);
         Phase previous = best;
         std::vector<Phase> roots;
@@ -827,14 +831,15 @@ AtmosphericEstimate CosmicShore::estimate_atmosphere(Star& s, Planet& p, const A
 }
 
 json CosmicShore::seasonal_volatiles(const json& budget, const ThermalOrbit& orbit,
-    double mean_k, double response_seconds, double flux_reference)
+    double mean_k, double response_seconds, double flux_reference, double internal_fraction)
 {
     if (!budget.is_object() || !budget.contains("phase_available_column_pa")
         || !budget["phase_available_column_pa"].is_array() || budget["phase_available_column_pa"].size() != 3
         || !std::isfinite(mean_k) || mean_k <= 0 || !std::isfinite(response_seconds)
         || response_seconds < 0 || !std::isfinite(orbit.eccentricity) || orbit.eccentricity < 0
         || orbit.eccentricity >= 1 || !std::isfinite(orbit.period) || orbit.period <= 0
-        || !std::isfinite(orbit.mean_anomaly) || !std::isfinite(flux_reference) || flux_reference <= 0) return nullptr;
+        || !std::isfinite(orbit.mean_anomaly) || !std::isfinite(flux_reference) || flux_reference <= 0
+        || !std::isfinite(internal_fraction) || internal_fraction < 0 || internal_fraction > 1) return nullptr;
     std::array<double, 3> available{};
     for (size_t i = 0; i < available.size(); ++i)
     {
@@ -849,11 +854,11 @@ json CosmicShore::seasonal_volatiles(const json& budget, const ThermalOrbit& orb
     static thread_local std::array<Phase, count> curve{};
     const double humidity = budget.value("water_column_humidity", 1.0);
     if (!std::isfinite(humidity) || humidity < 0 || humidity > 1) return nullptr;
-    static thread_local std::array<double, 10> previous{};
+    static thread_local std::array<double, 11> previous{};
     static thread_local bool cached = false;
     static thread_local json summary;
-    const std::array<double, 10> key = {available[0], available[1], available[2], orbit.eccentricity,
-        orbit.period, mean_k, response_seconds, flux_reference, humidity, 2};
+    const std::array<double, 11> key = {available[0], available[1], available[2], orbit.eccentricity,
+        orbit.period, mean_k, response_seconds, flux_reference, humidity, 2, internal_fraction};
     if (!cached || previous != key)
     {
         const double step = orbit.period / count;
@@ -864,7 +869,8 @@ json CosmicShore::seasonal_volatiles(const json& budget, const ThermalOrbit& orb
         for (size_t i = 0; i < count; ++i)
         {
             const double eccentric = orbit.eccentric_anomaly(2 * _pi * (i + .5) / count);
-            heating[i] = flux_reference / std::pow(1 - orbit.eccentricity * std::cos(eccentric), 2);
+            heating[i] = internal_fraction + (1 - internal_fraction)
+                * flux_reference / std::pow(1 - orbit.eccentricity * std::cos(eccentric), 2);
             final_flux += gain * (heating[i] - final_flux);
         }
         double thermal_flux = final_flux / -std::expm1(-orbit.period / tau);

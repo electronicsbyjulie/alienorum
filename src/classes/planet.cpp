@@ -16,6 +16,7 @@
 #include "numeric.h"
 #include "surfacephase.h"
 #include "thermalclimate.h"
+#include "tidalheat.h"
 #include "habitablezone.h"
 #include "moon.h"
 #include "chemistry.h"
@@ -896,6 +897,9 @@ LocalClimate Planet::local_climate()
     climate.vegetation_max_k = veg_max_temp;
     climate.mean_k = estimate_surface_temperature();
     if (!std::isfinite(climate.mean_k) || climate.mean_k < 2.7) climate.mean_k = 2.7;
+    const double tidal = tidal_heat_flux();
+    const double absorbed = STEFAN_BOLTZMANN * std::pow(equilibrium_temperature(), 4);
+    climate.internal_flux_fraction = tidal > 0 ? tidal / (std::max(0.0, absorbed) + tidal) : 0;
     const double pressure = std::max(0.0, get_surface_pressure()) / oneatm;
     climate.contrast_k = climate.mean_k * (0.04 + 0.25 / (1.0 + pressure));
     climate.redistribution = pressure / (pressure + 0.1);
@@ -905,6 +909,9 @@ LocalClimate Planet::local_climate()
     climate.sea_level_m = m_bump_scale > 0 ? m_bump_scale * (has_water - 0.5) : 0;
     climate.dry_belt_k = climate.mean_k * 0.04 * pressure / (pressure + 0.01);
     climate.regional_k = climate.mean_k * 0.012 / (1.0 + pressure / 10.0);
+    climate.contrast_k *= 1 - climate.internal_flux_fraction;
+    climate.dry_belt_k *= 1 - climate.internal_flux_fraction;
+    climate.regional_k *= 1 - climate.internal_flux_fraction;
     climate.stellar_locked = orbit && orbit->center && orbit->center->typeclass() == class_star
         && is_tidal_locked();
     if (climate.stellar_locked)
@@ -955,18 +962,19 @@ void Planet::prepare_surface_ice(LocalClimate& climate, const ThermalOrbit& orbi
         if (std::isfinite(depth) && depth > 0 && std::isfinite(coverage) && coverage > 0) column.depth = depth / coverage;
     }
     column.atmospheric_capacity = air_capacity;
+    column.basal_flux = tidal_heat_flux();
     // A circulation scenario, not a measured current: allocate a small share of
     // existing redistributed heat to the ocean, scaled by available ocean area.
     // Ocean and atmospheric heat act at different ice boundaries (Aylmer et al.
     // 2020, https://doi.org/10.1175/JCLI-D-19-0761.1).
     column.ocean_heat_share = .15 * std::clamp(climate.water_fraction, 0.0, 1.0);
-    const double feedback = 4 * absorbed / climate.mean_k;
+    const double feedback = 4 * (absorbed + column.basal_flux) / climate.mean_k;
     const std::vector<double> key =
     {
         column.depth, column.salinity, column.pressure, column.atmospheric_capacity,
         climate.mean_k, climate.contrast_k, climate.redistribution, climate.regional_k, absorbed, feedback,
         orbit.eccentricity, orbit.period, orbit.pole_u, orbit.pole_v, reference, double(climate.stellar_locked),
-        column.ocean_heat_share
+        column.ocean_heat_share, column.basal_flux, climate.internal_flux_fraction
     };
     if (ice_season_pending.valid() && ice_season_pending.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
     {
@@ -986,6 +994,9 @@ void Planet::prepare_surface_ice(LocalClimate& climate, const ThermalOrbit& orbi
             if (index == 10 || index == 14) tolerance = .000001;
             if (index == 11) tolerance = .00001 * std::abs(key[index]);
             if (index == 12 || index == 13) tolerance = .0001;
+            // Orbital drift also propagates through tidal heat and its climate response.
+            if (index == 4 || index == 5 || index == 7 || index == 9 || index == 17 || index == 18)
+                tolerance = 1e-6 * std::max(1.0, std::abs(key[index]));
             if (std::abs(ice_season_inputs[index] - key[index]) > tolerance) return false;
         }
         return true;
@@ -1021,11 +1032,12 @@ void Planet::prepare_surface_ice(LocalClimate& climate, const ThermalOrbit& orbi
         ice_pending_inputs = key;
         const double mean = climate.mean_k, contrast = climate.contrast_k, transport = climate.redistribution;
         const double regional = climate.regional_k;
+        const double internal = climate.internal_flux_fraction;
         const bool locked = climate.stellar_locked;
-        ice_season_pending = IceSeasonQueue::instance().submit([column, orbit, mean, contrast, absorbed, feedback, transport, reference, locked, regional]()
+        ice_season_pending = IceSeasonQueue::instance().submit([column, orbit, mean, contrast, absorbed, feedback, transport, reference, locked, regional, internal]()
             -> std::shared_ptr<const IceSeason>
         {
-            return std::make_shared<IceSeason>(column, orbit, mean, contrast, absorbed, feedback, transport, reference, true, locked, regional);
+            return std::make_shared<IceSeason>(column, orbit, mean, contrast, absorbed, feedback, transport, reference, true, locked, regional, internal);
         });
     }
 }
@@ -1134,7 +1146,8 @@ LocalClimate Planet::current_local_climate(bool include_supplied, double sample_
     const double liquid = std::clamp((climate.mean_k - 263.15) / 20, 0.0, 1.0);
     const double water_capacity = 2.09e8;
     const double stellar_flux = est_bolometric_flux() * 1361;
-    const double feedback = std::max(0.01, stellar_flux * (1 - std::clamp(estimate_bond_albedo(), 0.0, 0.99)) / climate.mean_k);
+    const double feedback = std::max(0.01, (stellar_flux * (1 - std::clamp(estimate_bond_albedo(), 0.0, 0.99))
+        + 4 * tidal_heat_flux()) / climate.mean_k);
     const double actual_distance = location.distance_to(source->location);
     double spin_period = sidereal_rotational_period;
     if (spin_period == 0 && orbit && is_tidal_locked()) spin_period = orbit->period;
@@ -1144,7 +1157,7 @@ LocalClimate Planet::current_local_climate(bool include_supplied, double sample_
         climate.sea_level_m, climate.dry_belt_k, climate.regional_k, double(climate.stellar_locked),
         forcing.eccentricity, forcing.mean_anomaly, forcing.period, forcing.pole_u, forcing.pole_v,
         climate.sun_x, climate.sun_y, climate.sun_z, actual_distance, axis, atmosphere_capacity,
-        water_capacity, ocean, feedback, spin_period, double(supplied)
+        water_capacity, ocean, feedback, spin_period, double(supplied), climate.internal_flux_fraction
     };
     const bool phase_pending = atm && atm->pressure_model.is_object()
         && atm->pressure_model.contains("phase_available_column_pa")
@@ -1159,7 +1172,11 @@ LocalClimate Planet::current_local_climate(bool include_supplied, double sample_
     const ThermalHistory land_history(forcing, land_capacity / feedback);
     const ThermalHistory ocean_history(forcing, ocean_capacity / feedback);
     const ThermalHistory global_history(forcing, ((1 - ocean) * land_capacity + ocean * ocean_capacity) / feedback);
-    climate.current_mean_k = climate.mean_k * std::pow(global_history.global_flux * reference, 0.25);
+    const auto total_flux = [&](double stellar)
+    {
+        return climate.internal_flux_fraction + (1 - climate.internal_flux_fraction) * stellar;
+    };
+    climate.current_mean_k = climate.mean_k * std::pow(total_flux(global_history.global_flux * reference), 0.25);
     climate.instantaneous_flux = reference / std::pow(1 - eccentricity * std::cos(current_e), 2);
     if (!sampling && std::isfinite(actual_distance) && actual_distance > 0)
     {
@@ -1200,13 +1217,14 @@ LocalClimate Planet::current_local_climate(bool include_supplied, double sample_
                     / ((IceSeason::rows - 1) * climate.ice_season->columns);
             }
         }
-        const double land_mean = climate.mean_k * std::pow(land_history.global_flux * reference, .25);
+        const double land_mean = climate.mean_k * std::pow(total_flux(land_history.global_flux * reference), .25);
         climate.current_mean_k = (1 - ocean) * land_mean + ocean * water_mean;
     }
     if (!sampling && atm && atm->pressure_model.is_object() && atm->pressure_model.value("status", "") == "estimated")
     {
         atm->pressure_model["seasonal_conditions"] = CosmicShore::seasonal_volatiles(atm->pressure_model,
-            forcing, climate.mean_k, ((1 - ocean) * land_capacity + ocean * ocean_capacity) / feedback, reference);
+            forcing, climate.mean_k, ((1 - ocean) * land_capacity + ocean * ocean_capacity) / feedback,
+            reference, climate.internal_flux_fraction);
     }
     if (!sampling)
     {
@@ -1803,10 +1821,40 @@ double Planet::equilibrium_temperature()
     return t_eq;
 }
 
+double Planet::tidal_heat_flux() const
+{
+    if (!orbit || !orbit->center || orbit->center == this) return 0;
+    const auto* parent = orbit->center;
+    if (!(parent->mass > 0) || !std::isfinite(parent->mass)) return 0;
+    double axis = orbit->semimajor_axis;
+    const double total_mass = parent->mass + (std::isfinite(mass) && mass > 0 ? mass : 0);
+    if (!(axis > 0) && std::isfinite(orbit->period) && orbit->period > 0)
+        axis = std::cbrt(G * total_mass * std::pow(orbit->period / (2 * _pi), 2));
+    if (!(axis > 0) || !std::isfinite(axis)) return 0;
+    const double motion = std::isfinite(orbit->period) && orbit->period > 0
+        ? 2 * _pi / orbit->period : std::sqrt(G * total_mass / axis / axis / axis);
+    const double spin = std::isfinite(sidereal_rotational_period) && sidereal_rotational_period != 0
+        ? 2 * _pi / sidereal_rotational_period : 0;
+    // Interior scenarios, not measurements. An explicit zero disables heating.
+    const double dissipation = std::isfinite(tidal_k2_over_q) ? tidal_k2_over_q
+        : uses_gaseous_map(type) ? 3e-6 : .003;
+    return tidal_surface_heat_flux(parent->mass * .001, volumetric_mean_radius, axis,
+        orbit->eccentricity, motion, spin, dissipation);
+}
+
+double Planet::effective_radiating_temperature()
+{
+    const double stellar = equilibrium_temperature();
+    return std::pow(std::pow(stellar, 4) + tidal_heat_flux() / STEFAN_BOLTZMANN, .25);
+}
+
 double Planet::estimate_surface_temperature()
 {
     if (rendering_saved_parameters)
         return temperature ? temperature : temperature_at_pressure(get_surface_pressure());
+    const double tidal_flux = tidal_heat_flux();
+    if (!has_supplied_mean_temperature() && tidal_flux != cached_tidal_flux) temperature = 0;
+    cached_tidal_flux = tidal_flux;
     if (temperature)
     {
         temperature_supplied = has_supplied_mean_temperature();
@@ -1816,7 +1864,7 @@ double Planet::estimate_surface_temperature()
         if (!temperature_supplied) inferred_mean_temperature = temperature;
         return temperature;
     }
-    if (uses_gaseous_map(type)) return inferred_mean_temperature = temperature = equilibrium_temperature();         // For gas giants, just give equilibrium temp.
+    if (uses_gaseous_map(type)) return inferred_mean_temperature = temperature = effective_radiating_temperature();
     const double surface_k = temperature_at_pressure(get_surface_pressure());
     return inferred_mean_temperature = temperature = condense_atmosphere(equilibrium_temperature(), surface_k);
 }
@@ -2281,6 +2329,7 @@ json Planet::to_json()
     towrite["has_water_supplied"] = has_water_supplied;
     if (surface_water_model.is_object()) towrite["surface_water_model"] = surface_water_model;
     if (std::isfinite(ocean_salinity_g_kg)) towrite["ocean_salinity_g_kg"] = ocean_salinity_g_kg;
+    if (std::isfinite(tidal_k2_over_q)) towrite["tidal_k2_over_q"] = tidal_k2_over_q;
     towrite["ring_status_known"] = ring_status_known;
     towrite["cloud_map_url"] = cloud_map_url;
     towrite["static_clouds"] = static_clouds;
@@ -2336,6 +2385,9 @@ bool Planet::from_json(const json& j)
     temperature = 0;
     CelestialObject::from_json(j);
     ocean_salinity_g_kg = ocean_numeric(j, "ocean_salinity_g_kg");
+    tidal_k2_over_q = ocean_numeric(j, "tidal_k2_over_q");
+    if (tidal_k2_over_q < 0) tidal_k2_over_q = NAN;
+    cached_tidal_flux = NAN;
     // Thermal history is transient. Ignore legacy surface checkpoints on load.
     temperature_supplied = j.value("temperature_supplied", temperature > 0);
     inferred_mean_temperature = temperature > 0 && !temperature_supplied ? temperature : NAN;

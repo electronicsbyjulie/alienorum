@@ -143,6 +143,7 @@ namespace alienorum
         double absorbed_reference = 200, feedback = 3, redistribution = .9, reference = 1, regional_k = 0;
         double mean_k = 288, contrast_k = 0;
         bool seasonal = true, locked = false;
+        double internal_flux_fraction = 0;
         size_t columns = 1;
         std::vector<std::vector<Curve>> histories;
         std::vector<double> annual_heating;
@@ -153,7 +154,8 @@ namespace alienorum
         {
             if (!locked) return mean_k + contrast_k * (1.0 / 3.0 - latitude * latitude);
             const double illumination = std::max(0.0, std::sqrt(std::max(0.0, 1 - latitude * latitude)) * std::cos(longitude));
-            return mean_k * std::pow(redistribution + (1 - redistribution) * 4 * illumination, .25);
+            return mean_k * std::pow(internal_flux_fraction + (1 - internal_flux_fraction)
+                * (redistribution + (1 - redistribution) * 4 * illumination), .25);
         }
 
         IceForcing forcing(size_t row, size_t longitude, double eccentric, double baseline = NAN) const
@@ -182,7 +184,8 @@ namespace alienorum
             const double baseline_share = locked ? redistribution + (1 - redistribution) * 4
                 * std::max(0.0, std::sqrt(std::max(0.0, 1 - latitude * latitude)) * std::cos(angle)) : 1;
             return {absorbed_reference * direct * flux,
-                absorbed_reference * baseline_share + feedback * (column.freezing() - baseline), feedback,
+                absorbed_reference * baseline_share + column.basal_flux
+                    + feedback * (column.freezing() - baseline), feedback,
                 absorbed_reference * transported * flux * (1 - column.ocean_heat_share),
                 absorbed_reference * transported * flux * column.ocean_heat_share};
         }
@@ -218,10 +221,10 @@ namespace alienorum
 
         IceSeason(const IceColumn& physical, const ThermalOrbit& annual, double mean, double contrast,
             double absorbed, double slope, double transport, double flux_reference, bool annual_cycle, bool synchronous,
-            double regional_amplitude = 0)
+            double regional_amplitude = 0, double internal_fraction = 0)
             : column(physical), orbit(annual), absorbed_reference(absorbed), feedback(slope), redistribution(transport),
               reference(flux_reference), regional_k(std::abs(regional_amplitude)), mean_k(mean), contrast_k(contrast),
-              seasonal(annual_cycle), locked(synchronous), columns(synchronous ? 8 : 1)
+              seasonal(annual_cycle), locked(synchronous), internal_flux_fraction(internal_fraction), columns(synchronous ? 8 : 1)
         {
             histories.resize(rows * columns);
             annual_heating.resize(rows);

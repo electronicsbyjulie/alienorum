@@ -69,7 +69,7 @@ namespace alienorum
             const AtmosphericInventory* inventory = nullptr);
         // Periodic thermal and phase history for the currently inspected body.
         static json seasonal_volatiles(const json& budget, const ThermalOrbit& orbit,
-            double mean_k, double response_seconds, double flux_reference = 1);
+            double mean_k, double response_seconds, double flux_reference = 1, double internal_fraction = 0);
         // Heights are normalized terrain samples with equal surface-area weights.
         static SurfaceWaterEstimate estimate_surface_water(const Planet& p, const json& budget,
             const std::vector<double>& heights = {});

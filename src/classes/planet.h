@@ -33,6 +33,8 @@ namespace alienorum
         bool rendering_saved_parameters = false;
         bool temperature_supplied = false;
         double inferred_mean_temperature = NAN;
+        double tidal_k2_over_q = NAN;
+        double cached_tidal_flux = NAN;
         std::shared_ptr<LocalClimate> cloud_climate_snapshot;
         std::shared_ptr<LocalClimate> conditions_cache;
         std::vector<double> conditions_cache_key;
@@ -134,6 +136,8 @@ namespace alienorum
         double est_bolometric_flux(double t_eff = 0);
         double estimate_bond_albedo();                      // for want of an actual parameter.
         double equilibrium_temperature();
+        double tidal_heat_flux() const;                     // W/m^2, averaged over the surface.
+        double effective_radiating_temperature();
         double estimate_surface_temperature();
         double condense_atmosphere(double equilibrium_k, double surface_k);
         double temperature_at_pressure(double pressure_pa);  // Same greenhouse formula, at an arbitrary reference level.
