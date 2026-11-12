@@ -727,7 +727,7 @@ std::string CelestialObject::scaled_distance(CelestialLocation fromwhere, bool i
     return oss.str();
 }
 
-void alienorum::CelestialObject::randomize()
+uint32_t alienorum::CelestialObject::texture_seed() const
 {
     if (!rnd_seed)
     {
@@ -746,8 +746,14 @@ void alienorum::CelestialObject::randomize()
             hash = low_bits(static_cast<double>(hash) + 0xeb00dae * positive_log(orbit->semimajor_axis)
                 + (std::isfinite(orbit->arg_periapsis) ? 0xefac00ee * orbit->arg_periapsis : 0.0));
         }
-        rnd_seed = hash;
+        return hash;
     }
+    return rnd_seed;
+}
+
+void alienorum::CelestialObject::randomize()
+{
+    rnd_seed = texture_seed();
     rng.seed(rnd_seed);
 }
 
@@ -3412,9 +3418,12 @@ void Map::generate_rocky_map(CelestialObject *cel)
         }
         LocalClimate climate = p->current_local_climate(true);
         // Habitat follows the sampled year/day cycle; activity follows the current surface state.
-        const bool life_possible = p->has_water && pressure >= 611.657 && pressure < oneatm * 2000
-            && p->mass > .02 * earth_mass;
-        if (!p->preserve_loaded_parameters && p->has_water && life_possible && randomize_txgen
+        const bool habitat_possible = p->has_water && pressure >= 611.657 && pressure < oneatm * 2000
+            && (p->typeclass() == class_moon || p->mass > .02 * earth_mass);
+        const bool simulated_life = p->resolve_sim_life(!p->preserve_loaded_parameters);
+        const bool life_possible = habitat_possible && simulated_life;
+        // Keep palette draws stable even when the life scenario suppresses vegetation.
+        if (!p->preserve_loaded_parameters && p->has_water && habitat_possible && randomize_txgen
             && !p->vegetation_r && !p->vegetation_g && !p->vegetation_b)
         {
             CelestialObject *light_center = cel->get_light_center();

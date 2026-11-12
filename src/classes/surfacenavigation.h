@@ -30,7 +30,7 @@ namespace alienorum
         };
         struct WaterPatch
         {
-            using Key = std::tuple<Map*, unsigned int, Planet*, double, double, bool, bool, bool, bool, int, int, int, int, bool>;
+            using Key = std::tuple<Map*, unsigned int, Planet*, double, double, bool, bool, bool, bool, int, int, int, int, bool, bool>;
             Key key;
             double latitude = 0, longitude = 0;
             bool attempted = false, uniform = false, value = false;

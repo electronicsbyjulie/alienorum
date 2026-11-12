@@ -29,6 +29,99 @@
 
 using namespace alienorum;
 
+namespace
+{
+    uint64_t life_hash(uint64_t value)
+    {
+        value += 0x9e3779b97f4a7c15ULL;
+        value = (value ^ (value >> 30)) * 0xbf58476d1ce4e5b9ULL;
+        value = (value ^ (value >> 27)) * 0x94d049bb133111ebULL;
+        return value ^ (value >> 31);
+    }
+
+    double life_draw(uint64_t value)
+    {
+        return (life_hash(value) >> 11) * (1.0 / 9007199254740992.0);
+    }
+}
+
+double Planet::surface_life_probability()
+{
+    if (!orbit || !orbit->center) return 1;
+    CelestialObject* parent = orbit->center;
+    if (parent->typeclass() != class_planet || !uses_gaseous_map(parent->type)) return 1;
+    const double radius = parent->get_equatorial_radius();
+    if (!(radius > 0) || !(orbit->semimajor_axis > radius)) return 0;
+    const uint64_t seed = parent->texture_seed();
+    // Procedural radiation scenarios, not measured biological probabilities.
+    // Shared parent properties correlate siblings; the moon's draw stays independent.
+    const double mass_factor = std::isfinite(parent->mass) && parent->mass > 0
+        ? std::clamp(std::pow(parent->mass / jupiter_mass, 1.0 / 6), .6, 1.8) : 1;
+    const double spin_factor = std::isfinite(parent->sidereal_rotational_period) && parent->sidereal_rotational_period != 0
+        ? std::clamp(std::pow(10 * 3600 / std::abs(parent->sidereal_rotational_period), 1.0 / 6), .7, 1.4) : 1;
+    const double transition = (8 + 12 * life_draw(seed ^ 0x62656c7473ULL)) * mass_factor * spin_factor;
+    const double slope = 3 + 2 * life_draw(seed ^ 0x736c6f7065ULL);
+    const double eccentricity = std::isfinite(orbit->eccentricity)
+        && orbit->eccentricity >= 0 && orbit->eccentricity < 1 ? orbit->eccentricity : 0;
+    double probability = 0;
+    for (int sample = 0; sample < 32; ++sample)
+    {
+        const double radial = 1 - eccentricity * std::cos(2 * _pi * (sample + .5) / 32);
+        const double distance = orbit->semimajor_axis * radial / radius;
+        probability += radial * (.01 + .99 / (1 + std::pow(transition / distance, slope))) / 32;
+    }
+    // Atmospheric mass per unit area supplies a smooth shielding scenario.
+    const double gravity = G * mass / std::pow(volumetric_mean_radius, 2);
+    const double pressure = get_surface_pressure();
+    const double column = std::isfinite(gravity) && gravity > 0 && std::isfinite(pressure)
+        ? std::max(0.0, pressure) / gravity : 0;
+    return std::clamp(1 - (1 - probability) * std::exp(-column / (oneatm / 9.80665)), 0.0, 1.0);
+}
+
+bool Planet::resolve_sim_life(bool randomize_choice)
+{
+    if (typeclass() != class_moon) return true;
+    const auto unsuitable = [&]()
+    {
+        has_sim_life.reset();
+        return false;
+    };
+    if (!uses_rocky_map(type) || type == lavaworld || has_water == 0) return unsuitable();
+    const double pressure = get_surface_pressure();
+    if (!std::isfinite(pressure) || !std::isfinite(has_water)) return has_sim_life.value_or(false);
+    if (pressure < 611.657 || pressure >= oneatm * 2000 || has_water < 0) return unsuitable();
+    // Missing orbital links during loading must not erase a saved decision.
+    if (!orbit || !orbit->center) return has_sim_life.value_or(false);
+    const LocalClimate climate = local_climate();
+    const double salinity = ocean_chemistry().at("salinity_g_kg").get<double>();
+    const double freezing = std::max(double(ORGANIC_LIFE_MIN_TEMP_K), seawater_freezing_k(salinity, pressure));
+    const double boiling = std::min(double(ORGANIC_LIFE_MAX_TEMP_K), surface_boiling_k(pressure));
+    bool habitat = false;
+    for (int row = 0; row <= 16 && !habitat; ++row)
+    {
+        const double z = -1 + row / 8.0, ring = std::sqrt(std::max(0.0, 1 - z * z));
+        for (int column = 0; column < 8; ++column)
+        {
+            const double angle = 2 * _pi * column / 8;
+            const double local = climate.temperature(-ring * std::cos(angle), -ring * std::sin(angle),
+                z, climate.sea_level_m, true);
+            if (local >= freezing && local < boiling) { habitat = true; break; }
+        }
+    }
+    if (!habitat) return unsuitable();
+    if (!has_sim_life || (randomize_choice && randomize_txgen))
+    {
+        if (randomize_txgen)
+        {
+            if (!orbit || !orbit->center) return false;
+            const uint64_t pair = (uint64_t(orbit->center->texture_seed()) << 32) | texture_seed();
+            has_sim_life = life_draw(pair ^ 0x6c696665ULL) < surface_life_probability();
+        }
+        else has_sim_life = true;
+    }
+    return *has_sim_life;
+}
+
 std::vector<AstorbRow> astorb;
 
 bool alienorum::render_saved_planet(CelestialObject* object,
@@ -102,6 +195,7 @@ bool alienorum::render_saved_planet(CelestialObject* object,
             source->looked_for_maps = copy->looked_for_maps;
             source->ignore_map_files = copy->ignore_map_files;
             source->has_real_maps = copy->has_real_maps;
+            source->has_sim_life = copy->has_sim_life;
         }
     } textures(source, copy.get());
     render(copy.get());
@@ -2309,6 +2403,7 @@ bool Atmosphere::from_json(json j)
 
 json Planet::to_json()
 {
+    if (typeclass() == class_moon) resolve_sim_life();
     json towrite = CelestialObject::to_json();
     towrite["lock_system_plane"] = lock_system_plane;
     towrite["mass_evidence"] = static_cast<int>(mass_evidence);
@@ -2329,6 +2424,7 @@ json Planet::to_json()
     towrite["has_water_supplied"] = has_water_supplied;
     if (surface_water_model.is_object()) towrite["surface_water_model"] = surface_water_model;
     if (std::isfinite(ocean_salinity_g_kg)) towrite["ocean_salinity_g_kg"] = ocean_salinity_g_kg;
+    if (typeclass() == class_moon && has_sim_life) towrite["has_sim_life"] = *has_sim_life;
     if (std::isfinite(tidal_k2_over_q)) towrite["tidal_k2_over_q"] = tidal_k2_over_q;
     towrite["ring_status_known"] = ring_status_known;
     towrite["cloud_map_url"] = cloud_map_url;
@@ -2385,6 +2481,21 @@ bool Planet::from_json(const json& j)
     temperature = 0;
     CelestialObject::from_json(j);
     ocean_salinity_g_kg = ocean_numeric(j, "ocean_salinity_g_kg");
+    has_sim_life.reset();
+    if (typeclass() == class_moon && j.contains("has_sim_life") && j["has_sim_life"].is_boolean())
+        has_sim_life = j["has_sim_life"].get<bool>();
+    else if (typeclass() == class_moon && j.contains("has_sim_life") && j["has_sim_life"].is_string())
+    {
+        const auto value = j["has_sim_life"].get<std::string>();
+        if (value == "true" || value == "true?") has_sim_life = true;
+        else if (value == "false" || value == "false?") has_sim_life = false;
+        else
+        {
+            double numeric = NAN;
+            if (parse_numeric_value(value, numeric) && (numeric == 0 || numeric == 1))
+                has_sim_life = numeric == 1;
+        }
+    }
     tidal_k2_over_q = ocean_numeric(j, "tidal_k2_over_q");
     if (tidal_k2_over_q < 0) tidal_k2_over_q = NAN;
     cached_tidal_flux = NAN;

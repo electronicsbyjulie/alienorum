@@ -8304,7 +8304,8 @@ void draw_horizon()
                 const double scenery_spacing = sqrt(_pi * ROCK_MAX_DIST * ROCK_MAX_DIST / ROCK_COUNT);
                 const double crown_scale = p ? fmax(p->plant_trunk_width, p->plant_crown_size) : 0;
                 const double canopy_margin = 2 * ROCK_MAX_SIZE * crown_scale + 0.1;
-                const bool has_plants = p && (p->vegetation_r || p->vegetation_g || p->vegetation_b);
+                const bool has_plants = p && p->simulated_surface_life_allowed()
+                    && (p->vegetation_r || p->vegetation_g || p->vegetation_b);
                 const double scenery_range = has_plants ? std::max(PLANT_MAX_DIST, ROCK_MAX_DIST) : ROCK_MAX_DIST;
                 static SurfaceSceneryCache scenery_cache;
                 const auto &scenery = scenery_cache.update(R_planet, viewer_lat, viewer_lon,
@@ -8313,7 +8314,7 @@ void draw_horizon()
                     local_surface_revision, generating_fic_texture, water_favorable,
                     p ? p->has_water : 0.0f, p ? p->type : cel->type,
                     p ? p->vegetation_r : 0, p ? p->vegetation_g : 0, p ? p->vegetation_b : 0,
-                    crown_scale, scenery_range);
+                    crown_scale, scenery_range, has_plants);
                 static decltype(scenery_key) saved_scenery_key;
                 static bool scenery_valid = false;
                 static std::vector<bool> plant, water, canopy_clear;

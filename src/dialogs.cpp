@@ -2571,6 +2571,23 @@ void draw_objedit_window(ImGuiIO& io)
                             ImGui::SetTooltip("Estimate water and ice coverage from retained water and assumed basin relief.\nThis replaces the water level; pressure stays as entered. Press Update to redraw.");
                     }
 
+                    if (p->typeclass() == class_moon && !randomize_txgen)
+                    {
+                        p->resolve_sim_life();
+                        ImGui::Dummy(ImVec2(col15 + txtwid, ImGui::GetFrameHeight()));
+                        ImGui::SameLine();
+                        bool simulated_life = p->has_sim_life.value_or(false);
+                        ImGui::BeginDisabled(generating_fic_texture || !p->has_sim_life.has_value());
+                        if (ImGui::Checkbox("Has simulated life", &simulated_life))
+                        {
+                            p->has_sim_life = simulated_life;
+                            cel->user_edited = true;
+                        }
+                        ImGui::EndDisabled();
+                        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                            ImGui::SetTooltip("Requires suitable temperatures and liquid surface water.\nPress Update to redraw vegetation. Randomize chooses life during Regenerate.");
+                    }
+
                     ImGui::Text("%s", "Water vapor %");
                     ImGui::SameLine(col15);
                     ImGui::SetNextItemWidth(txtwid);

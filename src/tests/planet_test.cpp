@@ -33,6 +33,239 @@
 using namespace alienorum;
 using json = nlohmann::json;
 
+class MoonLifeScenarioTest : public UniverseFixture
+{
+protected:
+    bool original_randomize = false;
+    Planet* giant = nullptr;
+
+    void SetUp() override
+    {
+        UniverseFixture::SetUp();
+        original_randomize = randomize_txgen;
+        randomize_txgen = true;
+        giant = make_planet(make_star(), "Life scenario parent");
+        giant->type = gas_giant;
+        giant->mass = jupiter_mass;
+        giant->volumetric_mean_radius = jupiter_radius;
+        giant->sidereal_rotational_period = 10 * 3600;
+        giant->rnd_seed = 1234;
+        auto* host = static_cast<Star*>(giant->orbit->center);
+        host->distance = 0;
+        host->update_location(simnow);
+        giant->update_location(simnow);
+    }
+
+    void TearDown() override
+    {
+        wait_for_texture_tasks();
+        randomize_txgen = original_randomize;
+        delete_the_universe();
+        UniverseFixture::TearDown();
+    }
+
+    Moon* moon(unsigned int seed = 100)
+    {
+        auto* body = new Moon;
+        strcpy(body->name, "Life scenario moon");
+        body->rnd_seed = seed;
+        body->type = rocky;
+        body->mass = earth_mass;
+        body->volumetric_mean_radius = earth_radius;
+        body->temperature = 288;
+        body->temperature_supplied = true;
+        body->has_water = .42;
+        body->has_water_supplied = true;
+        body->albedo = .3;
+        body->orbit = new Orbit;
+        body->orbit->center = giant;
+        body->orbit->center_name = giant->name;
+        body->orbit->semimajor_axis = 10 * giant->volumetric_mean_radius;
+        body->orbit->compute_period(body->mass);
+        body->sidereal_rotational_period = body->orbit->period;
+        body->ensure_atmosphere()->surface_pressure = .1 * oneatm;
+        body->atm->pressure_supplied = true;
+        body->atm->ensure_composition()->N2_portion = 1;
+        body->cenobj = giant->orbit->center;
+        append_cel(body);
+        body->update_location(simnow);
+        return body;
+    }
+};
+
+TEST_F(MoonLifeScenarioTest, SharedSeedsAreStableAndLeaveTextureRandomStreamsUntouched)
+{
+    Moon* body = moon();
+    giant->randomize();
+    body->randomize();
+    const auto parent_rng = giant->rng, moon_rng = body->rng;
+    const double probability = body->surface_life_probability();
+    const bool choice = body->resolve_sim_life();
+    ASSERT_TRUE(body->has_sim_life.has_value());
+    EXPECT_EQ(giant->rng, parent_rng);
+    EXPECT_EQ(body->rng, moon_rng);
+    for (int visit = 0; visit < 5; ++visit)
+    {
+        body->has_sim_life.reset();
+        EXPECT_EQ(body->resolve_sim_life(), choice);
+        EXPECT_DOUBLE_EQ(body->surface_life_probability(), probability);
+    }
+    body->rnd_seed = 999;
+    EXPECT_DOUBLE_EQ(body->surface_life_probability(), probability);
+    giant->rnd_seed = 4321;
+    EXPECT_NE(body->surface_life_probability(), probability);
+}
+
+TEST_F(MoonLifeScenarioTest, GradientRisesWithDistanceAndShieldingWithIndependentMoonDraws)
+{
+    Moon* body = moon();
+    body->orbit->semimajor_axis = 3 * giant->volumetric_mean_radius;
+    const double inner = body->surface_life_probability();
+    body->orbit->semimajor_axis = 100 * giant->volumetric_mean_radius;
+    const double outer = body->surface_life_probability();
+    EXPECT_GT(outer, inner + .5);
+    body->orbit->semimajor_axis = 3 * giant->volumetric_mean_radius;
+    body->atm->surface_pressure = oneatm;
+    EXPECT_GT(body->surface_life_probability(), inner);
+    body->atm->surface_pressure = .1 * oneatm;
+    int inner_life = 0, outer_life = 0;
+    for (unsigned int seed = 1; seed <= 100; ++seed)
+    {
+        body->rnd_seed = seed;
+        body->orbit->semimajor_axis = 3 * giant->volumetric_mean_radius;
+        body->has_sim_life.reset();
+        inner_life += body->resolve_sim_life();
+        body->orbit->semimajor_axis = 100 * giant->volumetric_mean_radius;
+        body->has_sim_life.reset();
+        outer_life += body->resolve_sim_life();
+    }
+    EXPECT_GT(inner_life, 0);
+    EXPECT_LT(inner_life, 50);
+    EXPECT_GT(outer_life, 95);
+}
+
+TEST_F(MoonLifeScenarioTest, JsonPreservesBothDecisionsAndOmitsUnsuitableMoons)
+{
+    Moon* body = moon();
+    for (bool choice : {false, true})
+    {
+        body->has_sim_life = choice;
+        const json saved = Serialization::output_record(body->to_json());
+        ASSERT_TRUE(saved.contains("has_sim_life"));
+        EXPECT_EQ(saved["has_sim_life"], choice);
+        Moon restored;
+        ASSERT_TRUE(restored.from_json(Serialization::expand_output_record(saved)));
+        // Parent links are installed after parsing, so this must also survive without them.
+        EXPECT_EQ(restored.to_json()["has_sim_life"], choice);
+        json inferred = Serialization::expand_output_record(saved);
+        inferred["temperature_supplied"] = false;
+        Moon detached;
+        ASSERT_TRUE(detached.from_json(inferred));
+        EXPECT_EQ(detached.to_json()["has_sim_life"], choice);
+        restored.orbit->center = giant;
+        EXPECT_EQ(restored.resolve_sim_life(), choice);
+    }
+    for (double temperature : {100.0, 800.0})
+    {
+        body->temperature = temperature;
+        body->has_sim_life = true;
+        EXPECT_FALSE(body->to_json().contains("has_sim_life"));
+        EXPECT_FALSE(body->has_sim_life.has_value());
+    }
+    body->temperature = 288;
+    body->has_water = 0;
+    EXPECT_FALSE(body->to_json().contains("has_sim_life"));
+    body->has_water = .42;
+    body->atm->surface_pressure = 0;
+    EXPECT_FALSE(body->to_json().contains("has_sim_life"));
+    EXPECT_FALSE(giant->to_json().contains("has_sim_life"));
+}
+
+TEST_F(MoonLifeScenarioTest, ManualChoicesSurviveSeedChangesWhenRandomizeIsOff)
+{
+    Moon* body = moon();
+    randomize_txgen = false;
+    EXPECT_TRUE(body->resolve_sim_life(true));
+    body->has_sim_life = false;
+    for (unsigned int seed = 1; seed <= 30; ++seed)
+    {
+        body->rnd_seed = seed;
+        EXPECT_FALSE(body->resolve_sim_life(true));
+        EXPECT_EQ(body->to_json()["has_sim_life"], false);
+    }
+    randomize_txgen = true;
+    body->orbit->semimajor_axis = 100 * giant->volumetric_mean_radius;
+    bool randomized = false;
+    for (unsigned int seed = 1; seed <= 30 && !randomized; ++seed)
+    {
+        body->rnd_seed = seed;
+        randomized = body->resolve_sim_life(true);
+    }
+    EXPECT_TRUE(randomized);
+}
+
+TEST_F(MoonLifeScenarioTest, UncertaintyAnnotationsRetainTheSuppliedDecision)
+{
+    Moon* body = moon();
+    json saved = body->to_json();
+    for (const auto& entry : {std::make_pair("false?", false), std::make_pair("true?", true),
+        std::make_pair("0?", false), std::make_pair("1?", true)})
+    {
+        saved["has_sim_life"] = entry.first;
+        Moon restored;
+        ASSERT_TRUE(restored.from_json(saved));
+        ASSERT_TRUE(restored.has_sim_life.has_value());
+        EXPECT_EQ(*restored.has_sim_life, entry.second);
+        EXPECT_EQ(restored.to_json()["has_sim_life"], entry.second);
+    }
+    saved["has_sim_life"] = "?";
+    Moon restored;
+    ASSERT_TRUE(restored.from_json(saved));
+    EXPECT_FALSE(restored.has_sim_life.has_value());
+}
+
+TEST_F(MoonLifeScenarioTest, BarrenMoonsSuppressVegetationWithoutChangingTerrain)
+{
+    randomize_txgen = false;
+    std::vector<float> elevations;
+    int living_pixels = 0;
+    for (bool choice : {true, false})
+    {
+        Moon* body = moon();
+        body->has_sim_life = choice;
+        body->preserve_loaded_parameters = true;
+        body->fictitious_map_height = 32;
+        body->vegetation_r = 50;
+        body->vegetation_g = 180;
+        body->vegetation_b = 30;
+        body->veg_min_temp = 265;
+        body->veg_max_temp = 330;
+        body->surf_map = new Map(body);
+        body->surf_map->generate_rocky_map(body);
+        ASSERT_TRUE(body->surf_map->is_complete());
+        EXPECT_EQ(body->has_sim_life, choice);
+        int plants = 0;
+        for (unsigned long row = 0; row < 32; ++row)
+            for (unsigned long column = 0; column < 64; ++column)
+                plants += body->surf_map->material_at(half_pi - (row + .5) * _pi / 32,
+                    -_pi + (column + .5) * 2 * _pi / 64) == SurfaceMaterial::vegetation;
+        std::vector<float> bump(32 * 64);
+        body->surf_map->export_bump(bump.data());
+        if (choice)
+        {
+            living_pixels = plants;
+            elevations = bump;
+        }
+        else
+        {
+            EXPECT_EQ(plants, 0);
+            EXPECT_EQ(bump, elevations);
+        }
+        EXPECT_EQ(body->to_json()["has_sim_life"], choice);
+    }
+    EXPECT_GT(living_pixels, 0);
+}
+
 TEST(TidalHeatingModelTest, IoScaleMatchesTheSynchronousSmallEccentricityLimit)
 {
     const double parent = 1.89813e27, radius = 1821600, axis = 421700000;

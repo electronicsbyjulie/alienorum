@@ -10,6 +10,7 @@
 #include <memory>
 #include <random>
 #include <future>
+#include <optional>
 
 // Not sure about this number at all.
 #define phase_exponent 1.319507911
@@ -45,6 +46,10 @@ namespace alienorum
         double cloud_epoch = NAN;
         uint32_t weather_revision = 0;
         double ocean_salinity_g_kg = NAN;
+        std::optional<bool> has_sim_life;
+        bool resolve_sim_life(bool randomize_choice = false);
+        double surface_life_probability();
+        bool simulated_surface_life_allowed() const { return has_sim_life.value_or(true); }
         json ocean_chemistry();
         void update_surface_phase(double latitude, double longitude);
         static void update_surface_phases();

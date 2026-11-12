@@ -484,6 +484,7 @@ namespace alienorum
 
         std::string scaled_distance(CelestialLocation fromwhere, bool is_low_orbit_sat = false);
         void randomize();
+        uint32_t texture_seed() const;
         double density();
         double Hill_sphere_radius();
         double Roche_limit(CelestialObject *orbiter = nullptr);
