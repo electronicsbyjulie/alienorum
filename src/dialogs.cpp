@@ -1136,7 +1136,7 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
         }
 
         #if 0
-        Estimating salinity is both a little too uncertain and a little too niche to go splashing it up on the screen.
+        Estimating salinity is both a little too uncertain and a little too niche to go overconfidently bragging about it on the screen.
         if (i >= 0 && (cls == class_planet || cls == class_moon) && static_cast<Planet*>(cels[i])->has_water > 0)
         {
             const json ocean = static_cast<Planet*>(cels[i])->ocean_chemistry();

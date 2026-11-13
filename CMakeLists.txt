@@ -112,6 +112,7 @@ add_executable(alienorum
 	src/sphere_impostor.cpp
 	src/sunclock_gpu.cpp
 	src/scenery_gpu.cpp
+    src/plantmesh_gpu.cpp
 	src/horizon_ground_gpu.cpp
 	src/horizon_terrain_gpu.cpp
 	src/horizon_mesh_gpu.cpp

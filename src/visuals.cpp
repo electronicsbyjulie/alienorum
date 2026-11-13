@@ -14,6 +14,7 @@
 #include "horizon_ground_gpu.h"
 #include "horizon_performance.h"
 #include "scenery_gpu.h"
+#include "plantmesh_gpu.h"
 #include "horizon_terrain_gpu.h"
 #include "horizon_mesh_gpu.h"
 #include "classes/clouds_gpu.h"
@@ -8822,6 +8823,22 @@ void draw_horizon()
                 }
 
                 const bool gpu_plants = prepare_scenery_gpu();
+                PlantMeshView plant_view;
+                plant_view.focal = dispcx * zoom;
+                plant_view.center_x = dispcx; plant_view.center_y = dispcy;
+                plant_view.sin_pitch = surface_sin_altitude(); plant_view.cos_pitch = surface_cos_altitude();
+                plant_view.light = ImVec4(cos(sun_elev) * sin(sun_az_world - azimuth), sin(sun_elev),
+                    cos(sun_elev) * cos(sun_az_world - azimuth), sun_light);
+                plant_view.ambient = amb_light;
+                plant_view.airlight = ImVec4(haze.light[0] / 255.0f, haze.light[1] / 255.0f, haze.light[2] / 255.0f, 1);
+                plant_view.redlight = redlight_mode;
+                // Subpixel crowns keep the silhouette path; solid geometry starts
+                // where perspective and surface lighting become visible.
+                const bool nearby_plants = has_plants && std::any_of(rocks.begin(), rocks.end(), [](const RockInstance& rock)
+                {
+                    return rock.vegetation && rock.crown_rx >= 12 && rock.width >= ROCK_PEBBLE_THRESH;
+                });
+                const bool mesh_plants = nearby_plants && prepare_plant_mesh_gpu(plant_view, terrain_raster.distances());
                 ImDrawList *scenery_draw_list = ImGui::GetBackgroundDrawList();
                 auto fade_scenery = [&](int first_vertex, double opacity, double distance)
                 {
@@ -8856,6 +8873,27 @@ void draw_horizon()
                     double rh = rk.height;
 
                     if (gpu_plants && !is_vegetation) flush_scenery_gpu();
+                    const bool volume_plant = mesh_plants && is_vegetation && rk.crown_rx >= 12 && rw >= ROCK_PEBBLE_THRESH;
+                    if (mesh_plants && !volume_plant) flush_plant_mesh_gpu();
+                    if (volume_plant)
+                    {
+                        if (gpu_plants) flush_scenery_gpu();
+                        PlantMeshInstance plant;
+                        const double angle = rk.theta - azimuth;
+                        double base_height = -h_eye - rk.ground_dist * rk.ground_dist / (2 * R_planet);
+                        if (s_horizon > 0) base_height += scenery_bending * rk.ground_dist * rk.ground_dist;
+                        plant.base = ImVec4(rk.ground_dist * sin(angle), base_height,
+                            rk.ground_dist * cos(angle), rk.size * p->plant_trunk_height);
+                        const double radius = rk.size * crown_scale;
+                        plant.dimensions = ImVec4(fmax(.001, radius), fmax(.001, radius * fabs(p->plant_crown_oblateness)),
+                            fmax(.001, rk.size * p->plant_trunk_width * .5), fmax(.001, rk.size * p->plant_trunk_width * .38));
+                        plant.crown_color = IM_COL32(base_map_rgb.r, base_map_rgb.g, base_map_rgb.b, 255);
+                        plant.trunk_color = IM_COL32(PLANT_TRUNK_COLOR_R, PLANT_TRUNK_COLOR_G, PLANT_TRUNK_COLOR_B, 255);
+                        plant.haze = ImVec4(haze.transmission(haze_distance, 0), haze.transmission(haze_distance, 1),
+                            haze.transmission(haze_distance, 2), rk.opacity);
+                        add_plant_mesh_gpu(plant, fmax(rk.crown_rx, rk.crown_ry));
+                        continue;
+                    }
                     if (rw < ROCK_PEBBLE_THRESH && (!is_vegetation || rk.crown_rx > 0))
                     {
                         if (is_vegetation && rk.crown_hidden) continue;
@@ -9243,6 +9281,7 @@ void draw_horizon()
                     fade_scenery(first_vertex, rk.opacity, haze_distance);
                 }
                 if (gpu_plants) flush_scenery_gpu();
+                if (mesh_plants) flush_plant_mesh_gpu();
             }
         }
 

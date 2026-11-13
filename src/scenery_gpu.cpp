@@ -1,5 +1,6 @@
 #include "performance_options.h"
 #include "scenery_gpu.h"
+#include "plantmesh_gpu.h"
 #include "SDL.h"
 #include "imgui/backends/imgui_impl_opengl3_loader.h"
 #include <algorithm>
@@ -156,6 +157,7 @@ void main()
 
     void clear_scenery_gpu()
     {
+        clear_plant_mesh_gpu();
         if (context && context == SDL_GL_GetCurrentContext())
         {
             if (contour_texture) glDeleteTextures(1, &contour_texture);

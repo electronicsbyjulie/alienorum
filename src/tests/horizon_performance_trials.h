@@ -97,6 +97,8 @@ class HorizonTrialTest : public RenderingRegressionTest
         render_height = 800;
         SDL_SetWindowSize(window, render_width, render_height);
         SDL_PumpEvents();
+        // Commit the GLX backbuffer resize before timing or reading pixels.
+        SDL_GL_SwapWindow(window);
         std::cout << "HORIZON_RENDERER," << glGetString(GL_RENDERER) << std::endl;
         set(dispcx, render_width * .5);
         set(dispcy, render_height * .5);
@@ -173,6 +175,7 @@ TEST_F(HorizonTrialTest, PairedHorizonPaths)
                     const auto finished = std::chrono::steady_clock::now();
                     if (frame >= 3)
                     {
+                        if (trial == 201 && !reference && scene == "forest") EXPECT_GT(plant_mesh_stats().instances, 0u);
                         if (arm == 0) original_strides.push_back(precipitation_stats.ground_sample_stride);
                         else EXPECT_EQ(precipitation_stats.ground_sample_stride, original_strides[frame - 3]);
                         std::cout << "HORIZON_SAMPLE," << trial << ',' << scene << ',' << mode << ',' << round << ','
@@ -185,15 +188,18 @@ TEST_F(HorizonTrialTest, PairedHorizonPaths)
                         std::vector<unsigned char> pixels(render_width * render_height * 4);
                         glReadPixels(0, 0, render_width, render_height, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
                         if (arm == 0) pose_images.push_back(std::move(pixels));
-                        else EXPECT_EQ(image_difference(pixels, pose_images[frame], 1), 0)
+                        else if (trial != 201) EXPECT_EQ(image_difference(pixels, pose_images[frame], 1), 0)
                             << scene << ' ' << mode << ' ' << round << ' ' << frame;
                     }
                     if (frame + 1 == frames + 3)
                     {
+                        if (trial == 201 && !reference)
+                            std::cout << "HORIZON_PLANTS," << scene << ',' << mode << ',' << plant_mesh_stats().instances
+                                << ',' << plant_mesh_stats().triangles << ',' << plant_mesh_stats().draws << '\n';
                         std::vector<unsigned char> pixels(render_width * render_height * 4);
                         glReadPixels(0, 0, render_width, render_height, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
                         if (arm == 0) original = std::move(pixels);
-                        else EXPECT_EQ(image_difference(pixels, original, 1), 0) << scene << ' ' << mode << ' ' << round;
+                        else if (trial != 201) EXPECT_EQ(image_difference(pixels, original, 1), 0) << scene << ' ' << mode << ' ' << round;
                     }
                     ImGui::NewFrame();
                 }

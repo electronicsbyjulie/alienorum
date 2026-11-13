@@ -45,6 +45,8 @@
 #include "../classes/framescratch.h"
 #include "../horizon_ground_gpu.h"
 #include "../scenery_gpu.h"
+#include "../plantmesh_gpu.h"
+#include "../classes/plantmesh.h"
 #include "../horizon_terrain_gpu.h"
 #include "../horizon_mesh_gpu.h"
 #include "../gputex.h"
@@ -143,8 +145,8 @@ class DistantPlantTestMap : public Map
             // Uniform colors isolate geometry from ground painting; only the
             // distant strip is vegetated, with no plants in the old 100 m field.
             red_data[index] = 80;
-            green_data[index] = 60;
-            blue_data[index] = 40;
+            green_data[index] = 140;
+            blue_data[index] = 30;
             const double north = (half_pi - (index / image_width) / lat_scale) * radius;
             if (north >= 750 && north <= 950) surface_materials[index] = SurfaceMaterial::vegetation;
         }
@@ -236,8 +238,8 @@ class RenderingRegressionTest : public UniverseFixture
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
         SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 8);
-        if (const char* depth = std::getenv("ALIENORUM_PERF_DEPTH"))
-            SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, atoi(depth));
+        const char* depth = std::getenv("ALIENORUM_PERF_DEPTH");
+        SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, depth ? atoi(depth) : 24);
         window = SDL_CreateWindow("Rendering regression", 0, 0, 192, 108,
             SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN);
         if (window)
@@ -6898,6 +6900,10 @@ TEST_F(RenderingRegressionTest, SceneryChunkCullingPreservesWalkingAndPitchedIma
     Planet* world = surface(true);
     delete world->surf_map;
     world->surf_map = new BlueBiomeTestMap(SurfaceMaterial::vegetation);
+    // Hold plant geometry fixed while varying the projection's planet radius.
+    world->plant_trunk_height = 5;
+    world->plant_trunk_width = .25;
+    world->plant_crown_oblateness = .5;
     for (double radius : {5000.0, earth_radius})
     {
         world->volumetric_mean_radius = radius;
@@ -8915,4 +8921,223 @@ TEST(PressureHazeTest, OpaqueDiffuseSkyLightsGroundWithTheSameSpectrumAndLowerBr
     for (const double channel : air.surface_illumination(0)) EXPECT_EQ(channel, 0);
     air.illuminate({0, 0, 0}, 1, 15000);
     EXPECT_EQ(air.light, (std::array<double, 3>{0, 0, 0}));
+}
+
+
+TEST(PlantMeshGeometryTest, ClosedMeshesHaveOutwardFacesAndBoundedDetail)
+{
+    for (int level = 0; level < 3; ++level)
+    {
+        const auto mesh = build_plant_mesh(8 << level, 4 << level);
+        EXPECT_EQ(mesh.size(), size_t(6 * (8 << level) * ((4 << level) + 1)));
+        for (size_t i = 0; i < mesh.size(); i += 3)
+        {
+            std::array<double, 3> first{}, second{}, normal{}, face{};
+            for (int axis = 0; axis < 3; ++axis)
+            {
+                first[axis] = mesh[i + 1].position[axis] - mesh[i].position[axis];
+                second[axis] = mesh[i + 2].position[axis] - mesh[i].position[axis];
+                normal[axis] = mesh[i].normal[axis] + mesh[i + 1].normal[axis] + mesh[i + 2].normal[axis];
+                EXPECT_TRUE(std::isfinite(normal[axis]));
+            }
+            for (int axis = 0; axis < 3; ++axis)
+                face[axis] = first[(axis + 1) % 3] * second[(axis + 2) % 3]
+                    - first[(axis + 2) % 3] * second[(axis + 1) % 3];
+            EXPECT_GT(face[0] * normal[0] + face[1] * normal[1] + face[2] * normal[2], 0);
+        }
+    }
+}
+
+TEST_F(RenderingRegressionTest, PlantMeshesResolveDepthAcrossBatchesAndPreserveUiState)
+{
+    set(scenery_gpu_reference, false);
+    PlantMeshView view;
+    view.focal = 110; view.center_x = 96; view.center_y = 54;
+    view.light = ImVec4(0, .6, -.8, .5); view.ambient = .5;
+    PlantMeshInstance near;
+    near.base = ImVec4(0, -1.02, 6, 1.8);
+    near.dimensions = ImVec4(.9, .42, .15, .072);
+    near.crown_color = IM_COL32(45, 130, 55, 255); near.trunk_color = IM_COL32(90, 65, 40, 255);
+    const auto paint = [&](bool far)
+    {
+        ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, 0), ImVec2(192, 108), IM_COL32(12, 17, 25, 255));
+        EXPECT_TRUE(prepare_plant_mesh_gpu(view));
+        add_plant_mesh_gpu(near, 30); flush_plant_mesh_gpu();
+        if (far)
+        {
+            PlantMeshInstance behind = near;
+            behind.base = ImVec4(0, -1.7, 10, 3);
+            behind.dimensions = ImVec4(1.5, .7, .25, .12);
+            behind.crown_color = behind.trunk_color = IM_COL32(220, 10, 10, 255);
+            add_plant_mesh_gpu(behind, 30); flush_plant_mesh_gpu();
+        }
+        ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(2, 2), ImVec2(8, 8), IM_COL32(230, 220, 210, 255));
+        return render();
+    };
+    const auto front = paint(false);
+    EXPECT_GT(plant_mesh_stats().triangles, 0u);
+    EXPECT_FALSE(glIsEnabled(GL_DEPTH_TEST));
+    ImGui::NewFrame();
+    const auto both = paint(true);
+    EXPECT_EQ(image_difference(both, front, 2), 0);
+    EXPECT_EQ(plant_mesh_stats().instances, 2u);
+    EXPECT_EQ(plant_mesh_stats().draws, 2u);
+    ImGui::NewFrame();
+}
+
+TEST_F(RenderingRegressionTest, PlantMeshesRespectTerrainDepthAndLiveCameraChanges)
+{
+    set(scenery_gpu_reference, false);
+    PlantMeshView view;
+    view.focal = 110; view.center_x = 96; view.center_y = 54;
+    view.light = ImVec4(0, .6, -.8, .5); view.ambient = .5;
+    PlantMeshInstance plant;
+    plant.base = ImVec4(0, -1.7, 10, 3); plant.dimensions = ImVec4(1.5, .7, .25, .12);
+    plant.crown_color = IM_COL32(45, 130, 55, 255); plant.trunk_color = IM_COL32(90, 65, 40, 255);
+    const auto paint = [&](const std::vector<float>& terrain)
+    {
+        ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, 0), ImVec2(192, 108), IM_COL32(12, 17, 25, 255));
+        EXPECT_TRUE(prepare_plant_mesh_gpu(view, terrain));
+        add_plant_mesh_gpu(plant, 30); flush_plant_mesh_gpu();
+        return render();
+    };
+    const auto visible = paint({});
+    ImGui::NewFrame();
+    const auto hidden = paint(std::vector<float>(192 * 108, 4));
+    EXPECT_GT(image_difference(visible, hidden), 20);
+    for (size_t i = 0; i < hidden.size(); i += 4)
+    {
+        EXPECT_EQ(hidden[i], 12); EXPECT_EQ(hidden[i + 1], 17); EXPECT_EQ(hidden[i + 2], 25);
+    }
+    ImGui::NewFrame();
+    EXPECT_EQ(image_difference(paint({}), visible, 1), 0);
+    ImGui::NewFrame();
+    view.sin_pitch = std::sin(.25); view.cos_pitch = std::cos(.25);
+    EXPECT_GT(image_difference(paint({}), visible), 20);
+    ImGui::NewFrame();
+    view.sin_pitch = 0; view.cos_pitch = 1; view.light = ImVec4(0, .6, .8, .5);
+    EXPECT_GT(image_difference(paint({}), visible), 20);
+    ImGui::NewFrame();
+}
+
+TEST_F(RenderingRegressionTest, PlantMeshForestProducesStableVolumeDuringTravel)
+{
+    const char* preview = std::getenv("ALIENORUM_PLANT_PREVIEW");
+    if (preview)
+    {
+        ImGui::EndFrame();
+        render_width = 960; render_height = 540;
+        SDL_SetWindowSize(window, render_width, render_height);
+        SDL_PumpEvents();
+        SDL_GL_SwapWindow(window);
+        dispcx = render_width * .5; dispcy = render_height * .5;
+        ImGui::GetIO().DisplaySize = ImVec2(render_width, render_height);
+        ImGui::NewFrame();
+    }
+    Planet* world = surface(true);
+    delete world->surf_map;
+    world->surf_map = new BlueBiomeTestMap(SurfaceMaterial::vegetation);
+    world->plant_crown_size = 2; world->plant_crown_oblateness = .5;
+    world->plant_trunk_width = .25; world->plant_trunk_height = 5;
+    set(scenery_gpu_reference, false);
+    set(altitude, 0.0); set(azimuth, 1.3);
+    std::vector<unsigned char> first;
+    for (int step = 0; step < 3; ++step)
+    {
+        viewer_lat = .0001 + step / earth_radius;
+        viewer_lon = .4;
+        freeze_surface_time(); find_horizon(); draw_horizon();
+        const auto image = render();
+        EXPECT_GT(plant_mesh_stats().instances, 0u);
+        EXPECT_GT(plant_mesh_stats().triangles, 0u);
+        if (preview && step == 1)
+        {
+            std::ofstream output(preview, std::ios::binary);
+            output << "P6\n" << render_width << ' ' << render_height << "\n255\n";
+            for (int row = render_height - 1; row >= 0; --row)
+                for (int column = 0; column < render_width; ++column)
+                    output.write(reinterpret_cast<const char*>(image.data() + (row * render_width + column) * 4), 3);
+        }
+        if (step == 0) first = image;
+        else EXPECT_GT(image_difference(first, image), 0);
+        ImGui::NewFrame();
+    }
+    if (preview)
+    {
+        ImGui::EndFrame();
+        SDL_SetWindowSize(window, 192, 108);
+        SDL_PumpEvents();
+        SDL_GL_SwapWindow(window);
+        ImGui::GetIO().DisplaySize = ImVec2(192, 108);
+        ImGui::NewFrame();
+    }
+}
+
+
+TEST_F(RenderingRegressionTest, PlantCylinderCapsOnlyFaceTheOutsideObserver)
+{
+    set(scenery_gpu_reference, false);
+    PlantMeshView view;
+    view.focal = 110; view.center_x = 96; view.center_y = 54;
+    view.ambient = .1;
+    PlantMeshInstance plant;
+    plant.base = ImVec4(0, -2, 8, 4);
+    // A zero-radius crown isolates the closed cylinder without transparent depth writes.
+    plant.dimensions = ImVec4(0, 0, 1, .5);
+    plant.trunk_color = IM_COL32(180, 180, 180, 255);
+    const auto paint = [&]()
+    {
+        EXPECT_TRUE(prepare_plant_mesh_gpu(view));
+        add_plant_mesh_gpu(plant, 35); flush_plant_mesh_gpu();
+        return render();
+    };
+    view.light = ImVec4(0, 1, 0, .6);
+    const auto below_top = paint();
+    EXPECT_LT(below_top[((108 - 1 - 26) * 192 + 96) * 4 + 1], 80);
+    ImGui::NewFrame();
+    view.light = ImVec4(0, -1, 0, .6);
+    const auto above_bottom = paint();
+    EXPECT_LT(above_bottom[((108 - 1 - 81) * 192 + 96) * 4 + 1], 80);
+    ImGui::NewFrame();
+    for (bool above : {true, false})
+    {
+        plant.base.y = above ? -6 : 2;
+        view.sin_pitch = std::sin(above ? -.45 : .45);
+        view.cos_pitch = std::cos(.45);
+        view.light = ImVec4(0, above ? 1 : -1, 0, .6);
+        const auto outside = paint();
+        int brightest = 0;
+        for (size_t pixel = 1; pixel < outside.size(); pixel += 4)
+            brightest = std::max(brightest, int(outside[pixel]));
+        EXPECT_GT(brightest, 160) << (above ? "top cap" : "bottom cap");
+        ImGui::NewFrame();
+    }
+}
+
+TEST_F(RenderingRegressionTest, PlantCrownsLightTheVisibleSideTowardTheSun)
+{
+    set(scenery_gpu_reference, false);
+    PlantMeshView view;
+    view.focal = 110; view.center_x = 96; view.center_y = 54;
+    view.ambient = .1;
+    PlantMeshInstance plant;
+    plant.base = ImVec4(0, -3, 8, 3);
+    plant.dimensions = ImVec4(1.5, .75, .2, .1);
+    plant.crown_color = IM_COL32(80, 140, 30, 255);
+    plant.trunk_color = IM_COL32(90, 65, 40, 255);
+    const auto paint = [&](float light_z)
+    {
+        view.light = ImVec4(0, 0, light_z, .5);
+        EXPECT_TRUE(prepare_plant_mesh_gpu(view));
+        add_plant_mesh_gpu(plant, 35); flush_plant_mesh_gpu();
+        return render();
+    };
+    const auto front_lit = paint(-1);
+    const size_t center_green = (54 * 192 + 96) * 4 + 1;
+    EXPECT_GT(front_lit[center_green], 100);
+    ImGui::NewFrame();
+    const auto back_lit = paint(1);
+    EXPECT_LT(back_lit[center_green], 40);
+    EXPECT_GT(int(front_lit[center_green]) - int(back_lit[center_green]), 80);
+    ImGui::NewFrame();
 }
