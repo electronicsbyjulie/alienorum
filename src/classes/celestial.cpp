@@ -4188,13 +4188,25 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
     }
     mtx.unlock();
 
-    // Keep downstream ring generation on its existing random stream.
-    for (int draw = 0; draw < 1 + 3 * num_bands; ++draw) cel->cel_frand(0, 1);
+    // Restore the original per-band palette and random stream, including the
+    // former major-storm size draw before the palette draws.
+    cel->cel_frand(0.29, 0.71);
+    std::vector<std::array<double, 3>> band_colors;
+    for (int band = 0; band < num_bands; ++band)
+    {
+        double red = 1 - cel->cel_frand(0, .5 * variability);
+        double blue = 1 - cel->cel_frand(0, variability);
+        if (rgb.r > rgb.b && red < blue) std::swap(red, blue);
+        const double green = cel->cel_frand(std::min(red, blue), std::max(red, blue));
+        band_colors.push_back({double(int(rgb.r * red)), double(int(rgb.g * green)), double(int(rgb.b * blue))});
+    }
     const GiantCloudStyle style = cel->type == clearskies ? GiantCloudStyle::clear
-        : cel->type == ice_giant ? GiantCloudStyle::hazy
-        : tidal_locked_to_star ? GiantCloudStyle::synchronous : GiantCloudStyle::banded;
+        : tidal_locked_to_star ? GiantCloudStyle::synchronous
+        : cel->type == ice_giant ? GiantCloudStyle::hazy : GiantCloudStyle::banded;
+    const double jet_shear = tidal_locked_to_star ? 2.9e5 / cel->sidereal_rotational_period : 0;
     GiantClouds clouds(cel->rnd_seed, {double(rgb.r), double(rgb.g), double(rgb.b)}, num_bands,
-        variability, style, add_storm, (.5 - stormlat) * _pi, stormlon * 2 * _pi);
+        variability, style, add_storm, (.5 - stormlat) * _pi, stormlon * 2 * _pi,
+        band_colors, jet_shear);
     const double angular_pixel = _pi / image_height;
     for (unsigned long y = 0; y < image_height; ++y)
     {

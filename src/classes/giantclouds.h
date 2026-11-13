@@ -26,7 +26,8 @@ namespace alienorum
         std::array<double, 3> base;
         std::vector<Vortex> vortices;
         double frequency, phase, strength;
-        double palette_phase = 0;
+        std::vector<std::array<double, 3>> palette;
+        double jet_shear;
         GiantCloudStyle style;
 
         static double smooth(double low, double high, double value)
@@ -54,9 +55,11 @@ namespace alienorum
 
     public:
         GiantClouds(uint32_t seed, std::array<double, 3> color, int bands, double contrast,
-            GiantCloudStyle mode, bool major, double storm_latitude = -.3, double storm_longitude = pi)
+            GiantCloudStyle mode, bool major, double storm_latitude = -.3, double storm_longitude = pi,
+            const std::vector<std::array<double, 3>>& band_colors = {}, double equatorial_shear = 0)
             : noise(seed ^ 0x434c4f55u), base(color), frequency(std::max(3, bands) * 1.3),
-              phase(0), strength(std::clamp(contrast * 2.4, 0.0, 1.0)), style(mode)
+              phase(0), strength(std::clamp(contrast * 2.4, 0.0, 1.0)),
+              palette(band_colors), jet_shear(equatorial_shear), style(mode)
         {
             std::mt19937 random(seed ^ 0x766f7274u);
             const auto draw = [&](double low, double high)
@@ -65,10 +68,19 @@ namespace alienorum
             };
             phase = draw(-.3, .3);
             if (mode == GiantCloudStyle::clear) return;
-            // The supplied B-V conversion owns the palette; the seed only varies
-            // cloud structure and brightness within that color.
-            palette_phase = draw(-pi, pi);
-            if (mode == GiantCloudStyle::synchronous) frequency *= .45;
+            if (palette.empty())
+            {
+                // Standalone callers use the same channel multipliers as the original generator.
+                for (int band = 0; band < bands; ++band)
+                {
+                    double red = 1 - draw(0, .5 * contrast);
+                    double blue = 1 - draw(0, contrast);
+                    if (base[0] > base[2] && red < blue) std::swap(red, blue);
+                    const double green = draw(std::min(red, blue), std::max(red, blue));
+                    palette.push_back({base[0] * red, base[1] * green, base[2] * blue});
+                }
+            }
+            if (palette.empty()) palette.push_back(base);
             if (major && mode != GiantCloudStyle::synchronous)
             {
                 const double height = draw(.075, .12);
@@ -91,6 +103,19 @@ namespace alienorum
                 return {static_cast<unsigned char>(base[0]), static_cast<unsigned char>(base[1]), static_cast<unsigned char>(base[2])};
             longitude = std::remainder(longitude, 2 * pi);
             if (std::abs(latitude) > pi * .5 - 1e-10) longitude = 0;
+            if (style == GiantCloudStyle::synchronous)
+            {
+                // Original equatorial jet: the star-centered bands bend into a V.
+                longitude -= jet_shear * std::pow(std::cos(latitude), 15);
+                // Work in the star-axis frame before applying vortices, so storm
+                // elongation follows the same sheared bands as the cloud tracers.
+                const double x = std::cos(latitude) * std::cos(longitude);
+                const double y = std::cos(latitude) * std::sin(longitude);
+                const double z = std::sin(latitude);
+                longitude = std::atan2(y, -z);
+                latitude = std::asin(std::clamp(x, -1.0, 1.0));
+                if (std::abs(latitude) > pi * .5 - 1e-10) longitude = 0;
+            }
             const double original_latitude = latitude;
             double storm_mask = 0, storm_radius = 0;
             double storm_x = 0, storm_y = 0, storm_height = 1;
@@ -127,9 +152,6 @@ namespace alienorum
             }
             const double ring = std::cos(latitude);
             double x = ring * std::cos(longitude), y = ring * std::sin(longitude), z = std::sin(latitude);
-            // Stellar locking adds broad day/night structure without rotating the
-            // zonal jets away from the equator or separating storms from their belts.
-            const double irradiation = style == GiantCloudStyle::synchronous ? x * .65 : 0;
             const double broad = noise.noise(x * 3.2 + 17, y * 3.2 - 9, z * 3.2 + 4);
             const double cross = noise.noise(x * 4.7 - 3, y * 4.7 + 21, z * 4.7 + 11);
             // Latitude-dependent shear elongates tracers along the zonal jets.
@@ -144,7 +166,7 @@ namespace alienorum
                 qy * 2.2 + broad * 2.8, qz * 2.2 + cross * 2.8, 3, footprint * 2.2);
             const double fine_weight = 1 - smooth(.18, .65, footprint * 4);
             const double grain = noise.noise(qx * 7, qy * 7, qz * 7) * fine_weight;
-            const double band_phase = z * frequency + phase + broad * 1.4 + folds * 1.2 + irradiation;
+            const double band_phase = z * frequency + phase + broad * 1.4 + folds * 1.2;
             const double belt = smooth(.18, .8, .5 - .5 * std::cos(band_phase));
             const double boundary = 4 * belt * (1 - belt);
             const double filament = std::sin(folds * 26 + threads * 11 + z * frequency * 3);
@@ -161,26 +183,34 @@ namespace alienorum
             const double storm_tracer = std::sin(storm_x * 2.1 + storm_y * 1.5 + storm_cloud * 3);
             const double clearing = smooth(.28, .55,
                 fractal(qx * .65 - 11, qy * .65 + 31, qz * .65 + 5, 2, footprint * .65)) * belt;
-            const double tint = std::sin(band_phase * .43 + palette_phase);
-            const double light = 1.12, dark = .78;
-            double brightness = dark + (light - dark) * condensate + .7 * detail + .025 * tint;
+            // Interpolate the original many-color palette through the advected
+            // band field. Fine structure changes brightness without adding a new hue.
+            const double band_position = style == GiantCloudStyle::synchronous
+                ? (pi * .5 - latitude) / pi : std::abs(latitude) / (pi * .5);
+            double coordinate = std::fmod(band_position * palette.size() + broad * 1.3
+                + folds * .8 + threads * .3, double(palette.size()));
+            if (coordinate < 0) coordinate += palette.size();
+            const size_t band = static_cast<size_t>(coordinate);
+            const double blend = coordinate - band;
+            const auto& first = palette[band];
+            const auto& second = palette[(band + 1) % palette.size()];
             const double interior = bright_storm ? .75 + .7 * storm_cloud + .06 * storm_tracer
                 : .4 + 1.2 * storm_cloud + .06 * storm_tracer;
             const double rim = std::exp(-std::pow((storm_radius - 1.4) / .2, 2));
-            const double storm = dark + (light - dark)
+            const double storm = .9 + .15
                 * std::clamp(interior + .65 * rim * std::max(0.0, .4 + storm_cloud), 0.0, 1.0);
-            brightness += (storm - brightness) * storm_mask * .75;
-            brightness += (.82 - brightness) * clearing * .65;
-            brightness = brightness * (1 - .55 * polar) + .94 * .55 * polar;
-            brightness = 1 + (brightness - 1) * weather;
-            // One common scale preserves channel ratios, including in highlights.
-            const double peak = std::max({base[0], base[1], base[2], 1.0});
+            double brightness = 1 + weather * (detail * .65 + (condensate - .5) * .06);
+            brightness += (storm - brightness) * storm_mask * .5 * weather;
+            brightness += (.95 - brightness) * clearing * .3 * weather;
+            brightness = brightness * (1 - .3 * polar) + .99 * .3 * polar;
+            std::array<double, 3> color{};
+            for (int channel = 0; channel < 3; ++channel)
+                color[channel] = first[channel] * (1 - blend) + second[channel] * blend;
+            const double peak = std::max({color[0], color[1], color[2], 1.0});
             brightness = std::clamp(brightness, 0.0, 255.0 / peak);
             std::array<unsigned char, 3> result{};
             for (int channel = 0; channel < 3; ++channel)
-            {
-                result[channel] = static_cast<unsigned char>(std::clamp(std::lround(base[channel] * brightness), 0l, 255l));
-            }
+                result[channel] = static_cast<unsigned char>(std::clamp(std::lround(color[channel] * brightness), 0l, 255l));
             return result;
         }
     };

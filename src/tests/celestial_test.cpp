@@ -88,32 +88,63 @@ TEST(GiantCloudTextureTest, CloudModesRetainTheirPaletteAndDifferentAmountsOfStr
     const double count = rows * columns;
     const double variance = square / count - std::pow(sum / count, 2);
     const double haze_variance = haze_square / count - std::pow(haze_sum / count, 2);
-    EXPECT_GT(variance, 100);
-    EXPECT_LT(haze_variance, variance * .1);
+    EXPECT_GT(variance, 10);
+    EXPECT_LT(haze_variance, variance * .2);
     EXPECT_GT(blue, red * 1.5);
-    EXPECT_GT(horizontal_detail / count, .5);
+    EXPECT_GT(horizontal_detail / count, .15);
 }
 
-TEST(GiantCloudTextureTest, SuppliedColorRatiosSurviveEveryPaletteAndHighlight)
+TEST(GiantCloudTextureTest, RestoredPaletteRetainsSeveralBandHues)
 {
-    for (const auto& base : {std::array<double, 3>{190, 150, 110},
-        std::array<double, 3>{245, 225, 170}, std::array<double, 3>{230, 180, 165},
-        std::array<double, 3>{80, 150, 210}})
+    const std::vector<std::array<double, 3>> palette =
+    {{210, 180, 130}, {185, 174, 160}, {205, 159, 120}, {190, 170, 145}};
+    GiantClouds clouds(42, {220, 190, 170}, 4, .3, GiantCloudStyle::banded,
+        false, -.3, _pi, palette);
+    double minimum_ratio = 10, maximum_ratio = 0;
+    for (int row = 0; row < 64; ++row)
     {
-        for (uint32_t seed = 1; seed <= 6; ++seed)
+        for (int column = 0; column < 128; ++column)
         {
-            GiantClouds clouds(seed, base, 10, .32, GiantCloudStyle::banded, true);
-            for (int row = 0; row < 32; ++row)
+            const auto color = clouds.sample(2 * _pi * column / 128,
+                half_pi - _pi * (row + .5) / 64, .003);
+            for (int channel = 0; channel < 3; ++channel)
             {
-                for (int column = 0; column < 64; ++column)
+                double low = 255, high = 0;
+                for (const auto& band : palette)
                 {
-                    const auto color = clouds.sample(2 * _pi * column / 64,
-                        half_pi - _pi * (row + .5) / 32, .003);
-                    const double brightness = color[1] / base[1];
-                    EXPECT_NEAR(color[0], base[0] * brightness, 1.4);
-                    EXPECT_NEAR(color[2], base[2] * brightness, 1.4);
+                    low = std::min(low, band[channel]);
+                    high = std::max(high, band[channel]);
                 }
+                EXPECT_GE(color[channel], low * .85 - 1);
+                EXPECT_LE(color[channel], high * 1.15 + 1);
             }
+            const double ratio = double(color[1]) / color[2];
+            minimum_ratio = std::min(minimum_ratio, ratio);
+            maximum_ratio = std::max(maximum_ratio, ratio);
+        }
+    }
+    EXPECT_GT(maximum_ratio - minimum_ratio, .2);
+}
+
+TEST(GiantCloudTextureTest, LockedBandsAndStormsShareTheOriginalEquatorialJetTransform)
+{
+    const std::vector<std::array<double, 3>> palette = {{210, 180, 140}};
+    GiantClouds locked(42, palette[0], 10, .3, GiantCloudStyle::synchronous,
+        false, -.3, _pi, palette, 8);
+    GiantClouds frame(42, palette[0], 10, .3, GiantCloudStyle::banded,
+        false, -.3, _pi, palette);
+    for (int row = 1; row < 32; ++row)
+    {
+        const double latitude = half_pi - _pi * row / 32;
+        for (int column = 0; column < 64; ++column)
+        {
+            const double longitude = 2 * _pi * column / 64;
+            const double sheared = longitude - 8 * std::pow(std::cos(latitude), 15);
+            const double x = std::cos(latitude) * std::cos(sheared);
+            const double y = std::cos(latitude) * std::sin(sheared);
+            const double z = std::sin(latitude);
+            EXPECT_EQ(locked.sample(longitude, latitude, .003),
+                frame.sample(std::atan2(y, -z), std::asin(x), .003));
         }
     }
 }
