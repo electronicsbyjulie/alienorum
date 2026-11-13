@@ -94,6 +94,30 @@ TEST(GiantCloudTextureTest, CloudModesRetainTheirPaletteAndDifferentAmountsOfStr
     EXPECT_GT(horizontal_detail / count, .5);
 }
 
+TEST(GiantCloudTextureTest, SuppliedColorRatiosSurviveEveryPaletteAndHighlight)
+{
+    for (const auto& base : {std::array<double, 3>{190, 150, 110},
+        std::array<double, 3>{245, 225, 170}, std::array<double, 3>{230, 180, 165},
+        std::array<double, 3>{80, 150, 210}})
+    {
+        for (uint32_t seed = 1; seed <= 6; ++seed)
+        {
+            GiantClouds clouds(seed, base, 10, .32, GiantCloudStyle::banded, true);
+            for (int row = 0; row < 32; ++row)
+            {
+                for (int column = 0; column < 64; ++column)
+                {
+                    const auto color = clouds.sample(2 * _pi * column / 64,
+                        half_pi - _pi * (row + .5) / 32, .003);
+                    const double brightness = color[1] / base[1];
+                    EXPECT_NEAR(color[0], base[0] * brightness, 1.4);
+                    EXPECT_NEAR(color[2], base[2] * brightness, 1.4);
+                }
+            }
+        }
+    }
+}
+
 TEST(SurfacePhaseTest, SeasonalSeaIceColorsDoNotRetainEarlierWhiteOrBlueBands)
 {
     class LayeredIceMap : public WaterPhaseTestMap

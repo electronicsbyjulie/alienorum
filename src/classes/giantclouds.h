@@ -26,6 +26,7 @@ namespace alienorum
         std::array<double, 3> base;
         std::vector<Vortex> vortices;
         double frequency, phase, strength;
+        double palette_phase = 0;
         GiantCloudStyle style;
 
         static double smooth(double low, double high, double value)
@@ -64,6 +65,10 @@ namespace alienorum
             };
             phase = draw(-.3, .3);
             if (mode == GiantCloudStyle::clear) return;
+            // The supplied B-V conversion owns the palette; the seed only varies
+            // cloud structure and brightness within that color.
+            palette_phase = draw(-pi, pi);
+            if (mode == GiantCloudStyle::synchronous) frequency *= .45;
             if (major && mode != GiantCloudStyle::synchronous)
             {
                 const double height = draw(.075, .12);
@@ -122,7 +127,9 @@ namespace alienorum
             }
             const double ring = std::cos(latitude);
             double x = ring * std::cos(longitude), y = ring * std::sin(longitude), z = std::sin(latitude);
-            if (style == GiantCloudStyle::synchronous) std::swap(x, z);
+            // Stellar locking adds broad day/night structure without rotating the
+            // zonal jets away from the equator or separating storms from their belts.
+            const double irradiation = style == GiantCloudStyle::synchronous ? x * .65 : 0;
             const double broad = noise.noise(x * 3.2 + 17, y * 3.2 - 9, z * 3.2 + 4);
             const double cross = noise.noise(x * 4.7 - 3, y * 4.7 + 21, z * 4.7 + 11);
             // Latitude-dependent shear elongates tracers along the zonal jets.
@@ -137,12 +144,12 @@ namespace alienorum
                 qy * 2.2 + broad * 2.8, qz * 2.2 + cross * 2.8, 3, footprint * 2.2);
             const double fine_weight = 1 - smooth(.18, .65, footprint * 4);
             const double grain = noise.noise(qx * 7, qy * 7, qz * 7) * fine_weight;
-            const double band_phase = z * frequency + phase + broad * 1.4 + folds * 1.2;
+            const double band_phase = z * frequency + phase + broad * 1.4 + folds * 1.2 + irradiation;
             const double belt = smooth(.18, .8, .5 - .5 * std::cos(band_phase));
             const double boundary = 4 * belt * (1 - belt);
             const double filament = std::sin(folds * 26 + threads * 11 + z * frequency * 3);
             const double billow = smooth(-.18, .35, folds + threads * .7);
-            const double cream = std::clamp((1 - belt) * .85 + billow * .3
+            const double condensate = std::clamp((1 - belt) * .85 + billow * .3
                 + threads * .3, 0.0, 1.0);
             const double detail = folds * .23 + threads * .11 + grain * .018
                 + filament * (.006 + .018 * boundary) * fine_weight;
@@ -154,24 +161,25 @@ namespace alienorum
             const double storm_tracer = std::sin(storm_x * 2.1 + storm_y * 1.5 + storm_cloud * 3);
             const double clearing = smooth(.28, .55,
                 fractal(qx * .65 - 11, qy * .65 + 31, qz * .65 + 5, 2, footprint * .65)) * belt;
-            const double average = (base[0] + base[1] + base[2]) / 3;
+            const double tint = std::sin(band_phase * .43 + palette_phase);
+            const double light = 1.12, dark = .78;
+            double brightness = dark + (light - dark) * condensate + .7 * detail + .025 * tint;
+            const double interior = bright_storm ? .75 + .7 * storm_cloud + .06 * storm_tracer
+                : .4 + 1.2 * storm_cloud + .06 * storm_tracer;
+            const double rim = std::exp(-std::pow((storm_radius - 1.4) / .2, 2));
+            const double storm = dark + (light - dark)
+                * std::clamp(interior + .65 * rim * std::max(0.0, .4 + storm_cloud), 0.0, 1.0);
+            brightness += (storm - brightness) * storm_mask * .75;
+            brightness += (.82 - brightness) * clearing * .65;
+            brightness = brightness * (1 - .55 * polar) + .94 * .55 * polar;
+            brightness = 1 + (brightness - 1) * weather;
+            // One common scale preserves channel ratios, including in highlights.
+            const double peak = std::max({base[0], base[1], base[2], 1.0});
+            brightness = std::clamp(brightness, 0.0, 255.0 / peak);
             std::array<unsigned char, 3> result{};
             for (int channel = 0; channel < 3; ++channel)
             {
-                // Bright condensates are less saturated; deep belts retain the world's hue.
-                const double light = base[channel] * .6 + 255 * .4;
-                const double dark = base[channel] * (.42 + .025 * channel);
-                double color = dark + (light - dark) * cream + 255 * detail;
-                const double interior = bright_storm ? .75 + .7 * storm_cloud + .06 * storm_tracer
-                    : .4 + 1.2 * storm_cloud + .06 * storm_tracer;
-                const double rim = std::exp(-std::pow((storm_radius - 1.4) / .2, 2));
-                const double storm = dark + (light - dark)
-                    * std::clamp(interior + .65 * rim * std::max(0.0, .4 + storm_cloud), 0.0, 1.0);
-                color += (storm - color) * storm_mask * .75;
-                color += (average * (.62 + .08 * channel) - color) * clearing * .65;
-                color = color * (1 - .55 * polar) + (base[channel] * .84 + 12) * .55 * polar;
-                color = base[channel] * (1 - weather) + color * weather;
-                result[channel] = static_cast<unsigned char>(std::clamp(std::lround(color), 0l, 255l));
+                result[channel] = static_cast<unsigned char>(std::clamp(std::lround(base[channel] * brightness), 0l, 255l));
             }
             return result;
         }
