@@ -7,6 +7,7 @@
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp>
 #include "../classes/celestial.h"
+#include "../classes/giantclouds.h"
 #include "../classes/planet.h"
 #include "../classes/cat.h"
 #include "../classes/surfacebiomes.h"
@@ -20,6 +21,78 @@
 
 using namespace alienorum;
 using json = nlohmann::json;
+
+TEST(GiantCloudTextureTest, SeededCloudsRepeatWithoutDependingOnSamplingOrder)
+{
+    GiantClouds first(7421, {180, 145, 100}, 10, .3, GiantCloudStyle::banded, true);
+    GiantClouds second(7421, {180, 145, 100}, 10, .3, GiantCloudStyle::banded, true);
+    GiantClouds other(9987, {180, 145, 100}, 10, .3, GiantCloudStyle::banded, true);
+    int different = 0;
+    for (int row = 0; row < 32; ++row)
+    {
+        for (int column = 0; column < 64; ++column)
+        {
+            const double longitude = 2 * _pi * column / 64, latitude = half_pi - _pi * row / 32;
+            const auto expected = first.sample(longitude, latitude, .003);
+            second.sample(-longitude, -latitude, .003);
+            EXPECT_EQ(second.sample(longitude, latitude, .003), expected);
+            different += other.sample(longitude, latitude, .003) != expected;
+        }
+    }
+    EXPECT_GT(different, 1000);
+}
+
+TEST(GiantCloudTextureTest, LongitudeWrapAndPolesRemainContinuousAcrossStorms)
+{
+    for (auto style : {GiantCloudStyle::banded, GiantCloudStyle::hazy, GiantCloudStyle::synchronous})
+    {
+        GiantClouds clouds(912, {120, 170, 210}, 11, .32, style, true, -.3, 0);
+        for (int row = 0; row <= 64; ++row)
+        {
+            const double latitude = half_pi - _pi * row / 64;
+            EXPECT_EQ(clouds.sample(0, latitude, .003), clouds.sample(2 * _pi, latitude, .003));
+            EXPECT_EQ(clouds.sample(-.001, latitude, .003), clouds.sample(2 * _pi - .001, latitude, .003));
+        }
+        for (int longitude = -6; longitude <= 6; ++longitude)
+        {
+            EXPECT_EQ(clouds.sample(longitude, half_pi, .003), clouds.sample(0, half_pi, .003));
+            EXPECT_EQ(clouds.sample(longitude, -half_pi, .003), clouds.sample(0, -half_pi, .003));
+        }
+    }
+}
+
+TEST(GiantCloudTextureTest, CloudModesRetainTheirPaletteAndDifferentAmountsOfStructure)
+{
+    GiantClouds banded(51, {80, 150, 210}, 10, .32, GiantCloudStyle::banded, true);
+    GiantClouds hazy(51, {80, 150, 210}, 3, .08, GiantCloudStyle::hazy, false);
+    GiantClouds clear(51, {80, 150, 210}, 10, 0, GiantCloudStyle::clear, false);
+    double sum = 0, square = 0, haze_sum = 0, haze_square = 0, red = 0, blue = 0;
+    double horizontal_detail = 0;
+    constexpr int rows = 64, columns = 128;
+    for (int row = 0; row < rows; ++row)
+    {
+        const double latitude = half_pi - _pi * (row + .5) / rows;
+        for (int column = 0; column < columns; ++column)
+        {
+            const double longitude = 2 * _pi * column / columns;
+            const auto color = banded.sample(longitude, latitude, .003);
+            const auto haze = hazy.sample(longitude, latitude, .003);
+            EXPECT_EQ(clear.sample(longitude, latitude, .003), (std::array<unsigned char, 3>{80, 150, 210}));
+            sum += color[1]; square += color[1] * color[1];
+            haze_sum += haze[1]; haze_square += haze[1] * haze[1];
+            red += color[0]; blue += color[2];
+            const auto adjacent = banded.sample(longitude + .01, latitude, .003);
+            horizontal_detail += std::abs(int(adjacent[1]) - color[1]);
+        }
+    }
+    const double count = rows * columns;
+    const double variance = square / count - std::pow(sum / count, 2);
+    const double haze_variance = haze_square / count - std::pow(haze_sum / count, 2);
+    EXPECT_GT(variance, 100);
+    EXPECT_LT(haze_variance, variance * .1);
+    EXPECT_GT(blue, red * 1.5);
+    EXPECT_GT(horizontal_detail / count, .5);
+}
 
 TEST(SurfacePhaseTest, SeasonalSeaIceColorsDoNotRetainEarlierWhiteOrBlueBands)
 {

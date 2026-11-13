@@ -19,6 +19,7 @@
 #include "shore.h"
 #include "cloudclimate.h"
 #include "surfacephase.h"
+#include "giantclouds.h"
 #include "lavafissures.h"
 #include "wdcolor.h"
 #include "../loaders.h"
@@ -4118,14 +4119,13 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
     // Physical color calibration is fixed for this texture, independent of the view.
     const double color_correction = bv_correction;
     if (render_saved_planet(cel, [this](CelestialObject* working) { generate_gas_giant_map(working); })) return;
-    int num_bands, i, lr;
+    int num_bands, lr;
     bool tidal_locked_to_star;
     bool add_storm;
     double stormlat, stormlon;
     double variability, BV;
     Color col;
     RGB3 rgb;
-    std::unique_ptr<alienorum::RGB3 []> bands;
     Planet *p = (Planet*)cel;
     cel->randomize();
 
@@ -4169,7 +4169,6 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
             variability /= 4;
             // BV -= 0.5;
         }
-        bands = std::make_unique<RGB3[]>(num_bands);
 
         col = Color::color_from_magnitude_indices(0, BV, BV, default_brightness, color_correction);
         col.normalize(1);
@@ -4189,134 +4188,25 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
     }
     mtx.unlock();
 
-    double dist_to_storm_x, dist_to_storm_y, storm_dist = 1e29, storm_size = cel->cel_frand(0.29, 0.71);
-    int sgnstormlat = sgn(stormlat - 0.5);               // Negative for northern hemisphere; we'll see why when we do the swirl calculation.
-
-    for (i=0; i<num_bands; i++)
-    {
-        double rmult, gmult, bmult;
-
-        rmult = 1.0 - cel->cel_frand(0, 0.5*variability);
-        bmult = 1.0 - cel->cel_frand(0, variability);
-        if (rgb.r > rgb.b && rmult < bmult)
-        {
-            double swap = bmult;
-            bmult = rmult;
-            rmult = swap;
-        }
-        gmult = cel->cel_frand( fmin(rmult, bmult), fmax(rmult, bmult) );
-
-        bands[i].r = rgb.r * rmult;
-        bands[i].g = rgb.g * gmult;
-        bands[i].b = rgb.b * bmult;
-        // std::cout << "Band " << i << " " << bands[i] << std::endl;
-    }
-
-    double scale = 2.5, u, v, theta, phi, psi, sin_theta, nx, ny, nz, distortX, distortY, final_noise, band_val, t;
-    double zscale = tidal_locked_to_star ? scale : (scale * 1.5);
-    double swirl_amount = 8 * sgnstormlat;
-
-    for (unsigned int y = 0; y < image_height; ++y)
+    // Keep downstream ring generation on its existing random stream.
+    for (int draw = 0; draw < 1 + 3 * num_bands; ++draw) cel->cel_frand(0, 1);
+    const GiantCloudStyle style = cel->type == clearskies ? GiantCloudStyle::clear
+        : cel->type == ice_giant ? GiantCloudStyle::hazy
+        : tidal_locked_to_star ? GiantCloudStyle::synchronous : GiantCloudStyle::banded;
+    GiantClouds clouds(cel->rnd_seed, {double(rgb.r), double(rgb.g), double(rgb.b)}, num_bands,
+        variability, style, add_storm, (.5 - stormlat) * _pi, stormlon * 2 * _pi);
+    const double angular_pixel = _pi / image_height;
+    for (unsigned long y = 0; y < image_height; ++y)
     {
         if (done || abort_load) { generating_fic_texture = false; return; }
-        v = (double)y / image_height;
-        theta = v * _pi;
-
-        for (unsigned int x = 0; x < image_width; ++x)
+        const double latitude = half_pi - y * angular_pixel;
+        for (unsigned long x = 0; x < image_width; ++x)
         {
-            u = (double)x / image_width;
-            phi = u * 2.0 * _pi;
-
-            // 3D Sphere projection
-            nx = sin(theta) * cos(phi) * scale;
-            ny = sin(theta) * sin(phi) * scale;
-            nz = cos(theta) * zscale;
-
-            if (tidal_locked_to_star)
-            {
-                sin_theta = sin(theta);
-
-                phi -= 2.9e+5 / cel->sidereal_rotational_period 
-                    * sin_theta * sin_theta * sin_theta * sin_theta * sin_theta
-                    * sin_theta * sin_theta * sin_theta * sin_theta * sin_theta
-                    * sin_theta * sin_theta * sin_theta * sin_theta * sin_theta;
-                nx = sin(theta) * cos(phi) * scale;
-                ny = sin(theta) * sin(phi) * scale;
-
-                psi = find_3D_angle(Point(nx,ny,nz), xaxis, center);
-            }
-
-            distortX = fBm(nx, ny, nz, 4, 2.0, 0.5) * 1.5;
-            distortY = fBm(nx + 5.2, ny + 1.3, nz + 2.7, 4, 2.0, 0.5) * 1.3;
-            // Apply distortion primarily along the X/longitude axis to emulate wind bands
-            final_noise = fBm(nx + distortX * 4.0, ny + distortY * 2.5, nz, 6, 2.0, 0.55);
-
-            if (add_storm)
-            {
-                dist_to_storm_x = (u - stormlon) * 2.0 * _pi;
-                dist_to_storm_y = (v - stormlat) * _pi;
-                // Elliptical distance formula
-                storm_dist = sqrt((dist_to_storm_x * dist_to_storm_x) * 2.5 + (dist_to_storm_y * dist_to_storm_y) * 10.0);
-                // if (storm_dist < storm_size) final_noise = 0;
-            }
-
-            int idx = y * image_width + x;
-
-            double veff = v;
-            if (storm_dist < storm_size*2)
-            {
-                double vbend = 1.0 - fmax(0, storm_dist - storm_size) / storm_size;
-                veff += (stormlat-v) * vbend * vbend * vbend;
-            }
-
-            if (tidal_locked_to_star)
-            {
-                add_storm = false;
-                // Bands will occur in order of distance to the star, not by latitude as with solar system gas giants.
-                band_val = fmod(psi / _pi * num_bands + final_noise * 1.3, num_bands);
-            }
-            else
-            {
-                band_val = fmod(fabs(veff - 0.5) * 2 * num_bands + final_noise * 1.3, num_bands);
-            }
-
-            if (band_val < 0) band_val += num_bands;
-            int band_idx = (int)floor(band_val);
-            t = band_val - band_idx; // fractional part for linear interpolation
-            double t1 = 1.0 - t;
-            int next_band_idx = (band_idx + 1) % num_bands;
-
-            // Interpolate colors between bands for smooth transitions
-            red_data[idx] = (unsigned char)(t1 * bands[band_idx].r + t * bands[next_band_idx].r);
-            green_data[idx] = (unsigned char)(t1 * bands[band_idx].g + t * bands[next_band_idx].g);
-            blue_data[idx] = (unsigned char)(t1 * bands[band_idx].b + t * bands[next_band_idx].b);
-
-            if (add_storm && (storm_dist < storm_size))
-            {
-                // We are inside the storm; blend into dark colors
-                double storm_blend = (storm_size - storm_dist) / storm_size; // 1 at center, 0 at edge
-                double sbl1 = 1.0 - storm_blend;
-
-                double swirlx = dist_to_storm_x / storm_dist, swirly = dist_to_storm_y / storm_dist;
-
-                // The following creates a clockwise swirl by default. Coriolis effect dictates CCW in the northern
-                // hemisphere, so that's why sgnstormlat has to go negative in the north.
-                double swirledx = swirlx * cos(storm_blend*swirl_amount) + swirly * sin(storm_blend*swirl_amount),
-                       swirledy = swirly * cos(storm_blend*swirl_amount) - swirlx * sin(storm_blend*swirl_amount);
-
-                // Swirl the storm inside
-                double storm_noise = fBm(swirledx * 2.0, swirledy * 2.0, nz * 1.0, 5, 2.0, 0.5) /* * sbl1 * 3 */;
-                double sn1 = 1.0 - storm_noise;
-
-                double storm_red   = (unsigned char)fmin(255, bands[next_band_idx].r * storm_noise + 128);
-                double storm_green = (unsigned char)fmin(255, bands[next_band_idx].g * storm_noise + 72);
-                double storm_blue  = (unsigned char)fmin(255, bands[next_band_idx].b * storm_noise + 40);
-
-                // Linear interpolation blending storm with background bands
-                red_data[idx]   = (unsigned char)(storm_red   * storm_blend + red_data[idx]   * sbl1);
-                green_data[idx] = (unsigned char)(storm_green * storm_blend + green_data[idx] * sbl1);
-                blue_data[idx]  = (unsigned char)(storm_blue  * storm_blend + blue_data[idx]  * sbl1);
-            }
+            const auto color = clouds.sample(2 * _pi * x / image_width, latitude, angular_pixel);
+            const size_t index = y * image_width + x;
+            red_data[index] = color[0];
+            green_data[index] = color[1];
+            blue_data[index] = color[2];
         }
     }
 
