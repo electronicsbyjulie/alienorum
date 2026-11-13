@@ -4170,7 +4170,12 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
             // BV -= 0.5;
         }
 
-        col = Color::color_from_magnitude_indices(0, BV, BV, default_brightness, color_correction);
+        if (p->has_spectral_giant_color())
+        {
+            const auto& spectral = p->giant_color_model["rgb"];
+            col = Color(spectral[0].get<double>(), spectral[1].get<double>(), spectral[2].get<double>());
+        }
+        else col = Color::color_from_magnitude_indices(0, BV, BV, default_brightness, color_correction);
         col.normalize(1);
         rgb = Color::rgb_from_color(col, pow(p->albedo, 0.25), 1.0 / default_gamma, false);
         /* std::cout << cel->name << " BV=" << BV
@@ -4198,7 +4203,16 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
         double blue = 1 - cel->cel_frand(0, variability);
         if (rgb.r > rgb.b && red < blue) std::swap(red, blue);
         const double green = cel->cel_frand(std::min(red, blue), std::max(red, blue));
-        band_colors.push_back({double(int(rgb.r * red)), double(int(rgb.g * green)), double(int(rgb.b * blue))});
+        if (p->has_spectral_giant_color())
+        {
+            const auto& channels = p->giant_color_model["band_rgb"][band % 8];
+            Color spectral(channels[0].get<double>(), channels[1].get<double>(), channels[2].get<double>());
+            spectral.normalize(1);
+            const double brightness = (red + green + blue) / 3;
+            const auto color = Color::rgb_from_color(spectral, pow(p->albedo, .25) * brightness, 1.0 / default_gamma, false);
+            band_colors.push_back({double(color.r), double(color.g), double(color.b)});
+        }
+        else band_colors.push_back({double(int(rgb.r * red)), double(int(rgb.g * green)), double(int(rgb.b * blue))});
     }
     const GiantCloudStyle style = cel->type == clearskies ? GiantCloudStyle::clear
         : tidal_locked_to_star ? GiantCloudStyle::synchronous

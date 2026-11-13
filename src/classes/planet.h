@@ -29,6 +29,10 @@ namespace alienorum
     {
         public:
         double albedo = 0;
+        json giant_color_model = nullptr;
+        bool estimate_cool_giant_color();
+        bool has_spectral_giant_color() const;
+        double reflected_vr_color() const;
         // Saved worlds retain authored parameters during procedural rendering.
         bool preserve_loaded_parameters = false;
         bool rendering_saved_parameters = false;

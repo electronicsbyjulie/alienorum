@@ -20,6 +20,7 @@
 #include "habitablezone.h"
 #include "moon.h"
 #include "chemistry.h"
+#include "giantreflectance.h"
 #include "star.h"
 #include "point.h"
 #include "patch.h"
@@ -656,9 +657,116 @@ bool alienorum::Planet::estimate_habitability()
     return life_possible;
 }
 
+namespace
+{
+    double stellar_element_offset(const Star& host, const std::string& element)
+    {
+        if (!host.stellar_abundances.is_object()) return NAN;
+        for (const auto& bundle : host.stellar_abundances)
+        {
+            if (!bundle.is_object() || !bundle.contains("elements")) continue;
+            const auto& elements = bundle["elements"];
+            if (!elements.is_object() || !elements.contains(element) || !elements[element].is_object()) continue;
+            const auto& measurement = elements[element];
+            const double dex = ocean_numeric(measurement, "dex");
+            const std::string ratio = measurement.value("ratio", "");
+            if (ratio == "[" + element + "/H]" && std::isfinite(dex)) return dex;
+            if (ratio == "[" + element + "/Fe]" && std::isfinite(dex))
+            {
+                if (elements.contains("Fe") && elements["Fe"].is_object()
+                    && elements["Fe"].value("ratio", "") == "[Fe/H]")
+                {
+                    const double iron = ocean_numeric(elements["Fe"], "dex");
+                    if (std::isfinite(iron)) return dex + iron;
+                }
+                if (std::isfinite(host.metallicity) && host.metallicity_ratio == "[Fe/H]") return dex + host.metallicity;
+            }
+        }
+        return NAN;
+    }
+}
+
+bool Planet::has_spectral_giant_color() const
+{
+    return (type == gas_giant || type == ice_giant) && !lock_bv_color
+        && valid_giant_reflectance(giant_color_model, BV_color);
+}
+
+double Planet::reflected_vr_color() const
+{
+    return has_spectral_giant_color() ? giant_color_model["VR"].get<double>() : BV_color;
+}
+
+bool Planet::estimate_cool_giant_color()
+{
+    if (lock_bv_color || preserve_loaded_parameters || (type != gas_giant && type != ice_giant)) return false;
+    GiantReflectanceInput input;
+    input.seed = texture_seed();
+    input.neptune = type == ice_giant;
+    input.earth_masses = mass / earth_mass;
+    input.gravity_m_s2 = volumetric_mean_radius > 0 ? G * mass / (volumetric_mean_radius * volumetric_mean_radius) : NAN;
+    // Avoid a color -> Bond albedo -> temperature -> color feedback loop.
+    // Use supplied temperatures, otherwise luminosity/orbit with a fixed Bond .3 proxy.
+    auto* light = get_light_center();
+    const Star* host = light && light->typeclass() == class_star ? static_cast<Star*>(light) : nullptr;
+    double proxy = NAN;
+    if (has_supplied_mean_temperature() && std::isfinite(temperature) && temperature > 0)
+    {
+        proxy = temperature;
+        input.equivalent_axis_au = std::pow(255.0 / proxy, 2);
+    }
+    else if (host && orbit)
+    {
+        const CelestialObject* stellar_orbiter = this;
+        for (int level = 0; level < 16 && stellar_orbiter->orbit
+            && stellar_orbiter->orbit->center && stellar_orbiter->orbit->center != host; ++level)
+            stellar_orbiter = stellar_orbiter->orbit->center;
+        if (!stellar_orbiter->orbit || stellar_orbiter->orbit->center != host
+            || !(stellar_orbiter->orbit->semimajor_axis > 0)) return false;
+        const double stellar_temperature = host->temperature > 0 ? host->temperature
+            : Star::interpolate_mseq_temp(Star::get_mseqidx_from_BV(host->BV_color));
+        const double luminosity = std::pow(magnbase, 4.74 - host->absolute_magnitude
+            - Star::bolometric_correction(stellar_temperature));
+        const double axis = stellar_orbiter->orbit->semimajor_axis / AU;
+        const double irradiation = luminosity / (axis * axis);
+        if (std::isfinite(irradiation) && irradiation > 0)
+        {
+            proxy = 255 * std::pow(irradiation, .25);
+            input.equivalent_axis_au = 1 / std::sqrt(irradiation);
+        }
+    }
+    if (!std::isfinite(proxy) || proxy > 350) return false;
+    if (host)
+    {
+        input.stellar_temperature_k = host->temperature > 0 ? host->temperature
+            : Star::interpolate_mseq_temp(Star::get_mseqidx_from_BV(host->BV_color));
+        if (host->metallicity_ratio == "[Fe/H]" || host->metallicity_ratio == "[M/H]")
+            input.stellar_metallicity_dex = host->metallicity;
+        const double carbon = stellar_element_offset(*host, "C");
+        const double iron = stellar_element_offset(*host, "Fe");
+        if (std::isfinite(carbon)) input.carbon_relative_to_iron_dex = carbon
+            - (std::isfinite(iron) ? iron : std::isfinite(input.stellar_metallicity_dex) ? input.stellar_metallicity_dex : 0);
+    }
+    if (atm && atm->comp && atm->pressure_supplied)
+    {
+        input.methane_fraction = atm->comp->CH4_portion;
+        input.haze = atm->particulates;
+    }
+    const json model = estimate_giant_reflectance(input);
+    if (!model.is_object()) return false;
+    giant_color_model = model;
+    giant_color_model["temperature_proxy_k"] = proxy;
+    giant_color_model["temperature_supplied"] = has_supplied_mean_temperature();
+    BV_color = model["BV"].get<double>();
+    VR_color = model["VR"].get<double>();
+    return true;
+}
+
 void Planet::set_color_from_type(bool HZ)
 {
-    if (lock_bv_color) return;
+    if (lock_bv_color || preserve_loaded_parameters) return;
+    if (estimate_cool_giant_color()) return;
+    giant_color_model = nullptr;
 
     if (type == gas_giant)
     {
@@ -2414,6 +2522,7 @@ json Planet::to_json()
     if (std::isfinite(radius_error_upper)) towrite["radius_error_upper"] = radius_error_upper;
     if (std::isfinite(radius_error_lower)) towrite["radius_error_lower"] = radius_error_lower;
     if (classification_evidence.is_object()) towrite["classification_evidence"] = classification_evidence;
+    if (has_spectral_giant_color()) towrite["giant_color_model"] = giant_color_model;
 
     if (albedo) towrite["albedo"] = albedo;
     towrite["opposition_surge"] = opposition_surge;
@@ -2480,6 +2589,11 @@ bool Planet::from_json(const json& j)
 {
     temperature = 0;
     CelestialObject::from_json(j);
+    const double supplied_bv = ocean_numeric(j, "BV_color");
+    if (std::isfinite(supplied_bv)) BV_color = supplied_bv;
+    giant_color_model = j.value("giant_color_model", json(nullptr));
+    lock_bv_color = std::isfinite(supplied_bv) && !valid_giant_reflectance(giant_color_model, BV_color);
+    if (has_spectral_giant_color()) VR_color = giant_color_model["VR"].get<double>();
     ocean_salinity_g_kg = ocean_numeric(j, "ocean_salinity_g_kg");
     has_sim_life.reset();
     if (typeclass() == class_moon && j.contains("has_sim_life") && j["has_sim_life"].is_boolean())

@@ -66,6 +66,7 @@ target_link_libraries(IMGUI PUBLIC SDL2::SDL2)
 add_library(CLASSES STATIC
 	src/classes/fictionalstars.cpp
 	src/classes/cat.cpp
+	src/classes/giantreflectance.cpp
 	src/classes/chemistry.cpp
 	src/classes/stellar_catalogs.cpp
 	src/classes/celestial.cpp
@@ -153,7 +154,7 @@ if(WIN32)
 	install(TARGETS alienorum RUNTIME DESTINATION .)
 
     # One explicit payload for both installer preflight and CMake installation,
-    # including the stellar evolution grid used for catalog-wide age estimation.
+    # including the stellar evolution and cool-giant reflection grids.
     # Do not install whole source directories: they contain development artifacts.
     set(runtime_manifest "${CMAKE_SOURCE_DIR}/package/runtime_files.txt")
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${runtime_manifest}")

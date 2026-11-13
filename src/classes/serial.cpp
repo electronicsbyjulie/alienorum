@@ -942,6 +942,9 @@ namespace
             // Terrain thresholds control geographic area nonlinearly. Inferred waterlines
             // retain their exact float so their saved volume/coverage diagnostics stay aligned.
             if (std::strcmp(key, "has_water") == 0 && record.contains("surface_water_model")) continue;
+            // Preserve the link between a spectral estimate and its photometric indices.
+            if ((std::strcmp(key, "BV_color") == 0 || std::strcmp(key, "VR_color") == 0)
+                && record.contains("giant_color_model")) continue;
             if (value == record.end() || !value->is_number_float()) continue;
             const double original = value->get<double>();
             if (!std::isfinite(original) || std::abs(original) > 1e12) continue;

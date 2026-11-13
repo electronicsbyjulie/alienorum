@@ -35,12 +35,12 @@ IMGUI_SRC = $(IMGUI_DIR)/imgui.cpp $(IMGUI_DIR)/imgui_demo.cpp $(IMGUI_DIR)/imgu
             $(IMGUI_DIR)/backends/imgui_impl_sdl2.cpp $(IMGUI_DIR)/backends/imgui_impl_opengl3.cpp
 IGFD_SRC = $(IGFD_DIR)/ImGuiFileDialog.cpp
 CLASSES_SRC = $(CLASSES_DIR)/fictionalstars.cpp $(CLASSES_DIR)/point.cpp $(CLASSES_DIR)/cat.cpp $(CLASSES_DIR)/star.cpp $(CLASSES_DIR)/celestial.cpp $(CLASSES_DIR)/color.cpp \
-            $(CLASSES_DIR)/chemistry.cpp \
+            $(CLASSES_DIR)/chemistry.cpp $(CLASSES_DIR)/giantreflectance.cpp \
             $(CLASSES_DIR)/stellar_catalogs.cpp $(CLASSES_DIR)/surfacenavigation.cpp \
             $(CLASSES_DIR)/misc.cpp $(CLASSES_DIR)/planet.cpp $(CLASSES_DIR)/moon.cpp $(CLASSES_DIR)/galaxy.cpp $(CLASSES_DIR)/comet.cpp \
 			$(CLASSES_DIR)/serial.cpp $(CLASSES_DIR)/universe_catalog.cpp $(CLASSES_DIR)/noise.cpp $(CLASSES_DIR)/satellite.cpp $(CLASSES_DIR)/shore.cpp $(CLASSES_DIR)/patch.cpp \
 			$(CLASSES_DIR)/cons.cpp $(CLASSES_DIR)/sscimport.cpp $(CLASSES_DIR)/exocons.cpp $(CLASSES_DIR)/sound.cpp $(CLASSES_DIR)/objectsearch.cpp
-TESTS_SRC = $(TESTS_DIR)/fictionalstars_test.cpp $(TESTS_DIR)/point_test.cpp $(TESTS_DIR)/color_test.cpp \
+TESTS_SRC = $(TESTS_DIR)/giantreflectance_test.cpp $(TESTS_DIR)/fictionalstars_test.cpp $(TESTS_DIR)/point_test.cpp $(TESTS_DIR)/color_test.cpp \
 			$(TESTS_DIR)/objectsearch_test.cpp $(TESTS_DIR)/currentconditions_test.cpp \
 			$(TESTS_DIR)/celestial_test.cpp $(TESTS_DIR)/galaxy_test.cpp $(TESTS_DIR)/star_test.cpp \
 			$(TESTS_DIR)/planet_test.cpp $(TESTS_DIR)/moon_test.cpp $(TESTS_DIR)/comet_test.cpp \
@@ -259,6 +259,9 @@ $(OBJINT)/surfacenavigation.o: $(CLASSES_DIR)/surfacenavigation.cpp
 
 $(OBJINT)/cat.o: $(CLASSES_DIR)/cat.cpp
 	$(CPP) $(CLASSES_DIR)/cat.cpp $(CPPFLAGS) -c -o $(OBJINT)/cat.o
+
+$(OBJINT)/giantreflectance.o: $(CLASSES_DIR)/giantreflectance.cpp
+	$(CPP) $(CLASSES_DIR)/giantreflectance.cpp $(CPPFLAGS) -c -o $(OBJINT)/giantreflectance.o
 
 $(OBJINT)/chemistry.o: $(CLASSES_DIR)/chemistry.cpp
 	$(CPP) $(CLASSES_DIR)/chemistry.cpp $(CPPFLAGS) -c -o $(OBJINT)/chemistry.o

@@ -4153,7 +4153,11 @@ void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>&
             }
 
             if (planet_temps.find(designation) != planet_temps.end()) p->temperature = planet_temps[designation];
-            if (planet_bvcols.find(designation) != planet_bvcols.end()) p->BV_color = planet_bvcols[designation];
+            if (planet_bvcols.find(designation) != planet_bvcols.end())
+            {
+                p->BV_color = planet_bvcols[designation];
+                p->lock_bv_color = true;
+            }
             if (planet_albedines.find(designation) != planet_albedines.end())
             {
                 p->albedo = planet_albedines[designation];
@@ -5917,7 +5921,8 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
             try { pl.at("AscNode").get_to(p->orbit->ascending_node); p->orbit->ascending_node *= fiftyseventh; } catch (...) { ; }
 
             try { /* TODO: pl.at("BondAlbedo").get_to(p->BV_color); */ } catch (...) { ; }
-            try { pl.at("BVmag").get_to(p->BV_color); } catch (...) { if (createnew) p->BV_color = p->orbit->center->BV_color; }
+            try { pl.at("BVmag").get_to(p->BV_color); p->lock_bv_color = true; }
+            catch (...) { if (createnew) p->BV_color = p->orbit->center->BV_color; }
             try { pl.at("UBmag").get_to(p->UB_color); } catch (...) { if (createnew) p->UB_color = p->orbit->center->UB_color; }
             try { pl.at("CloudsStatic").get_to(p->static_clouds); } catch (...) { ; }
             try { pl.at("Eccentricity").get_to(p->orbit->eccentricity); } catch (...) { ; }

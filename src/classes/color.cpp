@@ -12,6 +12,7 @@
 #include "nlohmann/json.hpp"
 #include "imgui/imgui.h"
 #include "star.h"
+#include "planet.h"
 #include "wdcolor.h"
 
 using namespace alienorum;
@@ -55,6 +56,23 @@ Color Color::color_from_magnitude_indices(double Vmag, double BV, double VR,
     c.blue  *= brightness * invlum;
 
     return c;
+}
+
+Color Color::color_from_planet(double Vmag, CelestialObject* object, double offset)
+{
+    if (!object) return color_from_magnitude_indices(Vmag, 0);
+    const bool planet = object->typeclass() == class_planet || object->typeclass() == class_moon;
+    Color fallback = color_from_magnitude_indices(Vmag, object->BV_color + offset);
+    if (!planet || !static_cast<Planet*>(object)->has_spectral_giant_color()) return fallback;
+    const auto& rgb = static_cast<Planet*>(object)->giant_color_model["rgb"];
+    Color spectral(rgb[0].get<double>(), rgb[1].get<double>(), rgb[2].get<double>());
+    spectral.red *= std::pow(magnbase, offset);
+    spectral.blue *= std::pow(magnbase, -offset);
+    const double luminance = spectral.luminance();
+    if (!(luminance > 0)) return fallback;
+    const double scale = fallback.luminance() / luminance;
+    spectral.red *= scale; spectral.green *= scale; spectral.blue *= scale;
+    return spectral;
 }
 
 Color Color::color_from_star(double Vmag, Star *star, double fallback_BV)

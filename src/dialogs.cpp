@@ -1135,6 +1135,8 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
             }
         }
 
+        #if 0
+        Estimating salinity is both a little too uncertain and a little too niche to go splashing it up on the screen.
         if (i >= 0 && (cls == class_planet || cls == class_moon) && static_cast<Planet*>(cels[i])->has_water > 0)
         {
             const json ocean = static_cast<Planet*>(cels[i])->ocean_chemistry();
@@ -1145,6 +1147,7 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
             ImGui::Text("Freezes:  %.2f K", ocean.at("freezing_k").get<double>());
             if (ImGui::IsItemHovered()) ImGui::SetTooltip("Bulk ocean freezing point. Ice formation concentrates salt in the remaining brine.");
         }
+        #endif
 
         if (i >= 0 && cels[i]->mass)
         {

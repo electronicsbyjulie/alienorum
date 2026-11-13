@@ -1837,7 +1837,11 @@ void SSCImport::apply_orbit_frame(const json &fields, CelestialObject *cel)
 void SSCImport::apply_color(const json &fields, CelestialObject *cel)
 {
     double rgb[3];
-    if (get_vec3(fields, "Color", rgb)) cel->BV_color = bv_from_ssc_color(rgb);
+    if (get_vec3(fields, "Color", rgb))
+    {
+        cel->BV_color = bv_from_ssc_color(rgb);
+        cel->lock_bv_color = true;
+    }
 }
 
 // An .ssc file states a radius and, occasionally, a mass or a density. We have to end up with a mass

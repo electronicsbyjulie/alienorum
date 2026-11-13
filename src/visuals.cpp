@@ -942,7 +942,7 @@ static void atmosphere_colors(Planet *pl, double out_high[3], double out_low[3],
     // smog) scatter greyly instead and hand the sky the ground's color back.
     double particulates = pl->get_particulates();
     double Rayleigh = 1.0 - particulates;
-    Color pcol = Color::color_from_magnitude_indices(0, pl->BV_color + planet_bv_correction);
+    Color pcol = Color::color_from_planet(0, pl, planet_bv_correction);
     pcol.normalize(1);
 
     const double scatter[3] = {0.37, 0.58, 0.81};
@@ -1190,7 +1190,7 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
 
     Color col = cls == class_star
         ? Color::color_from_star(4.2, (Star*)cel, cel->BV_color)
-        : Color::color_from_magnitude_indices(4.2, cel->BV_color);
+        : Color::color_from_planet(4.2, cel);
     RGB3 rgb = Color::rgb_from_color(col, -1);
     // Redlight (night-vision) mode is applied once, in the shader, after lighting/texturing --
     // applying it here too would double it up for the untextured fallback case.
@@ -1767,7 +1767,7 @@ int draw_sphere(CelestialObject* cel, double arad)
     {
         Color wcol = cls == class_star
             ? Color::color_from_star(0, (Star*)cel, cel->BV_color)
-            : Color::color_from_magnitude_indices(0, cel->BV_color + planet_bv_correction);
+            : Color::color_from_planet(0, cel, planet_bv_correction);
         RGB3 wrgb = Color::rgb_from_color(wcol, -1);
         gc = rgba_apply_redlight(IM_COL32(wrgb.r, wrgb.g, wrgb.b, 255));
     }
@@ -1876,7 +1876,7 @@ int draw_sphere(CelestialObject* cel, double arad)
     double night_illum = nmap ? 0 : starlight;
     Color base_color = cls == class_star
         ? Color::color_from_star(4.2, (Star*)cel, cel->BV_color)
-        : Color::color_from_magnitude_indices(4.2, cel->BV_color);
+        : Color::color_from_planet(4.2, cel);
     RGB3 rgb = Color::rgb_from_color(base_color, -1), nrgb = {0,0,0};
     Point cursor, land;
     CelestialObject *lightcen = cel->get_light_center();
@@ -2817,7 +2817,7 @@ static double draw_galaxy(CelestialObject* cel, double appmag)
         return 0;
     }
 
-    Color col = Color::color_from_magnitude_indices(0, cel->BV_color);
+    Color col = Color::color_from_planet(0, cel);
     col.normalize(255);
     RGB3 rgb((unsigned char)col.red, (unsigned char)col.green, (unsigned char)col.blue);
 
@@ -3562,7 +3562,7 @@ bool draw_single_object(int i)
         {
             Color col = cls == class_star
                 ? Color::color_from_star(appmag, (Star*)cels[i], cels[i]->BV_color + atm_yellowing)
-                : Color::color_from_magnitude_indices(appmag, cels[i]->BV_color + planet_bv_correction + atm_yellowing);
+                : Color::color_from_planet(appmag, cels[i], planet_bv_correction + atm_yellowing);
             draw_flare(flare * (1.0 - obsc), col, vmag_cache[i], f_ang);
         }
         if (obsc > 0) draw_corona(xycoord, f_ang, obsc, cels[i]->BV_color);
@@ -3590,7 +3590,7 @@ bool draw_single_object(int i)
 
         Color col = cls == class_star
             ? Color::color_from_star(appmag, (Star*)cels[i], cels[i]->BV_color + atm_yellowing)
-            : Color::color_from_magnitude_indices(appmag, cels[i]->BV_color + planet_bv_correction + atm_yellowing);
+            : Color::color_from_planet(appmag, cels[i], planet_bv_correction + atm_yellowing);
 
         // Adjust for mesopic and scotopic color perception, e.g. dim red stars tend to look grayish.
         float effmag = vmag_cache[i] + global_magshift + atm_yellowing;
@@ -5036,7 +5036,7 @@ void draw_sunclock()
 
     Color c = cls == class_star
         ? Color::color_from_star(0, (Star*)cel, cel->BV_color)
-        : Color::color_from_magnitude_indices(0, cel->BV_color);
+        : Color::color_from_planet(0, cel);
     Color daylight = lightcen->typeclass() == class_star
         ? Color::color_from_star(0, (Star*)lightcen, lightcen->BV_color)
         : Color::color_from_magnitude_indices(0, lightcen->BV_color);
@@ -9453,7 +9453,7 @@ void draw_sky_gradient()
         {
             double particulates = p->get_particulates();
             double Rayleigh = 1.0 - particulates;
-            Color pcol = Color::color_from_magnitude_indices(0, p->BV_color + planet_bv_correction);
+            Color pcol = Color::color_from_planet(0, p, planet_bv_correction);
             pcol.normalize(1);
 
             float city_lights = 0;

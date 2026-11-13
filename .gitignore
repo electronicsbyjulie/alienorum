@@ -43,3 +43,9 @@ views
 /snapshots
 /tools/__pycache__
 /*.gpg
+
+# Keep the bundled cool-giant model visible while catalog caches stay ignored.
+!/catalogs/
+/catalogs/*
+!/catalogs/giant_reflectance.json
+!/catalogs/giant_reflectance.txt

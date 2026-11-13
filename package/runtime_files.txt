@@ -23,6 +23,8 @@ catalogs/WD_limb_profiles.dat
 catalogs/asteroids.json
 catalogs/exoplanet_host_positions.dat
 catalogs/galaxy_properties.json
+catalogs/giant_reflectance.json
+catalogs/giant_reflectance.txt
 catalogs/mainseq.dat
 catalogs/planets.json
 catalogs/sat/sources.json
