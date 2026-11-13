@@ -14,6 +14,16 @@ namespace alienorum
 {
     namespace
     {
+        #if PLANT_CROWN_TEXTURES
+        #define CROWN_SHADER_SWITCH "#define CROWN_TEXTURES 1\n"
+        using TextureImage3D = void (APIENTRYP)(GLenum, GLint, GLint, GLsizei, GLsizei, GLsizei, GLint, GLenum, GLenum, const void*);
+        using GenerateMipmaps = void (APIENTRYP)(GLenum);
+        constexpr GLenum texture_3d = 0x806F, texture_binding_3d = 0x806A;
+        GLuint crown_texture = 0;
+        bool crown_texture_available = false;
+        #else
+        #define CROWN_SHADER_SWITCH "#define CROWN_TEXTURES 0\n"
+        #endif
         using DrawInstanced = void (APIENTRYP)(GLenum, GLint, GLsizei, GLsizei);
         using Divisor = void (APIENTRYP)(GLuint, GLuint);
         using BindAttribute = void (APIENTRYP)(GLuint, GLuint, const char*);
@@ -38,7 +48,7 @@ namespace alienorum
         SDL_GLContext context = nullptr;
         GLuint program = 0, vao = 0, mesh = 0, instances = 0, terrain_texture = 0;
         bool attempted = false, first_draw = true;
-        std::array<GLint, 6> locations{};
+        std::array<GLint, 9> locations{};
         std::array<int, 3> mesh_first{}, mesh_count{};
         struct Run { size_t first, count; int level; };
         struct Batch
@@ -57,8 +67,7 @@ namespace alienorum
         bool terrain_active = false;
         PlantMeshStats stats;
 
-        const char* vertex_source = R"GLSL(
-#version 130
+        const char* vertex_source = "#version 130\n" CROWN_SHADER_SWITCH R"GLSL(
 in vec4 aPosition;
 in vec3 aNormal;
 in vec4 aBase;
@@ -66,6 +75,12 @@ in vec4 aDimensions;
 in vec4 aCrown;
 in vec4 aTrunk;
 in vec4 aHaze;
+#if CROWN_TEXTURES
+in vec4 aTextureFrame;
+out vec3 crown_position;
+out vec4 texture_frame;
+out float crown_surface;
+#endif
 uniform vec4 uCamera;
 uniform vec4 uPitch;
 out vec3 normal;
@@ -76,7 +91,8 @@ out vec2 exposure;
 void main()
 {
     bool crown = aPosition.w > .5;
-    float height = max(0.0, aBase.w - aDimensions.y);
+    // Sink the trunk into the faceted crown instead of touching one pole.
+    float height = max(0.0, aBase.w - aDimensions.y * .75);
     vec3 local;
     if (crown)
     {
@@ -93,6 +109,13 @@ void main()
             : vec3(aNormal.x, (aDimensions.z - aDimensions.w) / max(height, .0001), aNormal.z);
         exposure = vec2(.70, 2.3);
     }
+    #if CROWN_TEXTURES
+    vec3 relative = local - vec3(0.0, aBase.w, 0.0);
+    crown_position = vec3(aTextureFrame.x * relative.x + aTextureFrame.y * relative.z,
+        relative.y, -aTextureFrame.y * relative.x + aTextureFrame.x * relative.z);
+    texture_frame = aTextureFrame;
+    crown_surface = crown ? 1.0 : 0.0;
+    #endif
     world = aBase.xyz + local;
     vec3 camera = vec3(world.x, world.y * uPitch.y - world.z * uPitch.x,
         world.y * uPitch.x + world.z * uPitch.y);
@@ -102,8 +125,7 @@ void main()
     haze = aHaze;
 }
 )GLSL";
-        const char* fragment_source = R"GLSL(
-#version 130
+        const char* fragment_source = "#version 130\n" CROWN_SHADER_SWITCH R"GLSL(
 in vec3 normal;
 in vec3 world;
 in vec4 material;
@@ -114,6 +136,14 @@ uniform vec4 uAirlight;
 uniform vec4 uSettings;
 uniform vec4 uPitch;
 uniform sampler2D uTerrain;
+#if CROWN_TEXTURES
+in vec3 crown_position;
+in vec4 texture_frame;
+in float crown_surface;
+uniform sampler3D uCrownVolume;
+uniform vec4 uCrownDetails;
+uniform vec4 uCrownShape;
+#endif
 out vec4 FragColor;
 void main()
 {
@@ -124,9 +154,48 @@ void main()
         float distance = texelFetch(uTerrain, pixel, 0).r;
         if (distance > 0.0 && length(world.xz) > distance + .3) discard;
     }
+    vec3 surface_normal = normalize(normal);
+    vec3 surface_color = material.rgb;
+    #if CROWN_TEXTURES
+    if (uCrownShape.w > .5 && crown_surface > .5)
+    {
+        vec3 position = crown_position * vec3(1.0, uCrownShape.z, 1.0);
+        vec3 phase = vec3(texture_frame.z, texture_frame.w, texture_frame.z * .731 + texture_frame.w * .413);
+        vec4 clump = texture(uCrownVolume, position / (8.0 * uCrownDetails.x) + phase);
+        vec4 leaf = texture(uCrownVolume, position / (8.0 * uCrownDetails.y) + phase.zxy + vec3(.37));
+        float clusters = smoothstep(.12, .88, clump.a);
+        float grain = smoothstep(.48 - .2 * uCrownShape.y, .72 - .12 * uCrownShape.y, leaf.a);
+        vec3 gradient = (clump.rgb * 2.0 - 1.0) * 1.5 + (leaf.rgb * 2.0 - 1.0) * .8;
+        if (uCrownShape.x > .5 && uCrownShape.x < 1.5)
+        {
+            clusters = pow(clusters, .65);
+            grain = smoothstep(.38, .68, leaf.a);
+            gradient *= .65;
+        }
+        else if (uCrownShape.x > 1.5 && uCrownShape.x < 2.5)
+        {
+            float rib = position.y * (6.2831853 / uCrownDetails.x) + clump.a * 4.0;
+            float visibility = 1.0 - smoothstep(1.0, 3.0, fwidth(rib));
+            clusters = mix(.5, .5 + .5 * cos(rib), visibility);
+            gradient.y += -.4 * sin(rib) * visibility;
+        }
+        else if (uCrownShape.x > 2.5)
+        {
+            clusters = 1.0 - abs(2.0 * clump.a - 1.0);
+            grain = 1.0 - abs(2.0 * leaf.a - 1.0);
+            gradient *= sign(.5 - clump.a);
+        }
+        vec3 bump = vec3(texture_frame.x * gradient.x - texture_frame.y * gradient.z,
+            gradient.y, texture_frame.y * gradient.x + texture_frame.x * gradient.z);
+        bump -= surface_normal * dot(surface_normal, bump);
+        surface_normal = normalize(surface_normal - bump * uCrownDetails.w);
+        float foliage = .35 + 1.1 * clusters * (.55 + .6 * grain);
+        surface_color *= mix(1.0, foliage, uCrownDetails.z);
+    }
+    #endif
     float lighting = uSettings.x * exposure.x + uLight.w * exposure.y
-        * max(0.0, dot(normalize(normal), uLight.xyz));
-    vec3 color = mix(uAirlight.rgb, clamp(material.rgb * lighting, 0.0, 1.0), haze.rgb);
+        * max(0.0, dot(surface_normal, uLight.xyz));
+    vec3 color = mix(uAirlight.rgb, clamp(surface_color * lighting, 0.0, 1.0), haze.rgb);
     if (uSettings.w > .5) color = vec3(min(1.0, color.r + .5 * color.g + .3 * color.b), color.g * .333, color.b * .333);
     FragColor = vec4(color, material.a * haze.a);
 }
@@ -180,8 +249,8 @@ void main()
             {
                 program = glCreateProgram();
                 glAttachShader(program, vertex); glAttachShader(program, fragment);
-                const char* attributes[] = {"aPosition", "aNormal", "aBase", "aDimensions", "aCrown", "aTrunk", "aHaze"};
-                for (int i = 0; i < 7; ++i) bind_attribute(program, i, attributes[i]);
+                const char* attributes[] = {"aPosition", "aNormal", "aBase", "aDimensions", "aCrown", "aTrunk", "aHaze", "aTextureFrame"};
+                for (int i = 0; i < 8; ++i) bind_attribute(program, i, attributes[i]);
                 glLinkProgram(program);
                 GLint success = 0;
                 glGetProgramiv(program, GL_LINK_STATUS, &success);
@@ -190,8 +259,8 @@ void main()
             if (vertex) glDeleteShader(vertex);
             if (fragment) glDeleteShader(fragment);
             if (!program) return false;
-            const char* uniforms[] = {"uCamera", "uPitch", "uLight", "uAirlight", "uSettings", "uTerrain"};
-            for (int i = 0; i < 6; ++i) locations[i] = glGetUniformLocation(program, uniforms[i]);
+            const char* uniforms[] = {"uCamera", "uPitch", "uLight", "uAirlight", "uSettings", "uTerrain", "uCrownDetails", "uCrownShape", "uCrownVolume"};
+            for (int i = 0; i < 9; ++i) locations[i] = glGetUniformLocation(program, uniforms[i]);
             glGenVertexArrays(1, &vao);
             glGenBuffers(1, &mesh); glGenBuffers(1, &instances);
             std::vector<PlantMeshVertex> vertices;
@@ -215,6 +284,37 @@ void main()
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
             glTexImage2D(GL_TEXTURE_2D, 0, 0x822E, 1, 1, 0, 0x1903, GL_FLOAT, nullptr);
             glBindTexture(GL_TEXTURE_2D, previous_texture);
+            #if PLANT_CROWN_TEXTURES
+            auto image3d = reinterpret_cast<TextureImage3D>(SDL_GL_GetProcAddress("glTexImage3D"));
+            auto mipmaps = reinterpret_cast<GenerateMipmaps>(SDL_GL_GetProcAddress("glGenerateMipmap"));
+            if (image3d && mipmaps)
+            {
+                GLint active, binding, row, alignment, image_height;
+                glGetIntegerv(GL_ACTIVE_TEXTURE, &active);
+                glActiveTexture(GL_TEXTURE0 + 1);
+                glGetIntegerv(texture_binding_3d, &binding);
+                glGetIntegerv(GL_UNPACK_ROW_LENGTH, &row);
+                glGetIntegerv(GL_UNPACK_ALIGNMENT, &alignment);
+                glGetIntegerv(0x806E, &image_height);
+                glPixelStorei(GL_UNPACK_ROW_LENGTH, 0); glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+                glPixelStorei(0x806E, 0);
+                const auto volume = build_crown_texture_volume();
+                glGenTextures(1, &crown_texture);
+                glBindTexture(texture_3d, crown_texture);
+                glTexParameteri(texture_3d, GL_TEXTURE_MIN_FILTER, 0x2703);
+                glTexParameteri(texture_3d, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+                glTexParameteri(texture_3d, GL_TEXTURE_WRAP_S, GL_REPEAT);
+                glTexParameteri(texture_3d, GL_TEXTURE_WRAP_T, GL_REPEAT);
+                glTexParameteri(texture_3d, 0x8072, GL_REPEAT);
+                image3d(texture_3d, 0, 0x8058, 64, 64, 64, 0, GL_RGBA, GL_UNSIGNED_BYTE, volume.data());
+                mipmaps(texture_3d);
+                crown_texture_available = glGetError() == 0;
+                glBindTexture(texture_3d, binding);
+                glPixelStorei(GL_UNPACK_ROW_LENGTH, row); glPixelStorei(GL_UNPACK_ALIGNMENT, alignment);
+                glPixelStorei(0x806E, image_height);
+                glActiveTexture(active);
+            }
+            #endif
             return true;
         }
 
@@ -251,8 +351,15 @@ void main()
                 uniform4(locations[3], view.airlight.x, view.airlight.y, view.airlight.z, 0);
                 uniform4(locations[4], view.ambient, terrain_active ? 1 : 0, view.center_y * 2, view.redlight ? 1 : 0);
                 glUniform1i(locations[5], 0);
+                #if PLANT_CROWN_TEXTURES
+                const auto& foliage = view.crown_texture;
+                uniform4(locations[6], foliage.cluster_size_m, foliage.leaf_size_m, foliage.contrast, foliage.roughness);
+                uniform4(locations[7], foliage.pattern, foliage.density, foliage.vertical_stretch,
+                    view.crown_textures && crown_texture_available ? 1 : 0);
+                glUniform1i(locations[8], 1);
+                #endif
                 glBindBuffer(GL_ARRAY_BUFFER, mesh);
-                for (int i = 0; i < 7; ++i)
+                for (int i = 0; i < 8; ++i)
                 {
                     glEnableVertexAttribArray(i); divisor(i, i < 2 ? 0 : 1);
                     if (i < 2)
@@ -262,14 +369,17 @@ void main()
                 glBindBuffer(GL_ARRAY_BUFFER, instances);
                 glBufferData(GL_ARRAY_BUFFER, upload.size() * sizeof(PlantMeshInstance), upload.data(), GL_STREAM_DRAW);
             }
+            #if PLANT_CROWN_TEXTURES
+            glActiveTexture(GL_TEXTURE0 + 1); glBindTexture(texture_3d, crown_texture);
+            #endif
             glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, terrain_texture);
             glBindBuffer(GL_ARRAY_BUFFER, instances);
             for (const auto& run : batch.runs)
             {
                 const size_t base = (batch.upload_offset + run.first) * sizeof(PlantMeshInstance);
                 const size_t offsets[] = {offsetof(PlantMeshInstance, base), offsetof(PlantMeshInstance, dimensions),
-                    offsetof(PlantMeshInstance, crown_color), offsetof(PlantMeshInstance, trunk_color), offsetof(PlantMeshInstance, haze)};
-                for (int i = 0; i < 5; ++i)
+                    offsetof(PlantMeshInstance, crown_color), offsetof(PlantMeshInstance, trunk_color), offsetof(PlantMeshInstance, haze), offsetof(PlantMeshInstance, texture_frame)};
+                for (int i = 0; i < 6; ++i)
                 {
                     const bool color = i == 2 || i == 3;
                     glVertexAttribPointer(i + 2, 4, color ? GL_UNSIGNED_BYTE : GL_FLOAT, color ? GL_TRUE : GL_FALSE,
@@ -294,8 +404,14 @@ void main()
             if (mesh) glDeleteBuffers(1, &mesh);
             if (instances) glDeleteBuffers(1, &instances);
             if (terrain_texture) glDeleteTextures(1, &terrain_texture);
+            #if PLANT_CROWN_TEXTURES
+            if (crown_texture) glDeleteTextures(1, &crown_texture);
+            #endif
         }
         program = vao = mesh = instances = terrain_texture = 0;
+        #if PLANT_CROWN_TEXTURES
+        crown_texture = 0; crown_texture_available = false;
+        #endif
         context = nullptr; attempted = false;
         batches.clear(); upload.clear(); saved_terrain.clear(); batch_index = 0;
         terrain_width = terrain_height = 0; stats = {};

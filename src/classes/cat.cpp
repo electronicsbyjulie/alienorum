@@ -5740,6 +5740,17 @@ static void apply_body_metadata(CelestialObject* body, const json& record)
     body->map_inverted = record.value("map_inverted", body->map_inverted);
     body->orbit_center_codes = record.value("orbit_center_codes", body->orbit_center_codes);
     body->known_poles = record.value("known_poles", body->known_poles);
+    if (body->typeclass() == class_planet || body->typeclass() == class_moon)
+    {
+        const auto texture = record.find("PlantCrownTexture");
+        const auto saved_texture = record.find("plant_crown_texture");
+        auto& supplied = static_cast<Planet*>(body)->plant_crown_texture;
+        if (!supplied.is_object())
+        {
+            if (texture != record.end() && texture->is_object()) supplied = *texture;
+            else if (saved_texture != record.end() && saved_texture->is_object()) supplied = *saved_texture;
+        }
+    }
     if (body->typeclass() == class_star && record.contains("catalog_aliases"))
     {
         for (const auto& alias : record.at("catalog_aliases")) static_cast<Star*>(body)->add_catalog_alias(alias.get<std::string>());

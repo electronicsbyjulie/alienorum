@@ -5,6 +5,7 @@
 #include "celestial.h"
 #include "climate.h"
 #include "vegetation.h"
+#include "planttexture.h"
 #include <functional>
 #include <mutex>
 #include <memory>
@@ -105,6 +106,8 @@ namespace alienorum
         int vegetation_r=0, vegetation_g=0, vegetation_b=0;
         double veg_min_temp = 278, veg_max_temp = 310;
         double plant_trunk_height = 0, plant_trunk_width = 0, plant_crown_size = 0, plant_crown_oblateness = 0;
+        json plant_crown_texture = nullptr;
+        PlantCrownTexture crown_texture_parameters() const;
         float has_water = 0;
         bool has_water_supplied = false;
         json surface_water_model = nullptr;

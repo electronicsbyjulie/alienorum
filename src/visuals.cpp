@@ -8832,6 +8832,10 @@ void draw_horizon()
                 plant_view.ambient = amb_light;
                 plant_view.airlight = ImVec4(haze.light[0] / 255.0f, haze.light[1] / 255.0f, haze.light[2] / 255.0f, 1);
                 plant_view.redlight = redlight_mode;
+                #if PLANT_CROWN_TEXTURES
+                plant_view.crown_textures = p && horizon_fast_path(202);
+                if (p) plant_view.crown_texture = p->crown_texture_parameters();
+                #endif
                 // Subpixel crowns keep the silhouette path; solid geometry starts
                 // where perspective and surface lighting become visible.
                 const bool nearby_plants = has_plants && std::any_of(rocks.begin(), rocks.end(), [](const RockInstance& rock)
@@ -8887,6 +8891,11 @@ void draw_horizon()
                         const double radius = rk.size * crown_scale;
                         plant.dimensions = ImVec4(fmax(.001, radius), fmax(.001, radius * fabs(p->plant_crown_oblateness)),
                             fmax(.001, rk.size * p->plant_trunk_width * .5), fmax(.001, rk.size * p->plant_trunk_width * .38));
+                        #if PLANT_CROWN_TEXTURES
+                        const double texture_angle = azimuth + (rk.seed_val & 1023u) * (2 * _pi / 1024);
+                        plant.texture_frame = ImVec4(cos(texture_angle), sin(texture_angle),
+                            ((rk.seed_val >> 10) & 1023u) / 1024.0f, ((rk.seed_val >> 20) & 1023u) / 1024.0f);
+                        #endif
                         plant.crown_color = IM_COL32(base_map_rgb.r, base_map_rgb.g, base_map_rgb.b, 255);
                         plant.trunk_color = IM_COL32(PLANT_TRUNK_COLOR_R, PLANT_TRUNK_COLOR_G, PLANT_TRUNK_COLOR_B, 255);
                         plant.haze = ImVec4(haze.transmission(haze_distance, 0), haze.transmission(haze_distance, 1),

@@ -1,6 +1,11 @@
 #pragma once
 
 #include "imgui.h"
+#include "classes/planttexture.h"
+
+#ifndef PLANT_CROWN_TEXTURES
+#define PLANT_CROWN_TEXTURES 1
+#endif
 #include <vector>
 
 namespace alienorum
@@ -11,6 +16,7 @@ namespace alienorum
         ImVec4 dimensions;
         ImU32 crown_color = 0, trunk_color = 0;
         ImVec4 haze = ImVec4(1, 1, 1, 1);
+        ImVec4 texture_frame = ImVec4(1, 0, 0, 0);
     };
     struct PlantMeshView
     {
@@ -20,6 +26,8 @@ namespace alienorum
         float ambient = .3f;
         ImVec4 airlight;
         bool redlight = false;
+        bool crown_textures = false;
+        PlantCrownTexture crown_texture;
     };
     struct PlantMeshStats
     {

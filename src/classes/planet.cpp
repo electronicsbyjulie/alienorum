@@ -2509,6 +2509,13 @@ bool Atmosphere::from_json(json j)
     return true;
 }
 
+PlantCrownTexture Planet::crown_texture_parameters() const
+{
+    PlantCrownTexture result = home_world ? PlantCrownTexture() : PlantCrownTexture::generated(texture_seed());
+    result.apply(plant_crown_texture);
+    return result;
+}
+
 json Planet::to_json()
 {
     if (typeclass() == class_moon) resolve_sim_life();
@@ -2581,6 +2588,7 @@ json Planet::to_json()
     towrite["plant_trunk_width"] = plant_trunk_width;
     towrite["plant_crown_size"] = plant_crown_size;
     towrite["plant_crown_oblateness"] = plant_crown_oblateness;
+    if (plant_crown_texture.is_object()) towrite["plant_crown_texture"] = plant_crown_texture;
 
     return towrite;
 }
@@ -2589,6 +2597,7 @@ bool Planet::from_json(const json& j)
 {
     temperature = 0;
     CelestialObject::from_json(j);
+    plant_crown_texture = j.value("plant_crown_texture", json(nullptr));
     const double supplied_bv = ocean_numeric(j, "BV_color");
     if (std::isfinite(supplied_bv)) BV_color = supplied_bv;
     giant_color_model = j.value("giant_color_model", json(nullptr));

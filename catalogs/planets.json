@@ -129,6 +129,16 @@
         "PlantTrunkWidth": 0.3,
         "PlantCrownSize": 2.5,
         "PlantCrownOblateness": 0.8,
+        "PlantCrownTexture":
+        {
+            "pattern": "broadleaf",
+            "cluster_size_m": 0.65,
+            "leaf_size_m": 0.065,
+            "density": 0.78,
+            "contrast": 0.55,
+            "roughness": 0.24,
+            "vertical_stretch": 1.15
+        },
         "RotationPeriod": 86164.100,
         "SEMIMAJOR_AXIS": 149598023000,
         "SurfacePressure": 101325,

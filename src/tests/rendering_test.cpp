@@ -9141,3 +9141,190 @@ TEST_F(RenderingRegressionTest, PlantCrownsLightTheVisibleSideTowardTheSun)
     EXPECT_GT(int(front_lit[center_green]) - int(back_lit[center_green]), 80);
     ImGui::NewFrame();
 }
+
+
+TEST(PlantCrownTextureTest, ParametersPreserveEstimatesZeroAndDeterministicSpecies)
+{
+    const auto first = PlantCrownTexture::generated(7812);
+    const auto repeat = PlantCrownTexture::generated(7812);
+    EXPECT_DOUBLE_EQ(first.cluster_size_m, repeat.cluster_size_m);
+    EXPECT_DOUBLE_EQ(first.leaf_size_m, repeat.leaf_size_m);
+    EXPECT_EQ(first.pattern, repeat.pattern);
+    const auto other = PlantCrownTexture::generated(7813);
+    EXPECT_NE(first.cluster_size_m, other.cluster_size_m);
+    std::array<bool, 4> patterns{};
+    for (uint32_t seed = 1; seed < 128; ++seed) patterns[PlantCrownTexture::generated(seed).pattern] = true;
+    for (bool pattern : patterns) EXPECT_TRUE(pattern);
+    PlantCrownTexture authored;
+    authored.apply({{"cluster_size_m", ".82?"}, {"leaf_size_m", ".04?"}, {"contrast", "0?"},
+        {"roughness", 0}, {"pattern", "ribbed"}, {"density", .6}});
+    EXPECT_DOUBLE_EQ(authored.cluster_size_m, .82);
+    EXPECT_DOUBLE_EQ(authored.leaf_size_m, .04);
+    EXPECT_DOUBLE_EQ(authored.contrast, 0);
+    EXPECT_DOUBLE_EQ(authored.roughness, 0);
+    EXPECT_EQ(authored.pattern, 2);
+    authored.apply({{"cluster_size_m", -1}, {"density", "?"}});
+    EXPECT_DOUBLE_EQ(authored.cluster_size_m, .82);
+    EXPECT_DOUBLE_EQ(authored.density, .6);
+}
+
+TEST(PlantCrownTextureTest, PeriodicVolumeAndGradientsRemainContinuous)
+{
+    const auto volume = build_crown_texture_volume(16);
+    EXPECT_EQ(volume.size(), 16u * 16u * 16u * 4u);
+    EXPECT_EQ(volume, build_crown_texture_volume(16));
+    for (int sample = 0; sample < 16; ++sample)
+    {
+        const double x = sample * .71 - 3.4, y = sample * .47, z = sample * .29;
+        const auto base = crown_periodic_noise(x, y, z, 8);
+        const auto wrap = crown_periodic_noise(x + 8, y - 8, z + 16, 8);
+        EXPECT_NEAR(base.value, wrap.value, 1e-12);
+        for (int axis = 0; axis < 3; ++axis) EXPECT_NEAR(base.gradient[axis], wrap.gradient[axis], 1e-12);
+        const double step = .00001;
+        const auto before = crown_periodic_noise(x - step, y, z, 8);
+        const auto after = crown_periodic_noise(x + step, y, z, 8);
+        EXPECT_NEAR(base.gradient[0], (after.value - before.value) / (2 * step), 1e-7);
+    }
+}
+
+TEST_F(RenderingRegressionTest, CrownTextureSettingsSurviveCatalogAndReadableSaves)
+{
+    Planet* world = surface(true);
+    strcpy(world->name, "Earth");
+    world->home_world = true;
+    CatalogReader::apply_local_catalog_metadata(cels);
+    ASSERT_TRUE(world->plant_crown_texture.is_object());
+    const auto earth = world->crown_texture_parameters();
+    EXPECT_EQ(earth.pattern, 0);
+    EXPECT_DOUBLE_EQ(earth.leaf_size_m, .065);
+    world->plant_crown_texture["contrast"] = "0?";
+    const json record = Serialization::expand_output_record(Serialization::output_record(world->to_json()));
+    Planet restored;
+    ASSERT_TRUE(restored.from_json(record));
+    EXPECT_DOUBLE_EQ(restored.crown_texture_parameters().contrast, 0);
+    EXPECT_DOUBLE_EQ(restored.crown_texture_parameters().cluster_size_m, earth.cluster_size_m);
+    EXPECT_TRUE(restored.plant_crown_texture.is_object());
+    world->plant_crown_texture = nullptr;
+    world->home_world = false;
+    world->rnd_seed = 514;
+    const auto exo = world->crown_texture_parameters();
+    Planet exo_restored;
+    ASSERT_TRUE(exo_restored.from_json(world->to_json()));
+    EXPECT_DOUBLE_EQ(exo_restored.crown_texture_parameters().cluster_size_m, exo.cluster_size_m);
+    EXPECT_FALSE(world->to_json().contains("plant_crown_texture"));
+}
+
+TEST_F(RenderingRegressionTest, CrownTexturesRemainStableAndDoNotTextureTheTrunk)
+{
+    set(scenery_gpu_reference, false);
+    PlantMeshView view;
+    view.focal = 110; view.center_x = 96; view.center_y = 54;
+    view.light = ImVec4(0, .6, -.8, .5); view.ambient = .5;
+    PlantMeshInstance plant;
+    plant.base = ImVec4(0, -2, 8, 4);
+    plant.dimensions = ImVec4(1.5, .75, .2, .1);
+    plant.crown_color = IM_COL32(60, 120, 35, 255); plant.trunk_color = IM_COL32(90, 65, 40, 255);
+    const auto paint = [&]()
+    {
+        EXPECT_TRUE(prepare_plant_mesh_gpu(view));
+        add_plant_mesh_gpu(plant, 35); flush_plant_mesh_gpu();
+        return render();
+    };
+    const auto plain = paint();
+    ImGui::NewFrame();
+    view.crown_textures = true;
+    const auto foliage = paint();
+    #if PLANT_CROWN_TEXTURES
+    EXPECT_GT(image_difference(plain, foliage), 100);
+    #else
+    EXPECT_EQ(image_difference(plain, foliage), 0);
+    #endif
+    for (int row = 59; row < 75; ++row)
+    {
+        const size_t pixel = ((108 - 1 - row) * 192 + 96) * 4;
+        for (int channel = 0; channel < 4; ++channel) EXPECT_EQ(plain[pixel + channel], foliage[pixel + channel]);
+    }
+    ImGui::NewFrame();
+    EXPECT_EQ(image_difference(paint(), foliage), 0);
+    ImGui::NewFrame();
+    view.crown_texture.contrast = view.crown_texture.roughness = 0;
+    EXPECT_EQ(image_difference(paint(), plain), 0);
+    ImGui::NewFrame();
+    view.crown_texture = PlantCrownTexture();
+    view.crown_texture.pattern = 2;
+    #if PLANT_CROWN_TEXTURES
+    EXPECT_GT(image_difference(paint(), foliage), 50);
+    #else
+    EXPECT_EQ(image_difference(paint(), foliage), 0);
+    #endif
+    ImGui::NewFrame();
+}
+
+TEST_F(RenderingRegressionTest, PlantTrunkOverlapsTheCrownAtEveryDetailLevel)
+{
+    set(scenery_gpu_reference, false);
+    PlantMeshView view;
+    view.focal = 110; view.center_x = 96; view.center_y = 54;
+    view.ambient = 1; view.light.w = 0;
+    PlantMeshInstance plant;
+    plant.base = ImVec4(0, -2, 8, 4);
+    plant.dimensions = ImVec4(1.5, 1.5, .75, .57);
+    plant.crown_color = IM_COL32(60, 180, 30, 255); plant.trunk_color = IM_COL32(120, 80, 40, 255);
+    for (float detail : {10.0f, 40.0f, 120.0f})
+    {
+        EXPECT_TRUE(prepare_plant_mesh_gpu(view));
+        add_plant_mesh_gpu(plant, detail); flush_plant_mesh_gpu();
+        const auto pixels = render();
+        // Oblique rays just outside the crown's lower pole must meet the trunk.
+        // Pole-only contact leaves these pixels open between the two surfaces.
+        for (int column : {88, 103})
+        {
+            const size_t pixel = ((108 - 1 - 46) * 192 + column) * 4;
+            EXPECT_GT(pixels[pixel + 3], 200) << detail << ' ' << column;
+        }
+        ImGui::NewFrame();
+    }
+}
+
+TEST_F(RenderingRegressionTest, CrownTexturePreview)
+{
+    const char* destination = std::getenv("ALIENORUM_CROWN_PREVIEW");
+    if (!destination) GTEST_SKIP() << "Explicit crown texture preview only.";
+    set(scenery_gpu_reference, false);
+    ImGui::EndFrame();
+    render_width = 960; render_height = 640;
+    SDL_SetWindowSize(window, render_width, render_height);
+    SDL_PumpEvents(); SDL_GL_SwapWindow(window);
+    ImGui::GetIO().DisplaySize = ImVec2(render_width, render_height);
+    ImGui::NewFrame();
+    PlantMeshView view;
+    view.focal = 520; view.center_x = 480; view.center_y = 320;
+    view.light = ImVec4(.4, .7, -.591608, .5); view.ambient = .6;
+    PlantMeshInstance plant;
+    plant.base = ImVec4(0, -2, 8, 4);
+    plant.dimensions = ImVec4(2, 1.2, .32, .2);
+    plant.crown_color = IM_COL32(60, 115, 35, 255); plant.trunk_color = IM_COL32(90, 65, 40, 255);
+    const std::array<const char*, 5> names = {"plain", "earth", "tufted", "ribbed", "veined"};
+    std::filesystem::create_directories(destination);
+    for (int style = 0; style < 5; ++style)
+    {
+        view.crown_textures = style != 0;
+        view.crown_texture = style < 2 ? PlantCrownTexture() : PlantCrownTexture::generated(709 + style);
+        if (style >= 2) view.crown_texture.pattern = style - 1;
+        auto* draw = ImGui::GetBackgroundDrawList();
+        draw->AddRectFilled(ImVec2(0, 0), ImVec2(960, 640), IM_COL32(150, 170, 190, 255));
+        EXPECT_TRUE(prepare_plant_mesh_gpu(view));
+        add_plant_mesh_gpu(plant, 160); flush_plant_mesh_gpu();
+        const auto pixels = render();
+        std::ofstream output(std::filesystem::path(destination) / (std::string(names[style]) + ".ppm"), std::ios::binary);
+        output << "P6\n" << render_width << ' ' << render_height << "\n255\n";
+        for (int row = render_height - 1; row >= 0; --row)
+            for (int column = 0; column < render_width; ++column)
+                output.write(reinterpret_cast<const char*>(pixels.data() + (row * render_width + column) * 4), 3);
+        ImGui::NewFrame();
+    }
+    ImGui::EndFrame();
+    SDL_SetWindowSize(window, 192, 108); SDL_PumpEvents(); SDL_GL_SwapWindow(window);
+    ImGui::GetIO().DisplaySize = ImVec2(192, 108);
+    ImGui::NewFrame();
+}
