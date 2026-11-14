@@ -63,10 +63,21 @@ Color Color::color_from_planet(double Vmag, CelestialObject* object, double offs
     if (!object) return color_from_magnitude_indices(Vmag, 0);
     const bool planet = object->typeclass() == class_planet || object->typeclass() == class_moon;
     Color fallback = color_from_magnitude_indices(Vmag, object->BV_color + offset);
-    if (!planet || !static_cast<Planet*>(object)->has_spectral_giant_color()) return fallback;
-    const auto& model = static_cast<Planet*>(object)->giant_color_model;
-    const auto& rgb = model.contains("texture") ? model["texture"]["rgb"] : model["rgb"];
-    Color spectral(rgb[0].get<double>(), rgb[1].get<double>(), rgb[2].get<double>());
+    if (!planet) return fallback;
+    const auto* body = static_cast<Planet*>(object);
+    Color spectral;
+    if (!body->is_bv_observed && uses_gaseous_map(body->type)
+        && std::isfinite(body->generated_sky_bv) && body->generated_sky_bv == body->BV_color)
+    {
+        spectral = body->generated_sky_color;
+    }
+    else if (body->has_spectral_giant_color())
+    {
+        const auto& model = body->giant_color_model;
+        const auto& rgb = model.contains("texture") ? model["texture"]["rgb"] : model["rgb"];
+        spectral = Color(rgb[0].get<double>(), rgb[1].get<double>(), rgb[2].get<double>());
+    }
+    else return fallback;
     spectral.red *= std::pow(magnbase, offset);
     spectral.blue *= std::pow(magnbase, -offset);
     const double luminance = spectral.luminance();

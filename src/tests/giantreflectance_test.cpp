@@ -423,6 +423,7 @@ TEST_F(GiantReflectancePlanetTest, WetAndLivingTexturesStillReplaceTheFinalColor
 
 TEST_F(GiantReflectancePlanetTest, SpectralGiantTexturesRetainProvenanceAcrossRegenerationAndSaves)
 {
+    bv_correction = -.6244;
     for (auto type : {gas_giant, ice_giant})
     {
         for (double axis : {2.0, 5.0})
@@ -443,7 +444,7 @@ TEST_F(GiantReflectancePlanetTest, SpectralGiantTexturesRetainProvenanceAcrossRe
                 body->cloud_map->generate_gas_giant_map(body);
                 ASSERT_TRUE(body->cloud_map->is_complete());
                 EXPECT_TRUE(body->has_spectral_giant_color());
-                EXPECT_DOUBLE_EQ(body->BV_color, body->cloud_map->texture_bv(body));
+                EXPECT_DOUBLE_EQ(body->BV_color, body->cloud_map->texture_bv(body) - bv_correction);
                 EXPECT_EQ(body->giant_color_model["bands"], original["bands"]);
                 if (!pass) first = body->BV_color;
                 else EXPECT_NEAR(body->BV_color, first, .02);
@@ -455,6 +456,14 @@ TEST_F(GiantReflectancePlanetTest, SpectralGiantTexturesRetainProvenanceAcrossRe
                 EXPECT_TRUE(restored.has_spectral_giant_color());
                 EXPECT_DOUBLE_EQ(restored.BV_color, body->BV_color);
                 EXPECT_DOUBLE_EQ(restored.reflected_vr_color(), body->reflected_vr_color());
+                json legacy = body->to_json();
+                legacy["giant_color_model"]["texture"]["BV"] = body->cloud_map->texture_bv(body);
+                ASSERT_TRUE(restored.from_json(legacy));
+                EXPECT_FALSE(restored.has_spectral_giant_color());
+                restored.cloud_map = new PhotometryTestMap(RGB3(180, 160, 120), RGB3(180, 160, 120));
+                restored.update_texture_color();
+                EXPECT_TRUE(restored.has_spectral_giant_color());
+                EXPECT_DOUBLE_EQ(restored.BV_color, restored.cloud_map->texture_bv(&restored) - bv_correction);
             }
         }
     }
@@ -566,5 +575,58 @@ TEST_F(GiantReflectancePlanetTest, SuppliedSurfaceOrCloudTexturesRetainTheOrigin
         body->cloud_map->procedurally_generated = supplied_surface;
         body->update_texture_color();
         EXPECT_DOUBLE_EQ(body->BV_color, .123);
+    }
+}
+
+TEST_F(GiantReflectancePlanetTest, GeneratedHotAndClearSkiesUseTheirTextureRgbForGlare)
+{
+    bv_correction = -.6244;
+    for (auto type : {hot_jupiter, clearskies})
+    {
+        for (double input : {.3, .9})
+        {
+            Planet* body = giant(make_star(), type);
+            body->BV_color = input;
+            body->preserve_loaded_parameters = true;
+            body->has_water = 0;
+            body->has_water_supplied = true;
+            body->has_sim_life = false;
+            body->temperature = 1400;
+            body->temperature_supplied = true;
+            body->ensure_atmosphere()->surface_pressure = 0;
+            body->atm->pressure_supplied = true;
+            body->fictitious_map_height = 32;
+            for (int pass = 0; pass < 3; ++pass)
+            {
+                SCOPED_TRACE(::testing::Message() << "type=" << type << " input=" << input << " pass=" << pass);
+                delete body->cloud_map;
+                body->cloud_map = new Map(body);
+                body->cloud_map->generate_gas_giant_map(body);
+                ASSERT_TRUE(body->cloud_map->is_complete());
+                ASSERT_FALSE(body->has_spectral_giant_color());
+                const Color mean = body->cloud_map->mean_texture_color(body);
+                for (double offset : {0.0, double(planet_bv_correction), double(planet_bv_correction) + .1})
+                {
+                    const Color glare = Color::color_from_planet(0, body, offset);
+                    EXPECT_NEAR(glare.red / glare.green, mean.red / mean.green * pow(magnbase, offset), 1e-12);
+                    EXPECT_NEAR(glare.blue / glare.green, mean.blue / mean.green * pow(magnbase, -offset), 1e-12);
+                }
+                const json saved = body->to_json();
+                ASSERT_TRUE(body->from_json(saved));
+                EXPECT_FALSE(std::isfinite(body->generated_sky_bv));
+                body->update_texture_color();
+                EXPECT_TRUE(std::isfinite(body->generated_sky_bv));
+            }
+            for (bool observed : {false, true})
+            {
+                body->is_bv_observed = observed;
+                if (!observed) body->BV_color += .2;
+                const Color actual = Color::color_from_planet(0, body);
+                const Color expected = Color::color_from_magnitude_indices(0, body->BV_color);
+                EXPECT_DOUBLE_EQ(actual.red, expected.red);
+                EXPECT_DOUBLE_EQ(actual.green, expected.green);
+                EXPECT_DOUBLE_EQ(actual.blue, expected.blue);
+            }
+        }
     }
 }

@@ -5483,3 +5483,43 @@ TEST_F(StellarRotationTest, SscAuthoredColorsRemainFictionalAndCanFollowNewTextu
     EXPECT_DOUBLE_EQ(restored.BV_color, restored.surf_map->texture_bv(&restored));
     EXPECT_NE(restored.BV_color, authored);
 }
+
+TEST_F(CatalogParsingTest, CancriTextureColorsReachNamedPlanets)
+{
+    bv_correction = -.6244;
+    TestCatalogReader reader;
+    Star* host = make_star("55 Cnc A");
+    host->temperature = 5250;
+    const char* names[] = {"55 Cnc Ae", "55 Cnc Ab", "55 Cnc Ac", "55 Cnc Af", "55 Cnc Ad"};
+    for (const char* name : names)
+    {
+        Planet* body = make_planet(host, name);
+        body->mass = name[8] == 'e' ? 8 * earth_mass : jupiter_mass;
+        body->volumetric_mean_radius = name[8] == 'e' ? 12000000 : 70000000;
+        body->rnd_seed = 42;
+        body->fictitious_map_height = 32;
+        body->has_water = 0;
+        body->has_water_supplied = true;
+        body->has_sim_life = false;
+        body->ensure_atmosphere()->surface_pressure = 0;
+        body->atm->pressure_supplied = true;
+        reader.apply_exoplanet_names({{host->seqno, {body->seqno}}});
+        SCOPED_TRACE(body->name);
+        ASSERT_FALSE(body->is_bv_observed);
+        body->ignore_map_files = true;
+        load_textures(body);
+        Map* map = uses_gaseous_map(body->type) ? body->cloud_map : body->surf_map;
+        ASSERT_NE(map, nullptr);
+        ASSERT_TRUE(map->is_complete());
+        ASSERT_TRUE(map->procedurally_generated);
+        EXPECT_DOUBLE_EQ(body->BV_color, map->texture_bv(body) - bv_correction);
+        if (uses_gaseous_map(body->type))
+        {
+            if (body->type == gas_giant) EXPECT_TRUE(body->has_spectral_giant_color());
+            const Color actual = Color::color_from_planet(0, body);
+            const Color expected = map->mean_texture_color(body);
+            EXPECT_NEAR(actual.blue / actual.green, expected.blue / expected.green, 1e-12);
+            EXPECT_NEAR(actual.red / actual.green, expected.red / expected.green, 1e-12);
+        }
+    }
+}

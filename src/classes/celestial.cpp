@@ -20,6 +20,7 @@
 #include "cloudclimate.h"
 #include "surfacephase.h"
 #include "giantclouds.h"
+#include "giantreflectance.h"
 #include "lavafissures.h"
 #include "wdcolor.h"
 #include "../loaders.h"
@@ -158,12 +159,14 @@ void CelestialObject::update_texture_color()
 {
     if (typeclass() != class_planet && typeclass() != class_moon) return;
 
+    Planet* body = static_cast<Planet*>(this);
+    body->generated_sky_bv = NAN;
+
     // DO NOT override observational B-V colors of known objects with observed texture map averages!
     if ((surf_map && !surf_map->procedurally_generated)
         || (cloud_map && !cloud_map->procedurally_generated)) return;
     if (is_bv_observed) return;
 
-    Planet* body = static_cast<Planet*>(this);
     Map* map = cloud_map && cloud_map->is_complete() ? cloud_map : surf_map;
     Map composite(this);
     if (transparent_clouds && surf_map && surf_map->is_complete() && cloud_map && cloud_map->is_complete()
@@ -171,18 +174,33 @@ void CelestialObject::update_texture_color()
     if (!map || !map->is_complete()) return;
     const double measured = map->texture_bv(this);
     if (!std::isfinite(measured)) return;
-    if (body->has_spectral_giant_color())
+    const double generated_bv = measured - bv_correction;
+    if (uses_gaseous_map(type))
+    {
+        body->generated_sky_color = map->mean_texture_color(this);
+        body->generated_sky_color.normalize(1);
+        body->generated_sky_bv = generated_bv;
+    }
+    // A previous texture may carry a different B-V zero point. Validate its
+    // physical provenance independently of the color being replaced.
+    const auto& model = body->giant_color_model;
+    const auto& prior_color = model.contains("texture") ? model["texture"] : model;
+    const bool spectral = (type == gas_giant || type == ice_giant) && prior_color.is_object()
+        && prior_color.contains("BV") && prior_color["BV"].is_number()
+        && valid_giant_reflectance(model, prior_color["BV"].get<double>());
+    if (spectral)
     {
         Color mean = map->mean_texture_color(this);
         const double vr = mean.red > 0 ? log(mean.red / mean.green) * invlogmagnbase - bv_correction : measured;
         mean.normalize(1);
         body->giant_color_model["texture"] =
         {
-            {"BV", measured}, {"VR", vr}, {"rgb", {mean.red, mean.green, mean.blue}}
+            {"BV", generated_bv}, {"VR", vr}, {"rgb", {mean.red, mean.green, mean.blue}}
         };
         body->VR_color = vr;
+        body->lock_bv_color = false;
     }
-    BV_color = measured - bv_correction;
+    BV_color = generated_bv;
 }
 
 Map* CelestialObject::get_night_map()
@@ -4399,7 +4417,9 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
     }
 
     generating_fic_texture = false;
-    calibrate_texture_bv(cel, BV);
+    // Keep the physical palette target independent of the displayed zero point.
+    calibrate_texture_bv(cel, p->has_spectral_giant_color()
+        ? p->giant_color_model["BV"].get<double>() : BV);
     procedurally_generated = true;
     touch_gen();
     cel->update_texture_color();
