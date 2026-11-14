@@ -160,7 +160,7 @@ void CelestialObject::update_texture_color()
     if (typeclass() != class_planet && typeclass() != class_moon) return;
 
     Planet* body = static_cast<Planet*>(this);
-    body->generated_sky_bv = NAN;
+    body->generated_texture_bv = NAN;
 
     // DO NOT override observational B-V colors of known objects with observed texture map averages!
     if ((surf_map && !surf_map->procedurally_generated)
@@ -174,13 +174,10 @@ void CelestialObject::update_texture_color()
     if (!map || !map->is_complete()) return;
     const double measured = map->texture_bv(this);
     if (!std::isfinite(measured)) return;
-    const double generated_bv = measured - bv_correction;
-    if (uses_gaseous_map(type))
-    {
-        body->generated_sky_color = map->mean_texture_color(this);
-        body->generated_sky_color.normalize(1);
-        body->generated_sky_bv = generated_bv;
-    }
+    const double generated_bv = measured;
+    body->generated_texture_color = map->mean_texture_color(this);
+    body->generated_texture_color.normalize(1);
+    body->generated_texture_bv = generated_bv;
     // A previous texture may carry a different B-V zero point. Validate its
     // physical provenance independently of the color being replaced.
     const auto& model = body->giant_color_model;

@@ -58,6 +58,18 @@ Color Color::color_from_magnitude_indices(double Vmag, double BV, double VR,
     return c;
 }
 
+Color Color::reflected_daylight(CelestialObject* source, double offset)
+{
+    if (!source) return Color(1, 1, 1);
+    Color daylight = source->typeclass() == class_star
+        ? color_from_star(0, static_cast<Star*>(source), source->BV_color + offset)
+        : color_from_magnitude_indices(0, source->BV_color + offset);
+    const double maximum = std::max({daylight.red, daylight.green, daylight.blue});
+    if (!(maximum > 0) || !std::isfinite(maximum)) return Color(1, 1, 1);
+    return Color(std::cbrt(daylight.red / maximum), std::cbrt(daylight.green / maximum),
+        std::cbrt(daylight.blue / maximum));
+}
+
 Color Color::color_from_planet(double Vmag, CelestialObject* object, double offset)
 {
     if (!object) return color_from_magnitude_indices(Vmag, 0);
@@ -66,10 +78,14 @@ Color Color::color_from_planet(double Vmag, CelestialObject* object, double offs
     if (!planet) return fallback;
     const auto* body = static_cast<Planet*>(object);
     Color spectral;
-    if (!body->is_bv_observed && uses_gaseous_map(body->type)
-        && std::isfinite(body->generated_sky_bv) && body->generated_sky_bv == body->BV_color)
+    if (!body->is_bv_observed
+        && std::isfinite(body->generated_texture_bv) && body->generated_texture_bv == body->BV_color)
     {
-        spectral = body->generated_sky_color;
+        spectral = body->generated_texture_color;
+        const Color daylight = reflected_daylight(object->get_light_center());
+        spectral.red *= daylight.red;
+        spectral.green *= daylight.green;
+        spectral.blue *= daylight.blue;
     }
     else if (body->has_spectral_giant_color())
     {

@@ -31,9 +31,9 @@ namespace alienorum
         public:
         double albedo = 0;
         json giant_color_model = nullptr;
-        // Rebuilt from each generated gaseous texture; no catalog photometry is replaced.
-        Color generated_sky_color;
-        double generated_sky_bv = NAN;
+        // Rebuilt from each generated texture; no catalog photometry is replaced.
+        Color generated_texture_color;
+        double generated_texture_bv = NAN;
         bool estimate_cool_giant_color();
         bool has_spectral_giant_color() const;
         double reflected_vr_color() const;

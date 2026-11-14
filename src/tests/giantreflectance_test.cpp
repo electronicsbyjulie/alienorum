@@ -82,6 +82,7 @@ protected:
     }
     Planet* giant(Star* host, cel_obj_type type = gas_giant)
     {
+        host->BV_color = -bv_correction;
         Planet* body = make_planet(host, "Color model", 5 * AU);
         body->type = type;
         body->mass = type == ice_giant ? 17 * earth_mass : jupiter_mass;
@@ -444,7 +445,7 @@ TEST_F(GiantReflectancePlanetTest, SpectralGiantTexturesRetainProvenanceAcrossRe
                 body->cloud_map->generate_gas_giant_map(body);
                 ASSERT_TRUE(body->cloud_map->is_complete());
                 EXPECT_TRUE(body->has_spectral_giant_color());
-                EXPECT_DOUBLE_EQ(body->BV_color, body->cloud_map->texture_bv(body) - bv_correction);
+                EXPECT_DOUBLE_EQ(body->BV_color, body->cloud_map->texture_bv(body));
                 EXPECT_EQ(body->giant_color_model["bands"], original["bands"]);
                 if (!pass) first = body->BV_color;
                 else EXPECT_NEAR(body->BV_color, first, .02);
@@ -457,13 +458,13 @@ TEST_F(GiantReflectancePlanetTest, SpectralGiantTexturesRetainProvenanceAcrossRe
                 EXPECT_DOUBLE_EQ(restored.BV_color, body->BV_color);
                 EXPECT_DOUBLE_EQ(restored.reflected_vr_color(), body->reflected_vr_color());
                 json legacy = body->to_json();
-                legacy["giant_color_model"]["texture"]["BV"] = body->cloud_map->texture_bv(body);
+                legacy["giant_color_model"]["texture"]["BV"] = body->cloud_map->texture_bv(body) - bv_correction;
                 ASSERT_TRUE(restored.from_json(legacy));
                 EXPECT_FALSE(restored.has_spectral_giant_color());
                 restored.cloud_map = new PhotometryTestMap(RGB3(180, 160, 120), RGB3(180, 160, 120));
                 restored.update_texture_color();
                 EXPECT_TRUE(restored.has_spectral_giant_color());
-                EXPECT_DOUBLE_EQ(restored.BV_color, restored.cloud_map->texture_bv(&restored) - bv_correction);
+                EXPECT_DOUBLE_EQ(restored.BV_color, restored.cloud_map->texture_bv(&restored));
             }
         }
     }
@@ -613,9 +614,9 @@ TEST_F(GiantReflectancePlanetTest, GeneratedHotAndClearSkiesUseTheirTextureRgbFo
                 }
                 const json saved = body->to_json();
                 ASSERT_TRUE(body->from_json(saved));
-                EXPECT_FALSE(std::isfinite(body->generated_sky_bv));
+                EXPECT_FALSE(std::isfinite(body->generated_texture_bv));
                 body->update_texture_color();
-                EXPECT_TRUE(std::isfinite(body->generated_sky_bv));
+                EXPECT_TRUE(std::isfinite(body->generated_texture_bv));
             }
             for (bool observed : {false, true})
             {
@@ -629,4 +630,61 @@ TEST_F(GiantReflectancePlanetTest, GeneratedHotAndClearSkiesUseTheirTextureRgbFo
             }
         }
     }
+}
+
+TEST_F(GiantReflectancePlanetTest, PaleIcyRockStoresMeasuredBvAndRetainsItsFullTextureColor)
+{
+    bv_correction = -.6244;
+    Planet* body = giant(make_star(), icy);
+    body->BV_color = 1.204;
+    body->preserve_loaded_parameters = true;
+    body->surf_map = new PhotometryTestMap(RGB3(224, 240, 250), RGB3(224, 240, 250), 1, true);
+    ASSERT_TRUE(body->surf_map->texture_color_exempt(body));
+    const double expected_bv = .6244 + 2.5 * log10(240.0 / 250);
+    for (int pass = 0; pass < 3; ++pass)
+    {
+        ASSERT_TRUE(render_saved_planet(body, [](CelestialObject* working) { working->update_texture_color(); }));
+        EXPECT_NEAR(body->BV_color, expected_bv, 1e-12);
+        const Color glare = Color::color_from_planet(0, body);
+        EXPECT_NEAR(glare.red / glare.green, 224.0 / 240, 1e-12);
+        EXPECT_NEAR(glare.blue / glare.green, 250.0 / 240, 1e-12);
+        const json saved = body->to_json();
+        ASSERT_TRUE(body->from_json(saved));
+    }
+}
+
+TEST_F(GiantReflectancePlanetTest, ObservedLunarColorAndGlareRetainTheirExistingCalibration)
+{
+    bv_correction = -.6244;
+    Moon* moon = new Moon;
+    moon->type = rocky;
+    moon->BV_color = .92;
+    moon->is_bv_observed = true;
+    moon->surf_map = new PhotometryTestMap(RGB3(224, 240, 250), RGB3(224, 240, 250));
+    append_cel(moon);
+    const Color before = Color::color_from_planet(0, moon, planet_bv_correction);
+    moon->update_texture_color();
+    const Color after = Color::color_from_planet(0, moon, planet_bv_correction);
+    EXPECT_DOUBLE_EQ(moon->BV_color, .92);
+    EXPECT_DOUBLE_EQ(after.red, before.red);
+    EXPECT_DOUBLE_EQ(after.green, before.green);
+    EXPECT_DOUBLE_EQ(after.blue, before.blue);
+}
+
+TEST_F(GiantReflectancePlanetTest, RedDwarfIlluminationWarmsTheGlareAsItWarmsTheRenderedSurface)
+{
+    bv_correction = -.6244;
+    Star* host = make_star("Red dwarf");
+    host->BV_color = 1.74;
+    Planet* body = make_planet(host);
+    body->type = rocky;
+    body->surf_map = new PhotometryTestMap(RGB3(180, 120, 80), RGB3(180, 120, 80));
+    body->update_texture_color();
+    const Color glare = Color::color_from_planet(0, body);
+    const double tint = pow(magnbase, (1.74 - .6244) / 3);
+    EXPECT_NEAR(glare.red / glare.green, 1.5 * tint, 1e-12);
+    EXPECT_NEAR(glare.blue / glare.green, (80.0 / 120) / tint, 1e-12);
+    EXPECT_GT(glare.red / glare.green, 1.5);
+    EXPECT_LT(glare.blue / glare.green, 80.0 / 120);
+    EXPECT_DOUBLE_EQ(body->BV_color, body->surf_map->texture_bv(body));
 }

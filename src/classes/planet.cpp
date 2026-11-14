@@ -2605,7 +2605,7 @@ json Planet::to_json()
 
 bool Planet::from_json(const json& j)
 {
-    generated_sky_bv = NAN;
+    generated_texture_bv = NAN;
     temperature = 0;
     CelestialObject::from_json(j);
     plant_crown_texture = j.value("plant_crown_texture", json(nullptr));

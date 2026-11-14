@@ -1276,18 +1276,7 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
         atm_yellowing = Color::compute_atmospheric_yellowing(atm_pressure, zenith_rad) * 3;
     }
 
-    Color daylight = lightcen->typeclass() == class_star
-        ? Color::color_from_star(0, (Star*)lightcen, lightcen->BV_color + atm_yellowing)
-        : Color::color_from_magnitude_indices(0, lightcen->BV_color + atm_yellowing);
-    double dmax = fmax(fmax(daylight.red, daylight.green), daylight.blue);
-    if (dmax > 0)
-    {
-        daylight.red /= dmax; daylight.green /= dmax; daylight.blue /= dmax;
-    }
-    // Compensate for the eye's white balance adjustment (matches the CPU path exactly).
-    daylight.red = pow(daylight.red, 1.0/3.0);
-    daylight.green = pow(daylight.green, 1.0/3.0);
-    daylight.blue = pow(daylight.blue, 1.0/3.0);
+    Color daylight = Color::reflected_daylight(lightcen, atm_yellowing);
 
     SphereImpostorInput in;
     in.cx = display_space.x; in.cy = display_space.y; in.cz = display_space.z; in.r = bounding_r;
@@ -1752,18 +1741,7 @@ int draw_sphere(CelestialObject* cel, double arad)
     }
 
     CelestialObject *daylight_source = cel->get_light_center();
-    Color daylight = daylight_source->typeclass() == class_star
-        ? Color::color_from_star(0, (Star*)daylight_source, daylight_source->BV_color + atm_yellowing)
-        : Color::color_from_magnitude_indices(0, daylight_source->BV_color + atm_yellowing);
-    double f = fmax(fmax(daylight.red, daylight.green), daylight.blue);
-    daylight.red /= f;
-    daylight.green /= f;
-    daylight.blue /= f;
-
-    // Compensate for the eye's white balance adjustment
-    daylight.red = pow(daylight.red, 1.0/3.0);
-    daylight.green = pow(daylight.green, 1.0/3.0);
-    daylight.blue = pow(daylight.blue, 1.0/3.0);
+    Color daylight = Color::reflected_daylight(daylight_source, atm_yellowing);
 
     if (wireframe)
     {

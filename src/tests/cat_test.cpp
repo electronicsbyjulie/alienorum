@@ -5490,6 +5490,7 @@ TEST_F(CatalogParsingTest, CancriTextureColorsReachNamedPlanets)
     TestCatalogReader reader;
     Star* host = make_star("55 Cnc A");
     host->temperature = 5250;
+    host->BV_color = -bv_correction;
     const char* names[] = {"55 Cnc Ae", "55 Cnc Ab", "55 Cnc Ac", "55 Cnc Af", "55 Cnc Ad"};
     for (const char* name : names)
     {
@@ -5512,7 +5513,7 @@ TEST_F(CatalogParsingTest, CancriTextureColorsReachNamedPlanets)
         ASSERT_NE(map, nullptr);
         ASSERT_TRUE(map->is_complete());
         ASSERT_TRUE(map->procedurally_generated);
-        EXPECT_DOUBLE_EQ(body->BV_color, map->texture_bv(body) - bv_correction);
+        EXPECT_DOUBLE_EQ(body->BV_color, map->texture_bv(body));
         if (uses_gaseous_map(body->type))
         {
             if (body->type == gas_giant) EXPECT_TRUE(body->has_spectral_giant_color());
@@ -5522,4 +5523,93 @@ TEST_F(CatalogParsingTest, CancriTextureColorsReachNamedPlanets)
             EXPECT_NEAR(actual.red / actual.green, expected.red / expected.green, 1e-12);
         }
     }
+}
+
+TEST_F(CatalogParsingTest, BarnardAndGj3323CatalogPlanetsKeepTexturePhotometryThroughRegeneration)
+{
+    bv_correction = -.6244;
+    Star::load_main_seq_dat();
+    TestCatalogReader reader;
+    FILE* file = fopen("catalogs/exoplanets_planets.dat", "r");
+    ASSERT_NE(file, nullptr);
+    std::vector<ExoRow> targets;
+    ExoRow row;
+    while (reader.exorow_read_line(file, row))
+    {
+        if (row.hostname.find("Barnard") != std::string::npos || row.pl_name == "GJ 3323 c") targets.push_back(row);
+    }
+    fclose(file);
+    ASSERT_EQ(targets.size(), 5u);
+    for (const auto& target : targets)
+    {
+        SCOPED_TRACE(target.pl_name);
+        Star* host = make_star(target.hostname.c_str(), target.st_mass * solar_mass);
+        host->temperature = target.st_teff;
+        host->volumetric_mean_radius = target.st_rad * solar_radius;
+        host->absolute_magnitude = target.sy_vmag - 5 * log10(target.sy_dist) + 5;
+        host->distance = target.sy_dist * parsec;
+        host->BV_color = Star::interpolate_mseq_BV(Star::get_mseqidx_from_sptyp(target.st_spectype.c_str()));
+        snprintf(host->spectral_type, sizeof(host->spectral_type), "%s", target.st_spectype.c_str());
+        reader.apply_exoplanet_metallicity(target, host);
+        std::map<int, std::vector<int>> planets;
+        unsigned int count = 0;
+        ASSERT_TRUE(reader.add_exoplanet_from_row(target, host, planets, count));
+        ASSERT_EQ(count, 1u);
+        Planet* body = static_cast<Planet*>(cels[planets.at(host->seqno).front()]);
+        ASSERT_FALSE(body->is_bv_observed);
+        ASSERT_TRUE(uses_rocky_map(body->type));
+        body->rnd_seed = 42;
+        body->fictitious_map_height = 32;
+        body->preserve_loaded_parameters = true;
+        double first = NAN;
+        for (int pass = 0; pass < 3; ++pass)
+        {
+            SCOPED_TRACE(pass);
+            delete body->surf_map;
+            delete body->cloud_map;
+            body->surf_map = body->cloud_map = nullptr;
+            body->ignore_map_files = true;
+            load_textures(body);
+            Map* map = body->get_day_map();
+            ASSERT_NE(map, nullptr);
+            ASSERT_TRUE(map->is_complete());
+            EXPECT_DOUBLE_EQ(body->BV_color, map->texture_bv(body));
+            const Color glare = Color::color_from_planet(0, body);
+            const Color mean = map->mean_texture_color(body);
+            const Color daylight = Color::reflected_daylight(host);
+            EXPECT_NEAR(glare.red / glare.green, mean.red / mean.green * daylight.red / daylight.green, 1e-12);
+            EXPECT_NEAR(glare.blue / glare.green, mean.blue / mean.green * daylight.blue / daylight.green, 1e-12);
+            if (!pass) first = body->BV_color;
+            else EXPECT_NEAR(body->BV_color, first, .03);
+            ASSERT_TRUE(body->from_json(body->to_json()));
+            // Universe loading reconnects orbit parents after parsing each record.
+            body->orbit->center = host;
+        }
+    }
+}
+
+TEST_F(CatalogParsingTest, CatalogMoonRetainsObservedColorAndGlareWithItsActualTexture)
+{
+    bv_correction = -.6244;
+    snprintf(cels[0]->name, sizeof(cels[0]->name), "Sun");
+    CatalogReader reader;
+    ASSERT_GT(reader.read_local_planets(cels, MAX_CELOBJS), 0);
+    Planet* moon = nullptr;
+    for (int i = 0; cels[i]; ++i)
+    {
+        if (!strcmp(cels[i]->name, "Moon")) moon = static_cast<Planet*>(cels[i]);
+    }
+    ASSERT_NE(moon, nullptr);
+    ASSERT_TRUE(moon->is_bv_observed);
+    const double original_bv = moon->BV_color;
+    const Color original = Color::color_from_planet(0, moon, planet_bv_correction);
+    moon->surf_map = new Map(moon);
+    ASSERT_TRUE(moon->surf_map->load_from_png("maps/Moon_surf.png"));
+    ASSERT_TRUE(moon->surf_map->is_complete());
+    moon->update_texture_color();
+    const Color actual = Color::color_from_planet(0, moon, planet_bv_correction);
+    EXPECT_DOUBLE_EQ(moon->BV_color, original_bv);
+    EXPECT_DOUBLE_EQ(actual.red, original.red);
+    EXPECT_DOUBLE_EQ(actual.green, original.green);
+    EXPECT_DOUBLE_EQ(actual.blue, original.blue);
 }

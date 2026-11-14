@@ -60,6 +60,7 @@ namespace alienorum
         static Color color_from_magnitude_indices(double Vmag, double BV, double VR,
             double brightness_scale, double color_correction);
         static Color color_from_planet(double Vmag, CelestialObject* object, double offset = 0);
+        static Color reflected_daylight(CelestialObject* source, double offset = 0);
         static Color color_from_star(double Vmag, Star *star, double fallback_BV);
 
         static RGB3 rgb_from_color(Color c, double multiplier = 1);
