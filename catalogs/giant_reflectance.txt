@@ -1,0 +1,58 @@
+Cool giant reflection colors
+
+Base spectra: Kerri Cahoy, Mark Marley, Jonathan Fortney (2010),
+Exoplanet Albedo Spectra and Colors as a Function of Planet Phase,
+Separation, and Metallicity. ApJ 724, 189.
+https://doi.org/10.1088/0004-637X/724/1/189
+https://roman.ipac.caltech.edu/page/exoplanet-characterization-html
+
+The authors permit use of the spectra on condition that they receive credit.
+This file and the catalog preserve that credit. The packaged grid uses their
+full-phase models, linearly resampled to 5 nm from 350 to 1000 nm. It contains
+Jupiter (1x, 3x solar) and Neptune (10x, 30x solar) atmospheres at 0.8, 2, 5,
+and 10 AU around a solar analog. No paper PDF is part of the release payload.
+
+Bessell B, V, R energy-response passbands: SVO Filter Profile Service,
+Generic/Bessell.B, Generic/Bessell.V, Generic/Bessell.R (Bessell 1990).
+https://svo2.cab.inta-csic.es/theory/fps/
+Solar flux is from the spectrum distributed with the Cahoy grid. Broadband
+indices use solar reference colors B-V=0.65 and V-R=0.36.
+
+Display color integrates the same reflection spectrum with the CIE 1931
+2-degree observer functions and converts XYZ to linear sRGB. The renderer
+then applies its usual display gamma. B-V and V-R remain independent
+photometric outputs; the display spectrum is not reconstructed from them.
+CIE 2019, Colour-matching functions of CIE 1931 standard colorimetric observer,
+International Commission on Illumination (CIE), Vienna, AT.
+DOI: 10.25039/CIE.DS.xvudnb9b
+https://cie.co.at/datatable/cie-1931-colour-matching-functions-2-degree-observer
+CIE data license: Creative Commons Attribution-ShareAlike 4.0 International.
+https://creativecommons.org/licenses/by-sa/4.0/
+The cmf_xyz columns are a 5 nm resampling of that dataset and retain this
+license. The spectrum authors' credit condition also continues to apply.
+
+Implementation assumptions, not observations:
+- Interpolation in log separation/enrichment; interpolation between giant
+  families by log mass. Outside-grid inputs use boundary spectra.
+- A supplied temperature selects an equivalent solar separation. Otherwise
+  stellar bolometric luminosity and orbit set irradiation, independently of
+  the planet's estimated color. A fixed Bond 0.3 supplies the temperature proxy.
+- Mass suggests envelope enrichment with broad, seeded scatter. Stellar
+  metallicity is a weak prior; stellar carbon relative to iron modifies
+  methane absorption weakly. Formation history remains unknown.
+- Gravity and a seeded cloud scenario shift the cloud transition slightly.
+- Bounded gray cloud mixing and blue-absorbing haze vary between eight bands.
+  These extensions are illustrative approximations, not new atmosphere fits.
+- Supplied methane, including zero, adjusts red absorption depths relative to
+  a local continuum. This does not solve chemical equilibrium or line transfer.
+- Other stellar spectra use a blackbody shape ratio to the reference solar
+  spectrum. Stellar UV chemistry and detailed spectral lines are not modeled.
+- Intrinsic heat and cloud microphysics are not reconstructed from mass alone.
+- Colors represent full phase, not a phase-dependent spectral simulation.
+
+The saved giant_color_model records estimates, assumptions, spectral indices,
+and band colors. A supplied or edited B-V takes priority over this model.
+The hot-giant and clear-skies color prescriptions are separate.
+
+To rebuild the catalog from its public sources:
+python3 tools/build_giant_reflectance_grid.py
