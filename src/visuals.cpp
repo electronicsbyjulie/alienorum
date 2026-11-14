@@ -8905,7 +8905,11 @@ void draw_horizon()
                 {
                     const RockInstance& rk = rocks[ri];
                     const bool is_vegetation = rk.vegetation;
-                    const RGB3 base_map_rgb = rk.surface_color;
+                    // Foliage reflectance belongs to the vegetation, even where
+                    // suitable habitat lies over rock-colored map pixels.
+                    const RGB3 base_map_rgb = is_vegetation && p
+                        ? RGB3(p->vegetation_r, p->vegetation_g, p->vegetation_b)
+                        : rk.surface_color;
                     const double haze_distance = hypot(rk.ground_dist, h_eye);
                     if (is_vegetation && rk.crown_rx <= 0) ++clipped_plant_trunks;
                     const int first_vertex = scenery_draw_list->VtxBuffer.Size;
