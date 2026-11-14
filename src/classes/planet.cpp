@@ -13,6 +13,7 @@
 #include <unordered_map>
 
 #include "planet.h"
+#include "pressurehaze.h"
 #include "numeric.h"
 #include "surfacephase.h"
 #include "thermalclimate.h"
@@ -2916,4 +2917,40 @@ void Planet::generate_ring_parameters(bool gr)
     
     // Clamp opacity to 1.0 max
     ring_mean_opacity = std::min(1.0, ring_mean_opacity);
+}
+
+PressureHaze Planet::pressure_scattering(bool enabled, double* column_height_m)
+{
+    if (!uses_rocky_map(type)) return {};
+    const double pressure = get_surface_pressure();
+    if (!(pressure > 2e5)) return {};
+    const double temperature = estimate_surface_temperature();
+    double ratio = 1, molar_mass = .02897;
+    if (atm && atm->comp)
+    {
+        auto* gas = atm->comp;
+        // Approximate visible Rayleigh strengths relative to terrestrial air.
+        const std::pair<double, double> mixture[] =
+        {
+            {gas->H2_portion, .23}, {gas->He_portion, .015}, {gas->N2_portion, 1.05},
+            {gas->O2_portion, .85}, {gas->CO2_portion, 2.5}, {gas->CH4_portion, 2.2},
+            {gas->H2O_portion, .85}, {gas->Ar_portion, .9}, {gas->CO_portion, 1.2},
+            {gas->SO2_portion, 4}, {gas->H2S_portion, 3}, {gas->HCN_portion, 3},
+            {gas->NH3_portion, 2}, {gas->C2H6_portion, 4}, {gas->N2O_portion, 3}, {gas->O3_portion, 2}
+        };
+        double total = 0, scattering = 0;
+        for (const auto& component : mixture)
+        {
+            if (!std::isfinite(component.first) || component.first <= 0) continue;
+            total += component.first;
+            scattering += component.first * component.second;
+        }
+        if (total > 0) ratio = scattering / total;
+        molar_mass = gas->mean_molar_mass();
+    }
+    const double gravity = G * mass / pow(volumetric_mean_radius, 2);
+    const double scale_height = gravity > 0 ? 8.314462618 * temperature / (molar_mass * gravity) : 8000;
+    if (column_height_m) *column_height_m = scale_height;
+    return PressureHaze::prepare(pressure, temperature, ratio,
+        get_particulates(), scale_height, enabled);
 }

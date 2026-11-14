@@ -944,7 +944,7 @@ static void atmosphere_colors(Planet *pl, double out_high[3], double out_low[3],
     // smog) scatter greyly instead and hand the sky the ground's color back.
     double particulates = pl->get_particulates();
     double Rayleigh = 1.0 - particulates;
-    Color pcol = Color::color_from_planet(0, pl, planet_bv_correction);
+    Color pcol = Color::color_from_planet(0, pl, planet_bv_correction, false);
     pcol.normalize(1);
 
     const double scatter[3] = {0.37, 0.58, 0.81};
@@ -990,38 +990,7 @@ static void atmosphere_colors(Planet *pl, double out_high[3], double out_low[3],
 static PressureHaze planetary_pressure_scattering(Planet* planet, bool enabled = PRESSURE_HAZE,
     double* column_height_m = nullptr)
 {
-    if (!planet || !uses_rocky_map(planet->type)) return {};
-    const double pressure = planet->get_surface_pressure();
-    if (!(pressure > 2e5)) return {};
-    const double temperature = planet->estimate_surface_temperature();
-    double ratio = 1, molar_mass = .02897;
-    if (planet->atm && planet->atm->comp)
-    {
-        auto* gas = planet->atm->comp;
-        // Approximate visible Rayleigh strengths relative to terrestrial air.
-        const std::pair<double, double> mixture[] =
-        {
-            {gas->H2_portion, .23}, {gas->He_portion, .015}, {gas->N2_portion, 1.05},
-            {gas->O2_portion, .85}, {gas->CO2_portion, 2.5}, {gas->CH4_portion, 2.2},
-            {gas->H2O_portion, .85}, {gas->Ar_portion, .9}, {gas->CO_portion, 1.2},
-            {gas->SO2_portion, 4}, {gas->H2S_portion, 3}, {gas->HCN_portion, 3},
-            {gas->NH3_portion, 2}, {gas->C2H6_portion, 4}, {gas->N2O_portion, 3}, {gas->O3_portion, 2}
-        };
-        double total = 0, scattering = 0;
-        for (const auto& component : mixture)
-        {
-            if (!std::isfinite(component.first) || component.first <= 0) continue;
-            total += component.first;
-            scattering += component.first * component.second;
-        }
-        if (total > 0) ratio = scattering / total;
-        molar_mass = gas->mean_molar_mass();
-    }
-    const double gravity = G * planet->mass / pow(planet->volumetric_mean_radius, 2);
-    const double scale_height = gravity > 0 ? 8.314462618 * temperature / (molar_mass * gravity) : 8000;
-    if (column_height_m) *column_height_m = scale_height;
-    return PressureHaze::prepare(pressure, temperature, ratio,
-        planet->get_particulates(), scale_height, enabled);
+    return planet ? planet->pressure_scattering(enabled, column_height_m) : PressureHaze{};
 }
 
 // Shared airlight and extinction for the sky, terrain, and scenery.

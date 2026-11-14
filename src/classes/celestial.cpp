@@ -176,7 +176,6 @@ void CelestialObject::update_texture_color()
     if (!std::isfinite(measured)) return;
     const double generated_bv = measured;
     body->generated_texture_color = map->mean_texture_color(this);
-    body->generated_texture_color.normalize(1);
     body->generated_texture_bv = generated_bv;
     // A previous texture may carry a different B-V zero point. Validate its
     // physical provenance independently of the color being replaced.
