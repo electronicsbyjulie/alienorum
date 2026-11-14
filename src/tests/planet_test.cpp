@@ -11,6 +11,7 @@
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp>
 #include "../classes/planet.h"
+#include "../classes/plantform.h"
 #include "../classes/surfacerefraction.h"
 #include "../classes/moon.h"
 #include "../classes/patch.h"
@@ -32,6 +33,40 @@
 
 using namespace alienorum;
 using json = nlohmann::json;
+
+TEST(PlantFormTest, PositiveFiniteAcrossPressureAndGravityExtremes)
+{
+    EXPECT_DOUBLE_EQ(plant_pressure_scale(1), 1);
+    EXPECT_DOUBLE_EQ(plant_gravity_scale(1), 1);
+    double previous = 0;
+    for (double pressure : {0.0, .001, .1, std::exp(-1.0), 1.0, 100.0, 1000.0})
+    {
+        const double scale = plant_pressure_scale(pressure);
+        EXPECT_GE(scale, .25);
+        EXPECT_LE(scale, 4);
+        EXPECT_GE(scale, previous);
+        EXPECT_TRUE(std::isfinite(2.5 / scale));
+        EXPECT_GT(.8 * scale, 0);
+        previous = scale;
+    }
+    for (double gravity : {0.0, .001, 1.0, 100.0, double(INFINITY), double(NAN)})
+    {
+        const double scale = plant_gravity_scale(gravity);
+        EXPECT_GE(scale, .1);
+        EXPECT_LE(scale, 10);
+        EXPECT_TRUE(std::isfinite(10 / scale));
+    }
+}
+
+TEST(PlanetRotationTest, ThreeToTwoResonanceHasThreeSpinsPerTwoOrbits)
+{
+    Planet planet;
+    planet.orbit = new Orbit();
+    planet.orbit->period = 88 * oneday;
+    planet.orbit->eccentricity = .2056;
+    planet.estimate_rotation();
+    EXPECT_NEAR(planet.sidereal_rotational_period / oneday, 58.6666666667, 1e-8);
+}
 
 class MoonLifeScenarioTest : public UniverseFixture
 {

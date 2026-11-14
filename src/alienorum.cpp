@@ -127,7 +127,7 @@ bool save_snapshot_png(const std::string& filename, int width, int height)
 
 int main (int argc, char** argv)
 {
-    int i, j, l, n;
+    int i, l, n;
     cels = new CelestialObject*[MAX_CELOBJS];
     vmag_cache = new double[MAX_CELOBJS];
     bloomrad_cache = new double[MAX_CELOBJS];
@@ -188,19 +188,6 @@ int main (int argc, char** argv)
             push_ctrl_char(argv[l][1]);
         }
 
-        else if ((unsigned int)n == ((xonsm[4] & 017) ^ 015))
-        {
-            const char* ucpdhahzs = "\x2b\x85\xe9\x80\x57\xe4\x70\x00";
-            i = 0;
-            for (j=0; ucpdhahzs[j]; j++)
-                if ((unsigned int)argv[l][j] == ((ucpdhahzs[j] ^ xonsm[j]) & 0377)) i++;
-
-            if (i==n)
-            {
-                show_xonsm = true;
-                xaorngsim = l;
-            }
-        }
         else if (!strcmp(argv[l], "load"))
         {
             if (const char* a = next_arg("load")) load_univ = a;

@@ -15,6 +15,7 @@
 #include "horizon_performance.h"
 #include "scenery_gpu.h"
 #include "plantmesh_gpu.h"
+#include "classes/plantform.h"
 #include "horizon_terrain_gpu.h"
 #include "horizon_mesh_gpu.h"
 #include "classes/clouds_gpu.h"
@@ -8291,8 +8292,8 @@ void draw_horizon()
                 if (!performance_enabled(49)) rocks.clear();
                 int num_rocks = 0;
 
-                double grav = p ? p->estimate_surface_gravity() : 1;
-                double presh = p ? (log(p->get_surface_pressure()*inv_oneatm)+1) : 1;
+                double grav = plant_gravity_scale(p ? p->estimate_surface_gravity() : 1);
+                double presh = plant_pressure_scale(p ? p->get_surface_pressure()*inv_oneatm : 1);
 
                 if (p)
                 {

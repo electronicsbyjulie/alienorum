@@ -1599,7 +1599,7 @@ void Planet::estimate_rotation()
     }
     else if (orbit->period < (250 * oneday) && orbit->eccentricity > 0.15)              // Mercury.
     {
-        sidereal_rotational_period = 1.5 * orbit->period;
+        sidereal_rotational_period = (2.0 / 3.0) * orbit->period;
     }
     else if (type == waterworld || type == hycean ) sidereal_rotational_period = 2.06e+6 / log(mass);              // WAG: average of solid and gas.
     else if (type == ice_giant  ) sidereal_rotational_period = 1.74e+6 / log(mass);
