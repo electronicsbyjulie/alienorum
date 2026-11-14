@@ -76,7 +76,8 @@ Color Color::color_from_planet(double Vmag, CelestialObject* object, double offs
 {
     if (!object) return color_from_magnitude_indices(Vmag, 0);
     const bool planet = object->typeclass() == class_planet || object->typeclass() == class_moon;
-    Color fallback = color_from_magnitude_indices(Vmag, object->BV_color + offset);
+    Color fallback = color_from_magnitude_indices(Vmag, object->BV_color + offset,
+        (object->VR_color != 0 ? object->VR_color : object->BV_color) + offset);
     if (!planet) return fallback;
     auto* body = static_cast<Planet*>(object);
     Color spectral;
@@ -150,7 +151,9 @@ Color Color::color_from_planet(double Vmag, CelestialObject* object, double offs
 
 Color Color::color_from_star(double Vmag, Star *star, double fallback_BV)
 {
-    Color photometric = color_from_magnitude_indices(Vmag, fallback_BV);
+    const double vr = star && star->VR_color != 0
+        ? star->VR_color + fallback_BV - star->BV_color : fallback_BV;
+    Color photometric = color_from_magnitude_indices(Vmag, fallback_BV, vr);
     Color linear;
     if (!star || !star->resolve_wd_color(linear)) return photometric;
     const double yellowing = fallback_BV - star->BV_color;

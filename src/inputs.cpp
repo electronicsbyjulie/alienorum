@@ -1217,6 +1217,8 @@ void process_key_cmd_ctrl_char(char c)
     
         case 'v':
         if (!mycenobj) return;
+        trackidx = -1;
+        zoom = 1;
         view_mode = vm_system;
         system_view_yaw = system_view_pitch = 0;
         statuswnd = false;

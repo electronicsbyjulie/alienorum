@@ -10,6 +10,26 @@
 using namespace alienorum;
 using json = nlohmann::json;
 
+TEST(ColorTest, GlareUsesIndependentRedGreenIndex)
+{
+    Star star;
+    star.BV_color = .8;
+    for (double vr : {0.0, .3, 1.2, -.2})
+    {
+        star.VR_color = vr;
+        const double offset = .15;
+        Color expected = Color::color_from_magnitude_indices(2, star.BV_color + offset,
+            (vr != 0 ? vr : star.BV_color) + offset);
+        Color stellar = Color::color_from_star(2, &star, star.BV_color + offset);
+        const Color fallback = Color::color_from_planet(2, &star, offset);
+        EXPECT_NEAR(stellar.red / stellar.green, expected.red / expected.green, 1e-12);
+        EXPECT_NEAR(fallback.red / fallback.green, expected.red / expected.green, 1e-12);
+        EXPECT_NEAR(stellar.blue / stellar.green, expected.blue / expected.green, 1e-12);
+        EXPECT_NEAR(fallback.blue / fallback.green, expected.blue / expected.green, 1e-12);
+        EXPECT_NEAR(stellar.luminance(), expected.luminance(), 1e-12);
+    }
+}
+
 TEST(ColorTest, WdRenderingPreservesPaperHueAndMagnitudeScaling)
 {
     struct RestoreDisplay

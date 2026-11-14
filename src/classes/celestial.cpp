@@ -177,6 +177,9 @@ void CelestialObject::update_texture_color()
     const double generated_bv = measured;
     body->generated_texture_color = map->mean_texture_color(this);
     body->generated_texture_bv = generated_bv;
+    const Color mean_color = body->generated_texture_color;
+    if (mean_color.red > 0 && mean_color.green > 0)
+        VR_color = log(mean_color.red / mean_color.green) * invlogmagnbase - bv_correction;
     // A previous texture may carry a different B-V zero point. Validate its
     // physical provenance independently of the color being replaced.
     const auto& model = body->giant_color_model;
@@ -187,7 +190,7 @@ void CelestialObject::update_texture_color()
     if (spectral)
     {
         Color mean = map->mean_texture_color(this);
-        const double vr = mean.red > 0 ? log(mean.red / mean.green) * invlogmagnbase - bv_correction : measured;
+        const double vr = VR_color;
         mean.normalize(1);
         body->giant_color_model["texture"] =
         {

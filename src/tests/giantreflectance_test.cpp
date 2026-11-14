@@ -623,7 +623,7 @@ TEST_F(GiantReflectancePlanetTest, GeneratedHotAndClearSkiesUseTheirTextureRgbFo
                 body->is_bv_observed = observed;
                 if (!observed) body->BV_color += .2;
                 const Color actual = Color::color_from_planet(0, body);
-                const Color expected = Color::color_from_magnitude_indices(0, body->BV_color);
+                const Color expected = Color::color_from_magnitude_indices(0, body->BV_color, body->VR_color);
                 EXPECT_DOUBLE_EQ(actual.red, expected.red);
                 EXPECT_DOUBLE_EQ(actual.green, expected.green);
                 EXPECT_DOUBLE_EQ(actual.blue, expected.blue);
@@ -645,6 +645,7 @@ TEST_F(GiantReflectancePlanetTest, PaleIcyRockStoresMeasuredBvAndRetainsItsFullT
     {
         ASSERT_TRUE(render_saved_planet(body, [](CelestialObject* working) { working->update_texture_color(); }));
         EXPECT_NEAR(body->BV_color, expected_bv, 1e-12);
+        EXPECT_NEAR(body->VR_color, .6244 + 2.5 * log10(224.0 / 240), 1e-12);
         const Color glare = Color::color_from_planet(0, body);
         EXPECT_NEAR(glare.red / glare.green, 224.0 / 240, 1e-12);
         EXPECT_NEAR(glare.blue / glare.green, 250.0 / 240, 1e-12);
@@ -713,6 +714,7 @@ TEST_F(GiantReflectancePlanetTest, AtmosphericBlueScatteringChangesGlareWithoutC
     atmosphere->ensure_composition()->N2_portion = 1;
     body->update_texture_color();
     const double bv = body->BV_color;
+    const double vr = body->VR_color;
     const Color bare = Color::color_from_planet(0, body, 0, false);
     const Color thin = Color::color_from_planet(0, body);
     EXPECT_DOUBLE_EQ(thin.blue / thin.green, bare.blue / bare.green);
@@ -721,6 +723,7 @@ TEST_F(GiantReflectancePlanetTest, AtmosphericBlueScatteringChangesGlareWithoutC
     EXPECT_GT(blue.blue / blue.green, bare.blue / bare.green + .05);
     EXPECT_LT(blue.red / blue.green, bare.red / bare.green);
     EXPECT_DOUBLE_EQ(body->BV_color, bv);
+    EXPECT_DOUBLE_EQ(body->VR_color, vr);
     EXPECT_DOUBLE_EQ(body->surf_map->texture_bv(body), bv);
     atmosphere->particulates = 1;
     const Color dusty = Color::color_from_planet(0, body);
