@@ -1,5 +1,6 @@
 #include "catalog_lock_trace.h"
 #include "snapshot_io.h"
+#include "windowidle.h"
 #include "fictionalstars_ui.h"
 
 #define _CRT_SECURE_NO_WARNINGS
@@ -500,6 +501,14 @@ int main (int argc, char** argv)
     bool is_mouse_down = false, was_mouse_down = false;
     double last_click = 0;
     ImVec2 last_click_pos;
+    bool resumed_from_minimize = false;
+    const auto advance_clock = [](double elapsed)
+    {
+        vmfr = velocity.magnitude() * target_frame_rate;
+        const double dilation = vmfr >= speed_of_light ? 1.0 : compute_time_dilation(vmfr);
+        JDnow += elapsed / oneday / dilation;
+        simnow = (double)(JDnow - J2000) * oneday + J2000_TIME_T;
+    };
     while (!done)
     {
         alienorum::CatalogLock catalog_lock(catalog_mutex, alienorum::CatalogLockSite::frame);
@@ -528,17 +537,57 @@ int main (int argc, char** argv)
             }
         }
         if (done) break;
-        if (!loading_frame) process_pending_universe_load();
         if (SDL_GetWindowFlags(window) & SDL_WINDOW_MINIMIZED)
         {
             catalog_lock.unlock();
-            SDL_Delay(10);
+            const auto suspended_at = std::chrono::steady_clock::now();
+            SoundManager::get_instance().close_audio();
+            // Controller auto-updates can turn SDL's event wait into a polling
+            // loop. Suspend them without closing the backend's device handles.
+            const char* joystick_update = SDL_GetHint(SDL_HINT_AUTO_UPDATE_JOYSTICKS);
+            const std::string previous_joystick_update = joystick_update ? joystick_update : "1";
+            SDL_SetHintWithPriority(SDL_HINT_AUTO_UPDATE_JOYSTICKS, "0", SDL_HINT_OVERRIDE);
+            // Block on window events without holding the catalog lock. No frames,
+            // orbital updates, or surface work are scheduled while minimized.
+            do
+            {
+                if (!wait_for_window_event(window, &event))
+                {
+                    SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Window event wait failed: %s", SDL_GetError());
+                    abort_load = true;
+                    done = true;
+                    break;
+                }
+                ImGui_ImplSDL2_ProcessEvent(&event);
+                if (event.type == SDL_QUIT || (event.type == SDL_WINDOWEVENT
+                    && event.window.event == SDL_WINDOWEVENT_CLOSE
+                    && event.window.windowID == SDL_GetWindowID(window)))
+                {
+                    abort_load = true;
+                    done = true;
+                }
+            }
+            while (!done && (SDL_GetWindowFlags(window) & SDL_WINDOW_MINIMIZED));
+            SDL_SetHintWithPriority(SDL_HINT_AUTO_UPDATE_JOYSTICKS,
+                previous_joystick_update.c_str(), SDL_HINT_OVERRIDE);
+            catalog_lock.lock();
+            if (!done && !loading_frame)
+                advance_clock(std::chrono::duration<double>(std::chrono::steady_clock::now() - suspended_at).count());
+            resumed_from_minimize = true;
             continue;
         }
+        if (!loading_frame) process_pending_universe_load();
 
         // Start the ImGui frame
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplSDL2_NewFrame();
+        // Keep the idle interval out of camera/input integration on the first
+        // restored frame; the simulation clock already accounts for that time.
+        if (resumed_from_minimize)
+        {
+            io.DeltaTime = 1.0f / target_frame_rate;
+            resumed_from_minimize = false;
+        }
         ImGui::NewFrame();
         impostor_begin_frame();
 
@@ -1221,19 +1270,7 @@ int main (int argc, char** argv)
             io.DeltaTime = frame_dur;
             is_click = is_dbl_click = false;
 
-            vmfr = velocity.magnitude() * target_frame_rate;
-            if (vmfr >= speed_of_light)
-            {
-                // No time dilation in warp mode because faster than light is impossible so warp mode is
-                // some kind of hand wavy physics that bypass relativity.
-                JDnow += frame_dur/oneday;
-            }
-            else
-            {
-                JDnow += frame_dur/oneday / compute_time_dilation(vmfr);
-            }
-
-            simnow = (double)(JDnow - J2000)*oneday + J2000_TIME_T;
+            advance_clock(frame_dur);
         }
     }
 

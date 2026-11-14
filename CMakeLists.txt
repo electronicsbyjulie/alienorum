@@ -118,6 +118,7 @@ add_executable(alienorum
 	src/horizon_mesh_gpu.cpp
 	src/classes/clouds_gpu.cpp
 	src/visuals.cpp
+	src/windowidle.cpp
 	src/alienorum.cpp)
 
 target_link_libraries(alienorum IMGUI CLASSES ImGuiFileDialog)

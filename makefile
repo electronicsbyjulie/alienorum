@@ -67,6 +67,7 @@ OBJS += $(OBJINT)/fictionalstars_ui.o $(OBJINT)/globals.o $(OBJINT)/loaders.o $(
 	$(OBJINT)/dialogs.o $(OBJINT)/visuals.o $(OBJINT)/gputex.o $(OBJINT)/sphere_impostor.o $(OBJINT)/sunclock_gpu.o $(OBJINT)/clouds_gpu.o $(OBJINT)/scenery_gpu.o $(OBJINT)/plantmesh_gpu.o $(OBJINT)/horizon_ground_gpu.o $(OBJINT)/horizon_terrain_gpu.o $(OBJINT)/horizon_mesh_gpu.o
 
 TESTS = $(addprefix $(BIN)/, $(basename $(notdir $(TESTS_SRC))))
+OBJS += $(OBJINT)/windowidle.o
 TEST_OBJS = $(addprefix $(OBJ)/tests/, $(notdir $(TESTS_SRC:.cpp=.o)))
 
 INCLUDES = -I./src/include -I./$(IMGUI_DIR) -I./$(CLASSES_DIR)
@@ -295,6 +296,9 @@ $(OBJINT)/dialogs.o: src/dialogs.cpp
 
 $(OBJINT)/visuals.o: src/visuals.cpp
 	$(CPP) src/visuals.cpp $(CPPFLAGS) -c -o $(OBJINT)/visuals.o
+
+$(OBJINT)/windowidle.o: src/windowidle.cpp
+	$(CPP) src/windowidle.cpp $(CPPFLAGS) -c -o $(OBJINT)/windowidle.o
 
 $(OBJINT)/gputex.o: src/gputex.cpp
 	$(CPP) src/gputex.cpp $(CPPFLAGS) -c -o $(OBJINT)/gputex.o
