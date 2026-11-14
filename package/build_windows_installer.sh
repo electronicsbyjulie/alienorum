@@ -59,10 +59,7 @@ fi
 gzip -dc catalogs/soles_alienorum.dat.gz > catalogs/soles_alienorum.dat.tmp
 mv catalogs/soles_alienorum.dat.tmp catalogs/soles_alienorum.dat
 
-export CMAKE_BUILD_PARALLEL_LEVEL=2
-export VCPKG_MAX_CONCURRENCY=2
-
-nice -n 10 cmake -B build-win \
+cmake -B build-win \
     -DCMAKE_TOOLCHAIN_FILE=vcpkg/scripts/buildsystems/vcpkg.cmake \
     -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="$(pwd)/cmake/toolchain-mingw64.cmake" \
     -DVCPKG_TARGET_TRIPLET="$VCPKG_TRIPLET" \
@@ -70,9 +67,9 @@ nice -n 10 cmake -B build-win \
     -DVCPKG_HOST_TRIPLET=x64-linux \
     -DCMAKE_BUILD_TYPE=Release
 
-nice -n 10 cmake --build build-win --config Release --parallel 2
+cmake --build build-win --config Release -j"$(nproc)"
 
-(cd build-win && nice -n 10 cpack -G NSIS)
+(cd build-win && cpack -G NSIS)
 
 mkdir -p package
 mv build-win/Alienorum-*-win64.exe package/ 2>/dev/null || mv build-win/*.exe package/
