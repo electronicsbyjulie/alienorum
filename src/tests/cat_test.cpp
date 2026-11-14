@@ -5574,7 +5574,7 @@ TEST_F(CatalogParsingTest, BarnardAndGj3323CatalogPlanetsKeepTexturePhotometryTh
             ASSERT_NE(map, nullptr);
             ASSERT_TRUE(map->is_complete());
             EXPECT_DOUBLE_EQ(body->BV_color, map->texture_bv(body));
-            const Color glare = Color::color_from_planet(0, body);
+            const Color glare = Color::color_from_planet(0, body, 0, false);
             const Color mean = map->mean_texture_color(body);
             const Color daylight = Color::reflected_daylight(host);
             EXPECT_NEAR(glare.red / glare.green, mean.red / mean.green * daylight.red / daylight.green, 1e-12);
@@ -5612,4 +5612,60 @@ TEST_F(CatalogParsingTest, CatalogMoonRetainsObservedColorAndGlareWithItsActualT
     EXPECT_DOUBLE_EQ(actual.red, original.red);
     EXPECT_DOUBLE_EQ(actual.green, original.green);
     EXPECT_DOUBLE_EQ(actual.blue, original.blue);
+}
+
+TEST_F(CatalogParsingTest, JanssenAndInnerTauCetiPlanetsIncludeAtmosphericScatteringInAutomaticGlare)
+{
+    const bool previous_clouds = show_clouds;
+    struct RestoreClouds
+    {
+        bool value;
+        ~RestoreClouds() { show_clouds = value; }
+    } restore{previous_clouds};
+    show_clouds = true;
+    bv_correction = -.6244;
+    Star::load_main_seq_dat();
+    TestCatalogReader reader;
+    FILE* file = fopen("catalogs/exoplanets_planets.dat", "r");
+    ASSERT_NE(file, nullptr);
+    std::vector<ExoRow> targets;
+    ExoRow row;
+    while (reader.exorow_read_line(file, row))
+    {
+        if (row.pl_name == "55 Cnc Ae" || row.pl_name == "tau Cet g" || row.pl_name == "tau Cet h") targets.push_back(row);
+    }
+    fclose(file);
+    ASSERT_EQ(targets.size(), 3u);
+    for (const auto& target : targets)
+    {
+        SCOPED_TRACE(target.pl_name);
+        Star* host = make_star(target.hostname.c_str(), target.st_mass * solar_mass);
+        host->temperature = target.st_teff;
+        host->volumetric_mean_radius = target.st_rad * solar_radius;
+        host->absolute_magnitude = target.sy_vmag - 5 * log10(target.sy_dist) + 5;
+        host->BV_color = Star::interpolate_mseq_BV(Star::get_mseqidx_from_sptyp(target.st_spectype.c_str()));
+        snprintf(host->spectral_type, sizeof(host->spectral_type), "%s", target.st_spectype.c_str());
+        reader.apply_exoplanet_metallicity(target, host);
+        std::map<int, std::vector<int>> planets;
+        unsigned int count = 0;
+        ASSERT_TRUE(reader.add_exoplanet_from_row(target, host, planets, count));
+        reader.apply_exoplanet_names(planets);
+        ASSERT_EQ(count, 1u);
+        Planet* body = static_cast<Planet*>(cels[planets.at(host->seqno).front()]);
+        ASSERT_TRUE(uses_rocky_map(body->type));
+        body->rnd_seed = 42;
+        body->fictitious_map_height = 32;
+        body->ignore_map_files = true;
+        load_textures(body);
+        ASSERT_GT(body->get_surface_pressure(), 2e5);
+        const double bv = body->BV_color;
+        const Color surface = Color::color_from_planet(0, body, 0, false);
+        const Color atmosphere = Color::color_from_planet(0, body);
+        EXPECT_GT(atmosphere.blue / atmosphere.green, surface.blue / surface.green);
+        EXPECT_DOUBLE_EQ(body->BV_color, bv);
+        const Color repeat = Color::color_from_planet(0, body);
+        EXPECT_DOUBLE_EQ(repeat.red, atmosphere.red);
+        EXPECT_DOUBLE_EQ(repeat.green, atmosphere.green);
+        EXPECT_DOUBLE_EQ(repeat.blue, atmosphere.blue);
+    }
 }

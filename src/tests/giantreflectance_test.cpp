@@ -688,3 +688,58 @@ TEST_F(GiantReflectancePlanetTest, RedDwarfIlluminationWarmsTheGlareAsItWarmsThe
     EXPECT_LT(glare.blue / glare.green, 80.0 / 120);
     EXPECT_DOUBLE_EQ(body->BV_color, body->surf_map->texture_bv(body));
 }
+
+TEST_F(GiantReflectancePlanetTest, AtmosphericBlueScatteringChangesGlareWithoutChangingTexturePhotometry)
+{
+    const bool previous_clouds = show_clouds;
+    struct RestoreClouds
+    {
+        bool value;
+        ~RestoreClouds() { show_clouds = value; }
+    } restore{previous_clouds};
+    show_clouds = true;
+    bv_correction = -.6244;
+    Planet* body = giant(make_star(), rocky);
+    body->mass = earth_mass;
+    body->volumetric_mean_radius = earth_radius;
+    body->temperature = 400;
+    body->temperature_supplied = true;
+    body->preserve_loaded_parameters = true;
+    body->surf_map = new PhotometryTestMap(RGB3(180, 140, 100), RGB3(180, 140, 100));
+    auto* atmosphere = body->ensure_atmosphere();
+    atmosphere->pressure_supplied = true;
+    atmosphere->surface_pressure = oneatm;
+    atmosphere->particulates = 0;
+    atmosphere->ensure_composition()->N2_portion = 1;
+    body->update_texture_color();
+    const double bv = body->BV_color;
+    const Color bare = Color::color_from_planet(0, body, 0, false);
+    const Color thin = Color::color_from_planet(0, body);
+    EXPECT_DOUBLE_EQ(thin.blue / thin.green, bare.blue / bare.green);
+    atmosphere->surface_pressure = 100 * oneatm;
+    const Color blue = Color::color_from_planet(0, body);
+    EXPECT_GT(blue.blue / blue.green, bare.blue / bare.green + .05);
+    EXPECT_LT(blue.red / blue.green, bare.red / bare.green);
+    EXPECT_DOUBLE_EQ(body->BV_color, bv);
+    EXPECT_DOUBLE_EQ(body->surf_map->texture_bv(body), bv);
+    atmosphere->particulates = 1;
+    const Color dusty = Color::color_from_planet(0, body);
+    EXPECT_LT(dusty.blue / dusty.green, blue.blue / blue.green);
+    atmosphere->particulates = 0;
+    body->cloud_map = new PhotometryTestMap(RGB3(180, 140, 100), RGB3(180, 140, 100));
+    body->transparent_clouds = false;
+    body->update_texture_color();
+    const Color covered = Color::color_from_planet(0, body);
+    EXPECT_LT(covered.blue / covered.green, blue.blue / blue.green);
+    show_clouds = false;
+    const Color hidden = Color::color_from_planet(0, body);
+    EXPECT_NEAR(hidden.blue / hidden.green, bare.blue / bare.green, 1e-12);
+    body->is_bv_observed = true;
+    show_clouds = true;
+    const Color observed = Color::color_from_planet(0, body);
+    atmosphere->surface_pressure = 0;
+    const Color observed_airless = Color::color_from_planet(0, body);
+    EXPECT_DOUBLE_EQ(observed.red, observed_airless.red);
+    EXPECT_DOUBLE_EQ(observed.green, observed_airless.green);
+    EXPECT_DOUBLE_EQ(observed.blue, observed_airless.blue);
+}

@@ -13,6 +13,8 @@
 #include "imgui/imgui.h"
 #include "star.h"
 #include "planet.h"
+#include "pressurehaze.h"
+#include "../sphere_impostor.h"
 #include "wdcolor.h"
 
 using namespace alienorum;
@@ -70,18 +72,61 @@ Color Color::reflected_daylight(CelestialObject* source, double offset)
         std::cbrt(daylight.blue / maximum));
 }
 
-Color Color::color_from_planet(double Vmag, CelestialObject* object, double offset)
+Color Color::color_from_planet(double Vmag, CelestialObject* object, double offset, bool include_atmosphere)
 {
     if (!object) return color_from_magnitude_indices(Vmag, 0);
     const bool planet = object->typeclass() == class_planet || object->typeclass() == class_moon;
     Color fallback = color_from_magnitude_indices(Vmag, object->BV_color + offset);
     if (!planet) return fallback;
-    const auto* body = static_cast<Planet*>(object);
+    auto* body = static_cast<Planet*>(object);
     Color spectral;
     if (!body->is_bv_observed
         && std::isfinite(body->generated_texture_bv) && body->generated_texture_bv == body->BV_color)
     {
         spectral = body->generated_texture_color;
+        #if DISC_SCATTERING
+        if (include_atmosphere && show_clouds && uses_rocky_map(body->type))
+        {
+            double height = 0;
+            const auto air = body->pressure_scattering(true, &height);
+            if (air.active() && height > 0 && body->volumetric_mean_radius > 0)
+            {
+                const double pressure = body->get_surface_pressure();
+                const bool opaque = body->cloud_map && body->cloud_map->is_complete() && !body->transparent_clouds;
+                const double fraction = opaque ? std::min(pressure, .1 * oneatm) / pressure : 1;
+                const double dust = std::clamp(body->get_particulates(), 0.0, 1.0);
+                Color haze = color_from_planet(0, body, planet_bv_correction, false);
+                haze.normalize(1);
+                const double rayleigh[] = {.37, .58, .81};
+                const double pigment[] = {spectral.red, spectral.green, spectral.blue};
+                const double aerosol[] = {haze.red, haze.green, haze.blue};
+                double scattered[3], maximum = 0;
+                for (int channel = 0; channel < 3; ++channel)
+                {
+                    scattered[channel] = (1 - dust) * rayleigh[channel] + dust * aerosol[channel];
+                    maximum = std::max(maximum, scattered[channel]);
+                }
+                // Average the globe shader's finite-shell transmission over a fully
+                // illuminated projected disc, including its cube-root limb lighting.
+                const double shell = std::max(6 * height / body->volumetric_mean_radius, 1e-6);
+                double sum[3] = {}, weight_sum = 0;
+                for (int sample = 0; sample < 24; ++sample)
+                {
+                    const double mu = (sample + .5) / 24;
+                    const double weight = mu * std::cbrt(mu);
+                    const double column = std::max(1.0, (2 + shell) / (std::sqrt(mu * mu + 2 * shell + shell * shell) + mu));
+                    for (int channel = 0; channel < 3; ++channel)
+                    {
+                        const double transmission = std::exp(-air.extinction[channel] * height * fraction * column);
+                        sum[channel] += weight * (pigment[channel] * transmission
+                            + .55 * scattered[channel] / maximum * (1 - transmission));
+                    }
+                    weight_sum += weight;
+                }
+                spectral = Color(sum[0] / weight_sum, sum[1] / weight_sum, sum[2] / weight_sum);
+            }
+        }
+        #endif
         const Color daylight = reflected_daylight(object->get_light_center());
         spectral.red *= daylight.red;
         spectral.green *= daylight.green;

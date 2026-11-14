@@ -20,6 +20,7 @@ namespace alienorum
 {
     class Star;
     class Moon;
+    struct PressureHaze;
     enum class PlanetMeasurement
     {
         unknown, observed, minimum, estimated
@@ -37,6 +38,7 @@ namespace alienorum
         bool estimate_cool_giant_color();
         bool has_spectral_giant_color() const;
         double reflected_vr_color() const;
+        PressureHaze pressure_scattering(bool enabled = true, double* column_height_m = nullptr);
         // Saved worlds retain authored parameters during procedural rendering.
         bool preserve_loaded_parameters = false;
         bool rendering_saved_parameters = false;

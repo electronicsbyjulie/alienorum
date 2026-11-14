@@ -38,6 +38,7 @@ catalogs/Hypatia/stellar_abundances.json
 catalogs/GALAH/stellar_abundances.json
 catalogs/urls.dat
 consline.dat
+docs/Alienorum-calculation-reference.pdf
 ephemerides/Earth.Moon.txt.gz
 ephemerides/Jupiter.Callisto.txt.gz
 ephemerides/Jupiter.Europa.txt.gz
