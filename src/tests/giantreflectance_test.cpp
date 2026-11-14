@@ -5,6 +5,7 @@
 #include "../classes/color.h"
 #include "../classes/giantclouds.h"
 #include "universe_fixture.h"
+#include "../loaders.h"
 
 using namespace alienorum;
 using json = nlohmann::json;
@@ -193,4 +194,377 @@ TEST_F(GiantReflectancePlanetTest, HotPlanetPrescriptionsAndRockyWorldsStaySepar
     body->type = rocky;
     body->set_color_from_type(false);
     EXPECT_DOUBLE_EQ(body->BV_color, 1);
+}
+
+TEST_F(GiantReflectancePlanetTest, TextureColorsRetainInputAcrossPlanetFamilies)
+{
+    const bool previous_randomize = randomize_txgen;
+    struct Restore
+    {
+        bool value;
+        ~Restore() { randomize_txgen = value; }
+    } restore{previous_randomize};
+    randomize_txgen = false;
+    for (double correction : {0.0, -.6244})
+    {
+        bv_correction = correction;
+        for (auto type : {gas_giant, ice_giant, clearskies, hot_jupiter, rocky})
+        {
+            for (double input : (type == rocky ? std::vector<double>{.8, 1.1, 1.4}
+                : std::vector<double>{.1, .7, 1.3}))
+            {
+                for (bool synchronous : {false, true})
+                {
+                    SCOPED_TRACE(::testing::Message() << "type=" << type << " BV=" << input
+                        << " synchronous=" << synchronous);
+                    Planet* body = giant(make_star(), type);
+                    body->BV_color = input;
+                    body->has_water = 0;
+                    body->has_water_supplied = true;
+                    body->has_sim_life = false;
+                    body->temperature = type == rocky ? 320 : 1000;
+                    body->temperature_supplied = true;
+                    body->ensure_atmosphere()->surface_pressure = type == rocky ? 0 : oneatm;
+                    body->atm->pressure_supplied = true;
+                    body->fictitious_map_height = 32;
+                    body->sidereal_rotational_period = synchronous ? body->orbit->period : oneday;
+                    Map* map = new Map(body);
+                    if (type == rocky)
+                    {
+                        body->surf_map = map;
+                        map->generate_rocky_map(body);
+                    }
+                    else
+                    {
+                        body->cloud_map = map;
+                        map->generate_gas_giant_map(body);
+                    }
+                    ASSERT_TRUE(map->is_complete());
+                    ASSERT_FALSE(map->texture_color_exempt(body));
+                    EXPECT_NEAR(map->texture_bv(body), input, .02);
+                    EXPECT_DOUBLE_EQ(body->BV_color, map->texture_bv(body));
+                }
+            }
+        }
+    }
+}
+
+class PhotometryTestMap : public Map
+{
+public:
+    PhotometryTestMap(RGB3 day, RGB3 night, double wet_fraction = 0, bool frozen = false)
+    {
+        image_width = 20;
+        image_height = 4;
+        allocated = image_width * image_height;
+        red_data = new unsigned char[allocated];
+        green_data = new unsigned char[allocated];
+        blue_data = new unsigned char[allocated];
+        surface_materials.assign(allocated, SurfaceMaterial::ground);
+        procedurally_generated = true;
+        for (unsigned long y = 0; y < image_height; ++y)
+        {
+            for (unsigned long x = 0; x < image_width; ++x)
+            {
+                const unsigned long i = y * image_width + x;
+                const RGB3 color = x >= 5 && x < 15 ? day : night;
+                red_data[i] = color.r;
+                green_data[i] = color.g;
+                blue_data[i] = color.b;
+                if (x < std::round(image_width * wet_fraction))
+                    surface_materials[i] = frozen && x % 2 ? SurfaceMaterial::ice : SurfaceMaterial::water;
+            }
+        }
+        touch_gen();
+    }
+};
+
+TEST_F(GiantReflectancePlanetTest, PhotometryDecodesGammaAndSelectsTheDaylightHemisphere)
+{
+    Planet* body = giant(make_star());
+    body->sidereal_rotational_period = body->orbit->period;
+    PhotometryTestMap map(RGB3(180, 160, 120), RGB3(40, 80, 200));
+    // Without a location update, climate's default sun points along negative X.
+    const double expected = default_gamma * log(160.0 / 120) * invlogmagnbase - bv_correction;
+    EXPECT_NEAR(map.texture_bv(body), expected, 1e-12);
+    body->sidereal_rotational_period = oneday;
+    const double green = pow(160.0 / 255, default_gamma) + pow(80.0 / 255, default_gamma);
+    const double blue = pow(120.0 / 255, default_gamma) + pow(200.0 / 255, default_gamma);
+    EXPECT_NEAR(map.texture_bv(body), log(green / blue) * invlogmagnbase - bv_correction, 1e-12);
+}
+
+TEST_F(GiantReflectancePlanetTest, WaterAndIceTogetherAtTwentyPercentOrLifeExemptColorMatching)
+{
+    Planet* body = giant(make_star());
+    body->has_sim_life = false;
+    PhotometryTestMap dry(RGB3(180, 160, 120), RGB3(180, 160, 120), .15, true);
+    PhotometryTestMap wet(RGB3(180, 160, 120), RGB3(180, 160, 120), .20, true);
+    EXPECT_FALSE(dry.texture_color_exempt(body));
+    EXPECT_TRUE(wet.texture_color_exempt(body));
+    body->has_sim_life = true;
+    EXPECT_TRUE(dry.texture_color_exempt(body));
+    const double original = wet.texture_bv(body);
+    wet.calibrate_texture_bv(body, original + .1);
+    EXPECT_DOUBLE_EQ(wet.texture_bv(body), original);
+}
+
+TEST_F(GiantReflectancePlanetTest, RepeatedRefreshAndRegenerationKeepColorsStable)
+{
+    struct Restore
+    {
+        bool value = randomize_txgen;
+        ~Restore() { randomize_txgen = value; }
+    } restore;
+    randomize_txgen = false;
+    bv_correction = -.6244;
+    for (auto type : {gas_giant, ice_giant, clearskies, hot_jupiter, rocky})
+    {
+        for (double input : {.85, 1.2})
+        {
+            for (bool moon : {false, true})
+            {
+                if (moon && type != rocky) continue;
+                SCOPED_TRACE(::testing::Message() << "type=" << type << " BV=" << input << " moon=" << moon);
+                Planet* body;
+                if (moon)
+                {
+                    Moon* satellite = new Moon;
+                    satellite->type = type;
+                    satellite->mass = .01 * earth_mass;
+                    satellite->volumetric_mean_radius = 1700000;
+                    satellite->orbit = new Orbit;
+                    satellite->orbit->center = giant(make_star());
+                    satellite->orbit->semimajor_axis = 4e8;
+                    satellite->orbit->compute_period(satellite->mass);
+                    satellite->cenobj = satellite->orbit->center;
+                    satellite->albedo = .3;
+                    satellite->rnd_seed = 42;
+                    append_cel(satellite);
+                    body = satellite;
+                }
+                else body = giant(make_star(), type);
+                body->BV_color = input;
+                body->preserve_loaded_parameters = true;
+                body->has_water = 0;
+                body->has_water_supplied = true;
+                body->has_sim_life = false;
+                body->temperature = 320;
+                body->temperature_supplied = true;
+                body->ensure_atmosphere()->surface_pressure = 0;
+                body->atm->pressure_supplied = true;
+                body->fictitious_map_height = 32;
+                body->sidereal_rotational_period = input > 1 ? body->orbit->period : oneday;
+                body->ignore_map_files = true;
+                for (int pass = 0; pass < 8; ++pass)
+                {
+                    SCOPED_TRACE(pass);
+                    Map* map = uses_gaseous_map(type) ? body->cloud_map : body->surf_map;
+                    if (map && type == rocky && pass % 2)
+                    {
+                        map->_map_resample_bump_regen_rocky(body);
+                    }
+                    else
+                    {
+                        delete body->surf_map;
+                        delete body->cloud_map;
+                        body->surf_map = body->cloud_map = nullptr;
+                        body->ignore_map_files = true;
+                        body->preserve_loaded_parameters = pass == 0;
+                        body->rnd_seed = 42 + pass * 17;
+                        load_textures(body);
+                    }
+                    map = uses_gaseous_map(type) ? body->cloud_map : body->surf_map;
+                    ASSERT_NE(map, nullptr);
+                    ASSERT_TRUE(map->is_complete());
+                    EXPECT_NEAR(body->BV_color, input, .03);
+                    EXPECT_DOUBLE_EQ(body->BV_color, map->texture_bv(body));
+                }
+            }
+        }
+    }
+}
+
+TEST_F(GiantReflectancePlanetTest, BlueBareRockRetainsNaturalPigmentsAndCorrectsItsPointColor)
+{
+    Planet* body = giant(make_star(), rocky);
+    body->BV_color = -.2;
+    body->has_water = 0;
+    body->has_water_supplied = true;
+    body->has_sim_life = false;
+    body->temperature = 320;
+    body->temperature_supplied = true;
+    body->ensure_atmosphere()->surface_pressure = 0;
+    body->atm->pressure_supplied = true;
+    body->fictitious_map_height = 32;
+    body->surf_map = new Map(body);
+    body->surf_map->generate_rocky_map(body);
+    ASSERT_TRUE(body->surf_map->is_complete());
+    EXPECT_GE(body->BV_color, .78);
+    EXPECT_DOUBLE_EQ(body->BV_color, body->surf_map->texture_bv(body));
+}
+
+TEST_F(GiantReflectancePlanetTest, WetAndLivingTexturesStillReplaceTheFinalColor)
+{
+    Planet* body = giant(make_star(), rocky);
+    body->has_sim_life = true;
+    body->BV_color = -.5;
+    body->lock_bv_color = true;
+    body->surf_map = new PhotometryTestMap(RGB3(180, 160, 120), RGB3(180, 160, 120), .4, true);
+    ASSERT_TRUE(body->surf_map->texture_color_exempt(body));
+    body->update_texture_color();
+    EXPECT_DOUBLE_EQ(body->BV_color, body->surf_map->texture_bv(body));
+    EXPECT_GT(body->BV_color, 0);
+    delete body->surf_map;
+    body->surf_map = new Map(body);
+    const double previous = body->BV_color;
+    body->update_texture_color();
+    EXPECT_DOUBLE_EQ(body->BV_color, previous);
+}
+
+TEST_F(GiantReflectancePlanetTest, SpectralGiantTexturesRetainProvenanceAcrossRegenerationAndSaves)
+{
+    for (auto type : {gas_giant, ice_giant})
+    {
+        for (double axis : {2.0, 5.0})
+        {
+            Planet* body = giant(make_star(), type);
+            body->orbit->semimajor_axis = axis * AU;
+            body->set_color_from_type(false);
+            ASSERT_TRUE(body->has_spectral_giant_color());
+            const auto original = body->giant_color_model;
+            body->preserve_loaded_parameters = true;
+            body->fictitious_map_height = 32;
+            body->sidereal_rotational_period = oneday;
+            double first = NAN;
+            for (int pass = 0; pass < 3; ++pass)
+            {
+                delete body->cloud_map;
+                body->cloud_map = new Map(body);
+                body->cloud_map->generate_gas_giant_map(body);
+                ASSERT_TRUE(body->cloud_map->is_complete());
+                EXPECT_TRUE(body->has_spectral_giant_color());
+                EXPECT_DOUBLE_EQ(body->BV_color, body->cloud_map->texture_bv(body));
+                EXPECT_EQ(body->giant_color_model["bands"], original["bands"]);
+                if (!pass) first = body->BV_color;
+                else EXPECT_NEAR(body->BV_color, first, .02);
+                const Color actual = Color::color_from_planet(0, body);
+                Color expected = body->cloud_map->mean_texture_color(body);
+                EXPECT_NEAR(actual.blue / actual.green, expected.blue / expected.green, 1e-12);
+                Planet restored;
+                ASSERT_TRUE(restored.from_json(body->to_json()));
+                EXPECT_TRUE(restored.has_spectral_giant_color());
+                EXPECT_DOUBLE_EQ(restored.BV_color, body->BV_color);
+                EXPECT_DOUBLE_EQ(restored.reflected_vr_color(), body->reflected_vr_color());
+            }
+        }
+    }
+}
+
+TEST_F(GiantReflectancePlanetTest, ColdIceCrustCountsAsIceWithoutLiquidWater)
+{
+    Planet* body = giant(make_star(), icy);
+    body->BV_color = .6;
+    body->temperature = 90;
+    body->temperature_supplied = true;
+    body->has_water = 0;
+    body->has_water_supplied = true;
+    body->has_sim_life = false;
+    body->preserve_loaded_parameters = true;
+    body->ensure_atmosphere()->surface_pressure = 0;
+    body->atm->pressure_supplied = true;
+    body->fictitious_map_height = 32;
+    body->surf_map = new Map(body);
+    body->surf_map->generate_rocky_map(body);
+    ASSERT_TRUE(body->surf_map->is_complete());
+    EXPECT_TRUE(body->surf_map->texture_color_exempt(body));
+    EXPECT_DOUBLE_EQ(body->BV_color, body->surf_map->texture_bv(body));
+}
+
+TEST_F(GiantReflectancePlanetTest, ObservedColorsSurviveBothSaveFormatsAndTextureReplacement)
+{
+    for (bool moon : {false, true})
+    {
+        for (double measured : {0.0, .823456789012345})
+        {
+            std::unique_ptr<Planet> original(moon ? static_cast<Planet*>(new Moon) : new Planet);
+            original->type = rocky;
+            original->BV_color = measured;
+            original->is_bv_observed = true;
+            for (bool readable : {false, true})
+            {
+                SCOPED_TRACE(::testing::Message() << "moon=" << moon << " BV=" << measured << " readable=" << readable);
+                json record = original->to_json();
+                if (readable) record = Serialization::expand_output_record(Serialization::output_record(record));
+                std::unique_ptr<Planet> restored(moon ? static_cast<Planet*>(new Moon) : new Planet);
+                ASSERT_TRUE(restored->from_json(record));
+                ASSERT_TRUE(restored->is_bv_observed);
+                EXPECT_DOUBLE_EQ(restored->BV_color, measured);
+                restored->surf_map = new PhotometryTestMap(RGB3(220, 170, 110), RGB3(220, 170, 110));
+                ASSERT_NE(restored->surf_map->texture_bv(restored.get()), measured);
+                restored->update_texture_color();
+                EXPECT_DOUBLE_EQ(restored->BV_color, measured);
+                restored->set_color_from_type(false);
+                EXPECT_DOUBLE_EQ(restored->BV_color, measured);
+            }
+        }
+    }
+}
+
+TEST_F(GiantReflectancePlanetTest, SavedRenderingCopiesCannotPublishOverObservedPhotometry)
+{
+    Planet* body = giant(make_star(), rocky);
+    body->BV_color = .823456789012345;
+    body->is_bv_observed = true;
+    body->lock_bv_color = false;
+    body->preserve_loaded_parameters = true;
+    body->has_water = 0;
+    body->has_water_supplied = true;
+    body->temperature = 320;
+    body->temperature_supplied = true;
+    body->ensure_atmosphere()->surface_pressure = 0;
+    body->atm->pressure_supplied = true;
+    body->fictitious_map_height = 32;
+    const double measured = body->BV_color;
+    body->surf_map = new Map(body);
+    body->surf_map->generate_rocky_map(body);
+    ASSERT_TRUE(body->surf_map->is_complete());
+    EXPECT_DOUBLE_EQ(body->BV_color, measured);
+    EXPECT_TRUE(render_saved_planet(body, [](CelestialObject* working)
+    {
+        EXPECT_TRUE(working->is_bv_observed);
+        working->BV_color = -.3;
+    }));
+    EXPECT_DOUBLE_EQ(body->BV_color, measured);
+    body->type = gas_giant;
+    EXPECT_FALSE(body->estimate_cool_giant_color());
+    EXPECT_DOUBLE_EQ(body->BV_color, measured);
+}
+
+TEST_F(GiantReflectancePlanetTest, ObservedStatusResetsOnReloadAndAcceptsUncertainZero)
+{
+    Planet body;
+    body.is_bv_observed = true;
+    ASSERT_TRUE(body.from_json({{"BV_color", .9}}));
+    EXPECT_FALSE(body.is_bv_observed);
+    ASSERT_TRUE(body.from_json({{"BV_color", "0?"}, {"is_bv_observed", true}}));
+    EXPECT_TRUE(body.is_bv_observed);
+    EXPECT_DOUBLE_EQ(body.BV_color, 0);
+    ASSERT_TRUE(body.from_json({{"BV_color", "?"}, {"is_bv_observed", true}}));
+    EXPECT_FALSE(body.is_bv_observed);
+}
+
+TEST_F(GiantReflectancePlanetTest, SuppliedSurfaceOrCloudTexturesRetainTheOriginalColor)
+{
+    Planet* body = giant(make_star(), rocky);
+    body->BV_color = .123;
+    body->surf_map = new PhotometryTestMap(RGB3(180, 160, 120), RGB3(180, 160, 120));
+    body->cloud_map = new PhotometryTestMap(RGB3(220, 220, 220), RGB3(220, 220, 220));
+    body->transparent_clouds = false;
+    for (bool supplied_surface : {false, true})
+    {
+        body->surf_map->procedurally_generated = !supplied_surface;
+        body->cloud_map->procedurally_generated = supplied_surface;
+        body->update_texture_color();
+        EXPECT_DOUBLE_EQ(body->BV_color, .123);
+    }
 }

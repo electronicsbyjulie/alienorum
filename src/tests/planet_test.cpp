@@ -1979,6 +1979,9 @@ TEST_F(PlanetClassificationEvidenceTest, GeneratedTerrainUsesTheBudgetWaterlineB
     ASSERT_TRUE(measured.editable());
     EXPECT_NEAR(measured.percent(world->has_water) * 0.01,
         world->surface_water_model["coverage_fraction"].get<double>(), 0.05);
+    // The measured texture color can change Bond albedo and the climate budget.
+    // After that recalculation, repeating the calculation must be stable.
+    world->estimate_habitability();
     const float level = world->has_water;
     world->estimate_habitability();
     EXPECT_FLOAT_EQ(world->has_water, level);
@@ -2996,6 +2999,8 @@ protected:
         Map* map = uses_gaseous_map(world->type) ? world->cloud_map : world->surf_map;
         ASSERT_NE(map, nullptr);
         ASSERT_TRUE(map->is_complete());
+        EXPECT_DOUBLE_EQ(world->BV_color, world->get_day_map()->texture_bv(world));
+        before["BV_color"] = world->BV_color;
         EXPECT_EQ(world->to_json(), before);
         if (uses_rocky_map(world->type))
         {
@@ -3003,6 +3008,7 @@ protected:
             world->surf_map->_map_resample_bump_regen_rocky(world);
             EXPECT_EQ(world->surf_map->get_height(), 48u);
             before["fictitious_map_height"] = 48;
+            before["BV_color"] = world->BV_color;
             EXPECT_EQ(world->to_json(), before);
         }
         // Rendering caches must retain the surviving body's owner after the working copy dies.
@@ -3046,7 +3052,9 @@ TEST_F(SavedPlanetMapTest, ThinAtmosphereSurfaceStatesRemainConsistentAcrossRelo
         world->surf_map = new Map(world);
         world->surf_map->generate_rocky_map(world);
         ASSERT_TRUE(world->surf_map->is_complete());
-        EXPECT_EQ(world->to_json(), physical);
+        json expected = physical;
+        expected["BV_color"] = world->BV_color;
+        EXPECT_EQ(world->to_json(), expected);
         const auto climate = world->current_local_climate();
         const double salinity = world->ocean_chemistry()["salinity_g_kg"];
         std::vector<double> temperatures;
@@ -3061,7 +3069,9 @@ TEST_F(SavedPlanetMapTest, ThinAtmosphereSurfaceStatesRemainConsistentAcrossRelo
                 if (world->surf_map->material_at(lat, lon) == SurfaceMaterial::water)
                 {
                     EXPECT_FALSE(state.frozen_surface);
-                    EXPECT_GT(state.liquid, 0);
+                    EXPECT_GT(state.liquid, 0) << "lat=" << lat << " lon=" << lon
+                        << " T=" << state.temperature << " ocean=" << state.ocean
+                        << " evaporated=" << state.evaporated_surface;
                 }
             }
         std::vector<unsigned char> pixels(world->surf_map->get_width() * world->surf_map->get_height() * 4);
@@ -3250,6 +3260,7 @@ TEST_F(SavedPlanetMapTest, SavedZerosAirlessWorldsAndMoonPropertiesSurviveGenera
     json before = moon->to_json();
     verify_maps(moon);
     before["fictitious_map_height"] = 48;
+    before["BV_color"] = moon->BV_color;
     EXPECT_EQ(moon->to_json(), before);
 }
 
@@ -3403,6 +3414,7 @@ TEST_F(SavedPlanetMapTest, UnknownSurfaceClassificationRetainsSavedAppearance)
     EXPECT_TRUE(world->surf_map->is_complete());
     json after = world->to_json();
     before["type"] = after["type"];
+    before["BV_color"] = after["BV_color"];
     after.erase("classification_evidence");
     before.erase("classification_evidence");
     EXPECT_EQ(after, before);
@@ -3416,13 +3428,14 @@ TEST_F(SavedPlanetMapTest, ConcurrentTextureRequestsPublishOneConsistentSetOfMap
     world->orbit->center = host;
     world->ignore_map_files = true;
     ASSERT_TRUE(append_cel(world));
-    const json before = world->to_json();
+    json before = world->to_json();
     std::thread first([&]() { load_textures(world); });
     std::thread second([&]() { load_textures(world); });
     first.join();
     second.join();
     ASSERT_NE(world->surf_map, nullptr);
     EXPECT_TRUE(world->surf_map->is_complete());
+    before["BV_color"] = world->BV_color;
     EXPECT_EQ(world->to_json(), before);
     EXPECT_TRUE(std::isfinite(world->surf_map->elevation_at(0, 0)));
 }

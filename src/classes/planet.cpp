@@ -149,6 +149,7 @@ bool alienorum::render_saved_planet(CelestialObject* object,
         copy->from_json(source->to_json());
     }
     copy->rendering_saved_parameters = true;
+    copy->is_bv_observed = source->is_bv_observed;
     copy->cenobj = source->cenobj;
     if (copy->orbit && source->orbit) copy->orbit->center = source->orbit->center;
     copy->fictitious_map_height = source->fictitious_map_height;
@@ -197,6 +198,13 @@ bool alienorum::render_saved_planet(CelestialObject* object,
             source->ignore_map_files = copy->ignore_map_files;
             source->has_real_maps = copy->has_real_maps;
             source->has_sim_life = copy->has_sim_life;
+            if (!source->is_bv_observed)
+            {
+                source->BV_color = copy->BV_color;
+                source->VR_color = copy->VR_color;
+                source->giant_color_model = copy->giant_color_model;
+            }
+            source->update_texture_color();
         }
     } textures(source, copy.get());
     render(copy.get());
@@ -688,18 +696,20 @@ namespace
 
 bool Planet::has_spectral_giant_color() const
 {
-    return (type == gas_giant || type == ice_giant) && !lock_bv_color
+    return (type == gas_giant || type == ice_giant) && !lock_bv_color && !is_bv_observed
         && valid_giant_reflectance(giant_color_model, BV_color);
 }
 
 double Planet::reflected_vr_color() const
 {
-    return has_spectral_giant_color() ? giant_color_model["VR"].get<double>() : BV_color;
+    if (!has_spectral_giant_color()) return BV_color;
+    const auto& color = giant_color_model.contains("texture") ? giant_color_model["texture"] : giant_color_model;
+    return color["VR"].get<double>();
 }
 
 bool Planet::estimate_cool_giant_color()
 {
-    if (lock_bv_color || preserve_loaded_parameters || (type != gas_giant && type != ice_giant)) return false;
+    if (lock_bv_color || is_bv_observed || preserve_loaded_parameters || (type != gas_giant && type != ice_giant)) return false;
     GiantReflectanceInput input;
     input.seed = texture_seed();
     input.neptune = type == ice_giant;
@@ -757,14 +767,14 @@ bool Planet::estimate_cool_giant_color()
     giant_color_model = model;
     giant_color_model["temperature_proxy_k"] = proxy;
     giant_color_model["temperature_supplied"] = has_supplied_mean_temperature();
-    BV_color = model["BV"].get<double>();
+    if (!is_bv_observed) BV_color = model["BV"].get<double>();
     VR_color = model["VR"].get<double>();
     return true;
 }
 
 void Planet::set_color_from_type(bool HZ)
 {
-    if (lock_bv_color || preserve_loaded_parameters) return;
+    if (lock_bv_color || is_bv_observed || preserve_loaded_parameters) return;
     if (estimate_cool_giant_color()) return;
     giant_color_model = nullptr;
 
@@ -2602,7 +2612,7 @@ bool Planet::from_json(const json& j)
     if (std::isfinite(supplied_bv)) BV_color = supplied_bv;
     giant_color_model = j.value("giant_color_model", json(nullptr));
     lock_bv_color = std::isfinite(supplied_bv) && !valid_giant_reflectance(giant_color_model, BV_color);
-    if (has_spectral_giant_color()) VR_color = giant_color_model["VR"].get<double>();
+    if (has_spectral_giant_color()) VR_color = reflected_vr_color();
     ocean_salinity_g_kg = ocean_numeric(j, "ocean_salinity_g_kg");
     has_sim_life.reset();
     if (typeclass() == class_moon && j.contains("has_sim_life") && j["has_sim_life"].is_boolean())

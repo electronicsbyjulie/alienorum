@@ -307,6 +307,7 @@ void publish_regenerated_clouds()
             job.target->cloud_map = job.ready.release();
             job.target->transparent_clouds = job.transparent;
             job.target->overcast = job.overcast;
+            job.target->update_texture_color();
             viewchanged = true;
         }
         it = cloud_regenerations.erase(it);
@@ -733,6 +734,7 @@ void load_textures(CelestialObject* cel)
 
     cel->generate_water_clouds();
     complete_ring_textures(cel);
+    cel->update_texture_color();
 }
 
 void save_textures(CelestialObject* cel)

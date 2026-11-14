@@ -18,6 +18,7 @@
 
 namespace alienorum
 {
+    class Planet;
     class SurfacePhase;
     struct SurfacePhaseRect;
     struct LocalClimate;
@@ -314,6 +315,10 @@ namespace alienorum
 
         RGB3 color_at(double latitude, double longitude);
         double mean_cloud_opacity();
+        Color mean_texture_color(CelestialObject* body) const;
+        double texture_bv(CelestialObject* body) const;
+        bool texture_color_exempt(const Planet* body) const;
+        void calibrate_texture_bv(CelestialObject* body, double target);
         std::pair<RGB3, SurfaceMaterial> surface_at(double latitude, double longitude);
         std::pair<RGB3, SurfaceMaterial> surface_pixel(unsigned long column, unsigned long row) const;
         std::array<double, 4> surface_pixel_bounds(unsigned long column, unsigned long row) const;
@@ -418,6 +423,8 @@ namespace alienorum
         double BV_color = 0;
         double VR_color = 0;
         double RI_color = 0;
+        // Observed photometry and empirical colors for real objects outrank texture estimates.
+        bool is_bv_observed = false;
         bool lock_bv_color = false;
 
         bool user_added = false;
@@ -453,6 +460,7 @@ namespace alienorum
         CelestialObject();
         virtual ~CelestialObject();
         Map* get_day_map();
+        void update_texture_color();
         Map* get_night_map();
         CelestialLocation location;
         bool lock_equatorial_plane = false, lock_system_plane = false;

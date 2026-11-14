@@ -64,7 +64,8 @@ Color Color::color_from_planet(double Vmag, CelestialObject* object, double offs
     const bool planet = object->typeclass() == class_planet || object->typeclass() == class_moon;
     Color fallback = color_from_magnitude_indices(Vmag, object->BV_color + offset);
     if (!planet || !static_cast<Planet*>(object)->has_spectral_giant_color()) return fallback;
-    const auto& rgb = static_cast<Planet*>(object)->giant_color_model["rgb"];
+    const auto& model = static_cast<Planet*>(object)->giant_color_model;
+    const auto& rgb = model.contains("texture") ? model["texture"]["rgb"] : model["rgb"];
     Color spectral(rgb[0].get<double>(), rgb[1].get<double>(), rgb[2].get<double>());
     spectral.red *= std::pow(magnbase, offset);
     spectral.blue *= std::pow(magnbase, -offset);

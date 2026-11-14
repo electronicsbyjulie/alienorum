@@ -154,6 +154,37 @@ Map* CelestialObject::get_day_map()
     return cloud_map ? cloud_map : surf_map;
 }
 
+void CelestialObject::update_texture_color()
+{
+    if (typeclass() != class_planet && typeclass() != class_moon) return;
+
+    // DO NOT override observational B-V colors of known objects with observed texture map averages!
+    if ((surf_map && !surf_map->procedurally_generated)
+        || (cloud_map && !cloud_map->procedurally_generated)) return;
+    if (is_bv_observed) return;
+
+    Planet* body = static_cast<Planet*>(this);
+    Map* map = cloud_map && cloud_map->is_complete() ? cloud_map : surf_map;
+    Map composite(this);
+    if (transparent_clouds && surf_map && surf_map->is_complete() && cloud_map && cloud_map->is_complete()
+        && composite.create_merged_day(surf_map, cloud_map)) map = &composite;
+    if (!map || !map->is_complete()) return;
+    const double measured = map->texture_bv(this);
+    if (!std::isfinite(measured)) return;
+    if (body->has_spectral_giant_color())
+    {
+        Color mean = map->mean_texture_color(this);
+        const double vr = mean.red > 0 ? log(mean.red / mean.green) * invlogmagnbase - bv_correction : measured;
+        mean.normalize(1);
+        body->giant_color_model["texture"] =
+        {
+            {"BV", measured}, {"VR", vr}, {"rgb", {mean.red, mean.green, mean.blue}}
+        };
+        body->VR_color = vr;
+    }
+    BV_color = measured - bv_correction;
+}
+
 Map* CelestialObject::get_night_map()
 {
     if (night_map && surf_map) night_map->update_night_phase(surf_map);
@@ -763,6 +794,7 @@ json CelestialObject::to_json()
     json towrite = json::object();
     towrite["absolute_magnitude"] = absolute_magnitude;
     towrite["BV_color"] = BV_color;
+    if (is_bv_observed) towrite["is_bv_observed"] = true;
     towrite["declination"] = declination * fiftyseven;
     towrite["distance"] = distance / light_year;
     towrite["distance_known"] = distance_known;
@@ -833,7 +865,9 @@ bool CelestialObject::from_json(const json& j)
     try { j.at("!origcenname").get_to(origcenname); } catch (...) { ; }
     try { j.at("typeclass").get_to(_class); } catch (...) { ; }
     try { j.at("absolute_magnitude").get_to(absolute_magnitude); } catch (...) { ; }
-    try { j.at("BV_color").get_to(BV_color); } catch (...) { ; }
+    const double supplied_bv = ocean_numeric(j, "BV_color");
+    if (std::isfinite(supplied_bv)) BV_color = supplied_bv;
+    is_bv_observed = std::isfinite(supplied_bv) && j.value("is_bv_observed", false);
     try { j.at("declination").get_to(declination); declination *= fiftyseventh; } catch (...) { ; }
     try { j.at("distance").get_to(distance); distance *= light_year; } catch (...) { ; }
     try { j.at("distance_known").get_to(distance_known); if (!distance_known && !distance) distance = 1e4+light_year; } catch (...) { ; }
@@ -3261,11 +3295,108 @@ void alienorum::Atmosphere::calculate_tau(double pressure)
         comp->HCN_portion, comp->H2_portion,  comp->NH3_portion, comp->C2H6_portion);
 }
 
+// Sum reflected light in the renderer's linear color domain, before view settings.
+// Equirectangular rows represent unequal areas; polar pixels receive less weight.
+Color Map::mean_texture_color(CelestialObject* body) const
+{
+    Color result(0, 0, 0);
+    if (!has_rgb_data()) return result;
+    LocalClimate climate;
+    // Photometry must not estimate temperature, albedo, water, or atmosphere.
+    climate.stellar_locked = body && body->orbit && body->orbit->center
+        && body->orbit->center->typeclass() == class_star && body->is_tidal_locked();
+    if (climate.stellar_locked)
+    {
+        CelestialObject* source = body->get_light_center();
+        const double angle = body->local_solar_time(0);
+        if (source && angle >= 0)
+        {
+            const double longitude = _pi - angle;
+            const double latitude = source->Decl_as_radians(body->location);
+            climate.sun_x = -cos(latitude) * cos(longitude);
+            climate.sun_y = -cos(latitude) * sin(longitude);
+            climate.sun_z = sin(latitude);
+        }
+    }
+    double total = 0;
+    for (unsigned long y = 0; y < image_height; ++y)
+    {
+        const double theta = _pi * (y + .5) / image_height;
+        const double weight = sin(theta);
+        for (unsigned long x = 0; x < image_width; ++x)
+        {
+            const double phi = 2 * _pi * (x + .5) / image_width;
+            if (climate.stellar_locked && sin(theta) * (cos(phi) * climate.sun_x
+                + sin(phi) * climate.sun_y) + cos(theta) * climate.sun_z <= 0) continue;
+            const unsigned long index = y * image_width + x;
+            result.red += weight * pow(red_data[index] / 255.0, default_gamma);
+            result.green += weight * pow(green_data[index] / 255.0, default_gamma);
+            result.blue += weight * pow(blue_data[index] / 255.0, default_gamma);
+            total += weight;
+        }
+    }
+    if (total > 0)
+    {
+        result.red /= total;
+        result.green /= total;
+        result.blue /= total;
+    }
+    return result;
+}
+
+double Map::texture_bv(CelestialObject* body) const
+{
+    const Color mean = mean_texture_color(body);
+    if (!(mean.blue > 0 && mean.green > 0)) return NAN;
+    return log(mean.green / mean.blue) * invlogmagnbase - bv_correction;
+}
+
+bool Map::texture_color_exempt(const Planet* body) const
+{
+    if (body && body->has_sim_life.value_or(false)) return true;
+    double wet = 0, total = 0;
+    for (unsigned long y = 0; y < image_height; ++y)
+    {
+        const double weight = sin(_pi * (y + .5) / image_height);
+        for (unsigned long x = 0; x < image_width; ++x)
+        {
+            const unsigned long index = y * image_width + x;
+            const auto material = index < surface_materials.size() ? surface_materials[index] : SurfaceMaterial::unknown;
+            total += weight;
+            if (material == SurfaceMaterial::vegetation) return true;
+            if (material == SurfaceMaterial::water || material == SurfaceMaterial::ice || material == SurfaceMaterial::frost)
+                wet += weight;
+        }
+    }
+    return total > 0 && wet / total >= .2 - 1e-12;
+}
+
+void Map::calibrate_texture_bv(CelestialObject* body, double target)
+{
+    // Only modest pigment adjustments are allowed. Fixed ice, oceans, vegetation,
+    // and a physically implausible input color retain their natural palettes.
+    if (texture_color_exempt(static_cast<Planet*>(body))) return;
+    const double measured = texture_bv(body);
+    if (!std::isfinite(measured) || !std::isfinite(target) || fabs(target - measured) > .4) return;
+    const double factor = pow(magnbase, (measured - target) / default_gamma);
+    // Carry fractional bytes between pixels so repeated regeneration does not
+    // accumulate a one-byte channel bias, especially on nearly uniform skies.
+    double residual = 0;
+    for (unsigned long i = 0; i < allocated; ++i)
+    {
+        const double value = std::clamp(blue_data[i] * factor, 0.0, 255.0);
+        const double rounded = std::clamp(std::round(value + residual), 0.0, 255.0);
+        residual += value - rounded;
+        blue_data[i] = static_cast<unsigned char>(rounded);
+    }
+}
+
 void Map::generate_rocky_map(CelestialObject *cel)
 {
     // Physical color calibration is fixed for this texture, independent of the view.
     const double color_correction = bv_correction;
     if (render_saved_planet(cel, [this](CelestialObject* working) { generate_rocky_map(working); })) return;
+    const double input_bv = cel->BV_color;
     Planet *p = (Planet*)cel;
     bool want_overcast_sky = p->preserve_loaded_parameters && p->overcast;
     assert(cel->typeclass() == class_planet || cel->typeclass() == class_moon);
@@ -3359,7 +3490,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
         blue_data = new unsigned char[allocated];
 
         // Keep generated biome identity independent of its visible pigment color.
-        surface_materials.assign(allocated, SurfaceMaterial::ground);
+        surface_materials.assign(allocated, cold_icy_world ? SurfaceMaterial::ice : SurfaceMaterial::ground);
 
         lat_scale = (double)image_height / _pi;
         lon_scale = (double)image_width / (_pi * 2);
@@ -3672,6 +3803,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
                     }
                     const double frost = surface.ice;
                     if (ocean && (surface.frozen_surface || frost >= .5)) surface_materials[idx] = SurfaceMaterial::ice;
+                    else if (!ocean && frost >= .5) surface_materials[idx] = SurfaceMaterial::frost;
                     else if (ocean && surface.evaporated_surface)
                     {
                         surface_materials[idx] = SurfaceMaterial::ground;
@@ -3703,8 +3835,8 @@ void Map::generate_rocky_map(CelestialObject *cel)
 
         // A terrain waterline is not a new albedo measurement. Recoloring BV here
         // would change the coupled climate and water budget after basin calibration.
-        if (!p->preserve_loaded_parameters && !p->lock_bv_color && !p->surface_water_model.is_object())
-            cel->BV_color = 0.9 - p->has_water;
+        if (!p->preserve_loaded_parameters && !p->is_bv_observed && !p->lock_bv_color && !p->surface_water_model.is_object())
+            cel->BV_color = 0.9 - p->has_water - bv_correction;
 
     }
     catch (...)
@@ -3717,6 +3849,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
     mtx.unlock();
     generating_fic_texture = false;
     if (create_bump) stamp_craters(cel, bump_scale);
+    calibrate_texture_bv(cel, input_bv);
     procedurally_generated = true;
     touch_gen();
     if (water_phase) water_phase->generation = gen;
@@ -3730,6 +3863,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
     }
     generate_surface_rings(cel);
     cel->generate_water_clouds();
+    cel->update_texture_color();
 }
 
 void Map::generate_surface_rings(CelestialObject *cel)
@@ -3961,7 +4095,11 @@ void alienorum::Map::generate_lava_map(CelestialObject *cel, bool is_night)
     generating_fic_texture = false;
     procedurally_generated = true;
     touch_gen();
-    if (!is_night) generate_surface_rings(cel);
+    if (!is_night)
+    {
+        generate_surface_rings(cel);
+        cel->update_texture_color();
+    }
 }
 
 void Map::stamp_craters(CelestialObject *cel, double bump_scale)
@@ -4111,6 +4249,22 @@ void Map::stamp_craters(CelestialObject *cel, double bump_scale)
                 }
 
                 bump_data[idx] += bump_delta;
+                // Final crater relief can move a thin-atmosphere basin above its
+                // boiling point. Its pigment and material must describe the same state.
+                if (surface_materials.size() == allocated && surface_materials[idx] == SurfaceMaterial::water
+                    && initial_surface_climate && water_phase)
+                {
+                    const auto state = local_surface_state(*initial_surface_climate, px, py, pz,
+                        bump_data[idx], true, water_phase->salinity, water_phase->pressure);
+                    if (state.evaporated_surface)
+                    {
+                        surface_materials[idx] = SurfaceMaterial::ground;
+                        const auto basin = exposed_basin_color(px, py, pz);
+                        red_data[idx] = basin[0];
+                        green_data[idx] = basin[1];
+                        blue_data[idx] = basin[2];
+                    }
+                }
                 if (color_mult != 1.0)
                 {
                     red_data[idx]   = (unsigned char)fmin(255, red_data[idx]   * color_mult + rayr);
@@ -4245,8 +4399,10 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
     }
 
     generating_fic_texture = false;
+    calibrate_texture_bv(cel, BV);
     procedurally_generated = true;
     touch_gen();
+    cel->update_texture_color();
     p->generate_ring_parameters();
 
     if (p->ring_radius)
@@ -4391,6 +4547,7 @@ void alienorum::Map::generate_overcast_sky(CelestialObject *cel)
     generating_fic_texture = false;
     procedurally_generated = true;
     touch_gen();
+    cel->update_texture_color();
 }
 
 void CelestialObject::generate_water_clouds()
@@ -4419,6 +4576,7 @@ void CelestialObject::generate_water_clouds()
         std::cerr << "Cloud generation failed for " << name << ": " << error.what() << std::endl;
     }
     generating_fic_texture = false;
+    update_texture_color();
 }
 
 bool Map::generate_water_cloud_map(CelestialObject *cel)

@@ -790,7 +790,7 @@ namespace
             {"typeclass", "c"}, {"type", "t"}, {"location", "l"}, {"orbit", "o"},
             {"mass", "m"}, {"volumetric_mean_radius", "r"}, {"temperature", "T"}, {"temperature_supplied", "Ts"},
             {"absolute_magnitude", "M"}, {"apparent_magnitude", "V"},
-            {"BV_color", "bv"}, {"UB_color", "ub"}, {"RI_color", "ri"}, {"VR_color", "vr"},
+            {"BV_color", "bv"}, {"is_bv_observed", "bvo"}, {"UB_color", "ub"}, {"RI_color", "ri"}, {"VR_color", "vr"},
             {"right_ascension", "ra"}, {"declination", "de"}, {"distance", "d"},
             {"distance_known", "dk"}, {"epoch", "e"}, {"user_added", "ua"},
             {"sidereal_rotational_period", "rot"}, {"obliquity", "ob"}, {"equinox", "eq"},
@@ -939,6 +939,7 @@ namespace
             "plant_crown_size", "plant_crown_oblateness", "veg_min_temp", "veg_max_temp"})
         {
             auto value = record.find(key);
+            if (std::strcmp(key, "BV_color") == 0 && record.value("is_bv_observed", false)) continue;
             // Terrain thresholds control geographic area nonlinearly. Inferred waterlines
             // retain their exact float so their saved volume/coverage diagnostics stay aligned.
             if (std::strcmp(key, "has_water") == 0 && record.contains("surface_water_model")) continue;

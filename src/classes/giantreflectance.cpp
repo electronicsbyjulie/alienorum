@@ -229,9 +229,11 @@ namespace alienorum
     {
         try
         {
-            if (!model.is_object() || model.at("model") != "Cahoy2010_reflected_v1"
+            if (!model.is_object()) return false;
+            const auto& color = model.contains("texture") ? model.at("texture") : model;
+            if (model.at("model") != "Cahoy2010_reflected_v1"
                 || !model.at("BV").is_number() || !model.at("VR").is_number()
-                || std::abs(model.at("BV").get<double>() - bv) > 1e-9
+                || std::abs(color.at("BV").get<double>() - bv) > 1e-9
                 || !std::isfinite(bv) || !std::isfinite(model.at("VR").get<double>())
                 || model.at("bands").size() != 8) return false;
             if (model.at("band_rgb").size() != 8 || model.at("rgb").size() != 3) return false;
@@ -247,6 +249,12 @@ namespace alienorum
                 return true;
             };
             if (!rgb_valid(model.at("rgb"))) return false;
+            if (model.contains("texture"))
+            {
+                const auto& texture = model.at("texture");
+                if (!texture.at("VR").is_number() || !std::isfinite(texture.at("VR").get<double>())
+                    || !rgb_valid(texture.at("rgb"))) return false;
+            }
             for (const auto& color : model.at("band_rgb"))
                 if (!rgb_valid(color)) return false;
             for (const auto& band : model.at("bands"))

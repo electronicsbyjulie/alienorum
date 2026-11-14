@@ -1916,6 +1916,7 @@ TEST_F(CatalogParsingTest, LoadsAnAsteroidFromItsAstorbLine)
 
     // Columns 55-58: B-V 0.72, which is stated here rather than being the 0.71 default.
     EXPECT_NEAR(p->BV_color, 0.72, 1e-9);
+    EXPECT_TRUE(p->is_bv_observed);
 
     // The diameter is a diameter and the radius is half of it, in metres: 848.4 km across.
     EXPECT_NEAR(p->volumetric_mean_radius, 848.4 * 500, 1e-6);
@@ -5387,4 +5388,98 @@ TEST_F(CatalogParsingTest, SeparatePulsarsCannotMergeThroughAContradictorySemima
     });
     CatalogReader::dedup_planets(rows);
     EXPECT_EQ(rows.size(), 2u);
+}
+
+TEST_F(CatalogParsingTest, AsteroidPhotometryDistinguishesZeroFromMissingAndMalformedFields)
+{
+    for (const std::string color : {"0.00", "0?  ", "    ", "oops"})
+    {
+        AstorbRow row;
+        row.number = 1;
+        row.name = "Photometry asteroid " + std::to_string(ncelobjs);
+        row.diam = 848.4;
+        row.incl = 10.588056;
+        row.sma = 2.76577848;
+        std::string buffer(astorb_ceres);
+        buffer.replace(54, 4, color);
+        ASSERT_TRUE(CatalogReader::load_asteroid(&row, buffer.data()));
+        ASSERT_NE(row.cel, nullptr);
+        const bool supplied = color.front() == '0';
+        EXPECT_EQ(row.cel->is_bv_observed, supplied);
+        EXPECT_DOUBLE_EQ(row.cel->BV_color, supplied ? 0 : .71);
+    }
+}
+
+TEST_F(StellarRotationTest, LocalPhotometryMarksTheSunAndZeroValuesAndRecognizesOlderSaves)
+{
+    json records = json::array();
+    records.push_back({{"BODYNAME", "Sol"}, {"BVmag", .653}});
+    for (const char* name : {"Observed zero", "Unmeasured"})
+    {
+        json row = {{"BODYNAME", name}, {"CENTER_OF_ORBIT", "Sol"}, {"Mass", earth_mass / 1000},
+            {"VolMeanRad", earth_radius}, {"SEMIMAJOR_AXIS", AU}, {"SurfacePressure", 0},
+            {"SurfaceTemperature", 320}, {"HasWater", 0}};
+        if (!strcmp(name, "Observed zero")) row["BVmag"] = "0?";
+        records.push_back(row);
+    }
+    std::ofstream("catalogs/planets.json") << records.dump(2);
+    CatalogReader reader;
+    ASSERT_EQ(reader.read_local_planets(cels, MAX_CELOBJS), 2);
+    EXPECT_TRUE(cels[0]->is_bv_observed);
+    EXPECT_DOUBLE_EQ(cels[0]->BV_color, .653);
+    auto* observed = static_cast<Planet*>(cels[1]);
+    EXPECT_TRUE(observed->is_bv_observed);
+    EXPECT_DOUBLE_EQ(observed->BV_color, 0);
+    EXPECT_FALSE(cels[2]->is_bv_observed);
+    json legacy = observed->to_json();
+    legacy.erase("is_bv_observed");
+    ASSERT_TRUE(observed->from_json(legacy));
+    EXPECT_FALSE(observed->is_bv_observed);
+    CatalogReader::apply_local_catalog_metadata(cels);
+    EXPECT_TRUE(observed->is_bv_observed);
+    EXPECT_DOUBLE_EQ(observed->BV_color, 0);
+    observed->BV_color = .123;
+    observed->is_bv_observed = false;
+    CatalogReader::apply_local_catalog_metadata(cels);
+    EXPECT_FALSE(observed->is_bv_observed);
+    EXPECT_DOUBLE_EQ(observed->BV_color, .123);
+}
+
+class FictionalColorTestMap : public Map
+{
+public:
+    FictionalColorTestMap()
+    {
+        image_width = 2;
+        image_height = 1;
+        allocated = 2;
+        red_data = new unsigned char[2]{220, 220};
+        green_data = new unsigned char[2]{180, 180};
+        blue_data = new unsigned char[2]{120, 120};
+        procedurally_generated = true;
+        touch_gen();
+    }
+};
+
+TEST_F(StellarRotationTest, SscAuthoredColorsRemainFictionalAndCanFollowNewTextures)
+{
+    std::ofstream file("fictional-color.ssc");
+    file << "\"Fictional color\" \"Sol\"\n{\n"
+        << " Radius 6000\n Mass 1\n Color [0.3 0.5 0.8]\n"
+        << " EllipticalOrbit\n {\n SemiMajorAxis 1\n Period 2\n }\n}\n";
+    file.close();
+    SSCImport importer;
+    ASSERT_TRUE(importer.read("fictional-color.ssc"));
+    ASSERT_EQ(importer.report.bodies_added, 1);
+    auto* body = static_cast<Planet*>(cels[1]);
+    EXPECT_TRUE(body->lock_bv_color);
+    EXPECT_FALSE(body->is_bv_observed);
+    Planet restored;
+    ASSERT_TRUE(restored.from_json(Serialization::expand_output_record(Serialization::output_record(body->to_json()))));
+    EXPECT_FALSE(restored.is_bv_observed);
+    const double authored = restored.BV_color;
+    restored.surf_map = new FictionalColorTestMap;
+    restored.update_texture_color();
+    EXPECT_DOUBLE_EQ(restored.BV_color, restored.surf_map->texture_bv(&restored));
+    EXPECT_NE(restored.BV_color, authored);
 }

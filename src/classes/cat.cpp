@@ -410,7 +410,7 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
 
         //  76- 80  F5.2   mag     B-V      ? color
         read_field_onebased(buffer, 76, 80, field);
-        s->BV_color = atof(field);
+        if (parse_numeric_value(field, s->BV_color)) s->is_bv_observed = true;
 
         //  83- 87  F5.2   mag     U-B      ? color
         read_field_onebased(buffer, 83, 87, field);
@@ -835,7 +835,7 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
 
         //  110-114  F5.2   mag     B-V      ? B-V color in the UBV system
         read_field_onebased(buffer, 110, 114, field);
-        s->BV_color = atof(field);
+        if (parse_numeric_value(field, s->BV_color)) s->is_bv_observed = true;
 
         //  116-120  F5.2   mag     U-B      ? U-B color in the UBV system
         read_field_onebased(buffer, 116, 120, field);
@@ -1292,7 +1292,7 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         // 246-251  F6.3  mag     B-V       ? Johnson B-V colour
         read_field_onebased(buffer, 246, 251, field);
         f = atof(field);
-        if (f || trim(field).size()) s->BV_color = f;
+        if (parse_numeric_value(field, s->BV_color)) s->is_bv_observed = true;
 
         // 436-447  A12   ---     SpType    Spectral type
         read_field_onebased(buffer, 436, 447, field);
@@ -1730,7 +1730,7 @@ int alienorum::CatalogReader::read_Tycho_catalog(CelestialObject **cels, int max
 
         // 246-251  F6.3  mag     B-V       ? Johnson B-V colour
         read_field_onebased(buffer, 246, 251, field);
-        s->BV_color = atof(field);
+        if (parse_numeric_value(field, s->BV_color)) s->is_bv_observed = true;
 
         s->update_location(simnow);
         s->mass = s->estimate_mass();
@@ -2628,6 +2628,7 @@ int alienorum::CatalogReader::read_WD_catalog(CelestialObject **objects, int max
             if (std::isfinite(r.bv.value))
             {
                 s->BV_color = r.bv.value;
+                s->is_bv_observed = true;
             }
             if (std::isfinite(r.ub.value))
             {
@@ -3240,8 +3241,7 @@ bool CatalogReader::load_asteroid(AstorbRow *r, char *buffer)
 
     //  55- 58  F4.2  mag     B-V       ? Color index (see E.F.Tedesco, pp.1090-1138)
     read_field_onebased(buffer, 55, 58, field);
-    if (trim(field).size())
-        p->BV_color = atof(field);
+    if (parse_numeric_value(field, p->BV_color)) p->is_bv_observed = true;
     else p->BV_color = 0.71;                            // typical value for asteroids
 
     p->volumetric_mean_radius = r->diam * 500;
@@ -4157,6 +4157,7 @@ void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>&
             {
                 p->BV_color = planet_bvcols[designation];
                 p->lock_bv_color = true;
+                p->is_bv_observed = true;
             }
             if (planet_albedines.find(designation) != planet_albedines.end())
             {
@@ -5736,6 +5737,17 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels, int first_host)
 
 static void apply_body_metadata(CelestialObject* body, const json& record)
 {
+    // Recognize catalog photometry retained by older saves without changing an edited color.
+    const auto color = record.find("BVmag");
+    if (color != record.end() && color->is_number())
+    {
+        const double measured = color->get<double>();
+        if (std::isfinite(measured) && std::abs(body->BV_color - measured) <= 1e-12)
+        {
+            body->is_bv_observed = true;
+            body->lock_bv_color = true;
+        }
+    }
     body->home_world = record.value("home_world", body->home_world);
     body->map_inverted = record.value("map_inverted", body->map_inverted);
     body->orbit_center_codes = record.value("orbit_center_codes", body->orbit_center_codes);
@@ -5782,7 +5794,13 @@ static void apply_stellar_surface_metadata(Star* body, const json& record)
     };
     for (const auto& field : fields)
     {
-        try { body->*(field.member) = record.at(field.key).get<double>() * field.scale; }
+        try
+        {
+            const double value = record.at(field.key).get<double>();
+            if (!std::isfinite(value)) continue;
+            body->*(field.member) = value * field.scale;
+            if (!strcmp(field.key, "BVmag")) body->is_bv_observed = body->lock_bv_color = true;
+        }
         catch (...) { ; }
     }
     try
@@ -5932,7 +5950,7 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
             try { pl.at("AscNode").get_to(p->orbit->ascending_node); p->orbit->ascending_node *= fiftyseventh; } catch (...) { ; }
 
             try { /* TODO: pl.at("BondAlbedo").get_to(p->BV_color); */ } catch (...) { ; }
-            try { pl.at("BVmag").get_to(p->BV_color); p->lock_bv_color = true; }
+            try { pl.at("BVmag").get_to(p->BV_color); p->lock_bv_color = true; p->is_bv_observed = true; }
             catch (...) { if (createnew) p->BV_color = p->orbit->center->BV_color; }
             try { pl.at("UBmag").get_to(p->UB_color); } catch (...) { if (createnew) p->UB_color = p->orbit->center->UB_color; }
             try { pl.at("CloudsStatic").get_to(p->static_clouds); } catch (...) { ; }
@@ -6970,7 +6988,7 @@ int alienorum::CatalogReader::read_condensed_star_cat()
         }
 
         read_field_onebased(buffer, 100, 105, field);
-        s->BV_color = atof(field);
+        if (parse_numeric_value(field, s->BV_color)) s->is_bv_observed = true;
 
         read_field_onebased(buffer, 107, 112, field);
         s->UB_color = atof(field);
@@ -10399,6 +10417,7 @@ int CatalogReader::read_UNGC_catalog(CelestialObject **cels, int max)
         g->known_poles = g->position_angle_known;
         g->volumetric_mean_radius = g->distance * g->angular_diameter * 0.5;
         g->BV_color = -bv_correction;
+        g->is_bv_observed = true;
         by_raw_name[raw_name] = g;
         append_cel(g);
         num_read++;
@@ -10657,6 +10676,7 @@ int CatalogReader::read_RC3_catalog(CelestialObject **cels, int max)
         g->distance_known = true;       // treat it as known anyway, so that the distance appears in the N panel.
         g->volumetric_mean_radius = g->distance * g->angular_diameter * 0.5;
         g->BV_color = -bv_correction;
+        g->is_bv_observed = true;
         append_cel(g);
         num_read++;
     }
