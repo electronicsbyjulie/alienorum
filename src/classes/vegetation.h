@@ -19,6 +19,30 @@
 
 namespace alienorum
 {
+    inline double vegetation_transition(double value)
+    {
+        const double t = std::clamp(value, 0.0, 1.0);
+        return t * t * (3 - 2 * t);
+    }
+
+    inline double vegetation_temperature_density(double temperature, double minimum, double maximum,
+        double freezing, double boiling)
+    {
+        const double low = std::max({minimum, freezing, double(ORGANIC_LIFE_MIN_TEMP_K)});
+        const double high = std::min({maximum, boiling, double(ORGANIC_LIFE_MAX_TEMP_K)});
+        if (!std::isfinite(temperature) || !(low < high)) return 0;
+        const double width = std::min(12.0, (high - low) * .25);
+        return vegetation_transition((temperature - low) / width)
+            * vegetation_transition((high - temperature) / width);
+    }
+
+    inline double vegetation_light_density(const LocalClimate& climate, double x, double y, double z)
+    {
+        // Persistent low illumination matters; normal nights do not remove a forest.
+        if (!climate.stellar_locked) return 1;
+        return vegetation_transition((x * climate.sun_x + y * climate.sun_y + z * climate.sun_z) / .20);
+    }
+
     inline bool vegetation_temperature_suitable(double temperature, double minimum, double maximum)
     {
         return minimum < maximum && temperature >= minimum && temperature <= maximum
@@ -60,6 +84,35 @@ namespace alienorum
                                 = climate.temperature(-ring*std::cos(lon), -ring*std::sin(lon), z, climate.sea_level_m, false);
                         }
                 }
+        }
+
+        double density(double x, double y, double z, double elevation, double minimum, double maximum,
+            double freezing, double boiling) const
+        {
+            if (!count || !(minimum < maximum)) return 0;
+            const double light = vegetation_light_density(baseline, x, y, z);
+            if (light <= 0) return 0;
+            const double latitude = std::clamp((z + 1) * .5 * (rows - 1), 0.0, double(rows - 1));
+            const size_t south = static_cast<size_t>(latitude), north = std::min(south + 1, rows - 1);
+            double longitude = std::atan2(-y, -x) / 6.283185307179586;
+            longitude = (longitude - std::floor(longitude)) * columns;
+            const size_t west = static_cast<size_t>(longitude), east = (west + 1) % columns;
+            const double offset = baseline.regional_temperature(x, y, z)
+                - baseline.lapse_k_m * std::max(0.0, elevation - baseline.sea_level_m);
+            double quality = 0;
+            for (size_t sample = 0; sample < count; ++sample)
+            {
+                const auto value = [&](size_t row)
+                {
+                    const size_t base = (sample * rows + row) * columns;
+                    return temperatures[base + west] + (temperatures[base + east] - temperatures[base + west]) * (longitude - west);
+                };
+                const double temperature = value(south) + (value(north) - value(south)) * (latitude - south) + offset;
+                quality += vegetation_temperature_density(temperature, minimum, maximum, freezing, boiling) / count;
+                if (quality >= .4) return light;
+            }
+            // A marginal growing season approaches zero density continuously.
+            return light * vegetation_transition((quality - .1) / .3);
         }
 
         bool suitable(double x, double y, double z, double elevation, double minimum, double maximum,

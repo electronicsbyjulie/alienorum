@@ -188,6 +188,39 @@ TEST(SurfacePhaseTest, SeasonalSeaIceColorsDoNotRetainEarlierWhiteOrBlueBands)
     }
 }
 
+TEST(SurfaceClimateTest, VegetationDensityTapersAtThermalAndPersistentLightLimits)
+{
+    double previous = 0;
+    for (double temperature : {278.0, 279.0, 280.0, 282.0, 285.0, 290.0})
+    {
+        const double density = VegetationHabitat({uniform_phase_climate(temperature)})
+            .density(1, 0, 0, 0, 278, 310, 273.15, 373.15);
+        EXPECT_GE(density, previous);
+        EXPECT_GE(density, 0);
+        EXPECT_LE(density, 1);
+        previous = density;
+    }
+    EXPECT_DOUBLE_EQ(previous, 1);
+    EXPECT_DOUBLE_EQ(VegetationHabitat({uniform_phase_climate(278)})
+        .density(1, 0, 0, 0, 278, 310, 273.15, 373.15), 0);
+    const double marginal = VegetationHabitat({uniform_phase_climate(280)})
+        .density(1, 0, 0, 0, 278, 310, 273.15, 373.15);
+    EXPECT_GT(marginal, 0);
+    EXPECT_LT(marginal, 1);
+    EXPECT_DOUBLE_EQ(vegetation_temperature_density(310, 278, 310, 273.15, 373.15), 0);
+    EXPECT_DOUBLE_EQ(vegetation_temperature_density(270, 240, 310, 273.15, 373.15), 0);
+
+    LocalClimate locked = uniform_phase_climate(290);
+    locked.stellar_locked = true;
+    locked.sun_x = 1; locked.sun_y = locked.sun_z = 0;
+    EXPECT_DOUBLE_EQ(vegetation_light_density(locked, -.1, 0, 0), 0);
+    EXPECT_DOUBLE_EQ(vegetation_light_density(locked, 0, 0, 0), 0);
+    EXPECT_NEAR(vegetation_light_density(locked, .1, 0, 0), .5, 1e-12);
+    EXPECT_DOUBLE_EQ(vegetation_light_density(locked, .2, 0, 0), 1);
+    locked.stellar_locked = false;
+    EXPECT_DOUBLE_EQ(vegetation_light_density(locked, -1, 0, 0), 1);
+}
+
 TEST(SurfaceClimateTest, HabitatRequiresCoincidentWarmthAndLiquidWater)
 {
     VegetationHabitat frozen({uniform_phase_climate(200)});

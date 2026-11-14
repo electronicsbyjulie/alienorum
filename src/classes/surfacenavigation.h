@@ -3,11 +3,13 @@
 
 #include "planet.h"
 #include "surfacebiomes.h"
+#include <memory>
 #include <tuple>
 
 namespace alienorum
 {
     class LocalSurfaceTile;
+    class VegetationHabitat;
 
     // One material interpretation for horizon painting, scenery, and navigation.
     class SurfaceSampler
@@ -18,6 +20,8 @@ namespace alienorum
         double radius, strength, bound;
         bool favorable, biomes, ocean, water;
         LocalSurfaceTile* local_tile = nullptr;
+        std::shared_ptr<const VegetationHabitat> vegetation_habitat;
+        double vegetation_freezing = 273.15, vegetation_boiling = 373.15;
 
         bool water_sample(const std::pair<RGB3, SurfaceMaterial> &sample) const;
 
@@ -43,6 +47,7 @@ namespace alienorum
         RGB3 color_at(double latitude, double longitude) { return info(latitude, longitude).first; }
         bool vegetation_color(const RGB3 &sample) const;
         bool vegetation_at(double latitude, double longitude);
+        double vegetation_density_at(double latitude, double longitude);
         bool water_at(double latitude, double longitude);
         bool basin_at(double latitude, double longitude);
         bool water_at(double latitude, double longitude, WaterPatch& patch, bool include_frozen_basins = false);

@@ -2,6 +2,7 @@
 #include "localsurfacetile.h"
 #include "surfacenavigation.h"
 #include "surfaceoptions.h"
+#include "surfaceclimate.h"
 #include <queue>
 #include <limits>
 
@@ -129,6 +130,38 @@ bool SurfaceSampler::vegetation_at(double latitude, double longitude)
     const auto sample = info(latitude, longitude);
     return sample.second == SurfaceMaterial::unknown ? vegetation_color(sample.first)
         : sample.second == SurfaceMaterial::vegetation;
+}
+
+double SurfaceSampler::vegetation_density_at(double latitude, double longitude)
+{
+    if (!planet || !map || !planet->simulated_surface_life_allowed()) return 0;
+    if (!vegetation_habitat)
+    {
+        const double pressure = planet->get_surface_pressure();
+        const Orbit* orbit = planet->orbit;
+        auto key = std::make_tuple(planet, map, map->gen, planet->temperature, pressure,
+            planet->mass, planet->volumetric_mean_radius, planet->obliquity,
+            planet->sidereal_rotational_period, planet->veg_min_temp, planet->veg_max_temp,
+            orbit ? orbit->semimajor_axis : 0.0, orbit ? orbit->eccentricity : 0.0,
+            orbit ? orbit->period : 0.0);
+        static thread_local decltype(key) previous;
+        static thread_local std::shared_ptr<const VegetationHabitat> cached;
+        if (!cached || previous != key)
+        {
+            cached = std::make_shared<VegetationHabitat>(planet->vegetation_seasons());
+            previous = key;
+        }
+        vegetation_habitat = cached;
+        const double salinity = planet->ocean_chemistry().at("salinity_g_kg").get<double>();
+        vegetation_freezing = seawater_freezing_k(salinity, pressure);
+        vegetation_boiling = surface_boiling_k(pressure);
+    }
+    // Use geographic coordinates rather than the coarser biome pixel, so density
+    // remains continuous as the viewer crosses texture samples.
+    const double ring = std::cos(latitude);
+    return vegetation_habitat->density(-ring * std::cos(longitude), -ring * std::sin(longitude),
+        std::sin(latitude), map->elevation_at_bilinear(latitude, longitude), planet->veg_min_temp,
+        planet->veg_max_temp, vegetation_freezing, vegetation_boiling);
 }
 
 SurfaceSampler::Sample SurfaceSampler::sample(double latitude, double longitude)

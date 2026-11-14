@@ -8353,7 +8353,8 @@ void draw_horizon()
                     local_surface_revision, generating_fic_texture, water_favorable,
                     p ? p->has_water : 0.0f, p ? p->type : cel->type,
                     p ? p->vegetation_r : 0, p ? p->vegetation_g : 0, p ? p->vegetation_b : 0,
-                    crown_scale, scenery_range, has_plants);
+                    crown_scale, scenery_range, has_plants, P_surf,
+                    p ? p->veg_min_temp : 0.0, p ? p->veg_max_temp : 0.0);
                 static decltype(scenery_key) saved_scenery_key;
                 static bool scenery_valid = false;
                 static std::vector<bool> plant, water, canopy_clear;
@@ -8384,6 +8385,12 @@ void draw_horizon()
                             water[index] = surface.water_at(object.latitude, object.longitude);
                             plant[index] = !water[index] && surface.vegetation_at(object.latitude, object.longitude);
                             scenery_colors[index] = surface.color_at(object.latitude, object.longitude);
+                        }
+                        if (plant[index])
+                        {
+                            const double density = surface.vegetation_density_at(object.latitude, object.longitude);
+                            const double draw = (scenery_hash(object.id ^ 0x7665676574617465ULL) >> 11) * 0x1.0p-53;
+                            plant[index] = draw < density;
                         }
                         if (plant[index]) canopy_radii[index] = crown_scale
                             * scenery_size(object.seed, ROCK_MIN_SIZE, ROCK_MAX_SIZE);

@@ -2940,7 +2940,7 @@ void Map::update_water_phase_tile(const LocalClimate& climate, double epoch, dou
                         static_cast<unsigned char>(24 + (ocean_world ? 24 : 168) * depth),
                         static_cast<unsigned char>((ocean_world ? 32 : 192) + (ocean_world ? 128 : 32) * depth)};
                 }
-                else if (procedurally_generated && material == SurfaceMaterial::vegetation && mcel
+                else if (procedurally_generated && white && material == SurfaceMaterial::vegetation && mcel
                     && (mcel->typeclass() == class_planet || mcel->typeclass() == class_moon))
                 {
                     const auto* planet = static_cast<Planet*>(mcel);
@@ -3615,6 +3615,8 @@ void Map::generate_rocky_map(CelestialObject *cel)
                         || p->has_water >= 1 || height_value < p->has_water;
                     const auto surface = local_surface_state(climate, nx, ny, nz, bump_data[idx], ocean, salinity, pressure);
                     T_local = surface.temperature;
+                    const double vegetation_density = !ocean && life_possible
+                        ? habitat.density(nx, ny, nz, bump_data[idx], p->veg_min_temp, p->veg_max_temp, freezing, Tboil) : 0;
                     if (cel->type == waterworld || cel->type == hycean)
                     {
                         surface_materials[idx] = SurfaceMaterial::water;
@@ -3637,12 +3639,18 @@ void Map::generate_rocky_map(CelestialObject *cel)
                     }
                     else if (!ocean && life_possible
                         && (p->vegetation_r || p->vegetation_g || p->vegetation_b)
-                        && habitat.suitable(nx, ny, nz, bump_data[idx], p->veg_min_temp, p->veg_max_temp, freezing, Tboil))
+                        && vegetation_density > 0)
                     {   // Forests
                         surface_materials[idx] = SurfaceMaterial::vegetation;
-                        red_data[idx] = fmin(255, p->vegetation_r * r_weight);
-                        green_data[idx] = fmin(255, p->vegetation_g * r_weight);
-                        blue_data[idx] = fmin(255, p->vegetation_b * r_weight);
+                        const double bare_red = T_local > p->veg_max_temp ? 220 : 110;
+                        const double bare_green = T_local > p->veg_max_temp ? 200 : 90;
+                        const double bare_blue = T_local > p->veg_max_temp ? 150 : 75;
+                        red_data[idx] = fmin(255, (vegetation_density * p->vegetation_r
+                            + (1 - vegetation_density) * bare_red * rmult) * r_weight);
+                        green_data[idx] = fmin(255, (vegetation_density * p->vegetation_g
+                            + (1 - vegetation_density) * bare_green * gmult) * r_weight);
+                        blue_data[idx] = fmin(255, (vegetation_density * p->vegetation_b
+                            + (1 - vegetation_density) * bare_blue * bmult) * r_weight);
                     }
                     else if (T_local > p->veg_max_temp)
                     {   // Beach or desert sand
