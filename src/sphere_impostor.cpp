@@ -1122,6 +1122,9 @@ void main()
         glBindTexture(GL_TEXTURE_2D, p->bump_tex);
         glActiveTexture(GL_TEXTURE0 + 3);
         glBindTexture(GL_TEXTURE_2D, p->ringx_tex);
+        // Radial ring profiles have distinct endpoints; wrapping leaks the outer
+        // edge into the transparent inner gap and creates an equatorial seam.
+        if (p->ringx_tex) glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glActiveTexture(GL_TEXTURE0 + 4);
         if (!sky_grad.empty() && !s_sky_rows_uploaded)
         {
@@ -1969,8 +1972,10 @@ void main()
         glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, p->ring_tex);
+        if (p->ring_tex) glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glActiveTexture(GL_TEXTURE0 + 1);
         glBindTexture(GL_TEXTURE_2D, p->ringx_tex);
+        if (p->ringx_tex) glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glBindVertexArray(s_ring_vao);
         glBindBuffer(GL_ARRAY_BUFFER, s_ring_vbo);
         glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(verts), verts);

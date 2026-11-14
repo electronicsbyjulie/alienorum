@@ -2229,7 +2229,9 @@ int draw_sphere(CelestialObject* cel, double arad)
         rgb = {225, 208, 192};
         for (ringd = equatorial_radius; ringd <= pl->ring_radius; ringd += step1)
         {
-            double xmapd = (double)(ringd - equatorial_radius) * _pi*2 / ringsize;
+            // Map longitude starts at -pi; the radial profile must never wrap.
+            double xmapd = std::min(std::nextafter(_pi, 0.0),
+                -_pi + (ringd - equatorial_radius) * _pi*2 / ringsize);
             double ring_opacity = rxmap ? (255.0 * (1.0-pow((double)rxmap->color_at(0, xmapd).g/255, gossamer_rings))) : 0.5;
             if (rmap) rgb = rmap->color_at(0, xmapd);
             double lonlim = _pi*2+0.5*step2;

@@ -5353,6 +5353,52 @@ TEST_F(RenderingRegressionTest, PanningHazyCoastPreservesDetailedGroundPixels)
     SDL_SetWindowSize(window, 192, 108);
 }
 
+TEST_F(RenderingRegressionTest, RingOuterEdgeDoesNotLeakIntoTheInnerGap)
+{
+    glGenTextures(1, &cloud_texture);
+    glBindTexture(GL_TEXTURE_2D, cloud_texture);
+    const unsigned char profile[] = {255, 255, 255, 255, 255, 255, 0, 0, 0, 0, 0, 0};
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 4, 1, 0, GL_RGB, GL_UNSIGNED_BYTE, profile);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    impostor_begin_frame();
+    RingImpostorInput input{};
+    input.cz = 3;
+    input.inner_r = .5;
+    input.outer_r = 1.4;
+    input.normal[1] = .6;
+    input.normal[2] = .8;
+    input.ringx_map_texture = cloud_texture;
+    input.fallback_color = IM_COL32(200, 180, 150, 255);
+    input.self_luminous = true;
+    ASSERT_TRUE(queue_ring_impostor(input, 1, dispcx, dispcy, dispcx));
+    const auto pixels = render();
+    int gap_samples = 0, bright_samples = 0;
+    for (int y = 0; y < render_height; ++y)
+    {
+        for (int x = 0; x < render_width; ++x)
+        {
+            const double dx = (x + .5 - dispcx) / dispcx;
+            const double dy = (y + .5 - dispcy) / dispcx;
+            const double distance = 2.4 / (.6 * dy + .8);
+            const double radial = std::sqrt(std::pow(dx * distance, 2)
+                + std::pow(dy * distance, 2) + std::pow(distance - 3, 2));
+            const size_t pixel = (y * render_width + x) * 4;
+            if (radial >= .5 && radial < .57 && distance < 3)
+            {
+                EXPECT_EQ(pixels[pixel], 0) << x << "," << y;
+                ++gap_samples;
+            }
+            bright_samples += pixels[pixel] > 50;
+        }
+    }
+    EXPECT_GT(gap_samples, 10);
+    EXPECT_GT(bright_samples, 50);
+    ImGui::NewFrame();
+}
+
 TEST_F(RenderingRegressionTest, RingsAddLightWithoutDarkeningTheSky)
 {
     const auto capture = [&](bool rings)
