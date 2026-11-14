@@ -2556,26 +2556,61 @@ static void draw_corona(ImVec2 at, double sun_px, double obsc, double BV)
     // Two overlapping falloffs rather than one: the inner corona is bright and tight against the
     // limb, the outer faint and reaching several radii out, and a single exponent cannot be both.
     draw_radial_glow(at, r_in*1.01, r_in*2.2, rgb, 150.0*strength, 2.6);
-    draw_radial_glow(at, r_in*1.01, r_in*5.0, rgb, 55.0*strength, 1.7);
+    draw_radial_glow(at, r_in*1.01, r_in*5.0, rgb, 28.0*strength, 1.7);
 
-    // Streamers. The corona is shaped by the star's magnetic field, not by gravity, which is why
-    // it is never a smooth halo: it reaches furthest along the field's open lines and leaves
-    // gaps where the field is closed. Hashed, not random, so the shape holds still from frame to
-    // frame instead of boiling.
-    const int nstream = 40;
-    for (int k = 0; k < nstream; k++)
+    // Curved bundles of fine filaments, with transparent edges and fading ends.
+    // The pattern is independent of time and camera orientation.
+    const auto pattern = [](int index)
     {
-        double h1 = flare_hash(k*13 + 5), h2 = flare_hash(k*29 + 71), h3 = flare_hash(k*7 + 311);
-        int a = (int)(46.0 * strength * (0.3 + 0.7*h2));
-        if (a < 1) continue;
-        double ang = (k + (h3 - 0.5)*1.6) * (_pi*2.0/nstream);
-        double len = r_in * (0.8 + 4.0*pow(h1, 2.0));
-        double halfwidth = r_in * (0.06 + 0.10*h2);
-        double dx = cos(ang), dy = sin(ang), px = -dy, py = dx;
-        ImVec2 base_a(at.x + dx*r_in*0.98 + px*halfwidth, at.y + dy*r_in*0.98 + py*halfwidth);
-        ImVec2 base_b(at.x + dx*r_in*0.98 - px*halfwidth, at.y + dy*r_in*0.98 - py*halfwidth);
-        ImVec2 tip(at.x + dx*(r_in + len), at.y + dy*(r_in + len));
-        dl->AddTriangleFilled(base_a, base_b, tip, rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, a)));
+        const double value = sin(index * 12.9898 + 0.137) * 43758.5453;
+        return value - floor(value);
+    };
+    const ImVec2 uv = ImGui::GetFontTexUvWhitePixel();
+    constexpr int bundles = 96, filaments = 3, steps = 24;
+    for (int k = 0; k < bundles; ++k)
+    {
+        const double h1 = pattern(k * 13 + 5), h2 = pattern(k * 29 + 71);
+        const double h3 = pattern(k * 7 + 311), h4 = pattern(k * 19 + 43);
+        const double angle = (k + (h3 - .5) * .8) * (2 * _pi / bundles);
+        const double reach = r_in * (.65 + 3.8 * h1 * h1)
+            * (.8 + .2 * cos(2 * angle - .7));
+        const double bend = (h4 - .5) * .70;
+        for (int strand = 0; strand < filaments; ++strand)
+        {
+            const double spread = (strand - 1) * (.009 + .012 * h2);
+            const double width = r_in * (.008 + .013 * h2) * (strand == 1 ? 1.35 : .65);
+            const double peak = strength * (24 + 38 * h2) * (strand == 1 ? .8 : .55);
+            dl->PrimReserve(steps * 12, (steps + 1) * 3);
+            const unsigned int first = dl->_VtxCurrentIdx;
+            for (int row = 0; row <= steps; ++row)
+            {
+                const double t = double(row) / steps;
+                const double radius = r_in * .985 + reach * t;
+                const double theta = angle + bend * (1 - exp(-3 * t))
+                    + spread * (1 - .65 * t) + .012 * sin(7 * t + h3 * 6) * t;
+                const double halfwidth = width * (.7 + .6 * sin(_pi * t)) * (1 - .7 * t);
+                const double opacity = peak * exp(-1.2 * t) * pow(1 - t, 1.3);
+                for (int side = -1; side <= 1; ++side)
+                {
+                    const ImVec2 vertex(at.x + cos(theta) * radius - sin(theta) * halfwidth * side,
+                        at.y + sin(theta) * radius + cos(theta) * halfwidth * side);
+                    const int alpha = side == 0 ? int(opacity) : 0;
+                    dl->PrimWriteVtx(vertex, uv,
+                        rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, alpha)));
+                }
+                if (row == 0) continue;
+                const unsigned int previous = first + (row - 1) * 3;
+                for (int side = 0; side < 2; ++side)
+                {
+                    dl->PrimWriteIdx(static_cast<ImDrawIdx>(previous + side));
+                    dl->PrimWriteIdx(static_cast<ImDrawIdx>(previous + side + 1));
+                    dl->PrimWriteIdx(static_cast<ImDrawIdx>(previous + side + 4));
+                    dl->PrimWriteIdx(static_cast<ImDrawIdx>(previous + side));
+                    dl->PrimWriteIdx(static_cast<ImDrawIdx>(previous + side + 4));
+                    dl->PrimWriteIdx(static_cast<ImDrawIdx>(previous + side + 3));
+                }
+            }
+        }
     }
 
     // The chromosphere: a thin, reddish rim with a few bright prominences (Baily's beads). The color comes from
