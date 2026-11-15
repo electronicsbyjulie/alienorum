@@ -2543,6 +2543,19 @@ SurfaceMaterial Map::phase_material(unsigned long column, unsigned long row, Sur
     return base;
 }
 
+std::pair<RGB3, SurfaceMaterial> Map::underlying_surface_at(double latitude, double longitude)
+{
+    const auto index = idx_of(latitude, longitude);
+    if (index == idx_not_ready || index >= allocated) return {RGB3(0, 0, 0), SurfaceMaterial::unknown};
+    auto material = surface_materials.size() == allocated ? surface_materials[index] : SurfaceMaterial::unknown;
+    if (water_phase && water_phase->generation == gen)
+        material = static_cast<SurfaceMaterial>(water_phase->original_material(index % image_width,
+            index / image_width, static_cast<unsigned char>(material)));
+    if (material == SurfaceMaterial::ice) material = SurfaceMaterial::water;
+    if (material == SurfaceMaterial::frost) material = SurfaceMaterial::ground;
+    return {original_phase_color(index % image_width, index / image_width), material};
+}
+
 bool Map::phase_ocean_at(double latitude, double longitude)
 {
     if (!water_phase || water_phase->generation != gen) return false;

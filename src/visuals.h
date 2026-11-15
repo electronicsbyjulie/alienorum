@@ -136,6 +136,7 @@ struct RockInstance
     bool crown_above_eye;
     double aspect;
     alienorum::RGB3 surface_color;
+    double foliage = 1, snow = 0;
 };
 
 void draw_ra_dec_lines();

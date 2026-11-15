@@ -8292,6 +8292,19 @@ void draw_horizon()
                 const double canopy_margin = 2 * ROCK_MAX_SIZE * crown_scale + 0.1;
                 const bool has_plants = p && p->simulated_surface_life_allowed()
                     && (p->vegetation_r || p->vegetation_g || p->vegetation_b);
+                // Reconstruct the preceding three weeks independently of frame rate or time seeks.
+                const double tree_epoch = has_plants ? floor(simnow / 3600.0) * 3600.0 : 0;
+                auto tree_climate_key = std::make_tuple(p, map, map ? map->gen : 0u, tree_epoch,
+                    p ? p->temperature : 0.0, P_surf, p ? p->veg_min_temp : 0.0, p ? p->veg_max_temp : 0.0);
+                static decltype(tree_climate_key) saved_tree_climate_key;
+                static std::vector<LocalClimate> recent_tree_climates;
+                if (has_plants && (recent_tree_climates.empty() || saved_tree_climate_key != tree_climate_key))
+                {
+                    recent_tree_climates.clear();
+                    for (int sample = 0; sample < 8; ++sample)
+                        recent_tree_climates.push_back(p->current_local_climate(true, tree_epoch - sample * 3 * oneday));
+                    saved_tree_climate_key = tree_climate_key;
+                }
                 const double scenery_range = has_plants ? std::max(PLANT_MAX_DIST, ROCK_MAX_DIST) : ROCK_MAX_DIST;
                 static SurfaceSceneryCache scenery_cache;
                 const auto &scenery = scenery_cache.update(R_planet, viewer_lat, viewer_lon,
@@ -8301,16 +8314,18 @@ void draw_horizon()
                     p ? p->has_water : 0.0f, p ? p->type : cel->type,
                     p ? p->vegetation_r : 0, p ? p->vegetation_g : 0, p ? p->vegetation_b : 0,
                     crown_scale, scenery_range, has_plants, P_surf,
-                    p ? p->veg_min_temp : 0.0, p ? p->veg_max_temp : 0.0);
+                    p ? p->veg_min_temp : 0.0, p ? p->veg_max_temp : 0.0, tree_epoch);
                 static decltype(scenery_key) saved_scenery_key;
                 static bool scenery_valid = false;
                 static std::vector<bool> plant, water, canopy_clear;
                 static std::vector<RGB3> scenery_colors;
+                static std::vector<TreeAppearance> tree_appearances;
                 if (!scenery_valid || saved_scenery_key != scenery_key)
                 {
                     plant.assign(scenery.size(), false);
                     water.assign(scenery.size(), false);
                     scenery_colors.resize(scenery.size());
+                    tree_appearances.assign(scenery.size(), {});
                     static FrameScratch<double> canopy_scratch;
                     std::vector<double> local_canopy_radii;
                     auto& canopy_radii = frame_scratch_enabled()
@@ -8324,20 +8339,20 @@ void draw_horizon()
                         {
                             const auto sample = surface.sample(object.latitude, object.longitude);
                             water[index] = sample.water;
-                            plant[index] = !sample.water && sample.vegetation;
                             scenery_colors[index] = sample.color;
                         }
                         else
                         {
                             water[index] = surface.water_at(object.latitude, object.longitude);
-                            plant[index] = !water[index] && surface.vegetation_at(object.latitude, object.longitude);
                             scenery_colors[index] = surface.color_at(object.latitude, object.longitude);
                         }
+                        const double density = has_plants ? surface.tree_density_at(object.latitude, object.longitude) : 0;
+                        const double draw = (scenery_hash(object.id ^ 0x7665676574617465ULL) >> 11) * 0x1.0p-53;
+                        plant[index] = draw < density;
                         if (plant[index])
                         {
-                            const double density = surface.vegetation_density_at(object.latitude, object.longitude);
-                            const double draw = (scenery_hash(object.id ^ 0x7665676574617465ULL) >> 11) * 0x1.0p-53;
-                            plant[index] = draw < density;
+                            water[index] = false;
+                            tree_appearances[index] = surface.tree_appearance_at(object.latitude, object.longitude, recent_tree_climates);
                         }
                         if (plant[index]) canopy_radii[index] = crown_scale
                             * scenery_size(object.seed, ROCK_MIN_SIZE, ROCK_MAX_SIZE);
@@ -8616,6 +8631,8 @@ void draw_horizon()
                         rocks[num_rocks].crown_above_eye = crown_above_eye;
                         rocks[num_rocks].aspect = rock_aspect;
                         rocks[num_rocks].surface_color = scenery_colors[index];
+                        rocks[num_rocks].foliage = tree_appearances[index].foliage;
+                        rocks[num_rocks].snow = tree_appearances[index].snow;
                         num_rocks++;
                     }
 
@@ -8861,9 +8878,12 @@ void draw_horizon()
                     const bool is_vegetation = rk.vegetation;
                     // Foliage reflectance belongs to the vegetation, even where
                     // suitable habitat lies over rock-colored map pixels.
+                    const auto stone = scenery_rock_color(rk.seed_val);
                     const RGB3 base_map_rgb = is_vegetation && p
-                        ? RGB3(p->vegetation_r, p->vegetation_g, p->vegetation_b)
-                        : rk.surface_color;
+                        ? RGB3(PLANT_TRUNK_COLOR_R + (p->vegetation_r - PLANT_TRUNK_COLOR_R) * rk.foliage,
+                            PLANT_TRUNK_COLOR_G + (p->vegetation_g - PLANT_TRUNK_COLOR_G) * rk.foliage,
+                            PLANT_TRUNK_COLOR_B + (p->vegetation_b - PLANT_TRUNK_COLOR_B) * rk.foliage)
+                        : RGB3(stone[0], stone[1], stone[2]);
                     const double haze_distance = hypot(rk.ground_dist, h_eye);
                     if (is_vegetation && rk.crown_rx <= 0) ++clipped_plant_trunks;
                     const int first_vertex = scenery_draw_list->VtxBuffer.Size;
@@ -8896,6 +8916,7 @@ void draw_horizon()
                         #endif
                         plant.crown_color = IM_COL32(base_map_rgb.r, base_map_rgb.g, base_map_rgb.b, 255);
                         plant.trunk_color = IM_COL32(PLANT_TRUNK_COLOR_R, PLANT_TRUNK_COLOR_G, PLANT_TRUNK_COLOR_B, 255);
+                        plant.season = ImVec4(rk.snow, 0, 0, 0);
                         plant.haze = ImVec4(haze.transmission(haze_distance, 0), haze.transmission(haze_distance, 1),
                             haze.transmission(haze_distance, 2), rk.opacity);
                         add_plant_mesh_gpu(plant, fmax(rk.crown_rx, rk.crown_ry));
@@ -8907,7 +8928,11 @@ void draw_horizon()
                         int pr, pg, pb;
                         if (is_vegetation)
                         {
-                            const RGB3 vcol = base_map_rgb;
+                            // At subpixel crown sizes only the average snow-covered cap is visible.
+                            const double snow = .22 * rk.snow;
+                            const RGB3 vcol(base_map_rgb.r + (224 - base_map_rgb.r) * snow,
+                                base_map_rgb.g + (240 - base_map_rgb.g) * snow,
+                                base_map_rgb.b + (252 - base_map_rgb.b) * snow);
                             pr = fmin(255.0, vcol.r * (amb_light + sun_light * 0.4));
                             pg = fmin(255.0, vcol.g * (amb_light + sun_light * 0.4));
                             pb = fmin(255.0, vcol.b * (amb_light + sun_light * 0.4));
@@ -8998,13 +9023,17 @@ void draw_horizon()
                         int cg = fmin(255.0, veg_base.g * tint_factor * crown_light);
                         int cb = fmin(255.0, veg_base.b * tint_factor * crown_light);
                         ImU32 crown_col = lit_scenery_color(cr, cg, cb, 255);
+                        const ImU32 snow_col = lit_scenery_color(fmin(255.0, 224 * crown_light),
+                            fmin(255.0, 240 * crown_light), fmin(255.0, 252 * crown_light), 255);
                         SceneryPlantGpu gpu_plant;
                         gpu_plant.crown = ImVec4(cx, cy, crown_rx, crown_ry);
                         gpu_plant.crown_color = pressure_haze_color(haze, crown_col, haze_distance);
                         gpu_plant.trunk_color = pressure_haze_color(haze, trunk_col, haze_distance);
+                        gpu_plant.snow_color = pressure_haze_color(haze, snow_col, haze_distance);
+                        gpu_plant.snow = rk.snow;
                         if (rk.opacity < 1)
                         {
-                            for (ImU32* color : {&gpu_plant.crown_color, &gpu_plant.trunk_color})
+                            for (ImU32* color : {&gpu_plant.crown_color, &gpu_plant.trunk_color, &gpu_plant.snow_color})
                             {
                                 const ImU32 alpha = static_cast<ImU32>(((*color & IM_COL32_A_MASK)
                                     >> IM_COL32_A_SHIFT) * rk.opacity);
@@ -9019,7 +9048,7 @@ void draw_horizon()
                             draw_scenery_crown(scenery_draw_list,
                                 ImVec2(cx, cy),
                                 ImVec2((float)crown_rx, (float)crown_ry),
-                                crown_col);
+                                crown_col, snow_col, rk.snow);
                         };
 
                         if (rk.crown_above_eye) draw_crown();

@@ -75,6 +75,7 @@ in vec4 aDimensions;
 in vec4 aCrown;
 in vec4 aTrunk;
 in vec4 aHaze;
+in vec4 aSeason;
 #if CROWN_TEXTURES
 in vec4 aTextureFrame;
 out vec3 crown_position;
@@ -122,6 +123,8 @@ void main()
     gl_Position = vec4(camera.x * uCamera.x / uCamera.y,
         camera.y * uCamera.x / uCamera.z, camera.z - .4, camera.z);
     material = crown ? aCrown : aTrunk;
+    if (crown) material.rgb = mix(material.rgb, vec3(224.0, 240.0, 252.0) / 255.0,
+        aSeason.x * smoothstep(.2, .65, aPosition.y));
     haze = aHaze;
 }
 )GLSL";
@@ -249,8 +252,8 @@ void main()
             {
                 program = glCreateProgram();
                 glAttachShader(program, vertex); glAttachShader(program, fragment);
-                const char* attributes[] = {"aPosition", "aNormal", "aBase", "aDimensions", "aCrown", "aTrunk", "aHaze", "aTextureFrame"};
-                for (int i = 0; i < 8; ++i) bind_attribute(program, i, attributes[i]);
+                const char* attributes[] = {"aPosition", "aNormal", "aBase", "aDimensions", "aCrown", "aTrunk", "aHaze", "aTextureFrame", "aSeason"};
+                for (int i = 0; i < 9; ++i) bind_attribute(program, i, attributes[i]);
                 glLinkProgram(program);
                 GLint success = 0;
                 glGetProgramiv(program, GL_LINK_STATUS, &success);
@@ -359,7 +362,7 @@ void main()
                 glUniform1i(locations[8], 1);
                 #endif
                 glBindBuffer(GL_ARRAY_BUFFER, mesh);
-                for (int i = 0; i < 8; ++i)
+                for (int i = 0; i < 9; ++i)
                 {
                     glEnableVertexAttribArray(i); divisor(i, i < 2 ? 0 : 1);
                     if (i < 2)
@@ -378,8 +381,8 @@ void main()
             {
                 const size_t base = (batch.upload_offset + run.first) * sizeof(PlantMeshInstance);
                 const size_t offsets[] = {offsetof(PlantMeshInstance, base), offsetof(PlantMeshInstance, dimensions),
-                    offsetof(PlantMeshInstance, crown_color), offsetof(PlantMeshInstance, trunk_color), offsetof(PlantMeshInstance, haze), offsetof(PlantMeshInstance, texture_frame)};
-                for (int i = 0; i < 6; ++i)
+                    offsetof(PlantMeshInstance, crown_color), offsetof(PlantMeshInstance, trunk_color), offsetof(PlantMeshInstance, haze), offsetof(PlantMeshInstance, texture_frame), offsetof(PlantMeshInstance, season)};
+                for (int i = 0; i < 7; ++i)
                 {
                     const bool color = i == 2 || i == 3;
                     glVertexAttribPointer(i + 2, 4, color ? GL_UNSIGNED_BYTE : GL_FLOAT, color ? GL_TRUE : GL_FALSE,

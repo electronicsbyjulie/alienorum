@@ -4275,6 +4275,13 @@ TEST_F(RenderingRegressionTest, DistantPlantsShareTheGroundHorizonRefractionScal
     world->volumetric_mean_radius = 14186858;
     world->oblateness = 0;
     world->temperature = 323.402;
+    // This test isolates refraction rather than seasonal crown dormancy.
+    world->veg_min_temp = 260;
+    world->veg_max_temp = 400;
+    // Distinguish crown geometry from the green source-map pixels below it.
+    world->vegetation_r = 20;
+    world->vegetation_g = 180;
+    world->vegetation_b = 20;
     delete world->surf_map;
     world->surf_map = new DistantPlantTestMap(world->get_equatorial_radius());
     world->plant_trunk_height = 2;
@@ -4282,34 +4289,42 @@ TEST_F(RenderingRegressionTest, DistantPlantsShareTheGroundHorizonRefractionScal
     set(viewer_eye_height, 1.82);
     set(zoom, 30.0);
     set(altitude, 0.0);
-    const auto crown_height = [&](double pressure)
+    const auto crown_vertices = [&](double pressure)
     {
         world->ensure_atmosphere()->surface_pressure = pressure;
-        double sum = 0;
-        int count = 0;
+        std::map<float, float> vertices;
         for (const auto& vertex : scenery())
         {
             const int red = (vertex.col >> IM_COL32_R_SHIFT) & 255;
             const int green = (vertex.col >> IM_COL32_G_SHIFT) & 255;
             const int blue = (vertex.col >> IM_COL32_B_SHIFT) & 255;
-            if (green > 1.2 * red && green > 2 * blue)
+            if (green > 3 * red && green > 3 * blue)
             {
-                sum += vertex.pos.y;
-                ++count;
+                const auto inserted = vertices.emplace(vertex.pos.x, vertex.pos.y);
+                if (!inserted.second) inserted.first->second = std::min(inserted.first->second, vertex.pos.y);
             }
         }
-        EXPECT_GT(count, 0);
-        return count ? sum / count : 0;
+        EXPECT_GT(vertices.size(), 0u);
+        return vertices;
     };
-    const double clear_y = crown_height(oneatm);
-    const double refracted_y = crown_height(658612.5);
+    const auto clear = crown_vertices(oneatm);
+    const auto refracted = crown_vertices(658612.5);
+    std::vector<double> shifts;
+    for (const auto& vertex : clear)
+    {
+        const auto found = refracted.find(vertex.first);
+        if (found != refracted.end()) shifts.push_back(vertex.second - found->second);
+    }
+    ASSERT_GT(shifts.size(), 10u);
+    std::sort(shifts.begin(), shifts.end());
+    const double shift = shifts[shifts.size() / 2];
     const double range = sqrt(2 * world->get_equatorial_radius() * viewer_eye_height);
     const double lift = world->atmospheric_horizon_lift();
     const double focal = dispcx * zoom;
-    // Biome displacement perturbs the distant vegetation strip, so allow for
-    // its spread while distinguishing the ground scale from the inflated range.
-    EXPECT_GT(clear_y - refracted_y, .4 * focal * lift * PLANT_MAX_DIST / range);
-    EXPECT_LT(clear_y - refracted_y, 1.2 * focal * lift * PLANT_MAX_DIST / range);
+    // Match the same horizontal crown vertices. Changes in clipping or crown
+    // coloring must not bias a centroid by admitting a different set of trees.
+    EXPECT_GT(shift, .4 * focal * lift * PLANT_MAX_DIST / range);
+    EXPECT_LT(shift, 1.2 * focal * lift * PLANT_MAX_DIST / range);
 }
 
 TEST_F(RenderingRegressionTest, ShorelineGeometryStaysFiniteAtFullResolution)
@@ -8992,6 +9007,163 @@ TEST(PlantMeshGeometryTest, ClosedMeshesHaveOutwardFacesAndBoundedDetail)
             EXPECT_GT(face[0] * normal[0] + face[1] * normal[1] + face[2] * normal[2], 0);
         }
     }
+}
+
+TEST(VegetationCoverTest, MixedMapColorsProduceSparseGrovesAndMixedWoodland)
+{
+    const RGB3 foliage(80, 140, 30);
+    const auto cover = [&](RGB3 ground) { return vegetation_cover_fraction(ground, foliage); };
+    EXPECT_DOUBLE_EQ(cover(RGB3(200, 175, 125)), 0);
+    EXPECT_DOUBLE_EQ(cover(RGB3(150, 150, 150)), 0);
+    const double sparse = cover(RGB3(130, 125, 80));
+    const double olive = cover(RGB3(110, 115, 60));
+    const double chartreuse = cover(RGB3(130, 140, 60));
+    EXPECT_GT(sparse, 0);
+    EXPECT_LT(sparse, olive);
+    EXPECT_LT(olive, chartreuse);
+    EXPECT_LT(chartreuse, 1);
+    EXPECT_DOUBLE_EQ(cover(foliage), 1);
+    EXPECT_DOUBLE_EQ(cover(RGB3(40, 70, 15)), 1);
+    EXPECT_DOUBLE_EQ(cover(RGB3(0, 0, 0)), 0);
+    EXPECT_DOUBLE_EQ(cover(RGB3(20, 70, 140)), 0);
+}
+
+TEST(SceneryRockColorTest, SeededStonePaletteStaysNeutralAndVariesBetweenObjects)
+{
+    const auto first = scenery_rock_color(1);
+    bool varied = false;
+    for (uint32_t seed = 1; seed < 100; ++seed)
+    {
+        const auto color = scenery_rock_color(seed);
+        EXPECT_EQ(color, scenery_rock_color(seed));
+        EXPECT_GE(color[0], color[1]);
+        EXPECT_GE(color[1], color[2]);
+        EXPECT_LE(int(color[0]) - color[2], 18);
+        EXPECT_GE(color[2], 130);
+        varied = varied || color != first;
+    }
+    EXPECT_TRUE(varied);
+}
+
+TEST(TreeSeasonTest, CrownDormancyUsesWeeksOfDailyMeansAndKeepsSnowSeparate)
+{
+    std::vector<LocalClimate> history(8, uniform_phase_climate(290));
+    const auto appearance = [&](double frost = 0.0)
+    {
+        return tree_appearance(history, -1, 0, 0, 0, 278, 310, frost);
+    };
+    EXPECT_DOUBLE_EQ(appearance().foliage, 1);
+    history.front() = uniform_phase_climate(250);
+    EXPECT_DOUBLE_EQ(appearance().foliage, .875);
+    for (auto& climate : history) climate = uniform_phase_climate(250);
+    EXPECT_DOUBLE_EQ(appearance(1).foliage, 0);
+    EXPECT_DOUBLE_EQ(appearance(1).snow, 1);
+    for (auto& climate : history) climate = uniform_phase_climate(340);
+    EXPECT_DOUBLE_EQ(appearance().foliage, 0);
+    EXPECT_DOUBLE_EQ(appearance().snow, 0);
+    history.assign(8, uniform_phase_climate(290));
+    history.front().current_conditions = true;
+    history.front().land_seasonal_flux.fill(1);
+    history.front().current_mean_k = 290;
+    history.front().sun_x = 1;
+    const auto night = appearance();
+    history.front().sun_x = -1;
+    EXPECT_DOUBLE_EQ(appearance().foliage, night.foliage);
+}
+
+TEST_F(RenderingRegressionTest, TreeSitesSurvivePublishedFrostThawAndSavedPhaseTiles)
+{
+    Planet* world = surface(true);
+    world->has_water = .5;
+    world->temperature = 294;
+    world->temperature_supplied = true;
+    world->veg_min_temp = 260;
+    world->veg_max_temp = 340;
+    delete world->surf_map;
+    auto* map = new WaterPhaseTestMap(64, 32, true);
+    world->surf_map = map;
+    map->set_material_at(.3, .3, SurfaceMaterial::vegetation);
+    SurfaceBiomes field(world->texture_seed());
+    SurfaceSampler sampler(world, map, field, earth_radius, 0);
+    ASSERT_TRUE(sampler.tree_site_at(.3, .3));
+    ASSERT_FALSE(sampler.tree_site_at(.3, -.3));
+    const double density = sampler.tree_density_at(.3, .3);
+    EXPECT_GT(density, 0);
+    world->ensure_atmosphere()->surface_pressure = 6 * oneatm;
+    SurfaceSampler denser_air(world, map, field, earth_radius, 0);
+    EXPECT_DOUBLE_EQ(denser_air.tree_density_at(.3, .3), density);
+    world->ensure_atmosphere()->surface_pressure = oneatm;
+    for (double temperature : {245.0, 295.0, 245.0})
+    {
+        surface_phase_clock.fetch_add(1);
+        const auto climate = uniform_phase_climate(temperature);
+        ASSERT_TRUE(publish_water_phase(*map, climate, temperature * oneday));
+        EXPECT_TRUE(sampler.tree_site_at(.3, .3));
+        EXPECT_FALSE(sampler.tree_site_at(.3, -.3));
+        EXPECT_DOUBLE_EQ(sampler.tree_density_at(.3, .3), density);
+        if (temperature < 273)
+        {
+            EXPECT_EQ(map->material_at(.3, .3), SurfaceMaterial::frost);
+            EXPECT_FALSE(sampler.vegetation_at(.3, .3));
+            EXPECT_GT(sampler.tree_appearance_at(.3, .3, {climate}).snow, .5);
+        }
+        map->water_phase_from_json(map->water_phase_to_json());
+        EXPECT_TRUE(sampler.tree_site_at(.3, .3));
+    }
+}
+
+TEST_F(RenderingRegressionTest, SnowOnFallbackCrownsPreservesLowerBranchesAndGeometry)
+{
+    auto* draw = ImGui::GetBackgroundDrawList();
+    const ImU32 wood = IM_COL32(115, 100, 85, 255), snow = IM_COL32(224, 240, 252, 255);
+    const int begin = draw->VtxBuffer.Size;
+    draw_scenery_crown(draw, ImVec2(96, 54), ImVec2(30, 20), wood, snow, 1);
+    int upper = 0, lower = 0;
+    for (int index = begin; index < draw->VtxBuffer.Size; ++index)
+    {
+        const auto& vertex = draw->VtxBuffer[index];
+        const unsigned int red = (vertex.col >> IM_COL32_R_SHIFT) & 255;
+        if (vertex.pos.y < 40 && red > 115) ++upper;
+        if (vertex.pos.y >= 54)
+        {
+            EXPECT_EQ(red, 115u);
+            ++lower;
+        }
+    }
+    EXPECT_GT(upper, 0);
+    EXPECT_GT(lower, 0);
+}
+
+TEST_F(RenderingRegressionTest, SnowColorsOnlyTheUpperCrownAndPreservesTheTrunk)
+{
+    set(scenery_gpu_reference, false);
+    PlantMeshView view;
+    view.focal = 110; view.center_x = 96; view.center_y = 54;
+    view.ambient = 1; view.light = ImVec4(0, 1, 0, 0);
+    PlantMeshInstance plant;
+    plant.base = ImVec4(0, -3, 8, 3);
+    plant.dimensions = ImVec4(1.5, .75, .2, .1);
+    plant.crown_color = plant.trunk_color = IM_COL32(115, 100, 85, 255);
+    const auto paint = [&](float snow)
+    {
+        plant.season.x = snow;
+        EXPECT_TRUE(prepare_plant_mesh_gpu(view));
+        add_plant_mesh_gpu(plant, 35); flush_plant_mesh_gpu();
+        return render();
+    };
+    const auto bare = paint(0);
+    ImGui::NewFrame();
+    const auto snowy = paint(1);
+    int upper_changes = 0;
+    for (int row = 0; row < 108; ++row)
+        for (int column = 0; column < 192; ++column)
+        {
+            const size_t index = (row * 192 + column) * 4;
+            if (row >= 54) upper_changes += snowy[index] > bare[index];
+            else EXPECT_EQ(snowy[index], bare[index]);
+        }
+    EXPECT_GT(upper_changes, 10);
+    ImGui::NewFrame();
 }
 
 TEST_F(RenderingRegressionTest, PlantMeshesResolveDepthAcrossBatchesAndPreserveUiState)

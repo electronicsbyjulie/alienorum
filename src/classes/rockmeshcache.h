@@ -11,6 +11,17 @@
 #endif
 namespace alienorum
 {
+    inline std::array<unsigned char, 3> scenery_rock_color(uint32_t seed)
+    {
+        uint32_t shade = seed ^ 0x73746f6eu;
+        shade = ((shade >> 16) ^ shade) * 0x45d9f3bu;
+        shade = ((shade >> 16) ^ shade) * 0x45d9f3bu;
+        const double gray = 136 + 36 * (shade & 65535u) / 65535.0;
+        const double warmth = ((shade >> 16) & 65535u) / 65535.0;
+        return {static_cast<unsigned char>(gray + 12 * warmth),
+            static_cast<unsigned char>(gray + 7 * warmth), static_cast<unsigned char>(gray - 6 * warmth)};
+    }
+
     inline double rock_slab_bias(double pressure_pa)
     {
         if (!std::isfinite(pressure_pa) || pressure_pa <= oneatm) return 0;

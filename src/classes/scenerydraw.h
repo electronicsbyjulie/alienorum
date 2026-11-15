@@ -148,10 +148,11 @@ namespace alienorum
     };
 
     // Reuse the native ellipse's unit contour, retaining its adaptive tessellation.
-    inline void draw_scenery_crown(ImDrawList *draw, const ImVec2 &center, const ImVec2 &radius, ImU32 color)
+    inline void draw_scenery_crown(ImDrawList *draw, const ImVec2 &center, const ImVec2 &radius, ImU32 color,
+        ImU32 snow_color = 0, double snow = 0)
     {
         if (!(color & IM_COL32_A_MASK)) return;
-        const int segments = draw->_CalcCircleAutoSegmentCount(std::max(radius.x, radius.y));
+        const int segments = draw->_CalcCircleAutoSegmentCount(std::max(radius.x, radius.y)) * 1.5 * zoom;
         static std::unordered_map<int, std::vector<ImVec2>> contours;
         auto found = contours.find(segments);
         if (found == contours.end())
@@ -172,7 +173,24 @@ namespace alienorum
         {
             draw->PathLineTo(ImVec2(point.x * radius.x + center.x, point.y * radius.y + center.y));
         }
+        const int first_vertex = draw->VtxBuffer.Size;
         draw->PathFillConvex(color);
+        if (snow > 0 && radius.y > 0)
+        {
+            for (int index = first_vertex; index < draw->VtxBuffer.Size; ++index)
+            {
+                auto& vertex = draw->VtxBuffer[index];
+                const double top = std::clamp(((center.y - vertex.pos.y) / radius.y - .2) / .45, 0.0, 1.0);
+                const double cover = snow * top * top * (3 - 2 * top);
+                ImU32 rgb = 0;
+                for (int shift : {IM_COL32_R_SHIFT, IM_COL32_G_SHIFT, IM_COL32_B_SHIFT})
+                {
+                    const double base = (color >> shift) & 255;
+                    rgb |= static_cast<ImU32>(base + (((snow_color >> shift) & 255) - base) * cover) << shift;
+                }
+                vertex.col = rgb | (vertex.col & IM_COL32_A_MASK);
+            }
+        }
     }
 }
 
