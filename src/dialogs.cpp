@@ -1329,6 +1329,7 @@ void draw_addcel_window(ImGuiIO& io)
 
             if (cel)
             {
+                reset_closed_object_editor();
                 const std::string initial_name = cls == class_star && cel->typeclass() == class_planet
                     ? next_planet_name(*cels[addcenidx], cels) : "new";
                 snprintf(cel->name, sizeof(cel->name), "%s", initial_name.c_str());
@@ -1395,6 +1396,16 @@ const double mass_units_conv[cbo_edt_num_units] = {1000, solar_mass, jupiter_mas
 const char* size_units[cbo_edt_num_units] = {"km", "Sun", "Jup.", "Earth"};
 const double size_units_conv[cbo_edt_num_units] = {1000, solar_radius, jupiter_radius, earth_radius};
 bool sma_res_picker = false;
+static bool reset_editor_tab = false;
+
+void reset_closed_object_editor()
+{
+    if (objedtwnd) return;
+    randomize_txgen = true;
+    show_taucalc = false;
+    reset_editor_tab = true;
+}
+
 void draw_objedit_window(ImGuiIO& io)
 {
     if (!cels[1]) return;
@@ -1461,7 +1472,13 @@ void draw_objedit_window(ImGuiIO& io)
     ImGuiTabBarFlags tab_bar_flags = ImGuiTabBarFlags_None;
     if (ImGui::BeginTabBar("##edittabs", tab_bar_flags))
     {
-        if (tc != class_satellite && ImGui::BeginTabItem("Bulk"))
+        const auto begin_editor_tab = [&](const char* label)
+        {
+            const ImGuiTabItemFlags flags = reset_editor_tab ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None;
+            reset_editor_tab = false;
+            return ImGui::BeginTabItem(label, nullptr, flags);
+        };
+        if (tc != class_satellite && begin_editor_tab("Bulk"))
         {
             double edit_mass = cel->mass / mass_units_conv[cbo_edt_units];
             ImGui::Text("%s", "Mass");
@@ -1785,7 +1802,7 @@ void draw_objedit_window(ImGuiIO& io)
         {
             ImGui::EndTabItem();
         } */
-        if ((tc == class_star) && ImGui::BeginTabItem("Starstuff"))
+        if ((tc == class_star) && begin_editor_tab("Starstuff"))
         {
             Star* s = (Star*)cels[editidx];
 
@@ -1854,7 +1871,7 @@ void draw_objedit_window(ImGuiIO& io)
 
             ImGui::EndTabItem();
         }
-        if (orb && ImGui::BeginTabItem("Orbit"))
+        if (orb && begin_editor_tab("Orbit"))
         {
             std::string orbcen = "Center of Orbit: ";
             orbcen += std::string(cel->orbit->center->name);
@@ -2416,7 +2433,7 @@ void draw_objedit_window(ImGuiIO& io)
 
             ImGui::EndTabItem();
         }
-        if ((tc == class_star || tc == class_planet || tc == class_moon) && ImGui::BeginTabItem("Maps"))
+        if ((tc == class_star || tc == class_planet || tc == class_moon) && begin_editor_tab("Maps"))
         {
             if ((tc == class_planet || tc == class_moon))
             {
@@ -3113,7 +3130,7 @@ void draw_system_explorer(ImGuiIO& io)
     {
         if (celidx_sel_in_sysxplor >= 0)
         {
-            whereami = celidx_sel_in_sysxplor;
+            go_to_celestial_object(celidx_sel_in_sysxplor);
             if (view_mode == vm_system) view_mode = vm_spaceship;
             viewer_locale = "";
             set_viewer_location_and_plane();
@@ -3429,7 +3446,7 @@ void draw_stellar_neighborhood(ImGuiIO &io)
     {
         if (neighb_celids[item_selected_idx] >= 0)
         {
-            whereami = neighb_celids[item_selected_idx];
+            go_to_celestial_object(neighb_celids[item_selected_idx]);
             viewer_locale = "";
             set_viewer_location_and_plane();
             selected = trackidx = -1;
@@ -3745,7 +3762,7 @@ void draw_ast_window(ImGuiIO & io)
             ImGui::SameLine();
             if (ImGui::Button("Go##asteroid"))
             {
-                whereami = astorb[i].cel->seqno;
+                go_to_celestial_object(astorb[i].cel->seqno);
                 viewer_locale = "";
                 viewchanged = true;
             }
@@ -4034,7 +4051,7 @@ void draw_favestars_window(ImGuiIO & io)
     {
         if (item_selected_idx < favestars.size())
         {
-            whereami = favestars[item_selected_idx]->seqno;
+            go_to_celestial_object(favestars[item_selected_idx]->seqno);
             viewer_locale = "";
             set_viewer_location_and_plane();
             selected = trackidx = -1;
@@ -4186,7 +4203,7 @@ void draw_comet_window(ImGuiIO & io)
             ImGui::SameLine();
             if (ImGui::Button("Go##comet"))
             {
-                whereami = comets[i].cel->seqno;
+                go_to_celestial_object(comets[i].cel->seqno);
                 viewer_locale = "";
                 viewchanged = true;
             }

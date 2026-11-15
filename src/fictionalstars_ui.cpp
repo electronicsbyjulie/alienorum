@@ -203,7 +203,7 @@ namespace
                 set_center_objects();
                 if (here.distance_to(anchor->location) < light_year*1e-6)
                 {
-                    whereami = center_index;
+                    go_to_celestial_object(center_index);
                     mycenobj = anchor;
                     vplane_mode = vplane_local;
                     set_viewer_location_and_plane();
@@ -353,7 +353,7 @@ bool fictional_visit_center(const FictionalGalaxy& galaxy, const FictionalRegion
         if (star->fictional_origin.is_object() && star->fictional_origin.value("anchor", false)
             && initial.distance_to(destination) < light_year*1e-6)
         {
-            whereami = i;
+            go_to_celestial_object(i);
             mycenobj = cels[i];
             star->update_location(simnow);
             break;

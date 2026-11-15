@@ -16,6 +16,7 @@
 #include "celestial.h"
 #include "objectsearch.h"
 #include "surfaceoptions.h"
+#include "texturegeneration.h"
 #include "shore.h"
 #include "cloudclimate.h"
 #include "surfacephase.h"
@@ -3585,7 +3586,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
         const bool simulated_life = p->resolve_sim_life(!p->preserve_loaded_parameters);
         const bool life_possible = habitat_possible && simulated_life;
         // Keep palette draws stable even when the life scenario suppresses vegetation.
-        if (!p->preserve_loaded_parameters && p->has_water && habitat_possible && randomize_txgen
+        if (!p->preserve_loaded_parameters && p->has_water && habitat_possible && texture_randomization_enabled()
             && !p->vegetation_r && !p->vegetation_g && !p->vegetation_b)
         {
             CelestialObject *light_center = cel->get_light_center();

@@ -1,6 +1,7 @@
 #include "catalog_lock_trace.h"
 #include "performance_options.h"
 #include "classes/cloudclimate.h"
+#include "classes/texturegeneration.h"
 
 #include "loaders.h"
 #include "housekeeping.h"
@@ -314,13 +315,25 @@ void publish_regenerated_clouds()
     }
 }
 
+TextureGenerationOptions alienorum::texture_generation_options(const CelestialObject* object)
+{
+    if (objedtwnd && cels && editidx >= 0 && editidx < ncelobjs && cels[editidx] == object)
+        return {randomize_txgen, show_taucalc};
+    return {};
+}
+
 void spawn_texture_load(CelestialObject *cel)
 {
     if (!cel || cel->looked_for_maps || abort_load.load()) return;
     cel->looked_for_maps = true;            // Prevent spawning infinite threads and crashing the system.
     try
     {
-        if (!spawn_texture_task([cel]() { load_textures(cel); })) cel->looked_for_maps = false;
+        const auto options = texture_generation_options(cel);
+        if (!spawn_texture_task([cel, options]()
+        {
+            const ScopedTextureGenerationOptions generation(options);
+            load_textures(cel);
+        })) cel->looked_for_maps = false;
     }
     catch (...)
     {
@@ -367,6 +380,7 @@ static void complete_ring_textures(CelestialObject* cel)
 
 void load_textures(CelestialObject* cel)
 {
+    const ScopedTextureGenerationOptions generation(cel);
     if ((cel->typeclass() == class_planet || cel->typeclass() == class_moon)
         && !uses_rocky_map(cel->type) && !uses_gaseous_map(cel->type))
     {

@@ -749,7 +749,7 @@ void process_key_cmd_char(char c)
         if (selected < 0 && trackidx >= 0) selected = trackidx;
         if (selected >= 0)
         {
-            whereami = selected;
+            go_to_celestial_object(selected);
             if (whereami >= 0 && cels[whereami] == cels[whereami]->cenobj) cbolbls_selected_idx = lbltype_brightest;
             set_viewer_location_and_plane();
             selected = trackidx = -1;
@@ -787,7 +787,7 @@ void process_key_cmd_char(char c)
         whtbkgd = false;
         zoom = 1;
         spin = 0;
-        whereami = iamhome;
+        go_to_celestial_object(iamhome);
         trackidx = -1;
         view_mode = vm_spaceship;
         vplane_mode = vplane_local;
@@ -1667,7 +1667,7 @@ bool apply_object_search_action(const ObjectSearchMatch& match, ObjectSearchActi
             viewchanged = true;
             break;
         case ObjectSearchAction::go:
-            whereami = match.index;
+            go_to_celestial_object(match.index);
             if (view_mode == vm_system) view_mode = vm_spaceship;
             viewer_locale.clear();
             set_viewer_location_and_plane();

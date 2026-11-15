@@ -8039,10 +8039,16 @@ void draw_horizon()
             const double s_horizon = surface_range;
             const double scenery_bending = .5 / R_planet - surface_refraction.curvature;
 
-            double sun_light = fmax(0.0, sin(sun_elev)) * is_day;
-            double amb_light = fmax(0.04, 0.22 * is_day + starlight * 0.4);
-            amb_light += .35 * is_day * haze.sky_opacity;
-            sun_light *= 1 - haze.sky_opacity;
+            double cloud_coverage = 0;
+            if (show_clouds && p)
+            {
+                if (p->overcast) cloud_coverage = 1;
+                else if (p->cloud_map && p->cloud_map->is_complete())
+                    cloud_coverage = p->cloud_map->color_at_bilinear(viewer_lat, viewer_lon).luminance() / 255.0;
+            }
+            const auto scenery_light = scenery_illumination(is_day, starlight, sun_elev, haze.sky_opacity, cloud_coverage);
+            const double sun_light = scenery_light.direct;
+            const double amb_light = scenery_light.ambient;
 
             if (show_terrain)
             {
@@ -8711,7 +8717,7 @@ void draw_horizon()
                         }
                         const double visibility = std::clamp(pow(total_flux * 2.5e-11, 1.0 / 5.5), 0.0, 1.0);
                         const double shadow_strength = shadow_base_alpha / 255.0 * visibility
-                            * std::min(1.0, shadow_source.elevation * 2.5) * (1 - haze.sky_opacity);
+                            * std::min(1.0, shadow_source.elevation * 2.5) * scenery_light.shadow;
                         double cos_alt = surface_cos_altitude();
                         double sin_alt = surface_sin_altitude();
                         double cos_az = cos(azimuth);
@@ -9244,6 +9250,7 @@ void draw_horizon()
 
                             double dot_sun = fmax(0.0, nx * sun_cam_x + ny * sun_cam_y + nz * sun_cam_z);
                             double sky_fac = 0.80 + 0.35 * fmax(0.0, ny);
+                            sky_fac += (1 - sky_fac) * .8 * scenery_light.cloud;
                             double light_fac = amb_light * amb_mult * sky_fac + sun_light * sun_mult * dot_sun;
 
                             int cr = fmin(255.0, br * light_fac);

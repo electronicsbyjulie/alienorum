@@ -26,6 +26,7 @@
 #include "../housekeeping.h"
 #include "../classes/clouds_gpu.h"
 #include "../classes/cloudlighting.h"
+#include "../classes/texturegeneration.h"
 #include "../classes/precipitationcache.h"
 #include "../classes/pressurehaze.h"
 #include "../classes/surfacebiomes.h"
@@ -103,6 +104,27 @@ class SceneryTestMap : public Map
             green_data[i] = plant ? 140 : (sea ? 100 : 120);
             blue_data[i] = plant ? 30 : (sea ? 160 : 80);
         }
+        touch_gen();
+    }
+};
+
+class UniformCloudTestMap : public Map
+{
+    public:
+    explicit UniformCloudTestMap(unsigned char coverage)
+    {
+        image_width = image_height = 2;
+        allocated = 4;
+        lat_scale = 2 / _pi; lon_scale = 1 / _pi;
+        red_data = new unsigned char[4];
+        green_data = new unsigned char[4];
+        blue_data = new unsigned char[4];
+        set_coverage(coverage);
+    }
+    void set_coverage(unsigned char coverage)
+    {
+        for (unsigned long index = 0; index < allocated; ++index)
+            red_data[index] = green_data[index] = blue_data[index] = coverage;
         touch_gen();
     }
 };
@@ -582,6 +604,248 @@ class RenderingRegressionTest : public UniverseFixture
         EXPECT_TRUE(accelerated == uncropped);
     }
 };
+
+TEST_F(RenderingRegressionTest, Gj1061VegetationRemainsTreesAfterEditingItsBarrenNeighbor)
+{
+    make_star("Sun");
+    class Reader : public CatalogReader
+    {
+        public:
+        using CatalogReader::exorow_from_json;
+        using CatalogReader::resolve_or_create_exostar;
+        using CatalogReader::add_exoplanet_from_row;
+    } reader;
+    Star::load_main_seq_dat();
+    std::ifstream input("catalogs/exoplanets.json");
+    ASSERT_TRUE(input.good());
+    const auto catalog = nlohmann::json::parse(input);
+    std::map<int, std::vector<int>> planets;
+    unsigned int count = 0;
+    Planet* inner = nullptr;
+    Planet* outer = nullptr;
+    set(randomize_txgen, true);
+    set(show_taucalc, false);
+    set(objedtwnd, false);
+    for (const auto& record : catalog)
+    {
+        const auto name = record.value("pl_name", "");
+        if (name != "GJ 1061 b" && name != "GJ 1061 c") continue;
+        bool valid = false, added = false;
+        const auto row = Reader::exorow_from_json(record, &valid);
+        ASSERT_TRUE(valid);
+        auto* host = reader.resolve_or_create_exostar(row, false, &added);
+        ASSERT_NE(host, nullptr);
+        ASSERT_TRUE(reader.add_exoplanet_from_row(row, host, planets, count));
+        auto* body = static_cast<Planet*>(cels[ncelobjs - 1]);
+        body->fictitious_map_height = 64;
+        body->ignore_map_files = true;
+        body->looked_for_maps = true;
+        if (name == "GJ 1061 b") inner = body;
+        else outer = body;
+    }
+    ASSERT_NE(inner, nullptr);
+    ASSERT_NE(outer, nullptr);
+    // Hold the inhabited realization fixed; this test checks editor isolation,
+    // rather than changes to the catalog's atmospheric-inventory estimates.
+    outer->temperature = 294;
+    outer->temperature_supplied = true;
+    outer->has_water = .45;
+    outer->has_water_supplied = true;
+    auto* atmosphere = outer->ensure_atmosphere();
+    atmosphere->surface_pressure = oneatm;
+    atmosphere->pressure_supplied = true;
+    *atmosphere->ensure_composition() = AtmosphereComposition{outer};
+    atmosphere->comp->N2_portion = .78;
+    atmosphere->comp->O2_portion = .21;
+    atmosphere->comp->CO2_portion = .0004;
+    set(editidx, inner->seqno);
+    objedtwnd = true;
+    show_taucalc = true;
+    randomize_txgen = false;
+    // Nearby worlds may finish loading while their neighbor's editor is open.
+    load_textures(outer);
+    EXPECT_FALSE(randomize_txgen);
+    EXPECT_TRUE(show_taucalc);
+    objedtwnd = false;
+    ASSERT_TRUE(go_to_celestial_object(outer->seqno));
+    ASSERT_NE(outer->surf_map, nullptr);
+    SurfaceBiomes field(outer->seqno);
+    SurfaceSampler sampler(outer, outer->surf_map, field, outer->get_equatorial_radius(), 0);
+    int vegetation = 0, trees = 0;
+    for (int row = 0; row < 32; ++row)
+        for (int column = 0; column < 64; ++column)
+        {
+            const double lat = half_pi - (row + .5) * _pi / 32;
+            const double lon = -_pi + (column + .5) * 2 * _pi / 64;
+            if (sampler.vegetation_at(lat, lon))
+            {
+                ++vegetation;
+                trees += sampler.tree_density_at(lat, lon) > 0;
+            }
+        }
+    std::cout << "GJ 1061 c: vegetation=" << vegetation << " tree sites=" << trees
+        << " water=" << outer->has_water << " T=" << outer->temperature
+        << " pressure=" << outer->get_surface_pressure() << " palette="
+        << outer->vegetation_r << ',' << outer->vegetation_g << ',' << outer->vegetation_b << '\n';
+    EXPECT_GT(vegetation, 0);
+    EXPECT_GT(trees, 0);
+}
+
+TEST_F(RenderingRegressionTest, TextureGenerationCapturesOnlyItsOwnEditorsOptionsAndKeepsThemAcrossUiChanges)
+{
+    auto* target = surface();
+    auto* neighbor = make_planet(static_cast<Star*>(target->orbit->center), "Generation neighbor");
+    set(editidx, target->seqno);
+    set(objedtwnd, true);
+    set(randomize_txgen, false);
+    set(show_taucalc, true);
+    const auto selected = texture_generation_options(target);
+    const auto automatic = texture_generation_options(neighbor);
+    EXPECT_FALSE(selected.randomize);
+    EXPECT_TRUE(selected.tau_calculator);
+    EXPECT_TRUE(automatic.randomize);
+    EXPECT_FALSE(automatic.tau_calculator);
+    objedtwnd = false;
+    randomize_txgen = true;
+    show_taucalc = false;
+    {
+        const ScopedTextureGenerationOptions queued(selected);
+        EXPECT_FALSE(texture_randomization_enabled());
+        EXPECT_TRUE(texture_tau_calculator_active());
+        {
+            // Saved-body rendering creates an independent working object.
+            const ScopedTextureGenerationOptions working_copy(neighbor);
+            EXPECT_FALSE(texture_randomization_enabled());
+            EXPECT_TRUE(texture_tau_calculator_active());
+        }
+        EXPECT_FALSE(texture_randomization_enabled());
+    }
+    EXPECT_TRUE(texture_randomization_enabled());
+    EXPECT_FALSE(texture_tau_calculator_active());
+}
+
+TEST_F(RenderingRegressionTest, GoResetsEditorToFirstVisibleTabOnlyWhenItWasClosed)
+{
+    auto* world = surface();
+    set(ImGui::GetIO().DisplaySize, ImVec2(1024, 768));
+    set(objedtwnd, false);
+    set(editidx, world->seqno);
+    set(randomize_txgen, false);
+    set(show_taucalc, true);
+    ASSERT_TRUE(go_to_celestial_object(world->seqno));
+    objedtwnd = true;
+    const auto draw_editor = [&]()
+    {
+        ImGui::SetNextWindowPos(ImVec2(0, 0));
+        ImGui::SetNextWindowSize(ImVec2(950, 650));
+        ImGui::SetNextWindowCollapsed(false);
+        draw_objedit_window(ImGui::GetIO());
+        ImGui::EndFrame();
+        ImGui::NewFrame();
+    };
+    const auto tab_bar = [&]() -> ImGuiTabBar*
+    {
+        auto* window = ImGui::FindWindowByName("Edit Object");
+        return window ? ImGui::GetCurrentContext()->TabBars.GetByKey(window->GetID("##edittabs")) : nullptr;
+    };
+    const auto selected_tab = [&]() -> std::string
+    {
+        auto* bar = tab_bar();
+        if (!bar) return "";
+        auto* tab = ImGui::TabBarFindTabByID(bar, bar->SelectedTabId);
+        return tab ? ImGui::TabBarGetTabName(bar, tab) : "";
+    };
+    draw_editor(); draw_editor();
+    ASSERT_NE(tab_bar(), nullptr);
+    EXPECT_EQ(selected_tab(), "Bulk");
+    ASSERT_GT(tab_bar()->Tabs.Size, 1);
+    tab_bar()->NextSelectedTabId = tab_bar()->Tabs[1].ID;
+    draw_editor(); draw_editor();
+    EXPECT_EQ(selected_tab(), "Orbit");
+    randomize_txgen = false;
+    show_taucalc = true;
+    ASSERT_TRUE(go_to_celestial_object(world->orbit->center->seqno));
+    draw_editor(); draw_editor();
+    EXPECT_EQ(selected_tab(), "Orbit");
+    EXPECT_FALSE(randomize_txgen);
+    EXPECT_TRUE(show_taucalc);
+    objedtwnd = false;
+    ASSERT_TRUE(go_to_celestial_object(world->seqno));
+    objedtwnd = true;
+    draw_editor(); draw_editor();
+    EXPECT_EQ(selected_tab(), "Bulk");
+    EXPECT_TRUE(randomize_txgen);
+    EXPECT_FALSE(show_taucalc);
+
+    auto* satellite = new Satellite;
+    strcpy(satellite->name, "Editor satellite");
+    satellite->orbit = new Orbit;
+    satellite->orbit->center = world;
+    satellite->orbit->semimajor_axis = earth_radius * 2;
+    satellite->orbit->period = oneday;
+    satellite->cenobj = world->cenobj;
+    ASSERT_TRUE(append_cel(satellite));
+    objedtwnd = false;
+    editidx = satellite->seqno;
+    ASSERT_TRUE(go_to_celestial_object(satellite->seqno));
+    objedtwnd = true;
+    draw_editor(); draw_editor();
+    EXPECT_EQ(selected_tab(), "Orbit");
+}
+
+TEST(SceneryLightingTest, CloudsSoftenDirectLightAndShadowsWhilePreservingClearSkiesAndNight)
+{
+    const auto clear = scenery_illumination(1, .03, .8, .2, 0);
+    EXPECT_NEAR(clear.direct, std::sin(.8) * .8, 1e-12);
+    EXPECT_NEAR(clear.ambient, .22 + .03 * .4 + .35 * .2, 1e-12);
+    EXPECT_DOUBLE_EQ(clear.shadow, .8);
+    double previous_shadow = clear.shadow, previous_ambient = clear.ambient;
+    for (double coverage : {.1, .3, .5, .8, 1.0})
+    {
+        const auto cloudy = scenery_illumination(1, .03, .8, .2, coverage);
+        EXPECT_LT(cloudy.shadow, previous_shadow);
+        EXPECT_GT(cloudy.ambient, previous_ambient);
+        previous_shadow = cloudy.shadow;
+        previous_ambient = cloudy.ambient;
+    }
+    const auto overcast = scenery_illumination(1, .03, .8, .2, 1);
+    EXPECT_LT(overcast.direct, clear.direct * .04);
+    EXPECT_LT(overcast.shadow, clear.shadow * .04);
+    const auto clear_night = scenery_illumination(0, .03, -.5, .2, 0);
+    const auto cloudy_night = scenery_illumination(0, .03, -.5, .2, 1);
+    EXPECT_DOUBLE_EQ(clear_night.ambient, cloudy_night.ambient);
+    EXPECT_DOUBLE_EQ(cloudy_night.direct, 0);
+    EXPECT_DOUBLE_EQ(scenery_illumination(1, 0, .8, 1, 1).shadow, 0);
+}
+
+TEST_F(RenderingRegressionTest, LocalCloudCoverRelightsSceneryWithoutMovingTreesOrRocks)
+{
+    auto* world = surface(true);
+    set(show_clouds, true);
+    auto* clouds = new UniformCloudTestMap(0);
+    world->cloud_map = clouds;
+    freeze_surface_time();
+    const auto clear = scenery();
+    ASSERT_GT(clear.size(), 100u);
+    clouds->set_coverage(255);
+    freeze_surface_time();
+    const auto cloudy = scenery();
+    ASSERT_EQ(clear.size(), cloudy.size());
+    int changed = 0;
+    for (size_t index = 0; index < clear.size(); ++index)
+    {
+        EXPECT_EQ(clear[index].pos.x, cloudy[index].pos.x);
+        EXPECT_EQ(clear[index].pos.y, cloudy[index].pos.y);
+        changed += clear[index].col != cloudy[index].col;
+    }
+    EXPECT_GT(changed, 100);
+    clouds->set_coverage(0);
+    freeze_surface_time();
+    const auto restored = scenery();
+    ASSERT_EQ(restored.size(), clear.size());
+    for (size_t index = 0; index < clear.size(); ++index)
+        EXPECT_EQ(restored[index].col, clear[index].col);
+}
 
 TEST(SceneryLightingTest, BlockedLightTracksFluxAndConservesEachColorChannel)
 {

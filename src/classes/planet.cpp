@@ -13,6 +13,7 @@
 #include <unordered_map>
 
 #include "planet.h"
+#include "texturegeneration.h"
 #include "pressurehaze.h"
 #include "numeric.h"
 #include "surfacephase.h"
@@ -111,9 +112,9 @@ bool Planet::resolve_sim_life(bool randomize_choice)
         }
     }
     if (!habitat) return unsuitable();
-    if (!has_sim_life || (randomize_choice && randomize_txgen))
+    if (!has_sim_life || (randomize_choice && texture_randomization_enabled()))
     {
-        if (randomize_txgen)
+        if (texture_randomization_enabled())
         {
             if (!orbit || !orbit->center) return false;
             const uint64_t pair = (uint64_t(orbit->center->texture_seed()) << 32) | texture_seed();
@@ -564,7 +565,7 @@ bool alienorum::Planet::estimate_habitability()
     {
         has_water = 1;
     }
-    else if (!water_constrained && randomize_txgen)
+    else if (!water_constrained && texture_randomization_enabled())
     {
         has_water = 0;
     }
@@ -594,17 +595,17 @@ bool alienorum::Planet::estimate_habitability()
 
     AtmosphereComposition *ac = atm ? atm->ensure_composition() : nullptr;
     life_possible = (is_in_con_HZ() && mass > 0.02 * earth_mass);       // Based on Titan's mass.
-    if (randomize_txgen && ac && !constrained_atmospheric_composition(*this))
+    if (texture_randomization_enabled() && ac && !constrained_atmospheric_composition(*this))
     {
         if (life_possible)
         {
-            if (!show_taucalc) ac->generate_fictitious_habitable();
+            if (!texture_tau_calculator_active()) ac->generate_fictitious_habitable();
             press = get_surface_pressure();
             atm->calculate_tau(press);
             if (!has_supplied_mean_temperature()) temperature = 0;            // force refresh
             T_surf = estimate_surface_temperature();
         }
-        else if (!show_taucalc) ac->generate_fictitious_for_planet(type);
+        else if (!texture_tau_calculator_active()) ac->generate_fictitious_for_planet(type);
         press = get_surface_pressure();
     }
     life_possible = (life_possible
@@ -623,7 +624,7 @@ bool alienorum::Planet::estimate_habitability()
             std::cout << "Surface temperature: " << T_surf << " K." << std::endl << std::flush;*/
         #endif
 
-        if (!water_constrained && !has_water && randomize_txgen)
+        if (!water_constrained && !has_water && texture_randomization_enabled())
         {
             if (type == waterworld || type == hycean) has_water = 1;
             else if (T_surf < 0.9 * water_freezing)
@@ -647,11 +648,11 @@ bool alienorum::Planet::estimate_habitability()
             && T_surf > 0.9*water_freezing && T_surf < 320
             && press < oneatm*2000);
 
-        if (randomize_txgen && ac && !constrained_atmospheric_composition(*this))
+        if (texture_randomization_enabled() && ac && !constrained_atmospheric_composition(*this))
         {
             if (life_possible)
             {
-                if (!show_taucalc) ac->generate_fictitious_habitable();
+                if (!texture_tau_calculator_active()) ac->generate_fictitious_habitable();
                 press = get_surface_pressure();
                 atm->calculate_tau(press);
             }

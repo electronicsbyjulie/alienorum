@@ -6,6 +6,27 @@
 
 namespace alienorum
 {
+    struct SceneryIllumination
+    {
+        double ambient = 0, direct = 0, shadow = 1, cloud = 0;
+    };
+
+    inline SceneryIllumination scenery_illumination(double daylight, double stars, double sun_elevation,
+        double haze_opacity, double cloud_coverage)
+    {
+        SceneryIllumination result;
+        const double coverage = std::isfinite(cloud_coverage) ? std::clamp(cloud_coverage, 0.0, 1.0) : 0;
+        result.cloud = coverage * coverage * (3 - 2 * coverage);
+        const double haze = std::clamp(haze_opacity, 0.0, 1.0);
+        // An opaque deck redirects daylight into broad skylight, with only a
+        // small direct component. Preserve the existing clear-sky/night floors.
+        result.shadow = (1 - haze) * (1 - .97 * result.cloud);
+        result.direct = std::max(0.0, std::sin(sun_elevation)) * daylight * result.shadow;
+        result.ambient = std::max(.04, .22 * daylight + stars * .4)
+            + .35 * daylight * haze + .45 * daylight * (1 - haze) * result.cloud;
+        return result;
+    }
+
     inline double precipitation_snow_fraction(double local_temperature_k)
     {
         if (!std::isfinite(local_temperature_k) || local_temperature_k <= 0) return 0;

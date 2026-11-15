@@ -950,7 +950,7 @@ int main (int argc, char** argv)
                     case CliCmd::k_go:
                     {
                         int goidx = find_object(cmd.s.c_str());
-                        if (goidx >= 0) whereami = goidx;
+                        if (goidx >= 0) go_to_celestial_object(goidx);
                         else std::cerr << "Not found " << cmd.s << std::endl;
                         viewchanged = true;
                         break;
