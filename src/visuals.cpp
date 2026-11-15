@@ -8873,7 +8873,9 @@ void draw_horizon()
                     double rh = rk.height;
 
                     if (gpu_plants && !is_vegetation) flush_scenery_gpu();
-                    const bool volume_plant = mesh_plants && is_vegetation && rk.crown_rx >= 12 && rw >= ROCK_PEBBLE_THRESH;
+                    const bool volume_plant = mesh_plants && is_vegetation
+                        && (rk.crown_rx * rk.crown_ry) >= PLANT_VOLUME_THRESH
+                        && rw >= ROCK_PEBBLE_THRESH;
                     if (mesh_plants && !volume_plant) flush_plant_mesh_gpu();
                     if (volume_plant)
                     {

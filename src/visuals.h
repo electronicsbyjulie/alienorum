@@ -40,6 +40,7 @@
 #define PLANT_TRUNK_COLOR_G     100     // Trunk base green component (brown-gray)
 #define PLANT_TRUNK_COLOR_B     85      // Trunk base blue component (brown-gray)
 #define PLANT_MAX_DIST        1000      // Maximum tree distance from viewer (meters)
+#define PLANT_VOLUME_THRESH     64      // Square of the minimum crown averaged radius to be drawn 3D
 
 // Water wave tuning parameters
 #define WAVE_STEPS_PER_ROW      96      // Horizontal resolution of wave render (steps per row)
