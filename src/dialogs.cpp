@@ -3179,9 +3179,7 @@ void draw_system_explorer(ImGuiIO& io)
             ImGui::SameLine();
             if (ImGui::Button("Gen. Fic. Moons##explored"))
             {
-                cel->rnd_seed = 0;          // force rerandomization.
-                ((Planet*)cel)->vegetation_r = ((Planet*)cel)->vegetation_g = ((Planet*)cel)->vegetation_b = 0;
-                std::mt19937_64 random(std::random_device{}());
+                std::mt19937_64 random(cel->texture_seed());
                 for (auto& moon : static_cast<Planet*>(cel)->generate_fictional_moons(random))
                 {
                     if (!append_cel(moon.get())) break;

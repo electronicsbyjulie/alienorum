@@ -152,7 +152,7 @@ namespace alienorum
         ImU32 snow_color = 0, double snow = 0)
     {
         if (!(color & IM_COL32_A_MASK)) return;
-        const int segments = draw->_CalcCircleAutoSegmentCount(std::max(radius.x, radius.y)) * 1.5 * zoom;
+        const int segments = draw->_CalcCircleAutoSegmentCount(std::max(radius.x, radius.y) * 3.0 * zoom);
         static std::unordered_map<int, std::vector<ImVec2>> contours;
         auto found = contours.find(segments);
         if (found == contours.end())

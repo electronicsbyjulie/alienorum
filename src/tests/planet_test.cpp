@@ -2014,6 +2014,43 @@ TEST_F(PlanetClassificationEvidenceTest, FictionalMoonsAreSparseForSmallInnerPla
     EXPECT_GT(outer_total, 768u);
 }
 
+TEST_F(PlanetClassificationEvidenceTest, FictionalMoonsRepeatFromParentSeedAfterOtherGeneration)
+{
+    auto* sun = make_star("Sun");
+    auto* planet = make_planet(sun, "Seeded giant", 5.2 * AU);
+    planet->type = gas_giant;
+    planet->mass = jupiter_mass;
+    planet->volumetric_mean_radius = 11.2 * earth_radius;
+    planet->sidereal_rotational_period = 10 * 3600;
+    planet->rnd_seed = 91764;
+    planet->orbit->compute_period(planet->mass);
+    const auto generate = [&]()
+    {
+        std::mt19937_64 random(planet->texture_seed());
+        auto moons = planet->generate_fictional_moons(random);
+        nlohmann::json result = nlohmann::json::array();
+        for (const auto& moon : moons) result.push_back(moon->to_json());
+        return result;
+    };
+    const auto first = generate();
+    ASSERT_FALSE(first.empty());
+    auto* other = make_planet(sun, "Unrelated giant", 8 * AU);
+    other->mass = jupiter_mass;
+    other->volumetric_mean_radius = 11.2 * earth_radius;
+    other->orbit->compute_period(other->mass);
+    for (unsigned int seed = 0; seed < 8; ++seed)
+    {
+        std::mt19937_64 random(seed);
+        auto moons = other->generate_fictional_moons(random);
+        for (int draw = 0; draw < 100; ++draw) frand(0, 1);
+    }
+    planet->rng.discard(1000);
+    EXPECT_EQ(generate(), first);
+    EXPECT_EQ(planet->rnd_seed, 91764u);
+    planet->rnd_seed = 91765;
+    EXPECT_NE(generate(), first);
+}
+
 TEST_F(PlanetClassificationEvidenceTest, SolarMetadataPreservesStellarIdentifiersAndValidText)
 {
     auto* sun = make_star("Sun");
