@@ -23,7 +23,8 @@ namespace alienorum
             {
                 const double u = double(x)/size, v = double(y)/size;
                 const double grain = random(x, y)-.5;
-                const double cluster = .5*(random(x/4, y/4)+random(x/8, y/8))- .5;
+                const double cluster = .25*sin(6.28318530718*u*3+sin(6.28318530718*v*2))
+                    +.2*cos(6.28318530718*v*5+cos(6.28318530718*u*4));
                 const double ripples = sin(6.28318530718*(v*24+ .17*sin(u*6.28318530718*4)));
                 const double cracks = pow(fabs(sin(6.28318530718*u*8)*sin(6.28318530718*v*8)), .2);
                 const double tufts = sin(6.28318530718*(u*32+v*8)) * sin(6.28318530718*(v*24-u*8));

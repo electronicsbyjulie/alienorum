@@ -9856,3 +9856,42 @@ TEST_F(RenderingRegressionTest, GroundDetailChangesNearGroundAndRetainsLava)
     const auto lava_detail = capture(false);
     EXPECT_EQ(image_difference(lava_plain, lava_detail), 0);
 }
+
+TEST_F(RenderingRegressionTest, GroundDetailFrameCostAt720p)
+{
+    surface(true);
+    set(horizon_ground_gpu_reference, false);
+    set(altitude, -.2);
+    render_width = 1280; render_height = 720;
+    SDL_SetWindowSize(window, render_width, render_height);
+    SDL_GL_SwapWindow(window);
+    set(dispcx, 640.0); set(dispcy, 360.0);
+    ImGui::GetIO().DisplaySize = ImVec2(render_width, render_height);
+    std::array<std::vector<double>, 2> frames, preparation;
+    for (int frame = 0; frame < 24; ++frame)
+    {
+        const int arm = frame%2;
+        horizon_ground_detail_reference = arm == 0;
+        freeze_surface_time();
+        const auto start = std::chrono::steady_clock::now();
+        find_horizon(); draw_horizon();
+        const auto prepared = std::chrono::steady_clock::now();
+        render();
+        const auto finished = std::chrono::steady_clock::now();
+        if (frame >= 8)
+        {
+            preparation[arm].push_back(std::chrono::duration<double, std::milli>(prepared-start).count());
+            frames[arm].push_back(std::chrono::duration<double, std::milli>(finished-start).count());
+        }
+        ImGui::NewFrame();
+    }
+    for (int arm = 0; arm < 2; ++arm)
+    {
+        std::sort(frames[arm].begin(), frames[arm].end());
+        std::sort(preparation[arm].begin(), preparation[arm].end());
+        std::cout << "Ground detail " << (arm ? "on" : "off") << ": median preparation "
+            << preparation[arm][4] << " ms, complete 720p frame with readback " << frames[arm][4] << " ms" << std::endl;
+    }
+    SDL_SetWindowSize(window, 192, 108);
+    SDL_GL_SwapWindow(window);
+}

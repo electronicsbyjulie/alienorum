@@ -1695,7 +1695,8 @@ void load_stuff()
         cr.read_WD_catalog(cels, MAX_CELOBJS, true);
     }
 
-    load_brown_dwarf_supplement();
+    const auto nearby_brown_dwarfs = load_brown_dwarf_supplement();
+    std::cout << "Added " << nearby_brown_dwarfs << " objects from the nearby substellar census." << std::endl;
     associate_wd_color_identifiers(cels);
 
     for (const std::string& favename : lfaves)

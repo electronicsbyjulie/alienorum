@@ -131,9 +131,9 @@ namespace alienorum
         const auto lum = spectrum.luminosity;
         const bool white = spectrum.type == 'D' || lum == NeighborhoodLuminosity::vii || star.is_white_dwarf();
         if (filter == NeighborhoodType::white_dwarfs) return white;
-        const bool brown = !white && ((star.mass > 0 && star.mass < .075*solar_mass)
-            || (spectrum.type && std::strchr("LTY", spectrum.type))
-            || (star.mass <= 0 && star.temperature > 0 && star.temperature < 2300));
+        const bool brown = !white && (star.mass > 0 ? star.mass < .075*solar_mass
+            : ((spectrum.type && std::strchr("LTY", spectrum.type))
+                || (star.temperature > 0 && star.temperature < 2300)));
         if (filter == NeighborhoodType::brown_dwarfs) return brown;
         const bool unknown = lum == NeighborhoodLuminosity::unknown;
         const bool dwarf = lum == NeighborhoodLuminosity::v;
@@ -147,8 +147,8 @@ namespace alienorum
                 return spectrum.type == 'K' && spectrum.subtype >= 3 && spectrum.subtype < 10
                     && (dwarf || (unknown && neighborhood_dwarf_magnitude(star, spectrum)));
             case NeighborhoodType::red_dwarfs:
-                return !brown && !white && spectrum.type && strchr("MC", spectrum.type)
-                    && (dwarf || (unknown && neighborhood_dwarf_magnitude(star, spectrum)));
+                return !brown && !white && spectrum.type && strchr("MCLTY", spectrum.type)
+                    && (dwarf || (unknown && (strchr("LTY", spectrum.type) || neighborhood_dwarf_magnitude(star, spectrum))));
             case NeighborhoodType::sirius:
                 return ((spectrum.type == 'A' && spectrum.subtype >= 0 && spectrum.subtype < 10)
                     || (spectrum.type == 'F' && spectrum.subtype >= 0 && spectrum.subtype < 8))

@@ -29,6 +29,7 @@ namespace alienorum
     typedef void (APIENTRYP DrawArraysProc)(GLenum, GLint, GLsizei);
     static DrawArraysProc draw_arrays = nullptr;
     static constexpr GLenum red_format = 0x1903, rg_format = 0x8227;
+    static constexpr GLint linear_mipmap_linear = 0x2703;
     static constexpr GLint r32f_format = 0x822E, rg32f_format = 0x8230;
 
     struct Vertex
@@ -237,7 +238,7 @@ void main()
         glGetIntegerv(GL_UNPACK_ALIGNMENT, &old_alignment);
         glBindTexture(GL_TEXTURE_2D, detail_texture);
         glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, linear_mipmap_linear);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);

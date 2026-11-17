@@ -5763,8 +5763,18 @@ TEST_F(CatalogParsingTest, MissingMDwarfColorUsesSubtypeWhileMeasuredZeroSurvive
 
 TEST_F(CatalogParsingTest, BrownDwarfSupplementIsRepeatableAndPreservesExistingCompanions)
 {
+    Star* companion = make_star("Eps Ind C", .05*solar_mass);
+    strcpy(companion->Gliese, "GJ 845 C");
+    companion->temperature = 972;
+    companion->BV_color = 1.83;
+    companion->orbit = new Orbit();
+    companion->orbit->semimajor_axis = 2.4*AU;
+    Orbit* original_orbit = companion->orbit;
     const unsigned int added = load_brown_dwarf_supplement();
     EXPECT_GT(added, 300u);
+    EXPECT_DOUBLE_EQ(companion->BV_color, 1.83);
+    EXPECT_DOUBLE_EQ(companion->temperature, 972);
+    EXPECT_EQ(companion->orbit, original_orbit);
     const int count = ncelobjs;
     EXPECT_EQ(load_brown_dwarf_supplement(), 0u);
     EXPECT_EQ(ncelobjs, count);
@@ -5773,6 +5783,7 @@ TEST_F(CatalogParsingTest, BrownDwarfSupplementIsRepeatableAndPreservesExistingC
         Star* star = static_cast<Star*>(cels[i]);
         EXPECT_GT(star->distance, 0);
         EXPECT_TRUE(std::isfinite(star->temperature));
-        EXPECT_GT(star->sidereal_rotational_period, 0);
+        if (star != companion && stellar_regime(star) == regime_substellar)
+            EXPECT_GT(star->sidereal_rotational_period, 0);
     }
 }
