@@ -77,8 +77,8 @@ TEST(ColorTest, MiraMolecularColorPreservesPhysicalTemperatureAndFlareScaling)
     EXPECT_NEAR(faint.red / molecular.red, pow(magnbase, -3), 1e-12);
     EXPECT_NEAR(faint.green / molecular.green, pow(magnbase, -3), 1e-12);
     EXPECT_NEAR(faint.blue / molecular.blue, pow(magnbase, -3), 1e-12);
-    // Carbon spectra do not borrow the oxygen-rich molecular-layer approximation.
-    strcpy(star.spectral_type, "C5");
+    // Compare the same reference palette with the molecular-layer adjustment inactive.
+    star.apparent_magnitude = 0;
     const Color continuum = Color::color_from_star(2, &star, star.BV_color);
     EXPECT_GT(molecular.red / molecular.green, continuum.red / continuum.green);
     EXPECT_DOUBLE_EQ(star.temperature, physical_temperature);
@@ -698,4 +698,50 @@ TEST(MDwarfColor, TextureUsesTheSameSpectrumAndStaysNormalized)
     }
     EXPECT_EQ(peak, 255);
     EXPECT_DOUBLE_EQ(star.BV_color, .18);
+}
+
+TEST(MDwarfColor, RealisticPaletteAndPrefixesAgreeAcrossDisplayPaths)
+{
+    Star star;
+    star.mass = .2*solar_mass;
+    star.absolute_magnitude = 12;
+    star.temperature = 0;
+    for (const char* type : {"M4V", "dM4e", "sdM4", "esdM4", "usdM4"})
+    {
+        strcpy(star.spectral_type, type);
+        ASSERT_TRUE(is_m_dwarf_color_source(&star));
+        EXPECT_DOUBLE_EQ(m_dwarf_temperature(&star), 3210);
+        const Color color = Color::color_from_star(0, &star, star.BV_color);
+        const Color linear = m_dwarf_linear_color(3210);
+        Color expected(wd_srgb_encode(linear.red), wd_srgb_encode(linear.green), wd_srgb_encode(linear.blue));
+        expected.normalize(1);
+        Color normalized = color;
+        normalized.normalize(1);
+        EXPECT_NEAR(normalized.red, expected.red, 1e-12);
+        EXPECT_NEAR(normalized.green, expected.green, 1e-12);
+        EXPECT_NEAR(normalized.blue, expected.blue, 1e-12);
+        const RGB3 swatch = wd_srgb_from_linear(m_dwarf_linear_color(3210));
+        const RGB3 disc = Color::rgb_from_color(color, -1, 1, false);
+        EXPECT_NEAR(swatch.r, disc.r, 1);
+        EXPECT_NEAR(swatch.g, disc.g, 1);
+        EXPECT_NEAR(swatch.b, disc.b, 1);
+    }
+}
+
+TEST(MDwarfColor, GiantsAndDwarfsShareARealisticReferencePalette)
+{
+    Star star;
+    star.temperature = 3500;
+    star.mass = solar_mass;
+    Color expected;
+    for (const char* type : {"M2V", "sdM2", "dM2e", "M2Ib", "M2III"})
+    {
+        strcpy(star.spectral_type, type);
+        const Color color = Color::color_from_star(0, &star, star.BV_color);
+        const Color linear = m_dwarf_linear_color(3500);
+        const RGB3 swatch = wd_srgb_from_linear(linear);
+        const RGB3 disc = Color::rgb_from_color(color, -1, 1, false);
+        EXPECT_NEAR(swatch.g, disc.g, 1);
+        EXPECT_NEAR(swatch.b, disc.b, 1);
+    }
 }

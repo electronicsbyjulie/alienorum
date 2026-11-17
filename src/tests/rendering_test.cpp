@@ -45,6 +45,7 @@
 #include "../classes/horizonbackground.h"
 #include "../classes/framescratch.h"
 #include "../horizon_ground_gpu.h"
+#include "../classes/grounddetail.h"
 #include "../scenery_gpu.h"
 #include "../plantmesh_gpu.h"
 #include "../classes/plantmesh.h"
@@ -327,6 +328,7 @@ class RenderingRegressionTest : public UniverseFixture
         set(dragging, false);
         // Vertex assertions exercise the reference painter; GPU tests compare complete images.
         set(horizon_ground_gpu_reference, true);
+        set(horizon_ground_detail_reference, true);
         set(horizon_reference_trial, 0u);
         // Image comparisons use full detail regardless of host timing. The
         // motion-specific test explicitly exercises adaptive sampling below.
@@ -9809,4 +9811,48 @@ TEST_F(RenderingRegressionTest, CrownTexturePreview)
     SDL_SetWindowSize(window, 192, 108); SDL_PumpEvents(); SDL_GL_SwapWindow(window);
     ImGui::GetIO().DisplaySize = ImVec2(192, 108);
     ImGui::NewFrame();
+}
+
+TEST(GroundDetailTest, AtlasIsRepeatableAndPressureSelectsDifferentMaterials)
+{
+    const auto a = ground_detail_atlas(), b = ground_detail_atlas();
+    EXPECT_EQ(a, b);
+    EXPECT_EQ(a.size(), 128u*128u*4u);
+    const auto moon = ground_detail_material(0, false);
+    const auto mars = ground_detail_material(.006, false);
+    const auto venus = ground_detail_material(92, false);
+    const auto earth = ground_detail_material(1, true);
+    EXPECT_GT(moon[0], .99);
+    EXPECT_GT(mars[1], .8);
+    EXPECT_GT(venus[2], .99);
+    EXPECT_EQ(earth[3], 1);
+    for (const auto& material : {moon, mars, venus, earth})
+        EXPECT_NEAR(material[0]+material[1]+material[2], 1, 1e-6);
+}
+
+TEST_F(RenderingRegressionTest, GroundDetailChangesNearGroundAndRetainsLava)
+{
+    surface(true);
+    set(horizon_ground_gpu_reference, false);
+    set(altitude, -.2);
+    const auto capture = [&](bool reference)
+    {
+        horizon_ground_detail_reference = reference;
+        freeze_surface_time();
+        find_horizon();
+        draw_horizon();
+        auto pixels = render();
+        ImGui::NewFrame();
+        return pixels;
+    };
+    const auto plain = capture(true);
+    const auto textured = capture(false);
+    EXPECT_GT(image_difference(plain, textured), 0);
+    const auto repeated = capture(false);
+    EXPECT_EQ(image_difference(textured, repeated), 0);
+    EXPECT_GT(horizon_ground_gpu_stats().tiles, 0u);
+    static_cast<Planet*>(cels[whereami])->type = lavaworld;
+    const auto lava_plain = capture(true);
+    const auto lava_detail = capture(false);
+    EXPECT_EQ(image_difference(lava_plain, lava_detail), 0);
 }

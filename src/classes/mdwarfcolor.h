@@ -7,13 +7,17 @@
 #include <cstring>
 #include "star.h"
 #include "wdcolor.h"
+#include "neighborhoodfilter.h"
 
 namespace alienorum
 {
     inline bool is_m_dwarf_color_source(const Star* star)
     {
-        if (!star || star->spectral_type[0] != 'M') return false;
-        if (std::strchr(star->spectral_type, 'I') || std::strchr(star->spectral_type, '+')) return false;
+        if (!star || !std::strchr(star->spectral_type, 'M')) return false;
+        const auto spectrum = neighborhood_spectrum(star->spectral_type);
+        if (spectrum.type != 'M' || std::strchr(star->spectral_type, '+')) return false;
+        const auto lum = spectrum.luminosity;
+        if (lum != NeighborhoodLuminosity::unknown && lum != NeighborhoodLuminosity::v) return false;
         if (star->is_white_dwarf() || star->is_mira_variable()) return false;
         if (star->mass > 0 && star->mass < .075*solar_mass) return false;
         if (star->volumetric_mean_radius > 2*solar_radius) return false;
@@ -26,17 +30,15 @@ namespace alienorum
         if (std::isfinite(star->temperature) && star->temperature > 0) return star->temperature;
         // The same M0--M9 calibration as catalogs/mainseq.dat, independent of B-V.
         constexpr double temperatures[] = {3850, 3660, 3560, 3430, 3210, 3060, 2810, 2680, 2570, 2380};
-        char* end = nullptr;
-        double subtype = std::strtod(star->spectral_type+1, &end);
-        if (end == star->spectral_type+1 || !std::isfinite(subtype)) subtype = 5;
+        double subtype = neighborhood_spectrum(star->spectral_type).subtype;
+        if (!std::isfinite(subtype) || subtype < 0) subtype = 5;
         subtype = std::clamp(subtype, 0.0, 9.0);
         const int lower = static_cast<int>(subtype), upper = std::min(lower+1, 9);
         return temperatures[lower] + (subtype-lower)*(temperatures[upper]-temperatures[lower]);
     }
 
-    // Cranmer (2021), doi:10.3847/2515-5172/ac225c; doi:10.5281/zenodo.5293307.
-    // PHOENIX solar-composition spectra at log g=5; CC BY 4.0.
-    // Attribution and display assumptions: catalogs/m_dwarf_colors.txt.
+    // Cranmer (2021), doi:10.3847/2515-5172/ac225c, data:10.5281/zenodo.5293307.
+    // PHOENIX reference chromaticities, CC BY 4.0. See catalogs/m_dwarf_colors.txt.
     struct MColorNode
     {
         double temperature, x, y;
@@ -85,9 +87,17 @@ namespace alienorum
         return color;
     }
 
+    inline bool is_m_color_source(const Star* star)
+    {
+        return star && std::strchr(star->spectral_type, 'M') && !star->is_white_dwarf()
+            && !(star->mass > 0 && star->mass < .075*solar_mass)
+            && neighborhood_spectrum(star->spectral_type).type == 'M'
+            && !std::strchr(star->spectral_type, '+');
+    }
+
     inline bool m_dwarf_color_source(Star* star, Color& linear)
     {
-        if (!is_m_dwarf_color_source(star)) return false;
+        if (!is_m_color_source(star)) return false;
         linear = m_dwarf_linear_color(m_dwarf_temperature(star));
         return true;
     }

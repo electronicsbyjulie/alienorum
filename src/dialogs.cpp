@@ -3218,7 +3218,7 @@ void draw_stellar_neighborhood(ImGuiIO &io)
     int type_choice = static_cast<int>(neighborhood_type);
     ImGui::SetNextItemWidth(155);
     ImGui::Combo("##neighborhood_type", &type_choice,
-        "(All Types)\0Sunlike\0Orange Dwarfs\0Red+Brwn Dwarfs\0Sirius-like\0Subgiants\0Giants + OB\0White Dwarfs\0");
+        "(All Types)\0Sunlike\0Orange Dwarfs\0Red Dwarfs\0Sirius-like\0Subgiants\0Giants + OB\0White Dwarfs\0Brown Dwarfs\0");
     neighborhood_type = static_cast<NeighborhoodType>(type_choice);
     ImGui::SameLine();
     int order_choice = static_cast<int>(neighborhood_order);

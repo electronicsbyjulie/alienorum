@@ -1,3 +1,4 @@
+#include "classes/browncatalog.h"
 #include "catalog_lock_trace.h"
 #include "performance_options.h"
 #include "classes/cloudclimate.h"
@@ -1694,6 +1695,7 @@ void load_stuff()
         cr.read_WD_catalog(cels, MAX_CELOBJS, true);
     }
 
+    load_brown_dwarf_supplement();
     associate_wd_color_identifiers(cels);
 
     for (const std::string& favename : lfaves)

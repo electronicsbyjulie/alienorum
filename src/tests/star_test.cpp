@@ -1648,16 +1648,16 @@ TEST(NeighborhoodFilterTest, SpectralBoundariesPrefixesAndLuminosityClasses)
         {"K2.9V", NeighborhoodType::orange, false},
         {"K3V", NeighborhoodType::orange, true},
         {"K9.9V", NeighborhoodType::orange, true},
-        {"M0V", NeighborhoodType::red_brown, true},
+        {"M0V", NeighborhoodType::red_dwarfs, true},
         {"K9V", NeighborhoodType::orange, true},
         {"K9III", NeighborhoodType::orange, false},
-        {"dM4e", NeighborhoodType::red_brown, true},
-        {"M4III", NeighborhoodType::red_brown, false},
-        {"C5V", NeighborhoodType::red_brown, true},
-        {"dC", NeighborhoodType::red_brown, true},
-        {"L2", NeighborhoodType::red_brown, true},
-        {"T6V", NeighborhoodType::red_brown, true},
-        {"Y1", NeighborhoodType::red_brown, true},
+        {"dM4e", NeighborhoodType::red_dwarfs, true},
+        {"M4III", NeighborhoodType::red_dwarfs, false},
+        {"C5V", NeighborhoodType::red_dwarfs, true},
+        {"dC", NeighborhoodType::red_dwarfs, true},
+        {"L2", NeighborhoodType::brown_dwarfs, true},
+        {"T6V", NeighborhoodType::brown_dwarfs, true},
+        {"Y1", NeighborhoodType::brown_dwarfs, true},
         {"A0V", NeighborhoodType::sirius, true},
         {"A9.5V", NeighborhoodType::sirius, true},
         {"F7IV-V", NeighborhoodType::sirius, true},
@@ -1717,9 +1717,9 @@ TEST(NeighborhoodFilterTest, ClasslessDwarfsUseAbsoluteMagnitude)
     EXPECT_FALSE(neighborhood_matches_type(star, NeighborhoodType::orange));
     strcpy(star.spectral_type, "M4");
     star.absolute_magnitude = 12;
-    EXPECT_TRUE(neighborhood_matches_type(star, NeighborhoodType::red_brown));
+    EXPECT_TRUE(neighborhood_matches_type(star, NeighborhoodType::red_dwarfs));
     star.absolute_magnitude = -2;
-    EXPECT_FALSE(neighborhood_matches_type(star, NeighborhoodType::red_brown));
+    EXPECT_FALSE(neighborhood_matches_type(star, NeighborhoodType::red_dwarfs));
     strcpy(star.spectral_type, "G2");
     star.absolute_magnitude = 4.83;
     EXPECT_TRUE(neighborhood_matches_type(star, NeighborhoodType::sunlike));
@@ -1734,9 +1734,9 @@ TEST(NeighborhoodFilterTest, SubdwarfClassesShareDwarfGroupsAndClassSevenIsWhite
         {"A1", NeighborhoodType::sirius}, {"F7.5", NeighborhoodType::sirius},
         {"F8", NeighborhoodType::sunlike}, {"G2", NeighborhoodType::sunlike},
         {"K2.5", NeighborhoodType::sunlike}, {"K3", NeighborhoodType::orange},
-        {"K9.5", NeighborhoodType::orange}, {"M4", NeighborhoodType::red_brown},
-        {"C5", NeighborhoodType::red_brown}, {"L2", NeighborhoodType::red_brown},
-        {"T6", NeighborhoodType::red_brown}, {"Y1", NeighborhoodType::red_brown}
+        {"K9.5", NeighborhoodType::orange}, {"M4", NeighborhoodType::red_dwarfs},
+        {"C5", NeighborhoodType::red_dwarfs}, {"L2", NeighborhoodType::brown_dwarfs},
+        {"T6", NeighborhoodType::brown_dwarfs}, {"Y1", NeighborhoodType::brown_dwarfs}
     };
     for (const auto& group : groups)
     {
@@ -1761,4 +1761,22 @@ TEST(NeighborhoodFilterTest, SubdwarfClassesShareDwarfGroupsAndClassSevenIsWhite
         strcpy(star.spectral_type, spectrum);
         EXPECT_FALSE(neighborhood_matches_type(star, NeighborhoodType::white_dwarfs));
     }
+}
+
+TEST(NeighborhoodFilterTest, BrownDwarfsHaveTheirOwnCategoryEvenWithoutLTYSpectra)
+{
+    Star star;
+    strcpy(star.spectral_type, "M8V");
+    star.mass = .05*solar_mass;
+    EXPECT_TRUE(neighborhood_matches_type(star, NeighborhoodType::brown_dwarfs));
+    EXPECT_FALSE(neighborhood_matches_type(star, NeighborhoodType::red_dwarfs));
+    star.mass = .1*solar_mass;
+    EXPECT_FALSE(neighborhood_matches_type(star, NeighborhoodType::brown_dwarfs));
+    EXPECT_TRUE(neighborhood_matches_type(star, NeighborhoodType::red_dwarfs));
+    star.mass = 0;
+    star.spectral_type[0] = 0;
+    star.temperature = 1000;
+    EXPECT_TRUE(neighborhood_matches_type(star, NeighborhoodType::brown_dwarfs));
+    strcpy(star.spectral_type, "DA");
+    EXPECT_FALSE(neighborhood_matches_type(star, NeighborhoodType::brown_dwarfs));
 }

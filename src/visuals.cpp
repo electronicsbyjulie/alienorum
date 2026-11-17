@@ -3,6 +3,7 @@
 #include "classes/serial.h"
 #include "classes/browncolor.h"
 #include "classes/mdwarfcolor.h"
+#include "classes/grounddetail.h"
 #include "classes/surfacerefraction.h"
 #include "classes/systemviewcamera.h"
 
@@ -1263,7 +1264,7 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
     in.self_luminous = self_luminous;
     in.limb_a = limb_a;
     in.limb_b = limb_b;
-    if (self_luminous && cls == class_star && (is_m_dwarf_color_source((Star*)cel) || stellar_regime(cel) == regime_substellar || wd_limb_profile((Star*)cel, in.wd_limb)))
+    if (self_luminous && cls == class_star && (is_m_color_source((Star*)cel) || stellar_regime(cel) == regime_substellar || wd_limb_profile((Star*)cel, in.wd_limb)))
     {
         Color filter = Color::color_from_magnitude_indices(0, -bv_correction + atm_yellowing);
         filter.normalize(1);
@@ -1839,7 +1840,7 @@ int draw_sphere(CelestialObject* cel, double arad)
     {
         if (cel->typeclass() == class_star) ((Star*)cel)->limb_darkening_coefficients(cpu_limb_a, cpu_limb_b);
         else { cpu_limb_a = 0.49; cpu_limb_b = 0.21; }
-        if (cls == class_star && (is_m_dwarf_color_source((Star*)cel) || stellar_regime(cel) == regime_substellar || wd_limb_profile((Star*)cel, cpu_wd_limb)))
+        if (cls == class_star && (is_m_color_source((Star*)cel) || stellar_regime(cel) == regime_substellar || wd_limb_profile((Star*)cel, cpu_wd_limb)))
         {
             daylight = Color::color_from_magnitude_indices(0, -bv_correction + atm_yellowing);
             daylight.normalize(1);
@@ -4824,14 +4825,7 @@ void sc_draw_object(CelestialObject *obj, CelestialObject *cel)
     int dx, dy;
     if (cls == class_star)
     {
-        Color objcol = Color::color_from_magnitude_indices(0, obj->BV_color);
-        Color wd_linear;
-        if (m_dwarf_color_source((Star*)obj, wd_linear) || brown_color_source((Star*)obj, wd_linear) || ((Star*)obj)->resolve_wd_color(wd_linear))
-        {
-            wd_linear.normalize(1);
-            RGB3 wd_rgb = wd_srgb_from_linear(wd_linear);
-            objcol = Color(wd_rgb.r, wd_rgb.g, wd_rgb.b);
-        }
+        Color objcol = Color::color_from_star(0, (Star*)obj, obj->BV_color);
         objcol.normalize(255);
         ImU32 obj32 = rgba_apply_redlight(IM_COL32((int)objcol.red, (int)objcol.green, (int)objcol.blue, 255));
         icon_draw->AddCircleFilled(objdxy, 11, icon_border);
@@ -5458,7 +5452,7 @@ static Color water_light_color(CelestialObject* object)
     const auto cls = object->typeclass();
     const bool cache = performance_enabled(50) && !water_cpu_reference
         && !(cls == class_star && (static_cast<Star*>(object)->is_white_dwarf()
-            || static_cast<Star*>(object)->is_mira_variable() || is_m_dwarf_color_source(static_cast<Star*>(object))));
+            || static_cast<Star*>(object)->is_mira_variable() || is_m_color_source(static_cast<Star*>(object))));
     Key key;
     if (cache)
     {
@@ -7067,7 +7061,9 @@ void draw_horizon()
             if (first_ground == ground_height) reset_horizon_ground_gpu_stats();
         }
 
-        if (!faded && (paint_biomes || haze.active())
+        const bool ground_detail_active = !horizon_ground_detail_reference && p && !gaseous
+            && cel->type != lavaworld && map && map->is_complete();
+        if (!faded && (paint_biomes || haze.active() || ground_detail_active)
             && (!bounded_ground || first_ground < ground_height))
         {
             ImDrawList *ground = ImGui::GetBackgroundDrawList();
@@ -7113,8 +7109,31 @@ void draw_horizon()
                     gpu_haze.surface = {static_cast<float>(surface_cos_altitude()), static_cast<float>(surface_curvature()),
                         static_cast<float>(surface_eye), static_cast<float>(surface_range)};
                 }
+                gpu_haze.camera = {static_cast<float>(dispcx), static_cast<float>(dispcy),
+                    static_cast<float>(surface_focal()), static_cast<float>(surface_sin_altitude())};
+                gpu_haze.surface = {static_cast<float>(surface_cos_altitude()), static_cast<float>(surface_curvature()),
+                    static_cast<float>(surface_eye), static_cast<float>(surface_range)};
+                HorizonGroundDetail detail;
+                detail.active = ground_detail_active;
+                if (detail.active)
+                {
+                    const double cl = cos(viewer_lat), sl = sin(viewer_lat), co = cos(viewer_lon), so = sin(viewer_lon);
+                    const std::array<double, 3> position = {cl*co, sl, cl*so};
+                    const std::array<double, 3> east = {-so, 0, co}, north = {-sl*co, cl, -sl*so};
+                    int a = 0, b = 1;
+                    if (fabs(position[1]) >= std::max(fabs(position[0]), fabs(position[2]))) b = 2;
+                    else if (fabs(position[0]) > fabs(position[2])) a = 2;
+                    const double ca = cos(azimuth), sa = sin(azimuth);
+                    const double phase = (cel->texture_seed() & 65535)/65536.0;
+                    detail.origin = {float(std::remainder(position[a]*surface_radius/8, 1.0)+phase),
+                        float(std::remainder(position[b]*surface_radius/8, 1.0)+phase*.73), 1, 0};
+                    detail.basis = {float(east[a]*ca-north[a]*sa), float(east[b]*ca-north[b]*sa),
+                        float(east[a]*sa+north[a]*ca), float(east[b]*sa+north[b]*ca)};
+                    detail.material = ground_detail_material(p->get_surface_pressure()*inv_oneatm,
+                        p->simulated_surface_life_allowed() && (p->vegetation_r || p->vegetation_g || p->vegetation_b));
+                }
                 gpu_ground = prepare_horizon_ground_gpu(screen_w, ground_height, terrain_raster.distances(),
-                    min_hz_y_at_x, base_top, terrain_mesh, gpu_haze);
+                    min_hz_y_at_x, base_top, terrain_mesh, gpu_haze, detail);
             }
             #endif
             const auto ground_paint_start = std::chrono::steady_clock::now();

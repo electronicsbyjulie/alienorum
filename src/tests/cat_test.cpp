@@ -20,6 +20,7 @@
 #include "../globals.h"
 #include "../housekeeping.h"
 #include "universe_fixture.h"
+#include "../classes/browncatalog.h"
 
 using namespace alienorum;
 
@@ -5758,4 +5759,20 @@ TEST_F(CatalogParsingTest, MissingMDwarfColorUsesSubtypeWhileMeasuredZeroSurvive
     writer.write_condensed_star_cat_line(file, star);
     EXPECT_DOUBLE_EQ(star->BV_color, 0);
     fclose(file);
+}
+
+TEST_F(CatalogParsingTest, BrownDwarfSupplementIsRepeatableAndPreservesExistingCompanions)
+{
+    const unsigned int added = load_brown_dwarf_supplement();
+    EXPECT_GT(added, 300u);
+    const int count = ncelobjs;
+    EXPECT_EQ(load_brown_dwarf_supplement(), 0u);
+    EXPECT_EQ(ncelobjs, count);
+    for (int i = 1; i < ncelobjs; ++i)
+    {
+        Star* star = static_cast<Star*>(cels[i]);
+        EXPECT_GT(star->distance, 0);
+        EXPECT_TRUE(std::isfinite(star->temperature));
+        EXPECT_GT(star->sidereal_rotational_period, 0);
+    }
 }
