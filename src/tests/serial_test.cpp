@@ -2534,7 +2534,8 @@ TEST_F(FindObjectTest, IndexedExactSearchMatchesReferenceAndTracksAddedAndRename
         "WD1234+567", "WDJ123456.78+123456.7", "WDJ1234+1234"})
     {
         SCOPED_TRACE(query);
-        EXPECT_EQ(find_object(query, true, 9e29, 1, &index), find_object(query, true, 9e29, 1));
+        for (int mode : {0, 1})
+            EXPECT_EQ(find_object(query, true, 9e29, mode, &index), find_object(query, true, 9e29, mode));
     }
     Star *added = make_star("New Orbit Member");
     index.add(added->seqno, *added);
@@ -2855,4 +2856,21 @@ TEST_F(JsonIdempotenceTest, Atmosphere)
     Atmosphere restored(&owner);
     ASSERT_TRUE(restored.from_json(first));
     EXPECT_EQ(first.dump(), restored.to_json().dump());
+}
+
+TEST_F(FindObjectTest, StrictIndexedMissesDoNotScaleWithTheWholeCatalog)
+{
+    for (int i = 0; i < 3000; ++i) make_star(("Startup lookup fixture " + std::to_string(i)).c_str());
+    ExactStarSearchIndex index;
+    const auto run = [&](const ExactStarSearchIndex* lookup)
+    {
+        const auto start = std::chrono::steady_clock::now();
+        for (int i = 0; i < 100; ++i)
+            EXPECT_EQ(find_object(("Absent catalog alias " + std::to_string(i)).c_str(), true, 9e29, 0, lookup), -1);
+        return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now()-start).count();
+    };
+    const double reference = run(nullptr), indexed = run(&index);
+    std::cout << "Strict alias lookup, 3000 stars / 100 misses: scan " << reference
+        << " ms; indexed " << indexed << " ms" << std::endl;
+    delete_the_universe();
 }

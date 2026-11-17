@@ -145,6 +145,10 @@ void ExactStarSearchIndex::add(int index, const Star &star)
         if (std::find(entries.begin(), entries.end(), index) == entries.end()) entries.push_back(index);
     };
     record(names, search_key(star.name));
+    for (const auto& alias : {star.local_name, std::string(star.Bayer), std::string(star.Flamsteed), star.alienorumid})
+    {
+        if (!alias.empty()) record(names, search_key(alias));
+    }
     if (star.HD) record(aliases, stellar_alias_key("HD " + std::to_string(star.HD)));
     if (star.HIP) record(aliases, stellar_alias_key("HIP " + std::to_string(star.HIP)));
     for (const auto &alias : star.catalog_aliases) record(aliases, stellar_alias_key(alias));
@@ -191,7 +195,7 @@ std::vector<int> ExactStarSearchIndex::candidates(const char *term) const
 
 static int find_object_impl(const char* search_term, bool os, double ml, int levreq, const ExactStarSearchIndex *index)
 {
-    const bool indexed = index && os && levreq == 1;
+    const bool indexed = index && os && levreq >= 0 && levreq <= 1;
     const std::vector<int> candidates = indexed ? index->candidates(search_term) : std::vector<int>();
     const auto object_at = [&](size_t position)
     {

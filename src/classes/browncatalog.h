@@ -24,9 +24,15 @@ namespace alienorum
         {
             if (cels[i]->typeclass() != class_star) continue;
             Star* star = static_cast<Star*>(cels[i]);
+            if (star->stellar_system.is_object() && star->stellar_system.contains("nearby_census"))
+            {
+                star->stellar_system.erase("nearby_census");
+                if (star->stellar_system.empty()) star->stellar_system = nullptr;
+            }
             if (!star->is_white_dwarf() && ((star->mass > 0 && star->mass < .075*solar_mass)
                 || (star->spectral_type[0] && strchr("LTY", star->spectral_type[0])))) brown.push_back(star);
         }
+        std::map<Star*, std::pair<std::string, std::string>> imported;
         unsigned int added = 0;
         for (const auto& record : catalog["records"])
         {
@@ -55,12 +61,9 @@ namespace alienorum
             {
                 for (Star* other : brown)
                 {
-                    if (other->stellar_system.is_object() && other->stellar_system.contains("nearby_census"))
-                    {
-                        const auto& previous = other->stellar_system["nearby_census"];
-                        if (previous.value("system", "") == record.value("system", "")
-                            && previous.value("hierarchy", "") != record.value("hierarchy", "")) continue;
-                    }
+                    const auto previous = imported.find(other);
+                    if (previous != imported.end() && previous->second.first == record.value("system", "")
+                        && previous->second.second != record.value("hierarchy", "")) continue;
                     if (!(other->distance > 0) || fabs(other->distance/parsec-distance) > .25*distance) continue;
                     const double old_elapsed = (J2000-other->epoch)*oneday;
                     const Point old = Point::from_ra_dec(other->right_ascension+other->proper_motion_RA*old_elapsed,
@@ -103,11 +106,7 @@ namespace alienorum
                 ++added;
             }
             for (const auto& alias : record.value("aliases", json::array())) target->add_catalog_alias(alias.get<std::string>());
-            if (!target->stellar_system.is_object()) target->stellar_system = json::object();
-            target->stellar_system["nearby_census"] = record;
-            target->stellar_system["nearby_census"]["source"] = catalog.value("doi", "");
-            target->stellar_system["nearby_census"]["radius_estimated"] = true;
-            target->stellar_system["nearby_census"]["mass_estimated"] = !record.contains("mass_solar");
+            imported[target] = {record.value("system", ""), record.value("hierarchy", "")};
             names.add(target->seqno, *target);
         }
         return added;

@@ -1176,7 +1176,9 @@ void load_catalogs()
     // At the same time, there are stars in the star_orbits file that we don't have until we load exoplanets!
     // What to do, oh what to do...
     if (load_aborted()) return;
-    const int first_exostar = ncelobjs;
+    const int first_supplement_star = ncelobjs;
+    const auto nearby_brown_dwarfs = load_brown_dwarf_supplement();
+    std::cout << "Added " << nearby_brown_dwarfs << " objects from the nearby substellar census." << std::endl;
     if (!noexo) cr.load_exoplanets_from_tap(true);              // How about first we load exostars then fill them in with star orbits?
 
     mtx.lock();
@@ -1186,7 +1188,7 @@ void load_catalogs()
     {
         if (CatalogReader::condensed_star_orbits_loaded || star_orbits_applied)
         {
-            if (!noexo && ncelobjs > first_exostar) cr.read_star_orbits_dat(cels, first_exostar);
+            if (ncelobjs > first_supplement_star) cr.read_star_orbits_dat(cels, first_supplement_star);
         }
         else cr.read_star_orbits_dat(cels);
     }
@@ -1695,8 +1697,6 @@ void load_stuff()
         cr.read_WD_catalog(cels, MAX_CELOBJS, true);
     }
 
-    const auto nearby_brown_dwarfs = load_brown_dwarf_supplement();
-    std::cout << "Added " << nearby_brown_dwarfs << " objects from the nearby substellar census." << std::endl;
     associate_wd_color_identifiers(cels);
 
     for (const std::string& favename : lfaves)
