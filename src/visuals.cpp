@@ -2,6 +2,7 @@
 #include "classes/galaxygeometry.h"
 #include "classes/serial.h"
 #include "classes/browncolor.h"
+#include "classes/mdwarfcolor.h"
 #include "classes/surfacerefraction.h"
 #include "classes/systemviewcamera.h"
 
@@ -1262,7 +1263,7 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
     in.self_luminous = self_luminous;
     in.limb_a = limb_a;
     in.limb_b = limb_b;
-    if (self_luminous && cls == class_star && (stellar_regime(cel) == regime_substellar || wd_limb_profile((Star*)cel, in.wd_limb)))
+    if (self_luminous && cls == class_star && (is_m_dwarf_color_source((Star*)cel) || stellar_regime(cel) == regime_substellar || wd_limb_profile((Star*)cel, in.wd_limb)))
     {
         Color filter = Color::color_from_magnitude_indices(0, -bv_correction + atm_yellowing);
         filter.normalize(1);
@@ -1838,7 +1839,7 @@ int draw_sphere(CelestialObject* cel, double arad)
     {
         if (cel->typeclass() == class_star) ((Star*)cel)->limb_darkening_coefficients(cpu_limb_a, cpu_limb_b);
         else { cpu_limb_a = 0.49; cpu_limb_b = 0.21; }
-        if (cls == class_star && (stellar_regime(cel) == regime_substellar || wd_limb_profile((Star*)cel, cpu_wd_limb)))
+        if (cls == class_star && (is_m_dwarf_color_source((Star*)cel) || stellar_regime(cel) == regime_substellar || wd_limb_profile((Star*)cel, cpu_wd_limb)))
         {
             daylight = Color::color_from_magnitude_indices(0, -bv_correction + atm_yellowing);
             daylight.normalize(1);
@@ -4825,7 +4826,7 @@ void sc_draw_object(CelestialObject *obj, CelestialObject *cel)
     {
         Color objcol = Color::color_from_magnitude_indices(0, obj->BV_color);
         Color wd_linear;
-        if (brown_color_source((Star*)obj, wd_linear) || ((Star*)obj)->resolve_wd_color(wd_linear))
+        if (m_dwarf_color_source((Star*)obj, wd_linear) || brown_color_source((Star*)obj, wd_linear) || ((Star*)obj)->resolve_wd_color(wd_linear))
         {
             wd_linear.normalize(1);
             RGB3 wd_rgb = wd_srgb_from_linear(wd_linear);
@@ -5457,7 +5458,7 @@ static Color water_light_color(CelestialObject* object)
     const auto cls = object->typeclass();
     const bool cache = performance_enabled(50) && !water_cpu_reference
         && !(cls == class_star && (static_cast<Star*>(object)->is_white_dwarf()
-            || static_cast<Star*>(object)->is_mira_variable()));
+            || static_cast<Star*>(object)->is_mira_variable() || is_m_dwarf_color_source(static_cast<Star*>(object))));
     Key key;
     if (cache)
     {

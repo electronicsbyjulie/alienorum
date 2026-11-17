@@ -5735,3 +5735,27 @@ TEST_F(CatalogParsingTest, BrownCompanionAliasDoesNotCreateAPlanetAcrossCache)
         EXPECT_EQ(find_object("eps Ind Bb", true, 9e29, 0), companion->seqno);
     }
 }
+
+TEST_F(CatalogParsingTest, MissingMDwarfColorUsesSubtypeWhileMeasuredZeroSurvivesBaking)
+{
+    struct Writer : CatalogReader
+    {
+        using CatalogReader::write_condensed_star_cat_line;
+    } writer;
+    Star* star = make_star("M subtype fallback", .3*solar_mass);
+    strcpy(star->spectral_type, "M3.5");
+    star->absolute_magnitude = 11.2;
+    star->volumetric_mean_radius = .017621*solar_radius;
+    star->BV_color = 0;
+    star->temperature = 0;
+    FILE* file = std::tmpfile();
+    ASSERT_NE(file, nullptr);
+    writer.write_condensed_star_cat_line(file, star);
+    EXPECT_NEAR(star->estimate_temperature(), 3320, 1e-12);
+    EXPECT_GT(star->BV_color, .5);
+    star->BV_color = 0;
+    star->is_bv_observed = true;
+    writer.write_condensed_star_cat_line(file, star);
+    EXPECT_DOUBLE_EQ(star->BV_color, 0);
+    fclose(file);
+}

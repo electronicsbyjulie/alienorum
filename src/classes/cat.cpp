@@ -6200,7 +6200,7 @@ std::string alienorum::CatalogReader::format_condensed_star_line(Star* s, bool e
     put(67, 75, s->Decl_as_degms());
     put(77, 82, magnitude(s->apparent_magnitude));
     put(84, 98, s->spectral_type);
-    if (!s->BV_color && s->WD.empty()) s->estimate_BV(s->estimate_temperature());
+    if (!s->BV_color && !s->is_bv_observed && s->WD.empty()) s->estimate_BV(s->estimate_temperature());
     if (!s->UB_color && s->WD.empty()) s->estimate_UB(s->estimate_temperature());
     put(100, 105, magnitude(s->BV_color));
     put(107, 112, magnitude(s->UB_color));

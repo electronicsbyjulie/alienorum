@@ -7,6 +7,7 @@
 #include "../classes/star.h"
 #include "../classes/wdcolor.h"
 #include "../classes/browncolor.h"
+#include "../classes/mdwarfcolor.h"
 
 using namespace alienorum;
 using json = nlohmann::json;
@@ -617,4 +618,84 @@ TEST(BrownDwarfColor, EstimatedRotationAdvancesAndPreservesSuppliedPeriods)
     ordinary.temperature = sun_temp;
     estimate_brown_rotation(&ordinary);
     EXPECT_DOUBLE_EQ(ordinary.sidereal_rotational_period, 0);
+}
+
+TEST(MDwarfColor, SpectralSubtypeOverridesMisleadingIndicesForDisplay)
+{
+    Star star;
+    strcpy(star.spectral_type, "M3.5");
+    star.mass = .3*solar_mass;
+    star.volumetric_mean_radius = .017621*solar_radius;
+    star.absolute_magnitude = 11.2;
+    star.BV_color = .18;
+    star.VR_color = .07;
+    star.is_bv_observed = true;
+    EXPECT_NEAR(star.estimate_temperature(), 3320, 1e-12);
+    EXPECT_EQ(stellar_regime(&star), regime_stellar);
+    const Color bright = Color::color_from_star(0, &star, star.BV_color);
+    const Color faint = Color::color_from_star(3, &star, star.BV_color);
+    EXPECT_GT(bright.red, bright.green);
+    EXPECT_GT(bright.green, bright.blue);
+    EXPECT_NEAR(faint.red/bright.red, pow(magnbase, -3), 1e-12);
+    const Color reddened = Color::color_from_star(0, &star, star.BV_color+.3);
+    EXPECT_GT(reddened.red/reddened.blue, bright.red/bright.blue);
+    EXPECT_DOUBLE_EQ(star.BV_color, .18);
+    EXPECT_DOUBLE_EQ(star.VR_color, .07);
+    star.temperature = 3500;
+    EXPECT_DOUBLE_EQ(m_dwarf_temperature(&star), 3500);
+    star.temperature = 0;
+    star.BV_color = 0;
+    star.estimate_BV();
+    EXPECT_DOUBLE_EQ(star.BV_color, 0);
+    star.is_bv_observed = false;
+    star.estimate_BV();
+    EXPECT_GT(star.BV_color + bv_correction, .5);
+}
+
+TEST(MDwarfColor, ScopeExcludesGiantsMirasCompositesAndSubstellarMasses)
+{
+    Star star;
+    for (const char* type : {"M3V", "M3.5", "M7Ve"})
+    {
+        strcpy(star.spectral_type, type);
+        EXPECT_TRUE(is_m_dwarf_color_source(&star));
+    }
+    for (const char* type : {"M3III", "M3IV", "M2Iab", "M3V+DA", "G2V", "DA"})
+    {
+        strcpy(star.spectral_type, type);
+        EXPECT_FALSE(is_m_dwarf_color_source(&star));
+    }
+    strcpy(star.spectral_type, "M5e");
+    star.variability_type = "M";
+    star.variability_period = 300*oneday;
+    EXPECT_FALSE(is_m_dwarf_color_source(&star));
+    star.variability_type.clear();
+    star.mass = .04*solar_mass;
+    EXPECT_FALSE(is_m_dwarf_color_source(&star));
+}
+
+TEST(MDwarfColor, TextureUsesTheSameSpectrumAndStaysNormalized)
+{
+    Star star;
+    strcpy(star.spectral_type, "M3V");
+    star.mass = .3*solar_mass;
+    star.volumetric_mean_radius = .3*solar_radius;
+    star.absolute_magnitude = 11;
+    star.BV_color = .18;
+    star.rnd_seed = 731;
+    star.fictitious_map_height = 16;
+    Map map(&star);
+    map.generate_stellar_map(&star);
+    ASSERT_TRUE(map.is_complete());
+    std::vector<unsigned char> pixels(map.get_width()*map.get_height()*4);
+    map.export_rgba(pixels.data());
+    unsigned char peak = 0;
+    for (size_t i = 0; i < pixels.size(); i += 4)
+    {
+        EXPECT_GE(pixels[i], pixels[i+1]);
+        EXPECT_GT(pixels[i+1], pixels[i+2]);
+        peak = std::max({peak, pixels[i], pixels[i+1], pixels[i+2]});
+    }
+    EXPECT_EQ(peak, 255);
+    EXPECT_DOUBLE_EQ(star.BV_color, .18);
 }

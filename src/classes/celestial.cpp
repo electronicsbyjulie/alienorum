@@ -25,6 +25,7 @@
 #include "lavafissures.h"
 #include "wdcolor.h"
 #include "browncolor.h"
+#include "mdwarfcolor.h"
 #include "../loaders.h"
 
 using namespace alienorum;
@@ -4948,6 +4949,8 @@ void Map::generate_stellar_map(CelestialObject *cel)
     Star *star = static_cast<Star*>(cel);
     Color wd_linear;
     const bool has_wd_color = star->resolve_wd_color(wd_linear);
+    Color m_linear;
+    const bool has_m_color = m_dwarf_color_source(star, m_linear);
     int num_groups, num_spots;
     Color ref_col;
     Map *fac = nullptr;
@@ -4979,7 +4982,8 @@ void Map::generate_stellar_map(CelestialObject *cel)
         std::cout << "Allocated " << allocated << " pixels for fictitious stellar map." << std::endl;
 
         stellar_regime_t regime = stellar_regime(cel);
-        T_eff = (cel->temperature > 0) ? cel->temperature : Star::temperature_from_BV(cel->BV_color);
+        T_eff = has_m_color ? m_dwarf_temperature(star)
+            : ((cel->temperature > 0) ? cel->temperature : Star::temperature_from_BV(cel->BV_color));
         if (!(T_eff > 0) || isnan(T_eff) || isinf(T_eff)) T_eff = sun_temp;
 
         mass_solar = cel->mass / solar_mass;
@@ -5170,6 +5174,11 @@ void Map::generate_stellar_map(CelestialObject *cel)
                 rgb = wd_srgb_from_linear(Color(wd_linear.red * lum,
                     wd_linear.green * lum, wd_linear.blue * lum));
             }
+            else if (has_m_color)
+            {
+                const Color local = m_dwarf_linear_color(T_local);
+                rgb = wd_srgb_from_linear(Color(local.red*lum, local.green*lum, local.blue*lum));
+            }
             else
             {
                 double bv_local = cel->BV_color + (bv_of(T_local) - bv_at_teff);
@@ -5196,6 +5205,22 @@ void Map::generate_stellar_map(CelestialObject *cel)
         }
     }
 
+    if (has_m_color)
+    {
+        unsigned char peak = 0;
+        for (unsigned long i = 0; i < allocated; ++i)
+            peak = std::max({peak, red_data[i], green_data[i], blue_data[i]});
+        if (peak > 0)
+        {
+            const double scale = 255.0/peak;
+            for (unsigned long i = 0; i < allocated; ++i)
+            {
+                red_data[i] = std::min(255L, std::lround(red_data[i]*scale));
+                green_data[i] = std::min(255L, std::lround(green_data[i]*scale));
+                blue_data[i] = std::min(255L, std::lround(blue_data[i]*scale));
+            }
+        }
+    }
     generating_fic_texture = false;
     if (fac) fac->touch_gen();
     procedurally_generated = true;

@@ -26,6 +26,7 @@ catalogs/exoplanet_host_positions.dat
 catalogs/galaxy_properties.json
 catalogs/giant_reflectance.json
 catalogs/giant_reflectance.txt
+catalogs/m_dwarf_colors.txt
 catalogs/mainseq.dat
 catalogs/planets.json
 catalogs/sat/sources.json

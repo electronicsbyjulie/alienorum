@@ -14,6 +14,7 @@
 #include "fictionalstars.h"
 #include "wdcolor.h"
 #include "browncolor.h"
+#include "mdwarfcolor.h"
 #include "numeric.h"
 #include "neighborhoodfilter.h"
 #include "../globals.h"
@@ -839,6 +840,7 @@ double Star::mira_surface_brightness() const
 double Star::estimate_temperature() const
 {
     if (temperature) return temperature;
+    if (is_m_dwarf_color_source(this)) return m_dwarf_temperature(this);
     if (!strlen(spectral_type)) return 5800;
     // double msqi = get_mseqidx_from_sptyp(spectral_type);
     double msqi = get_mseqidx_from_BV(BV_color);
@@ -871,6 +873,11 @@ double Star::estimate_luminosity(double tempK)
 
 void Star::estimate_BV()
 {
+    if (is_m_dwarf_color_source(this))
+    {
+        if (!is_bv_observed) estimate_BV(m_dwarf_temperature(this));
+        return;
+    }
     // double msqi = get_mseqidx_from_sptyp(spectral_type);
     double msqi = get_mseqidx_from_BV(BV_color);
     if (msqi >= mseqmin && msqi <= mseqmax) BV_color = interpolate_mseq_BV(msqi);
@@ -1029,7 +1036,9 @@ alienorum::stellar_regime_t alienorum::stellar_regime(CelestialObject *cel)
 
     // Neither estimate_temperature() nor the main-sequence table it relies on: we
     // invert the blackbody relation, or use the catalog temperature when available.
-    double T = (cel->temperature > 0) ? cel->temperature : Star::temperature_from_BV(cel->BV_color);
+    double T = is_m_dwarf_color_source(static_cast<Star*>(cel))
+        ? m_dwarf_temperature(static_cast<Star*>(cel))
+        : ((cel->temperature > 0) ? cel->temperature : Star::temperature_from_BV(cel->BV_color));
     if (!(T > 0) || isnan(T) || isinf(T)) return regime_stellar;
 
     // Radius derived from luminosity and temperature using Stefan-Boltzmann. We must strictly

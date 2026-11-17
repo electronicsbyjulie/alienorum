@@ -17,6 +17,7 @@
 #include "../sphere_impostor.h"
 #include "wdcolor.h"
 #include "browncolor.h"
+#include "mdwarfcolor.h"
 
 using namespace alienorum;
 
@@ -184,7 +185,7 @@ Color Color::color_from_star(double Vmag, Star *star, double fallback_BV)
     }
     Color photometric = color_from_magnitude_indices(Vmag, fallback_BV, vr);
     Color linear;
-    if (!star || !(brown_color_source(star, linear) || star->resolve_wd_color(linear))) return photometric;
+    if (!star || !(m_dwarf_color_source(star, linear) || brown_color_source(star, linear) || star->resolve_wd_color(linear))) return photometric;
     const double yellowing = fallback_BV - star->BV_color;
     linear.red *= std::pow(magnbase, yellowing);
     linear.blue *= std::pow(magnbase, -yellowing);
