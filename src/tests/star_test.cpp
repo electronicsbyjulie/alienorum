@@ -15,6 +15,195 @@
 
 using namespace alienorum;
 
+TEST(MiraPulsationTest, ContinuumMatchesMiraInterferometryWithoutVisualRadiusInflation)
+{
+    Star star;
+    star.variability_type = "M";
+    star.variability_period = 333.8 * oneday;
+    star.apply_mira_pulsation(.13);
+    EXPECT_NEAR(star.volumetric_mean_radius / solar_radius, 332, 38);
+    EXPECT_NEAR(star.temperature, 3192, 200);
+    star.apply_mira_pulsation(.26);
+    EXPECT_NEAR(star.temperature, 2918, 183);
+    star.apply_mira_pulsation(.40);
+    EXPECT_NEAR(star.volumetric_mean_radius / solar_radius, 402, 46);
+    star.apply_mira_pulsation(0);
+    const double hot = star.temperature, small = star.volumetric_mean_radius;
+    const double bright_luminosity = star.bolometric_luminosity();
+    star.apply_mira_pulsation(.5);
+    EXPECT_LT(star.temperature, hot);
+    EXPECT_GT(star.volumetric_mean_radius, small);
+    EXPECT_LT(bright_luminosity / star.bolometric_luminosity(), 2);
+    EXPECT_GT(bright_luminosity / star.bolometric_luminosity(), 1);
+}
+
+TEST(MiraPulsationTest, PhaseIsPeriodicReversibleAndIndependentOfFrameHistory)
+{
+    Star star;
+    star.variability_type = "M:";
+    star.variability_period = 400 * oneday;
+    star.apply_mira_pulsation(.21);
+    const double radius = star.volumetric_mean_radius, temperature = star.temperature;
+    for (int i = 0; i < 50; ++i) star.apply_mira_pulsation(i * .073);
+    star.apply_mira_pulsation(-9.79);
+    EXPECT_NEAR(star.volumetric_mean_radius / radius, 1, 1e-12);
+    EXPECT_NEAR(star.temperature / temperature, 1, 1e-12);
+    Star restored;
+    ASSERT_TRUE(restored.from_json(star.to_json()));
+    restored.apply_mira_pulsation(.21);
+    EXPECT_DOUBLE_EQ(restored.volumetric_mean_radius, radius);
+    EXPECT_DOUBLE_EQ(restored.temperature, temperature);
+    EXPECT_EQ(restored.mira_pulsation, star.mira_pulsation);
+    EXPECT_EQ(restored.variability_type, "M:");
+}
+
+TEST(MiraPulsationTest, LocationUpdatesKeepTheVisualCycleSeparateFromPlanetHeating)
+{
+    struct RestoreClock
+    {
+        double value = simnow;
+        ~RestoreClock() { simnow = value; }
+    } restore;
+    Star star;
+    star.variability_type = "M";
+    star.variability_period = 333.8 * oneday;
+    star.epoch_max_brightness = J2000;
+    star.minmag = 3;
+    star.maxmag = 10;
+    star.distance = 107 * parsec;
+    star.tmprel = Point(0, 0, star.distance);
+    Planet world;
+    world.orbit = new Orbit();
+    world.orbit->center = &star;
+    world.orbit->semimajor_axis = 10 * AU;
+    simnow = J2000_TIME_T;
+    star.update_location(simnow);
+    EXPECT_NEAR(star.apparent_magnitude, 3, 1e-10);
+    EXPECT_NEAR(star.mira_surface_brightness(), 1, 1e-10);
+    const double radius = star.volumetric_mean_radius, temperature = star.temperature;
+    const double heat = world.est_bolometric_flux();
+    simnow += star.variability_period / 2;
+    star.update_location(simnow);
+    EXPECT_NEAR(star.apparent_magnitude, 10, 1e-10);
+    EXPECT_GT(star.volumetric_mean_radius, radius);
+    EXPECT_LT(star.temperature, temperature);
+    const double relative_flux = star.mira_surface_brightness()
+        * pow(star.volumetric_mean_radius / radius, 2);
+    EXPECT_NEAR(relative_flux, pow(magnbase, -7), 1e-12);
+    EXPECT_GT(heat / world.est_bolometric_flux(), 1);
+    EXPECT_LT(heat / world.est_bolometric_flux(), 2);
+    EXPECT_DOUBLE_EQ(star.estimate_radius(true), star.volumetric_mean_radius);
+}
+
+TEST(MiraPulsationTest, OtherVariableFamiliesAndEclipsingSystemsRetainTheirBehavior)
+{
+    for (const char* type : {"SR", "SRB", "EA", "MISC", "DSCT", ""})
+    {
+        Star star;
+        star.variability_type = type;
+        star.variability_period = 300 * oneday;
+        star.temperature = 4000;
+        star.volumetric_mean_radius = solar_radius;
+        star.apply_mira_pulsation(.5);
+        EXPECT_FALSE(star.is_mira_variable());
+        EXPECT_DOUBLE_EQ(star.temperature, 4000);
+        EXPECT_DOUBLE_EQ(star.volumetric_mean_radius, solar_radius);
+    }
+    Star binary;
+    binary.variability_type = "M";
+    binary.variability_period = oneday;
+    binary.is_eclipsing_binary = true;
+    EXPECT_FALSE(binary.is_mira_variable());
+}
+
+TEST(MiraPulsationTest, AuthoredMeansSurviveSavingAtAnyPhase)
+{
+    Star star;
+    star.variability_type = "M";
+    star.variability_period = 250 * oneday;
+    star.mira_pulsation = {{"mean_temperature_K", "2800?"},
+        {"mean_radius_m", 300 * solar_radius}, {"estimated", false}};
+    Star loaded;
+    ASSERT_TRUE(loaded.from_json(star.to_json()));
+    loaded.apply_mira_pulsation(0);
+    EXPECT_DOUBLE_EQ(loaded.mira_pulsation["mean_temperature_K"].get<double>(), 2800);
+    EXPECT_DOUBLE_EQ(loaded.mira_pulsation["mean_radius_m"].get<double>(), 300 * solar_radius);
+    EXPECT_FALSE(loaded.mira_pulsation["estimated"].get<bool>());
+}
+
+TEST(MiraPulsationTest, ColorCoolsWhileCatalogIndicesRemainIntact)
+{
+    Star star;
+    star.variability_type = "M";
+    star.variability_period = 333.8 * oneday;
+    star.BV_color = 1.4;
+    star.VR_color = 1.1;
+    star.apply_mira_pulsation(0);
+    const Color hot = Color::color_from_star(0, &star, star.BV_color);
+    star.apply_mira_pulsation(.5);
+    const Color cool = Color::color_from_star(0, &star, star.BV_color);
+    EXPECT_GT(cool.red / cool.green, hot.red / hot.green);
+    EXPECT_GT(cool.green / cool.blue, hot.green / hot.blue);
+    EXPECT_DOUBLE_EQ(star.BV_color, 1.4);
+    EXPECT_DOUBLE_EQ(star.VR_color, 1.1);
+}
+
+TEST(StellarAgeTest, MiraEvolutionUsesStableContinuumPropertiesAcrossTheCycleAndReload)
+{
+    Star::load_main_seq_dat();
+    Star star;
+    strcpy(star.spectral_type, "M5e-M9e");
+    star.variability_type = "M";
+    star.variability_period = 333.8 * oneday;
+    star.minmag = 3;
+    star.maxmag = 10;
+    star.mass = solar_mass;
+    star.BV_color = 1.4;
+    star.distance = 107 * parsec;
+    star.apply_mira_pulsation(0);
+    const json expected = star.age_diagnostics();
+    const auto inputs = star.evolution_inputs;
+    ASSERT_TRUE(expected.contains("value_gyr"));
+    EXPECT_EQ(expected["pulsation_basis"], "mean_continuum_radius_and_temperature");
+    for (double phase : {.25, .5, .75, 1.0, -.25})
+    {
+        star.apply_mira_pulsation(phase);
+        star.apparent_magnitude = 6.5 - 3.5 * cos(2 * _pi * phase);
+        star.absolute_magnitude = star.apparent_magnitude - 5 * log10(10.7);
+        EXPECT_EQ(star.age_diagnostics(), expected);
+        EXPECT_EQ(star.evolution_inputs, inputs);
+        Star restored;
+        ASSERT_TRUE(restored.from_json(star.to_json()));
+        EXPECT_EQ(restored.age_diagnostics(), expected);
+    }
+    star.stellar_age = {{"value_gyr", 7.2}, {"source", "supplied"}};
+    EXPECT_DOUBLE_EQ(star.estimate_age_gyr(), 7.2);
+    // Recompute after an actual reference-property edit; do not freeze an old fit forever.
+    star.stellar_age = nullptr;
+    star.mira_pulsation["mean_temperature_K"] = 3200;
+    star.age_diagnostics();
+    EXPECT_NE(star.evolution_inputs, inputs);
+}
+
+TEST(StellarAgeTest, OtherVariableStarsUseTheMeanLightCurveForEvolution)
+{
+    Star::load_main_seq_dat();
+    Star star;
+    strcpy(star.spectral_type, "K0III");
+    star.variability_type = "SR";
+    star.variability_period = 100 * oneday;
+    star.minmag = 3;
+    star.maxmag = 6;
+    star.temperature = 4500;
+    star.distance = 100 * parsec;
+    star.absolute_magnitude = -2;
+    const json expected = star.age_diagnostics();
+    const auto inputs = star.evolution_inputs;
+    star.absolute_magnitude = 1;
+    EXPECT_EQ(star.age_diagnostics(), expected);
+    EXPECT_EQ(star.evolution_inputs, inputs);
+}
+
 TEST(StellarAgeTest, EvolvedStarsUseTheirHrPositionInsteadOfDwarfMasses)
 {
     Star::load_main_seq_dat();

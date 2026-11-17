@@ -30,6 +30,60 @@ TEST(ColorTest, GlareUsesIndependentRedGreenIndex)
     }
 }
 
+TEST(ColorTest, MiraDiscAndTextureTintStayNormalizedThroughTheCycle)
+{
+    Star star;
+    strcpy(star.spectral_type, "M5e");
+    star.variability_type = "M";
+    star.variability_period = 333.8 * oneday;
+    star.minmag = 3;
+    star.maxmag = 9;
+    star.BV_color = 1.4;
+    star.VR_color = 1.1;
+    double bright_red_green = 0;
+    for (double phase : {0.0, .25, .5, .75, 1.0})
+    {
+        star.apply_mira_pulsation(phase);
+        star.apparent_magnitude = 6 - 3 * cos(2 * _pi * phase);
+        Color surface = Color::color_from_star(4.2, &star, star.BV_color);
+        const RGB3 pixel = Color::rgb_from_color(surface, -1, 1, false);
+        EXPECT_EQ(std::max({pixel.r, pixel.g, pixel.b}), 255);
+        const Color tint = Color::reflected_daylight(&star, 0);
+        EXPECT_DOUBLE_EQ(std::max({tint.red, tint.green, tint.blue}), 1);
+        // A red-peak texture texel keeps its full channel in both sphere renderers.
+        EXPECT_DOUBLE_EQ(255 * tint.red, 255);
+        if (phase == 0) bright_red_green = surface.red / surface.green;
+        if (phase == .5) EXPECT_GT(surface.red / surface.green, bright_red_green);
+    }
+}
+
+TEST(ColorTest, MiraMolecularColorPreservesPhysicalTemperatureAndFlareScaling)
+{
+    Star star;
+    strcpy(star.spectral_type, "M5e");
+    star.variability_type = "M";
+    star.variability_period = 333.8 * oneday;
+    star.minmag = 3;
+    star.maxmag = 9;
+    star.BV_color = 1.4;
+    star.VR_color = 1.1;
+    star.apply_mira_pulsation(.5);
+    star.apparent_magnitude = 9;
+    const double physical_temperature = star.temperature;
+    const Color molecular = Color::color_from_star(2, &star, star.BV_color);
+    const Color faint = Color::color_from_star(5, &star, star.BV_color);
+    EXPECT_NEAR(faint.red / molecular.red, pow(magnbase, -3), 1e-12);
+    EXPECT_NEAR(faint.green / molecular.green, pow(magnbase, -3), 1e-12);
+    EXPECT_NEAR(faint.blue / molecular.blue, pow(magnbase, -3), 1e-12);
+    // Carbon spectra do not borrow the oxygen-rich molecular-layer approximation.
+    strcpy(star.spectral_type, "C5");
+    const Color continuum = Color::color_from_star(2, &star, star.BV_color);
+    EXPECT_GT(molecular.red / molecular.green, continuum.red / continuum.green);
+    EXPECT_DOUBLE_EQ(star.temperature, physical_temperature);
+    EXPECT_DOUBLE_EQ(star.BV_color, 1.4);
+    EXPECT_DOUBLE_EQ(star.VR_color, 1.1);
+}
+
 TEST(ColorTest, WdRenderingPreservesPaperHueAndMagnitudeScaling)
 {
     struct RestoreDisplay

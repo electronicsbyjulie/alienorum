@@ -1088,9 +1088,7 @@ static void draw_pressure_haze_sky(Planet* planet, const PressureHaze& haze)
 // R*(0,1,0) -- a different vector from R^-1*(0,1,0) whenever R isn't symmetric, which is
 // generally the case.
 //
-// Shared by draw_ring_gpu() (which draws the rings) and draw_sphere_gpu() (which shadows the
-// planet with them) precisely so the two can never disagree about where the ring plane is: a
-// ring shadow that does not line up with the ring casting it is worse than no shadow at all.
+// Shared by the ring and sphere renderers so the ring and its shadow use the same plane.
 static Point ring_plane_normal(CelestialObject *cel)
 {
     if (view_mode == vm_system)
@@ -5457,7 +5455,8 @@ static Color water_light_color(CelestialObject* object)
     static std::unordered_map<CelestialObject*, Entry> colors;
     const auto cls = object->typeclass();
     const bool cache = performance_enabled(50) && !water_cpu_reference
-        && !(cls == class_star && static_cast<Star*>(object)->is_white_dwarf());
+        && !(cls == class_star && (static_cast<Star*>(object)->is_white_dwarf()
+            || static_cast<Star*>(object)->is_mira_variable()));
     Key key;
     if (cache)
     {

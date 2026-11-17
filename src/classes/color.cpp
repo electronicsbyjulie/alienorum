@@ -151,8 +151,36 @@ Color Color::color_from_planet(double Vmag, CelestialObject* object, double offs
 
 Color Color::color_from_star(double Vmag, Star *star, double fallback_BV)
 {
-    const double vr = star && star->VR_color != 0
+    double vr = star && star->VR_color != 0
         ? star->VR_color + fallback_BV - star->BV_color : fallback_BV;
+    if (star && star->is_mira_variable() && star->mira_pulsation.is_object()
+        && star->temperature > 0 && star->mira_pulsation.contains("mean_temperature_K"))
+    {
+        const double reference = star->mira_pulsation["mean_temperature_K"];
+        double optical_temperature = star->temperature;
+        if (star->spectral_type[0] == 'M' && star->maxmag > star->minmag
+            && star->apparent_magnitude >= star->minmag && star->apparent_magnitude <= star->maxmag)
+        {
+            // Oxygen-rich Miras develop a cool, optically thick molecular layer near
+            // minimum light (Reid & Goldston 2002, astro-ph/0106571). Approximate its
+            // broad color using the V-band brightness temperature, without treating
+            // this as a resolved TiO spectrum or changing the physical effective temperature.
+            const double lead = star->mira_pulsation.value("temperature_phase_lead", .05);
+            const double hot_temperature = reference * (1
+                + star->mira_pulsation.value("temperature_fraction", 250.0 / 3050) * cos(2 * _pi * lead));
+            const double hc_over_lambda_k = .01438776877 / V_band;
+            const double visual_surface_flux = std::max(star->mira_surface_brightness(), 1e-12);
+            const double layer_temperature = hc_over_lambda_k / log1p(
+                expm1(hc_over_lambda_k / hot_temperature) / visual_surface_flux);
+            optical_temperature = std::min(optical_temperature, layer_temperature);
+        }
+        const auto index = [](double temp, double first, double second)
+        {
+            return log(blackbody_flux(temp, second) / blackbody_flux(temp, first)) * invlogmagnbase;
+        };
+        fallback_BV += index(optical_temperature, B_band, V_band) - index(reference, B_band, V_band);
+        vr += index(optical_temperature, V_band, R_band) - index(reference, V_band, R_band);
+    }
     Color photometric = color_from_magnitude_indices(Vmag, fallback_BV, vr);
     Color linear;
     if (!star || !star->resolve_wd_color(linear)) return photometric;

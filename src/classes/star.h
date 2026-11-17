@@ -46,6 +46,12 @@ namespace alienorum
         double variability_period = 0;              // seconds
         double epoch_max_brightness = 2451544.5;    // JD
         double is_eclipsing_binary = false;
+        std::string variability_type;
+        json mira_pulsation = nullptr;
+        bool is_mira_variable() const;
+        void apply_mira_pulsation(double phase);
+        double bolometric_luminosity(double tempK = 0) const;
+        double mira_surface_brightness() const;
 
         char spectral_type[32];
         char Bayer[32];
@@ -115,7 +121,7 @@ namespace alienorum
         void make_universally_visible();
         inline bool is_universally_visible() { return _is_always_visible || is_faved; }
 
-        double estimate_temperature();              // Based on BV color
+        double estimate_temperature() const;        // Based on BV color
         double estimate_luminosity(double tempK);   // Returns luminosity in solar units.
         double estimate_mass();
         void estimate_BV();                         // Blackbody value from estimated temperature from MK spectral type

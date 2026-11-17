@@ -577,14 +577,17 @@ void Star::update_location(double tmnow)
         double phase = elapsed / variability_period;
         double min_lum = pow(magnbase, -maxmag), max_lum = pow(magnbase, -minmag);
         double local_lum = (max_lum + min_lum) * 0.5 + (max_lum - min_lum) * 0.5 * cos(phase * _pi * 2);
-        double local_mag = -log(local_lum) * invlogmagnbase;
+        double local_mag = is_mira_variable()
+            ? (minmag + maxmag) * .5 - (maxmag - minmag) * .5 * cos(phase * _pi * 2)
+            : -log(local_lum) * invlogmagnbase;
         apparent_magnitude = local_mag;
 
         // TODO: make these next two lines their own fuction.
         double intrinsic_brightness = pow(magnbase, -apparent_magnitude) * pow(fmax(AU, distance) / parsec / 10, 2);
         absolute_magnitude = -log(intrinsic_brightness) * invlogmagnbase;
 
-        volumetric_mean_radius = estimate_radius(true);
+        if (is_mira_variable()) apply_mira_pulsation(phase);
+        else volumetric_mean_radius = estimate_radius(true);
     }
     const auto changed = [](double before, double after)
     {
@@ -775,7 +778,63 @@ void Star::make_universally_visible()
     _is_always_visible = true;
 }
 
-double Star::estimate_temperature()
+bool Star::is_mira_variable() const
+{
+    const auto end = variability_type.find_first_of("/+ :?");
+    return variability_type.substr(0, end) == "M" && !is_eclipsing_binary && variability_period > 0;
+}
+
+void Star::apply_mira_pulsation(double phase)
+{
+    if (!is_mira_variable() || !std::isfinite(phase)) return;
+    if (!mira_pulsation.is_object()) mira_pulsation = json::object();
+    // A class template, not a hydrodynamic atmosphere calculation. The modest continuum
+    // pulsation is separate from the much larger visual variation caused by molecular opacity.
+    // Woodruff et al. 2004 (astro-ph/0404248): o Cet grows from 332 to 402 solar radii
+    // at visual phases .13 to .40, with temperatures about 3192 to 2918 K at .13 to .26.
+    // The period-density scaling below assumes similar mass and pulsation constant.
+    const auto parameter = [&](const char* key, double fallback, double low, double high)
+    {
+        if (mira_pulsation.contains(key) && mira_pulsation[key].is_number())
+        {
+            const double value = mira_pulsation[key];
+            if (std::isfinite(value) && value >= low && value <= high) return value;
+        }
+        mira_pulsation[key] = fallback;
+        return fallback;
+    };
+    const double mean_t = parameter("mean_temperature_K", spectral_type[0] == 'C' ? 2600 : 3050, 500, 10000);
+    const double mean_r = parameter("mean_radius_m",
+        367 * solar_radius * pow(variability_period / (333.8 * oneday), 2.0 / 3.0), 1, 1e15);
+    const double radius_fraction = parameter("radius_fraction", .13, 0, .8);
+    const double temperature_fraction = parameter("temperature_fraction", 250.0 / 3050, 0, .8);
+    const double lead = parameter("temperature_phase_lead", .05, -1, 1);
+    if (!mira_pulsation.contains("estimated")) mira_pulsation["estimated"] = true;
+    mira_pulsation["model"] = "Mira_continuum_template_v1";
+    volumetric_mean_radius = mean_r * (1 - radius_fraction * cos(2 * _pi * phase));
+    temperature = mean_t * (1 + temperature_fraction * cos(2 * _pi * (phase + lead)));
+}
+
+double Star::bolometric_luminosity(double tempK) const
+{
+    if (!tempK) tempK = estimate_temperature();
+    if (is_mira_variable() && mira_pulsation.is_object())
+        return pow(volumetric_mean_radius / solar_radius, 2) * pow(tempK / sun_temp, 4);
+    return pow(magnbase, 4.74 - absolute_magnitude - bolometric_correction(tempK));
+}
+
+double Star::mira_surface_brightness() const
+{
+    if (!is_mira_variable() || !mira_pulsation.is_object() || !(volumetric_mean_radius > 0)) return 1;
+    const double bright_radius = mira_pulsation.value("mean_radius_m", volumetric_mean_radius)
+        * (1 - mira_pulsation.value("radius_fraction", .13));
+    // Physical visual flux per disc area, used to estimate the optical color temperature.
+    // Resolved discs retain their normalized display brightness.
+    return std::clamp(pow(magnbase, minmag - apparent_magnitude)
+        * pow(bright_radius / volumetric_mean_radius, 2), 0.0, 1.0);
+}
+
+double Star::estimate_temperature() const
 {
     if (temperature) return temperature;
     if (!strlen(spectral_type)) return 5800;
@@ -788,6 +847,7 @@ double Star::estimate_temperature()
 
 double Star::estimate_luminosity(double tempK)
 {
+    if (is_mira_variable() && mira_pulsation.is_object()) return bolometric_luminosity(tempK);
     // double msqi = get_mseqidx_from_sptyp(spectral_type);
     double msqi = get_mseqidx_from_BV(BV_color);
     if (msqi >= mseqmin && msqi <= mseqmax)
@@ -1542,6 +1602,8 @@ int Star::audit_and_correct_main_sequence_stars(CelestialObject** cels, double t
 
 double Star::estimate_radius(bool sms)
 {
+    if (is_mira_variable() && mira_pulsation.is_object() && volumetric_mean_radius > 0)
+        return volumetric_mean_radius;
     if (stellar_regime(this) == regime_degenerate)
     {
         return volumetric_mean_radius = degenerate_radius(mass);
@@ -1690,6 +1752,12 @@ json Star::evolution_diagnostics() const
     static std::array<std::mutex, 64> locks;
     std::lock_guard<std::mutex> guard(locks[(reinterpret_cast<std::uintptr_t>(this) >> 5) % locks.size()]);
     double effective = temperature;
+    double mean_radius = 0, mean_temperature = 0;
+    const bool mean_continuum = is_mira_variable()
+        && stellar_nonnegative_value(mira_pulsation, "mean_temperature_K", mean_temperature)
+        && stellar_nonnegative_value(mira_pulsation, "mean_radius_m", mean_radius)
+        && mean_temperature > 0 && mean_radius > 0;
+    if (mean_continuum) effective = mean_temperature;
     if (!(effective > 0) || !std::isfinite(effective))
     {
         const double index = get_mseqidx_from_BV(BV_color);
@@ -1698,8 +1766,24 @@ json Star::evolution_diagnostics() const
     }
     double luminosity;
     bool luminosity_assumed = false;
-    if (std::isfinite(absolute_magnitude) && fabs(absolute_magnitude) < 99)
-        luminosity = pow(10.0, .4 * (4.74 - absolute_magnitude - bolometric_correction(effective)));
+    double evolution_magnitude = absolute_magnitude;
+    if (!mean_continuum && variability_period > 0 && !is_eclipsing_binary
+        && std::isfinite(minmag) && std::isfinite(maxmag) && fabs(minmag) < 99 && fabs(maxmag) < 99
+        && distance > 0 && std::isfinite(distance))
+    {
+        // Infer evolutionary state from the mean light curve, not the current phase.
+        const double mean_flux = .5 * (pow(magnbase, -minmag) + pow(magnbase, -maxmag));
+        evolution_magnitude = -log(mean_flux) * invlogmagnbase
+            - 5 * log10(fmax(AU, distance) / (10 * parsec));
+    }
+    if (mean_continuum)
+    {
+        // Molecular absorption changes visible light without moving the star to a
+        // different evolutionary track. Use the model's stable continuum reference.
+        luminosity = pow(mean_radius / solar_radius, 2) * pow(effective / sun_temp, 4);
+    }
+    else if (std::isfinite(evolution_magnitude) && fabs(evolution_magnitude) < 99)
+        luminosity = pow(10.0, .4 * (4.74 - evolution_magnitude - bolometric_correction(effective)));
     else if (volumetric_mean_radius > 0 && std::isfinite(volumetric_mean_radius))
         luminosity = pow(volumetric_mean_radius / solar_radius, 2) * pow(effective / 5772, 4);
     else
@@ -1743,6 +1827,7 @@ json Star::evolution_diagnostics() const
     const auto result_with_provenance = [&]()
     {
         json result = evolution_result;
+        if (mean_continuum) result["pulsation_basis"] = "mean_continuum_radius_and_temperature";
         if (luminosity_assumed && result.contains("value_gyr"))
         {
             result["lower_gyr"] = 0;
@@ -1883,6 +1968,16 @@ double Star::estimate_age_gyr() const
 json Star::to_json()
 {
     json towrite = CelestialObject::to_json();
+    if (!variability_type.empty()) towrite["variability_type"] = variability_type;
+    if (variability_period > 0)
+    {
+        towrite["variability_period"] = variability_period;
+        towrite["epoch_max_brightness"] = epoch_max_brightness;
+        towrite["minmag"] = minmag;
+        towrite["maxmag"] = maxmag;
+        towrite["is_eclipsing_binary"] = static_cast<bool>(is_eclipsing_binary);
+    }
+    if (mira_pulsation.is_object()) towrite["mira_pulsation"] = mira_pulsation;
     if (has_disk || (std::isfinite(disk_inner_edge_sma) && disk_inner_edge_sma > 0))
     {
         towrite["debris_belt"] = {{"present", has_disk}};
@@ -1988,6 +2083,26 @@ json Star::to_json()
 bool Star::from_json(const json& j)
 {
     CelestialObject::from_json(j);
+    variability_type = j.value("variability_type", variability_type);
+    json cycle = json::object();
+    for (const char* key : {"variability_period", "epoch_max_brightness", "minmag", "maxmag"})
+        if (j.contains(key)) cycle[key] = j[key];
+    normalize_uncertain_numbers(cycle);
+    const auto read_cycle = [&](const char* key, double& value)
+    {
+        if (cycle.contains(key) && cycle[key].is_number())
+        {
+            const double supplied = cycle[key];
+            if (std::isfinite(supplied)) value = supplied;
+        }
+    };
+    read_cycle("variability_period", variability_period);
+    read_cycle("epoch_max_brightness", epoch_max_brightness);
+    read_cycle("minmag", minmag);
+    read_cycle("maxmag", maxmag);
+    is_eclipsing_binary = j.value("is_eclipsing_binary", static_cast<bool>(is_eclipsing_binary));
+    mira_pulsation = j.value("mira_pulsation", json(nullptr));
+    if (mira_pulsation.is_object()) normalize_uncertain_numbers(mira_pulsation);
     if (j.contains("debris_belt") && j["debris_belt"].is_object())
     {
         json belt = j["debris_belt"];

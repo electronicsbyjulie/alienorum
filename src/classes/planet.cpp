@@ -737,8 +737,7 @@ bool Planet::estimate_cool_giant_color()
             || !(stellar_orbiter->orbit->semimajor_axis > 0)) return false;
         const double stellar_temperature = host->temperature > 0 ? host->temperature
             : Star::interpolate_mseq_temp(Star::get_mseqidx_from_BV(host->BV_color));
-        const double luminosity = std::pow(magnbase, 4.74 - host->absolute_magnitude
-            - Star::bolometric_correction(stellar_temperature));
+        const double luminosity = host->bolometric_luminosity(stellar_temperature);
         const double axis = stellar_orbiter->orbit->semimajor_axis / AU;
         const double irradiation = luminosity / (axis * axis);
         if (std::isfinite(irradiation) && irradiation > 0)
@@ -976,8 +975,7 @@ void Planet::classify(bool HZ, bool mnrk, bool ck)
     if (host && stellar_orbit && std::isfinite(stellar_orbit->semimajor_axis) && stellar_orbit->semimajor_axis > 0)
     {
         const double teff = host->temperature > 0 ? host->temperature : host->estimate_temperature();
-        const double bolometric = host->absolute_magnitude + Star::bolometric_correction(teff);
-        const double luminosity = pow(magnbase, 4.74 - bolometric);
+        const double luminosity = host->bolometric_luminosity(teff);
         irradiation = luminosity / pow(stellar_orbit->semimajor_axis / AU, 2);
         // A fixed neutral albedo for an unmeasured surface avoids a class/color feedback loop.
         const double bond = std::isfinite(albedo) && albedo > 0 ? std::clamp(albedo, 0.0, 1.0) : 0.3;
@@ -1945,16 +1943,9 @@ double Planet::est_bolometric_flux(double t_eff)
     Star *s = (Star*)lc;
     if (!t_eff) t_eff = s->estimate_temperature();
 
-    // See Star::bolometric_correction(), where this calculation now resides: the exostar loader
-    // must apply exactly the same correction in reverse (cat.cpp,
-    // resolve_or_create_exostar), and two copies would eventually have diverged.
-    double bc_v = Star::bolometric_correction(t_eff);
-
-    // Calculate absolute bolometric magnitude.
-    s->m_bol = s->absolute_magnitude + bc_v;
-
-    // Convert to bolometric luminosity relative to the Sun's bolometric 4.74 magnitude.
-    s->m_bol = std::pow(magnbase, (4.74 - s->m_bol));
+    // Mira visual absorption redistributes radiation into the infrared; it does not
+    // remove the same fraction of the energy heating an orbiting planet.
+    s->m_bol = s->bolometric_luminosity(t_eff);
 
     // Compute planetary illumination
     CelestialObject *myplanet = this;
@@ -2360,8 +2351,7 @@ bool Planet::set_habitable_orbit()
     if (!orbit || !orbit->center || orbit->center->typeclass() != class_star) return false;
     Star* host = static_cast<Star*>(orbit->center);
     const double temp = host->estimate_temperature();
-    const double luminosity = std::pow(magnbase,
-        4.74 - host->absolute_magnitude - Star::bolometric_correction(temp));
+    const double luminosity = host->bolometric_luminosity(temp);
     if (!std::isfinite(luminosity) || luminosity <= 0) return false;
 
     // Search in luminosity-scaled distance using the same zone model as the editor.

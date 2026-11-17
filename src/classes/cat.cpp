@@ -1459,6 +1459,7 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
 
         //  25- 30  A6    ---   VarType    *Variability type as in GCVS/NSV
         read_field_onebased(buffer, 25, 30, field);
+        s->variability_type = trim(field);
         s->is_eclipsing_binary = is_eclipsing_type(field);
 
         //  34- 39  F6.3  mag   maxMag      Magnitude at max from curve fitting
@@ -1552,6 +1553,24 @@ int alienorum::CatalogReader::read_GCVS_catalog(CelestialObject **cels)
     {
         if (strlen(buffer) < 127) continue;
 
+        read_field_onebased(buffer, 9, 18, field);
+        const std::string designation = squeeze_spaces(field);
+        Star *s = nullptr;
+        auto match = desig_HIP.find(designation);
+        if (match != desig_HIP.end() && match->second > 0 && match->second <= MAX_HIP)
+            s = hipcache[match->second];
+        if (!s)
+        {
+            match = desig_HD.find(designation);
+            if (match != desig_HD.end() && match->second > 0 && match->second <= MAX_HD)
+                s = hdcache[match->second];
+        }
+        if (!s) continue;
+        read_field_onebased(buffer, 42, 51, field);
+        const std::string vartype = trim(field);
+        if (s->variability_type.empty()) s->variability_type = vartype;
+        if (s->variability_period) continue;              // Retain the Hipparcos light curve.
+
         //  89- 90  A2    ---   flt       The photometric system for magnitudes
         read_field_onebased(buffer, 89, 90, field);
         // if (trim(field) != "V") continue;                   // minmag/maxmag are visual everywhere else
@@ -1573,12 +1592,12 @@ int alienorum::CatalogReader::read_GCVS_catalog(CelestialObject **cels)
         // The epoch is of MINIMUM light for eclipsing, ellipsoidal, RV Tau, and RS CVn types, and
         // of maximum for everything else; half a period turns the one into the other.
         read_field_onebased(buffer, 42, 51, field);
-        std::string vartype = trim(field);
         bool eclipsing = is_eclipsing_type(vartype.c_str());
         std::string primary = vartype;
         size_t vtlen = primary.find_first_of("/+:");
         if (vtlen != std::string::npos) primary.resize(vtlen);
-        if (primary[0] == 'E' || primary == "RS" || !primary.compare(0, 2, "RV")) epoch += period / 2;
+        if ((!primary.empty() && primary[0] == 'E') || primary == "RS" || !primary.compare(0, 2, "RV"))
+            epoch += period / 2;
 
         //      53  A1    ---   l_magMax  [<>(] Limit or amplitude symbol on magMax
         //  54- 59  F6.3  mag   magMax    ? Magnitude at maximum brightness
@@ -1596,20 +1615,6 @@ int alienorum::CatalogReader::read_GCVS_catalog(CelestialObject **cels)
         read_field_onebased(buffer, 63, 64, field);
         if (strchr(field, '<')) continue;                   // a faintest-seen limit, not a minimum
         if (strchr(field, '(') || buffer[73] == ')') min1 += magmax;    // Min1 is the amplitude
-
-        //   9- 18  A10   ---   GCVS      Variable star designation
-        read_field_onebased(buffer, 9, 18, field);
-        std::string desig = squeeze_spaces(field);
-
-        Star *s = nullptr;
-        std::map<std::string, int>::iterator it = desig_HIP.find(desig);
-        if (it != desig_HIP.end() && it->second > 0 && it->second <= MAX_HIP) s = hipcache[it->second];
-        if (!s)
-        {
-            it = desig_HD.find(desig);
-            if (it != desig_HD.end() && it->second > 0 && it->second <= MAX_HD) s = hdcache[it->second];
-        }
-        if (!s || s->variability_period) continue;          // Hipparcos fitted this one already
 
         s->minmag = magmax;
         s->maxmag = min1;

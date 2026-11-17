@@ -118,6 +118,35 @@ TEST_F(StellarRotationTest, TauCetiCatalogBeltFeedsTheVolatileBudget)
     EXPECT_NE(after.pressure, before.pressure);
 }
 
+TEST_F(StellarRotationTest, MiraClassImportsEvenWhenHipparcosAlreadySuppliedThePeriod)
+{
+    Star* star = target(14386);
+    hip[10826] = star;
+    star->variability_period = 333.8 * oneday;
+    star->epoch_max_brightness = 2450000;
+    star->minmag = 3;
+    star->maxmag = 7;
+    std::filesystem::create_directories("catalogs/GCVS");
+    std::string cross(60, ' ');
+    cross.replace(0, 9, "Hip 10826");
+    cross[32] = '=';
+    cross.replace(33, 7, "omi Cet");
+    std::ofstream("catalogs/GCVS/data") << cross << '\n';
+    std::string entry(130, ' ');
+    entry.replace(8, 7, "omi Cet");
+    entry[41] = 'M';
+    // Classification is useful even if this catalog has no epoch or fitted curve.
+    std::ofstream("catalogs/GCVS/gcvs_cat.dat") << entry << '\n';
+    CatalogReader reader;
+    EXPECT_EQ(reader.read_GCVS_catalog(cels), 0);
+    EXPECT_EQ(star->variability_type, "M");
+    EXPECT_TRUE(star->is_mira_variable());
+    EXPECT_DOUBLE_EQ(star->variability_period, 333.8 * oneday);
+    EXPECT_DOUBLE_EQ(star->epoch_max_brightness, 2450000);
+    EXPECT_DOUBLE_EQ(star->minmag, 3);
+    EXPECT_DOUBLE_EQ(star->maxmag, 7);
+}
+
 TEST_F(StellarRotationTest, VisualCatalogLettersDoNotJoinExplicitSystems)
 {
     std::filesystem::copy_file(original / "catalogs/stellar_systems.json", "catalogs/stellar_systems.json");
