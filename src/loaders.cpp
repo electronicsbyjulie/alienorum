@@ -734,12 +734,11 @@ void load_textures(CelestialObject* cel)
         {
             case regime_degenerate:
             case regime_stellar:
+            case regime_substellar:
                 cel->surf_map = new Map(cel);
                 cel->surf_map->generate_stellar_map(cel);
                 break;
 
-            case regime_substellar:
-                break;
 
             default:
                 break;

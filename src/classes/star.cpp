@@ -13,6 +13,7 @@
 #include "planet.h"
 #include "fictionalstars.h"
 #include "wdcolor.h"
+#include "browncolor.h"
 #include "numeric.h"
 #include "neighborhoodfilter.h"
 #include "../globals.h"
@@ -520,6 +521,7 @@ void Star::set_fictional_motion(Point space_velocity)
 
 void Star::update_location(double tmnow)
 {
+    if (!sidereal_rotational_period) estimate_brown_rotation(this);
     if (!(volumetric_mean_radius > 0) || !std::isfinite(volumetric_mean_radius))
     {
         if (stellar_regime(this) == regime_degenerate) estimate_radius();

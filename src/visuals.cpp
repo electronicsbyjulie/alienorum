@@ -1,6 +1,7 @@
 #include "performance_options.h"
 #include "classes/galaxygeometry.h"
 #include "classes/serial.h"
+#include "classes/browncolor.h"
 #include "classes/surfacerefraction.h"
 #include "classes/systemviewcamera.h"
 
@@ -1261,7 +1262,7 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
     in.self_luminous = self_luminous;
     in.limb_a = limb_a;
     in.limb_b = limb_b;
-    if (self_luminous && cls == class_star && wd_limb_profile((Star*)cel, in.wd_limb))
+    if (self_luminous && cls == class_star && (stellar_regime(cel) == regime_substellar || wd_limb_profile((Star*)cel, in.wd_limb)))
     {
         Color filter = Color::color_from_magnitude_indices(0, -bv_correction + atm_yellowing);
         filter.normalize(1);
@@ -1837,7 +1838,7 @@ int draw_sphere(CelestialObject* cel, double arad)
     {
         if (cel->typeclass() == class_star) ((Star*)cel)->limb_darkening_coefficients(cpu_limb_a, cpu_limb_b);
         else { cpu_limb_a = 0.49; cpu_limb_b = 0.21; }
-        if (cls == class_star && wd_limb_profile((Star*)cel, cpu_wd_limb))
+        if (cls == class_star && (stellar_regime(cel) == regime_substellar || wd_limb_profile((Star*)cel, cpu_wd_limb)))
         {
             daylight = Color::color_from_magnitude_indices(0, -bv_correction + atm_yellowing);
             daylight.normalize(1);
@@ -4824,7 +4825,7 @@ void sc_draw_object(CelestialObject *obj, CelestialObject *cel)
     {
         Color objcol = Color::color_from_magnitude_indices(0, obj->BV_color);
         Color wd_linear;
-        if (((Star*)obj)->resolve_wd_color(wd_linear))
+        if (brown_color_source((Star*)obj, wd_linear) || ((Star*)obj)->resolve_wd_color(wd_linear))
         {
             wd_linear.normalize(1);
             RGB3 wd_rgb = wd_srgb_from_linear(wd_linear);
@@ -5446,7 +5447,7 @@ struct GlintSource
 
 static Color water_light_color(CelestialObject* object)
 {
-    using Key = std::tuple<int, double, double, double, double>;
+    using Key = std::tuple<int, double, double, double, double, double, double>;
     struct Entry
     {
         Key key;
@@ -5460,7 +5461,8 @@ static Color water_light_color(CelestialObject* object)
     Key key;
     if (cache)
     {
-        key = {cls, object->BV_color, global_brightness, bv_correction, planet_bv_correction};
+        key = {cls, object->BV_color, global_brightness, bv_correction, planet_bv_correction,
+            object->temperature, object->VR_color};
         const auto found = colors.find(object);
         if (found != colors.end() && found->second.key == key) return found->second.color;
     }

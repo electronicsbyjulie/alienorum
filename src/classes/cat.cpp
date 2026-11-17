@@ -30,6 +30,7 @@
 #include <windows.h>
 #endif
 #include "cat.h"
+#include "browncolor.h"
 #include "serial.h"
 #include "cons.h"
 #include "shore.h"
@@ -7114,6 +7115,7 @@ int alienorum::CatalogReader::read_condensed_star_cat()
 
         read_field_onebased(buffer, 276, 285, field);
         s->sidereal_rotational_period = atof(field) * oneday;
+        if (!s->sidereal_rotational_period) estimate_brown_rotation(s);
         if (!s->sidereal_rotational_period) s->sidereal_rotational_period = oneday*25;
 
         read_field_onebased(buffer, 287, 300, field);
@@ -7645,6 +7647,7 @@ ExoRow CatalogReader::exorow_from_json(const json& source, bool* ok)
         return (it != row.end() && !it->is_null() && it->is_string()) ? it->get<std::string>() : "";
     };
 
+    r.companion_aliases = gets("alt_target_name");
     r.hd_name  = gets("hd_name");
     r.hip_name = gets("hip_name");
 
@@ -7797,6 +7800,7 @@ void CatalogReader::exorow_write_line(FILE* fp, const ExoRow& row)
     write_exo_double(fp, row.radius_observed ? 1 : 0);
     for (double value : {row.st_age, row.st_ageerr1, row.st_ageerr2, row.st_agelim}) write_exo_double(fp, value);
 
+    write_exo_string(fp, row.companion_aliases);
     fputc('\n', fp);
 }
 
@@ -7871,6 +7875,7 @@ bool CatalogReader::exorow_read_line(FILE* fp, ExoRow& row)
     row.st_ageerr1 = read_exo_double(cursor);
     row.st_ageerr2 = read_exo_double(cursor);
     row.st_agelim = read_exo_double(cursor);
+    row.companion_aliases = read_exo_string(cursor);
 
     return true;
 }
@@ -8439,9 +8444,37 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
     return host_star;
 }
 
-bool CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, std::map<int, std::vector<int>>& planet_celids, unsigned int& result)
+bool CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, std::map<int, std::vector<int>>& planet_celids, unsigned int& result, ExactStarSearchIndex* lookup)
 {
     alienorum::CatalogLock catalog_lock(catalog_mutex);
+    // Exact body aliases can identify a stellar companion already loaded by another catalog.
+    // The import-wide index keeps this independent of the size of the stellar catalog.
+    if (!row.companion_aliases.empty())
+    {
+        std::unique_ptr<ExactStarSearchIndex> local_lookup;
+        if (!lookup)
+        {
+            local_lookup = std::make_unique<ExactStarSearchIndex>();
+            lookup = local_lookup.get();
+        }
+        std::istringstream aliases(row.companion_aliases);
+        std::string alias;
+        while (std::getline(aliases, alias, '#'))
+        {
+            const int index = find_object(trim(alias).c_str(), true, 9e29, 0, lookup);
+            if (index < 0 || !cels[index] || cels[index] == host_star) continue;
+            Star* companion = static_cast<Star*>(cels[index]);
+            companion->add_catalog_alias(row.pl_name);
+            companion->add_catalog_alias(alias);
+            if (!(companion->mass > 0) && row.pl_bmassj > 0)
+                companion->mass = row.pl_bmassj*exo_jupiter_to_earth_mass*earth_mass;
+            if (!(companion->volumetric_mean_radius > 0) && row.pl_radj > 0)
+                companion->volumetric_mean_radius = row.pl_radj*exo_jupiter_to_earth_radius*exo_earth_radius_m;
+            estimate_brown_rotation(companion);
+            lookup->add(index, *companion);
+            return false;
+        }
+    }
     // 2. Instantiate and fill target Planet properties
     Planet* new_planet = new Planet();
     new_planet->catalog_designation = row.pl_name;
@@ -9426,7 +9459,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
         std::ifstream cache_header(derived_cache);
         std::string version;
         std::getline(cache_header, version);
-        derived_cache_valid = version == "# EXO_TRANSIT6";
+        derived_cache_valid = version == "# EXO_TRANSIT7";
 
     }
 
@@ -9485,7 +9518,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                 {
                     continue;
                 }
-                if (add_exoplanet_from_row(row, host_star, planet_celids, result))
+                if (add_exoplanet_from_row(row, host_star, planet_celids, result, &host_lookup))
                 {
                     addedexo++;
                 }
@@ -10054,7 +10087,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
     if (cachefp)
     {
         setvbuf(cachefp, cache_io_buf, _IOFBF, sizeof(cache_io_buf));
-        fputs("# EXO_TRANSIT6\n", cachefp);
+        fputs("# EXO_TRANSIT7\n", cachefp);
     }
 
     int rows_written = 0;
@@ -10127,7 +10160,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
             continue;
         }
 
-        if (add_exoplanet_from_row(row, host_star, planet_celids, result))
+        if (add_exoplanet_from_row(row, host_star, planet_celids, result, &host_lookup))
         {
             if (cachefp)
             {

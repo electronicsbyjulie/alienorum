@@ -24,6 +24,7 @@
 #include "giantreflectance.h"
 #include "lavafissures.h"
 #include "wdcolor.h"
+#include "browncolor.h"
 #include "../loaders.h"
 
 using namespace alienorum;
@@ -4898,6 +4899,45 @@ void Map::generate_stellar_map(CelestialObject *cel)
     // Physical color calibration is fixed for this texture, independent of the view.
     const double color_correction = bv_correction;
     assert(cel->typeclass() == class_star);
+    if (stellar_regime(cel) == regime_substellar)
+    {
+        const BrownWeather weather(static_cast<Star*>(cel));
+        const unsigned long height = std::max(2UL, static_cast<unsigned long>(cel->fictitious_map_height));
+        const unsigned long width = height*2, count = width*height;
+        auto red = std::make_unique<unsigned char[]>(count);
+        auto green = std::make_unique<unsigned char[]>(count);
+        auto blue = std::make_unique<unsigned char[]>(count);
+        std::vector<Color> pixels(count);
+        double peak = 0;
+        for (unsigned long row = 0; row < height; ++row)
+        {
+            const double latitude = _pi/2 - _pi*row/(height-1);
+            for (unsigned long column = 0; column < width; ++column)
+            {
+                Color& pixel = pixels[row*width+column];
+                pixel = brown_weather_color(weather, latitude, 2*_pi*column/width);
+                peak = std::max({peak, pixel.red, pixel.green, pixel.blue});
+            }
+        }
+        const double scale = 255/peak;
+        for (unsigned long i = 0; i < count; ++i)
+        {
+            red[i] = std::clamp(std::lround(pixels[i].red*scale), 0L, 255L);
+            green[i] = std::clamp(std::lround(pixels[i].green*scale), 0L, 255L);
+            blue[i] = std::clamp(std::lround(pixels[i].blue*scale), 0L, 255L);
+        }
+        std::lock_guard<std::mutex> guard(mtx);
+        delete[] red_data;
+        delete[] green_data;
+        delete[] blue_data;
+        red_data = red.release(); green_data = green.release(); blue_data = blue.release();
+        image_height = height; image_width = width; allocated = count;
+        lat_scale = height/_pi; lon_scale = width/(2*_pi);
+        inv_lat_scale = 1/lat_scale; inv_lon_scale = 1/lon_scale;
+        procedurally_generated = true;
+        touch_gen();
+        return;
+    }
     double T_eff, mass_solar, f_obl, radius_m, mass_g, surface_g, logg_cgs, p_rot_days, tau_conv_days, rossby, activity, spot_dT, gd_beta, gd_mean,
         scale_height, d_granule, granule_correction, cells_across, gran_scale, gran_nyquist, gran_amp, gran_dT, spot_base_deg, net_scale, plage_gain,
         net_gain, mean_spot_rad, edge_scale, edge_amount, fil_scale, bv_at_teff, ref_max, inv_ref_max;

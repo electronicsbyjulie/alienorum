@@ -6,6 +6,7 @@
 #include "../classes/color.h"
 #include "../classes/star.h"
 #include "../classes/wdcolor.h"
+#include "../classes/browncolor.h"
 
 using namespace alienorum;
 using json = nlohmann::json;
@@ -509,4 +510,111 @@ TEST(ColorTest, ExplicitTextureColorsIgnoreLiveDisplaySettings)
         Color displayed = Color::color_from_magnitude_indices(0, 1.5, 1.5);
         EXPECT_NEAR(displayed.luminance(), brightness * 128, brightness * 1e-10);
     }
+}
+
+TEST(BrownDwarfColor, SpectrumHueAndBrightness)
+{
+    const Color violet = brown_linear_color(1000);
+    EXPECT_GT(violet.blue, violet.red);
+    EXPECT_GT(violet.red, violet.green);
+    const Color cold = brown_linear_color(200);
+    EXPECT_GT(cold.red, cold.blue);
+    for (double temperature = 200; temperature <= 3000; temperature += 7)
+    {
+        const Color color = brown_linear_color(temperature);
+        EXPECT_GE(std::min({color.red, color.green, color.blue}), 0);
+        EXPECT_DOUBLE_EQ(std::max({color.red, color.green, color.blue}), 1);
+    }
+    Star star;
+    star.mass = .04*solar_mass;
+    star.temperature = 1000;
+    star.BV_color = 2;
+    const Color bright = Color::color_from_star(0, &star, star.BV_color);
+    const Color faint = Color::color_from_star(3, &star, star.BV_color);
+    EXPECT_NEAR(faint.red/bright.red, pow(magnbase, -3), 1e-12);
+    EXPECT_NEAR(faint.blue/bright.blue, pow(magnbase, -3), 1e-12);
+    EXPECT_GT(bright.blue, bright.red);
+    Color source;
+    EXPECT_TRUE(brown_color_source(&star, source));
+    star.mass = .1*solar_mass;
+    EXPECT_FALSE(brown_color_source(&star, source));
+    star.mass = 0;
+    star.temperature = 0;
+    star.BV_color = log(blackbody_flux(1800, V_band)/blackbody_flux(1800, B_band))
+        *invlogmagnbase-bv_correction;
+    EXPECT_TRUE(brown_color_source(&star, source));
+    EXPECT_NEAR(brown_temperature(&star), 1800, 1e-7);
+    strcpy(star.spectral_type, "DA");
+    EXPECT_FALSE(brown_color_source(&star, source));
+}
+
+TEST(BrownDwarfColor, RepeatableCloudMapAndSphericalContinuity)
+{
+    Star star;
+    star.mass = .04*solar_mass;
+    star.temperature = 1400;
+    star.rnd_seed = 271;
+    star.fictitious_map_height = 32;
+    const auto random_before = star.rng;
+    const BrownWeather weather(&star);
+    for (double latitude : {-_pi/2, -.4, .4, _pi/2})
+    {
+        const Color a = brown_weather_color(weather, latitude, 0);
+        const Color b = brown_weather_color(weather, latitude, 2*_pi);
+        EXPECT_NEAR(a.red, b.red, 1e-12);
+        EXPECT_NEAR(a.blue, b.blue, 1e-12);
+    }
+    const Color pole_a = brown_weather_color(weather, _pi/2, 0);
+    const Color pole_b = brown_weather_color(weather, _pi/2, 2);
+    EXPECT_NEAR(pole_a.red, pole_b.red, 1e-12);
+    Map first(&star), second(&star);
+    first.generate_stellar_map(&star);
+    second.generate_stellar_map(&star);
+    ASSERT_TRUE(first.is_complete());
+    EXPECT_EQ(first.get_height(), 32UL);
+    EXPECT_EQ(first.get_width(), 64UL);
+    std::vector<unsigned char> a(32*64*4), b(a.size());
+    first.export_rgba(a.data());
+    second.export_rgba(b.data());
+    EXPECT_EQ(a, b);
+    unsigned char peak = 0;
+    bool varied = false;
+    for (size_t i = 0; i < a.size(); i += 4)
+    {
+        peak = std::max({peak, a[i], a[i+1], a[i+2]});
+        if (a[i] != a[0] || a[i+1] != a[1] || a[i+2] != a[2]) varied = true;
+    }
+    EXPECT_EQ(peak, 255);
+    EXPECT_TRUE(varied);
+    EXPECT_EQ(star.rng, random_before);
+    EXPECT_EQ(star.night_map, nullptr);
+    star.rnd_seed = 272;
+    const BrownWeather other(&star);
+    EXPECT_NE(weather.phase[0], other.phase[0]);
+}
+
+TEST(BrownDwarfColor, EstimatedRotationAdvancesAndPreservesSuppliedPeriods)
+{
+    Star star;
+    star.mass = .05*solar_mass;
+    star.temperature = 1000;
+    star.volumetric_mean_radius = jupiter_radius;
+    estimate_brown_rotation(&star);
+    ASSERT_GT(star.sidereal_rotational_period, 2*3600);
+    ASSERT_LT(star.sidereal_rotational_period, 8*3600);
+    EXPECT_TRUE(star.stellar_rotation.value("estimated", false));
+    const double saved_time = simnow;
+    const double first = star.timeofday();
+    simnow += star.sidereal_rotational_period/4;
+    const double second = star.timeofday();
+    simnow = saved_time;
+    EXPECT_NEAR(fmod(second-first+2*_pi, 2*_pi), _pi/2, 1e-8);
+    star.sidereal_rotational_period = 7*3600;
+    estimate_brown_rotation(&star);
+    EXPECT_DOUBLE_EQ(star.sidereal_rotational_period, 7*3600);
+    Star ordinary;
+    ordinary.mass = solar_mass;
+    ordinary.temperature = sun_temp;
+    estimate_brown_rotation(&ordinary);
+    EXPECT_DOUBLE_EQ(ordinary.sidereal_rotational_period, 0);
 }

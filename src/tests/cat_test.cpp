@@ -2786,7 +2786,7 @@ TEST_F(StellarDownloadTest, RejectionsFromEitherProviderApplyToJsonAndDerivedCac
             {
                 FILE* file = fopen("catalogs/exoplanets_planets.dat", "wb");
                 ASSERT_NE(file, nullptr);
-                fputs("# EXO_TRANSIT6\n", file);
+                fputs("# EXO_TRANSIT7\n", file);
                 for (const auto& source : rows)
                 {
                     bool valid;
@@ -4050,7 +4050,7 @@ TEST_F(StellarDownloadTest, RecentDerivedExoplanetCachesWorkWithoutTheJsonSource
         const char* path = stars_only ? "catalogs/exoplanets_stars.dat" : "catalogs/exoplanets_planets.dat";
         FILE* cache = fopen(path, "wb");
         ASSERT_NE(cache, nullptr);
-        fputs("# EXO_TRANSIT6\n", cache);
+        fputs("# EXO_TRANSIT7\n", cache);
         TestCatalogReader::exorow_write_line(cache, row);
         fclose(cache);
         DownloadReader reader;
@@ -5696,5 +5696,42 @@ TEST_F(CatalogParsingTest, JanssenAndInnerTauCetiPlanetsIncludeAtmosphericScatte
         EXPECT_DOUBLE_EQ(repeat.red, atmosphere.red);
         EXPECT_DOUBLE_EQ(repeat.green, atmosphere.green);
         EXPECT_DOUBLE_EQ(repeat.blue, atmosphere.blue);
+    }
+}
+
+TEST_F(CatalogParsingTest, BrownCompanionAliasDoesNotCreateAPlanetAcrossCache)
+{
+    Star* host = make_star("eps Ind B");
+    Star* companion = make_star("eps Ind C");
+    companion->mass = .05*solar_mass;
+    companion->temperature = 900;
+    TestCatalogReader reader;
+    bool valid = false;
+    ExoRow row = reader.exorow_from_json({{"pl_name", "eps Ind Bb"},
+        {"hostname", "eps Ind B"}, {"alt_target_name", "eps Ind C#GJ 845 Bb"},
+        {"pl_orbper", 4022.19}, {"pl_bmassj", 53.25}}, &valid);
+    ASSERT_TRUE(valid);
+    for (bool cached : {false, true})
+    {
+        if (cached)
+        {
+            FILE* file = std::tmpfile();
+            ASSERT_NE(file, nullptr);
+            reader.exorow_write_line(file, row);
+            rewind(file);
+            ExoRow restored;
+            ASSERT_TRUE(reader.exorow_read_line(file, restored));
+            fclose(file);
+            EXPECT_EQ(restored.companion_aliases, row.companion_aliases);
+            row = restored;
+        }
+        std::map<int, std::vector<int>> planets;
+        unsigned int count = 0;
+        const int before = ncelobjs;
+        EXPECT_FALSE(reader.add_exoplanet_from_row(row, host, planets, count));
+        EXPECT_EQ(ncelobjs, before);
+        EXPECT_EQ(count, 0u);
+        EXPECT_TRUE(planets.empty());
+        EXPECT_EQ(find_object("eps Ind Bb", true, 9e29, 0), companion->seqno);
     }
 }
