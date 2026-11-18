@@ -2464,10 +2464,11 @@ bool Map::color_within_cap(double lat, double lon, double angle, RGB3 &color, bo
         const unsigned long left = first % image_width, right = last % image_width;
         const unsigned long top = first / image_width, bottom = last / image_width;
         if (left > right || top > bottom) return false;
-        if (uniform_region_generation != gen)
+        const unsigned int revision = surface_revision();
+        if (uniform_region_generation != revision)
         {
             uniform_regions.clear();
-            uniform_region_generation = gen;
+            uniform_region_generation = revision;
 #if PERF_P035
             if (allocated > 64) forget_uniform_owner(this);
 #endif

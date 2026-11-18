@@ -3967,15 +3967,24 @@ TEST_F(RenderingRegressionTest, WalkingAcrossVegetationBordersKeepsBothGroundTyp
     }
 }
 
+static ImU32 sunlit_test_surface_color(Planet* world, int red, int green, int blue)
+{
+    const auto daylight = Color::reflected_daylight(world->get_light_center());
+    return IM_COL32(red * daylight.red, green * daylight.green, blue * daylight.blue, 255);
+}
+
 TEST_F(RenderingRegressionTest, ShorelineShowsLandAndShimmeringSeaFromBothSides)
 {
     Planet *world = surface(true);
+    set(show_clouds, false);
     delete world->surf_map;
     world->surf_map = new SceneryTestMap(true, true);
     set(show_terrain, false);
     set(altitude, -0.4);
     const double radius = world->get_equatorial_radius();
     const double coast = biome_border(world);
+    const ImU32 sea_color = sunlit_test_surface_color(world, 20, 100, 160);
+    const ImU32 land_color = sunlit_test_surface_color(world, 80, 140, 30);
     for (double offset : {-0.05, 0.05})
     {
         viewer_lon = coast + offset / radius;
@@ -3998,13 +4007,12 @@ TEST_F(RenderingRegressionTest, ShorelineShowsLandAndShimmeringSeaFromBothSides)
             for (int x = 0; x < render_width; ++x)
             {
                 const int index = (y * render_width + x) * 4;
-                if (x < render_width / 3 && pixels[index] == 20
-                    && pixels[index + 1] == 100 && pixels[index + 2] == 160)
+                const ImU32 color = IM_COL32(pixels[index], pixels[index + 1], pixels[index + 2], 255);
+                if (x < render_width / 3 && color == sea_color)
                 {
                     ++sea;
                 }
-                if (x > render_width * 2 / 3 && pixels[index] == 80
-                    && pixels[index + 1] == 140 && pixels[index + 2] == 30)
+                if (x > render_width * 2 / 3 && color == land_color)
                 {
                     ++land;
                 }
@@ -4019,6 +4027,8 @@ TEST_F(RenderingRegressionTest, ShorelineShowsLandAndShimmeringSeaFromBothSides)
 TEST_F(RenderingRegressionTest, WaterHasNoRocksOrPlants)
 {
     Planet *world = surface(true);
+    set(show_clouds, false);
+    const ImU32 sea_color = sunlit_test_surface_color(world, 20, 100, 160);
     cels[0]->location.local_position = cels[0]->tmprel = Point(0, -1e11, 1e11);
     delete world->surf_map;
     world->surf_map = new SceneryTestMap(false, true);
@@ -4030,7 +4040,7 @@ TEST_F(RenderingRegressionTest, WaterHasNoRocksOrPlants)
         const unsigned int alpha = vertex.col >> IM_COL32_A_SHIFT;
         if (alpha == 255)
         {
-            scenery_vertices += vertex.col != IM_COL32(20, 100, 160, 255);
+            scenery_vertices += vertex.col != sea_color;
         }
     }
     EXPECT_EQ(scenery_vertices, 0);
@@ -4039,9 +4049,11 @@ TEST_F(RenderingRegressionTest, WaterHasNoRocksOrPlants)
 TEST_F(RenderingRegressionTest, BlueVegetationDoesNotTurnIdenticalOceanColorsIntoPlants)
 {
     Planet *world = surface(true);
+    set(show_clouds, false);
     world->vegetation_r = 20;
     world->vegetation_g = 100;
     world->vegetation_b = 160;
+    const ImU32 sea_color = sunlit_test_surface_color(world, 20, 100, 160);
     cels[0]->location.local_position = cels[0]->tmprel = Point(0, -1e11, 1e11);
     for (SurfaceMaterial material : {SurfaceMaterial::water, SurfaceMaterial::vegetation})
     {
@@ -4053,7 +4065,7 @@ TEST_F(RenderingRegressionTest, BlueVegetationDoesNotTurnIdenticalOceanColorsInt
         for (const auto &vertex : vertices)
         {
             const unsigned int alpha = vertex.col >> IM_COL32_A_SHIFT;
-            if (alpha == 255 && vertex.col != IM_COL32(20, 100, 160, 255)) ++scenery_vertices;
+            if (alpha == 255 && vertex.col != sea_color) ++scenery_vertices;
         }
         if (material == SurfaceMaterial::water) EXPECT_EQ(scenery_vertices, 0);
         else EXPECT_GT(scenery_vertices, 0);
@@ -5776,22 +5788,17 @@ TEST_F(RenderingRegressionTest, PanningHazyCoastPreservesDetailedGroundPixels)
     std::cout << "Panning haze coast: reference CPU " << reference_cpu / 4
         << " ms; accelerated CPU " << accelerated_cpu / 4 << " ms" << std::endl;
     #if horizon_motion_ground_sampling
-    // Force the adaptive path independently of the test machine's speed.
+    // A wet coast retains exact samples even when the motion budget is exceeded.
     set(horizon_ground_motion_budget_ms, 0.0);
     capture();
     azimuth += .1;
     const auto moving = capture();
-    EXPECT_EQ(precipitation_stats.ground_sample_stride, 2);
-    EXPECT_FALSE(precipitation_stats.ground_cache_hit);
-    const auto refined = capture();
     EXPECT_EQ(precipitation_stats.ground_sample_stride, 1);
     EXPECT_FALSE(precipitation_stats.ground_cache_hit);
-    for (size_t index = 3; index < refined.first.size(); index += 4)
-        EXPECT_EQ(moving.first[index], refined.first[index]) << index;
-    EXPECT_EQ(capture().first, refined.first);
+    EXPECT_EQ(capture().first, moving.first);
     EXPECT_TRUE(precipitation_stats.ground_cache_hit);
     world->surf_map->touch_gen();
-    EXPECT_EQ(capture().first, refined.first);
+    EXPECT_EQ(capture().first, moving.first);
     EXPECT_FALSE(precipitation_stats.ground_cache_hit);
     #endif
     SDL_SetWindowSize(window, 192, 108);
@@ -7652,20 +7659,23 @@ TEST_F(RenderingRegressionTest, WaterCachesReuseGeometryAndInvalidateSurfaceCert
     EXPECT_EQ(paint(54).geometry_builds, 1u);
     world->surf_map->touch_gen();
     EXPECT_EQ(paint(55).bounds_builds, 1u);
-    delete world->surf_map;
-    world->surf_map = new BlueBiomeTestMap(SurfaceMaterial::ground);
-    horizon_reference_trial = 6;
-    const auto original_land = paint(56);
-    const auto expected_land = last_water_pixels;
-    EXPECT_GT(original_land.land_points, 100u);
-    horizon_reference_trial = 0;
-    const auto land = paint(56);
-    EXPECT_EQ(last_water_pixels, expected_land);
-    EXPECT_EQ(land.geometry_builds, 0u);
-    EXPECT_EQ(land.bounds_builds, 0u);
-    EXPECT_EQ(land.land_points, 0u);
-    EXPECT_EQ(land.samples, 0u);
-    EXPECT_EQ(land.uniform_water_points, 0u);
+    for (SurfaceMaterial material : {SurfaceMaterial::ground, SurfaceMaterial::ice})
+    {
+        delete world->surf_map;
+        world->surf_map = new BlueBiomeTestMap(material);
+        horizon_reference_trial = 6;
+        const auto original_land = paint(56);
+        const auto expected_land = last_water_pixels;
+        EXPECT_GT(original_land.land_points, 100u);
+        horizon_reference_trial = 0;
+        const auto land = paint(56);
+        EXPECT_EQ(last_water_pixels, expected_land);
+        EXPECT_EQ(land.geometry_builds, 0u);
+        EXPECT_EQ(land.bounds_builds, 0u);
+        EXPECT_EQ(land.land_points, 0u);
+        EXPECT_EQ(land.samples, 0u);
+        EXPECT_EQ(land.uniform_water_points, 0u);
+    }
 }
 
 TEST_F(RenderingRegressionTest, GlintColorCachePreservesPhotometricAndWhiteDwarfEdits)

@@ -6088,6 +6088,12 @@ void draw_horizon()
             return surface_coord(distance, azimuth + atan2(x, north));
         };
 
+        const auto ground_pixel_sample = [&](int x, int y)
+        {
+            const auto coord = ground_coord(x + 0.5, y + 0.5);
+            return surface.sample(coord.first, coord.second);
+        };
+
         if (performance_enabled(37) && !horizon_terrain_cpu_reference && surface.has_biomes() && map && map->is_complete())
         {
             const double hint_distance = base_distance(dispcx, dispcy * 1.9);
@@ -7185,8 +7191,8 @@ void draw_horizon()
                 if (top < ground_height) gpu_rectangles.push_back({0, top, screen_w, ground_height, uniform_source_color()});
             };
             // Retain completed base painting independently of animated waves/scenery.
-            // Small walking steps retain base colors; geometry masks, waves and
-            // scenery still update each frame. Physical/lighting edits invalidate it.
+            // Small walking steps can retain colors on a dry or uniform surface.
+            // Physical and lighting edits invalidate the painting.
             struct PaintedGroundRect { ImVec2 low, high; ImU32 color; };
             static std::vector<PaintedGroundRect> saved_cpu_rectangles;
             static std::vector<HorizonGroundRect> saved_gpu_rectangles;
@@ -7231,6 +7237,8 @@ void draw_horizon()
             ground_inputs.push_back(surface_uniform_reference);
             for (bool reference : performance_reference) ground_inputs.push_back(reference);
             ground_inputs.push_back(uniform_lit_source);
+            ground_inputs.push_back(surface_water);
+            ground_inputs.push_back(shore_displacement);
             ground_inputs.push_back(double(local_phase_revision));
             ground_inputs.push_back(1); // Base-color sample stride; masks and haze stay at full resolution.
             auto ground_key = std::make_tuple(cel, map, std::move(ground_inputs));
@@ -7242,18 +7250,19 @@ void draw_horizon()
                 cos((viewer_lat + painted_latitude) * .5) * longitude_step) : INFINITY;
             // Refresh after two metres of accumulated Home/End travel. Near a pole,
             // retain exact positions because the north/east basis turns rapidly.
-            // Certify the entire 100 m neighborhood, including procedural biome
-            // displacement, so shorelines and every terrain/material transition refresh.
+            // A shoreline can be anywhere in the visible footprint, even when
+            // the observer's immediate surroundings are uniform.
             SurfaceSampler::Sample boundary_sample;
+            const double reuse_reach = surface_water ? source_reach + 2.0 : 100.0;
             const bool clear_of_boundary = !paint_biomes
-                || surface.uniform_sample(viewer_lat, viewer_lon, 100.0 / surface_radius + 1e-10, boundary_sample);
+                || surface.uniform_sample(viewer_lat, viewer_lon, reuse_reach / surface_radius + 1e-10, boundary_sample);
             // An unchanged observer can reuse the exact painting even at a color
             // or material boundary. Certify a neighborhood only after actual travel.
             const bool position_reusable = (latitude_step == 0 && longitude_step == 0)
                 || (clear_of_boundary && travel < std::min(2.0, surface_radius * .001)
                     && fabs(viewer_lat) < half_pi - .001);
             int ground_stride = 1;
-            if (horizon_motion_ground_sampling && gpu_ground && paint_biomes && ground_cache_valid
+            if (horizon_motion_ground_sampling && gpu_ground && paint_biomes && !surface_water && ground_cache_valid
                 && std::get<0>(ground_key) == std::get<0>(saved_ground_key)
                 && std::get<1>(ground_key) == std::get<1>(saved_ground_key)
                 && full_ground_paint_ms > horizon_ground_motion_budget_ms)
@@ -7412,9 +7421,9 @@ void draw_horizon()
                     return;
                 }
                 const bool small = right - left <= ground_stride && bottom - top <= ground_stride;
-                bool pixel_sampling = false;
+                bool pixel_sampling = surface_water && paint_biomes;
                 #if distant_biome_pixel_sampling
-                if (!small)
+                if (!pixel_sampling && !small)
                 {
                     // Include raised terrain and ground beyond a quarter of the horizon range.
                     // Checking each column catches a horizon crossing inside a tile.
@@ -7434,7 +7443,7 @@ void draw_horizon()
                 if (pixel_sampling)
                 {
                     RGB3 tile_color;
-                    if (gpu_ground && gpu_tile_color(left, top, right, bottom, tile_color))
+                    if (gpu_ground && gpu_tile_color(left, top, right, bottom, tile_color, surface_water))
                     {
                         gpu_rectangles.push_back({left, top, right, bottom,
                             lit_surface_color(tile_color)});
@@ -7817,7 +7826,7 @@ void draw_horizon()
 
             auto bounds_key = std::make_tuple(viewer_lat, viewer_lon, map, local_surface_revision,
                 map && map->is_complete(), generating_fic_texture, water_favorable, surface_biomes,
-                ocean_world, p ? p->has_water : 0.0f, cel->type, terrain_mesh, shore_displacement,
+                p && p->simulated_surface_life_allowed(), ocean_world, p ? p->has_water : 0.0f, cel->type, terrain_mesh, shore_displacement,
                 p ? p->vegetation_r : 0, p ? p->vegetation_g : 0, p ? p->vegetation_b : 0, water_cpu_reference, bool(PERF_P052_WAVES && performance_enabled(52)));
             static decltype(bounds_key) saved_bounds_key;
             static std::vector<double> saved_wave_horizon;
@@ -7876,7 +7885,7 @@ void draw_horizon()
                                 const double point_bottom = std::max(point.wy + point.amplitude, min_hz_y_at_x[point.column]);
                                 const double point_top = std::min(point.wy - point.amplitude, min_hz_y_at_x[point.column]);
                                 // Connecting endpoints are stored as floats by ImGui.
-                                const double guard = 16 * 1.1920929e-7
+                                const double guard = 2.0 + 16 * 1.1920929e-7
                                     * (1 + fabs(point.wx) + fabs(point_top) + fabs(point_bottom) + dispcx + dispcy);
                                 left = std::min(left, point.wx - guard);
                                 right = std::max(right, point.wx + guard);
@@ -7983,16 +7992,6 @@ void draw_horizon()
                         double min_crest = 0.25 - 0.20 * fmin(2.0, max_low_factor);
                         if (has_prev && wave_val > min_crest)
                         {
-                            if (!span.uniform || si == span.first)
-                            {
-                                const auto midpoint = ground_coord((wx + prev_pt.x) * 0.5, (wy + prev_pt.y) * 0.5);
-                                ++water_stats.samples;
-                                if (!water_at(midpoint.first, midpoint.second))
-                                {
-                                    has_prev = false;
-                                    continue;
-                                }
-                            }
                             double crest_fac = (wave_val - min_crest) / (1.0 - min_crest);
                             int cr = fmin(255.0, is_day * wave_rgb.r * 0.5 + 40.0 * crest_fac);
                             int cg = fmin(255.0, is_day * wave_rgb.g * 0.7 + 60.0 * crest_fac);
@@ -8030,7 +8029,35 @@ void draw_horizon()
 
                             ImU32 w_col = pressure_haze_color(haze, rgba_apply_redlight(IM_COL32(cr, cg, cb, ca)), dist_m);
                             float line_th = fmax(1.0f, (float)(1.5 / fmax(1.0, dist_m * 0.1)));
-                            ImGui::GetBackgroundDrawList()->AddLine(prev_pt, cur_pt, w_col, line_th);
+                            auto* waves = ImGui::GetBackgroundDrawList();
+                            // Clip the stroke to the same pixel centers used for ground paint.
+                            const bool certified_water = span.uniform && si != span.first;
+                            const double dx = cur_pt.x - prev_pt.x, dy = cur_pt.y - prev_pt.y;
+                            const double length_squared = dx * dx + dy * dy;
+                            const double extent = line_th * .5 + .5;
+                            const int left = std::max(0, int(floor(std::min(cur_pt.x, prev_pt.x) - extent)));
+                            const int right = std::min(screen_w, int(ceil(std::max(cur_pt.x, prev_pt.x) + extent)));
+                            const int top = std::max(0, int(floor(std::min(cur_pt.y, prev_pt.y) - extent)));
+                            const int bottom = std::min(ground_height, int(ceil(std::max(cur_pt.y, prev_pt.y) + extent)));
+                            for (int y = top; y < bottom; ++y)
+                            {
+                                for (int x = left; x < right; ++x)
+                                {
+                                    const double px = x + .5 - prev_pt.x, py = y + .5 - prev_pt.y;
+                                    const double along = length_squared > 0
+                                        ? std::clamp((px * dx + py * dy) / length_squared, 0.0, 1.0) : 0.0;
+                                    const double coverage = std::clamp(extent - hypot(px - along * dx, py - along * dy), 0.0, 1.0);
+                                    if (coverage == 0 || y + .5 < min_hz_y_at_x[x]) continue;
+                                    if (!certified_water)
+                                    {
+                                        ++water_stats.samples;
+                                        if (!ground_pixel_sample(x, y).water) continue;
+                                    }
+                                    const ImU32 alpha = static_cast<ImU32>((w_col >> IM_COL32_A_SHIFT) * coverage);
+                                    waves->AddRectFilled(ImVec2(x, y), ImVec2(x + 1, y + 1),
+                                        (w_col & ~IM_COL32_A_MASK) | (alpha << IM_COL32_A_SHIFT));
+                                }
+                            }
                         }
 
                         prev_pt = cur_pt;
@@ -8366,8 +8393,8 @@ void draw_horizon()
                 static SurfaceSceneryCache scenery_cache;
                 const auto &scenery = scenery_cache.update(R_planet, viewer_lat, viewer_lon,
                     scenery_range + canopy_margin, scenery_spacing, static_cast<std::uint64_t>(whereami), !performance_enabled(40));
-                auto scenery_key = std::make_tuple(whereami, scenery_cache.generation(), R_planet,
-                    local_surface_revision, generating_fic_texture, water_favorable,
+                auto scenery_key = std::make_tuple(whereami, scenery_cache.generation(), R_planet, map,
+                    local_surface_revision, generating_fic_texture, water_favorable, surface_radius, shore_displacement,
                     p ? p->has_water : 0.0f, p ? p->type : cel->type,
                     p ? p->vegetation_r : 0, p ? p->vegetation_g : 0, p ? p->vegetation_b : 0,
                     crown_scale, scenery_range, has_plants, P_surf,
@@ -8403,16 +8430,15 @@ void draw_horizon()
                             water[index] = surface.water_at(object.latitude, object.longitude);
                             scenery_colors[index] = surface.color_at(object.latitude, object.longitude);
                         }
-                        const double density = has_plants ? surface.tree_density_at(object.latitude, object.longitude) : 0;
+                        if (water[index] || !has_plants) continue;
+                        const double density = surface.tree_density_at(object.latitude, object.longitude);
                         const double draw = (scenery_hash(object.id ^ 0x7665676574617465ULL) >> 11) * 0x1.0p-53;
                         plant[index] = draw < density;
                         if (plant[index])
                         {
-                            water[index] = false;
                             tree_appearances[index] = surface.tree_appearance_at(object.latitude, object.longitude, recent_tree_climates);
+                            canopy_radii[index] = crown_scale * scenery_size(object.seed, ROCK_MIN_SIZE, ROCK_MAX_SIZE);
                         }
-                        if (plant[index]) canopy_radii[index] = crown_scale
-                            * scenery_size(object.seed, ROCK_MIN_SIZE, ROCK_MAX_SIZE);
                     }
                     canopy_clear = scenery_clearance(scenery, canopy_radii, R_planet);
                     saved_scenery_key = scenery_key;
@@ -8423,7 +8449,7 @@ void draw_horizon()
                 auto projection_key = std::make_tuple(scenery_key, cel, map,
                     viewer_lat, viewer_lon, azimuth, altitude, zoom, dispcx, dispcy,
                     h_eye, R_planet, s_horizon, horizon_lift_rad, dittrsa, shore_displacement,
-                    P_surf,
+                    P_surf, terrain_mesh, show_terrain, horizon_terrain_cpu_reference, horizon_terrain_gpu_reference,
                     p ? p->plant_trunk_height : 0.0, p ? p->plant_trunk_width : 0.0,
                     p ? p->plant_crown_size : 0.0, p ? p->plant_crown_oblateness : 0.0,
                     performance_enabled(39), performance_enabled(40), performance_enabled(41), performance_enabled(43));
@@ -8656,6 +8682,9 @@ void draw_horizon()
                                 continue;
                             }
                         }
+
+                        if (surface_water && base_valid && sx >= 0 && sx < screen_w && sy >= 0 && sy < ground_height
+                            && ground_pixel_sample(static_cast<int>(sx), static_cast<int>(sy)).water) continue;
 
                         rocks.emplace_back();
                         #if PERF_P043

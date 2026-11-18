@@ -5344,6 +5344,20 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels, int first_host)
 
         read_field_onebased(buffer, 1, 23, field);
         std::string cenname = trim(field);
+        read_field_onebased(buffer, 25, 47, field);
+        std::string bdyname = trim(field);
+        // The full-name columns follow the companion properties.
+        const bool long_names = cenname.empty() && bdyname.empty();
+        if (long_names)
+        {
+            char full_name[40];
+            read_field_onebased(buffer, 249, 287, full_name);
+            cenname = trim(full_name);
+            read_field_onebased(buffer, 289, 327, full_name);
+            bdyname = trim(full_name);
+            if (cenname.empty() || bdyname.empty()) continue;
+            buffer[248] = '\0';
+        }
         const char* censtr = cenname.c_str();
         A = nullptr;
         // Catalog rows can only attach to exact identifiers or aliases, never fuzzy guesses.
@@ -5375,10 +5389,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels, int first_host)
         double inclination = inclination_supplied ? atof(field) * fiftyseventh : _pi / 2;
         const bool complete_pole = inclination_supplied && node_supplied;
 
-        read_field_onebased(buffer, 25, 47, field);
-        std::string bdyname = trim(field);
         const char* bdystr = bdyname.c_str();
-
         if (bdyname == "(stellar rotation)")
         {
             const auto angle = [&](int first, int last, double& result)
@@ -5492,7 +5503,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels, int first_host)
             continue;
         }
 
-        if (!s && A->multisys)
+        if (!s && A->multisys && !long_names)
         {
             char comp = bdystr[strlen(bdystr)-1];
             if (comp > 'A' && comp <= 'Z') s = A->multisys->get_member(comp);

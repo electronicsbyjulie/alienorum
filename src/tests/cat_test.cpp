@@ -2251,6 +2251,52 @@ TEST_F(CatalogParsingTest, CondensedFieldsAndWhiteDwarfMetadataUseStaticColumns)
     delete_the_universe();
 }
 
+TEST_F(StellarRotationTest, LuhmanOrbitMatchesExistingCatalogNames)
+{
+    const std::string primary_name = "WISE J104915.57-531906.1 A";
+    const std::string companion_name = "WISE J104915.57-531906.1 B";
+    std::ifstream source(original / "catalogs/star_orbits.dat");
+    ASSERT_TRUE(source);
+    std::string row;
+    while (std::getline(source, row))
+    {
+        if (row.find(primary_name) != std::string::npos && row.find(companion_name) != std::string::npos) break;
+    }
+    ASSERT_TRUE(source);
+    std::ofstream("catalogs/star_orbits.dat") << row << '\n';
+
+    Star* primary = make_star(primary_name.c_str());
+    primary->right_ascension = 2.832856649815536;
+    primary->declination = -0.9305772685722147;
+    primary->distance = 1.996 * parsec;
+    primary->update_location(simnow);
+    CatalogReader reader;
+    EXPECT_EQ(reader.read_star_orbits_dat(cels), 0);
+    ASSERT_EQ(ncelobjs, 2);
+
+    Star* companion = make_star(companion_name.c_str());
+    companion->right_ascension = primary->right_ascension;
+    companion->declination = primary->declination;
+    companion->distance = primary->distance;
+    companion->mass = .027 * solar_mass;
+    companion->volumetric_mean_radius = .10045 * solar_radius;
+    companion->temperature = 1261;
+    companion->update_location(simnow);
+    ASSERT_EQ(reader.read_star_orbits_dat(cels), 1);
+    ASSERT_EQ(ncelobjs, 3);
+    ASSERT_NE(companion->orbit, nullptr);
+    EXPECT_EQ(companion->orbit->center, primary);
+    EXPECT_DOUBLE_EQ(companion->mass, .027 * solar_mass);
+    EXPECT_DOUBLE_EQ(companion->volumetric_mean_radius, .10045 * solar_radius);
+    EXPECT_DOUBLE_EQ(companion->temperature, 1261);
+    EXPECT_DOUBLE_EQ(companion->orbit->semimajor_axis, 3.52 * AU);
+    EXPECT_DOUBLE_EQ(companion->orbit->period, 26.55 * oneyear);
+    EXPECT_DOUBLE_EQ(companion->orbit->eccentricity, .344);
+    EXPECT_DOUBLE_EQ(companion->orbit->epoch, 2458141.415);
+    EXPECT_EQ(find_object(primary_name.c_str(), true, 9e29, 1), primary->seqno);
+    EXPECT_EQ(find_object(companion_name.c_str(), true, 9e29, 1), companion->seqno);
+}
+
 TEST_F(CatalogParsingTest, BakedStarOrbitsPreservePlanesAndBlankIdentifierLinks)
 {
     struct RestoreContext
