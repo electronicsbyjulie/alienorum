@@ -1499,6 +1499,7 @@ void main()
         float has_ring_tex, has_ringx_tex;
         GLuint ring_tex, ringx_tex;
         float r, g, b, a;                // fallback color
+        float tint[3];
         float lightx, lighty, lightz;    // camera space, unit length
         float amt_lit;
         float self_luminous;
@@ -1515,7 +1516,9 @@ void main()
     static GLint s_raRhoInnerLoc = -1, s_raRhoOuterLoc = -1, s_raInvFlattenLoc = -1;
     static GLint s_raHasRingTexLoc = -1, s_raHasRingXTexLoc = -1, s_raColorLoc = -1;
     static GLint s_raLightDirLoc = -1, s_raAmtLitLoc = -1, s_raSelfLuminousLoc = -1, s_raRedlightLoc = -1;
-    static GLint s_uRingMapLoc = -1, s_uRingXMapLoc = -1;
+    static GLint s_uRingMapLoc = -1, s_uRingXMapLoc = -1, s_uRingTintLoc = -1;
+    using RingUniform3 = void (APIENTRYP)(GLint, GLfloat, GLfloat, GLfloat);
+    static RingUniform3 ring_uniform3 = nullptr;
 
     static const char *kRingVertexShaderSrc =
         "#version 130\n"
@@ -1582,6 +1585,7 @@ void main()
         "out vec4 FragColor;\n"
         "uniform sampler2D uRingMap;\n"
         "uniform sampler2D uRingXMap;\n"
+        "uniform vec3 uIncidentTint;\n"
         // Matches gossamer_rings in misc.h (a compile-time #define there, so there's no
         // runtime value to pass down as a uniform).
         "const float GOSSAMER = 0.08;\n"
@@ -1683,7 +1687,7 @@ void main()
         "        isDay = (tl > 0.0 && d2shadow < vRhoInner*vRhoInner) ? 0.0 : (0.4 + 0.6*vAmtLit);\n"
         "    }\n"
         "\n"
-        "    vec3 outColor = ringColor * isDay;\n"
+        "    vec3 outColor = ringColor * isDay * uIncidentTint;\n"
         "\n"
         "    if (vRedlight > 0.5)\n"
         "    {\n"
@@ -1719,6 +1723,7 @@ void main()
         "out vec4 FragColor;\n"
         "uniform sampler2D uRingMap;\n"
         "uniform sampler2D uRingXMap;\n"
+        "uniform vec3 uIncidentTint;\n"
         "const float GOSSAMER = 0.08;\n"
         "void main()\n"
         "{\n"
@@ -1792,7 +1797,7 @@ void main()
         "        isDay = (tl > 0.0lf && d2shadow < rhoInner*rhoInner) ? 0.0 : (0.4 + 0.6*vAmtLit);\n"
         "    }\n"
         "\n"
-        "    vec3 outColor = ringColor * isDay;\n"
+        "    vec3 outColor = ringColor * isDay * uIncidentTint;\n"
         "\n"
         "    if (vRedlight > 0.5)\n"
         "    {\n"
@@ -1844,6 +1849,12 @@ void main()
     {
         static bool s_ring_gl_failed = false;
         if (s_ring_program || s_ring_gl_failed) return;
+        ring_uniform3 = reinterpret_cast<RingUniform3>(SDL_GL_GetProcAddress("glUniform3f"));
+        if (!ring_uniform3)
+        {
+            s_ring_gl_failed = true;
+            return;
+        }
 
         // Double precision buys a lot here: a view ray nearly parallel to the ring plane -- the
         // routine case in horizon mode, standing on/near the ring plane and looking along it --
@@ -1880,6 +1891,7 @@ void main()
         s_raRedlightLoc     = glGetAttribLocation(s_ring_program, "aRedlight");
         s_uRingMapLoc       = glGetUniformLocation(s_ring_program, "uRingMap");
         s_uRingXMapLoc      = glGetUniformLocation(s_ring_program, "uRingXMap");
+        s_uRingTintLoc      = glGetUniformLocation(s_ring_program, "uIncidentTint");
 
         glUseProgram(s_ring_program);
         glUniform1i(s_uRingMapLoc, 0);
@@ -1970,6 +1982,7 @@ void main()
 
         glUseProgram(s_ring_program);
         glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+        ring_uniform3(s_uRingTintLoc, p->tint[0], p->tint[1], p->tint[2]);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, p->ring_tex);
         if (p->ring_tex) glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -2067,6 +2080,7 @@ void main()
 
         ImVec4 col = ImGui::ColorConvertU32ToFloat4(in.fallback_color);
         p->r = col.x; p->g = col.y; p->b = col.z; p->a = col.w;
+        for (int channel = 0; channel < 3; ++channel) p->tint[channel] = in.incident_tint[channel];
 
         p->lightx = (float)in.light_dir[0]; p->lighty = (float)in.light_dir[1]; p->lightz = (float)in.light_dir[2];
         p->self_luminous = in.self_luminous ? 1.0f : 0.0f;

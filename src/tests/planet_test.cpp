@@ -3755,6 +3755,69 @@ TEST(PlanetPhotometryTest, CloudierWorldsFadeMoreGently)
 
 class PlanetHabitabilityTest : public UniverseFixture {};
 
+TEST_F(PlanetHabitabilityTest, EvolvedStarsUsePhysicalLuminosityAndInvalidateMoonCache)
+{
+    for (const char* spectrum : {"SdB D", "K2III", "G2IV", "DA2"})
+    {
+        Star* host = make_star();
+        strcpy(host->spectral_type, spectrum);
+        host->temperature = sun_temp;
+        host->absolute_magnitude = 10;
+        host->volumetric_mean_radius = solar_radius;
+        Planet* world = make_planet(host);
+        Moon moon;
+        moon.mass = earth_mass;
+        moon.orbit = new Orbit();
+        moon.orbit->center = world;
+        moon.orbit->semimajor_axis = 4e8;
+        EXPECT_TRUE(world->is_in_con_HZ());
+        EXPECT_TRUE(moon.is_in_con_HZ());
+        EXPECT_TRUE(world->has_approximate_HZ());
+        host->volumetric_mean_radius *= 2;
+        EXPECT_FALSE(world->is_in_con_HZ());
+        EXPECT_FALSE(moon.is_in_con_HZ());
+        EXPECT_DOUBLE_EQ(host->bolometric_luminosity(), 4);
+        host->volumetric_mean_radius = NAN;
+        EXPECT_GT(host->bolometric_luminosity(), 0);
+        delete_the_universe();
+    }
+}
+
+TEST_F(PlanetHabitabilityTest, DWLynAtPublishedTemperatureAndEstimatedRadiusIsTooHot)
+{
+    Star* host = make_star("DW Lyn", .47 * solar_mass);
+    strcpy(host->spectral_type, "SdB D");
+    host->temperature = 28400;
+    host->volumetric_mean_radius = std::sqrt(G * host->mass / (pow(10.0, 5.35) / 100));
+    host->absolute_magnitude = 10;
+    Planet* world = make_planet(host, "DW Lyn b", 1.148 * AU);
+    EXPECT_NEAR(world->est_bolometric_flux(), 25.5, .5);
+    EXPECT_FALSE(world->is_in_con_HZ());
+    EXPECT_TRUE(world->has_approximate_HZ());
+    ASSERT_TRUE(world->set_habitable_orbit());
+    EXPECT_GT(world->orbit->semimajor_axis / AU, 4);
+    EXPECT_TRUE(world->is_in_con_HZ());
+    delete_the_universe();
+}
+
+TEST_F(PlanetHabitabilityTest, SavedDWLynPropertiesRetainTheirPhysicalLuminosity)
+{
+    std::ifstream input("DWLyn.json");
+    ASSERT_TRUE(input.good());
+    const json document = json::parse(input);
+    Star* host = make_star("DW Lyn");
+    ASSERT_TRUE(host->from_json(Serialization::expand_output_record(document.at("DW Lyn"))));
+    EXPECT_EQ(stellar_regime(host), regime_stellar);
+    EXPECT_NEAR(host->bolometric_luminosity(), 33.6, .2);
+    EXPECT_NEAR(host->stellar_parameters["logg_cgs"].get<double>(), 5.35, 1e-12);
+    Planet* world = make_planet(host, "DW Lyn b", 1.148 * AU);
+    EXPECT_FALSE(world->is_in_con_HZ());
+    Star restored;
+    ASSERT_TRUE(restored.from_json(host->to_json()));
+    EXPECT_NEAR(restored.bolometric_luminosity(), host->bolometric_luminosity(), 1e-10);
+    delete_the_universe();
+}
+
 TEST(ConservativeHZTest, PublishedMassAndStellarTemperatureAnchors)
 {
     // Table 1 polynomials evaluated at the solar reference and two cool stars.

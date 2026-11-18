@@ -797,6 +797,46 @@ TEST(StarTest, RadiusEstimateUsesLuminosityAndTemperature)
     EXPECT_NEAR(s.estimate_radius(), solar_radius / 4, solar_radius * 0.001);
 }
 
+TEST(StarTest, HotSubdwarfsRetainStellarRadiiAndColorTemperatures)
+{
+    for (const char* spectrum : {"sdB", "SdB D", "sdO", "He-sdOB"})
+    {
+        Star s;
+        strcpy(s.spectral_type, spectrum);
+        s.BV_color = -0.33;
+        s.absolute_magnitude = 10;
+        EXPECT_TRUE(s.is_hot_subdwarf());
+        EXPECT_FALSE(s.is_white_dwarf());
+        EXPECT_EQ(stellar_regime(&s), regime_stellar);
+        EXPECT_GT(s.estimate_temperature(), 10000);
+        s.temperature = 28400;
+        s.absolute_magnitude = 4.74 - 2.5 * log10(34.0) - Star::bolometric_correction(s.temperature);
+        EXPECT_NEAR(s.estimate_radius(false) / solar_radius, .241, .003);
+        EXPECT_NEAR(s.bolometric_luminosity(), 34, 1e-8);
+    }
+    Star cool;
+    strcpy(cool.spectral_type, "sdM3");
+    EXPECT_FALSE(cool.is_hot_subdwarf());
+}
+
+TEST(StarTest, StellarParameterSourcesSurviveSerialization)
+{
+    Star original;
+    strcpy(original.spectral_type, "sdB");
+    original.temperature = 28400;
+    original.stellar_parameters =
+    {
+        {"source", "Published atmosphere with assumed mass"},
+        {"logg_cgs", "5.35?"}, {"mass_estimated", true}
+    };
+    Star restored;
+    ASSERT_TRUE(restored.from_json(original.to_json()));
+    EXPECT_DOUBLE_EQ(restored.temperature, 28400);
+    EXPECT_DOUBLE_EQ(restored.stellar_parameters["logg_cgs"], 5.35);
+    EXPECT_TRUE(restored.stellar_parameters["mass_estimated"]);
+    EXPECT_EQ(restored.stellar_parameters["source"], original.stellar_parameters["source"]);
+}
+
 TEST(StarTest, RadiusEstimateHasAFiniteFallback)
 {
     Star s;

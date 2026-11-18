@@ -45,6 +45,7 @@ void Star::refresh_planet_statistics()
     has_planets = static_cast<int>(pl_indices.size());
     planet_statistics_temperature = temperature;
     planet_statistics_magnitude = absolute_magnitude;
+    planet_statistics_luminosity = bolometric_luminosity();
 }
 static std::map<std::string, std::set<Star*>> catalog_alias_index;
 static std::mutex catalog_alias_mutex;
@@ -409,6 +410,28 @@ bool Star::is_white_dwarf() const
         !strncasecmp(spectral_type, "WD", 2);
 }
 
+bool Star::is_hot_subdwarf() const
+{
+    const char* spectrum = spectral_type;
+    while (*spectrum == ' ') ++spectrum;
+    if (!strncasecmp(spectrum, "He-", 3)) spectrum += 3;
+    return !strncasecmp(spectrum, "sdB", 3) || !strncasecmp(spectrum, "sdO", 3);
+}
+
+bool Star::is_evolved() const
+{
+    if (is_white_dwarf() || is_hot_subdwarf()) return true;
+    const auto spectrum = neighborhood_spectrum(spectral_type);
+    return spectrum.luminosity == NeighborhoodLuminosity::iv
+        || spectrum.luminosity == NeighborhoodLuminosity::iv_v
+        || spectrum.luminosity == NeighborhoodLuminosity::iii_iv
+        || spectrum.luminosity == NeighborhoodLuminosity::iii
+        || spectrum.luminosity == NeighborhoodLuminosity::ii
+        || spectrum.luminosity == NeighborhoodLuminosity::i
+        || spectrum.luminosity == NeighborhoodLuminosity::vii
+        || (spectrum.type && strchr("WCSRN", spectrum.type));
+}
+
 bool Star::resolve_wd_color(Color &linear_rgb, std::string *source)
 {
     if (source) source->clear();
@@ -596,12 +619,15 @@ void Star::update_location(double tmnow)
     {
         return before != after && !(std::isnan(before) && std::isnan(after));
     };
+    const double luminosity = !pl_indices.empty() ? bolometric_luminosity() : NAN;
     if (!pl_indices.empty() && (changed(planet_statistics_temperature, temperature)
-        || changed(planet_statistics_magnitude, absolute_magnitude)))
+        || changed(planet_statistics_magnitude, absolute_magnitude)
+        || changed(planet_statistics_luminosity, luminosity)))
     {
         Planet::mark_host_statistics_dirty(this);
         planet_statistics_temperature = temperature;
         planet_statistics_magnitude = absolute_magnitude;
+        planet_statistics_luminosity = luminosity;
     }
 }
 
@@ -821,7 +847,11 @@ void Star::apply_mira_pulsation(double phase)
 double Star::bolometric_luminosity(double tempK) const
 {
     if (!tempK) tempK = estimate_temperature();
-    if (is_mira_variable() && mira_pulsation.is_object())
+    // Evolved stars do not follow the main-sequence color/luminosity relation.
+    // Use their physical radius and temperature when available, including remnants.
+    if ((is_evolved() || (is_mira_variable() && mira_pulsation.is_object()))
+        && std::isfinite(volumetric_mean_radius) && volumetric_mean_radius > 0
+        && std::isfinite(tempK) && tempK > 0)
         return pow(volumetric_mean_radius / solar_radius, 2) * pow(tempK / sun_temp, 4);
     return pow(magnbase, 4.74 - absolute_magnitude - bolometric_correction(tempK));
 }
@@ -839,7 +869,8 @@ double Star::mira_surface_brightness() const
 
 double Star::estimate_temperature() const
 {
-    if (temperature) return temperature;
+    if (std::isfinite(temperature) && temperature > 0) return temperature;
+    if (is_evolved() && std::isfinite(BV_color)) return temperature_from_BV(BV_color);
     if (is_m_dwarf_color_source(this)) return m_dwarf_temperature(this);
     if (!strlen(spectral_type)) return 5800;
     // double msqi = get_mseqidx_from_sptyp(spectral_type);
@@ -851,6 +882,7 @@ double Star::estimate_temperature() const
 
 double Star::estimate_luminosity(double tempK)
 {
+    if (is_evolved()) return bolometric_luminosity(tempK);
     if (is_mira_variable() && mira_pulsation.is_object()) return bolometric_luminosity(tempK);
     // double msqi = get_mseqidx_from_sptyp(spectral_type);
     double msqi = get_mseqidx_from_BV(BV_color);
@@ -1033,6 +1065,7 @@ alienorum::stellar_regime_t alienorum::stellar_regime(CelestialObject *cel)
 {
     if (!cel || cel->typeclass() != class_star) return regime_none;
     if (static_cast<Star*>(cel)->is_white_dwarf()) return regime_degenerate;
+    if (static_cast<Star*>(cel)->is_evolved()) return regime_stellar;
 
     // Neither estimate_temperature() nor the main-sequence table it relies on: we
     // invert the blackbody relation, or use the catalog temperature when available.
@@ -1619,7 +1652,7 @@ double Star::estimate_radius(bool sms)
     {
         return volumetric_mean_radius = degenerate_radius(mass);
     }
-    if (!sms)
+    if (!sms && !is_evolved())
     {
         double msqi = -1.0;
         if (spectral_type[0])
@@ -1636,7 +1669,6 @@ double Star::estimate_radius(bool sms)
         }
     }
 
-    double sun_absmag = (cels && cels[0] ? cels[0]->absolute_magnitude : 4.83);
     double T = estimate_temperature();
     if (!(temperature > 0) && std::isfinite(BV_color) && BV_color != 0)
     {
@@ -1647,7 +1679,9 @@ double Star::estimate_radius(bool sms)
         T = 5800.0;
     }
     // 1. Calculate Luminosity relative to the Sun (L/L_sun)
-    double logL = (sun_absmag - absolute_magnitude);
+    const double sun_absmag = cels && cels[0] ? cels[0]->absolute_magnitude : 4.83;
+    double logL = is_evolved() ? 4.74 - absolute_magnitude - bolometric_correction(T)
+        : sun_absmag - absolute_magnitude;
     double luminosity = std::pow(magnbase, logL);
 
     // 2. Calculate radius relative to the Sun (R/R_sun) using Stefan-Boltzmann then scale to meters
@@ -1996,6 +2030,7 @@ json Star::to_json()
             towrite["debris_belt"]["inner_edge_m"] = disk_inner_edge_sma;
     }
     if (stellar_age.is_object()) towrite["stellar_age"] = stellar_age;
+    if (stellar_parameters.is_object()) towrite["stellar_parameters"] = stellar_parameters;
     if (is_white_dwarf())
     {
         Color linear;
@@ -2126,6 +2161,8 @@ bool Star::from_json(const json& j)
         }
     }
     stellar_age = j.value("stellar_age", json(nullptr));
+    stellar_parameters = j.value("stellar_parameters", json(nullptr));
+    if (stellar_parameters.is_object()) normalize_uncertain_numbers(stellar_parameters);
     if (stellar_age.is_object()) normalize_uncertain_numbers(stellar_age);
     stellar_abundances = j.contains("stellar_abundances") && j["stellar_abundances"].is_object()
         ? j["stellar_abundances"] : json(nullptr);

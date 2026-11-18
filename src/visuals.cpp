@@ -930,6 +930,16 @@ static double visible_atmospheric_pressure(Planet* planet)
         ? fmin(pressure, .1 * oneatm) : pressure;
 }
 
+static Color atmospheric_material_color(Planet* planet)
+{
+    // Generated map colors are reflectance; the source spectrum is applied by the lighting path.
+    Color color = !planet->is_bv_observed && std::isfinite(planet->generated_texture_bv)
+        && planet->generated_texture_bv == planet->BV_color
+        ? planet->generated_texture_color : Color::color_from_planet(0, planet, planet_bv_correction, false);
+    color.normalize(1);
+    return color;
+}
+
 static void atmosphere_colors(Planet *pl, double out_high[3], double out_low[3], double out_umbra[3], bool external_view)
 {
     for (int i = 0; i < 3; i++) out_high[i] = out_low[i] = out_umbra[i] = 0;
@@ -947,8 +957,7 @@ static void atmosphere_colors(Planet *pl, double out_high[3], double out_low[3],
     // smog) scatter greyly instead and hand the sky the ground's color back.
     double particulates = pl->get_particulates();
     double Rayleigh = 1.0 - particulates;
-    Color pcol = Color::color_from_planet(0, pl, planet_bv_correction, false);
-    pcol.normalize(1);
+    const Color pcol = atmospheric_material_color(pl);
 
     const double scatter[3] = {0.37, 0.58, 0.81};
     double haze[3] = {pcol.red, pcol.green, pcol.blue};
@@ -1008,11 +1017,7 @@ static PressureHaze surface_pressure_haze(Planet* planet)
     if (!haze.active()) return haze;
     double high[3], low[3], umbra[3];
     atmosphere_colors(planet, high, low, umbra);
-    Color star(1, 1, 1);
-    CelestialObject* source = planet->get_light_center();
-    if (source && source->typeclass() == class_star)
-        star = Color::color_from_star(0, static_cast<Star*>(source), source->BV_color);
-    star.normalize(1);
+    const Color star = Color::reflected_daylight(planet->get_light_center());
     const double illumination = std::clamp(atmospheric_daylight()
         + .01 * std::max(0.0, starlight), 0.0, 1.0);
     const double tint[] = {star.red, star.green, star.blue};
@@ -1442,6 +1447,10 @@ void draw_ring_gpu(CelestialObject* cel, double arad)
     in.ring_map_texture = gputex_for(cel->ring_map);
     in.ringx_map_texture = gputex_for(cel->ringx_map);
     in.fallback_color = IM_COL32(225, 208, 192, 255);   // matches the CPU path's default rgb
+    const Color ring_light = Color::reflected_daylight(lightcen);
+    in.incident_tint[0] = ring_light.red;
+    in.incident_tint[1] = ring_light.green;
+    in.incident_tint[2] = ring_light.blue;
     in.light_dir[0] = light_dir.x; in.light_dir[1] = light_dir.y; in.light_dir[2] = light_dir.z;
     in.self_luminous = self_luminous;
     in.amt_lit = (view_mode == vm_system) ? std::clamp((1 - light_dir.z) * .5, 0.0, 1.0) : pl->amt_lit;
@@ -2276,7 +2285,8 @@ int draw_sphere(CelestialObject* cel, double arad)
                                 points[i].y += sgn(points[i].y-polycy);
                             }
 
-                            ImU32 imcol = rgba_apply_redlight(IM_COL32(rgb.r*is_day, rgb.g*is_day, rgb.b*is_day, ring_opacity));
+                            ImU32 imcol = rgba_apply_redlight(IM_COL32(rgb.r * is_day * daylight.red,
+                                rgb.g * is_day * daylight.green, rgb.b * is_day * daylight.blue, ring_opacity));
                             ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(points, 4, imcol);
 
                             cel->onscreen = true;
@@ -4668,7 +4678,7 @@ void draw_system_view()
 
                 if (p->is_in_con_HZ())
                 {
-                    std::string hz = "Habitable Zone";
+                    std::string hz = p->has_approximate_HZ() ? "Habitable Zone (approx.)" : "Habitable Zone";
                     llbl.pos.y += lsz.y + 5;
                     lsz = ImGui::CalcTextSize(hz.c_str());
                     llbl.pos.x = p->drawnx - lsz.x/2;
@@ -5896,7 +5906,9 @@ void draw_horizon()
             is_day = fmin(1, is_day);
         }
 
-        const auto ground_light = haze.surface_illumination(is_day);
+        const Color source_color = Color::reflected_daylight(cel->get_light_center());
+        const std::array<double, 3> source_tint = {source_color.red, source_color.green, source_color.blue};
+        const auto ground_light = haze.surface_illumination(is_day, source_tint);
         const auto lit_surface_color = [&](const RGB3& sample)
         {
             return rgba_apply_redlight(IM_COL32(fmin(255, ground_light[0] * sample.r),
@@ -5905,7 +5917,7 @@ void draw_horizon()
         };
 
         const auto incident_tint = cel->type == lavaworld
-            ? std::array<double, 3>{1, 1, 1} : haze.illumination_tint();
+            ? std::array<double, 3>{1, 1, 1} : haze.illumination_tint(source_tint);
         const auto lit_scenery_color = [&](double red, double green, double blue, int alpha)
         {
             return rgba_apply_redlight(IM_COL32(red * incident_tint[0], green * incident_tint[1],
@@ -8884,6 +8896,7 @@ void draw_horizon()
                 plant_view.light = ImVec4(cos(sun_elev) * sin(sun_az_world - azimuth), sin(sun_elev),
                     cos(sun_elev) * cos(sun_az_world - azimuth), sun_light);
                 plant_view.ambient = amb_light;
+                plant_view.incident_color = ImVec4(incident_tint[0], incident_tint[1], incident_tint[2], 1);
                 plant_view.airlight = ImVec4(haze.light[0] / 255.0f, haze.light[1] / 255.0f, haze.light[2] / 255.0f, 1);
                 plant_view.redlight = redlight_mode;
                 #if PLANT_CROWN_TEXTURES
@@ -9574,8 +9587,7 @@ void draw_sky_gradient()
         {
             double particulates = p->get_particulates();
             double Rayleigh = 1.0 - particulates;
-            Color pcol = Color::color_from_planet(0, p, planet_bv_correction);
-            pcol.normalize(1);
+            const Color pcol = atmospheric_material_color(p);
 
             float city_lights = 0;
             if (cels[whereami]->night_map)
@@ -9611,7 +9623,9 @@ void draw_sky_gradient()
             }
 
             double redden = 0, sunset_r = 0, sunset_g = 0, sunset_b = 0;
-            if (mycenobj)
+            CelestialObject* sky_source = p->get_light_center();
+            const Color sky_light = Color::reflected_daylight(sky_source);
+            if (sky_source)
             {
                 double atm_high_unused[3], atm_low[3], atm_umbra_unused[3];
                 if (p->overcast && p->cloud_map)
@@ -9623,7 +9637,7 @@ void draw_sky_gradient()
                 }
                 else atmosphere_colors(p, atm_high_unused, atm_low, atm_umbra_unused);
 
-                double sun_elev = sin(mycenobj->Decl_as_radians(here));
+                double sun_elev = sin(sky_source->Decl_as_radians(here));
                 double redden_t = fmin(1.0, fmax(0.0, (0.35 - sun_elev) / (0.35 - 0.02)));
                 redden = redden_t * redden_t * (3.0 - 2.0 * redden_t);
 
@@ -9636,6 +9650,11 @@ void draw_sky_gradient()
             const double dip = radius > 0 ? acos(radius / (radius + fmax(.01, viewer_eye_height))) : 0;
             const double horizon_angle = p->atmospheric_horizon_lift() - dip;
             const bool mineral = show_terrain && lavaworld_mineral_sky && p->type == lavaworld;
+            if (!mineral)
+            {
+                r *= sky_light.red; g *= sky_light.green; b *= sky_light.blue;
+            }
+            sunset_r *= sky_light.red; sunset_g *= sky_light.green; sunset_b *= sky_light.blue;
             const double falloff_r = mineral ? .9985 : .999;
             const double falloff_g = mineral ? .9978 : .9995;
             const double falloff_b = mineral ? .9992 : .9999;
@@ -10335,10 +10354,14 @@ bool draw_cloudy_sky()
         const RGB3 deck = cel->cloud_map->color_at(viewer_lat, viewer_lon);
         diffuse = {double(deck.r), double(deck.g), double(deck.b)};
     }
-    const auto lighting = cloud_illumination(luminous_flux, starlight, p->mean_instellation(),
+    auto lighting = cloud_illumination(luminous_flux, starlight, p->mean_instellation(),
         atm_pressure, p->get_particulates(), p->overcast,
         {transmitted[0], transmitted[1], transmitted[2]}, diffuse,
         cumulus_day_swing, cumulus_day_exponent, cumulus_day_maximum);
+    const Color cloud_light = Color::reflected_daylight(sun_obj);
+    lighting.color[0] *= cloud_light.red;
+    lighting.color[1] *= cloud_light.green;
+    lighting.color[2] *= cloud_light.blue;
 
     CloudSkyGpuInput in = {};
     in.camera[0] = (float)azimuth;

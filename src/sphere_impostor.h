@@ -90,6 +90,7 @@ namespace alienorum
         unsigned int ring_map_texture;
         unsigned int ringx_map_texture;
         ImU32 fallback_color;
+        double incident_tint[3] = {1, 1, 1};
 
         double light_dir[3];
         bool self_luminous;

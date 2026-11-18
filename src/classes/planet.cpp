@@ -2390,12 +2390,14 @@ bool Planet::is_in_con_HZ()
     const double stellar_sma = outer->orbit->semimajor_axis;
     const double eccentricity = outer->orbit->eccentricity;
     const double t_eff = s->estimate_temperature();
+    const double luminosity = s->bolometric_luminosity(t_eff);
     if (!std::isfinite(stellar_sma) || stellar_sma <= 0 || !std::isfinite(t_eff) || t_eff <= 0
         || std::isinf(eccentricity)
         || (std::isfinite(eccentricity) && (eccentricity < 0 || eccentricity >= 1))) return false;
     if (cached_in_cons_hz == orbit->semimajor_axis && cached_hz_host == s && cached_hz_mass == mass
         && cached_hz_temperature == t_eff && cached_hz_magnitude == s->absolute_magnitude
-        && cached_hz_stellar_sma == stellar_sma && cached_hz_eccentricity == eccentricity) return cache_in_cons_hz;
+        && cached_hz_stellar_sma == stellar_sma && cached_hz_eccentricity == eccentricity
+        && cached_hz_luminosity == luminosity) return cache_in_cons_hz;
 
     const ConservativeHZ limits = conservative_hz(t_eff, mass / earth_mass);
     double planet_illumination = est_bolometric_flux(t_eff);
@@ -2413,8 +2415,18 @@ bool Planet::is_in_con_HZ()
     cached_hz_magnitude = s->absolute_magnitude;
     cached_hz_stellar_sma = stellar_sma;
     cached_hz_eccentricity = eccentricity;
+    cached_hz_luminosity = luminosity;
 
     return cache_in_cons_hz;
+}
+
+bool Planet::has_approximate_HZ()
+{
+    CelestialObject* host = get_light_center();
+    if (!host || host->typeclass() != class_star) return true;
+    const Star* star = static_cast<Star*>(host);
+    const double temperature = star->estimate_temperature();
+    return star->is_evolved() || !std::isfinite(temperature) || temperature < 2600 || temperature > 7200;
 }
 
 Planet::Planet()

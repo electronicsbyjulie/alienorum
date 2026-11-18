@@ -160,6 +160,7 @@ namespace alienorum
         double temperature_at_pressure(double pressure_pa);  // Same greenhouse formula, at an arbitrary reference level.
         bool set_habitable_orbit();
         bool is_in_con_HZ();                                // Conservative 1D HZ, using orbit-averaged stellar flux.
+        bool has_approximate_HZ();                          // Evolved host or spectrum outside the climate calibration.
         double estimate_bump_scale();
         double estimate_scale_height();                     // meters; 0 if airless
         void refresh_host_display_designation();
@@ -183,7 +184,7 @@ namespace alienorum
         double cached_in_cons_hz = -1;
         Star* cached_hz_host = nullptr;
         double cached_hz_mass = -1, cached_hz_temperature = -1, cached_hz_magnitude = -1, cached_hz_stellar_sma = -1;
-        double cached_hz_eccentricity = -1;
+        double cached_hz_eccentricity = -1, cached_hz_luminosity = -1;
         Star* statistics_host = nullptr;
         int statistics_host_index = -1;
         bool statistics_hz = false;

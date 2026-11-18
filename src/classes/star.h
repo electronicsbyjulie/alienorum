@@ -29,6 +29,7 @@ namespace alienorum
         json stellar_abundances = nullptr;
         json stellar_rotation = nullptr;             // Period provenance and supplied/assumed pole fields.
         json stellar_age = nullptr;                  // Published age, uncertainties and source alternatives.
+        json stellar_parameters = nullptr;           // Sources and assumptions for atmospheric and bulk properties.
         mutable std::array<double, 6> evolution_inputs{{NAN, NAN, NAN, NAN, NAN, NAN}};
         mutable json evolution_result = nullptr;
         json evolution_diagnostics() const;
@@ -95,7 +96,7 @@ namespace alienorum
         bool has_custom_name = false;
         int has_planets = 0;
         int has_hz_planets = 0;
-        double planet_statistics_temperature = NAN, planet_statistics_magnitude = NAN;
+        double planet_statistics_temperature = NAN, planet_statistics_magnitude = NAN, planet_statistics_luminosity = NAN;
         std::vector<int> pl_indices;
         void refresh_planet_statistics();
         bool tmp_vis_flag = false;                  // Used only for rendering.
@@ -165,6 +166,8 @@ namespace alienorum
         void limb_darkening_coefficients(double &a, double &b);
 
         bool is_white_dwarf() const;
+        bool is_hot_subdwarf() const;
+        bool is_evolved() const;
         void gotta_be_named_something();
         void assign_identifier_name();       // Custom name > Bayer > Flamsteed > GJ > Gould > HD > HIP > other identifiers.
         json to_json();

@@ -2430,6 +2430,120 @@ TEST_F(RenderingRegressionTest, RingsQueueWhenThePlanetDiscIsBehindTheCamera)
     EXPECT_GT(callbacks, 0);
 }
 
+TEST_F(RenderingRegressionTest, RingLightingTintsBothTexturesAndFallbackPixels)
+{
+    GLuint texture = 0;
+    glGenTextures(1, &texture);
+    glBindTexture(GL_TEXTURE_2D, texture);
+    const unsigned char white[] = {255, 255, 255, 255};
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, white);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    for (bool textured : {false, true})
+    {
+        const auto paint = [&](double red, double blue)
+        {
+            RingImpostorInput input = {};
+            input.cz = 10;
+            input.inner_r = 1; input.outer_r = 3;
+            input.normal[2] = 1;
+            input.fallback_color = IM_COL32(255, 255, 255, 255);
+            input.ring_map_texture = textured ? texture : 0;
+            input.light_dir[2] = -1;
+            input.amt_lit = 1;
+            input.incident_tint[0] = red;
+            input.incident_tint[1] = .3;
+            input.incident_tint[2] = blue;
+            EXPECT_TRUE(queue_ring_impostor(input, 1, 96, 54, 96));
+            auto pixels = render();
+            ImGui::NewFrame();
+            return pixels;
+        };
+        const auto cool = paint(.1, 1);
+        const auto warm = paint(1, .1);
+        unsigned long cool_red = 0, cool_blue = 0, warm_red = 0, warm_blue = 0;
+        for (size_t pixel = 0; pixel < cool.size(); pixel += 4)
+        {
+            cool_red += cool[pixel]; cool_blue += cool[pixel + 2];
+            warm_red += warm[pixel]; warm_blue += warm[pixel + 2];
+        }
+        EXPECT_GT(cool_blue, 1000u);
+        EXPECT_GT(cool_blue, 3 * cool_red);
+        EXPECT_GT(warm_red, 3 * warm_blue);
+    }
+    glDeleteTextures(1, &texture);
+}
+
+TEST_F(RenderingRegressionTest, HorizonGroundAndSceneryFollowTheOrbitalLightCenter)
+{
+    set(fancy_star_col, true);
+    Planet* world = surface(true);
+    world->ensure_atmosphere()->surface_pressure = 0;
+    auto* host = static_cast<Star*>(world->get_light_center());
+    const auto paint = [&](double index)
+    {
+        host->BV_color = index;
+        freeze_surface_time();
+        return scenery();
+    };
+    const auto cool = paint(-2);
+    const auto warm = paint(2);
+    ASSERT_EQ(cool.size(), warm.size());
+    int changes = 0;
+    for (size_t index = 0; index < cool.size(); ++index) changes += cool[index].col != warm[index].col;
+    EXPECT_GT(changes, 100);
+    static_cast<Star*>(mycenobj)->BV_color = -2;
+    const auto unchanged = paint(2);
+    ASSERT_EQ(warm.size(), unchanged.size());
+    for (size_t index = 0; index < warm.size(); ++index) EXPECT_EQ(warm[index].col, unchanged[index].col);
+}
+
+TEST_F(RenderingRegressionTest, HorizonSkyFollowsHostColorInsteadOfSystemPrimary)
+{
+    set(fancy_star_col, true);
+    Planet* world = surface();
+    world->ensure_atmosphere()->surface_pressure = oneatm;
+    auto* host = static_cast<Star*>(world->get_light_center());
+    const auto paint = [&](double index)
+    {
+        host->BV_color = index;
+        draw_sky_gradient();
+        auto pixels = render();
+        ImGui::NewFrame();
+        return pixels;
+    };
+    const auto cool = paint(-2);
+    const auto warm = paint(2);
+    EXPECT_GT(image_difference(cool, warm), 100);
+    static_cast<Star*>(mycenobj)->BV_color = -2;
+    EXPECT_EQ(paint(2), warm);
+}
+
+TEST_F(RenderingRegressionTest, HorizonCloudsFollowHostSpectrumAcrossColorEdits)
+{
+    set(fancy_star_col, true);
+    Planet* world = surface();
+    world->ensure_atmosphere()->surface_pressure = oneatm;
+    world->cloud_map = new UniformCloudTestMap(255);
+    world->overcast = true;
+    set(show_clouds, true);
+    auto* host = static_cast<Star*>(world->get_light_center());
+    host->viewrel = yaxis;
+    set(altitude, .5);
+    const auto paint = [&](double index)
+    {
+        host->BV_color = index;
+        EXPECT_TRUE(draw_cloudy_sky());
+        auto pixels = render();
+        ImGui::NewFrame();
+        return pixels;
+    };
+    const auto cool = paint(-2);
+    const auto warm = paint(2);
+    EXPECT_GT(image_difference(cool, warm), 100);
+    EXPECT_EQ(paint(2), warm);
+}
+
 TEST_F(RenderingRegressionTest, CumulusInteriorsRemainOpaqueDuringDistanceBlending)
 {
     const auto pixels = clouds(153, 0.25, 1.0);
@@ -9431,6 +9545,52 @@ TEST_F(RenderingRegressionTest, SnowColorsOnlyTheUpperCrownAndPreservesTheTrunk)
         }
     EXPECT_GT(upper_changes, 10);
     ImGui::NewFrame();
+}
+
+TEST_F(RenderingRegressionTest, PlantVolumeAndSnowReceiveIncidentLightColor)
+{
+    set(scenery_gpu_reference, false);
+    PlantMeshView view;
+    view.focal = 110; view.center_x = 96; view.center_y = 54;
+    view.ambient = 1; view.light = ImVec4(0, 1, 0, 0);
+    PlantMeshInstance plant;
+    plant.base = ImVec4(0, -3, 8, 3);
+    plant.dimensions = ImVec4(1.5, .75, .2, .1);
+    plant.crown_color = plant.trunk_color = IM_COL32(180, 180, 180, 255);
+    for (float snow : {0.0f, 1.0f})
+    {
+        plant.season.x = snow;
+        view.incident_color = ImVec4(.1, .2, 1, 1);
+        ASSERT_TRUE(prepare_plant_mesh_gpu(view));
+        add_plant_mesh_gpu(plant, 35); flush_plant_mesh_gpu();
+        const auto pixels = render();
+        unsigned long red = 0, blue = 0;
+        for (size_t pixel = 0; pixel < pixels.size(); pixel += 4)
+        {
+            red += pixels[pixel]; blue += pixels[pixel + 2];
+        }
+        EXPECT_GT(blue, 1000u);
+        EXPECT_GT(blue, 3 * red);
+        ImGui::NewFrame();
+    }
+}
+
+TEST(PressureHazeTest, DirectAndDiffuseLightCarryTheSourceSpectrumWithoutTintingTwice)
+{
+    const std::array<double, 3> blue = {.1, .3, 1};
+    PressureHaze clear;
+    EXPECT_EQ(clear.surface_illumination(1, blue), blue);
+    EXPECT_EQ(clear.illumination_tint(blue), blue);
+    PressureHaze opaque;
+    opaque.extinction = {1, 1, 1};
+    opaque.sky_opacity = 1;
+    opaque.light = {25.5, 76.5, 255};
+    const auto diffuse = opaque.surface_illumination(1, blue);
+    for (int channel = 0; channel < 3; ++channel)
+    {
+        EXPECT_NEAR(diffuse[channel], .57 * blue[channel], 1e-12);
+        EXPECT_NEAR(opaque.illumination_tint(blue)[channel], blue[channel], 1e-12);
+    }
 }
 
 TEST_F(RenderingRegressionTest, PlantMeshesResolveDepthAcrossBatchesAndPreserveUiState)

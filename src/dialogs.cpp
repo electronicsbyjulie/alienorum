@@ -1018,7 +1018,8 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
                 if ((cls == class_planet || cls == class_moon) && ((Planet*)cels[i])->is_in_con_HZ())
                 {
                     ImVec4 hzcolor = redlight_mode ? ImVec4(1, 0, 0, 1) : ImVec4(0, 1, 0, 1);
-                    ImGui::TextColored(hzcolor, "          Habitable Zone");
+                    ImGui::TextColored(hzcolor, ((Planet*)cels[i])->has_approximate_HZ()
+                        ? "          Habitable Zone (approx.)" : "          Habitable Zone");
                 }
                 ImGui::Text("Eccentr.: %.4f",   cels[i]->orbit->eccentricity);
                 ImGui::Text("Period:   %.2f d",   cels[i]->orbit->period / oneday);
@@ -1101,7 +1102,8 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
             if (((Planet*)cels[i])->is_in_con_HZ())
             {
                 ImVec4 hzcolor = redlight_mode ? ImVec4(1, 0, 0, 1) : ImVec4(0, 1, 0, 1);
-                ImGui::TextColored(hzcolor, "          Habitable Zone");
+                ImGui::TextColored(hzcolor, ((Planet*)cels[i])->has_approximate_HZ()
+                    ? "          Habitable Zone (approx.)" : "          Habitable Zone");
             }
         }
 
