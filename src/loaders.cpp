@@ -1177,7 +1177,7 @@ void load_catalogs()
     // What to do, oh what to do...
     if (load_aborted()) return;
     const int first_supplement_star = ncelobjs;
-    const auto nearby_brown_dwarfs = load_brown_dwarf_supplement();
+    const auto nearby_brown_dwarfs = condensed_brown_dwarfs_loaded ? 0u : load_brown_dwarf_supplement();
     std::cout << "Added " << nearby_brown_dwarfs << " objects from the nearby substellar census." << std::endl;
     if (!noexo) cr.load_exoplanets_from_tap(true);              // How about first we load exostars then fill them in with star orbits?
 
@@ -1579,6 +1579,7 @@ void load_stuff()
         try { j.at( (std::string("Theme") + std::to_string(wkday)).c_str() ).get_to(viewer_theme); } catch(...) { ; }
         try { j.at("StarPoint").get_to(npointedstar); } catch(...) { ; }
         try { j.at("Gamma").get_to(viewer_gamma); global_gamma = viewer_gamma; } catch(...) { ; }
+        try { j.at("PrettyStarColors").get_to(fancy_star_col); } catch (...) { ; }
         try
         {
             double eye_cm = 175.26;
@@ -1846,6 +1847,7 @@ bool save_user_json()
         j["Timezone"] = (int)(viewer_home_tz / 60);
         j["Theme"] = themes[themes_selected_idx];
         j["Gamma"] = global_gamma;
+        j["PrettyStarColors"] = fancy_star_col;
         j["EyeHeight"] = viewer_eye_height * 100.0;
 
         std::vector<std::string> favenames;

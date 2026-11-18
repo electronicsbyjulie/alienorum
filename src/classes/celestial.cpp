@@ -4950,7 +4950,7 @@ void Map::generate_stellar_map(CelestialObject *cel)
     Color wd_linear;
     const bool has_wd_color = star->resolve_wd_color(wd_linear);
     Color m_linear;
-    const bool has_m_color = m_dwarf_color_source(star, m_linear);
+    const bool has_m_color = stellar_reference_color(star, m_linear);
     int num_groups, num_spots;
     Color ref_col;
     Map *fac = nullptr;
@@ -4982,8 +4982,12 @@ void Map::generate_stellar_map(CelestialObject *cel)
         std::cout << "Allocated " << allocated << " pixels for fictitious stellar map." << std::endl;
 
         stellar_regime_t regime = stellar_regime(cel);
-        T_eff = has_m_color ? m_dwarf_temperature(star)
+        T_eff = has_m_color ? (is_m_color_source(star) ? m_dwarf_temperature(star)
+            : ((star->temperature <= 0 && !star->spectral_type[0])
+                ? Star::interpolate_mseq_temp(Star::get_mseqidx_from_BV(star->BV_color)) : star->estimate_temperature()))
             : ((cel->temperature > 0) ? cel->temperature : Star::temperature_from_BV(cel->BV_color));
+        if (star->is_mira_variable() && star->mira_pulsation.is_object())
+            T_eff = star->mira_pulsation.value("mean_temperature_K", T_eff);
         if (!(T_eff > 0) || isnan(T_eff) || isinf(T_eff)) T_eff = sun_temp;
 
         mass_solar = cel->mass / solar_mass;

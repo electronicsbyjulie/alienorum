@@ -306,6 +306,7 @@ void draw_status_window(ImGuiIO& io)            // the S panel
 
     std::string flagstr;
 
+    ImGui::Text("Star colors: %s", fancy_star_col ? "Pretty" : "Realistic");
     flagstr = (std::string)"Zoom (*/): " + std::to_string(zoom);
     ImGui::Text("%s", flagstr.c_str());
 

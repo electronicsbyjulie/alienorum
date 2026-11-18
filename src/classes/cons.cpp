@@ -417,7 +417,25 @@ ConsBins fill_alienorum_ids()
             // CREATING ALIENORUMIDS FOR STARS WHOSE SYSTEM PRIMARY IS OF MAG >= 10 IS A SEVERE CORRECTNESS ERROR AND A REGRESSION.
             // LEAVE THOSE ALIENORUMIDS BLANK.
             // Later we will incorporate Gaia to get the catalog complete to a higher magnitude.
-            if (m >= 10) continue;
+            if (m >= 10)
+            {
+                for (const auto& [color, stars] : val2)
+                {
+                    for (Star* object : stars)
+                    {
+                        object->alienorumid.clear();
+                        if (object->multisys)
+                        {
+                            for (char component = 'B'; component <= 'Z'; ++component)
+                            {
+                                Star* member = object->multisys->get_member(component);
+                                if (member) member->alienorumid.clear();
+                            }
+                        }
+                    }
+                }
+                continue;
+            }
 
             for (const auto& [cc, val3] : val2)
             {

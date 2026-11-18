@@ -85,6 +85,7 @@ bool explorer = false;
 bool neighborhood = false;
 bool locwnd = false;
 bool show_taucalc = false;
+bool fancy_star_col = true;
 bool show_terrain = true;
 bool show_clouds = true;
 bool hide_mouse = true;

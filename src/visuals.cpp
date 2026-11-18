@@ -1264,13 +1264,21 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
     in.self_luminous = self_luminous;
     in.limb_a = limb_a;
     in.limb_b = limb_b;
-    if (self_luminous && cls == class_star && (is_m_color_source((Star*)cel) || stellar_regime(cel) == regime_substellar || wd_limb_profile((Star*)cel, in.wd_limb)))
+    if (self_luminous && cls == class_star)
     {
+        wd_limb_profile((Star*)cel, in.wd_limb);
         Color filter = Color::color_from_magnitude_indices(0, -bv_correction + atm_yellowing);
         filter.normalize(1);
         in.daylight_tint[0] = pow(filter.red, 1.0 / 3);
         in.daylight_tint[1] = pow(filter.green, 1.0 / 3);
         in.daylight_tint[2] = pow(filter.blue, 1.0 / 3);
+        if (day_map && day_map->procedurally_generated)
+        {
+            const Color tint = Color::stellar_texture_tint((Star*)cel);
+            in.daylight_tint[0] *= tint.red;
+            in.daylight_tint[1] *= tint.green;
+            in.daylight_tint[2] *= tint.blue;
+        }
     }
     in.night_illum = night_map ? 0.0 : starlight;
     in.redlight_mode = redlight_mode;
@@ -1840,13 +1848,21 @@ int draw_sphere(CelestialObject* cel, double arad)
     {
         if (cel->typeclass() == class_star) ((Star*)cel)->limb_darkening_coefficients(cpu_limb_a, cpu_limb_b);
         else { cpu_limb_a = 0.49; cpu_limb_b = 0.21; }
-        if (cls == class_star && (is_m_color_source((Star*)cel) || stellar_regime(cel) == regime_substellar || wd_limb_profile((Star*)cel, cpu_wd_limb)))
+        if (cls == class_star)
         {
+            wd_limb_profile((Star*)cel, cpu_wd_limb);
             daylight = Color::color_from_magnitude_indices(0, -bv_correction + atm_yellowing);
             daylight.normalize(1);
             daylight.red = pow(daylight.red, 1.0 / 3);
             daylight.green = pow(daylight.green, 1.0 / 3);
             daylight.blue = pow(daylight.blue, 1.0 / 3);
+            if (map && map->procedurally_generated)
+            {
+                const Color tint = Color::stellar_texture_tint((Star*)cel);
+                daylight.red *= tint.red;
+                daylight.green *= tint.green;
+                daylight.blue *= tint.blue;
+            }
         }
     }
 
@@ -2050,9 +2066,9 @@ int draw_sphere(CelestialObject* cel, double arad)
                             }
 
                             RGB3 rgblit = rgb;
-                            rgblit.r *= daylight.red;
-                            rgblit.g *= daylight.green;
-                            rgblit.b *= daylight.blue;
+                            rgblit.r = std::clamp(int(rgb.r*daylight.red), 0, 255);
+                            rgblit.g = std::clamp(int(rgb.g*daylight.green), 0, 255);
+                            rgblit.b = std::clamp(int(rgb.b*daylight.blue), 0, 255);
 
                             // The daylit contribution unconditionally, then the night map on top
                             // of it where there is any night to show. Written as an if/else
@@ -5442,7 +5458,7 @@ struct GlintSource
 
 static Color water_light_color(CelestialObject* object)
 {
-    using Key = std::tuple<int, double, double, double, double, double, double>;
+    using Key = std::tuple<int, double, double, double, double, double, double, bool>;
     struct Entry
     {
         Key key;
@@ -5457,7 +5473,7 @@ static Color water_light_color(CelestialObject* object)
     if (cache)
     {
         key = {cls, object->BV_color, global_brightness, bv_correction, planet_bv_correction,
-            object->temperature, object->VR_color};
+            object->temperature, object->VR_color, fancy_star_col};
         const auto found = colors.find(object);
         if (found != colors.end() && found->second.key == key) return found->second.color;
     }
@@ -7061,6 +7077,7 @@ void draw_horizon()
             if (first_ground == ground_height) reset_horizon_ground_gpu_stats();
         }
 
+        #if TEXTURED_GROUND
         const bool ground_detail_active = !horizon_ground_detail_reference && p && !gaseous
             && cel->type != lavaworld && map && map->is_complete();
         if (!faded && (paint_biomes || haze.active() || ground_detail_active)
@@ -7550,6 +7567,7 @@ void draw_horizon()
                 std::chrono::steady_clock::now() - ground_paint_start).count();
             if (!reuse_ground && ground_stride == 1) full_ground_paint_ms = precipitation_stats.ground_paint_milliseconds;
         }
+        #endif
 
         bool certified_dry = false;
         if (horizon_fast_path(6) && surface_water && !faded && screen_w > 0 && surface_radius > 0)

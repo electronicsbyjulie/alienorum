@@ -5787,3 +5787,78 @@ TEST_F(CatalogParsingTest, BrownDwarfSupplementIsRepeatableAndPreservesExistingC
             EXPECT_GT(star->sidereal_rotational_period, 0);
     }
 }
+
+TEST_F(CatalogParsingTest, EpsilonIndCensusNamesReuseLegacyBAndCWithoutGlieseIdentifiers)
+{
+    Star* b = make_star("Eps Ind B", .06386*solar_mass);
+    Star* c = make_star("Eps Ind C", .05081*solar_mass);
+    b->temperature = 1312;
+    c->temperature = 972;
+    b->BV_color = 4.83;
+    c->BV_color = 6.72;
+    b->orbit = new Orbit();
+    c->orbit = new Orbit();
+    c->orbit->center = b;
+    Orbit* b_orbit = b->orbit;
+    Orbit* c_orbit = c->orbit;
+    ASSERT_STREQ(b->Gliese, "");
+    ASSERT_STREQ(c->Gliese, "");
+    const int count = ncelobjs;
+    load_brown_dwarf_supplement();
+    EXPECT_EQ(find_object("epsilon Ind Ba", true, 9e29, 0), b->seqno);
+    EXPECT_EQ(find_object("epsilon Ind Bb", true, 9e29, 0), c->seqno);
+    EXPECT_EQ(find_object("Eps Ind B", true, 9e29, 0), b->seqno);
+    EXPECT_EQ(find_object("Eps Ind C", true, 9e29, 0), c->seqno);
+    int ba = 0, bb = 0;
+    for (int i = count; i < ncelobjs; ++i)
+    {
+        if (std::string(cels[i]->name) == "epsilon Ind Ba") ++ba;
+        if (std::string(cels[i]->name) == "epsilon Ind Bb") ++bb;
+    }
+    EXPECT_EQ(ba, 0);
+    EXPECT_EQ(bb, 0);
+    EXPECT_EQ(b->orbit, b_orbit);
+    EXPECT_EQ(c->orbit, c_orbit);
+    EXPECT_DOUBLE_EQ(b->temperature, 1312);
+    EXPECT_DOUBLE_EQ(c->temperature, 972);
+    EXPECT_DOUBLE_EQ(b->BV_color, 4.83);
+    EXPECT_DOUBLE_EQ(c->BV_color, 6.72);
+    EXPECT_EQ(load_brown_dwarf_supplement(), 0u);
+}
+
+TEST_F(StellarDownloadTest, BrownDwarfsAreFoldedIntoTheWriterAndReloadWithoutASupplementImport)
+{
+    std::filesystem::copy_file(original / "catalogs/brown_dwarfs_20pc.json", "catalogs/brown_dwarfs_20pc.json");
+    CatalogReader reader;
+    const int written = reader.write_condensed_star_cat({});
+    ASSERT_GT(written, 400);
+    std::ifstream saved("catalogs/soles_alienorum.dat");
+    const std::string text((std::istreambuf_iterator<char>(saved)), std::istreambuf_iterator<char>());
+    EXPECT_NE(text.find("# BROWN20PC1 "), std::string::npos);
+    EXPECT_NE(text.find(" AST1 "), std::string::npos);
+    Star* reference = nullptr;
+    for (int i = 0; cels[i]; ++i)
+        if (i > 0 && static_cast<Star*>(cels[i])->alienorumid.empty()) { reference = static_cast<Star*>(cels[i]); break; }
+    ASSERT_NE(reference, nullptr);
+    const std::string name = reference->name;
+    const double ra = reference->right_ascension, dec = reference->declination, epoch = reference->epoch;
+    delete_the_universe();
+    EXPECT_EQ(reader.read_condensed_star_cat(), written);
+    EXPECT_TRUE(condensed_brown_dwarfs_loaded);
+    EXPECT_EQ(load_brown_dwarf_supplement(), 0u);
+    const int found = find_object(name.c_str(), true, 9e29, 0);
+    ASSERT_GE(found, 0);
+    EXPECT_DOUBLE_EQ(cels[found]->right_ascension, ra);
+    EXPECT_DOUBLE_EQ(cels[found]->declination, dec);
+    EXPECT_DOUBLE_EQ(cels[found]->epoch, epoch);
+}
+
+TEST_F(CatalogParsingTest, ImportedBrownDwarfsDoNotReceiveInventedAlienorumIds)
+{
+    load_brown_dwarf_supplement();
+    for (int i = 1; i < ncelobjs; ++i)
+    {
+        Star* object = static_cast<Star*>(cels[i]);
+        EXPECT_TRUE(object->alienorumid.empty()) << object->name;
+    }
+}

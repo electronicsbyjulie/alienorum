@@ -311,6 +311,7 @@ class RenderingRegressionTest : public UniverseFixture
         UniverseFixture::SetUp();
         // Reference images compare fixed instants; dedicated phase tests advance ice explicitly.
         set(dynamic_surface_ice, false);
+        set(fancy_star_col, false);
         if (!graphics)
         {
             GTEST_SKIP() << "An OpenGL display is unavailable; run with xvfb-run.";
@@ -9894,4 +9895,56 @@ TEST_F(RenderingRegressionTest, GroundDetailFrameCostAt720p)
     }
     SDL_SetWindowSize(window, 192, 108);
     SDL_GL_SwapWindow(window);
+}
+
+TEST_F(RenderingRegressionTest, PrettyStarColorsShortcutTogglesTheSharedSetting)
+{
+    surface();
+    set(editing, false);
+    set(fancy_star_col, false);
+    process_key_cmd_ctrl_char('j');
+    EXPECT_TRUE(fancy_star_col);
+    EXPECT_TRUE(viewchanged);
+    process_key_cmd_ctrl_char('j');
+    EXPECT_FALSE(fancy_star_col);
+}
+
+TEST_F(RenderingRegressionTest, PrettyStarColorsUpdateExistingCpuAndGpuDiscsWithoutRegeneration)
+{
+    Star* star = make_star("Palette test star", .2*solar_mass);
+    strcpy(star->spectral_type, "M4V");
+    star->temperature = 3210;
+    star->BV_color = 1.6;
+    star->volumetric_mean_radius = .3*solar_radius;
+    star->cenobj = star;
+    star->looked_for_maps = true;
+    star->fictitious_map_height = 16;
+    star->surf_map = new Map(star);
+    star->surf_map->generate_stellar_map(star);
+    const auto generation = star->surf_map->gen;
+    star->location.local_position = star->tmprel = Point(0, 0, 2*star->volumetric_mean_radius);
+    star->location.equatorial_plane = Rotation();
+    set(whereami, -1);
+    set(here, CelestialLocation());
+    set(myeq, 0.0);
+    system_bloom.assign(2, 20);
+    set(bloomrad_cache, system_bloom.data());
+    for (auto mode : {vm_spaceship, vm_skymap})
+    {
+        set(view_mode, mode);
+        fancy_star_col = false;
+        draw_sphere(star, _pi/6);
+        const auto realistic = render();
+        ImGui::NewFrame();
+        fancy_star_col = true;
+        draw_sphere(star, _pi/6);
+        const auto pretty = render();
+        EXPECT_GT(image_difference(realistic, pretty), 0);
+        EXPECT_EQ(star->surf_map->gen, generation);
+        ImGui::NewFrame();
+        fancy_star_col = false;
+        draw_sphere(star, _pi/6);
+        EXPECT_EQ(render(), realistic);
+        ImGui::NewFrame();
+    }
 }

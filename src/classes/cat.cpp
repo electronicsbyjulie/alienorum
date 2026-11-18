@@ -1,3 +1,4 @@
+#include "browncatalog.h"
 #include "../catalog_lock_trace.h"
 #include "numeric.h"
 #include "exoplanetstatus.h"
@@ -6356,6 +6357,13 @@ std::string alienorum::CatalogReader::format_condensed_star_line(Star* s, bool e
         extra << " ORB1 " << std::quoted(state.dump());
         line += extra.str();
     }
+    if (s->alienorumid.empty())
+    {
+        const json position = json::array({s->right_ascension, s->declination, s->epoch, s->distance_known});
+        std::ostringstream extra;
+        extra << " AST1 " << std::quoted(position.dump());
+        line += extra.str();
+    }
     if (!s->catalog_aliases.empty())
     {
         std::ostringstream aliases;
@@ -6369,6 +6377,7 @@ std::string alienorum::CatalogReader::format_condensed_star_line(Star* s, bool e
 
 int alienorum::CatalogReader::write_condensed_star_cat(ConsBins cb)
 {
+    load_brown_dwarf_supplement();
     int i, n, written = 0;
     char c;
     std::string path = get_condensed_starcat_name();
@@ -6376,6 +6385,8 @@ int alienorum::CatalogReader::write_condensed_star_cat(ConsBins cb)
     if (fp)
     {
         fprintf(fp, "# ORBITS1 %s\n", star_orbits_signature().c_str());
+        const auto brown_signature = brown_dwarf_catalog_signature();
+        if (!brown_signature.empty()) fprintf(fp, "# BROWN20PC1 %s\n", brown_signature.c_str());
         std::unordered_set<Star*> recorded;
         const auto record = [&](Star* object)
         {
@@ -6426,7 +6437,7 @@ int alienorum::CatalogReader::write_condensed_star_cat(ConsBins cb)
 
         #ifndef _WIN32
         // TODO: This command will only execute on Linux - maybe not a problem if only the author ever issues new internal catalogs.
-        system("gzip -k catalogs/soles_alienorum.dat");
+        system("gzip -n -f -k catalogs/soles_alienorum.dat");
         #endif
     }
 
@@ -6444,6 +6455,8 @@ bool alienorum::CatalogReader::bake_condensed_star_orbits()
     try
     {
         fprintf(fp, "# ORBITS1 %s\n", signature.c_str());
+        if (condensed_brown_dwarfs_loaded)
+            fprintf(fp, "# BROWN20PC1 %s\n", brown_dwarf_catalog_signature().c_str());
         for (int i = 0; cels[i]; ++i)
         {
             if (cels[i]->typeclass() == class_star)
@@ -6759,6 +6772,7 @@ std::string alienorum::CatalogReader::get_condensed_starcat_name()
 int alienorum::CatalogReader::read_condensed_star_cat()
 {
     condensed_star_orbits_loaded = false;
+    condensed_brown_dwarfs_loaded = false;
     std::map<Star*, json> orbit_states;
     std::unordered_map<std::string, Star*> saved_stars;
     std::vector<Star*> catalog_stars;
@@ -6792,6 +6806,11 @@ int alienorum::CatalogReader::read_condensed_star_cat()
             std::istringstream header(buffer);
             std::string comment, version, signature;
             header >> comment >> version >> signature;
+            if (version == "BROWN20PC1")
+            {
+                const auto source_signature = brown_dwarf_catalog_signature();
+                condensed_brown_dwarfs_loaded = source_signature.empty() || signature == source_signature;
+            }
             if (version == "ORBITS1")
             {
                 const std::string source_signature = star_orbits_signature();
@@ -6936,6 +6955,17 @@ int alienorum::CatalogReader::read_condensed_star_cat()
                 else if (version == "SID1" && extras >> std::quoted(value))
                 {
                     saved_stars.emplace(value, s);
+                }
+                else if (version == "AST1" && extras >> std::quoted(value))
+                {
+                    const auto position = json::parse(value, nullptr, false);
+                    if (position.is_array() && position.size() == 4)
+                    {
+                        s->right_ascension = position[0];
+                        s->declination = position[1];
+                        s->epoch = position[2];
+                        s->distance_known = position[3];
+                    }
                 }
                 else if (version == "ALS1")
                 {

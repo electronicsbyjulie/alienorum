@@ -64,6 +64,8 @@
 #define cumulus_day_maximum 0.71
 #define cloud_opacity_threshold 0.90
 
+#define TEXTURED_GROUND 0
+
 // Shoreline and other surface boundary params
 #define shore_displacement 8.0
 // Horizon GPU stages: enable each stage independently for comparison.

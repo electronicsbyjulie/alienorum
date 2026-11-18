@@ -11,6 +11,22 @@
 
 namespace alienorum
 {
+    inline bool condensed_brown_dwarfs_loaded = false;
+
+    inline std::string brown_dwarf_catalog_signature()
+    {
+        std::ifstream source("catalogs/brown_dwarfs_20pc.json", std::ios::binary);
+        if (!source) return {};
+        uint64_t hash = 14695981039346656037ULL;
+        char value;
+        while (source.get(value))
+        {
+            hash ^= static_cast<unsigned char>(value);
+            hash *= 1099511628211ULL;
+        }
+        return std::to_string(hash);
+    }
+
     inline unsigned int load_brown_dwarf_supplement(const char* path = "catalogs/brown_dwarfs_20pc.json")
     {
         std::ifstream input(path);
@@ -32,6 +48,11 @@ namespace alienorum
             if (!star->is_white_dwarf() && ((star->mass > 0 && star->mass < .075*solar_mass)
                 || (star->spectral_type[0] && strchr("LTY", star->spectral_type[0])))) brown.push_back(star);
         }
+        const auto system_root = [](const json& record)
+        {
+            const auto hierarchy = record.value("hierarchy", "");
+            return hierarchy.substr(0, hierarchy.find('.'));
+        };
         std::map<Star*, std::pair<std::string, std::string>> imported;
         unsigned int added = 0;
         for (const auto& record : catalog["records"])
@@ -62,7 +83,7 @@ namespace alienorum
                 for (Star* other : brown)
                 {
                     const auto previous = imported.find(other);
-                    if (previous != imported.end() && previous->second.first == record.value("system", "")
+                    if (previous != imported.end() && previous->second.first == system_root(record)
                         && previous->second.second != record.value("hierarchy", "")) continue;
                     if (!(other->distance > 0) || fabs(other->distance/parsec-distance) > .25*distance) continue;
                     const double old_elapsed = (J2000-other->epoch)*oneday;
@@ -106,7 +127,7 @@ namespace alienorum
                 ++added;
             }
             for (const auto& alias : record.value("aliases", json::array())) target->add_catalog_alias(alias.get<std::string>());
-            imported[target] = {record.value("system", ""), record.value("hierarchy", "")};
+            imported[target] = {system_root(record), record.value("hierarchy", "")};
             names.add(target->seqno, *target);
         }
         return added;

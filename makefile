@@ -140,6 +140,9 @@ deepclean:
 
 apps: alienorum
 
+$(BIN)/rebuild_brown_dwarf_catalog: tools/rebuild_brown_dwarf_catalog.cpp $(OBJS)
+	$(CPP) tools/rebuild_brown_dwarf_catalog.cpp $(OBJS) $(CPPFLAGS) $(LIBS) -o $@
+
 $(BIN)/audit_planet_classification: tools/audit_planet_classification.cpp $(OBJS)
 	$(CPP) tools/audit_planet_classification.cpp $(OBJS) $(CPPFLAGS) $(LIBS) -o $@
 

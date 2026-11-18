@@ -61,7 +61,8 @@ namespace alienorum
             double brightness_scale, double color_correction);
         static Color color_from_planet(double Vmag, CelestialObject* object, double offset = 0, bool include_atmosphere = true);
         static Color reflected_daylight(CelestialObject* source, double offset = 0);
-        static Color color_from_star(double Vmag, Star *star, double fallback_BV);
+        static Color color_from_star(double Vmag, Star *star, double fallback_BV, bool pretty = fancy_star_col);
+        static Color stellar_texture_tint(Star* star);
 
         static RGB3 rgb_from_color(Color c, double multiplier = 1);
         static RGB3 rgb_from_color(Color c, double multiplier, double inverse_gamma, bool apply_redlight);

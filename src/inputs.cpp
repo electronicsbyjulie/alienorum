@@ -475,6 +475,7 @@ void show_menu()
                 process_key_cmd_ctrl_char('C');
                 menu_clicked = true;
             }
+            if (ImGui::MenuItem("Pretty Star Colors", "Ctrl+J", fancy_star_col)) { process_key_cmd_ctrl_char('j'); menu_clicked = true; }
             if (ImGui::MenuItem("Red Light Mode", "Shift+R", redlight_mode)) { process_key_cmd_char('R'); menu_clicked = true; }
             if (ImGui::MenuItem("White Background Mode", "Shift+W", whtbkgd)) { process_key_cmd_char('W'); menu_clicked = true; }
             if (ImGui::MenuItem("Fullscreen", "F11", fullscreen)) { process_key_F11(); menu_clicked = true; }
@@ -796,7 +797,7 @@ void process_key_cmd_char(char c)
         viewer_tz  = viewer_home_tz;
         viewer_dst = viewer_home_dst;
         viewer_locale = "";
-        save_viewer_latlon = true;
+        save_viewer_latlon = fancy_star_col = true;
         set_viewer_location_and_plane();
         global_brightness = default_brightness;
         global_gamma = viewer_gamma;
@@ -892,7 +893,7 @@ void process_key_cmd_char(char c)
         case '0': neighborhood = !neighborhood; break;
 
         case '1':
-        show_consln = show_grid = show_labels = label_favestars = label_galaxies = true;
+        show_consln = show_grid = show_labels = label_favestars = label_galaxies = fancy_star_col = true;
         show_localsys = lbl_localsys = statuswnd = objinfwnd = (view_mode != vm_skymap);
         if (cbolbls_selected_idx == lbltype_brightest) appmagn_lblcut = (view_mode == vm_skymap) ? 2.1 : 2.5;
         break;
@@ -970,7 +971,7 @@ void process_key_cmd_char(char c)
         case ';': cometwnd = !cometwnd; break;
         case ',': frames_without_mousemove = 1000; break;
         case '|': show_axes = !show_axes; break;
-        case '!': show_consln = show_grid = show_labels = label_favestars = lbl_localsys = show_orbits = label_galaxies = false; break;
+        case '!': show_consln = show_grid = show_labels = label_favestars = lbl_localsys = show_orbits = label_galaxies = fancy_star_col = false; break;
         case '%':
         zoom = 1;
         global_brightness = default_brightness;
@@ -1183,6 +1184,7 @@ void process_key_cmd_ctrl_char(char c)
         case 'g': vplane_mode = vplane_galactic; break;
         case 'i': vplane_mode = vplane_ICRF; break;
         case 'I': dynamic_surface_ice = !dynamic_surface_ice; viewchanged = true; break;
+        case 'j': fancy_star_col = !fancy_star_col; viewchanged = true; break;
         case 'l': vplane_mode = vplane_local; break;
 
         case 'o':
