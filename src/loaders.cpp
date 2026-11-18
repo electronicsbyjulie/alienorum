@@ -3,8 +3,6 @@
 #include "performance_options.h"
 #include "classes/cloudclimate.h"
 #include "classes/texturegeneration.h"
-#include "classes/chemistry.h"
-#include "classes/stellarevolution.h"
 
 #include "loaders.h"
 #include "housekeeping.h"
@@ -948,16 +946,10 @@ void load_catalogs()
     refresh_gzip_file(ihcfn.c_str());
     if (file_exists(ihcfn.c_str()))
     {
-        auto stellar_models = std::async(std::launch::async, []()
-        {
-            preload_stellar_age_catalog();
-            StellarEvolutionGrid::instance();
-        });
         mtx.lock();
         loading_msg = std::string("Loading star catalog...");
         mtx.unlock();
         ihsc = cr.read_condensed_star_cat();
-        stellar_models.get();
         if (load_aborted()) return;
         if (ihsc && !CatalogReader::condensed_star_orbits_loaded && !magnitude_test)
         {

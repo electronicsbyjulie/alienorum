@@ -168,14 +168,9 @@ json Star::chemistry_diagnostics() const
     return result;
 }
 
-void alienorum::preload_stellar_age_catalog()
-{
-    CatalogReader reader;
-    reader.apply_stellar_abundances(nullptr);
-}
-
 void CatalogReader::apply_stellar_abundances(Star* host)
 {
+    if (!host) return;
     // Ages cover the entire stellar catalog, independently of abundance availability.
     struct AgeTable
     {
@@ -216,7 +211,6 @@ void CatalogReader::apply_stellar_abundances(Star* host)
                         }
                 }
         }
-        if (!host) return;
         normalize_uncertain_numbers(host->stellar_age);
         const bool valid_age = std::isfinite(numeric(host->stellar_age, "value_gyr"))
             && numeric(host->stellar_age, "value_gyr") >= 0;

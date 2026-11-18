@@ -131,6 +131,48 @@ TEST(MoonTest, LaplacePlane_OrbitTypeOverrides)
     EXPECT_DOUBLE_EQ(actual_ecl.a, 4.56);
 }
 
+TEST(MoonTest, IncompleteHierarchyDoesNotAccumulateInclination)
+{
+    for (int scenario = 0; scenario < 3; ++scenario)
+    {
+        CelestialObject star;
+        Planet planet;
+        Moon moon;
+        star.mass = scenario == 0 ? 0 : solar_mass;
+        planet.mass = scenario == 1 ? 0 : jupiter_mass;
+        if (scenario != 2)
+        {
+            planet.orbit = new Orbit();
+            planet.orbit->center = &star;
+            planet.orbit->semimajor_axis = AU;
+        }
+        planet.location.orbital_plane = align_points_3d(zaxis, yaxis, center);
+        moon.orbit = new Orbit();
+        moon.orbit->center = &planet;
+        moon.orbit->period = 17.213332942298177 * oneday;
+        moon.orbit->semimajor_axis = 3408690342.1471434;
+        moon.orbit->inclination = 5.413704529108861 * fiftyseventh;
+        moon.orbit->ascending_node = 45.74988831496929 * fiftyseventh;
+        moon.obliquity = 2.292933303833217 * fiftyseventh;
+        moon.sidereal_rotational_period = 15.017669062621374 * oneday;
+
+        const double time = J2000_TIME_T + 100 * oneday;
+        moon.update_location(time);
+        const Rotation orbital = moon.location.orbital_plane;
+        const Rotation equatorial = moon.location.equatorial_plane;
+        const Point position = moon.location.local_position;
+        for (int frame = 0; frame < 100; ++frame)
+        {
+            moon.update_location(time);
+            EXPECT_ROTATION_EQ(moon.location.orbital_plane, orbital);
+            EXPECT_ROTATION_EQ(moon.location.equatorial_plane, equatorial);
+            EXPECT_DOUBLE_EQ(moon.location.local_position.x, position.x);
+            EXPECT_DOUBLE_EQ(moon.location.local_position.y, position.y);
+            EXPECT_DOUBLE_EQ(moon.location.local_position.z, position.z);
+        }
+    }
+}
+
 TEST(MoonTest, LaplacePlane_TidalLockGuard)
 {
     CelestialObject star;
