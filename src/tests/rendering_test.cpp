@@ -2498,6 +2498,54 @@ TEST_F(RenderingRegressionTest, HorizonGroundAndSceneryFollowTheOrbitalLightCent
     for (size_t index = 0; index < warm.size(); ++index) EXPECT_EQ(warm[index].col, unchanged[index].col);
 }
 
+TEST_F(RenderingRegressionTest, SkyMapCpuRingsFollowHostColor)
+{
+    extern double sphresolution;
+    set(fancy_star_col, true);
+    Star* source = make_star("Ring light");
+    source->location.local_position = source->tmprel = Point(1e11, 1e11, -1e11);
+    Planet* world = make_planet(source);
+    world->looked_for_maps = true;
+    world->volumetric_mean_radius = 1e8;
+    world->ring_radius = 3e8;
+    world->ring_map = new UniformCloudTestMap(255);
+    world->ringx_map = new UniformCloudTestMap(0);
+    world->amt_lit = 1;
+    world->location.local_position = world->tmprel = Point(0, 0, 1e9);
+    world->location.equatorial_plane.v = xaxis;
+    world->location.equatorial_plane.a = half_pi;
+    set(view_mode, vm_skymap);
+    set(here, CelestialLocation());
+    set(myeq, 0.0);
+    set(sphresolution, .01);
+    system_bloom.assign(3, 0);
+    set(bloomrad_cache, system_bloom.data());
+    const auto paint = [&](double index)
+    {
+        source->BV_color = index;
+        draw_sphere(world, .1);
+        std::array<unsigned long, 3> channels{};
+        int vertices = 0;
+        for (const auto& vertex : ImGui::GetBackgroundDrawList()->VtxBuffer)
+        {
+            const double x = vertex.pos.x - 96, y = vertex.pos.y - 54;
+            // Sky-map projection spans pi radians per half-screen, unlike perspective views.
+            if (x * x + y * y <= 6 * 6) continue;
+            channels[0] += (vertex.col >> IM_COL32_R_SHIFT) & 255;
+            channels[1] += (vertex.col >> IM_COL32_G_SHIFT) & 255;
+            channels[2] += (vertex.col >> IM_COL32_B_SHIFT) & 255;
+            ++vertices;
+        }
+        EXPECT_GT(vertices, 100);
+        ImGui::EndFrame(); ImGui::NewFrame();
+        return channels;
+    };
+    const auto cool = paint(-2);
+    const auto warm = paint(2);
+    EXPECT_GT(cool[2], warm[2]);
+    EXPECT_GT(warm[0], cool[0]);
+}
+
 TEST_F(RenderingRegressionTest, HorizonSkyFollowsHostColorInsteadOfSystemPrimary)
 {
     set(fancy_star_col, true);
