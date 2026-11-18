@@ -937,6 +937,37 @@ TEST_F(CatalogParsingTest, StarnameEntryPreserves82Eridani)
     delete_the_universe();
 }
 
+TEST_F(StellarRotationTest, StarNamingIndexTracksNewAliasesAndRetainsAmbiguousMatches)
+{
+    Star* first = make_star("Original target");
+    Star* duplicate_a = make_star("Duplicate A");
+    Star* duplicate_b = make_star("Duplicate B");
+    duplicate_a->HD = duplicate_b->HD = 101;
+    const auto record = [](const std::string& name, const std::string& selector, const std::string& hd)
+    {
+        std::string line(49, ' ');
+        line.replace(0, name.size(), name);
+        line.replace(25, hd.size(), hd);
+        return line + selector + "\n";
+    };
+    std::ofstream output("starname.dat");
+    output << "# BEGIN IAU WGSN\n"
+        << record("First label", "Original target", "")
+        << record("Second label", "First label", "")
+        << record("Third label", "Second label", "102")
+        << record("Ambiguous label", "", "101");
+    output.close();
+    CatalogReader reader;
+    EXPECT_EQ(reader.read_starname_dat(cels), 1);
+    EXPECT_STREQ(first->name, "First label");
+    EXPECT_EQ(first->HD, 102u);
+    EXPECT_EQ(hdcache[102], first);
+    EXPECT_NE(std::find(first->catalog_aliases.begin(), first->catalog_aliases.end(), "Third label"),
+        first->catalog_aliases.end());
+    EXPECT_STREQ(duplicate_a->name, "Duplicate A");
+    EXPECT_STREQ(duplicate_b->name, "Duplicate B");
+}
+
 TEST_F(CatalogParsingTest, OrbitImportsRejectAbsentPrimariesWithSimilarAliases)
 {
     std::ifstream source("catalogs/star_orbits.dat");
@@ -2717,6 +2748,39 @@ TEST(ExoplanetStatusTest, ParsesQuotedEuClassificationsAndRejectsMalformedExport
     EXPECT_TRUE(parse_eu_planet_status("name,planet_status\nb,Retracted,extra\n").is_null());
 }
 
+TEST(ExoplanetStatusTest, StatusProjectionPreservesNestedAliasesAndClassifications)
+{
+    const json catalog = json::array(
+    {
+        {{"pl_name", "Survey b"}, {"hostname", nullptr}, {"pl_orbper", "12?"},
+            {"catalog_aliases", json::array({"Alias b"})},
+            {"source_measurements", json::array(
+            {
+                {{"pl_name", "Original b"}, {"alternate_names", "Alias b, Other b"},
+                    {"koi_disposition", "FALSE POSITIVE"}, {"pl_rade", 2.5}}
+            })}},
+        {{"pl_name", "Survey c"}, {"hostname", "Survey"}, {"planet_status", "Candidate"}}
+    });
+    std::istringstream input(catalog.dump());
+    const json projected = read_exoplanet_status_catalog(input);
+    ASSERT_EQ(projected.size(), catalog.size());
+    EXPECT_TRUE(projected[0].at("hostname").is_null());
+    EXPECT_FALSE(projected[0].contains("pl_orbper"));
+    EXPECT_FALSE(projected[0]["source_measurements"][0].contains("pl_rade"));
+    ExoplanetRejections full, compact;
+    for (const auto& row : catalog) full.add(row);
+    for (const auto& row : projected) compact.add(row);
+    full.resolve();
+    compact.resolve();
+    for (const char* name : {"Survey b", "Alias b", "Other b", "Original b", "Survey c"})
+    {
+        const json row = {{"pl_name", name}};
+        EXPECT_EQ(compact.excludes(row), full.excludes(row)) << name;
+    }
+    std::istringstream malformed("[{\"pl_name\":\"Broken b\",\"pl_orbper\":oops}]");
+    EXPECT_TRUE(read_exoplanet_status_catalog(malformed).is_discarded());
+}
+
 TEST(ExoplanetStatusTest, NasaRefutationsExcludeOtherSectionsAndExpandGroupedPlanets)
 {
     const json rows = parse_nasa_planet_status(
@@ -3085,6 +3149,33 @@ TEST_F(CatalogParsingTest, PublishedAgeSupplementCoversTheCatalogAndMatchesIdent
     conflicting->HD = 20794;
     reader.apply_stellar_abundances(conflicting);
     EXPECT_FALSE(conflicting->stellar_age.is_object());
+}
+
+TEST_F(StellarRotationTest, AgeIndexRetainsEqualRowsAndRejectsConflictingIdentifiers)
+{
+    const json repeated = {{"hip", 42}, {"hd", 98}, {"name", "Indexed age"},
+        {"value_gyr", 2.5}, {"source", "Published age"}};
+    std::ofstream("catalogs/stellar_ages.json") << json({{"rows", json::array(
+    {
+        repeated, repeated,
+        {{"name", "Ambiguous age"}, {"value_gyr", 2.0}, {"source", "First source"}},
+        {{"name", "Ambiguous age"}, {"value_gyr", 3.0}, {"source", "Second source"}}
+    })}});
+    Star* matched = make_star("Indexed age");
+    matched->HIP = 42;
+    matched->HD = 98;
+    Star* conflicting = make_star("Conflicting age");
+    conflicting->HIP = 42;
+    conflicting->HD = 99;
+    Star* ambiguous = make_star("Ambiguous age");
+    CatalogReader reader;
+    reader.apply_stellar_abundances(matched);
+    reader.apply_stellar_abundances(conflicting);
+    reader.apply_stellar_abundances(ambiguous);
+    EXPECT_DOUBLE_EQ(matched->stellar_age.at("value_gyr").get<double>(), 2.5);
+    EXPECT_EQ(matched->stellar_age.at("source"), "Published age");
+    EXPECT_FALSE(conflicting->stellar_age.is_object());
+    EXPECT_FALSE(ambiguous->stellar_age.is_object());
 }
 
 TEST_F(CatalogParsingTest, ExoplanetMetallicityKeepsSourceScaleAndErrorsTogether)

@@ -143,6 +143,7 @@ namespace alienorum
         // Keep the host and planet passes on one snapshot, including after a failed refresh.
         bool exoplanet_tap_attempted = false;
         json exoplanet_tap_catalog = json::array();
+        std::map<std::string, json> exoplanet_status_catalogs;
     };
 }
 

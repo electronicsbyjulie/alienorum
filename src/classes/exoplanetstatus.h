@@ -13,6 +13,21 @@
 
 namespace alienorum
 {
+    // The compact-cache path only consumes identities and classifications.
+    // Discard physical measurements while parsing, including nested originals.
+    inline nlohmann::json read_exoplanet_status_catalog(std::istream& input)
+    {
+        return nlohmann::json::parse(input, [](int, nlohmann::json::parse_event_t event, nlohmann::json& value)
+        {
+            if (event != nlohmann::json::parse_event_t::key) return true;
+            const auto& key = value.get_ref<const std::string&>();
+            return key == "pl_name" || key == "hostname" || key == "alt_target_name"
+                || key == "alternate_names" || key == "catalog_aliases" || key == "source_measurements"
+                || key == "planet_status" || key == "koi_disposition" || key == "disposition"
+                || key == "tfopwg_disp" || key == "k2c_disp";
+        }, false);
+    }
+
     inline std::string exoplanet_status_key(const std::string& value)
     {
         std::string name = value;
@@ -105,11 +120,12 @@ namespace alienorum
             if (!row.is_object()) return;
             const auto keys = exoplanet_alias_keys(row);
             if (keys.empty()) return;
+            const bool excluded = rejected_exoplanet_status(row);
             for (const auto& key : keys)
             {
                 links[key].push_back(keys.front());
                 links[keys.front()].push_back(key);
-                if (rejected_exoplanet_status(row)) rejected.insert(key);
+                if (excluded) rejected.insert(key);
             }
             if (row.contains("source_measurements") && row["source_measurements"].is_array())
                 for (const auto& original : row["source_measurements"]) add(original);

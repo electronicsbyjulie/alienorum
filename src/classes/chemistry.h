@@ -8,6 +8,7 @@
 namespace alienorum
 {
     class Star;
+    void preload_stellar_age_catalog();
     struct MetallicityPrior
     {
         bool applicable = false;

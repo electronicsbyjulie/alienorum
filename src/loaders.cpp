@@ -3,6 +3,8 @@
 #include "performance_options.h"
 #include "classes/cloudclimate.h"
 #include "classes/texturegeneration.h"
+#include "classes/chemistry.h"
+#include "classes/stellarevolution.h"
 
 #include "loaders.h"
 #include "housekeeping.h"
@@ -16,6 +18,7 @@
 #include <algorithm>
 #include <exception>
 #include <memory>
+#include <future>
 
 using namespace alienorum;
 
@@ -899,9 +902,38 @@ static bool load_aborted()
     return true;
 }
 
+static void load_satellite_catalogs()
+{
+    SatSource::read_sources_json();
+    const int count = sat_sources.size();
+    std::vector<int> sources_sorted;
+    for (int i = 0; i < count; ++i)
+    {
+        const int size = sources_sorted.size();
+        bool inserted = false;
+        for (int j = 0; j < size; ++j)
+        {
+            if (!sat_sources[i].is_supplemental
+                || (sat_sources[sources_sorted[j]].is_supplemental
+                    && sat_sources[sources_sorted[j]].data_age_hours() < sat_sources[i].data_age_hours()))
+            {
+                sources_sorted.insert(sources_sorted.begin() + j, i);
+                inserted = true;
+                break;
+            }
+        }
+        if (!inserted) sources_sorted.push_back(i);
+    }
+    for (int source : sources_sorted)
+    {
+        if (abort_load) return;
+        sat_sources[source].read_csv_data();
+    }
+}
+
 void load_catalogs()
 {
-    int i, j, m, n;
+    int i, n;
     time_t began = time(NULL);
     bool have_astjson = false;
 
@@ -916,10 +948,16 @@ void load_catalogs()
     refresh_gzip_file(ihcfn.c_str());
     if (file_exists(ihcfn.c_str()))
     {
+        auto stellar_models = std::async(std::launch::async, []()
+        {
+            preload_stellar_age_catalog();
+            StellarEvolutionGrid::instance();
+        });
         mtx.lock();
         loading_msg = std::string("Loading star catalog...");
         mtx.unlock();
         ihsc = cr.read_condensed_star_cat();
+        stellar_models.get();
         if (load_aborted()) return;
         if (ihsc && !CatalogReader::condensed_star_orbits_loaded && !magnitude_test)
         {
@@ -1179,6 +1217,12 @@ void load_catalogs()
     const int first_supplement_star = ncelobjs;
     const auto nearby_brown_dwarfs = condensed_brown_dwarfs_loaded ? 0u : load_brown_dwarf_supplement();
     std::cout << "Added " << nearby_brown_dwarfs << " objects from the nearby substellar census." << std::endl;
+    std::future<void> satellite_data;
+    if (!magnitude_test && !nosats)
+    {
+        // Satellite records are independent of star and planet imports.
+        satellite_data = std::async(std::launch::async, load_satellite_catalogs);
+    }
     if (!noexo) cr.load_exoplanets_from_tap(true);              // How about first we load exostars then fill them in with star orbits?
 
     mtx.lock();
@@ -1235,42 +1279,8 @@ void load_catalogs()
         loading_msg = std::string("Loading satellite data...");
         mtx.unlock();
         cout << loading_msg << endl << flush;
-        SatSource::read_sources_json();
-        n = sat_sources.size();
-
-        std::vector<int> sources_sorted;
-        for (i=0; i<n; i++)
-        {
-            m = sources_sorted.size();
-            if (!m) sources_sorted.push_back(i);
-            else
-            {
-                bool inserted = false;
-                for (j=0; j<m; j++)
-                {
-                    if (!sat_sources[i].is_supplemental
-                        ||  (sat_sources[sources_sorted[j]].is_supplemental
-                            && sat_sources[sources_sorted[j]].data_age_hours() < sat_sources[i].data_age_hours()))
-                    {
-                        sources_sorted.insert(sources_sorted.begin()+j, i);
-                        inserted = true;
-                        break;
-                    }
-                }
-                if (!inserted) sources_sorted.push_back(i);
-            }
-        }
-
-        for (i=0; i<n; i++)
-        {
-            if (load_aborted()) return;
-            // std::cout << "Reading " << sat_sources[sources_sorted[i]].csv_fname() << " age " << sat_sources[sources_sorted[i]].data_age_hours() << std::endl;
-            // if (!file_exists(sat_sources[sources_sorted[i]].csv_fname().c_str())) sat_sources[sources_sorted[i]].download_data();
-            mtx.lock();
-            loading_msg = std::string("Loading ") + sat_sources[sources_sorted[i]].local_name + std::string(" satellite data...");
-            mtx.unlock();
-            sat_sources[sources_sorted[i]].read_csv_data();
-        }
+        satellite_data.get();
+        if (load_aborted()) return;
     }
 
     if (load_univ.size())
