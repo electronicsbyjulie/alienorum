@@ -20,6 +20,7 @@
 #include "../globals.h"
 #include "../housekeeping.h"
 #include "universe_fixture.h"
+#include "../classes/browncatalog.h"
 
 using namespace alienorum;
 
@@ -116,6 +117,35 @@ TEST_F(StellarRotationTest, TauCetiCatalogBeltFeedsTheVolatileBudget)
     ASSERT_TRUE(after.valid);
     EXPECT_TRUE(after.diagnostics["impacts"]["active"].get<bool>());
     EXPECT_NE(after.pressure, before.pressure);
+}
+
+TEST_F(StellarRotationTest, MiraClassImportsEvenWhenHipparcosAlreadySuppliedThePeriod)
+{
+    Star* star = target(14386);
+    hip[10826] = star;
+    star->variability_period = 333.8 * oneday;
+    star->epoch_max_brightness = 2450000;
+    star->minmag = 3;
+    star->maxmag = 7;
+    std::filesystem::create_directories("catalogs/GCVS");
+    std::string cross(60, ' ');
+    cross.replace(0, 9, "Hip 10826");
+    cross[32] = '=';
+    cross.replace(33, 7, "omi Cet");
+    std::ofstream("catalogs/GCVS/data") << cross << '\n';
+    std::string entry(130, ' ');
+    entry.replace(8, 7, "omi Cet");
+    entry[41] = 'M';
+    // Classification is useful even if this catalog has no epoch or fitted curve.
+    std::ofstream("catalogs/GCVS/gcvs_cat.dat") << entry << '\n';
+    CatalogReader reader;
+    EXPECT_EQ(reader.read_GCVS_catalog(cels), 0);
+    EXPECT_EQ(star->variability_type, "M");
+    EXPECT_TRUE(star->is_mira_variable());
+    EXPECT_DOUBLE_EQ(star->variability_period, 333.8 * oneday);
+    EXPECT_DOUBLE_EQ(star->epoch_max_brightness, 2450000);
+    EXPECT_DOUBLE_EQ(star->minmag, 3);
+    EXPECT_DOUBLE_EQ(star->maxmag, 7);
 }
 
 TEST_F(StellarRotationTest, VisualCatalogLettersDoNotJoinExplicitSystems)
@@ -905,6 +935,37 @@ TEST_F(CatalogParsingTest, StarnameEntryPreserves82Eridani)
     star->assign_identifier_name();
     EXPECT_STREQ(star->name, "82 Eridani");
     delete_the_universe();
+}
+
+TEST_F(StellarRotationTest, StarNamingIndexTracksNewAliasesAndRetainsAmbiguousMatches)
+{
+    Star* first = make_star("Original target");
+    Star* duplicate_a = make_star("Duplicate A");
+    Star* duplicate_b = make_star("Duplicate B");
+    duplicate_a->HD = duplicate_b->HD = 101;
+    const auto record = [](const std::string& name, const std::string& selector, const std::string& hd)
+    {
+        std::string line(49, ' ');
+        line.replace(0, name.size(), name);
+        line.replace(25, hd.size(), hd);
+        return line + selector + "\n";
+    };
+    std::ofstream output("starname.dat");
+    output << "# BEGIN IAU WGSN\n"
+        << record("First label", "Original target", "")
+        << record("Second label", "First label", "")
+        << record("Third label", "Second label", "102")
+        << record("Ambiguous label", "", "101");
+    output.close();
+    CatalogReader reader;
+    EXPECT_EQ(reader.read_starname_dat(cels), 1);
+    EXPECT_STREQ(first->name, "First label");
+    EXPECT_EQ(first->HD, 102u);
+    EXPECT_EQ(hdcache[102], first);
+    EXPECT_NE(std::find(first->catalog_aliases.begin(), first->catalog_aliases.end(), "Third label"),
+        first->catalog_aliases.end());
+    EXPECT_STREQ(duplicate_a->name, "Duplicate A");
+    EXPECT_STREQ(duplicate_b->name, "Duplicate B");
 }
 
 TEST_F(CatalogParsingTest, OrbitImportsRejectAbsentPrimariesWithSimilarAliases)
@@ -2190,6 +2251,52 @@ TEST_F(CatalogParsingTest, CondensedFieldsAndWhiteDwarfMetadataUseStaticColumns)
     delete_the_universe();
 }
 
+TEST_F(StellarRotationTest, LuhmanOrbitMatchesExistingCatalogNames)
+{
+    const std::string primary_name = "WISE J104915.57-531906.1 A";
+    const std::string companion_name = "WISE J104915.57-531906.1 B";
+    std::ifstream source(original / "catalogs/star_orbits.dat");
+    ASSERT_TRUE(source);
+    std::string row;
+    while (std::getline(source, row))
+    {
+        if (row.find(primary_name) != std::string::npos && row.find(companion_name) != std::string::npos) break;
+    }
+    ASSERT_TRUE(source);
+    std::ofstream("catalogs/star_orbits.dat") << row << '\n';
+
+    Star* primary = make_star(primary_name.c_str());
+    primary->right_ascension = 2.832856649815536;
+    primary->declination = -0.9305772685722147;
+    primary->distance = 1.996 * parsec;
+    primary->update_location(simnow);
+    CatalogReader reader;
+    EXPECT_EQ(reader.read_star_orbits_dat(cels), 0);
+    ASSERT_EQ(ncelobjs, 2);
+
+    Star* companion = make_star(companion_name.c_str());
+    companion->right_ascension = primary->right_ascension;
+    companion->declination = primary->declination;
+    companion->distance = primary->distance;
+    companion->mass = .027 * solar_mass;
+    companion->volumetric_mean_radius = .10045 * solar_radius;
+    companion->temperature = 1261;
+    companion->update_location(simnow);
+    ASSERT_EQ(reader.read_star_orbits_dat(cels), 1);
+    ASSERT_EQ(ncelobjs, 3);
+    ASSERT_NE(companion->orbit, nullptr);
+    EXPECT_EQ(companion->orbit->center, primary);
+    EXPECT_DOUBLE_EQ(companion->mass, .027 * solar_mass);
+    EXPECT_DOUBLE_EQ(companion->volumetric_mean_radius, .10045 * solar_radius);
+    EXPECT_DOUBLE_EQ(companion->temperature, 1261);
+    EXPECT_DOUBLE_EQ(companion->orbit->semimajor_axis, 3.52 * AU);
+    EXPECT_DOUBLE_EQ(companion->orbit->period, 26.55 * oneyear);
+    EXPECT_DOUBLE_EQ(companion->orbit->eccentricity, .344);
+    EXPECT_DOUBLE_EQ(companion->orbit->epoch, 2458141.415);
+    EXPECT_EQ(find_object(primary_name.c_str(), true, 9e29, 1), primary->seqno);
+    EXPECT_EQ(find_object(companion_name.c_str(), true, 9e29, 1), companion->seqno);
+}
+
 TEST_F(CatalogParsingTest, BakedStarOrbitsPreservePlanesAndBlankIdentifierLinks)
 {
     struct RestoreContext
@@ -2687,6 +2794,39 @@ TEST(ExoplanetStatusTest, ParsesQuotedEuClassificationsAndRejectsMalformedExport
     EXPECT_TRUE(parse_eu_planet_status("name,planet_status\nb,Retracted,extra\n").is_null());
 }
 
+TEST(ExoplanetStatusTest, StatusProjectionPreservesNestedAliasesAndClassifications)
+{
+    const json catalog = json::array(
+    {
+        {{"pl_name", "Survey b"}, {"hostname", nullptr}, {"pl_orbper", "12?"},
+            {"catalog_aliases", json::array({"Alias b"})},
+            {"source_measurements", json::array(
+            {
+                {{"pl_name", "Original b"}, {"alternate_names", "Alias b, Other b"},
+                    {"koi_disposition", "FALSE POSITIVE"}, {"pl_rade", 2.5}}
+            })}},
+        {{"pl_name", "Survey c"}, {"hostname", "Survey"}, {"planet_status", "Candidate"}}
+    });
+    std::istringstream input(catalog.dump());
+    const json projected = read_exoplanet_status_catalog(input);
+    ASSERT_EQ(projected.size(), catalog.size());
+    EXPECT_TRUE(projected[0].at("hostname").is_null());
+    EXPECT_FALSE(projected[0].contains("pl_orbper"));
+    EXPECT_FALSE(projected[0]["source_measurements"][0].contains("pl_rade"));
+    ExoplanetRejections full, compact;
+    for (const auto& row : catalog) full.add(row);
+    for (const auto& row : projected) compact.add(row);
+    full.resolve();
+    compact.resolve();
+    for (const char* name : {"Survey b", "Alias b", "Other b", "Original b", "Survey c"})
+    {
+        const json row = {{"pl_name", name}};
+        EXPECT_EQ(compact.excludes(row), full.excludes(row)) << name;
+    }
+    std::istringstream malformed("[{\"pl_name\":\"Broken b\",\"pl_orbper\":oops}]");
+    EXPECT_TRUE(read_exoplanet_status_catalog(malformed).is_discarded());
+}
+
 TEST(ExoplanetStatusTest, NasaRefutationsExcludeOtherSectionsAndExpandGroupedPlanets)
 {
     const json rows = parse_nasa_planet_status(
@@ -2757,7 +2897,7 @@ TEST_F(StellarDownloadTest, RejectionsFromEitherProviderApplyToJsonAndDerivedCac
             {
                 FILE* file = fopen("catalogs/exoplanets_planets.dat", "wb");
                 ASSERT_NE(file, nullptr);
-                fputs("# EXO_TRANSIT6\n", file);
+                fputs("# EXO_TRANSIT7\n", file);
                 for (const auto& source : rows)
                 {
                     bool valid;
@@ -3055,6 +3195,33 @@ TEST_F(CatalogParsingTest, PublishedAgeSupplementCoversTheCatalogAndMatchesIdent
     conflicting->HD = 20794;
     reader.apply_stellar_abundances(conflicting);
     EXPECT_FALSE(conflicting->stellar_age.is_object());
+}
+
+TEST_F(StellarRotationTest, AgeIndexRetainsEqualRowsAndRejectsConflictingIdentifiers)
+{
+    const json repeated = {{"hip", 42}, {"hd", 98}, {"name", "Indexed age"},
+        {"value_gyr", 2.5}, {"source", "Published age"}};
+    std::ofstream("catalogs/stellar_ages.json") << json({{"rows", json::array(
+    {
+        repeated, repeated,
+        {{"name", "Ambiguous age"}, {"value_gyr", 2.0}, {"source", "First source"}},
+        {{"name", "Ambiguous age"}, {"value_gyr", 3.0}, {"source", "Second source"}}
+    })}});
+    Star* matched = make_star("Indexed age");
+    matched->HIP = 42;
+    matched->HD = 98;
+    Star* conflicting = make_star("Conflicting age");
+    conflicting->HIP = 42;
+    conflicting->HD = 99;
+    Star* ambiguous = make_star("Ambiguous age");
+    CatalogReader reader;
+    reader.apply_stellar_abundances(matched);
+    reader.apply_stellar_abundances(conflicting);
+    reader.apply_stellar_abundances(ambiguous);
+    EXPECT_DOUBLE_EQ(matched->stellar_age.at("value_gyr").get<double>(), 2.5);
+    EXPECT_EQ(matched->stellar_age.at("source"), "Published age");
+    EXPECT_FALSE(conflicting->stellar_age.is_object());
+    EXPECT_FALSE(ambiguous->stellar_age.is_object());
 }
 
 TEST_F(CatalogParsingTest, ExoplanetMetallicityKeepsSourceScaleAndErrorsTogether)
@@ -4021,7 +4188,7 @@ TEST_F(StellarDownloadTest, RecentDerivedExoplanetCachesWorkWithoutTheJsonSource
         const char* path = stars_only ? "catalogs/exoplanets_stars.dat" : "catalogs/exoplanets_planets.dat";
         FILE* cache = fopen(path, "wb");
         ASSERT_NE(cache, nullptr);
-        fputs("# EXO_TRANSIT6\n", cache);
+        fputs("# EXO_TRANSIT7\n", cache);
         TestCatalogReader::exorow_write_line(cache, row);
         fclose(cache);
         DownloadReader reader;
@@ -5667,5 +5834,168 @@ TEST_F(CatalogParsingTest, JanssenAndInnerTauCetiPlanetsIncludeAtmosphericScatte
         EXPECT_DOUBLE_EQ(repeat.red, atmosphere.red);
         EXPECT_DOUBLE_EQ(repeat.green, atmosphere.green);
         EXPECT_DOUBLE_EQ(repeat.blue, atmosphere.blue);
+    }
+}
+
+TEST_F(CatalogParsingTest, BrownCompanionAliasDoesNotCreateAPlanetAcrossCache)
+{
+    Star* host = make_star("eps Ind B");
+    Star* companion = make_star("eps Ind C");
+    companion->mass = .05*solar_mass;
+    companion->temperature = 900;
+    TestCatalogReader reader;
+    bool valid = false;
+    ExoRow row = reader.exorow_from_json({{"pl_name", "eps Ind Bb"},
+        {"hostname", "eps Ind B"}, {"alt_target_name", "eps Ind C#GJ 845 Bb"},
+        {"pl_orbper", 4022.19}, {"pl_bmassj", 53.25}}, &valid);
+    ASSERT_TRUE(valid);
+    for (bool cached : {false, true})
+    {
+        if (cached)
+        {
+            FILE* file = std::tmpfile();
+            ASSERT_NE(file, nullptr);
+            reader.exorow_write_line(file, row);
+            rewind(file);
+            ExoRow restored;
+            ASSERT_TRUE(reader.exorow_read_line(file, restored));
+            fclose(file);
+            EXPECT_EQ(restored.companion_aliases, row.companion_aliases);
+            row = restored;
+        }
+        std::map<int, std::vector<int>> planets;
+        unsigned int count = 0;
+        const int before = ncelobjs;
+        EXPECT_FALSE(reader.add_exoplanet_from_row(row, host, planets, count));
+        EXPECT_EQ(ncelobjs, before);
+        EXPECT_EQ(count, 0u);
+        EXPECT_TRUE(planets.empty());
+        EXPECT_EQ(find_object("eps Ind Bb", true, 9e29, 0), companion->seqno);
+    }
+}
+
+TEST_F(CatalogParsingTest, MissingMDwarfColorUsesSubtypeWhileMeasuredZeroSurvivesBaking)
+{
+    struct Writer : CatalogReader
+    {
+        using CatalogReader::write_condensed_star_cat_line;
+    } writer;
+    Star* star = make_star("M subtype fallback", .3*solar_mass);
+    strcpy(star->spectral_type, "M3.5");
+    star->absolute_magnitude = 11.2;
+    star->volumetric_mean_radius = .017621*solar_radius;
+    star->BV_color = 0;
+    star->temperature = 0;
+    FILE* file = std::tmpfile();
+    ASSERT_NE(file, nullptr);
+    writer.write_condensed_star_cat_line(file, star);
+    EXPECT_NEAR(star->estimate_temperature(), 3320, 1e-12);
+    EXPECT_GT(star->BV_color, .5);
+    star->BV_color = 0;
+    star->is_bv_observed = true;
+    writer.write_condensed_star_cat_line(file, star);
+    EXPECT_DOUBLE_EQ(star->BV_color, 0);
+    fclose(file);
+}
+
+TEST_F(CatalogParsingTest, BrownDwarfSupplementIsRepeatableAndPreservesExistingCompanions)
+{
+    Star* companion = make_star("Eps Ind C", .05*solar_mass);
+    strcpy(companion->Gliese, "GJ 845 C");
+    companion->temperature = 972;
+    companion->BV_color = 1.83;
+    companion->orbit = new Orbit();
+    companion->orbit->semimajor_axis = 2.4*AU;
+    Orbit* original_orbit = companion->orbit;
+    const unsigned int added = load_brown_dwarf_supplement();
+    EXPECT_GT(added, 300u);
+    EXPECT_DOUBLE_EQ(companion->BV_color, 1.83);
+    EXPECT_DOUBLE_EQ(companion->temperature, 972);
+    EXPECT_EQ(companion->orbit, original_orbit);
+    const int count = ncelobjs;
+    EXPECT_EQ(load_brown_dwarf_supplement(), 0u);
+    EXPECT_EQ(ncelobjs, count);
+    for (int i = 1; i < ncelobjs; ++i)
+    {
+        Star* star = static_cast<Star*>(cels[i]);
+        EXPECT_GT(star->distance, 0);
+        EXPECT_TRUE(std::isfinite(star->temperature));
+        if (star != companion && stellar_regime(star) == regime_substellar)
+            EXPECT_GT(star->sidereal_rotational_period, 0);
+    }
+}
+
+TEST_F(CatalogParsingTest, EpsilonIndCensusNamesReuseLegacyBAndCWithoutGlieseIdentifiers)
+{
+    Star* b = make_star("Eps Ind B", .06386*solar_mass);
+    Star* c = make_star("Eps Ind C", .05081*solar_mass);
+    b->temperature = 1312;
+    c->temperature = 972;
+    b->BV_color = 4.83;
+    c->BV_color = 6.72;
+    b->orbit = new Orbit();
+    c->orbit = new Orbit();
+    c->orbit->center = b;
+    Orbit* b_orbit = b->orbit;
+    Orbit* c_orbit = c->orbit;
+    ASSERT_STREQ(b->Gliese, "");
+    ASSERT_STREQ(c->Gliese, "");
+    const int count = ncelobjs;
+    load_brown_dwarf_supplement();
+    EXPECT_EQ(find_object("epsilon Ind Ba", true, 9e29, 0), b->seqno);
+    EXPECT_EQ(find_object("epsilon Ind Bb", true, 9e29, 0), c->seqno);
+    EXPECT_EQ(find_object("Eps Ind B", true, 9e29, 0), b->seqno);
+    EXPECT_EQ(find_object("Eps Ind C", true, 9e29, 0), c->seqno);
+    int ba = 0, bb = 0;
+    for (int i = count; i < ncelobjs; ++i)
+    {
+        if (std::string(cels[i]->name) == "epsilon Ind Ba") ++ba;
+        if (std::string(cels[i]->name) == "epsilon Ind Bb") ++bb;
+    }
+    EXPECT_EQ(ba, 0);
+    EXPECT_EQ(bb, 0);
+    EXPECT_EQ(b->orbit, b_orbit);
+    EXPECT_EQ(c->orbit, c_orbit);
+    EXPECT_DOUBLE_EQ(b->temperature, 1312);
+    EXPECT_DOUBLE_EQ(c->temperature, 972);
+    EXPECT_DOUBLE_EQ(b->BV_color, 4.83);
+    EXPECT_DOUBLE_EQ(c->BV_color, 6.72);
+    EXPECT_EQ(load_brown_dwarf_supplement(), 0u);
+}
+
+TEST_F(StellarDownloadTest, BrownDwarfsAreFoldedIntoTheWriterAndReloadWithoutASupplementImport)
+{
+    std::filesystem::copy_file(original / "catalogs/brown_dwarfs_20pc.json", "catalogs/brown_dwarfs_20pc.json");
+    CatalogReader reader;
+    const int written = reader.write_condensed_star_cat({});
+    ASSERT_GT(written, 400);
+    std::ifstream saved("catalogs/soles_alienorum.dat");
+    const std::string text((std::istreambuf_iterator<char>(saved)), std::istreambuf_iterator<char>());
+    EXPECT_NE(text.find("# BROWN20PC1 "), std::string::npos);
+    EXPECT_NE(text.find(" AST1 "), std::string::npos);
+    Star* reference = nullptr;
+    for (int i = 0; cels[i]; ++i)
+        if (i > 0 && static_cast<Star*>(cels[i])->alienorumid.empty()) { reference = static_cast<Star*>(cels[i]); break; }
+    ASSERT_NE(reference, nullptr);
+    const std::string name = reference->name;
+    const double ra = reference->right_ascension, dec = reference->declination, epoch = reference->epoch;
+    delete_the_universe();
+    EXPECT_EQ(reader.read_condensed_star_cat(), written);
+    EXPECT_TRUE(condensed_brown_dwarfs_loaded);
+    EXPECT_EQ(load_brown_dwarf_supplement(), 0u);
+    const int found = find_object(name.c_str(), true, 9e29, 0);
+    ASSERT_GE(found, 0);
+    EXPECT_DOUBLE_EQ(cels[found]->right_ascension, ra);
+    EXPECT_DOUBLE_EQ(cels[found]->declination, dec);
+    EXPECT_DOUBLE_EQ(cels[found]->epoch, epoch);
+}
+
+TEST_F(CatalogParsingTest, ImportedBrownDwarfsDoNotReceiveInventedAlienorumIds)
+{
+    load_brown_dwarf_supplement();
+    for (int i = 1; i < ncelobjs; ++i)
+    {
+        Star* object = static_cast<Star*>(cels[i]);
+        EXPECT_TRUE(object->alienorumid.empty()) << object->name;
     }
 }

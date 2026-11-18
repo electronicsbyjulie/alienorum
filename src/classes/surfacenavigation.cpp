@@ -164,6 +164,89 @@ double SurfaceSampler::vegetation_density_at(double latitude, double longitude)
         planet->veg_max_temp, vegetation_freezing, vegetation_boiling);
 }
 
+double alienorum::vegetation_cover_fraction(const RGB3& ground, const RGB3& foliage)
+{
+    // Project chromaticity along a soil-to-foliage blend. Brightness variations
+    // from map shading cannot turn a sparse grove into a forest.
+    const double total = double(ground.r) + ground.g + ground.b;
+    const double leaf_total = double(foliage.r) + foliage.g + foliage.b;
+    if (!(total > 0) || !(leaf_total > 0)) return 0;
+    const double soil[] = {.40, .35, .25};
+    const double sample[] = {ground.r / total, ground.g / total, ground.b / total};
+    const double leaf[] = {foliage.r / leaf_total, foliage.g / leaf_total, foliage.b / leaf_total};
+    double projection = 0, length = 0;
+    for (int channel = 0; channel < 3; ++channel)
+    {
+        const double direction = leaf[channel] - soil[channel];
+        projection += (sample[channel] - soil[channel]) * direction;
+        length += direction * direction;
+    }
+    return length > 1e-6 ? vegetation_transition(projection / length) : 0;
+}
+
+bool SurfaceSampler::tree_site_at(double latitude, double longitude)
+{
+    if (!planet || !map || !map->is_complete() || !uses_rocky_map(planet->type)
+        || !planet->simulated_surface_life_allowed() || !planet->has_water
+        || !(planet->vegetation_r || planet->vegetation_g || planet->vegetation_b)) return false;
+    // Tree identity follows permanent terrain, never the published frost/foliage color.
+    const auto coordinate = biomes ? field.coordinates(radius, latitude, longitude, strength)
+        : std::make_pair(latitude, longitude);
+    const auto terrain = map->underlying_surface_at(coordinate.first, coordinate.second);
+    if (terrain.second == SurfaceMaterial::water || ocean) return false;
+    if (map->procedurally_generated && map->has_bump_data())
+        return map->elevation_at(coordinate.first, coordinate.second) > planet->m_bump_scale * (planet->has_water - .5);
+    return !water_sample(terrain);
+}
+
+double SurfaceSampler::tree_density_at(double latitude, double longitude)
+{
+    if (!tree_site_at(latitude, longitude)) return 0;
+    // Established woodland follows one full-season climate baseline per map.
+    // Surface phase and live atmospheric changes affect crowns, not tree identity.
+    struct ForestClimate
+    {
+        std::shared_ptr<const VegetationHabitat> habitat;
+        double freezing, boiling;
+    };
+    const auto key = std::make_tuple(planet, map, map->gen, planet->veg_min_temp, planet->veg_max_temp);
+    static thread_local std::map<decltype(key), ForestClimate> forests;
+    auto found = forests.find(key);
+    if (found == forests.end())
+    {
+        vegetation_density_at(latitude, longitude);
+        if (forests.size() >= 64) forests.erase(forests.begin());
+        found = forests.emplace(key, ForestClimate{vegetation_habitat, vegetation_freezing, vegetation_boiling}).first;
+    }
+    const auto& forest = found->second;
+    const double ring = std::cos(latitude);
+    const double habitat = forest.habitat->density(-ring * std::cos(longitude), -ring * std::sin(longitude),
+        std::sin(latitude), map->elevation_at_bilinear(latitude, longitude), planet->veg_min_temp,
+        planet->veg_max_temp, forest.freezing, forest.boiling);
+    if (map->procedurally_generated) return habitat;
+    const auto coordinate = biomes ? field.coordinates(radius, latitude, longitude, strength)
+        : std::make_pair(latitude, longitude);
+    const auto terrain = map->underlying_surface_at(coordinate.first, coordinate.second);
+    if (terrain.second == SurfaceMaterial::vegetation) return habitat;
+    return habitat * vegetation_cover_fraction(terrain.first,
+        RGB3(planet->vegetation_r, planet->vegetation_g, planet->vegetation_b));
+}
+
+TreeAppearance SurfaceSampler::tree_appearance_at(double latitude, double longitude,
+    const std::vector<LocalClimate>& recent_climates)
+{
+    if (!planet || !map || recent_climates.empty()) return {};
+    const auto coordinate = biomes ? field.coordinates(radius, latitude, longitude, strength)
+        : std::make_pair(latitude, longitude);
+    const double elevation = map->elevation_at_bilinear(latitude, longitude);
+    // The phase solver already integrates the accumulation and melting of land frost.
+    const auto state = map->surface_state_at(coordinate.first, coordinate.second, recent_climates.front(),
+        0, planet->get_surface_pressure());
+    const double ring = std::cos(latitude);
+    return tree_appearance(recent_climates, -ring * std::cos(longitude), -ring * std::sin(longitude),
+        std::sin(latitude), elevation, planet->veg_min_temp, planet->veg_max_temp, state.ice);
+}
+
 SurfaceSampler::Sample SurfaceSampler::sample(double latitude, double longitude)
 {
     const auto value = info(latitude, longitude);

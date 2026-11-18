@@ -2014,6 +2014,43 @@ TEST_F(PlanetClassificationEvidenceTest, FictionalMoonsAreSparseForSmallInnerPla
     EXPECT_GT(outer_total, 768u);
 }
 
+TEST_F(PlanetClassificationEvidenceTest, FictionalMoonsRepeatFromParentSeedAfterOtherGeneration)
+{
+    auto* sun = make_star("Sun");
+    auto* planet = make_planet(sun, "Seeded giant", 5.2 * AU);
+    planet->type = gas_giant;
+    planet->mass = jupiter_mass;
+    planet->volumetric_mean_radius = 11.2 * earth_radius;
+    planet->sidereal_rotational_period = 10 * 3600;
+    planet->rnd_seed = 91764;
+    planet->orbit->compute_period(planet->mass);
+    const auto generate = [&]()
+    {
+        std::mt19937_64 random(planet->texture_seed());
+        auto moons = planet->generate_fictional_moons(random);
+        nlohmann::json result = nlohmann::json::array();
+        for (const auto& moon : moons) result.push_back(moon->to_json());
+        return result;
+    };
+    const auto first = generate();
+    ASSERT_FALSE(first.empty());
+    auto* other = make_planet(sun, "Unrelated giant", 8 * AU);
+    other->mass = jupiter_mass;
+    other->volumetric_mean_radius = 11.2 * earth_radius;
+    other->orbit->compute_period(other->mass);
+    for (unsigned int seed = 0; seed < 8; ++seed)
+    {
+        std::mt19937_64 random(seed);
+        auto moons = other->generate_fictional_moons(random);
+        for (int draw = 0; draw < 100; ++draw) frand(0, 1);
+    }
+    planet->rng.discard(1000);
+    EXPECT_EQ(generate(), first);
+    EXPECT_EQ(planet->rnd_seed, 91764u);
+    planet->rnd_seed = 91765;
+    EXPECT_NE(generate(), first);
+}
+
 TEST_F(PlanetClassificationEvidenceTest, SolarMetadataPreservesStellarIdentifiersAndValidText)
 {
     auto* sun = make_star("Sun");
@@ -3717,6 +3754,69 @@ TEST(PlanetPhotometryTest, CloudierWorldsFadeMoreGently)
 // =====================================================================
 
 class PlanetHabitabilityTest : public UniverseFixture {};
+
+TEST_F(PlanetHabitabilityTest, EvolvedStarsUsePhysicalLuminosityAndInvalidateMoonCache)
+{
+    for (const char* spectrum : {"SdB D", "K2III", "G2IV", "DA2"})
+    {
+        Star* host = make_star();
+        strcpy(host->spectral_type, spectrum);
+        host->temperature = sun_temp;
+        host->absolute_magnitude = 10;
+        host->volumetric_mean_radius = solar_radius;
+        Planet* world = make_planet(host);
+        Moon moon;
+        moon.mass = earth_mass;
+        moon.orbit = new Orbit();
+        moon.orbit->center = world;
+        moon.orbit->semimajor_axis = 4e8;
+        EXPECT_TRUE(world->is_in_con_HZ());
+        EXPECT_TRUE(moon.is_in_con_HZ());
+        EXPECT_TRUE(world->has_approximate_HZ());
+        host->volumetric_mean_radius *= 2;
+        EXPECT_FALSE(world->is_in_con_HZ());
+        EXPECT_FALSE(moon.is_in_con_HZ());
+        EXPECT_DOUBLE_EQ(host->bolometric_luminosity(), 4);
+        host->volumetric_mean_radius = NAN;
+        EXPECT_GT(host->bolometric_luminosity(), 0);
+        delete_the_universe();
+    }
+}
+
+TEST_F(PlanetHabitabilityTest, DWLynAtPublishedTemperatureAndEstimatedRadiusIsTooHot)
+{
+    Star* host = make_star("DW Lyn", .47 * solar_mass);
+    strcpy(host->spectral_type, "SdB D");
+    host->temperature = 28400;
+    host->volumetric_mean_radius = std::sqrt(G * host->mass / (pow(10.0, 5.35) / 100));
+    host->absolute_magnitude = 10;
+    Planet* world = make_planet(host, "DW Lyn b", 1.148 * AU);
+    EXPECT_NEAR(world->est_bolometric_flux(), 25.5, .5);
+    EXPECT_FALSE(world->is_in_con_HZ());
+    EXPECT_TRUE(world->has_approximate_HZ());
+    ASSERT_TRUE(world->set_habitable_orbit());
+    EXPECT_GT(world->orbit->semimajor_axis / AU, 4);
+    EXPECT_TRUE(world->is_in_con_HZ());
+    delete_the_universe();
+}
+
+TEST_F(PlanetHabitabilityTest, SavedDWLynPropertiesRetainTheirPhysicalLuminosity)
+{
+    std::ifstream input("DWLyn.json");
+    ASSERT_TRUE(input.good());
+    const json document = json::parse(input);
+    Star* host = make_star("DW Lyn");
+    ASSERT_TRUE(host->from_json(Serialization::expand_output_record(document.at("DW Lyn"))));
+    EXPECT_EQ(stellar_regime(host), regime_stellar);
+    EXPECT_NEAR(host->bolometric_luminosity(), 33.6, .2);
+    EXPECT_NEAR(host->stellar_parameters["logg_cgs"].get<double>(), 5.35, 1e-12);
+    Planet* world = make_planet(host, "DW Lyn b", 1.148 * AU);
+    EXPECT_FALSE(world->is_in_con_HZ());
+    Star restored;
+    ASSERT_TRUE(restored.from_json(host->to_json()));
+    EXPECT_NEAR(restored.bolometric_luminosity(), host->bolometric_luminosity(), 1e-10);
+    delete_the_universe();
+}
 
 TEST(ConservativeHZTest, PublishedMassAndStellarTemperatureAnchors)
 {

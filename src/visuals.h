@@ -40,6 +40,7 @@
 #define PLANT_TRUNK_COLOR_G     100     // Trunk base green component (brown-gray)
 #define PLANT_TRUNK_COLOR_B     85      // Trunk base blue component (brown-gray)
 #define PLANT_MAX_DIST        1000      // Maximum tree distance from viewer (meters)
+#define PLANT_VOLUME_THRESH     64      // Square of the minimum crown averaged radius to be drawn 3D
 
 // Water wave tuning parameters
 #define WAVE_STEPS_PER_ROW      96      // Horizontal resolution of wave render (steps per row)
@@ -62,6 +63,8 @@
 #define cumulus_day_exponent 0.666
 #define cumulus_day_maximum 0.71
 #define cloud_opacity_threshold 0.90
+
+#define TEXTURED_GROUND 0
 
 // Shoreline and other surface boundary params
 #define shore_displacement 8.0
@@ -135,6 +138,7 @@ struct RockInstance
     bool crown_above_eye;
     double aspect;
     alienorum::RGB3 surface_color;
+    double foliage = 1, snow = 0;
 };
 
 void draw_ra_dec_lines();

@@ -48,7 +48,7 @@ namespace alienorum
         SDL_GLContext context = nullptr;
         GLuint program = 0, vao = 0, mesh = 0, instances = 0, terrain_texture = 0;
         bool attempted = false, first_draw = true;
-        std::array<GLint, 9> locations{};
+        std::array<GLint, 10> locations{};
         std::array<int, 3> mesh_first{}, mesh_count{};
         struct Run { size_t first, count; int level; };
         struct Batch
@@ -75,6 +75,7 @@ in vec4 aDimensions;
 in vec4 aCrown;
 in vec4 aTrunk;
 in vec4 aHaze;
+in vec4 aSeason;
 #if CROWN_TEXTURES
 in vec4 aTextureFrame;
 out vec3 crown_position;
@@ -122,6 +123,8 @@ void main()
     gl_Position = vec4(camera.x * uCamera.x / uCamera.y,
         camera.y * uCamera.x / uCamera.z, camera.z - .4, camera.z);
     material = crown ? aCrown : aTrunk;
+    if (crown) material.rgb = mix(material.rgb, vec3(224.0, 240.0, 252.0) / 255.0,
+        aSeason.x * smoothstep(.2, .65, aPosition.y));
     haze = aHaze;
 }
 )GLSL";
@@ -133,6 +136,7 @@ in vec4 haze;
 in vec2 exposure;
 uniform vec4 uLight;
 uniform vec4 uAirlight;
+uniform vec4 uIncidentColor;
 uniform vec4 uSettings;
 uniform vec4 uPitch;
 uniform sampler2D uTerrain;
@@ -195,7 +199,7 @@ void main()
     #endif
     float lighting = uSettings.x * exposure.x + uLight.w * exposure.y
         * max(0.0, dot(surface_normal, uLight.xyz));
-    vec3 color = mix(uAirlight.rgb, clamp(surface_color * lighting, 0.0, 1.0), haze.rgb);
+    vec3 color = mix(uAirlight.rgb, clamp(surface_color * lighting * uIncidentColor.rgb, 0.0, 1.0), haze.rgb);
     if (uSettings.w > .5) color = vec3(min(1.0, color.r + .5 * color.g + .3 * color.b), color.g * .333, color.b * .333);
     FragColor = vec4(color, material.a * haze.a);
 }
@@ -249,8 +253,8 @@ void main()
             {
                 program = glCreateProgram();
                 glAttachShader(program, vertex); glAttachShader(program, fragment);
-                const char* attributes[] = {"aPosition", "aNormal", "aBase", "aDimensions", "aCrown", "aTrunk", "aHaze", "aTextureFrame"};
-                for (int i = 0; i < 8; ++i) bind_attribute(program, i, attributes[i]);
+                const char* attributes[] = {"aPosition", "aNormal", "aBase", "aDimensions", "aCrown", "aTrunk", "aHaze", "aTextureFrame", "aSeason"};
+                for (int i = 0; i < 9; ++i) bind_attribute(program, i, attributes[i]);
                 glLinkProgram(program);
                 GLint success = 0;
                 glGetProgramiv(program, GL_LINK_STATUS, &success);
@@ -259,8 +263,8 @@ void main()
             if (vertex) glDeleteShader(vertex);
             if (fragment) glDeleteShader(fragment);
             if (!program) return false;
-            const char* uniforms[] = {"uCamera", "uPitch", "uLight", "uAirlight", "uSettings", "uTerrain", "uCrownDetails", "uCrownShape", "uCrownVolume"};
-            for (int i = 0; i < 9; ++i) locations[i] = glGetUniformLocation(program, uniforms[i]);
+            const char* uniforms[] = {"uCamera", "uPitch", "uLight", "uAirlight", "uSettings", "uTerrain", "uCrownDetails", "uCrownShape", "uCrownVolume", "uIncidentColor"};
+            for (int i = 0; i < 10; ++i) locations[i] = glGetUniformLocation(program, uniforms[i]);
             glGenVertexArrays(1, &vao);
             glGenBuffers(1, &mesh); glGenBuffers(1, &instances);
             std::vector<PlantMeshVertex> vertices;
@@ -348,6 +352,7 @@ void main()
                 const auto scale = ImGui::GetIO().DisplayFramebufferScale;
                 uniform4(locations[1], view.sin_pitch, view.cos_pitch, scale.x, scale.y);
                 uniform4(locations[2], view.light.x, view.light.y, view.light.z, view.light.w);
+                uniform4(locations[9], view.incident_color.x, view.incident_color.y, view.incident_color.z, 1);
                 uniform4(locations[3], view.airlight.x, view.airlight.y, view.airlight.z, 0);
                 uniform4(locations[4], view.ambient, terrain_active ? 1 : 0, view.center_y * 2, view.redlight ? 1 : 0);
                 glUniform1i(locations[5], 0);
@@ -359,7 +364,7 @@ void main()
                 glUniform1i(locations[8], 1);
                 #endif
                 glBindBuffer(GL_ARRAY_BUFFER, mesh);
-                for (int i = 0; i < 8; ++i)
+                for (int i = 0; i < 9; ++i)
                 {
                     glEnableVertexAttribArray(i); divisor(i, i < 2 ? 0 : 1);
                     if (i < 2)
@@ -378,8 +383,8 @@ void main()
             {
                 const size_t base = (batch.upload_offset + run.first) * sizeof(PlantMeshInstance);
                 const size_t offsets[] = {offsetof(PlantMeshInstance, base), offsetof(PlantMeshInstance, dimensions),
-                    offsetof(PlantMeshInstance, crown_color), offsetof(PlantMeshInstance, trunk_color), offsetof(PlantMeshInstance, haze), offsetof(PlantMeshInstance, texture_frame)};
-                for (int i = 0; i < 6; ++i)
+                    offsetof(PlantMeshInstance, crown_color), offsetof(PlantMeshInstance, trunk_color), offsetof(PlantMeshInstance, haze), offsetof(PlantMeshInstance, texture_frame), offsetof(PlantMeshInstance, season)};
+                for (int i = 0; i < 7; ++i)
                 {
                     const bool color = i == 2 || i == 3;
                     glVertexAttribPointer(i + 2, 4, color ? GL_UNSIGNED_BYTE : GL_FLOAT, color ? GL_TRUE : GL_FALSE,

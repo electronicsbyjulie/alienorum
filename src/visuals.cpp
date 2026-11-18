@@ -1,6 +1,9 @@
 #include "performance_options.h"
 #include "classes/galaxygeometry.h"
 #include "classes/serial.h"
+#include "classes/browncolor.h"
+#include "classes/mdwarfcolor.h"
+#include "classes/grounddetail.h"
 #include "classes/surfacerefraction.h"
 #include "classes/systemviewcamera.h"
 
@@ -927,6 +930,16 @@ static double visible_atmospheric_pressure(Planet* planet)
         ? fmin(pressure, .1 * oneatm) : pressure;
 }
 
+static Color atmospheric_material_color(Planet* planet)
+{
+    // Generated map colors are reflectance; the source spectrum is applied by the lighting path.
+    Color color = !planet->is_bv_observed && std::isfinite(planet->generated_texture_bv)
+        && planet->generated_texture_bv == planet->BV_color
+        ? planet->generated_texture_color : Color::color_from_planet(0, planet, planet_bv_correction, false);
+    color.normalize(1);
+    return color;
+}
+
 static void atmosphere_colors(Planet *pl, double out_high[3], double out_low[3], double out_umbra[3], bool external_view)
 {
     for (int i = 0; i < 3; i++) out_high[i] = out_low[i] = out_umbra[i] = 0;
@@ -944,8 +957,7 @@ static void atmosphere_colors(Planet *pl, double out_high[3], double out_low[3],
     // smog) scatter greyly instead and hand the sky the ground's color back.
     double particulates = pl->get_particulates();
     double Rayleigh = 1.0 - particulates;
-    Color pcol = Color::color_from_planet(0, pl, planet_bv_correction, false);
-    pcol.normalize(1);
+    const Color pcol = atmospheric_material_color(pl);
 
     const double scatter[3] = {0.37, 0.58, 0.81};
     double haze[3] = {pcol.red, pcol.green, pcol.blue};
@@ -1005,11 +1017,7 @@ static PressureHaze surface_pressure_haze(Planet* planet)
     if (!haze.active()) return haze;
     double high[3], low[3], umbra[3];
     atmosphere_colors(planet, high, low, umbra);
-    Color star(1, 1, 1);
-    CelestialObject* source = planet->get_light_center();
-    if (source && source->typeclass() == class_star)
-        star = Color::color_from_star(0, static_cast<Star*>(source), source->BV_color);
-    star.normalize(1);
+    const Color star = Color::reflected_daylight(planet->get_light_center());
     const double illumination = std::clamp(atmospheric_daylight()
         + .01 * std::max(0.0, starlight), 0.0, 1.0);
     const double tint[] = {star.red, star.green, star.blue};
@@ -1088,9 +1096,7 @@ static void draw_pressure_haze_sky(Planet* planet, const PressureHaze& haze)
 // R*(0,1,0) -- a different vector from R^-1*(0,1,0) whenever R isn't symmetric, which is
 // generally the case.
 //
-// Shared by draw_ring_gpu() (which draws the rings) and draw_sphere_gpu() (which shadows the
-// planet with them) precisely so the two can never disagree about where the ring plane is: a
-// ring shadow that does not line up with the ring casting it is worse than no shadow at all.
+// Shared by the ring and sphere renderers so the ring and its shadow use the same plane.
 static Point ring_plane_normal(CelestialObject *cel)
 {
     if (view_mode == vm_system)
@@ -1263,13 +1269,21 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
     in.self_luminous = self_luminous;
     in.limb_a = limb_a;
     in.limb_b = limb_b;
-    if (self_luminous && cls == class_star && wd_limb_profile((Star*)cel, in.wd_limb))
+    if (self_luminous && cls == class_star)
     {
+        wd_limb_profile((Star*)cel, in.wd_limb);
         Color filter = Color::color_from_magnitude_indices(0, -bv_correction + atm_yellowing);
         filter.normalize(1);
         in.daylight_tint[0] = pow(filter.red, 1.0 / 3);
         in.daylight_tint[1] = pow(filter.green, 1.0 / 3);
         in.daylight_tint[2] = pow(filter.blue, 1.0 / 3);
+        if (day_map && day_map->procedurally_generated)
+        {
+            const Color tint = Color::stellar_texture_tint((Star*)cel);
+            in.daylight_tint[0] *= tint.red;
+            in.daylight_tint[1] *= tint.green;
+            in.daylight_tint[2] *= tint.blue;
+        }
     }
     in.night_illum = night_map ? 0.0 : starlight;
     in.redlight_mode = redlight_mode;
@@ -1433,6 +1447,10 @@ void draw_ring_gpu(CelestialObject* cel, double arad)
     in.ring_map_texture = gputex_for(cel->ring_map);
     in.ringx_map_texture = gputex_for(cel->ringx_map);
     in.fallback_color = IM_COL32(225, 208, 192, 255);   // matches the CPU path's default rgb
+    const Color ring_light = Color::reflected_daylight(lightcen);
+    in.incident_tint[0] = ring_light.red;
+    in.incident_tint[1] = ring_light.green;
+    in.incident_tint[2] = ring_light.blue;
     in.light_dir[0] = light_dir.x; in.light_dir[1] = light_dir.y; in.light_dir[2] = light_dir.z;
     in.self_luminous = self_luminous;
     in.amt_lit = (view_mode == vm_system) ? std::clamp((1 - light_dir.z) * .5, 0.0, 1.0) : pl->amt_lit;
@@ -1839,13 +1857,21 @@ int draw_sphere(CelestialObject* cel, double arad)
     {
         if (cel->typeclass() == class_star) ((Star*)cel)->limb_darkening_coefficients(cpu_limb_a, cpu_limb_b);
         else { cpu_limb_a = 0.49; cpu_limb_b = 0.21; }
-        if (cls == class_star && wd_limb_profile((Star*)cel, cpu_wd_limb))
+        if (cls == class_star)
         {
+            wd_limb_profile((Star*)cel, cpu_wd_limb);
             daylight = Color::color_from_magnitude_indices(0, -bv_correction + atm_yellowing);
             daylight.normalize(1);
             daylight.red = pow(daylight.red, 1.0 / 3);
             daylight.green = pow(daylight.green, 1.0 / 3);
             daylight.blue = pow(daylight.blue, 1.0 / 3);
+            if (map && map->procedurally_generated)
+            {
+                const Color tint = Color::stellar_texture_tint((Star*)cel);
+                daylight.red *= tint.red;
+                daylight.green *= tint.green;
+                daylight.blue *= tint.blue;
+            }
         }
     }
 
@@ -2049,9 +2075,9 @@ int draw_sphere(CelestialObject* cel, double arad)
                             }
 
                             RGB3 rgblit = rgb;
-                            rgblit.r *= daylight.red;
-                            rgblit.g *= daylight.green;
-                            rgblit.b *= daylight.blue;
+                            rgblit.r = std::clamp(int(rgb.r*daylight.red), 0, 255);
+                            rgblit.g = std::clamp(int(rgb.g*daylight.green), 0, 255);
+                            rgblit.b = std::clamp(int(rgb.b*daylight.blue), 0, 255);
 
                             // The daylit contribution unconditionally, then the night map on top
                             // of it where there is any night to show. Written as an if/else
@@ -2259,7 +2285,8 @@ int draw_sphere(CelestialObject* cel, double arad)
                                 points[i].y += sgn(points[i].y-polycy);
                             }
 
-                            ImU32 imcol = rgba_apply_redlight(IM_COL32(rgb.r*is_day, rgb.g*is_day, rgb.b*is_day, ring_opacity));
+                            ImU32 imcol = rgba_apply_redlight(IM_COL32(rgb.r * is_day * daylight.red,
+                                rgb.g * is_day * daylight.green, rgb.b * is_day * daylight.blue, ring_opacity));
                             ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(points, 4, imcol);
 
                             cel->onscreen = true;
@@ -4651,7 +4678,7 @@ void draw_system_view()
 
                 if (p->is_in_con_HZ())
                 {
-                    std::string hz = "Habitable Zone";
+                    std::string hz = p->has_approximate_HZ() ? "Habitable Zone (approx.)" : "Habitable Zone";
                     llbl.pos.y += lsz.y + 5;
                     lsz = ImGui::CalcTextSize(hz.c_str());
                     llbl.pos.x = p->drawnx - lsz.x/2;
@@ -4824,14 +4851,7 @@ void sc_draw_object(CelestialObject *obj, CelestialObject *cel)
     int dx, dy;
     if (cls == class_star)
     {
-        Color objcol = Color::color_from_magnitude_indices(0, obj->BV_color);
-        Color wd_linear;
-        if (((Star*)obj)->resolve_wd_color(wd_linear))
-        {
-            wd_linear.normalize(1);
-            RGB3 wd_rgb = wd_srgb_from_linear(wd_linear);
-            objcol = Color(wd_rgb.r, wd_rgb.g, wd_rgb.b);
-        }
+        Color objcol = Color::color_from_star(0, (Star*)obj, obj->BV_color);
         objcol.normalize(255);
         ImU32 obj32 = rgba_apply_redlight(IM_COL32((int)objcol.red, (int)objcol.green, (int)objcol.blue, 255));
         icon_draw->AddCircleFilled(objdxy, 11, icon_border);
@@ -5448,7 +5468,7 @@ struct GlintSource
 
 static Color water_light_color(CelestialObject* object)
 {
-    using Key = std::tuple<int, double, double, double, double>;
+    using Key = std::tuple<int, double, double, double, double, double, double, bool>;
     struct Entry
     {
         Key key;
@@ -5457,11 +5477,13 @@ static Color water_light_color(CelestialObject* object)
     static std::unordered_map<CelestialObject*, Entry> colors;
     const auto cls = object->typeclass();
     const bool cache = performance_enabled(50) && !water_cpu_reference
-        && !(cls == class_star && static_cast<Star*>(object)->is_white_dwarf());
+        && !(cls == class_star && (static_cast<Star*>(object)->is_white_dwarf()
+            || static_cast<Star*>(object)->is_mira_variable() || is_m_color_source(static_cast<Star*>(object))));
     Key key;
     if (cache)
     {
-        key = {cls, object->BV_color, global_brightness, bv_correction, planet_bv_correction};
+        key = {cls, object->BV_color, global_brightness, bv_correction, planet_bv_correction,
+            object->temperature, object->VR_color, fancy_star_col};
         const auto found = colors.find(object);
         if (found != colors.end() && found->second.key == key) return found->second.color;
     }
@@ -5884,7 +5906,9 @@ void draw_horizon()
             is_day = fmin(1, is_day);
         }
 
-        const auto ground_light = haze.surface_illumination(is_day);
+        const Color source_color = Color::reflected_daylight(cel->get_light_center());
+        const std::array<double, 3> source_tint = {source_color.red, source_color.green, source_color.blue};
+        const auto ground_light = haze.surface_illumination(is_day, source_tint);
         const auto lit_surface_color = [&](const RGB3& sample)
         {
             return rgba_apply_redlight(IM_COL32(fmin(255, ground_light[0] * sample.r),
@@ -5893,7 +5917,7 @@ void draw_horizon()
         };
 
         const auto incident_tint = cel->type == lavaworld
-            ? std::array<double, 3>{1, 1, 1} : haze.illumination_tint();
+            ? std::array<double, 3>{1, 1, 1} : haze.illumination_tint(source_tint);
         const auto lit_scenery_color = [&](double red, double green, double blue, int alpha)
         {
             return rgba_apply_redlight(IM_COL32(red * incident_tint[0], green * incident_tint[1],
@@ -6062,6 +6086,12 @@ void draw_horizon()
             const double depth = visible_distance(screen_x, screen_y);
             const double distance = std::isfinite(depth) ? depth : surface_range;
             return surface_coord(distance, azimuth + atan2(x, north));
+        };
+
+        const auto ground_pixel_sample = [&](int x, int y)
+        {
+            const auto coord = ground_coord(x + 0.5, y + 0.5);
+            return surface.sample(coord.first, coord.second);
         };
 
         if (performance_enabled(37) && !horizon_terrain_cpu_reference && surface.has_biomes() && map && map->is_complete())
@@ -7065,7 +7095,10 @@ void draw_horizon()
             if (first_ground == ground_height) reset_horizon_ground_gpu_stats();
         }
 
-        if (!faded && (paint_biomes || haze.active())
+        #if TEXTURED_GROUND
+        const bool ground_detail_active = !horizon_ground_detail_reference && p && !gaseous
+            && cel->type != lavaworld && map && map->is_complete();
+        if (!faded && (paint_biomes || haze.active() || ground_detail_active)
             && (!bounded_ground || first_ground < ground_height))
         {
             ImDrawList *ground = ImGui::GetBackgroundDrawList();
@@ -7111,8 +7144,31 @@ void draw_horizon()
                     gpu_haze.surface = {static_cast<float>(surface_cos_altitude()), static_cast<float>(surface_curvature()),
                         static_cast<float>(surface_eye), static_cast<float>(surface_range)};
                 }
+                gpu_haze.camera = {static_cast<float>(dispcx), static_cast<float>(dispcy),
+                    static_cast<float>(surface_focal()), static_cast<float>(surface_sin_altitude())};
+                gpu_haze.surface = {static_cast<float>(surface_cos_altitude()), static_cast<float>(surface_curvature()),
+                    static_cast<float>(surface_eye), static_cast<float>(surface_range)};
+                HorizonGroundDetail detail;
+                detail.active = ground_detail_active;
+                if (detail.active)
+                {
+                    const double cl = cos(viewer_lat), sl = sin(viewer_lat), co = cos(viewer_lon), so = sin(viewer_lon);
+                    const std::array<double, 3> position = {cl*co, sl, cl*so};
+                    const std::array<double, 3> east = {-so, 0, co}, north = {-sl*co, cl, -sl*so};
+                    int a = 0, b = 1;
+                    if (fabs(position[1]) >= std::max(fabs(position[0]), fabs(position[2]))) b = 2;
+                    else if (fabs(position[0]) > fabs(position[2])) a = 2;
+                    const double ca = cos(azimuth), sa = sin(azimuth);
+                    const double phase = (cel->texture_seed() & 65535)/65536.0;
+                    detail.origin = {float(std::remainder(position[a]*surface_radius/8, 1.0)+phase),
+                        float(std::remainder(position[b]*surface_radius/8, 1.0)+phase*.73), 1, 0};
+                    detail.basis = {float(east[a]*ca-north[a]*sa), float(east[b]*ca-north[b]*sa),
+                        float(east[a]*sa+north[a]*ca), float(east[b]*sa+north[b]*ca)};
+                    detail.material = ground_detail_material(p->get_surface_pressure()*inv_oneatm,
+                        p->simulated_surface_life_allowed() && (p->vegetation_r || p->vegetation_g || p->vegetation_b));
+                }
                 gpu_ground = prepare_horizon_ground_gpu(screen_w, ground_height, terrain_raster.distances(),
-                    min_hz_y_at_x, base_top, terrain_mesh, gpu_haze);
+                    min_hz_y_at_x, base_top, terrain_mesh, gpu_haze, detail);
             }
             #endif
             const auto ground_paint_start = std::chrono::steady_clock::now();
@@ -7135,8 +7191,8 @@ void draw_horizon()
                 if (top < ground_height) gpu_rectangles.push_back({0, top, screen_w, ground_height, uniform_source_color()});
             };
             // Retain completed base painting independently of animated waves/scenery.
-            // Small walking steps retain base colors; geometry masks, waves and
-            // scenery still update each frame. Physical/lighting edits invalidate it.
+            // Small walking steps can retain colors on a dry or uniform surface.
+            // Physical and lighting edits invalidate the painting.
             struct PaintedGroundRect { ImVec2 low, high; ImU32 color; };
             static std::vector<PaintedGroundRect> saved_cpu_rectangles;
             static std::vector<HorizonGroundRect> saved_gpu_rectangles;
@@ -7181,6 +7237,8 @@ void draw_horizon()
             ground_inputs.push_back(surface_uniform_reference);
             for (bool reference : performance_reference) ground_inputs.push_back(reference);
             ground_inputs.push_back(uniform_lit_source);
+            ground_inputs.push_back(surface_water);
+            ground_inputs.push_back(shore_displacement);
             ground_inputs.push_back(double(local_phase_revision));
             ground_inputs.push_back(1); // Base-color sample stride; masks and haze stay at full resolution.
             auto ground_key = std::make_tuple(cel, map, std::move(ground_inputs));
@@ -7192,18 +7250,19 @@ void draw_horizon()
                 cos((viewer_lat + painted_latitude) * .5) * longitude_step) : INFINITY;
             // Refresh after two metres of accumulated Home/End travel. Near a pole,
             // retain exact positions because the north/east basis turns rapidly.
-            // Certify the entire 100 m neighborhood, including procedural biome
-            // displacement, so shorelines and every terrain/material transition refresh.
+            // A shoreline can be anywhere in the visible footprint, even when
+            // the observer's immediate surroundings are uniform.
             SurfaceSampler::Sample boundary_sample;
+            const double reuse_reach = surface_water ? source_reach + 2.0 : 100.0;
             const bool clear_of_boundary = !paint_biomes
-                || surface.uniform_sample(viewer_lat, viewer_lon, 100.0 / surface_radius + 1e-10, boundary_sample);
+                || surface.uniform_sample(viewer_lat, viewer_lon, reuse_reach / surface_radius + 1e-10, boundary_sample);
             // An unchanged observer can reuse the exact painting even at a color
             // or material boundary. Certify a neighborhood only after actual travel.
             const bool position_reusable = (latitude_step == 0 && longitude_step == 0)
                 || (clear_of_boundary && travel < std::min(2.0, surface_radius * .001)
                     && fabs(viewer_lat) < half_pi - .001);
             int ground_stride = 1;
-            if (horizon_motion_ground_sampling && gpu_ground && paint_biomes && ground_cache_valid
+            if (horizon_motion_ground_sampling && gpu_ground && paint_biomes && !surface_water && ground_cache_valid
                 && std::get<0>(ground_key) == std::get<0>(saved_ground_key)
                 && std::get<1>(ground_key) == std::get<1>(saved_ground_key)
                 && full_ground_paint_ms > horizon_ground_motion_budget_ms)
@@ -7362,9 +7421,9 @@ void draw_horizon()
                     return;
                 }
                 const bool small = right - left <= ground_stride && bottom - top <= ground_stride;
-                bool pixel_sampling = false;
+                bool pixel_sampling = surface_water && paint_biomes;
                 #if distant_biome_pixel_sampling
-                if (!small)
+                if (!pixel_sampling && !small)
                 {
                     // Include raised terrain and ground beyond a quarter of the horizon range.
                     // Checking each column catches a horizon crossing inside a tile.
@@ -7384,7 +7443,7 @@ void draw_horizon()
                 if (pixel_sampling)
                 {
                     RGB3 tile_color;
-                    if (gpu_ground && gpu_tile_color(left, top, right, bottom, tile_color))
+                    if (gpu_ground && gpu_tile_color(left, top, right, bottom, tile_color, surface_water))
                     {
                         gpu_rectangles.push_back({left, top, right, bottom,
                             lit_surface_color(tile_color)});
@@ -7529,6 +7588,7 @@ void draw_horizon()
                 std::chrono::steady_clock::now() - ground_paint_start).count();
             if (!reuse_ground && ground_stride == 1) full_ground_paint_ms = precipitation_stats.ground_paint_milliseconds;
         }
+        #endif
 
         bool certified_dry = false;
         if (horizon_fast_path(6) && surface_water && !faded && screen_w > 0 && surface_radius > 0)
@@ -7766,7 +7826,7 @@ void draw_horizon()
 
             auto bounds_key = std::make_tuple(viewer_lat, viewer_lon, map, local_surface_revision,
                 map && map->is_complete(), generating_fic_texture, water_favorable, surface_biomes,
-                ocean_world, p ? p->has_water : 0.0f, cel->type, terrain_mesh, shore_displacement,
+                p && p->simulated_surface_life_allowed(), ocean_world, p ? p->has_water : 0.0f, cel->type, terrain_mesh, shore_displacement,
                 p ? p->vegetation_r : 0, p ? p->vegetation_g : 0, p ? p->vegetation_b : 0, water_cpu_reference, bool(PERF_P052_WAVES && performance_enabled(52)));
             static decltype(bounds_key) saved_bounds_key;
             static std::vector<double> saved_wave_horizon;
@@ -7825,7 +7885,7 @@ void draw_horizon()
                                 const double point_bottom = std::max(point.wy + point.amplitude, min_hz_y_at_x[point.column]);
                                 const double point_top = std::min(point.wy - point.amplitude, min_hz_y_at_x[point.column]);
                                 // Connecting endpoints are stored as floats by ImGui.
-                                const double guard = 16 * 1.1920929e-7
+                                const double guard = 2.0 + 16 * 1.1920929e-7
                                     * (1 + fabs(point.wx) + fabs(point_top) + fabs(point_bottom) + dispcx + dispcy);
                                 left = std::min(left, point.wx - guard);
                                 right = std::max(right, point.wx + guard);
@@ -7932,16 +7992,6 @@ void draw_horizon()
                         double min_crest = 0.25 - 0.20 * fmin(2.0, max_low_factor);
                         if (has_prev && wave_val > min_crest)
                         {
-                            if (!span.uniform || si == span.first)
-                            {
-                                const auto midpoint = ground_coord((wx + prev_pt.x) * 0.5, (wy + prev_pt.y) * 0.5);
-                                ++water_stats.samples;
-                                if (!water_at(midpoint.first, midpoint.second))
-                                {
-                                    has_prev = false;
-                                    continue;
-                                }
-                            }
                             double crest_fac = (wave_val - min_crest) / (1.0 - min_crest);
                             int cr = fmin(255.0, is_day * wave_rgb.r * 0.5 + 40.0 * crest_fac);
                             int cg = fmin(255.0, is_day * wave_rgb.g * 0.7 + 60.0 * crest_fac);
@@ -7979,7 +8029,35 @@ void draw_horizon()
 
                             ImU32 w_col = pressure_haze_color(haze, rgba_apply_redlight(IM_COL32(cr, cg, cb, ca)), dist_m);
                             float line_th = fmax(1.0f, (float)(1.5 / fmax(1.0, dist_m * 0.1)));
-                            ImGui::GetBackgroundDrawList()->AddLine(prev_pt, cur_pt, w_col, line_th);
+                            auto* waves = ImGui::GetBackgroundDrawList();
+                            // Clip the stroke to the same pixel centers used for ground paint.
+                            const bool certified_water = span.uniform && si != span.first;
+                            const double dx = cur_pt.x - prev_pt.x, dy = cur_pt.y - prev_pt.y;
+                            const double length_squared = dx * dx + dy * dy;
+                            const double extent = line_th * .5 + .5;
+                            const int left = std::max(0, int(floor(std::min(cur_pt.x, prev_pt.x) - extent)));
+                            const int right = std::min(screen_w, int(ceil(std::max(cur_pt.x, prev_pt.x) + extent)));
+                            const int top = std::max(0, int(floor(std::min(cur_pt.y, prev_pt.y) - extent)));
+                            const int bottom = std::min(ground_height, int(ceil(std::max(cur_pt.y, prev_pt.y) + extent)));
+                            for (int y = top; y < bottom; ++y)
+                            {
+                                for (int x = left; x < right; ++x)
+                                {
+                                    const double px = x + .5 - prev_pt.x, py = y + .5 - prev_pt.y;
+                                    const double along = length_squared > 0
+                                        ? std::clamp((px * dx + py * dy) / length_squared, 0.0, 1.0) : 0.0;
+                                    const double coverage = std::clamp(extent - hypot(px - along * dx, py - along * dy), 0.0, 1.0);
+                                    if (coverage == 0 || y + .5 < min_hz_y_at_x[x]) continue;
+                                    if (!certified_water)
+                                    {
+                                        ++water_stats.samples;
+                                        if (!ground_pixel_sample(x, y).water) continue;
+                                    }
+                                    const ImU32 alpha = static_cast<ImU32>((w_col >> IM_COL32_A_SHIFT) * coverage);
+                                    waves->AddRectFilled(ImVec2(x, y), ImVec2(x + 1, y + 1),
+                                        (w_col & ~IM_COL32_A_MASK) | (alpha << IM_COL32_A_SHIFT));
+                                }
+                            }
                         }
 
                         prev_pt = cur_pt;
@@ -8039,10 +8117,16 @@ void draw_horizon()
             const double s_horizon = surface_range;
             const double scenery_bending = .5 / R_planet - surface_refraction.curvature;
 
-            double sun_light = fmax(0.0, sin(sun_elev)) * is_day;
-            double amb_light = fmax(0.04, 0.22 * is_day + starlight * 0.4);
-            amb_light += .35 * is_day * haze.sky_opacity;
-            sun_light *= 1 - haze.sky_opacity;
+            double cloud_coverage = 0;
+            if (show_clouds && p)
+            {
+                if (p->overcast) cloud_coverage = 1;
+                else if (p->cloud_map && p->cloud_map->is_complete())
+                    cloud_coverage = p->cloud_map->color_at_bilinear(viewer_lat, viewer_lon).luminance() / 255.0;
+            }
+            const auto scenery_light = scenery_illumination(is_day, starlight, sun_elev, haze.sky_opacity, cloud_coverage);
+            const double sun_light = scenery_light.direct;
+            const double amb_light = scenery_light.ambient;
 
             if (show_terrain)
             {
@@ -8292,25 +8376,40 @@ void draw_horizon()
                 const double canopy_margin = 2 * ROCK_MAX_SIZE * crown_scale + 0.1;
                 const bool has_plants = p && p->simulated_surface_life_allowed()
                     && (p->vegetation_r || p->vegetation_g || p->vegetation_b);
+                // Reconstruct the preceding three weeks independently of frame rate or time seeks.
+                const double tree_epoch = has_plants ? floor(simnow / 3600.0) * 3600.0 : 0;
+                auto tree_climate_key = std::make_tuple(p, map, map ? map->gen : 0u, tree_epoch,
+                    p ? p->temperature : 0.0, P_surf, p ? p->veg_min_temp : 0.0, p ? p->veg_max_temp : 0.0);
+                static decltype(tree_climate_key) saved_tree_climate_key;
+                static std::vector<LocalClimate> recent_tree_climates;
+                if (has_plants && (recent_tree_climates.empty() || saved_tree_climate_key != tree_climate_key))
+                {
+                    recent_tree_climates.clear();
+                    for (int sample = 0; sample < 8; ++sample)
+                        recent_tree_climates.push_back(p->current_local_climate(true, tree_epoch - sample * 3 * oneday));
+                    saved_tree_climate_key = tree_climate_key;
+                }
                 const double scenery_range = has_plants ? std::max(PLANT_MAX_DIST, ROCK_MAX_DIST) : ROCK_MAX_DIST;
                 static SurfaceSceneryCache scenery_cache;
                 const auto &scenery = scenery_cache.update(R_planet, viewer_lat, viewer_lon,
                     scenery_range + canopy_margin, scenery_spacing, static_cast<std::uint64_t>(whereami), !performance_enabled(40));
-                auto scenery_key = std::make_tuple(whereami, scenery_cache.generation(), R_planet,
-                    local_surface_revision, generating_fic_texture, water_favorable,
+                auto scenery_key = std::make_tuple(whereami, scenery_cache.generation(), R_planet, map,
+                    local_surface_revision, generating_fic_texture, water_favorable, surface_radius, shore_displacement,
                     p ? p->has_water : 0.0f, p ? p->type : cel->type,
                     p ? p->vegetation_r : 0, p ? p->vegetation_g : 0, p ? p->vegetation_b : 0,
                     crown_scale, scenery_range, has_plants, P_surf,
-                    p ? p->veg_min_temp : 0.0, p ? p->veg_max_temp : 0.0);
+                    p ? p->veg_min_temp : 0.0, p ? p->veg_max_temp : 0.0, tree_epoch);
                 static decltype(scenery_key) saved_scenery_key;
                 static bool scenery_valid = false;
                 static std::vector<bool> plant, water, canopy_clear;
                 static std::vector<RGB3> scenery_colors;
+                static std::vector<TreeAppearance> tree_appearances;
                 if (!scenery_valid || saved_scenery_key != scenery_key)
                 {
                     plant.assign(scenery.size(), false);
                     water.assign(scenery.size(), false);
                     scenery_colors.resize(scenery.size());
+                    tree_appearances.assign(scenery.size(), {});
                     static FrameScratch<double> canopy_scratch;
                     std::vector<double> local_canopy_radii;
                     auto& canopy_radii = frame_scratch_enabled()
@@ -8324,23 +8423,22 @@ void draw_horizon()
                         {
                             const auto sample = surface.sample(object.latitude, object.longitude);
                             water[index] = sample.water;
-                            plant[index] = !sample.water && sample.vegetation;
                             scenery_colors[index] = sample.color;
                         }
                         else
                         {
                             water[index] = surface.water_at(object.latitude, object.longitude);
-                            plant[index] = !water[index] && surface.vegetation_at(object.latitude, object.longitude);
                             scenery_colors[index] = surface.color_at(object.latitude, object.longitude);
                         }
+                        if (water[index] || !has_plants) continue;
+                        const double density = surface.tree_density_at(object.latitude, object.longitude);
+                        const double draw = (scenery_hash(object.id ^ 0x7665676574617465ULL) >> 11) * 0x1.0p-53;
+                        plant[index] = draw < density;
                         if (plant[index])
                         {
-                            const double density = surface.vegetation_density_at(object.latitude, object.longitude);
-                            const double draw = (scenery_hash(object.id ^ 0x7665676574617465ULL) >> 11) * 0x1.0p-53;
-                            plant[index] = draw < density;
+                            tree_appearances[index] = surface.tree_appearance_at(object.latitude, object.longitude, recent_tree_climates);
+                            canopy_radii[index] = crown_scale * scenery_size(object.seed, ROCK_MIN_SIZE, ROCK_MAX_SIZE);
                         }
-                        if (plant[index]) canopy_radii[index] = crown_scale
-                            * scenery_size(object.seed, ROCK_MIN_SIZE, ROCK_MAX_SIZE);
                     }
                     canopy_clear = scenery_clearance(scenery, canopy_radii, R_planet);
                     saved_scenery_key = scenery_key;
@@ -8351,7 +8449,7 @@ void draw_horizon()
                 auto projection_key = std::make_tuple(scenery_key, cel, map,
                     viewer_lat, viewer_lon, azimuth, altitude, zoom, dispcx, dispcy,
                     h_eye, R_planet, s_horizon, horizon_lift_rad, dittrsa, shore_displacement,
-                    P_surf,
+                    P_surf, terrain_mesh, show_terrain, horizon_terrain_cpu_reference, horizon_terrain_gpu_reference,
                     p ? p->plant_trunk_height : 0.0, p ? p->plant_trunk_width : 0.0,
                     p ? p->plant_crown_size : 0.0, p ? p->plant_crown_oblateness : 0.0,
                     performance_enabled(39), performance_enabled(40), performance_enabled(41), performance_enabled(43));
@@ -8585,6 +8683,9 @@ void draw_horizon()
                             }
                         }
 
+                        if (surface_water && base_valid && sx >= 0 && sx < screen_w && sy >= 0 && sy < ground_height
+                            && ground_pixel_sample(static_cast<int>(sx), static_cast<int>(sy)).water) continue;
+
                         rocks.emplace_back();
                         #if PERF_P043
                         rocks[num_rocks].scenery_index = index;
@@ -8616,6 +8717,8 @@ void draw_horizon()
                         rocks[num_rocks].crown_above_eye = crown_above_eye;
                         rocks[num_rocks].aspect = rock_aspect;
                         rocks[num_rocks].surface_color = scenery_colors[index];
+                        rocks[num_rocks].foliage = tree_appearances[index].foliage;
+                        rocks[num_rocks].snow = tree_appearances[index].snow;
                         num_rocks++;
                     }
 
@@ -8694,7 +8797,7 @@ void draw_horizon()
                         }
                         const double visibility = std::clamp(pow(total_flux * 2.5e-11, 1.0 / 5.5), 0.0, 1.0);
                         const double shadow_strength = shadow_base_alpha / 255.0 * visibility
-                            * std::min(1.0, shadow_source.elevation * 2.5) * (1 - haze.sky_opacity);
+                            * std::min(1.0, shadow_source.elevation * 2.5) * scenery_light.shadow;
                         double cos_alt = surface_cos_altitude();
                         double sin_alt = surface_sin_altitude();
                         double cos_az = cos(azimuth);
@@ -8822,6 +8925,7 @@ void draw_horizon()
                 plant_view.light = ImVec4(cos(sun_elev) * sin(sun_az_world - azimuth), sin(sun_elev),
                     cos(sun_elev) * cos(sun_az_world - azimuth), sun_light);
                 plant_view.ambient = amb_light;
+                plant_view.incident_color = ImVec4(incident_tint[0], incident_tint[1], incident_tint[2], 1);
                 plant_view.airlight = ImVec4(haze.light[0] / 255.0f, haze.light[1] / 255.0f, haze.light[2] / 255.0f, 1);
                 plant_view.redlight = redlight_mode;
                 #if PLANT_CROWN_TEXTURES
@@ -8861,9 +8965,12 @@ void draw_horizon()
                     const bool is_vegetation = rk.vegetation;
                     // Foliage reflectance belongs to the vegetation, even where
                     // suitable habitat lies over rock-colored map pixels.
+                    const auto stone = scenery_rock_color(rk.seed_val);
                     const RGB3 base_map_rgb = is_vegetation && p
-                        ? RGB3(p->vegetation_r, p->vegetation_g, p->vegetation_b)
-                        : rk.surface_color;
+                        ? RGB3(PLANT_TRUNK_COLOR_R + (p->vegetation_r - PLANT_TRUNK_COLOR_R) * rk.foliage,
+                            PLANT_TRUNK_COLOR_G + (p->vegetation_g - PLANT_TRUNK_COLOR_G) * rk.foliage,
+                            PLANT_TRUNK_COLOR_B + (p->vegetation_b - PLANT_TRUNK_COLOR_B) * rk.foliage)
+                        : RGB3(stone[0], stone[1], stone[2]);
                     const double haze_distance = hypot(rk.ground_dist, h_eye);
                     if (is_vegetation && rk.crown_rx <= 0) ++clipped_plant_trunks;
                     const int first_vertex = scenery_draw_list->VtxBuffer.Size;
@@ -8873,7 +8980,9 @@ void draw_horizon()
                     double rh = rk.height;
 
                     if (gpu_plants && !is_vegetation) flush_scenery_gpu();
-                    const bool volume_plant = mesh_plants && is_vegetation && rk.crown_rx >= 12 && rw >= ROCK_PEBBLE_THRESH;
+                    const bool volume_plant = mesh_plants && is_vegetation
+                        && (rk.crown_rx * rk.crown_ry) >= PLANT_VOLUME_THRESH
+                        && rw >= ROCK_PEBBLE_THRESH;
                     if (mesh_plants && !volume_plant) flush_plant_mesh_gpu();
                     if (volume_plant)
                     {
@@ -8894,6 +9003,7 @@ void draw_horizon()
                         #endif
                         plant.crown_color = IM_COL32(base_map_rgb.r, base_map_rgb.g, base_map_rgb.b, 255);
                         plant.trunk_color = IM_COL32(PLANT_TRUNK_COLOR_R, PLANT_TRUNK_COLOR_G, PLANT_TRUNK_COLOR_B, 255);
+                        plant.season = ImVec4(rk.snow, 0, 0, 0);
                         plant.haze = ImVec4(haze.transmission(haze_distance, 0), haze.transmission(haze_distance, 1),
                             haze.transmission(haze_distance, 2), rk.opacity);
                         add_plant_mesh_gpu(plant, fmax(rk.crown_rx, rk.crown_ry));
@@ -8905,7 +9015,11 @@ void draw_horizon()
                         int pr, pg, pb;
                         if (is_vegetation)
                         {
-                            const RGB3 vcol = base_map_rgb;
+                            // At subpixel crown sizes only the average snow-covered cap is visible.
+                            const double snow = .22 * rk.snow;
+                            const RGB3 vcol(base_map_rgb.r + (224 - base_map_rgb.r) * snow,
+                                base_map_rgb.g + (240 - base_map_rgb.g) * snow,
+                                base_map_rgb.b + (252 - base_map_rgb.b) * snow);
                             pr = fmin(255.0, vcol.r * (amb_light + sun_light * 0.4));
                             pg = fmin(255.0, vcol.g * (amb_light + sun_light * 0.4));
                             pb = fmin(255.0, vcol.b * (amb_light + sun_light * 0.4));
@@ -8996,13 +9110,17 @@ void draw_horizon()
                         int cg = fmin(255.0, veg_base.g * tint_factor * crown_light);
                         int cb = fmin(255.0, veg_base.b * tint_factor * crown_light);
                         ImU32 crown_col = lit_scenery_color(cr, cg, cb, 255);
+                        const ImU32 snow_col = lit_scenery_color(fmin(255.0, 224 * crown_light),
+                            fmin(255.0, 240 * crown_light), fmin(255.0, 252 * crown_light), 255);
                         SceneryPlantGpu gpu_plant;
                         gpu_plant.crown = ImVec4(cx, cy, crown_rx, crown_ry);
                         gpu_plant.crown_color = pressure_haze_color(haze, crown_col, haze_distance);
                         gpu_plant.trunk_color = pressure_haze_color(haze, trunk_col, haze_distance);
+                        gpu_plant.snow_color = pressure_haze_color(haze, snow_col, haze_distance);
+                        gpu_plant.snow = rk.snow;
                         if (rk.opacity < 1)
                         {
-                            for (ImU32* color : {&gpu_plant.crown_color, &gpu_plant.trunk_color})
+                            for (ImU32* color : {&gpu_plant.crown_color, &gpu_plant.trunk_color, &gpu_plant.snow_color})
                             {
                                 const ImU32 alpha = static_cast<ImU32>(((*color & IM_COL32_A_MASK)
                                     >> IM_COL32_A_SHIFT) * rk.opacity);
@@ -9017,7 +9135,7 @@ void draw_horizon()
                             draw_scenery_crown(scenery_draw_list,
                                 ImVec2(cx, cy),
                                 ImVec2((float)crown_rx, (float)crown_ry),
-                                crown_col);
+                                crown_col, snow_col, rk.snow);
                         };
 
                         if (rk.crown_above_eye) draw_crown();
@@ -9213,6 +9331,7 @@ void draw_horizon()
 
                             double dot_sun = fmax(0.0, nx * sun_cam_x + ny * sun_cam_y + nz * sun_cam_z);
                             double sky_fac = 0.80 + 0.35 * fmax(0.0, ny);
+                            sky_fac += (1 - sky_fac) * .8 * scenery_light.cloud;
                             double light_fac = amb_light * amb_mult * sky_fac + sun_light * sun_mult * dot_sun;
 
                             int cr = fmin(255.0, br * light_fac);
@@ -9497,8 +9616,7 @@ void draw_sky_gradient()
         {
             double particulates = p->get_particulates();
             double Rayleigh = 1.0 - particulates;
-            Color pcol = Color::color_from_planet(0, p, planet_bv_correction);
-            pcol.normalize(1);
+            const Color pcol = atmospheric_material_color(p);
 
             float city_lights = 0;
             if (cels[whereami]->night_map)
@@ -9534,7 +9652,9 @@ void draw_sky_gradient()
             }
 
             double redden = 0, sunset_r = 0, sunset_g = 0, sunset_b = 0;
-            if (mycenobj)
+            CelestialObject* sky_source = p->get_light_center();
+            const Color sky_light = Color::reflected_daylight(sky_source);
+            if (sky_source)
             {
                 double atm_high_unused[3], atm_low[3], atm_umbra_unused[3];
                 if (p->overcast && p->cloud_map)
@@ -9546,7 +9666,7 @@ void draw_sky_gradient()
                 }
                 else atmosphere_colors(p, atm_high_unused, atm_low, atm_umbra_unused);
 
-                double sun_elev = sin(mycenobj->Decl_as_radians(here));
+                double sun_elev = sin(sky_source->Decl_as_radians(here));
                 double redden_t = fmin(1.0, fmax(0.0, (0.35 - sun_elev) / (0.35 - 0.02)));
                 redden = redden_t * redden_t * (3.0 - 2.0 * redden_t);
 
@@ -9559,6 +9679,11 @@ void draw_sky_gradient()
             const double dip = radius > 0 ? acos(radius / (radius + fmax(.01, viewer_eye_height))) : 0;
             const double horizon_angle = p->atmospheric_horizon_lift() - dip;
             const bool mineral = show_terrain && lavaworld_mineral_sky && p->type == lavaworld;
+            if (!mineral)
+            {
+                r *= sky_light.red; g *= sky_light.green; b *= sky_light.blue;
+            }
+            sunset_r *= sky_light.red; sunset_g *= sky_light.green; sunset_b *= sky_light.blue;
             const double falloff_r = mineral ? .9985 : .999;
             const double falloff_g = mineral ? .9978 : .9995;
             const double falloff_b = mineral ? .9992 : .9999;
@@ -10258,10 +10383,14 @@ bool draw_cloudy_sky()
         const RGB3 deck = cel->cloud_map->color_at(viewer_lat, viewer_lon);
         diffuse = {double(deck.r), double(deck.g), double(deck.b)};
     }
-    const auto lighting = cloud_illumination(luminous_flux, starlight, p->mean_instellation(),
+    auto lighting = cloud_illumination(luminous_flux, starlight, p->mean_instellation(),
         atm_pressure, p->get_particulates(), p->overcast,
         {transmitted[0], transmitted[1], transmitted[2]}, diffuse,
         cumulus_day_swing, cumulus_day_exponent, cumulus_day_maximum);
+    const Color cloud_light = Color::reflected_daylight(sun_obj);
+    lighting.color[0] *= cloud_light.red;
+    lighting.color[1] *= cloud_light.green;
+    lighting.color[2] *= cloud_light.blue;
 
     CloudSkyGpuInput in = {};
     in.camera[0] = (float)azimuth;

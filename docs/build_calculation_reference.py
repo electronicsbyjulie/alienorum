@@ -22,6 +22,7 @@ OUT = ROOT / 'docs' / 'Alienorum-calculation-reference.pdf'
 FONT = Path('/usr/share/fonts/truetype/dejavu')
 pdfmetrics.registerFont(TTFont('DejaVu', str(FONT / 'DejaVuSerif.ttf')))
 pdfmetrics.registerFont(TTFont('DejaVuBold', str(FONT / 'DejaVuSerif-Bold.ttf')))
+pdfmetrics.registerFont(TTFont('DejaVuSymbols', str(FONT / 'DejaVuSans.ttf')))
 pdfmetrics.registerFontFamily('DejaVu', normal='DejaVu', bold='DejaVuBold', italic='DejaVu', boldItalic='DejaVuBold')
 styles = getSampleStyleSheet()
 styles.add(ParagraphStyle(name='Body', fontName='DejaVu', fontSize=10, leading=14.5, spaceAfter=8, allowWidows=0, allowOrphans=0))
@@ -34,15 +35,18 @@ story = []
 sections = []
 toc = TableOfContents()
 toc.levelStyles = [ParagraphStyle(name="ContentsEntry", fontName="DejaVu", fontSize=8.5, leading=12, spaceBefore=5, leftIndent=0, firstLineIndent=0)]
-def prose_markup(text):
+def symbol_markup(text):
     escaped = html.escape(str(text))
+    return re.sub(r'[ℓℛℳ]', r'<font name="DejaVuSymbols">\g<0></font>', escaped)
+def prose_markup(text):
+    escaped = symbol_markup(text)
     return re.sub(r'\b([A-Za-zΑ-Ωα-ω])_([A-Za-z0-9]+(?:,[A-Za-z0-9]+)*)', r'\1<sub rise="20%" size="80%">\2</sub>', escaped)
 def p(text, style='Body'):
-    content = prose_markup(text) if style in ('Body', 'Lead') else html.escape(text)
+    content = prose_markup(text) if style in ('Body', 'Lead') else symbol_markup(text)
     story.append(Paragraph(content, styles[style]))
 def eq(expression, explanation=''):
     data = BytesIO()
-    with rc_context({'text.color': '#152b40'}):
+    with rc_context({'text.color': '#152b40', 'mathtext.fontset': 'stix'}):
         mathtext.math_to_image('$' + expression + '$', data, dpi=330, format='png')
     data.seek(0)
     item = Image(data)
@@ -80,7 +84,7 @@ p('Scientific audit: 13 November 2026 · Explanatory revision: 14 November 2026'
 p('Alienorum starts with catalog measurements and fills gaps with physical models, empirical estimates, and explicit assumptions. This reference follows those calculations from stellar properties and orbits through atmospheres, climates, terrain, and vegetation. Each mathematical expression is placed alongside the question it addresses, the meaning of its symbols, and the limits of its interpretation.')
 p('Where a calculation accepts a measured or supplied quantity, that quantity takes priority over an estimate. The distinction matters when looking at a generated world: an illustrative atmosphere or landscape does not establish that an unresolved object actually has oceans, life, particular minerals, or the weather shown on screen.')
 p('The equations describe the scientific operations carried out by the application. To reproduce a particular result exactly, consult the corresponding implementation and its inputs. The final appendix gives source locations and file digests that identify the repository state used to build this document. The original scientific audit and this later explanatory revision are dated separately above.')
-p('Unless a section states otherwise, quantities use SI units. M denotes mass in kilograms, R radius in metres, g gravitational acceleration in metres per second squared, p pressure in pascals, and T temperature in kelvin. Orbital notation uses a for semimajor axis and e for eccentricity. U denotes an independent random number drawn uniformly from [0,1). Symbols can have another local meaning; those uses are introduced where they occur.', 'SmallText')
+p('Unless a section states otherwise, quantities use SI units. M denotes mass in kilograms, R radius in meters, g gravitational acceleration in meters per second squared, p pressure in pascals, and T temperature in kelvin. Orbital notation uses a for semimajor axis and e for eccentricity. U denotes an independent random number drawn uniformly from [0,1). Symbols can have another local meaning; those uses are introduced where they occur.', 'SmallText')
 
 section('Reading the models and preserving evidence', 'planet.cpp; shore.cpp; numeric.h; savemodels.h')
 p('It helps to distinguish three kinds of statement in the pages that follow. Some relations express conservation, geometry, or equilibrium thermodynamics under stated approximations. Others estimate a property by interpolating observations or published model grids. A third group supplies a workable scenario where the available evidence does not determine a unique answer. Procedural appearance belongs mainly to that third group.')
@@ -107,7 +111,7 @@ eq(r'R_{eq}=\frac{R}{(1-f)^{1/3}},\qquad R_{pol}=(1-f)R_{eq}')
 p('Oblateness f measures how much shorter the polar radius is than the equatorial radius. The expressions distribute the supplied mean radius between those two axes while preserving the volume of an oblate spheroid. They prescribe the shape without solving for the rotating interior that would produce it.')
 p('Astrometry locates the object before any local appearance is calculated. With distance d, right ascension α, and declination δ, its Cartesian position vector is:', 'Lead')
 eq(r'\mathbf{r}=d(\cos\delta\cos\alpha,\cos\delta\sin\alpha,\sin\delta)')
-p('Parallax gives distance through the reciprocal relation below, when parallax ϖ is in arcseconds and distance d_pc is in parsecs. Proper motion μ, in arcseconds per year, then gives the transverse speed v_t; the factor 4.74047 converts these astronomical units to kilometres per second:', 'Lead')
+p('Parallax gives distance through the reciprocal relation below, when parallax ϖ is in arcseconds and distance d_pc is in parsecs. Proper motion μ, in arcseconds per year, then gives the transverse speed v_t; the factor 4.74047 converts these astronomical units to kilometers per second:', 'Lead')
 eq(r'd_{pc}=\frac{1}{\varpi_{arcsec}},\qquad v_t=4.74047\,\mu_{arcsec/yr}d_{pc}\;\mathrm{km\,s^{-1}}')
 p('Right ascension α and declination δ specify the direction to the object; distance supplies the length of the position vector. Coordinate rotations then express that vector in the selected reference plane and view. When proper motion and radial velocity are available, they also constrain space velocity.')
 p('Generated populations receive the velocity distributions described later. In either case, linear motion is a kinematic approximation: it does not follow a star through an integrated Galactic gravitational potential.')
@@ -556,7 +560,7 @@ p('Each visible band samples a perturbed equivalent orbital distance a_band. The
 eq(r'a_{band}=a_{eq}(g/15)^{0.04}10^{0.12(U_1-0.5)+0.16(U_2-0.5)}')
 p('Z represents the enrichment of the assumed atmosphere. It is a scenario setting rather than a measured bulk metallicity. Each of eight band realizations adds cloud fraction U(.04,.16) and a blue-absorber coefficient h×U(.3,1.7). Unless supplied, h is drawn from U(.08,.38).')
 p('The equivalent distance from the Sun is 1/√F for irradiation F in Earth units. Where a temperature proxy supplies the estimate, it is (255/T_proxy)².')
-p('The band reflectance mixes a library spectrum R_g(λ) with cloud reflectance 0.65 at fraction c. A wavelength-dependent exponential then absorbs preferentially in the blue. h_b is its band-specific strength, and λ is expressed in nanometres:', 'Lead')
+p('The band reflectance mixes a library spectrum R_g(λ) with cloud reflectance 0.65 at fraction c. A wavelength-dependent exponential then absorbs preferentially in the blue. h_b is its band-specific strength, and λ is expressed in nanometers:', 'Lead')
 eq(r'R_{band}(\lambda)=[(1-c)R_g(\lambda)+0.65c]\exp[-h_b(450/\lambda)^4]')
 p('At wavelengths λ≥600 nm, a local maximum within ±60 nm provides a continuum estimate. Raising trough transmission to a methane-dependent power changes the absorption depth relative to that continuum.')
 p('A supplied methane fraction sets the scale through clip(x_CH₄/(.0005Z),0,4). Otherwise the scale comes from a bounded power of the carbon-to-iron abundance ratio. The procedure adjusts a library spectrum; it does not recompute atmospheric chemical equilibrium.')
@@ -566,13 +570,13 @@ p('The CIE (International Commission on Illumination) color-matching functions d
 p('The library describes reflection at opposition. Normalizing its display RGB retains hue but removes absolute reflectivity, so those normalized channels alone cannot supply the object’s physical brightness. That information comes from the photometric model.')
 
 section('Terrain noise, rocks, craters, and molten surfaces', 'misc.cpp; noise.cpp; celestial.cpp; rockmeshcache.h; lavafissures.h')
-p('Terrain begins as a smooth spatial noise field rather than a list of explicit landforms. Successive octaves add finer structure: n is the elementary noise, o the octave count, ℓ the frequency ratio, and g the amplitude gain. Here g is a noise parameter, distinct from gravitational acceleration:', 'Lead')
+p('Terrain begins as a smooth spatial noise field rather than a list of explicit landforms. Successive octaves add finer structure: n is the elementary noise, o the octave count, ℓ the frequency ratio, and g the amplitude gain. Here g is a noise parameter, not to be confused with gravitational acceleration:', 'Lead')
 eq(r'N_o(\mathbf{x})=\frac{1}{2}\left[1+\frac{\sum_{j=0}^{o-1}g^j n(\ell^j\mathbf{x})}{\sum_{j=0}^{o-1}g^j}\right]')
 p('A related field folds the noise into ridges before combining the scales. Q_o therefore has sharper crests than the ordinary multiscale field N_o:', 'Lead')
 eq(r'Q_o(\mathbf{x})=\frac{\sum_jg^j[1-|n(\ell^j\mathbf{x})|]^2}{\sum_jg^j}')
 p('The elementary gradient noise n uses lattice gradients, a shuffled 256-entry permutation, and the quintic fade 6t⁵−15t⁴+10t³. Adding successively finer scales gives N_o; folding the noise around zero gives the ridged field Q_o.')
 p('Frequencies, gains, coordinate offsets, and warps set a visual distribution of features. They are not measured geological power spectra. Evaluating the fields on a sphere keeps longitude continuous at the map seam.')
-p('Rocky terrain combines five through eight octaves. The feature scale is U(1.5,2.9) with water and U(.2,.8) without it; the corresponding gains are .5 and 2.5. The frequency ratio is U(.51,.53)√max(1,ln(R expressed in metres)). The metre reference is part of the visual calibration.')
+p('Rocky terrain combines five through eight octaves. The feature scale is U(1.5,2.9) with water and U(.2,.8) without it; the corresponding gains are .5 and 2.5. The frequency ratio is U(.51,.53)√max(1,ln(R expressed in meters)). The meter reference is part of the visual calibration.')
 p('Coordinate warping and regional roughness change local gain. Separate spherical fields add color provinces, grain, mottled boundaries, and red/blue hue variation. Organic staining is restricted to cold thermal regimes, but the resulting colors do not identify particular minerals.')
 p('Crater count increases with bombardment enhancement B and decreases with pressure p relative to Earth. The separate diameter draw D spans 50 m to the smaller of 0.3R and 900000 m, with U⁵ favoring the small end:', 'Lead')
 eq(r'N_{crater}=\left\lfloor N_0\frac{B}{1+3p/p_\oplus}\right\rfloor,\quad D=50+[\min(0.3R,900000)-50]U^5')

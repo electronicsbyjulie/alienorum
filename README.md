@@ -2,6 +2,8 @@
 
 A cross-platform desktop planetarium app made using the ImGui library. https://github.com/ocornut/imgui
 
+[![Download Windows Installer](https://img.shields.io/badge/Download-Windows%20Installer-2ea44f?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/electronicsbyjulie/alienorum/releases/latest)
+
 ## * This project is looking for testers. *
 
 <img width="260" height="144" alt="image" src="https://github.com/user-attachments/assets/7a42c429-6c14-4b70-8095-4d48eb478d94" /> <img width="260" height="144" alt="image" src="https://github.com/user-attachments/assets/33745731-b6e0-4ed2-adfa-7b9b3173fb23" /> <img width="260" height="144" alt="image" src="https://github.com/user-attachments/assets/285dea8d-8609-41a0-b741-53ddf8a7471e" />

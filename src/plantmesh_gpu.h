@@ -17,6 +17,7 @@ namespace alienorum
         ImU32 crown_color = 0, trunk_color = 0;
         ImVec4 haze = ImVec4(1, 1, 1, 1);
         ImVec4 texture_frame = ImVec4(1, 0, 0, 0);
+        ImVec4 season;
     };
     struct PlantMeshView
     {
@@ -25,6 +26,7 @@ namespace alienorum
         ImVec4 light = ImVec4(0, 1, 0, 1);
         float ambient = .3f;
         ImVec4 airlight;
+        ImVec4 incident_color = ImVec4(1, 1, 1, 1);
         bool redlight = false;
         bool crown_textures = false;
         PlantCrownTexture crown_texture;

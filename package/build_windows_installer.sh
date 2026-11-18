@@ -14,24 +14,21 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 repository_status=$(git status --porcelain=v1 --untracked-files=no --ignore-submodules=untracked)
+preflight_errors=0
 if [ -n "$repository_status" ]; then
     echo "Installer build stopped: tracked files have uncommitted changes." >&2
     echo "It is important to commit and push all release changes before building an installer." >&2
     echo "Commit the tracked changes and push, then rerun this script." >&2
     printf '%s\n' "$repository_status" >&2
-    exit 1
+    preflight_errors=$((preflight_errors + 1))
 fi
 
 if [ ! -x vcpkg/vcpkg ]; then
     echo "vcpkg is not bootstrapped -- see the setup notes at the top of this script." >&2
-    exit 1
+    preflight_errors=$((preflight_errors + 1))
 fi
 
 VCPKG_TRIPLET=x64-mingw-static
-
-# Install the current tracked stellar catalog, including its abundance metadata.
-gzip -dc catalogs/soles_alienorum.dat.gz > catalogs/soles_alienorum.dat.tmp
-mv catalogs/soles_alienorum.dat.tmp catalogs/soles_alienorum.dat
 
 # Every payload entry must exist and come from Git; generated caches and local
 # working files cannot enter the installer through directory-wide copies.
@@ -45,13 +42,22 @@ while IFS= read -r runtime_file || [ -n "$runtime_file" ]; do
     fi
     if ! git ls-files --error-unmatch -- "$tracked_source" >/dev/null 2>&1; then
         echo "Installer payload is not tracked: $tracked_source" >&2
-        exit 1
+        preflight_errors=$((preflight_errors + 1))
     fi
-    if [ ! -s "$runtime_file" ]; then
-        echo "Missing runtime file: $runtime_file" >&2
-        exit 1
+    if [ ! -s "$tracked_source" ]; then
+        echo "Missing or empty runtime source: $tracked_source" >&2
+        preflight_errors=$((preflight_errors + 1))
     fi
 done < package/runtime_files.txt
+
+if [ "$preflight_errors" -gt 0 ]; then
+    echo "Installer preflight found $preflight_errors issue(s). Resolve all entries above, then rerun this script." >&2
+    exit 1
+fi
+
+# Install the current tracked stellar catalog, including its abundance metadata.
+gzip -dc catalogs/soles_alienorum.dat.gz > catalogs/soles_alienorum.dat.tmp
+mv catalogs/soles_alienorum.dat.tmp catalogs/soles_alienorum.dat
 
 cmake -B build-win \
     -DCMAKE_TOOLCHAIN_FILE=vcpkg/scripts/buildsystems/vcpkg.cmake \

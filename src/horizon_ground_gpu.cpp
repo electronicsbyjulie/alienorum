@@ -6,11 +6,16 @@
 #include <utility>
 #include "SDL.h"
 #include "horizon_ground_gpu.h"
+#include "classes/grounddetail.h"
 #include "imgui/backends/imgui_impl_opengl3_loader.h"
 
 namespace alienorum
 {
     bool horizon_ground_gpu_reference = false;
+    bool horizon_ground_detail_reference = false;
+    static GLuint detail_texture = 0;
+    static GLint detail_location = -1;
+    static HorizonGroundDetail prepared_detail;
     static HorizonGroundGpuStats stats;
     static SDL_GLContext context = nullptr;
     static GLuint program = 0, vao = 0, vbo = 0, depth_texture = 0, horizon_texture = 0;
@@ -24,6 +29,7 @@ namespace alienorum
     typedef void (APIENTRYP DrawArraysProc)(GLenum, GLint, GLsizei);
     static DrawArraysProc draw_arrays = nullptr;
     static constexpr GLenum red_format = 0x1903, rg_format = 0x8227;
+    static constexpr GLint linear_mipmap_linear = 0x2703;
     static constexpr GLint r32f_format = 0x822E, rg32f_format = 0x8230;
 
     struct Vertex
@@ -38,6 +44,7 @@ namespace alienorum
         std::array<float, 16> projection;
         bool terrain = false;
         HorizonGroundHaze haze;
+        HorizonGroundDetail detail;
     };
 
     static std::array<Batch, 4> batches;
@@ -67,6 +74,8 @@ uniform sampler2D uDepth;
 uniform sampler2D uHorizon;
 uniform bool uTerrain;
 uniform mat4 uHaze;
+uniform mat4 uDetail;
+uniform sampler2D uDetailMap;
 #define uCamera uHaze[0]
 #define uSurface uHaze[1]
 #define uExtinction uHaze[2].xyz
@@ -78,7 +87,7 @@ void main()
     if (float(cell.y) + 0.5 < horizon.r) discard;
     if (uTerrain && float(cell.y) < horizon.g && texelFetch(uDepth, cell, 0).r <= 0.0) discard;
     FragColor = color;
-    if (uExtinction.g > 0.0)
+    if (uExtinction.g > 0.0 || uDetail[0].z > 0.0)
     {
         vec2 ray = (vec2(cell) + vec2(0.5) - uCamera.xy) / uCamera.z;
         ray.y = -ray.y;
@@ -102,8 +111,22 @@ void main()
             if (terrainDistance > 0.0) distance = min(distance, terrainDistance);
         }
         if (distance == 1e30) distance = uSurface.w;
+        vec3 pigment = color.rgb;
+        if (uDetail[0].z > 0.0 && distance < 150.0)
+        {
+            vec2 direction = vec2(ray.x, north)/max(1e-12, length(vec2(ray.x, north)));
+            vec2 uv = uDetail[0].xy + distance/8.0
+                * (direction.x*uDetail[1].xy + direction.y*uDetail[1].zw);
+            vec4 textureValue = texture(uDetailMap, uv);
+            vec3 weights = uDetail[2].xyz;
+            bool blueWater = pigment.b > 1.05*pigment.r && pigment.b > 1.05*pigment.g;
+            float green = uDetail[2].w * smoothstep(1.0, 1.25, pigment.g/max(.001, max(pigment.r, pigment.b)));
+            float noise = mix(dot(textureValue.rgb, weights), textureValue.a, green)-.5;
+            float fade = 1.0-smoothstep(30.0, 150.0, distance);
+            if (!blueWater) pigment *= 1.0+noise*.7*fade;
+        }
         vec3 transmission = exp(-uExtinction * distance);
-        vec3 veiled = color.rgb * transmission + uAirlight * (vec3(1.0) - transmission);
+        vec3 veiled = pigment * transmission + uAirlight * (vec3(1.0) - transmission);
         FragColor.rgb = floor(clamp(veiled, 0.0, 1.0) * 255.0 + 0.0001) / 255.0;
     }
 }
@@ -136,9 +159,11 @@ void main()
             if (vbo) glDeleteBuffers(1, &vbo);
             if (depth_texture) glDeleteTextures(1, &depth_texture);
             if (horizon_texture) glDeleteTextures(1, &horizon_texture);
+            if (detail_texture) glDeleteTextures(1, &detail_texture);
         }
         program = vao = vbo = depth_texture = horizon_texture = 0;
         texture_width = texture_height = 0;
+        detail_texture = 0;
         uploaded_depth.clear();
         uploaded_columns.clear();
         attempted = false;
@@ -181,6 +206,7 @@ void main()
         projection_location = glGetUniformLocation(program, "uProjection");
         terrain_location = glGetUniformLocation(program, "uTerrain");
         haze_location = glGetUniformLocation(program, "uHaze");
+        detail_location = glGetUniformLocation(program, "uDetail");
 
         GLint previous_program, previous_vao, previous_vbo;
         glGetIntegerv(GL_CURRENT_PROGRAM, &previous_program);
@@ -189,6 +215,7 @@ void main()
         glUseProgram(program);
         glUniform1i(glGetUniformLocation(program, "uDepth"), 0);
         glUniform1i(glGetUniformLocation(program, "uHorizon"), 1);
+        glUniform1i(glGetUniformLocation(program, "uDetailMap"), 2);
         glGenVertexArrays(1, &vao);
         glGenBuffers(1, &vbo);
         glBindVertexArray(vao);
@@ -205,12 +232,47 @@ void main()
         glUseProgram(previous_program);
         glGenTextures(1, &depth_texture);
         glGenTextures(1, &horizon_texture);
+        glGenTextures(1, &detail_texture);
+        GLint old_texture, old_alignment;
+        glGetIntegerv(GL_TEXTURE_BINDING_2D, &old_texture);
+        glGetIntegerv(GL_UNPACK_ALIGNMENT, &old_alignment);
+        glBindTexture(GL_TEXTURE_2D, detail_texture);
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, linear_mipmap_linear);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        auto pixels = ground_detail_atlas();
+        int size = 128;
+        for (int level = 0; ; ++level)
+        {
+            glTexImage2D(GL_TEXTURE_2D, level, GL_RGBA, size, size, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+            if (size == 1) break;
+            std::vector<unsigned char> smaller(size*size);
+            for (int y = 0; y < size/2; ++y)
+            {
+                for (int x = 0; x < size/2; ++x)
+                {
+                    for (int c = 0; c < 4; ++c)
+                    {
+                        int sum = 0;
+                        for (int dy = 0; dy < 2; ++dy)
+                            for (int dx = 0; dx < 2; ++dx) sum += pixels[((2*y+dy)*size+2*x+dx)*4+c];
+                        smaller[(y*(size/2)+x)*4+c] = sum/4;
+                    }
+                }
+            }
+            pixels = std::move(smaller);
+            size /= 2;
+        }
+        glBindTexture(GL_TEXTURE_2D, old_texture);
+        glPixelStorei(GL_UNPACK_ALIGNMENT, old_alignment);
         return true;
     }
 
     bool prepare_horizon_ground_gpu(int width, int height, const std::vector<float> &distances,
         const std::vector<double> &horizon, const std::vector<int> &base_top, bool terrain,
-        const HorizonGroundHaze& haze)
+        const HorizonGroundHaze& haze, const HorizonGroundDetail& detail)
     {
         stats = {};
         if (horizon_ground_gpu_reference || width <= 0 || height <= 0
@@ -274,6 +336,7 @@ void main()
         texture_height = height;
         terrain_mask = terrain;
         prepared_haze = haze;
+        prepared_detail = detail;
         return true;
     }
 
@@ -289,6 +352,16 @@ void main()
         std::copy(batch.haze.extinction.begin(), batch.haze.extinction.end(), haze.begin() + 8);
         std::copy(batch.haze.light.begin(), batch.haze.light.end(), haze.begin() + 12);
         glUniformMatrix4fv(haze_location, 1, GL_FALSE, haze.data());
+        std::array<float, 16> detail{};
+        std::copy(batch.detail.origin.begin(), batch.detail.origin.end(), detail.begin());
+        std::copy(batch.detail.basis.begin(), batch.detail.basis.end(), detail.begin()+4);
+        std::copy(batch.detail.material.begin(), batch.detail.material.end(), detail.begin()+8);
+        if (!batch.detail.active) detail[2] = 0;
+        glUniformMatrix4fv(detail_location, 1, GL_FALSE, detail.data());
+        glActiveTexture(GL_TEXTURE0+2);
+        GLint previous_detail;
+        glGetIntegerv(GL_TEXTURE_BINDING_2D, &previous_detail);
+        glBindTexture(GL_TEXTURE_2D, detail_texture);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, depth_texture);
         glActiveTexture(GL_TEXTURE0 + 1);
@@ -300,6 +373,8 @@ void main()
         glBufferData(GL_ARRAY_BUFFER, batch.vertices.size() * sizeof(Vertex), batch.vertices.data(), GL_STREAM_DRAW);
         draw_arrays(GL_TRIANGLES, 0, static_cast<GLsizei>(batch.vertices.size()));
         glBindTexture(GL_TEXTURE_2D, previous_texture);
+        glActiveTexture(GL_TEXTURE0+2);
+        glBindTexture(GL_TEXTURE_2D, previous_detail);
         glActiveTexture(GL_TEXTURE0);
     }
 
@@ -311,6 +386,7 @@ void main()
         batch.vertices.reserve(rectangles.size() * 6);
         batch.terrain = terrain_mask;
         batch.haze = prepared_haze;
+        batch.detail = prepared_detail;
         const ImGuiIO &io = ImGui::GetIO();
         batch.projection =
         {

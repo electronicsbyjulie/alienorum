@@ -13,6 +13,7 @@
 #include <unordered_map>
 
 #include "planet.h"
+#include "texturegeneration.h"
 #include "pressurehaze.h"
 #include "numeric.h"
 #include "surfacephase.h"
@@ -111,9 +112,9 @@ bool Planet::resolve_sim_life(bool randomize_choice)
         }
     }
     if (!habitat) return unsuitable();
-    if (!has_sim_life || (randomize_choice && randomize_txgen))
+    if (!has_sim_life || (randomize_choice && texture_randomization_enabled()))
     {
-        if (randomize_txgen)
+        if (texture_randomization_enabled())
         {
             if (!orbit || !orbit->center) return false;
             const uint64_t pair = (uint64_t(orbit->center->texture_seed()) << 32) | texture_seed();
@@ -564,7 +565,7 @@ bool alienorum::Planet::estimate_habitability()
     {
         has_water = 1;
     }
-    else if (!water_constrained && randomize_txgen)
+    else if (!water_constrained && texture_randomization_enabled())
     {
         has_water = 0;
     }
@@ -594,17 +595,17 @@ bool alienorum::Planet::estimate_habitability()
 
     AtmosphereComposition *ac = atm ? atm->ensure_composition() : nullptr;
     life_possible = (is_in_con_HZ() && mass > 0.02 * earth_mass);       // Based on Titan's mass.
-    if (randomize_txgen && ac && !constrained_atmospheric_composition(*this))
+    if (texture_randomization_enabled() && ac && !constrained_atmospheric_composition(*this))
     {
         if (life_possible)
         {
-            if (!show_taucalc) ac->generate_fictitious_habitable();
+            if (!texture_tau_calculator_active()) ac->generate_fictitious_habitable();
             press = get_surface_pressure();
             atm->calculate_tau(press);
             if (!has_supplied_mean_temperature()) temperature = 0;            // force refresh
             T_surf = estimate_surface_temperature();
         }
-        else if (!show_taucalc) ac->generate_fictitious_for_planet(type);
+        else if (!texture_tau_calculator_active()) ac->generate_fictitious_for_planet(type);
         press = get_surface_pressure();
     }
     life_possible = (life_possible
@@ -623,7 +624,7 @@ bool alienorum::Planet::estimate_habitability()
             std::cout << "Surface temperature: " << T_surf << " K." << std::endl << std::flush;*/
         #endif
 
-        if (!water_constrained && !has_water && randomize_txgen)
+        if (!water_constrained && !has_water && texture_randomization_enabled())
         {
             if (type == waterworld || type == hycean) has_water = 1;
             else if (T_surf < 0.9 * water_freezing)
@@ -647,11 +648,11 @@ bool alienorum::Planet::estimate_habitability()
             && T_surf > 0.9*water_freezing && T_surf < 320
             && press < oneatm*2000);
 
-        if (randomize_txgen && ac && !constrained_atmospheric_composition(*this))
+        if (texture_randomization_enabled() && ac && !constrained_atmospheric_composition(*this))
         {
             if (life_possible)
             {
-                if (!show_taucalc) ac->generate_fictitious_habitable();
+                if (!texture_tau_calculator_active()) ac->generate_fictitious_habitable();
                 press = get_surface_pressure();
                 atm->calculate_tau(press);
             }
@@ -736,8 +737,7 @@ bool Planet::estimate_cool_giant_color()
             || !(stellar_orbiter->orbit->semimajor_axis > 0)) return false;
         const double stellar_temperature = host->temperature > 0 ? host->temperature
             : Star::interpolate_mseq_temp(Star::get_mseqidx_from_BV(host->BV_color));
-        const double luminosity = std::pow(magnbase, 4.74 - host->absolute_magnitude
-            - Star::bolometric_correction(stellar_temperature));
+        const double luminosity = host->bolometric_luminosity(stellar_temperature);
         const double axis = stellar_orbiter->orbit->semimajor_axis / AU;
         const double irradiation = luminosity / (axis * axis);
         if (std::isfinite(irradiation) && irradiation > 0)
@@ -975,8 +975,7 @@ void Planet::classify(bool HZ, bool mnrk, bool ck)
     if (host && stellar_orbit && std::isfinite(stellar_orbit->semimajor_axis) && stellar_orbit->semimajor_axis > 0)
     {
         const double teff = host->temperature > 0 ? host->temperature : host->estimate_temperature();
-        const double bolometric = host->absolute_magnitude + Star::bolometric_correction(teff);
-        const double luminosity = pow(magnbase, 4.74 - bolometric);
+        const double luminosity = host->bolometric_luminosity(teff);
         irradiation = luminosity / pow(stellar_orbit->semimajor_axis / AU, 2);
         // A fixed neutral albedo for an unmeasured surface avoids a class/color feedback loop.
         const double bond = std::isfinite(albedo) && albedo > 0 ? std::clamp(albedo, 0.0, 1.0) : 0.3;
@@ -1944,16 +1943,9 @@ double Planet::est_bolometric_flux(double t_eff)
     Star *s = (Star*)lc;
     if (!t_eff) t_eff = s->estimate_temperature();
 
-    // See Star::bolometric_correction(), where this calculation now resides: the exostar loader
-    // must apply exactly the same correction in reverse (cat.cpp,
-    // resolve_or_create_exostar), and two copies would eventually have diverged.
-    double bc_v = Star::bolometric_correction(t_eff);
-
-    // Calculate absolute bolometric magnitude.
-    s->m_bol = s->absolute_magnitude + bc_v;
-
-    // Convert to bolometric luminosity relative to the Sun's bolometric 4.74 magnitude.
-    s->m_bol = std::pow(magnbase, (4.74 - s->m_bol));
+    // Mira visual absorption redistributes radiation into the infrared; it does not
+    // remove the same fraction of the energy heating an orbiting planet.
+    s->m_bol = s->bolometric_luminosity(t_eff);
 
     // Compute planetary illumination
     CelestialObject *myplanet = this;
@@ -2359,8 +2351,7 @@ bool Planet::set_habitable_orbit()
     if (!orbit || !orbit->center || orbit->center->typeclass() != class_star) return false;
     Star* host = static_cast<Star*>(orbit->center);
     const double temp = host->estimate_temperature();
-    const double luminosity = std::pow(magnbase,
-        4.74 - host->absolute_magnitude - Star::bolometric_correction(temp));
+    const double luminosity = host->bolometric_luminosity(temp);
     if (!std::isfinite(luminosity) || luminosity <= 0) return false;
 
     // Search in luminosity-scaled distance using the same zone model as the editor.
@@ -2399,12 +2390,14 @@ bool Planet::is_in_con_HZ()
     const double stellar_sma = outer->orbit->semimajor_axis;
     const double eccentricity = outer->orbit->eccentricity;
     const double t_eff = s->estimate_temperature();
+    const double luminosity = s->bolometric_luminosity(t_eff);
     if (!std::isfinite(stellar_sma) || stellar_sma <= 0 || !std::isfinite(t_eff) || t_eff <= 0
         || std::isinf(eccentricity)
         || (std::isfinite(eccentricity) && (eccentricity < 0 || eccentricity >= 1))) return false;
     if (cached_in_cons_hz == orbit->semimajor_axis && cached_hz_host == s && cached_hz_mass == mass
         && cached_hz_temperature == t_eff && cached_hz_magnitude == s->absolute_magnitude
-        && cached_hz_stellar_sma == stellar_sma && cached_hz_eccentricity == eccentricity) return cache_in_cons_hz;
+        && cached_hz_stellar_sma == stellar_sma && cached_hz_eccentricity == eccentricity
+        && cached_hz_luminosity == luminosity) return cache_in_cons_hz;
 
     const ConservativeHZ limits = conservative_hz(t_eff, mass / earth_mass);
     double planet_illumination = est_bolometric_flux(t_eff);
@@ -2422,8 +2415,18 @@ bool Planet::is_in_con_HZ()
     cached_hz_magnitude = s->absolute_magnitude;
     cached_hz_stellar_sma = stellar_sma;
     cached_hz_eccentricity = eccentricity;
+    cached_hz_luminosity = luminosity;
 
     return cache_in_cons_hz;
+}
+
+bool Planet::has_approximate_HZ()
+{
+    CelestialObject* host = get_light_center();
+    if (!host || host->typeclass() != class_star) return true;
+    const Star* star = static_cast<Star*>(host);
+    const double temperature = star->estimate_temperature();
+    return star->is_evolved() || !std::isfinite(temperature) || temperature < 2600 || temperature > 7200;
 }
 
 Planet::Planet()

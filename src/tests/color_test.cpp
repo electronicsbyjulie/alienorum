@@ -6,9 +6,97 @@
 #include "../classes/color.h"
 #include "../classes/star.h"
 #include "../classes/wdcolor.h"
+#include "../classes/browncolor.h"
+#include "../classes/mdwarfcolor.h"
 
 using namespace alienorum;
 using json = nlohmann::json;
+
+class RealisticStarColorEnvironment : public ::testing::Environment
+{
+    void SetUp() override { fancy_star_col = false; }
+};
+static auto* realistic_star_color_environment = ::testing::AddGlobalTestEnvironment(new RealisticStarColorEnvironment());
+
+TEST(ColorTest, GlareUsesIndependentRedGreenIndex)
+{
+    struct Restore
+    {
+        bool saved = fancy_star_col;
+        ~Restore() { fancy_star_col = saved; }
+    } restore;
+    fancy_star_col = true;
+    Star star;
+    star.BV_color = .8;
+    for (double vr : {0.0, .3, 1.2, -.2})
+    {
+        star.VR_color = vr;
+        const double offset = .15;
+        Color expected = Color::color_from_magnitude_indices(2, star.BV_color + offset,
+            (vr != 0 ? vr : star.BV_color) + offset);
+        Color stellar = Color::color_from_star(2, &star, star.BV_color + offset);
+        const Color fallback = Color::color_from_planet(2, &star, offset);
+        EXPECT_NEAR(stellar.red / stellar.green, expected.red / expected.green, 1e-12);
+        EXPECT_NEAR(fallback.red / fallback.green, expected.red / expected.green, 1e-12);
+        EXPECT_NEAR(stellar.blue / stellar.green, expected.blue / expected.green, 1e-12);
+        EXPECT_NEAR(fallback.blue / fallback.green, expected.blue / expected.green, 1e-12);
+        EXPECT_NEAR(stellar.luminance(), expected.luminance(), 1e-12);
+    }
+}
+
+TEST(ColorTest, MiraDiscAndTextureTintStayNormalizedThroughTheCycle)
+{
+    Star star;
+    strcpy(star.spectral_type, "M5e");
+    star.variability_type = "M";
+    star.variability_period = 333.8 * oneday;
+    star.minmag = 3;
+    star.maxmag = 9;
+    star.BV_color = 1.4;
+    star.VR_color = 1.1;
+    double bright_red_green = 0;
+    for (double phase : {0.0, .25, .5, .75, 1.0})
+    {
+        star.apply_mira_pulsation(phase);
+        star.apparent_magnitude = 6 - 3 * cos(2 * _pi * phase);
+        Color surface = Color::color_from_star(4.2, &star, star.BV_color);
+        const RGB3 pixel = Color::rgb_from_color(surface, -1, 1, false);
+        EXPECT_EQ(std::max({pixel.r, pixel.g, pixel.b}), 255);
+        const Color tint = Color::reflected_daylight(&star, 0);
+        EXPECT_DOUBLE_EQ(std::max({tint.red, tint.green, tint.blue}), 1);
+        // A red-peak texture texel keeps its full channel in both sphere renderers.
+        EXPECT_DOUBLE_EQ(255 * tint.red, 255);
+        if (phase == 0) bright_red_green = surface.red / surface.green;
+        if (phase == .5) EXPECT_GT(surface.red / surface.green, bright_red_green);
+    }
+}
+
+TEST(ColorTest, MiraMolecularColorPreservesPhysicalTemperatureAndFlareScaling)
+{
+    Star star;
+    strcpy(star.spectral_type, "M5e");
+    star.variability_type = "M";
+    star.variability_period = 333.8 * oneday;
+    star.minmag = 3;
+    star.maxmag = 9;
+    star.BV_color = 1.4;
+    star.VR_color = 1.1;
+    star.apply_mira_pulsation(.5);
+    star.apparent_magnitude = 9;
+    const double physical_temperature = star.temperature;
+    const Color molecular = Color::color_from_star(2, &star, star.BV_color);
+    const Color faint = Color::color_from_star(5, &star, star.BV_color);
+    EXPECT_NEAR(faint.red / molecular.red, pow(magnbase, -3), 1e-12);
+    EXPECT_NEAR(faint.green / molecular.green, pow(magnbase, -3), 1e-12);
+    EXPECT_NEAR(faint.blue / molecular.blue, pow(magnbase, -3), 1e-12);
+    // Compare the same reference palette with the molecular-layer adjustment inactive.
+    star.apparent_magnitude = 0;
+    const Color continuum = Color::color_from_star(2, &star, star.BV_color);
+    EXPECT_GT(molecular.red / molecular.green, continuum.red / continuum.green);
+    EXPECT_DOUBLE_EQ(star.temperature, physical_temperature);
+    EXPECT_DOUBLE_EQ(star.BV_color, 1.4);
+    EXPECT_DOUBLE_EQ(star.VR_color, 1.1);
+}
 
 TEST(ColorTest, WdRenderingPreservesPaperHueAndMagnitudeScaling)
 {
@@ -53,7 +141,7 @@ TEST(ColorTest, UnsupportedStarsKeepTheirExistingColorConversion)
     Star s;
     s.temperature = 6000;
     s.BV_color = 0.6;
-    for (const char *type : {"G2V", "DQ", "DZ", "DC"})
+    for (const char *type : {"DQ", "DZ", "DC"})
     {
         strcpy(s.spectral_type, type);
         Color before = Color::color_from_magnitude_indices(5, s.BV_color);
@@ -435,4 +523,312 @@ TEST(ColorTest, ExplicitTextureColorsIgnoreLiveDisplaySettings)
         Color displayed = Color::color_from_magnitude_indices(0, 1.5, 1.5);
         EXPECT_NEAR(displayed.luminance(), brightness * 128, brightness * 1e-10);
     }
+}
+
+TEST(BrownDwarfColor, SpectrumHueAndBrightness)
+{
+    const Color violet = brown_linear_color(1000);
+    EXPECT_GT(violet.blue, violet.red);
+    EXPECT_GT(violet.red, violet.green);
+    const Color cold = brown_linear_color(200);
+    EXPECT_GT(cold.red, cold.blue);
+    for (double temperature = 200; temperature <= 3000; temperature += 7)
+    {
+        const Color color = brown_linear_color(temperature);
+        EXPECT_GE(std::min({color.red, color.green, color.blue}), 0);
+        EXPECT_DOUBLE_EQ(std::max({color.red, color.green, color.blue}), 1);
+    }
+    Star star;
+    star.mass = .04*solar_mass;
+    star.temperature = 1000;
+    star.BV_color = 2;
+    const Color bright = Color::color_from_star(0, &star, star.BV_color);
+    const Color faint = Color::color_from_star(3, &star, star.BV_color);
+    EXPECT_NEAR(faint.red/bright.red, pow(magnbase, -3), 1e-12);
+    EXPECT_NEAR(faint.blue/bright.blue, pow(magnbase, -3), 1e-12);
+    EXPECT_GT(bright.blue, bright.red);
+    Color source;
+    EXPECT_TRUE(brown_color_source(&star, source));
+    star.mass = .1*solar_mass;
+    EXPECT_FALSE(brown_color_source(&star, source));
+    star.mass = 0;
+    star.temperature = 0;
+    star.BV_color = log(blackbody_flux(1800, V_band)/blackbody_flux(1800, B_band))
+        *invlogmagnbase-bv_correction;
+    EXPECT_TRUE(brown_color_source(&star, source));
+    EXPECT_NEAR(brown_temperature(&star), 1800, 1e-7);
+    strcpy(star.spectral_type, "DA");
+    EXPECT_FALSE(brown_color_source(&star, source));
+}
+
+TEST(BrownDwarfColor, RepeatableCloudMapAndSphericalContinuity)
+{
+    Star star;
+    star.mass = .04*solar_mass;
+    star.temperature = 1400;
+    star.rnd_seed = 271;
+    star.fictitious_map_height = 32;
+    const auto random_before = star.rng;
+    const BrownWeather weather(&star);
+    for (double latitude : {-_pi/2, -.4, .4, _pi/2})
+    {
+        const Color a = brown_weather_color(weather, latitude, 0);
+        const Color b = brown_weather_color(weather, latitude, 2*_pi);
+        EXPECT_NEAR(a.red, b.red, 1e-12);
+        EXPECT_NEAR(a.blue, b.blue, 1e-12);
+    }
+    const Color pole_a = brown_weather_color(weather, _pi/2, 0);
+    const Color pole_b = brown_weather_color(weather, _pi/2, 2);
+    EXPECT_NEAR(pole_a.red, pole_b.red, 1e-12);
+    Map first(&star), second(&star);
+    first.generate_stellar_map(&star);
+    second.generate_stellar_map(&star);
+    ASSERT_TRUE(first.is_complete());
+    EXPECT_EQ(first.get_height(), 32UL);
+    EXPECT_EQ(first.get_width(), 64UL);
+    std::vector<unsigned char> a(32*64*4), b(a.size());
+    first.export_rgba(a.data());
+    second.export_rgba(b.data());
+    EXPECT_EQ(a, b);
+    unsigned char peak = 0;
+    bool varied = false;
+    for (size_t i = 0; i < a.size(); i += 4)
+    {
+        peak = std::max({peak, a[i], a[i+1], a[i+2]});
+        if (a[i] != a[0] || a[i+1] != a[1] || a[i+2] != a[2]) varied = true;
+    }
+    EXPECT_EQ(peak, 255);
+    EXPECT_TRUE(varied);
+    EXPECT_EQ(star.rng, random_before);
+    EXPECT_EQ(star.night_map, nullptr);
+    star.rnd_seed = 272;
+    const BrownWeather other(&star);
+    EXPECT_NE(weather.phase[0], other.phase[0]);
+}
+
+TEST(BrownDwarfColor, EstimatedRotationAdvancesAndPreservesSuppliedPeriods)
+{
+    Star star;
+    star.mass = .05*solar_mass;
+    star.temperature = 1000;
+    star.volumetric_mean_radius = jupiter_radius;
+    estimate_brown_rotation(&star);
+    ASSERT_GT(star.sidereal_rotational_period, 2*3600);
+    ASSERT_LT(star.sidereal_rotational_period, 8*3600);
+    EXPECT_TRUE(star.stellar_rotation.value("estimated", false));
+    const double saved_time = simnow;
+    const double first = star.timeofday();
+    simnow += star.sidereal_rotational_period/4;
+    const double second = star.timeofday();
+    simnow = saved_time;
+    EXPECT_NEAR(fmod(second-first+2*_pi, 2*_pi), _pi/2, 1e-8);
+    star.sidereal_rotational_period = 7*3600;
+    estimate_brown_rotation(&star);
+    EXPECT_DOUBLE_EQ(star.sidereal_rotational_period, 7*3600);
+    Star ordinary;
+    ordinary.mass = solar_mass;
+    ordinary.temperature = sun_temp;
+    estimate_brown_rotation(&ordinary);
+    EXPECT_DOUBLE_EQ(ordinary.sidereal_rotational_period, 0);
+}
+
+TEST(MDwarfColor, SpectralSubtypeOverridesMisleadingIndicesForDisplay)
+{
+    Star star;
+    strcpy(star.spectral_type, "M3.5");
+    star.mass = .3*solar_mass;
+    star.volumetric_mean_radius = .017621*solar_radius;
+    star.absolute_magnitude = 11.2;
+    star.BV_color = .18;
+    star.VR_color = .07;
+    star.is_bv_observed = true;
+    EXPECT_NEAR(star.estimate_temperature(), 3320, 1e-12);
+    EXPECT_EQ(stellar_regime(&star), regime_stellar);
+    const Color bright = Color::color_from_star(0, &star, star.BV_color);
+    const Color faint = Color::color_from_star(3, &star, star.BV_color);
+    EXPECT_GT(bright.red, bright.green);
+    EXPECT_GT(bright.green, bright.blue);
+    EXPECT_NEAR(faint.red/bright.red, pow(magnbase, -3), 1e-12);
+    const Color reddened = Color::color_from_star(0, &star, star.BV_color+.3);
+    EXPECT_GT(reddened.red/reddened.blue, bright.red/bright.blue);
+    EXPECT_DOUBLE_EQ(star.BV_color, .18);
+    EXPECT_DOUBLE_EQ(star.VR_color, .07);
+    star.temperature = 3500;
+    EXPECT_DOUBLE_EQ(m_dwarf_temperature(&star), 3500);
+    star.temperature = 0;
+    star.BV_color = 0;
+    star.estimate_BV();
+    EXPECT_DOUBLE_EQ(star.BV_color, 0);
+    star.is_bv_observed = false;
+    star.estimate_BV();
+    EXPECT_GT(star.BV_color + bv_correction, .5);
+}
+
+TEST(MDwarfColor, ScopeExcludesGiantsMirasCompositesAndSubstellarMasses)
+{
+    Star star;
+    for (const char* type : {"M3V", "M3.5", "M7Ve"})
+    {
+        strcpy(star.spectral_type, type);
+        EXPECT_TRUE(is_m_dwarf_color_source(&star));
+    }
+    for (const char* type : {"M3III", "M3IV", "M2Iab", "M3V+DA", "G2V", "DA"})
+    {
+        strcpy(star.spectral_type, type);
+        EXPECT_FALSE(is_m_dwarf_color_source(&star));
+    }
+    strcpy(star.spectral_type, "M5e");
+    star.variability_type = "M";
+    star.variability_period = 300*oneday;
+    EXPECT_FALSE(is_m_dwarf_color_source(&star));
+    star.variability_type.clear();
+    star.mass = .04*solar_mass;
+    EXPECT_FALSE(is_m_dwarf_color_source(&star));
+}
+
+TEST(MDwarfColor, TextureUsesTheSameSpectrumAndStaysNormalized)
+{
+    Star star;
+    strcpy(star.spectral_type, "M3V");
+    star.mass = .3*solar_mass;
+    star.volumetric_mean_radius = .3*solar_radius;
+    star.absolute_magnitude = 11;
+    star.BV_color = .18;
+    star.rnd_seed = 731;
+    star.fictitious_map_height = 16;
+    Map map(&star);
+    map.generate_stellar_map(&star);
+    ASSERT_TRUE(map.is_complete());
+    std::vector<unsigned char> pixels(map.get_width()*map.get_height()*4);
+    map.export_rgba(pixels.data());
+    unsigned char peak = 0;
+    for (size_t i = 0; i < pixels.size(); i += 4)
+    {
+        EXPECT_GE(pixels[i], pixels[i+1]);
+        EXPECT_GT(pixels[i+1], pixels[i+2]);
+        peak = std::max({peak, pixels[i], pixels[i+1], pixels[i+2]});
+    }
+    EXPECT_EQ(peak, 255);
+    EXPECT_DOUBLE_EQ(star.BV_color, .18);
+}
+
+TEST(MDwarfColor, RealisticPaletteAndPrefixesAgreeAcrossDisplayPaths)
+{
+    Star star;
+    star.mass = .2*solar_mass;
+    star.absolute_magnitude = 12;
+    star.temperature = 0;
+    for (const char* type : {"M4V", "dM4e", "sdM4", "esdM4", "usdM4"})
+    {
+        strcpy(star.spectral_type, type);
+        ASSERT_TRUE(is_m_dwarf_color_source(&star));
+        EXPECT_DOUBLE_EQ(m_dwarf_temperature(&star), 3210);
+        const Color color = Color::color_from_star(0, &star, star.BV_color);
+        const Color linear = m_dwarf_linear_color(3210);
+        Color expected(wd_srgb_encode(linear.red), wd_srgb_encode(linear.green), wd_srgb_encode(linear.blue));
+        expected.normalize(1);
+        Color normalized = color;
+        normalized.normalize(1);
+        EXPECT_NEAR(normalized.red, expected.red, 1e-12);
+        EXPECT_NEAR(normalized.green, expected.green, 1e-12);
+        EXPECT_NEAR(normalized.blue, expected.blue, 1e-12);
+        const RGB3 swatch = wd_srgb_from_linear(m_dwarf_linear_color(3210));
+        const RGB3 disc = Color::rgb_from_color(color, -1, 1, false);
+        EXPECT_NEAR(swatch.r, disc.r, 1);
+        EXPECT_NEAR(swatch.g, disc.g, 1);
+        EXPECT_NEAR(swatch.b, disc.b, 1);
+    }
+}
+
+TEST(MDwarfColor, GiantsAndDwarfsShareARealisticReferencePalette)
+{
+    Star star;
+    star.temperature = 3500;
+    star.mass = solar_mass;
+    Color expected;
+    for (const char* type : {"M2V", "sdM2", "dM2e", "M2Ib", "M2III"})
+    {
+        strcpy(star.spectral_type, type);
+        const Color color = Color::color_from_star(0, &star, star.BV_color);
+        const Color linear = m_dwarf_linear_color(3500);
+        const RGB3 swatch = wd_srgb_from_linear(linear);
+        const RGB3 disc = Color::rgb_from_color(color, -1, 1, false);
+        EXPECT_NEAR(swatch.g, disc.g, 1);
+        EXPECT_NEAR(swatch.b, disc.b, 1);
+    }
+}
+
+TEST(StarColorModeTest, OrdinaryStarsUseTheSelectedPaletteAndKeepMagnitudeScaling)
+{
+    Star::load_main_seq_dat();
+    Star star;
+    star.mass = solar_mass;
+    for (const char* type : {"A0V", "G2V", "K5V", "M4V", "sdM4"})
+    {
+        strcpy(star.spectral_type, type);
+        star.BV_color = type[0] == 'M' || type[0] == 's' ? 1.6 : .65;
+        star.temperature = type[0] == 'A' ? 10000 : type[0] == 'G' ? 5800 : type[0] == 'K' ? 4400 : 3210;
+        Color realistic = Color::color_from_star(0, &star, star.BV_color, false);
+        Color pretty = Color::color_from_star(0, &star, star.BV_color, true);
+        EXPECT_GT(fabs(pretty.red/pretty.green-realistic.red/realistic.green), .01);
+        EXPECT_NEAR(realistic.luminance(), pretty.luminance(), realistic.luminance()*1e-12);
+        const Color faint = Color::color_from_star(3, &star, star.BV_color, true);
+        EXPECT_NEAR(faint.red/pretty.red, pow(magnbase, -3), 1e-12);
+        EXPECT_DOUBLE_EQ(star.BV_color, type[0] == 'M' || type[0] == 's' ? 1.6 : .65);
+    }
+}
+
+TEST(StarColorModeTest, WhiteDwarfsGainModestSaturationAndBrownDwarfsStayIdentical)
+{
+    Star star;
+    star.WD = "WD1328+648";
+    star.gaia_wd_name = "WDJ133001.17+643523.69";
+    star.temperature = 10000;
+    const Color realistic = Color::color_from_star(0, &star, 0, false);
+    const Color pretty = Color::color_from_star(0, &star, 0, true);
+    const auto spread = [](Color color)
+    {
+        color.normalize(1);
+        return std::max({color.red, color.green, color.blue})-std::min({color.red, color.green, color.blue});
+    };
+    EXPECT_GT(spread(pretty), spread(realistic));
+    EXPECT_LT(spread(pretty), spread(realistic)*1.5);
+    star.WD.clear(); star.gaia_wd_name.clear();
+    strcpy(star.spectral_type, "T6");
+    star.temperature = 1000;
+    star.mass = .04*solar_mass;
+    const Color brown_real = Color::color_from_star(0, &star, 0, false);
+    const Color brown_pretty = Color::color_from_star(0, &star, 0, true);
+    EXPECT_DOUBLE_EQ(brown_real.red, brown_pretty.red);
+    EXPECT_DOUBLE_EQ(brown_real.green, brown_pretty.green);
+    EXPECT_DOUBLE_EQ(brown_real.blue, brown_pretty.blue);
+}
+
+TEST(StarColorModeTest, TextureTintChangesModeWithoutRebuildingTheMap)
+{
+    struct Restore
+    {
+        bool saved = fancy_star_col;
+        ~Restore() { fancy_star_col = saved; }
+    } restore;
+    Star star;
+    strcpy(star.spectral_type, "M4V");
+    star.mass = .2*solar_mass;
+    star.BV_color = 1.6;
+    const Color base = Color::color_from_star(0, &star, star.BV_color, false);
+    fancy_star_col = false;
+    const Color neutral = Color::stellar_texture_tint(&star);
+    EXPECT_DOUBLE_EQ(neutral.red, 1);
+    EXPECT_DOUBLE_EQ(neutral.green, 1);
+    EXPECT_DOUBLE_EQ(neutral.blue, 1);
+    fancy_star_col = true;
+    const Color tint = Color::stellar_texture_tint(&star);
+    Color baked = base;
+    baked.normalize(1);
+    baked.red *= tint.red; baked.green *= tint.green; baked.blue *= tint.blue;
+    Color expected = Color::color_from_star(0, &star, star.BV_color, true);
+    expected.normalize(1);
+    EXPECT_NEAR(baked.red, expected.red, 1e-12);
+    EXPECT_NEAR(baked.green, expected.green, 1e-12);
+    EXPECT_NEAR(baked.blue, expected.blue, 1e-12);
 }

@@ -1,0 +1,246 @@
+{
+    "Hoerikwaggo": {
+        "!name": "Hoerikwaggo",
+        "!origcenname": "",
+        "!origname": "Hoerikwaggo",
+        "BV_color": 0.71,
+        "Bayer": "Alp Men",
+        "BayerGrkno": 0,
+        "Bonn_survey": "CP",
+        "Bonn_survey_declination": -74,
+        "Bonn_survey_sequential": 374,
+        "Bonn_survey_sign": "-",
+        "Gliese": "GJ 231",
+        "HD": 43834,
+        "HIP": 29271,
+        "HR": 2261,
+        "RA": 92.49291666666667,
+        "UB_color": 0.33,
+        "absmagn": 5.03,
+        "appmagn": 5.08,
+        "appmagn_est": false,
+        "catalog_aliases": [
+            "Hoerikwaggo",
+            "Alpha Mensae"
+        ],
+        "cls": 2,
+        "cons": "Men",
+        "decl": -74.75472222222223,
+        "dist": 33.31,
+        "dist_knwn": true,
+        "epch": 2451544.5,
+        "eqnx": 250.87,
+        "fic_map_ht": 768,
+        "has_hz_plnts": 1,
+        "has_plnts": 1,
+        "is_orb_mult": false,
+        "known_poles": true,
+        "loc": {
+            "gal_cen": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "loc_sys_pln": {
+                "angle": 8.208845274087002,
+                "axis": {
+                    "x": -1.137971572951282e+36,
+                    "y": 0.0,
+                    "z": -8.623705827491603e+35
+                }
+            },
+            "sys_cen": {
+                "x": -8.278670063043952e+16,
+                "y": -3.040778835469969e+17,
+                "z": -3.605605482861933e+15
+            }
+        },
+        "local_name": "Hoerikwaggo",
+        "lock_eq_pln": true,
+        "lock_sys_pln": true,
+        "lon_J2000_offst": 0.0,
+        "map_inv": false,
+        "mass": 1.9487055e+33,
+        "oblq": 21.0,
+        "plx": 97.9159661735591,
+        "pmRA": 3.377671664251206e-05,
+        "pmdec": -5.90030295056526e-05,
+        "radvel": 35000.0,
+        "rnd_seed": 3617717,
+        "rot_heliocen_incl": 21.0,
+        "rot_heliocen_node": 250.87,
+        "sider_rot_per": 30.0,
+        "sptyp": "G5V",
+        "st_abund": {
+            "Summary": {
+                "elements": {
+                    "C": {
+                        "dex": 0.2,
+                        "error": 0.16,
+                        "quality": "accepted",
+                        "ratio": "[C/H]"
+                    },
+                    "Fe": {
+                        "dex": 0.1,
+                        "error": 0.14,
+                        "quality": "accepted",
+                        "ratio": "[Fe/H]"
+                    },
+                    "Mg": {
+                        "dex": 0.16,
+                        "error": 0.13,
+                        "quality": "accepted",
+                        "ratio": "[Mg/H]"
+                    },
+                    "N": {
+                        "dex": 0.42,
+                        "error": 0.11,
+                        "quality": "accepted",
+                        "ratio": "[N/H]"
+                    },
+                    "O": {
+                        "dex": 0.14,
+                        "error": 0.17,
+                        "quality": "accepted",
+                        "ratio": "[O/H]"
+                    },
+                    "Si": {
+                        "dex": 0.15,
+                        "error": 0.07,
+                        "quality": "accepted",
+                        "ratio": "[Si/H]"
+                    }
+                },
+                "model": "element_summary_v1",
+                "solar": {
+                    "C": 8.43,
+                    "Fe": 7.5,
+                    "Mg": 7.6,
+                    "N": 7.83,
+                    "O": 8.69,
+                    "Si": 7.51
+                },
+                "solar_scale": "saved_reference"
+            }
+        },
+        "stellar_age": {
+            "est": true,
+            "src": "Luck_2018_mean",
+            "value_gyr": 5.42
+        },
+        "stmet": {
+            "err_lo_dex": -0.01,
+            "err_up_dex": 0.01,
+            "ratio": "[Fe/H]",
+            "src": "XHIP V/137D A",
+            "value_dex": 0.1
+        },
+        "strot": {
+            "est": true,
+            "incl_suppl": true,
+            "node_assumed": true,
+            "node_suppl": true,
+            "period_seconds": 2592000.0,
+            "src": "star_orbits.dat"
+        },
+        "typ": 512,
+        "user_added": false,
+        "vol_mean_rad": 704674529.9999999
+    },
+    "Hoerikwaggo.Alp Men b": {
+        "!name": "Alp Men b",
+        "!origcenname": "Hoerikwaggo",
+        "!origname": "Alp Men b",
+        "BV_color": 0.71,
+        "RA": 0.0,
+        "UB_color": 0.5,
+        "absmagn": -8.833,
+        "albedo": 0.5,
+        "atmos": {
+            "gases": {
+                "C2H6": 5.663e-06,
+                "CH4": 0.004505,
+                "H2": 0.9595,
+                "H2O": 1.541e-06,
+                "He": 0.03574,
+                "NH3": 0.0002938
+            },
+            "pressure_supplied": true,
+            "surf_pressure": 0.0
+        },
+        "cloud_map_url": "",
+        "cls": 3,
+        "decl": 0.0,
+        "dist": 0.0,
+        "dist_knwn": true,
+        "epch": 2451544.5,
+        "eqnx": 133.46,
+        "fic_map_ht": 768,
+        "has_water": 0.0,
+        "has_water_supplied": false,
+        "loc": {
+            "eq_pln": {
+                "angle": 0.8985546905241214,
+                "axis": {
+                    "x": -1.0567852219829476e+72,
+                    "y": 0.0,
+                    "z": 1.1586569956415542e+72
+                }
+            },
+            "gal_cen": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            },
+            "loc_pos": {
+                "x": -97887513752.20407,
+                "y": 7434508206.706122,
+                "z": -138842369416.2284
+            },
+            "loc_sys_pln": {
+                "angle": 8.208845274087002,
+                "axis": {
+                    "x": -1.137971572951282e+36,
+                    "y": 0.0,
+                    "z": -8.623705827491603e+35
+                }
+            },
+            "sys_cen": {
+                "x": -8.278670063043936e+16,
+                "y": -3.040778835470025e+17,
+                "z": -3.6056054828621655e+15
+            }
+        },
+        "lock_sys_pln": false,
+        "lon_J2000_offst": 0.0,
+        "map_inv": false,
+        "mass": 9.077439999999999e+29,
+        "mass_evid": 0,
+        "oblq": 8.176,
+        "opposition_surge": 0.0,
+        "orb": {
+            "arg_peri": 0.0,
+            "asc_node": 0.0,
+            "cen_name": "Hoerikwaggo",
+            "ecc": 0.4,
+            "epch": 2451544.5,
+            "incl": 0.0,
+            "mean_anom": 0.0,
+            "per": 359.5,
+            "periapsis_distance": 0.0,
+            "semimaj_axis": 136113623122.82985
+        },
+        "overcast": false,
+        "rad_evid": 0,
+        "ring_status_known": false,
+        "sider_rot_per": 0.503,
+        "static_clouds": true,
+        "temperature_supplied": false,
+        "transiting": false,
+        "typ": 768,
+        "user_added": false,
+        "veg_max_temp": 310.0,
+        "veg_min_temp": 278.0,
+        "vol_mean_rad": 58613199.99999999
+    }
+}

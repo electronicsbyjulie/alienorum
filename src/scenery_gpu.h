@@ -12,6 +12,8 @@ namespace alienorum
         ImU32 crown_color = 0, trunk_color = 0;
         float crown_visible = 1, trunk_visible = 1;
         float segments = 0, crown_first = 0, contour_row = 0;
+        ImU32 snow_color = 0;
+        float snow = 0;
     };
     struct SceneryGpuStats
     {

@@ -26,6 +26,7 @@
 #include "../housekeeping.h"
 #include "../classes/clouds_gpu.h"
 #include "../classes/cloudlighting.h"
+#include "../classes/texturegeneration.h"
 #include "../classes/precipitationcache.h"
 #include "../classes/pressurehaze.h"
 #include "../classes/surfacebiomes.h"
@@ -44,6 +45,7 @@
 #include "../classes/horizonbackground.h"
 #include "../classes/framescratch.h"
 #include "../horizon_ground_gpu.h"
+#include "../classes/grounddetail.h"
 #include "../scenery_gpu.h"
 #include "../plantmesh_gpu.h"
 #include "../classes/plantmesh.h"
@@ -103,6 +105,27 @@ class SceneryTestMap : public Map
             green_data[i] = plant ? 140 : (sea ? 100 : 120);
             blue_data[i] = plant ? 30 : (sea ? 160 : 80);
         }
+        touch_gen();
+    }
+};
+
+class UniformCloudTestMap : public Map
+{
+    public:
+    explicit UniformCloudTestMap(unsigned char coverage)
+    {
+        image_width = image_height = 2;
+        allocated = 4;
+        lat_scale = 2 / _pi; lon_scale = 1 / _pi;
+        red_data = new unsigned char[4];
+        green_data = new unsigned char[4];
+        blue_data = new unsigned char[4];
+        set_coverage(coverage);
+    }
+    void set_coverage(unsigned char coverage)
+    {
+        for (unsigned long index = 0; index < allocated; ++index)
+            red_data[index] = green_data[index] = blue_data[index] = coverage;
         touch_gen();
     }
 };
@@ -288,6 +311,7 @@ class RenderingRegressionTest : public UniverseFixture
         UniverseFixture::SetUp();
         // Reference images compare fixed instants; dedicated phase tests advance ice explicitly.
         set(dynamic_surface_ice, false);
+        set(fancy_star_col, false);
         if (!graphics)
         {
             GTEST_SKIP() << "An OpenGL display is unavailable; run with xvfb-run.";
@@ -305,6 +329,7 @@ class RenderingRegressionTest : public UniverseFixture
         set(dragging, false);
         // Vertex assertions exercise the reference painter; GPU tests compare complete images.
         set(horizon_ground_gpu_reference, true);
+        set(horizon_ground_detail_reference, true);
         set(horizon_reference_trial, 0u);
         // Image comparisons use full detail regardless of host timing. The
         // motion-specific test explicitly exercises adaptive sampling below.
@@ -582,6 +607,248 @@ class RenderingRegressionTest : public UniverseFixture
         EXPECT_TRUE(accelerated == uncropped);
     }
 };
+
+TEST_F(RenderingRegressionTest, Gj1061VegetationRemainsTreesAfterEditingItsBarrenNeighbor)
+{
+    make_star("Sun");
+    class Reader : public CatalogReader
+    {
+        public:
+        using CatalogReader::exorow_from_json;
+        using CatalogReader::resolve_or_create_exostar;
+        using CatalogReader::add_exoplanet_from_row;
+    } reader;
+    Star::load_main_seq_dat();
+    std::ifstream input("catalogs/exoplanets.json");
+    ASSERT_TRUE(input.good());
+    const auto catalog = nlohmann::json::parse(input);
+    std::map<int, std::vector<int>> planets;
+    unsigned int count = 0;
+    Planet* inner = nullptr;
+    Planet* outer = nullptr;
+    set(randomize_txgen, true);
+    set(show_taucalc, false);
+    set(objedtwnd, false);
+    for (const auto& record : catalog)
+    {
+        const auto name = record.value("pl_name", "");
+        if (name != "GJ 1061 b" && name != "GJ 1061 c") continue;
+        bool valid = false, added = false;
+        const auto row = Reader::exorow_from_json(record, &valid);
+        ASSERT_TRUE(valid);
+        auto* host = reader.resolve_or_create_exostar(row, false, &added);
+        ASSERT_NE(host, nullptr);
+        ASSERT_TRUE(reader.add_exoplanet_from_row(row, host, planets, count));
+        auto* body = static_cast<Planet*>(cels[ncelobjs - 1]);
+        body->fictitious_map_height = 64;
+        body->ignore_map_files = true;
+        body->looked_for_maps = true;
+        if (name == "GJ 1061 b") inner = body;
+        else outer = body;
+    }
+    ASSERT_NE(inner, nullptr);
+    ASSERT_NE(outer, nullptr);
+    // Hold the inhabited realization fixed; this test checks editor isolation,
+    // rather than changes to the catalog's atmospheric-inventory estimates.
+    outer->temperature = 294;
+    outer->temperature_supplied = true;
+    outer->has_water = .45;
+    outer->has_water_supplied = true;
+    auto* atmosphere = outer->ensure_atmosphere();
+    atmosphere->surface_pressure = oneatm;
+    atmosphere->pressure_supplied = true;
+    *atmosphere->ensure_composition() = AtmosphereComposition{outer};
+    atmosphere->comp->N2_portion = .78;
+    atmosphere->comp->O2_portion = .21;
+    atmosphere->comp->CO2_portion = .0004;
+    set(editidx, inner->seqno);
+    objedtwnd = true;
+    show_taucalc = true;
+    randomize_txgen = false;
+    // Nearby worlds may finish loading while their neighbor's editor is open.
+    load_textures(outer);
+    EXPECT_FALSE(randomize_txgen);
+    EXPECT_TRUE(show_taucalc);
+    objedtwnd = false;
+    ASSERT_TRUE(go_to_celestial_object(outer->seqno));
+    ASSERT_NE(outer->surf_map, nullptr);
+    SurfaceBiomes field(outer->seqno);
+    SurfaceSampler sampler(outer, outer->surf_map, field, outer->get_equatorial_radius(), 0);
+    int vegetation = 0, trees = 0;
+    for (int row = 0; row < 32; ++row)
+        for (int column = 0; column < 64; ++column)
+        {
+            const double lat = half_pi - (row + .5) * _pi / 32;
+            const double lon = -_pi + (column + .5) * 2 * _pi / 64;
+            if (sampler.vegetation_at(lat, lon))
+            {
+                ++vegetation;
+                trees += sampler.tree_density_at(lat, lon) > 0;
+            }
+        }
+    std::cout << "GJ 1061 c: vegetation=" << vegetation << " tree sites=" << trees
+        << " water=" << outer->has_water << " T=" << outer->temperature
+        << " pressure=" << outer->get_surface_pressure() << " palette="
+        << outer->vegetation_r << ',' << outer->vegetation_g << ',' << outer->vegetation_b << '\n';
+    EXPECT_GT(vegetation, 0);
+    EXPECT_GT(trees, 0);
+}
+
+TEST_F(RenderingRegressionTest, TextureGenerationCapturesOnlyItsOwnEditorsOptionsAndKeepsThemAcrossUiChanges)
+{
+    auto* target = surface();
+    auto* neighbor = make_planet(static_cast<Star*>(target->orbit->center), "Generation neighbor");
+    set(editidx, target->seqno);
+    set(objedtwnd, true);
+    set(randomize_txgen, false);
+    set(show_taucalc, true);
+    const auto selected = texture_generation_options(target);
+    const auto automatic = texture_generation_options(neighbor);
+    EXPECT_FALSE(selected.randomize);
+    EXPECT_TRUE(selected.tau_calculator);
+    EXPECT_TRUE(automatic.randomize);
+    EXPECT_FALSE(automatic.tau_calculator);
+    objedtwnd = false;
+    randomize_txgen = true;
+    show_taucalc = false;
+    {
+        const ScopedTextureGenerationOptions queued(selected);
+        EXPECT_FALSE(texture_randomization_enabled());
+        EXPECT_TRUE(texture_tau_calculator_active());
+        {
+            // Saved-body rendering creates an independent working object.
+            const ScopedTextureGenerationOptions working_copy(neighbor);
+            EXPECT_FALSE(texture_randomization_enabled());
+            EXPECT_TRUE(texture_tau_calculator_active());
+        }
+        EXPECT_FALSE(texture_randomization_enabled());
+    }
+    EXPECT_TRUE(texture_randomization_enabled());
+    EXPECT_FALSE(texture_tau_calculator_active());
+}
+
+TEST_F(RenderingRegressionTest, GoResetsEditorToFirstVisibleTabOnlyWhenItWasClosed)
+{
+    auto* world = surface();
+    set(ImGui::GetIO().DisplaySize, ImVec2(1024, 768));
+    set(objedtwnd, false);
+    set(editidx, world->seqno);
+    set(randomize_txgen, false);
+    set(show_taucalc, true);
+    ASSERT_TRUE(go_to_celestial_object(world->seqno));
+    objedtwnd = true;
+    const auto draw_editor = [&]()
+    {
+        ImGui::SetNextWindowPos(ImVec2(0, 0));
+        ImGui::SetNextWindowSize(ImVec2(950, 650));
+        ImGui::SetNextWindowCollapsed(false);
+        draw_objedit_window(ImGui::GetIO());
+        ImGui::EndFrame();
+        ImGui::NewFrame();
+    };
+    const auto tab_bar = [&]() -> ImGuiTabBar*
+    {
+        auto* window = ImGui::FindWindowByName("Edit Object");
+        return window ? ImGui::GetCurrentContext()->TabBars.GetByKey(window->GetID("##edittabs")) : nullptr;
+    };
+    const auto selected_tab = [&]() -> std::string
+    {
+        auto* bar = tab_bar();
+        if (!bar) return "";
+        auto* tab = ImGui::TabBarFindTabByID(bar, bar->SelectedTabId);
+        return tab ? ImGui::TabBarGetTabName(bar, tab) : "";
+    };
+    draw_editor(); draw_editor();
+    ASSERT_NE(tab_bar(), nullptr);
+    EXPECT_EQ(selected_tab(), "Bulk");
+    ASSERT_GT(tab_bar()->Tabs.Size, 1);
+    tab_bar()->NextSelectedTabId = tab_bar()->Tabs[1].ID;
+    draw_editor(); draw_editor();
+    EXPECT_EQ(selected_tab(), "Orbit");
+    randomize_txgen = false;
+    show_taucalc = true;
+    ASSERT_TRUE(go_to_celestial_object(world->orbit->center->seqno));
+    draw_editor(); draw_editor();
+    EXPECT_EQ(selected_tab(), "Orbit");
+    EXPECT_FALSE(randomize_txgen);
+    EXPECT_TRUE(show_taucalc);
+    objedtwnd = false;
+    ASSERT_TRUE(go_to_celestial_object(world->seqno));
+    objedtwnd = true;
+    draw_editor(); draw_editor();
+    EXPECT_EQ(selected_tab(), "Bulk");
+    EXPECT_TRUE(randomize_txgen);
+    EXPECT_FALSE(show_taucalc);
+
+    auto* satellite = new Satellite;
+    strcpy(satellite->name, "Editor satellite");
+    satellite->orbit = new Orbit;
+    satellite->orbit->center = world;
+    satellite->orbit->semimajor_axis = earth_radius * 2;
+    satellite->orbit->period = oneday;
+    satellite->cenobj = world->cenobj;
+    ASSERT_TRUE(append_cel(satellite));
+    objedtwnd = false;
+    editidx = satellite->seqno;
+    ASSERT_TRUE(go_to_celestial_object(satellite->seqno));
+    objedtwnd = true;
+    draw_editor(); draw_editor();
+    EXPECT_EQ(selected_tab(), "Orbit");
+}
+
+TEST(SceneryLightingTest, CloudsSoftenDirectLightAndShadowsWhilePreservingClearSkiesAndNight)
+{
+    const auto clear = scenery_illumination(1, .03, .8, .2, 0);
+    EXPECT_NEAR(clear.direct, std::sin(.8) * .8, 1e-12);
+    EXPECT_NEAR(clear.ambient, .22 + .03 * .4 + .35 * .2, 1e-12);
+    EXPECT_DOUBLE_EQ(clear.shadow, .8);
+    double previous_shadow = clear.shadow, previous_ambient = clear.ambient;
+    for (double coverage : {.1, .3, .5, .8, 1.0})
+    {
+        const auto cloudy = scenery_illumination(1, .03, .8, .2, coverage);
+        EXPECT_LT(cloudy.shadow, previous_shadow);
+        EXPECT_GT(cloudy.ambient, previous_ambient);
+        previous_shadow = cloudy.shadow;
+        previous_ambient = cloudy.ambient;
+    }
+    const auto overcast = scenery_illumination(1, .03, .8, .2, 1);
+    EXPECT_LT(overcast.direct, clear.direct * .04);
+    EXPECT_LT(overcast.shadow, clear.shadow * .04);
+    const auto clear_night = scenery_illumination(0, .03, -.5, .2, 0);
+    const auto cloudy_night = scenery_illumination(0, .03, -.5, .2, 1);
+    EXPECT_DOUBLE_EQ(clear_night.ambient, cloudy_night.ambient);
+    EXPECT_DOUBLE_EQ(cloudy_night.direct, 0);
+    EXPECT_DOUBLE_EQ(scenery_illumination(1, 0, .8, 1, 1).shadow, 0);
+}
+
+TEST_F(RenderingRegressionTest, LocalCloudCoverRelightsSceneryWithoutMovingTreesOrRocks)
+{
+    auto* world = surface(true);
+    set(show_clouds, true);
+    auto* clouds = new UniformCloudTestMap(0);
+    world->cloud_map = clouds;
+    freeze_surface_time();
+    const auto clear = scenery();
+    ASSERT_GT(clear.size(), 100u);
+    clouds->set_coverage(255);
+    freeze_surface_time();
+    const auto cloudy = scenery();
+    ASSERT_EQ(clear.size(), cloudy.size());
+    int changed = 0;
+    for (size_t index = 0; index < clear.size(); ++index)
+    {
+        EXPECT_EQ(clear[index].pos.x, cloudy[index].pos.x);
+        EXPECT_EQ(clear[index].pos.y, cloudy[index].pos.y);
+        changed += clear[index].col != cloudy[index].col;
+    }
+    EXPECT_GT(changed, 100);
+    clouds->set_coverage(0);
+    freeze_surface_time();
+    const auto restored = scenery();
+    ASSERT_EQ(restored.size(), clear.size());
+    for (size_t index = 0; index < clear.size(); ++index)
+        EXPECT_EQ(restored[index].col, clear[index].col);
+}
 
 TEST(SceneryLightingTest, BlockedLightTracksFluxAndConservesEachColorChannel)
 {
@@ -2163,6 +2430,120 @@ TEST_F(RenderingRegressionTest, RingsQueueWhenThePlanetDiscIsBehindTheCamera)
     EXPECT_GT(callbacks, 0);
 }
 
+TEST_F(RenderingRegressionTest, RingLightingTintsBothTexturesAndFallbackPixels)
+{
+    GLuint texture = 0;
+    glGenTextures(1, &texture);
+    glBindTexture(GL_TEXTURE_2D, texture);
+    const unsigned char white[] = {255, 255, 255, 255};
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, white);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    for (bool textured : {false, true})
+    {
+        const auto paint = [&](double red, double blue)
+        {
+            RingImpostorInput input = {};
+            input.cz = 10;
+            input.inner_r = 1; input.outer_r = 3;
+            input.normal[2] = 1;
+            input.fallback_color = IM_COL32(255, 255, 255, 255);
+            input.ring_map_texture = textured ? texture : 0;
+            input.light_dir[2] = -1;
+            input.amt_lit = 1;
+            input.incident_tint[0] = red;
+            input.incident_tint[1] = .3;
+            input.incident_tint[2] = blue;
+            EXPECT_TRUE(queue_ring_impostor(input, 1, 96, 54, 96));
+            auto pixels = render();
+            ImGui::NewFrame();
+            return pixels;
+        };
+        const auto cool = paint(.1, 1);
+        const auto warm = paint(1, .1);
+        unsigned long cool_red = 0, cool_blue = 0, warm_red = 0, warm_blue = 0;
+        for (size_t pixel = 0; pixel < cool.size(); pixel += 4)
+        {
+            cool_red += cool[pixel]; cool_blue += cool[pixel + 2];
+            warm_red += warm[pixel]; warm_blue += warm[pixel + 2];
+        }
+        EXPECT_GT(cool_blue, 1000u);
+        EXPECT_GT(cool_blue, 3 * cool_red);
+        EXPECT_GT(warm_red, 3 * warm_blue);
+    }
+    glDeleteTextures(1, &texture);
+}
+
+TEST_F(RenderingRegressionTest, HorizonGroundAndSceneryFollowTheOrbitalLightCenter)
+{
+    set(fancy_star_col, true);
+    Planet* world = surface(true);
+    world->ensure_atmosphere()->surface_pressure = 0;
+    auto* host = static_cast<Star*>(world->get_light_center());
+    const auto paint = [&](double index)
+    {
+        host->BV_color = index;
+        freeze_surface_time();
+        return scenery();
+    };
+    const auto cool = paint(-2);
+    const auto warm = paint(2);
+    ASSERT_EQ(cool.size(), warm.size());
+    int changes = 0;
+    for (size_t index = 0; index < cool.size(); ++index) changes += cool[index].col != warm[index].col;
+    EXPECT_GT(changes, 100);
+    static_cast<Star*>(mycenobj)->BV_color = -2;
+    const auto unchanged = paint(2);
+    ASSERT_EQ(warm.size(), unchanged.size());
+    for (size_t index = 0; index < warm.size(); ++index) EXPECT_EQ(warm[index].col, unchanged[index].col);
+}
+
+TEST_F(RenderingRegressionTest, HorizonSkyFollowsHostColorInsteadOfSystemPrimary)
+{
+    set(fancy_star_col, true);
+    Planet* world = surface();
+    world->ensure_atmosphere()->surface_pressure = oneatm;
+    auto* host = static_cast<Star*>(world->get_light_center());
+    const auto paint = [&](double index)
+    {
+        host->BV_color = index;
+        draw_sky_gradient();
+        auto pixels = render();
+        ImGui::NewFrame();
+        return pixels;
+    };
+    const auto cool = paint(-2);
+    const auto warm = paint(2);
+    EXPECT_GT(image_difference(cool, warm), 100);
+    static_cast<Star*>(mycenobj)->BV_color = -2;
+    EXPECT_EQ(paint(2), warm);
+}
+
+TEST_F(RenderingRegressionTest, HorizonCloudsFollowHostSpectrumAcrossColorEdits)
+{
+    set(fancy_star_col, true);
+    Planet* world = surface();
+    world->ensure_atmosphere()->surface_pressure = oneatm;
+    world->cloud_map = new UniformCloudTestMap(255);
+    world->overcast = true;
+    set(show_clouds, true);
+    auto* host = static_cast<Star*>(world->get_light_center());
+    host->viewrel = yaxis;
+    set(altitude, .5);
+    const auto paint = [&](double index)
+    {
+        host->BV_color = index;
+        EXPECT_TRUE(draw_cloudy_sky());
+        auto pixels = render();
+        ImGui::NewFrame();
+        return pixels;
+    };
+    const auto cool = paint(-2);
+    const auto warm = paint(2);
+    EXPECT_GT(image_difference(cool, warm), 100);
+    EXPECT_EQ(paint(2), warm);
+}
+
 TEST_F(RenderingRegressionTest, CumulusInteriorsRemainOpaqueDuringDistanceBlending)
 {
     const auto pixels = clouds(153, 0.25, 1.0);
@@ -3538,15 +3919,24 @@ TEST_F(RenderingRegressionTest, WalkingAcrossVegetationBordersKeepsBothGroundTyp
     }
 }
 
+static ImU32 sunlit_test_surface_color(Planet* world, int red, int green, int blue)
+{
+    const auto daylight = Color::reflected_daylight(world->get_light_center());
+    return IM_COL32(red * daylight.red, green * daylight.green, blue * daylight.blue, 255);
+}
+
 TEST_F(RenderingRegressionTest, ShorelineShowsLandAndShimmeringSeaFromBothSides)
 {
     Planet *world = surface(true);
+    set(show_clouds, false);
     delete world->surf_map;
     world->surf_map = new SceneryTestMap(true, true);
     set(show_terrain, false);
     set(altitude, -0.4);
     const double radius = world->get_equatorial_radius();
     const double coast = biome_border(world);
+    const ImU32 sea_color = sunlit_test_surface_color(world, 20, 100, 160);
+    const ImU32 land_color = sunlit_test_surface_color(world, 80, 140, 30);
     for (double offset : {-0.05, 0.05})
     {
         viewer_lon = coast + offset / radius;
@@ -3569,13 +3959,12 @@ TEST_F(RenderingRegressionTest, ShorelineShowsLandAndShimmeringSeaFromBothSides)
             for (int x = 0; x < render_width; ++x)
             {
                 const int index = (y * render_width + x) * 4;
-                if (x < render_width / 3 && pixels[index] == 20
-                    && pixels[index + 1] == 100 && pixels[index + 2] == 160)
+                const ImU32 color = IM_COL32(pixels[index], pixels[index + 1], pixels[index + 2], 255);
+                if (x < render_width / 3 && color == sea_color)
                 {
                     ++sea;
                 }
-                if (x > render_width * 2 / 3 && pixels[index] == 80
-                    && pixels[index + 1] == 140 && pixels[index + 2] == 30)
+                if (x > render_width * 2 / 3 && color == land_color)
                 {
                     ++land;
                 }
@@ -3590,6 +3979,8 @@ TEST_F(RenderingRegressionTest, ShorelineShowsLandAndShimmeringSeaFromBothSides)
 TEST_F(RenderingRegressionTest, WaterHasNoRocksOrPlants)
 {
     Planet *world = surface(true);
+    set(show_clouds, false);
+    const ImU32 sea_color = sunlit_test_surface_color(world, 20, 100, 160);
     cels[0]->location.local_position = cels[0]->tmprel = Point(0, -1e11, 1e11);
     delete world->surf_map;
     world->surf_map = new SceneryTestMap(false, true);
@@ -3601,7 +3992,7 @@ TEST_F(RenderingRegressionTest, WaterHasNoRocksOrPlants)
         const unsigned int alpha = vertex.col >> IM_COL32_A_SHIFT;
         if (alpha == 255)
         {
-            scenery_vertices += vertex.col != IM_COL32(20, 100, 160, 255);
+            scenery_vertices += vertex.col != sea_color;
         }
     }
     EXPECT_EQ(scenery_vertices, 0);
@@ -3610,9 +4001,11 @@ TEST_F(RenderingRegressionTest, WaterHasNoRocksOrPlants)
 TEST_F(RenderingRegressionTest, BlueVegetationDoesNotTurnIdenticalOceanColorsIntoPlants)
 {
     Planet *world = surface(true);
+    set(show_clouds, false);
     world->vegetation_r = 20;
     world->vegetation_g = 100;
     world->vegetation_b = 160;
+    const ImU32 sea_color = sunlit_test_surface_color(world, 20, 100, 160);
     cels[0]->location.local_position = cels[0]->tmprel = Point(0, -1e11, 1e11);
     for (SurfaceMaterial material : {SurfaceMaterial::water, SurfaceMaterial::vegetation})
     {
@@ -3624,7 +4017,7 @@ TEST_F(RenderingRegressionTest, BlueVegetationDoesNotTurnIdenticalOceanColorsInt
         for (const auto &vertex : vertices)
         {
             const unsigned int alpha = vertex.col >> IM_COL32_A_SHIFT;
-            if (alpha == 255 && vertex.col != IM_COL32(20, 100, 160, 255)) ++scenery_vertices;
+            if (alpha == 255 && vertex.col != sea_color) ++scenery_vertices;
         }
         if (material == SurfaceMaterial::water) EXPECT_EQ(scenery_vertices, 0);
         else EXPECT_GT(scenery_vertices, 0);
@@ -4275,6 +4668,13 @@ TEST_F(RenderingRegressionTest, DistantPlantsShareTheGroundHorizonRefractionScal
     world->volumetric_mean_radius = 14186858;
     world->oblateness = 0;
     world->temperature = 323.402;
+    // This test isolates refraction rather than seasonal crown dormancy.
+    world->veg_min_temp = 260;
+    world->veg_max_temp = 400;
+    // Distinguish crown geometry from the green source-map pixels below it.
+    world->vegetation_r = 20;
+    world->vegetation_g = 180;
+    world->vegetation_b = 20;
     delete world->surf_map;
     world->surf_map = new DistantPlantTestMap(world->get_equatorial_radius());
     world->plant_trunk_height = 2;
@@ -4282,34 +4682,42 @@ TEST_F(RenderingRegressionTest, DistantPlantsShareTheGroundHorizonRefractionScal
     set(viewer_eye_height, 1.82);
     set(zoom, 30.0);
     set(altitude, 0.0);
-    const auto crown_height = [&](double pressure)
+    const auto crown_vertices = [&](double pressure)
     {
         world->ensure_atmosphere()->surface_pressure = pressure;
-        double sum = 0;
-        int count = 0;
+        std::map<float, float> vertices;
         for (const auto& vertex : scenery())
         {
             const int red = (vertex.col >> IM_COL32_R_SHIFT) & 255;
             const int green = (vertex.col >> IM_COL32_G_SHIFT) & 255;
             const int blue = (vertex.col >> IM_COL32_B_SHIFT) & 255;
-            if (green > 1.2 * red && green > 2 * blue)
+            if (green > 3 * red && green > 3 * blue)
             {
-                sum += vertex.pos.y;
-                ++count;
+                const auto inserted = vertices.emplace(vertex.pos.x, vertex.pos.y);
+                if (!inserted.second) inserted.first->second = std::min(inserted.first->second, vertex.pos.y);
             }
         }
-        EXPECT_GT(count, 0);
-        return count ? sum / count : 0;
+        EXPECT_GT(vertices.size(), 0u);
+        return vertices;
     };
-    const double clear_y = crown_height(oneatm);
-    const double refracted_y = crown_height(658612.5);
+    const auto clear = crown_vertices(oneatm);
+    const auto refracted = crown_vertices(658612.5);
+    std::vector<double> shifts;
+    for (const auto& vertex : clear)
+    {
+        const auto found = refracted.find(vertex.first);
+        if (found != refracted.end()) shifts.push_back(vertex.second - found->second);
+    }
+    ASSERT_GT(shifts.size(), 10u);
+    std::sort(shifts.begin(), shifts.end());
+    const double shift = shifts[shifts.size() / 2];
     const double range = sqrt(2 * world->get_equatorial_radius() * viewer_eye_height);
     const double lift = world->atmospheric_horizon_lift();
     const double focal = dispcx * zoom;
-    // Biome displacement perturbs the distant vegetation strip, so allow for
-    // its spread while distinguishing the ground scale from the inflated range.
-    EXPECT_GT(clear_y - refracted_y, .4 * focal * lift * PLANT_MAX_DIST / range);
-    EXPECT_LT(clear_y - refracted_y, 1.2 * focal * lift * PLANT_MAX_DIST / range);
+    // Match the same horizontal crown vertices. Changes in clipping or crown
+    // coloring must not bias a centroid by admitting a different set of trees.
+    EXPECT_GT(shift, .4 * focal * lift * PLANT_MAX_DIST / range);
+    EXPECT_LT(shift, 1.2 * focal * lift * PLANT_MAX_DIST / range);
 }
 
 TEST_F(RenderingRegressionTest, ShorelineGeometryStaysFiniteAtFullResolution)
@@ -5332,22 +5740,17 @@ TEST_F(RenderingRegressionTest, PanningHazyCoastPreservesDetailedGroundPixels)
     std::cout << "Panning haze coast: reference CPU " << reference_cpu / 4
         << " ms; accelerated CPU " << accelerated_cpu / 4 << " ms" << std::endl;
     #if horizon_motion_ground_sampling
-    // Force the adaptive path independently of the test machine's speed.
+    // A wet coast retains exact samples even when the motion budget is exceeded.
     set(horizon_ground_motion_budget_ms, 0.0);
     capture();
     azimuth += .1;
     const auto moving = capture();
-    EXPECT_EQ(precipitation_stats.ground_sample_stride, 2);
-    EXPECT_FALSE(precipitation_stats.ground_cache_hit);
-    const auto refined = capture();
     EXPECT_EQ(precipitation_stats.ground_sample_stride, 1);
     EXPECT_FALSE(precipitation_stats.ground_cache_hit);
-    for (size_t index = 3; index < refined.first.size(); index += 4)
-        EXPECT_EQ(moving.first[index], refined.first[index]) << index;
-    EXPECT_EQ(capture().first, refined.first);
+    EXPECT_EQ(capture().first, moving.first);
     EXPECT_TRUE(precipitation_stats.ground_cache_hit);
     world->surf_map->touch_gen();
-    EXPECT_EQ(capture().first, refined.first);
+    EXPECT_EQ(capture().first, moving.first);
     EXPECT_FALSE(precipitation_stats.ground_cache_hit);
     #endif
     SDL_SetWindowSize(window, 192, 108);
@@ -7208,20 +7611,23 @@ TEST_F(RenderingRegressionTest, WaterCachesReuseGeometryAndInvalidateSurfaceCert
     EXPECT_EQ(paint(54).geometry_builds, 1u);
     world->surf_map->touch_gen();
     EXPECT_EQ(paint(55).bounds_builds, 1u);
-    delete world->surf_map;
-    world->surf_map = new BlueBiomeTestMap(SurfaceMaterial::ground);
-    horizon_reference_trial = 6;
-    const auto original_land = paint(56);
-    const auto expected_land = last_water_pixels;
-    EXPECT_GT(original_land.land_points, 100u);
-    horizon_reference_trial = 0;
-    const auto land = paint(56);
-    EXPECT_EQ(last_water_pixels, expected_land);
-    EXPECT_EQ(land.geometry_builds, 0u);
-    EXPECT_EQ(land.bounds_builds, 0u);
-    EXPECT_EQ(land.land_points, 0u);
-    EXPECT_EQ(land.samples, 0u);
-    EXPECT_EQ(land.uniform_water_points, 0u);
+    for (SurfaceMaterial material : {SurfaceMaterial::ground, SurfaceMaterial::ice})
+    {
+        delete world->surf_map;
+        world->surf_map = new BlueBiomeTestMap(material);
+        horizon_reference_trial = 6;
+        const auto original_land = paint(56);
+        const auto expected_land = last_water_pixels;
+        EXPECT_GT(original_land.land_points, 100u);
+        horizon_reference_trial = 0;
+        const auto land = paint(56);
+        EXPECT_EQ(last_water_pixels, expected_land);
+        EXPECT_EQ(land.geometry_builds, 0u);
+        EXPECT_EQ(land.bounds_builds, 0u);
+        EXPECT_EQ(land.land_points, 0u);
+        EXPECT_EQ(land.samples, 0u);
+        EXPECT_EQ(land.uniform_water_points, 0u);
+    }
 }
 
 TEST_F(RenderingRegressionTest, GlintColorCachePreservesPhotometricAndWhiteDwarfEdits)
@@ -8994,6 +9400,209 @@ TEST(PlantMeshGeometryTest, ClosedMeshesHaveOutwardFacesAndBoundedDetail)
     }
 }
 
+TEST(VegetationCoverTest, MixedMapColorsProduceSparseGrovesAndMixedWoodland)
+{
+    const RGB3 foliage(80, 140, 30);
+    const auto cover = [&](RGB3 ground) { return vegetation_cover_fraction(ground, foliage); };
+    EXPECT_DOUBLE_EQ(cover(RGB3(200, 175, 125)), 0);
+    EXPECT_DOUBLE_EQ(cover(RGB3(150, 150, 150)), 0);
+    const double sparse = cover(RGB3(130, 125, 80));
+    const double olive = cover(RGB3(110, 115, 60));
+    const double chartreuse = cover(RGB3(130, 140, 60));
+    EXPECT_GT(sparse, 0);
+    EXPECT_LT(sparse, olive);
+    EXPECT_LT(olive, chartreuse);
+    EXPECT_LT(chartreuse, 1);
+    EXPECT_DOUBLE_EQ(cover(foliage), 1);
+    EXPECT_DOUBLE_EQ(cover(RGB3(40, 70, 15)), 1);
+    EXPECT_DOUBLE_EQ(cover(RGB3(0, 0, 0)), 0);
+    EXPECT_DOUBLE_EQ(cover(RGB3(20, 70, 140)), 0);
+}
+
+TEST(SceneryRockColorTest, SeededStonePaletteStaysNeutralAndVariesBetweenObjects)
+{
+    const auto first = scenery_rock_color(1);
+    bool varied = false;
+    for (uint32_t seed = 1; seed < 100; ++seed)
+    {
+        const auto color = scenery_rock_color(seed);
+        EXPECT_EQ(color, scenery_rock_color(seed));
+        EXPECT_GE(color[0], color[1]);
+        EXPECT_GE(color[1], color[2]);
+        EXPECT_LE(int(color[0]) - color[2], 18);
+        EXPECT_GE(color[2], 130);
+        varied = varied || color != first;
+    }
+    EXPECT_TRUE(varied);
+}
+
+TEST(TreeSeasonTest, CrownDormancyUsesWeeksOfDailyMeansAndKeepsSnowSeparate)
+{
+    std::vector<LocalClimate> history(8, uniform_phase_climate(290));
+    const auto appearance = [&](double frost = 0.0)
+    {
+        return tree_appearance(history, -1, 0, 0, 0, 278, 310, frost);
+    };
+    EXPECT_DOUBLE_EQ(appearance().foliage, 1);
+    history.front() = uniform_phase_climate(250);
+    EXPECT_DOUBLE_EQ(appearance().foliage, .875);
+    for (auto& climate : history) climate = uniform_phase_climate(250);
+    EXPECT_DOUBLE_EQ(appearance(1).foliage, 0);
+    EXPECT_DOUBLE_EQ(appearance(1).snow, 1);
+    for (auto& climate : history) climate = uniform_phase_climate(340);
+    EXPECT_DOUBLE_EQ(appearance().foliage, 0);
+    EXPECT_DOUBLE_EQ(appearance().snow, 0);
+    history.assign(8, uniform_phase_climate(290));
+    history.front().current_conditions = true;
+    history.front().land_seasonal_flux.fill(1);
+    history.front().current_mean_k = 290;
+    history.front().sun_x = 1;
+    const auto night = appearance();
+    history.front().sun_x = -1;
+    EXPECT_DOUBLE_EQ(appearance().foliage, night.foliage);
+}
+
+TEST_F(RenderingRegressionTest, TreeSitesSurvivePublishedFrostThawAndSavedPhaseTiles)
+{
+    Planet* world = surface(true);
+    world->has_water = .5;
+    world->temperature = 294;
+    world->temperature_supplied = true;
+    world->veg_min_temp = 260;
+    world->veg_max_temp = 340;
+    delete world->surf_map;
+    auto* map = new WaterPhaseTestMap(64, 32, true);
+    world->surf_map = map;
+    map->set_material_at(.3, .3, SurfaceMaterial::vegetation);
+    SurfaceBiomes field(world->texture_seed());
+    SurfaceSampler sampler(world, map, field, earth_radius, 0);
+    ASSERT_TRUE(sampler.tree_site_at(.3, .3));
+    ASSERT_FALSE(sampler.tree_site_at(.3, -.3));
+    const double density = sampler.tree_density_at(.3, .3);
+    EXPECT_GT(density, 0);
+    world->ensure_atmosphere()->surface_pressure = 6 * oneatm;
+    SurfaceSampler denser_air(world, map, field, earth_radius, 0);
+    EXPECT_DOUBLE_EQ(denser_air.tree_density_at(.3, .3), density);
+    world->ensure_atmosphere()->surface_pressure = oneatm;
+    for (double temperature : {245.0, 295.0, 245.0})
+    {
+        surface_phase_clock.fetch_add(1);
+        const auto climate = uniform_phase_climate(temperature);
+        ASSERT_TRUE(publish_water_phase(*map, climate, temperature * oneday));
+        EXPECT_TRUE(sampler.tree_site_at(.3, .3));
+        EXPECT_FALSE(sampler.tree_site_at(.3, -.3));
+        EXPECT_DOUBLE_EQ(sampler.tree_density_at(.3, .3), density);
+        if (temperature < 273)
+        {
+            EXPECT_EQ(map->material_at(.3, .3), SurfaceMaterial::frost);
+            EXPECT_FALSE(sampler.vegetation_at(.3, .3));
+            EXPECT_GT(sampler.tree_appearance_at(.3, .3, {climate}).snow, .5);
+        }
+        map->water_phase_from_json(map->water_phase_to_json());
+        EXPECT_TRUE(sampler.tree_site_at(.3, .3));
+    }
+}
+
+TEST_F(RenderingRegressionTest, SnowOnFallbackCrownsPreservesLowerBranchesAndGeometry)
+{
+    auto* draw = ImGui::GetBackgroundDrawList();
+    const ImU32 wood = IM_COL32(115, 100, 85, 255), snow = IM_COL32(224, 240, 252, 255);
+    const int begin = draw->VtxBuffer.Size;
+    draw_scenery_crown(draw, ImVec2(96, 54), ImVec2(30, 20), wood, snow, 1);
+    int upper = 0, lower = 0;
+    for (int index = begin; index < draw->VtxBuffer.Size; ++index)
+    {
+        const auto& vertex = draw->VtxBuffer[index];
+        const unsigned int red = (vertex.col >> IM_COL32_R_SHIFT) & 255;
+        if (vertex.pos.y < 40 && red > 115) ++upper;
+        if (vertex.pos.y >= 54)
+        {
+            EXPECT_EQ(red, 115u);
+            ++lower;
+        }
+    }
+    EXPECT_GT(upper, 0);
+    EXPECT_GT(lower, 0);
+}
+
+TEST_F(RenderingRegressionTest, SnowColorsOnlyTheUpperCrownAndPreservesTheTrunk)
+{
+    set(scenery_gpu_reference, false);
+    PlantMeshView view;
+    view.focal = 110; view.center_x = 96; view.center_y = 54;
+    view.ambient = 1; view.light = ImVec4(0, 1, 0, 0);
+    PlantMeshInstance plant;
+    plant.base = ImVec4(0, -3, 8, 3);
+    plant.dimensions = ImVec4(1.5, .75, .2, .1);
+    plant.crown_color = plant.trunk_color = IM_COL32(115, 100, 85, 255);
+    const auto paint = [&](float snow)
+    {
+        plant.season.x = snow;
+        EXPECT_TRUE(prepare_plant_mesh_gpu(view));
+        add_plant_mesh_gpu(plant, 35); flush_plant_mesh_gpu();
+        return render();
+    };
+    const auto bare = paint(0);
+    ImGui::NewFrame();
+    const auto snowy = paint(1);
+    int upper_changes = 0;
+    for (int row = 0; row < 108; ++row)
+        for (int column = 0; column < 192; ++column)
+        {
+            const size_t index = (row * 192 + column) * 4;
+            if (row >= 54) upper_changes += snowy[index] > bare[index];
+            else EXPECT_EQ(snowy[index], bare[index]);
+        }
+    EXPECT_GT(upper_changes, 10);
+    ImGui::NewFrame();
+}
+
+TEST_F(RenderingRegressionTest, PlantVolumeAndSnowReceiveIncidentLightColor)
+{
+    set(scenery_gpu_reference, false);
+    PlantMeshView view;
+    view.focal = 110; view.center_x = 96; view.center_y = 54;
+    view.ambient = 1; view.light = ImVec4(0, 1, 0, 0);
+    PlantMeshInstance plant;
+    plant.base = ImVec4(0, -3, 8, 3);
+    plant.dimensions = ImVec4(1.5, .75, .2, .1);
+    plant.crown_color = plant.trunk_color = IM_COL32(180, 180, 180, 255);
+    for (float snow : {0.0f, 1.0f})
+    {
+        plant.season.x = snow;
+        view.incident_color = ImVec4(.1, .2, 1, 1);
+        ASSERT_TRUE(prepare_plant_mesh_gpu(view));
+        add_plant_mesh_gpu(plant, 35); flush_plant_mesh_gpu();
+        const auto pixels = render();
+        unsigned long red = 0, blue = 0;
+        for (size_t pixel = 0; pixel < pixels.size(); pixel += 4)
+        {
+            red += pixels[pixel]; blue += pixels[pixel + 2];
+        }
+        EXPECT_GT(blue, 1000u);
+        EXPECT_GT(blue, 3 * red);
+        ImGui::NewFrame();
+    }
+}
+
+TEST(PressureHazeTest, DirectAndDiffuseLightCarryTheSourceSpectrumWithoutTintingTwice)
+{
+    const std::array<double, 3> blue = {.1, .3, 1};
+    PressureHaze clear;
+    EXPECT_EQ(clear.surface_illumination(1, blue), blue);
+    EXPECT_EQ(clear.illumination_tint(blue), blue);
+    PressureHaze opaque;
+    opaque.extinction = {1, 1, 1};
+    opaque.sky_opacity = 1;
+    opaque.light = {25.5, 76.5, 255};
+    const auto diffuse = opaque.surface_illumination(1, blue);
+    for (int channel = 0; channel < 3; ++channel)
+    {
+        EXPECT_NEAR(diffuse[channel], .57 * blue[channel], 1e-12);
+        EXPECT_NEAR(opaque.illumination_tint(blue)[channel], blue[channel], 1e-12);
+    }
+}
+
 TEST_F(RenderingRegressionTest, PlantMeshesResolveDepthAcrossBatchesAndPreserveUiState)
 {
     set(scenery_gpu_reference, false);
@@ -9373,4 +9982,139 @@ TEST_F(RenderingRegressionTest, CrownTexturePreview)
     SDL_SetWindowSize(window, 192, 108); SDL_PumpEvents(); SDL_GL_SwapWindow(window);
     ImGui::GetIO().DisplaySize = ImVec2(192, 108);
     ImGui::NewFrame();
+}
+
+TEST(GroundDetailTest, AtlasIsRepeatableAndPressureSelectsDifferentMaterials)
+{
+    const auto a = ground_detail_atlas(), b = ground_detail_atlas();
+    EXPECT_EQ(a, b);
+    EXPECT_EQ(a.size(), 128u*128u*4u);
+    const auto moon = ground_detail_material(0, false);
+    const auto mars = ground_detail_material(.006, false);
+    const auto venus = ground_detail_material(92, false);
+    const auto earth = ground_detail_material(1, true);
+    EXPECT_GT(moon[0], .99);
+    EXPECT_GT(mars[1], .8);
+    EXPECT_GT(venus[2], .99);
+    EXPECT_EQ(earth[3], 1);
+    for (const auto& material : {moon, mars, venus, earth})
+        EXPECT_NEAR(material[0]+material[1]+material[2], 1, 1e-6);
+}
+
+TEST_F(RenderingRegressionTest, GroundDetailChangesNearGroundAndRetainsLava)
+{
+    surface(true);
+    set(horizon_ground_gpu_reference, false);
+    set(altitude, -.2);
+    const auto capture = [&](bool reference)
+    {
+        horizon_ground_detail_reference = reference;
+        freeze_surface_time();
+        find_horizon();
+        draw_horizon();
+        auto pixels = render();
+        ImGui::NewFrame();
+        return pixels;
+    };
+    const auto plain = capture(true);
+    const auto textured = capture(false);
+    EXPECT_GT(image_difference(plain, textured), 0);
+    const auto repeated = capture(false);
+    EXPECT_EQ(image_difference(textured, repeated), 0);
+    EXPECT_GT(horizon_ground_gpu_stats().tiles, 0u);
+    static_cast<Planet*>(cels[whereami])->type = lavaworld;
+    const auto lava_plain = capture(true);
+    const auto lava_detail = capture(false);
+    EXPECT_EQ(image_difference(lava_plain, lava_detail), 0);
+}
+
+TEST_F(RenderingRegressionTest, GroundDetailFrameCostAt720p)
+{
+    surface(true);
+    set(horizon_ground_gpu_reference, false);
+    set(altitude, -.2);
+    render_width = 1280; render_height = 720;
+    SDL_SetWindowSize(window, render_width, render_height);
+    SDL_GL_SwapWindow(window);
+    set(dispcx, 640.0); set(dispcy, 360.0);
+    ImGui::GetIO().DisplaySize = ImVec2(render_width, render_height);
+    std::array<std::vector<double>, 2> frames, preparation;
+    for (int frame = 0; frame < 24; ++frame)
+    {
+        const int arm = frame%2;
+        horizon_ground_detail_reference = arm == 0;
+        freeze_surface_time();
+        const auto start = std::chrono::steady_clock::now();
+        find_horizon(); draw_horizon();
+        const auto prepared = std::chrono::steady_clock::now();
+        render();
+        const auto finished = std::chrono::steady_clock::now();
+        if (frame >= 8)
+        {
+            preparation[arm].push_back(std::chrono::duration<double, std::milli>(prepared-start).count());
+            frames[arm].push_back(std::chrono::duration<double, std::milli>(finished-start).count());
+        }
+        ImGui::NewFrame();
+    }
+    for (int arm = 0; arm < 2; ++arm)
+    {
+        std::sort(frames[arm].begin(), frames[arm].end());
+        std::sort(preparation[arm].begin(), preparation[arm].end());
+        std::cout << "Ground detail " << (arm ? "on" : "off") << ": median preparation "
+            << preparation[arm][4] << " ms, complete 720p frame with readback " << frames[arm][4] << " ms" << std::endl;
+    }
+    SDL_SetWindowSize(window, 192, 108);
+    SDL_GL_SwapWindow(window);
+}
+
+TEST_F(RenderingRegressionTest, PrettyStarColorsShortcutTogglesTheSharedSetting)
+{
+    surface();
+    set(editing, false);
+    set(fancy_star_col, false);
+    process_key_cmd_ctrl_char('j');
+    EXPECT_TRUE(fancy_star_col);
+    EXPECT_TRUE(viewchanged);
+    process_key_cmd_ctrl_char('j');
+    EXPECT_FALSE(fancy_star_col);
+}
+
+TEST_F(RenderingRegressionTest, PrettyStarColorsUpdateExistingCpuAndGpuDiscsWithoutRegeneration)
+{
+    Star* star = make_star("Palette test star", .2*solar_mass);
+    strcpy(star->spectral_type, "M4V");
+    star->temperature = 3210;
+    star->BV_color = 1.6;
+    star->volumetric_mean_radius = .3*solar_radius;
+    star->cenobj = star;
+    star->looked_for_maps = true;
+    star->fictitious_map_height = 16;
+    star->surf_map = new Map(star);
+    star->surf_map->generate_stellar_map(star);
+    const auto generation = star->surf_map->gen;
+    star->location.local_position = star->tmprel = Point(0, 0, 2*star->volumetric_mean_radius);
+    star->location.equatorial_plane = Rotation();
+    set(whereami, -1);
+    set(here, CelestialLocation());
+    set(myeq, 0.0);
+    system_bloom.assign(2, 20);
+    set(bloomrad_cache, system_bloom.data());
+    for (auto mode : {vm_spaceship, vm_skymap})
+    {
+        set(view_mode, mode);
+        fancy_star_col = false;
+        draw_sphere(star, _pi/6);
+        const auto realistic = render();
+        ImGui::NewFrame();
+        fancy_star_col = true;
+        draw_sphere(star, _pi/6);
+        const auto pretty = render();
+        EXPECT_GT(image_difference(realistic, pretty), 0);
+        EXPECT_EQ(star->surf_map->gen, generation);
+        ImGui::NewFrame();
+        fancy_star_col = false;
+        draw_sphere(star, _pi/6);
+        EXPECT_EQ(render(), realistic);
+        ImGui::NewFrame();
+    }
 }

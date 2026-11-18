@@ -12,7 +12,7 @@ namespace alienorum
 {
     enum class NeighborhoodType
     {
-        all, sunlike, orange, red_brown, sirius, subgiants, giants_ob, white_dwarfs
+        all, sunlike, orange, red_dwarfs, sirius, subgiants, giants_ob, white_dwarfs, brown_dwarfs
     };
     enum class NeighborhoodOrder { nearest, brightest };
     enum class NeighborhoodLuminosity { unknown, v, iv_v, iv, iii_iv, iii, ii, i, vii };
@@ -131,6 +131,10 @@ namespace alienorum
         const auto lum = spectrum.luminosity;
         const bool white = spectrum.type == 'D' || lum == NeighborhoodLuminosity::vii || star.is_white_dwarf();
         if (filter == NeighborhoodType::white_dwarfs) return white;
+        const bool brown = !white && (star.mass > 0 ? star.mass < .075*solar_mass
+            : ((spectrum.type && std::strchr("LTY", spectrum.type))
+                || (star.temperature > 0 && star.temperature < 2300)));
+        if (filter == NeighborhoodType::brown_dwarfs) return brown;
         const bool unknown = lum == NeighborhoodLuminosity::unknown;
         const bool dwarf = lum == NeighborhoodLuminosity::v;
         switch (filter)
@@ -142,8 +146,8 @@ namespace alienorum
             case NeighborhoodType::orange:
                 return spectrum.type == 'K' && spectrum.subtype >= 3 && spectrum.subtype < 10
                     && (dwarf || (unknown && neighborhood_dwarf_magnitude(star, spectrum)));
-            case NeighborhoodType::red_brown:
-                return spectrum.type && strchr("MCLTY", spectrum.type)
+            case NeighborhoodType::red_dwarfs:
+                return !brown && !white && spectrum.type && strchr("MCLTY", spectrum.type)
                     && (dwarf || (unknown && (strchr("LTY", spectrum.type) || neighborhood_dwarf_magnitude(star, spectrum))));
             case NeighborhoodType::sirius:
                 return ((spectrum.type == 'A' && spectrum.subtype >= 0 && spectrum.subtype < 10)

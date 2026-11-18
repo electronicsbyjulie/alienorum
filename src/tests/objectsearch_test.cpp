@@ -7,6 +7,7 @@
 #include "../classes/galaxy.h"
 #include "../inputs.h"
 #include "../dialogs.h"
+#include "../housekeeping.h"
 
 using namespace alienorum;
 
@@ -260,6 +261,57 @@ TEST_F(ObjectSearchTest, EveryResultActionUsesTheChosenLiveObject)
     EXPECT_EQ(selected, -1);
     EXPECT_EQ(trackidx, -1);
     EXPECT_EQ(zoom, 1);
+}
+
+TEST_F(ObjectSearchTest, GoResetsClosedEditorsButPreservesVisibleEditorsAndIgnoresInvalidTargets)
+{
+    struct KeyboardContext
+    {
+        ImGuiContext* previous = ImGui::GetCurrentContext();
+        ImGuiContext* context = ImGui::CreateContext();
+        ~KeyboardContext()
+        {
+            ImGui::DestroyContext(context);
+            ImGui::SetCurrentContext(previous);
+        }
+    } keyboard;
+    struct RestoreOptions
+    {
+        bool randomize = randomize_txgen, tau = show_taucalc;
+        ~RestoreOptions() { randomize_txgen = randomize; show_taucalc = tau; }
+    } restore;
+    auto* host = make_star("Editor host");
+    auto* planet = make_planet(host, "Editor target");
+    const auto match = search_objects("Editor target").matches.front();
+    for (bool visible : {false, true})
+    {
+        objedtwnd = visible;
+        randomize_txgen = false;
+        show_taucalc = true;
+        selected = planet->seqno;
+        process_key_cmd_char('o');
+        EXPECT_EQ(whereami, planet->seqno);
+        EXPECT_EQ(randomize_txgen, !visible);
+        EXPECT_EQ(show_taucalc, visible);
+        randomize_txgen = false;
+        show_taucalc = true;
+        ASSERT_TRUE(apply_object_search_action(match, ObjectSearchAction::go));
+        EXPECT_EQ(randomize_txgen, !visible);
+        EXPECT_EQ(show_taucalc, visible);
+    }
+    objedtwnd = false;
+    randomize_txgen = false;
+    show_taucalc = true;
+    EXPECT_FALSE(go_to_celestial_object(-1));
+    EXPECT_FALSE(go_to_celestial_object(ncelobjs));
+    planet->deleted = true;
+    EXPECT_FALSE(go_to_celestial_object(planet->seqno));
+    EXPECT_FALSE(randomize_txgen);
+    EXPECT_TRUE(show_taucalc);
+    planet->deleted = false;
+    set_viewer_location_and_plane();
+    EXPECT_FALSE(randomize_txgen);
+    EXPECT_TRUE(show_taucalc);
 }
 
 TEST_F(ObjectSearchTest, SnapshotSearchHandlesALargeCatalog)

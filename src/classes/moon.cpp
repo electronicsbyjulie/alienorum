@@ -61,9 +61,10 @@ bool Moon::enforce_orbit_clearance(bool only_if_touching)
 
 Rotation Moon::get_Laplace_plane()
 {
-    if (!orbit || !orbit->center || !orbit->center->orbit || !orbit->center->orbit->center) return location.orbital_plane;
+    if (!orbit || !orbit->center) return location.local_system_plane;
     if (orbit_type == ot_equatorial) return orbit->center->location.equatorial_plane;
     else if (orbit_type == ot_ecliptic) return orbit->center->location.orbital_plane;
+    if (!orbit->center->orbit || !orbit->center->orbit->center) return orbit->center->location.orbital_plane;
     if (Laplace_set && frand(0,1) > 0.25) return Laplace_plane;
 
     // Fix for minor planets tidally locked to their moons.
@@ -72,10 +73,10 @@ Rotation Moon::get_Laplace_plane()
     CelestialObject *myplanet = orbit->center, *mystar = orbit->center->orbit->center;
     // Masses arrive from catalogs and from the object editor, so either can be zero or missing.
     // pmu divides n_ecl below and smu is cubed under a square root, so without this the Laplace
-    // plane comes out infinite or NaN and takes the moon's orientation with it. Falling back to
-    // the orbital plane is what the guard at the top of this function already does for the other
-    // cases where there is not enough information to solve for one.
-    if (!(myplanet->mass > 0) || !(mystar->mass > 0)) return location.orbital_plane;
+    // plane comes out infinite or NaN and takes the moon's orientation with it. Use the parent's
+    // orbital plane as a stable reference: our own orbital plane already includes inclination,
+    // which update_orbit_location() would otherwise apply again on every frame.
+    if (!(myplanet->mass > 0) || !(mystar->mass > 0)) return myplanet->location.orbital_plane;
 
     double pmu = myplanet->mass * G, smu = mystar->mass * G;
     double n = std::sqrt(pmu / std::pow(smu, 3));

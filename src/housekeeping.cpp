@@ -2,6 +2,7 @@
 
 #include "housekeeping.h"
 #include "inputs.h"
+#include "dialogs.h"
 #include "visuals.h"        // eclipse_obscuration(): an eclipse dims the daylight computed here
 #include <cstdint>
 #include <unordered_set>
@@ -162,6 +163,14 @@ void set_viewer_surface_location(bool also_set_plane)
     }
     else context.body = nullptr;
     viewchanged = true;
+}
+
+bool go_to_celestial_object(int index)
+{
+    if (!cels || index < 0 || index >= ncelobjs || !cels[index] || cels[index]->deleted) return false;
+    whereami = index;
+    reset_closed_object_editor();
+    return true;
 }
 
 void set_viewer_location_and_plane()

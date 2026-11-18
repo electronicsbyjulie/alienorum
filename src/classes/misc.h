@@ -328,7 +328,7 @@ extern bool firstrun, done, show_grid, show_consln, show_xonsm, show_labels, sho
     show_localsys, label_galaxies, show_galaxy_band, is_mouse_over_window, draggable, dragging, dragged, viewchanged, updating_sats, editing,
     generating_fic_texture, focus_findbox, whtbkgd, objinfwnd, statuswnd, objedtwnd, astwnd, cometwnd, satwnd, addcelwnd, hide_mouse, searched, show_terrain, show_clouds,
     draw_actual_conslines, explorer, neighborhood, locwnd, show_taucalc, randomize_txgen, save_viewer_latlon, have_Gliese, have_BSC, have_HIP,
-    have_Uranio, have_WD, have_CCDM, have_SB9, have_astorb, have_comets, have_exo, have_RC3, have_UNGC, have_GCVS,
+    have_Uranio, have_WD, have_CCDM, have_SB9, have_astorb, have_comets, have_exo, have_RC3, have_UNGC, have_GCVS, fancy_star_col,
     noexo, nosats, keyprobe, mouse_over_menu, menu_clicked, radio_silence, local_tmstep, shortnames, showfails;
 extern std::atomic<bool> abort_load;
 extern std::atomic<bool> load_completed;

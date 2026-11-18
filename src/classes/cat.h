@@ -30,6 +30,7 @@ namespace alienorum
     struct ExoRow
     {
         std::string pl_name, hostname, hd_name, hip_name, st_spectype;
+        std::string companion_aliases;
         double sy_dist=NAN, ra=NAN, dec=NAN, st_lum=NAN, sy_vmag=NAN, st_teff=NAN;
         double st_mass=NAN, st_rad=NAN, st_rotp=NAN;
         double st_age=NAN, st_ageerr1=NAN, st_ageerr2=NAN, st_agelim=NAN;
@@ -132,7 +133,7 @@ namespace alienorum
         static void apply_exoplanet_metallicity(const ExoRow& row, Star* host);
         Star* resolve_or_create_exostar(const ExoRow& row, bool loaded_starsonly, bool* was_new,
             ExactStarSearchIndex *lookup = nullptr);
-        bool add_exoplanet_from_row(const ExoRow& row, Star* host_star, std::map<int, std::vector<int>>& planet_celids, unsigned int& result);
+        bool add_exoplanet_from_row(const ExoRow& row, Star* host_star, std::map<int, std::vector<int>>& planet_celids, unsigned int& result, ExactStarSearchIndex* lookup = nullptr);
 
     private:
         bool abundance_catalogs_loaded = false;
@@ -142,6 +143,7 @@ namespace alienorum
         // Keep the host and planet passes on one snapshot, including after a failed refresh.
         bool exoplanet_tap_attempted = false;
         json exoplanet_tap_catalog = json::array();
+        std::map<std::string, json> exoplanet_status_catalogs;
     };
 }
 

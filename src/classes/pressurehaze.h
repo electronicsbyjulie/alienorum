@@ -74,17 +74,17 @@ namespace alienorum
             }
         }
 
-        std::array<double, 3> illumination_tint() const
+        std::array<double, 3> illumination_tint(std::array<double, 3> incident = {1, 1, 1}) const
         {
-            std::array<double, 3> result = {1, 1, 1};
+            std::array<double, 3> result = incident;
             const double maximum = std::max({light[0], light[1], light[2]});
             if (!active() || maximum <= 0) return result;
             for (int channel = 0; channel < 3; ++channel)
-                result[channel] = 1 - sky_opacity + sky_opacity * light[channel] / maximum;
+                result[channel] = (1 - sky_opacity) * incident[channel] + sky_opacity * light[channel] / maximum;
             return result;
         }
 
-        std::array<double, 3> surface_illumination(double daylight) const
+        std::array<double, 3> surface_illumination(double daylight, std::array<double, 3> incident = {1, 1, 1}) const
         {
             std::array<double, 3> result{};
             const double diffuse = active() ? sky_opacity : 0;
@@ -92,7 +92,7 @@ namespace alienorum
             // of lighting the flat terrain at full direct-sun brightness.
             for (int channel = 0; channel < 3; ++channel)
             {
-                result[channel] = std::clamp(daylight, 0.0, 1.0) * (1 - diffuse)
+                result[channel] = std::clamp(daylight, 0.0, 1.0) * (1 - diffuse) * incident[channel]
                     + .57 * diffuse * light[channel] / 255;
             }
             return result;

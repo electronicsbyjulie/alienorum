@@ -106,15 +106,13 @@ namespace alienorum
             return 1 / (std::pow(nm / 550, 5) * std::expm1(x));
         }
 
-        std::array<double, 3> display_rgb(const Grid& data, const Spectrum& spectrum, double stellar_temperature)
+        std::array<double, 3> display_rgb(const Grid& data, const Spectrum& spectrum, const Spectrum& illumination)
         {
             std::array<double, 3> xyz{}, rgb{};
             for (size_t i = 0; i < sample_count; ++i)
             {
-                const double illumination = planck_shape(data.wavelength[i], stellar_temperature)
-                    / planck_shape(data.wavelength[i], 5778);
                 const double quadrature = i == 0 || i + 1 == sample_count ? .5 : 1;
-                const double flux = data.solar[i] * illumination * spectrum[i] * quadrature;
+                const double flux = data.solar[i] * illumination[i] * spectrum[i] * quadrature;
                 for (int channel = 0; channel < 3; ++channel) xyz[channel] += flux * data.cmf[channel][i];
             }
             constexpr std::array<std::array<double, 3>, 3> matrix =
@@ -126,21 +124,17 @@ namespace alienorum
             return rgb;
         }
 
-        std::array<double, 2> photometry(const Grid& data, const Spectrum& spectrum, double stellar_temperature)
+        std::array<double, 2> photometry(const Grid& data, const Spectrum& spectrum, const Spectrum& illumination)
         {
             std::array<double, 3> reflected{}, reference{};
             for (size_t i = 0; i < sample_count; ++i)
             {
-                const double wavelength = data.wavelength[i];
-                // Preserve the supplied solar spectrum at 5778 K; other illuminants
-                // use a blackbody shape ratio, an approximation without stellar spectra.
-                const double illumination = planck_shape(wavelength, stellar_temperature) / planck_shape(wavelength, 5778);
                 const double quadrature = i == 0 || i + 1 == sample_count ? .5 : 1;
                 for (int band = 0; band < 3; ++band)
                 {
                     const double flux = quadrature * data.solar[i] * data.filters[band][i];
                     reference[band] += flux;
-                    reflected[band] += flux * illumination * spectrum[i];
+                    reflected[band] += flux * illumination[i] * spectrum[i];
                 }
             }
             // Solar broadband zero-point calibration. Constant factors and the
@@ -154,6 +148,18 @@ namespace alienorum
     {
         const auto& data = grid();
         if (!data.valid || !std::isfinite(input.equivalent_axis_au) || input.equivalent_axis_au <= 0) return nullptr;
+        const std::array<double, 10> inputs = {double(input.seed), double(input.neptune), input.equivalent_axis_au,
+            input.earth_masses, input.gravity_m_s2, input.stellar_temperature_k, input.stellar_metallicity_dex,
+            input.carbon_relative_to_iron_dex, input.methane_fraction, input.haze};
+        static thread_local std::array<double, 10> previous{};
+        static thread_local json cached;
+        if (cached.is_object() && std::equal(inputs.begin(), inputs.end(), previous.begin(), [](double a, double b)
+        {
+            return a == b || (std::isnan(a) && std::isnan(b));
+        }))
+        {
+            return cached;
+        }
         std::mt19937 random(input.seed ^ 0x73706563u);
         const auto draw = [&]() { return random() / 4294967296.0; };
         const double mass = std::isfinite(input.earth_masses) && input.earth_masses > 0
@@ -173,6 +179,11 @@ namespace alienorum
             ? std::clamp(input.haze, 0.0, 1.0) : .08 + .3 * draw();
         const double temperature = std::isfinite(input.stellar_temperature_k) && input.stellar_temperature_k > 0
             ? std::clamp(input.stellar_temperature_k, 2000.0, 40000.0) : 5778;
+        Spectrum illumination{};
+        for (size_t i = 0; i < sample_count; ++i)
+        {
+            illumination[i] = planck_shape(data.wavelength[i], temperature) / planck_shape(data.wavelength[i], 5778);
+        }
         Spectrum mean{};
         json colors = json::array(), band_rgb = json::array();
         bool distance_clamped = false;
@@ -204,15 +215,15 @@ namespace alienorum
                 spectrum[i] = mix(spectrum[i], .65, cloud) * absorber;
                 mean[i] += spectrum[i] / 8;
             }
-            colors.push_back(photometry(data, spectrum, temperature));
-            band_rgb.push_back(display_rgb(data, spectrum, temperature));
+            colors.push_back(photometry(data, spectrum, illumination));
+            band_rgb.push_back(display_rgb(data, spectrum, illumination));
         }
-        const auto indices = photometry(data, mean, temperature);
+        const auto indices = photometry(data, mean, illumination);
         if (!std::isfinite(indices[0]) || !std::isfinite(indices[1])) return nullptr;
-        return {{"model", "Cahoy2010_reflected_v1"}, {"status", "estimated"},
+        json result = {{"model", "Cahoy2010_reflected_v1"}, {"status", "estimated"},
             {"source", "Cahoy_Marley_Fortney_2010_ApJ_724_189"}, {"phase_degrees", 0},
             {"BV", indices[0]}, {"VR", indices[1]}, {"bands", colors},
-            {"rgb", display_rgb(data, mean, temperature)}, {"band_rgb", band_rgb},
+            {"rgb", display_rgb(data, mean, illumination)}, {"band_rgb", band_rgb},
             {"equivalent_axis_au", input.equivalent_axis_au}, {"enrichment_solar", enrichment},
             {"neptune_weight", family}, {"stellar_temperature_k", temperature},
             {"stellar_metallicity_used", std::isfinite(input.stellar_metallicity_dex)},
@@ -223,6 +234,9 @@ namespace alienorum
             {"enrichment_grid_clamped", (family < 1 && enrichment > 3) || (family > 0 && enrichment < 10)},
             {"distance_grid_clamped", distance_clamped},
             {"interpretation", "Reflection_grid_with_seeded_cloud_haze_and_methane_scenarios;Bessell_photometry_and_CIE1931_RGB"}};
+        previous = inputs;
+        cached = result;
+        return result;
     }
 
     bool valid_giant_reflectance(const json& model, double bv)

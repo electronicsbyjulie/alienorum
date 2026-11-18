@@ -6,6 +6,7 @@
 #include <map>
 #include <mutex>
 #include <set>
+#include <unordered_map>
 #include "chemistry.h"
 #include "cat.h"
 #include "star.h"
@@ -171,7 +172,13 @@ void CatalogReader::apply_stellar_abundances(Star* host)
 {
     if (!host) return;
     // Ages cover the entire stellar catalog, independently of abundance availability.
-    static std::map<std::string, json> age_tables;
+    struct AgeTable
+    {
+        json catalog;
+        std::unordered_map<std::string, const json*> rows;
+        std::set<std::string> published_sources;
+    };
+    static std::map<std::string, AgeTable> age_tables;
     static std::mutex age_mutex;
     {
         std::lock_guard<std::mutex> guard(age_mutex);
@@ -180,39 +187,44 @@ void CatalogReader::apply_stellar_abundances(Star* host)
         if (table == age_tables.end())
         {
             std::ifstream input(path);
-            const json catalog = input ? json::parse(input, nullptr, false) : json();
-            json index = json::object();
-            index["$published_sources"] = json::object();
+            table = age_tables.try_emplace(path).first;
+            AgeTable& index = table->second;
+            index.catalog = input ? json::parse(input, nullptr, false) : json();
+            const json& catalog = index.catalog;
             if (catalog.is_object() && catalog.contains("rows") && catalog["rows"].is_array())
                 for (const auto& row : catalog["rows"])
                 {
-                    if (row.contains("source")) index["$published_sources"][row["source"].get<std::string>()] = true;
+                    if (row.contains("source")) index.published_sources.insert(row["source"].get<std::string>());
                     for (const auto& alternative : row.value("alternatives", json::array()))
                         if (alternative.contains("source"))
-                            index["$published_sources"][alternative["source"].get<std::string>()] = true;
+                            index.published_sources.insert(alternative["source"].get<std::string>());
                     for (const char* id : {"hip", "hd", "gaia", "name"})
                         if (row.contains(id))
                         {
                             const std::string key = std::string(id) + ":" + (std::string(id) == "name"
                                 ? normalized(row[id].get<std::string>()) : row[id].dump());
-                            if (!index.contains(key)) index[key] = row;
-                            else if (index[key] != row) index[key] = nullptr;
+                            auto entry = index.rows.emplace(key, &row);
+                            if (!entry.second && entry.first->second && *entry.first->second != row)
+                            {
+                                entry.first->second = nullptr;
+                            }
                         }
                 }
-            table = age_tables.emplace(path, std::move(index)).first;
         }
         normalize_uncertain_numbers(host->stellar_age);
         const bool valid_age = std::isfinite(numeric(host->stellar_age, "value_gyr"))
             && numeric(host->stellar_age, "value_gyr") >= 0;
         const bool published = host->stellar_age.is_object() && !host->user_edited && !host->user_added
-            && table->second["$published_sources"].contains(host->stellar_age.value("source", ""));
+            && table->second.published_sources.count(host->stellar_age.value("source", ""));
         if (!valid_age || published)
         {
             for (const auto& key : {"hip:" + std::to_string(host->HIP), "hd:" + std::to_string(host->HD),
                 "gaia:" + std::to_string(host->gaia_source_id), "name:" + normalized(host->name)})
-                if (table->second.contains(key) && table->second[key].is_object())
+            {
+                const auto entry = table->second.rows.find(key);
+                if (entry != table->second.rows.end() && entry->second && entry->second->is_object())
                 {
-                    const json& candidate = table->second[key];
+                    const json& candidate = *entry->second;
                     if ((host->HIP && candidate.contains("hip") && candidate["hip"] != host->HIP)
                         || (host->HD && candidate.contains("hd") && candidate["hd"] != host->HD)
                         || (host->gaia_source_id && candidate.contains("gaia") && candidate["gaia"] != host->gaia_source_id)) continue;
@@ -234,6 +246,7 @@ void CatalogReader::apply_stellar_abundances(Star* host)
                     }
                     break;
                 }
+            }
         }
     }
     const auto keys = [](const json& row)

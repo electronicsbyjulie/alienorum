@@ -323,6 +323,7 @@ namespace alienorum
         std::pair<RGB3, SurfaceMaterial> surface_pixel(unsigned long column, unsigned long row) const;
         std::array<double, 4> surface_pixel_bounds(unsigned long column, unsigned long row) const;
         SurfaceMaterial material_at(double latitude, double longitude);
+        std::pair<RGB3, SurfaceMaterial> underlying_surface_at(double latitude, double longitude);
         bool color_within_cap(double latitude, double longitude, double angle, RGB3 &color,
             bool allow_equal_pixels = false);
         RGB3 color_at_bilinear(double latitude, double longitude) const;

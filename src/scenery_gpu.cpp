@@ -57,6 +57,8 @@ in vec4 aCrownColor;
 in vec4 aTrunkColor;
 in vec2 aVisible;
 in vec3 aShape;
+in vec4 aSnowColor;
+in float aSnow;
 uniform mat4 uProjection;
 uniform float uFringe;
 uniform bool uAA;
@@ -121,6 +123,8 @@ void main()
         }
     }
     vec2 p = point(index, crown, count);
+    if (crown) color.rgb = mix(color.rgb, aSnowColor.rgb,
+        aSnow * smoothstep(.2, .65, (aCrown.y - p.y) / max(aCrown.w, .0001)));
     if (uAA)
     {
         vec2 n = (normal(p - point((index + count - 1) % count, crown, count))
@@ -208,8 +212,8 @@ void main()
             glAttachShader(program, vertex);
             glAttachShader(program, fragment);
             const char* attributes[] = {"aCrown", "aTrunk01", "aTrunk23", "aCrownColor",
-                "aTrunkColor", "aVisible", "aShape"};
-            for (int i = 0; i < 7; ++i) bind_attribute(program, i, attributes[i]);
+                "aTrunkColor", "aVisible", "aShape", "aSnowColor", "aSnow"};
+            for (int i = 0; i < 9; ++i) bind_attribute(program, i, attributes[i]);
             glLinkProgram(program);
             GLint success = 0;
             glGetProgramiv(program, GL_LINK_STATUS, &success);
@@ -280,13 +284,13 @@ void main()
             const size_t offsets[] = {offsetof(SceneryPlantGpu, crown), offsetof(SceneryPlantGpu, trunk),
                 offsetof(SceneryPlantGpu, trunk) + sizeof(ImVec4), offsetof(SceneryPlantGpu, crown_color),
                 offsetof(SceneryPlantGpu, trunk_color), offsetof(SceneryPlantGpu, crown_visible),
-                offsetof(SceneryPlantGpu, segments)};
-            for (int i = 0; i < 7; ++i)
+                offsetof(SceneryPlantGpu, segments), offsetof(SceneryPlantGpu, snow_color), offsetof(SceneryPlantGpu, snow)};
+            for (int i = 0; i < 9; ++i)
             {
                 glEnableVertexAttribArray(i);
                 divisor(i, 1);
-                const bool color = i == 3 || i == 4;
-                glVertexAttribPointer(i, i == 6 ? 3 : (i == 5 ? 2 : 4), color ? GL_UNSIGNED_BYTE : GL_FLOAT,
+                const bool color = i == 3 || i == 4 || i == 7;
+                glVertexAttribPointer(i, i == 8 ? 1 : i == 6 ? 3 : (i == 5 ? 2 : 4), color ? GL_UNSIGNED_BYTE : GL_FLOAT,
                     color ? GL_TRUE : GL_FALSE, sizeof(SceneryPlantGpu), reinterpret_cast<void*>(base + offsets[i]));
             }
             const int vertices = (run.key - 2) * 3 + (batch.aa ? run.key * 6 : 0) + (batch.aa ? 30 : 6);

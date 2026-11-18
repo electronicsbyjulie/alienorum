@@ -30,11 +30,20 @@ namespace alienorum
         std::array<float, 4> surface{};
     };
 
+    struct HorizonGroundDetail
+    {
+        bool active = false;
+        std::array<float, 4> origin{};
+        std::array<float, 4> basis{};
+        std::array<float, 4> material{};
+    };
+    extern bool horizon_ground_detail_reference;
+
     // The CPU certifies each tile's color; the GPU applies the per-pixel terrain
     // coverage and horizon masks. Boundary tiles retain the reference painter.
     bool prepare_horizon_ground_gpu(int width, int height, const std::vector<float> &distances,
         const std::vector<double> &horizon, const std::vector<int> &base_top, bool terrain,
-        const HorizonGroundHaze& haze = {});
+        const HorizonGroundHaze& haze = {}, const HorizonGroundDetail& detail = {});
     void queue_horizon_ground_gpu(std::vector<HorizonGroundRect> rectangles);
     void clear_horizon_ground_gpu();
     void reset_horizon_ground_gpu_stats();

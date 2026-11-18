@@ -16,6 +16,8 @@
 #include "pressurehaze.h"
 #include "../sphere_impostor.h"
 #include "wdcolor.h"
+#include "browncolor.h"
+#include "mdwarfcolor.h"
 
 using namespace alienorum;
 
@@ -75,8 +77,11 @@ Color Color::reflected_daylight(CelestialObject* source, double offset)
 Color Color::color_from_planet(double Vmag, CelestialObject* object, double offset, bool include_atmosphere)
 {
     if (!object) return color_from_magnitude_indices(Vmag, 0);
+    if (object->typeclass() == class_star)
+        return color_from_star(Vmag, static_cast<Star*>(object), object->BV_color+offset);
     const bool planet = object->typeclass() == class_planet || object->typeclass() == class_moon;
-    Color fallback = color_from_magnitude_indices(Vmag, object->BV_color + offset);
+    Color fallback = color_from_magnitude_indices(Vmag, object->BV_color + offset,
+        (object->VR_color != 0 ? object->VR_color : object->BV_color) + offset);
     if (!planet) return fallback;
     auto* body = static_cast<Planet*>(object);
     Color spectral;
@@ -148,12 +153,78 @@ Color Color::color_from_planet(double Vmag, CelestialObject* object, double offs
     return spectral;
 }
 
-Color Color::color_from_star(double Vmag, Star *star, double fallback_BV)
+Color Color::color_from_star(double Vmag, Star *star, double fallback_BV, bool pretty)
 {
-    Color photometric = color_from_magnitude_indices(Vmag, fallback_BV);
+    const double external_yellowing = star ? fallback_BV-star->BV_color : 0;
+    double m_temperature = star && is_m_color_source(star) ? m_dwarf_temperature(star) : 0;
+    double vr = star && star->VR_color != 0
+        ? star->VR_color + fallback_BV - star->BV_color : fallback_BV;
+    if (star && star->is_mira_variable() && star->mira_pulsation.is_object()
+        && star->temperature > 0 && star->mira_pulsation.contains("mean_temperature_K"))
+    {
+        const double reference = star->mira_pulsation["mean_temperature_K"];
+        double optical_temperature = star->temperature;
+        if (star->spectral_type[0] == 'M' && star->maxmag > star->minmag
+            && star->apparent_magnitude >= star->minmag && star->apparent_magnitude <= star->maxmag)
+        {
+            // Oxygen-rich Miras develop a cool, optically thick molecular layer near
+            // minimum light (Reid & Goldston 2002, astro-ph/0106571). Approximate its
+            // broad color using the V-band brightness temperature, without treating
+            // this as a resolved TiO spectrum or changing the physical effective temperature.
+            const double lead = star->mira_pulsation.value("temperature_phase_lead", .05);
+            const double hot_temperature = reference * (1
+                + star->mira_pulsation.value("temperature_fraction", 250.0 / 3050) * cos(2 * _pi * lead));
+            const double hc_over_lambda_k = .01438776877 / V_band;
+            const double visual_surface_flux = std::max(star->mira_surface_brightness(), 1e-12);
+            const double layer_temperature = hc_over_lambda_k / log1p(
+                expm1(hc_over_lambda_k / hot_temperature) / visual_surface_flux);
+            optical_temperature = std::min(optical_temperature, layer_temperature);
+        }
+        m_temperature = optical_temperature;
+        const auto index = [](double temp, double first, double second)
+        {
+            return log(blackbody_flux(temp, second) / blackbody_flux(temp, first)) * invlogmagnbase;
+        };
+        fallback_BV += index(optical_temperature, B_band, V_band) - index(reference, B_band, V_band);
+        vr += index(optical_temperature, V_band, R_band) - index(reference, V_band, R_band);
+    }
+    Color photometric = color_from_magnitude_indices(Vmag, fallback_BV, vr);
     Color linear;
-    if (!star || !star->resolve_wd_color(linear)) return photometric;
-    const double yellowing = fallback_BV - star->BV_color;
+    if (!star) return photometric;
+    const bool brown = brown_color_source(star, linear);
+    const bool white = !brown && star->resolve_wd_color(linear);
+    const bool m_color = is_m_color_source(star);
+    if (!brown && !white && star->is_white_dwarf())
+    {
+        if (pretty)
+        {
+            const double brightness = photometric.luminance();
+            photometric.saturate(1.2);
+            photometric.red = std::max(0.0, photometric.red);
+            photometric.green = std::max(0.0, photometric.green);
+            photometric.blue = std::max(0.0, photometric.blue);
+            const double adjusted = photometric.luminance();
+            if (adjusted > 0)
+            {
+                const double scale = brightness/adjusted;
+                photometric.red *= scale; photometric.green *= scale; photometric.blue *= scale;
+            }
+        }
+        return photometric;
+    }
+    if (!brown && !white && pretty)
+    {
+        if (m_color)
+        {
+            const double index = log(blackbody_flux(m_temperature, V_band)/blackbody_flux(m_temperature, B_band))
+                *invlogmagnbase-bv_correction+external_yellowing;
+            return color_from_magnitude_indices(Vmag, index, index);
+        }
+        return photometric;
+    }
+    if (!brown && !white && !stellar_reference_color(star, linear)) return photometric;
+    if (m_color) linear = m_dwarf_linear_color(m_temperature);
+    const double yellowing = m_color ? external_yellowing : fallback_BV-star->BV_color;
     linear.red *= std::pow(magnbase, yellowing);
     linear.blue *= std::pow(magnbase, -yellowing);
     linear.normalize(1);
@@ -162,6 +233,13 @@ Color Color::color_from_star(double Vmag, Star *star, double fallback_BV)
     Color published(std::pow(wd_srgb_encode(linear.red), default_gamma),
         std::pow(wd_srgb_encode(linear.green), default_gamma),
         std::pow(wd_srgb_encode(linear.blue), default_gamma));
+    if (pretty && white)
+    {
+        published.saturate(7.5);
+        published.red = std::max(0.0, published.red);
+        published.green = std::max(0.0, published.green);
+        published.blue = std::max(0.0, published.blue);
+    }
     const double source_luminance = published.luminance();
     if (!(source_luminance > 0)) return photometric;
     const double scale = photometric.luminance() / source_luminance;
@@ -169,6 +247,25 @@ Color Color::color_from_star(double Vmag, Star *star, double fallback_BV)
     published.green *= scale;
     published.blue *= scale;
     return published;
+}
+
+Color Color::stellar_texture_tint(Star* star)
+{
+    if (!star) return Color(1, 1, 1);
+    const bool mira = star->is_mira_variable() && star->mira_pulsation.is_object()
+        && is_m_color_source(star);
+    if (!fancy_star_col && !mira) return Color(1, 1, 1);
+    Color reference = color_from_star(0, star, star->BV_color, false);
+    if (mira)
+    {
+        const Color linear = m_dwarf_linear_color(star->mira_pulsation.value("mean_temperature_K", star->temperature));
+        reference = Color(pow(wd_srgb_encode(linear.red), default_gamma),
+            pow(wd_srgb_encode(linear.green), default_gamma), pow(wd_srgb_encode(linear.blue), default_gamma));
+    }
+    Color desired = color_from_star(0, star, star->BV_color, fancy_star_col);
+    reference.normalize(1); desired.normalize(1);
+    return Color(desired.red/std::max(reference.red, 1e-9),
+        desired.green/std::max(reference.green, 1e-9), desired.blue/std::max(reference.blue, 1e-9));
 }
 
 RGB3 Color::rgb_from_color(Color c, double mult)

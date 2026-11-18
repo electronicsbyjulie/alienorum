@@ -49,6 +49,28 @@ namespace alienorum
             && temperature >= ORGANIC_LIFE_MIN_TEMP_K && temperature <= ORGANIC_LIFE_MAX_TEMP_K;
     }
 
+    struct TreeAppearance
+    {
+        double foliage = 1, snow = 0;
+    };
+
+    inline TreeAppearance tree_appearance(const std::vector<LocalClimate>& recent_climates,
+        double x, double y, double z, double elevation, double minimum, double maximum, double frost)
+    {
+        TreeAppearance result;
+        result.snow = std::clamp(frost, 0.0, 1.0);
+        if (recent_climates.empty() || !(minimum < maximum)) return result;
+        result.foliage = 0;
+        for (const auto& climate : recent_climates)
+        {
+            // Average several weeks of daily means. A cold night cannot shed a crown.
+            const double temperature = climate.temperature(x, y, z, elevation, false, false, false);
+            result.foliage += vegetation_transition((temperature - minimum + 4) / 8)
+                * vegetation_transition((maximum + 4 - temperature) / 8) / recent_climates.size();
+        }
+        return result;
+    }
+
     class VegetationHabitat
     {
         static constexpr size_t rows = 33;

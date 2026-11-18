@@ -1,3 +1,4 @@
+#include "browncatalog.h"
 #include "../catalog_lock_trace.h"
 #include "numeric.h"
 #include "exoplanetstatus.h"
@@ -30,6 +31,7 @@
 #include <windows.h>
 #endif
 #include "cat.h"
+#include "browncolor.h"
 #include "serial.h"
 #include "cons.h"
 #include "shore.h"
@@ -1459,6 +1461,7 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
 
         //  25- 30  A6    ---   VarType    *Variability type as in GCVS/NSV
         read_field_onebased(buffer, 25, 30, field);
+        s->variability_type = trim(field);
         s->is_eclipsing_binary = is_eclipsing_type(field);
 
         //  34- 39  F6.3  mag   maxMag      Magnitude at max from curve fitting
@@ -1552,6 +1555,24 @@ int alienorum::CatalogReader::read_GCVS_catalog(CelestialObject **cels)
     {
         if (strlen(buffer) < 127) continue;
 
+        read_field_onebased(buffer, 9, 18, field);
+        const std::string designation = squeeze_spaces(field);
+        Star *s = nullptr;
+        auto match = desig_HIP.find(designation);
+        if (match != desig_HIP.end() && match->second > 0 && match->second <= MAX_HIP)
+            s = hipcache[match->second];
+        if (!s)
+        {
+            match = desig_HD.find(designation);
+            if (match != desig_HD.end() && match->second > 0 && match->second <= MAX_HD)
+                s = hdcache[match->second];
+        }
+        if (!s) continue;
+        read_field_onebased(buffer, 42, 51, field);
+        const std::string vartype = trim(field);
+        if (s->variability_type.empty()) s->variability_type = vartype;
+        if (s->variability_period) continue;              // Retain the Hipparcos light curve.
+
         //  89- 90  A2    ---   flt       The photometric system for magnitudes
         read_field_onebased(buffer, 89, 90, field);
         // if (trim(field) != "V") continue;                   // minmag/maxmag are visual everywhere else
@@ -1573,12 +1594,12 @@ int alienorum::CatalogReader::read_GCVS_catalog(CelestialObject **cels)
         // The epoch is of MINIMUM light for eclipsing, ellipsoidal, RV Tau, and RS CVn types, and
         // of maximum for everything else; half a period turns the one into the other.
         read_field_onebased(buffer, 42, 51, field);
-        std::string vartype = trim(field);
         bool eclipsing = is_eclipsing_type(vartype.c_str());
         std::string primary = vartype;
         size_t vtlen = primary.find_first_of("/+:");
         if (vtlen != std::string::npos) primary.resize(vtlen);
-        if (primary[0] == 'E' || primary == "RS" || !primary.compare(0, 2, "RV")) epoch += period / 2;
+        if ((!primary.empty() && primary[0] == 'E') || primary == "RS" || !primary.compare(0, 2, "RV"))
+            epoch += period / 2;
 
         //      53  A1    ---   l_magMax  [<>(] Limit or amplitude symbol on magMax
         //  54- 59  F6.3  mag   magMax    ? Magnitude at maximum brightness
@@ -1596,20 +1617,6 @@ int alienorum::CatalogReader::read_GCVS_catalog(CelestialObject **cels)
         read_field_onebased(buffer, 63, 64, field);
         if (strchr(field, '<')) continue;                   // a faintest-seen limit, not a minimum
         if (strchr(field, '(') || buffer[73] == ')') min1 += magmax;    // Min1 is the amplitude
-
-        //   9- 18  A10   ---   GCVS      Variable star designation
-        read_field_onebased(buffer, 9, 18, field);
-        std::string desig = squeeze_spaces(field);
-
-        Star *s = nullptr;
-        std::map<std::string, int>::iterator it = desig_HIP.find(desig);
-        if (it != desig_HIP.end() && it->second > 0 && it->second <= MAX_HIP) s = hipcache[it->second];
-        if (!s)
-        {
-            it = desig_HD.find(desig);
-            if (it != desig_HD.end() && it->second > 0 && it->second <= MAX_HD) s = hdcache[it->second];
-        }
-        if (!s || s->variability_period) continue;          // Hipparcos fitted this one already
 
         s->minmag = magmax;
         s->maxmag = min1;
@@ -3966,6 +3973,12 @@ void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>&
         return key;
     };
 
+    std::unordered_map<std::string, std::string> normalized_planet_names;
+    for (const auto& entry : planet_names)
+    {
+        normalized_planet_names.emplace(designation_key(entry.first), entry.first);
+    }
+
     for (auto const& [idx, row] : planet_celids)
     {
         Star *s = (Star*)cels[idx];
@@ -4063,14 +4076,11 @@ void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>&
                         found = true;
                         break;
                     }
-                    for (auto const& [dkey, fname] : planet_names)
+                    const auto normalized = normalized_planet_names.find(designation_key(cdesig));
+                    if (normalized != normalized_planet_names.end())
                     {
-                        if (designation_key(cdesig) == designation_key(dkey))
-                        {
-                            designation = dkey;
-                            found = true;
-                            break;
-                        }
+                        designation = normalized->second;
+                        found = true;
                     }
                     if (found)
                     {
@@ -4868,6 +4878,27 @@ int CatalogReader::read_starname_dat(CelestialObject **objects)
     std::ifstream input("starname.dat");
     if (!input) return 0;
     for (ncelobjs = 0; objects[ncelobjs]; ++ncelobjs);
+    std::unordered_map<uint32_t, std::vector<int>> hd_index, hip_index;
+    std::unordered_map<std::string, std::vector<int>> gliese_index, selector_index;
+    const auto index_star = [&](int index)
+    {
+        if (objects[index]->deleted || objects[index]->typeclass() != class_star) return;
+        const Star* star = static_cast<Star*>(objects[index]);
+        if (star->HD) hd_index[star->HD].push_back(index);
+        if (star->HIP) hip_index[star->HIP].push_back(index);
+        if (star->Gliese[0]) gliese_index[star->Gliese].push_back(index);
+        const auto alias = [&](const std::string& value)
+        {
+            const auto key = stellar_alias_key(value);
+            if (!key.empty()) selector_index[key].push_back(index);
+        };
+        alias(star->name);
+        alias(star->Bayer);
+        alias(star->Flamsteed);
+        alias(star->WD);
+        for (const auto& value : star->catalog_aliases) alias(value);
+    };
+    for (int index = 0; objects[index]; ++index) index_star(index);
     std::unordered_set<Star*> assigned;
     bool official = false;
     int num_read = 0;
@@ -4889,7 +4920,19 @@ int CatalogReader::read_starname_dat(CelestialObject **objects)
         const std::string selector = stellar_alias_key(field(49, line.size()));
         if (name.empty()) continue;
         std::set<Star*> matches;
-        for (int i = 0; objects[i]; ++i)
+        std::vector<int> candidates;
+        const auto collect = [&](const auto& table, const auto& key)
+        {
+            const auto found = table.find(key);
+            if (found != table.end()) candidates.insert(candidates.end(), found->second.begin(), found->second.end());
+        };
+        if (hd) collect(hd_index, hd);
+        if (hip) collect(hip_index, hip);
+        if (!gliese.empty()) collect(gliese_index, gliese);
+        if (!selector.empty()) collect(selector_index, selector);
+        std::sort(candidates.begin(), candidates.end());
+        candidates.erase(std::unique(candidates.begin(), candidates.end()), candidates.end());
+        for (int i : candidates)
         {
             if (objects[i]->deleted || objects[i]->typeclass() != class_star) continue;
             Star *star = static_cast<Star*>(objects[i]);
@@ -4937,6 +4980,7 @@ int CatalogReader::read_starname_dat(CelestialObject **objects)
             }
         }
         if (!star->Gliese[0] && !gliese.empty()) snprintf(star->Gliese, sizeof(star->Gliese), "%s", gliese.c_str());
+        index_star(star->seqno);
         if (assigned.count(star) || (star->has_custom_name && (!official || star->user_edited || star->user_added))) continue;
         assigned.insert(star);
         if (name != star->name)
@@ -4947,6 +4991,7 @@ int CatalogReader::read_starname_dat(CelestialObject **objects)
         }
         star->namelen = strlen(star->name);
         star->has_custom_name = true;
+        index_star(star->seqno);
         if (star->multisys && star->multisys->get_member('A') == star)
         {
             for (char slot = 'B'; slot <= 'Z'; ++slot)
@@ -4958,6 +5003,7 @@ int CatalogReader::read_starname_dat(CelestialObject **objects)
                 if (trim(companion->name).empty() || trim(companion->name) == base)
                     snprintf(companion->name, sizeof(companion->name), "%s %c", base.c_str(), slot);
                 companion->namelen = strlen(companion->name);
+                index_star(companion->seqno);
             }
         }
     }
@@ -5298,6 +5344,20 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels, int first_host)
 
         read_field_onebased(buffer, 1, 23, field);
         std::string cenname = trim(field);
+        read_field_onebased(buffer, 25, 47, field);
+        std::string bdyname = trim(field);
+        // The full-name columns follow the companion properties.
+        const bool long_names = cenname.empty() && bdyname.empty();
+        if (long_names)
+        {
+            char full_name[40];
+            read_field_onebased(buffer, 249, 287, full_name);
+            cenname = trim(full_name);
+            read_field_onebased(buffer, 289, 327, full_name);
+            bdyname = trim(full_name);
+            if (cenname.empty() || bdyname.empty()) continue;
+            buffer[248] = '\0';
+        }
         const char* censtr = cenname.c_str();
         A = nullptr;
         // Catalog rows can only attach to exact identifiers or aliases, never fuzzy guesses.
@@ -5329,10 +5389,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels, int first_host)
         double inclination = inclination_supplied ? atof(field) * fiftyseventh : _pi / 2;
         const bool complete_pole = inclination_supplied && node_supplied;
 
-        read_field_onebased(buffer, 25, 47, field);
-        std::string bdyname = trim(field);
         const char* bdystr = bdyname.c_str();
-
         if (bdyname == "(stellar rotation)")
         {
             const auto angle = [&](int first, int last, double& result)
@@ -5446,7 +5503,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels, int first_host)
             continue;
         }
 
-        if (!s && A->multisys)
+        if (!s && A->multisys && !long_names)
         {
             char comp = bdystr[strlen(bdystr)-1];
             if (comp > 'A' && comp <= 'Z') s = A->multisys->get_member(comp);
@@ -6194,7 +6251,7 @@ std::string alienorum::CatalogReader::format_condensed_star_line(Star* s, bool e
     put(67, 75, s->Decl_as_degms());
     put(77, 82, magnitude(s->apparent_magnitude));
     put(84, 98, s->spectral_type);
-    if (!s->BV_color && s->WD.empty()) s->estimate_BV(s->estimate_temperature());
+    if (!s->BV_color && !s->is_bv_observed && s->WD.empty()) s->estimate_BV(s->estimate_temperature());
     if (!s->UB_color && s->WD.empty()) s->estimate_UB(s->estimate_temperature());
     put(100, 105, magnitude(s->BV_color));
     put(107, 112, magnitude(s->UB_color));
@@ -6350,6 +6407,13 @@ std::string alienorum::CatalogReader::format_condensed_star_line(Star* s, bool e
         extra << " ORB1 " << std::quoted(state.dump());
         line += extra.str();
     }
+    if (s->alienorumid.empty())
+    {
+        const json position = json::array({s->right_ascension, s->declination, s->epoch, s->distance_known});
+        std::ostringstream extra;
+        extra << " AST1 " << std::quoted(position.dump());
+        line += extra.str();
+    }
     if (!s->catalog_aliases.empty())
     {
         std::ostringstream aliases;
@@ -6363,6 +6427,7 @@ std::string alienorum::CatalogReader::format_condensed_star_line(Star* s, bool e
 
 int alienorum::CatalogReader::write_condensed_star_cat(ConsBins cb)
 {
+    load_brown_dwarf_supplement();
     int i, n, written = 0;
     char c;
     std::string path = get_condensed_starcat_name();
@@ -6370,6 +6435,8 @@ int alienorum::CatalogReader::write_condensed_star_cat(ConsBins cb)
     if (fp)
     {
         fprintf(fp, "# ORBITS1 %s\n", star_orbits_signature().c_str());
+        const auto brown_signature = brown_dwarf_catalog_signature();
+        if (!brown_signature.empty()) fprintf(fp, "# BROWN20PC1 %s\n", brown_signature.c_str());
         std::unordered_set<Star*> recorded;
         const auto record = [&](Star* object)
         {
@@ -6420,7 +6487,7 @@ int alienorum::CatalogReader::write_condensed_star_cat(ConsBins cb)
 
         #ifndef _WIN32
         // TODO: This command will only execute on Linux - maybe not a problem if only the author ever issues new internal catalogs.
-        system("gzip -k catalogs/soles_alienorum.dat");
+        system("gzip -n -f -k catalogs/soles_alienorum.dat");
         #endif
     }
 
@@ -6438,6 +6505,8 @@ bool alienorum::CatalogReader::bake_condensed_star_orbits()
     try
     {
         fprintf(fp, "# ORBITS1 %s\n", signature.c_str());
+        if (condensed_brown_dwarfs_loaded)
+            fprintf(fp, "# BROWN20PC1 %s\n", brown_dwarf_catalog_signature().c_str());
         for (int i = 0; cels[i]; ++i)
         {
             if (cels[i]->typeclass() == class_star)
@@ -6753,6 +6822,7 @@ std::string alienorum::CatalogReader::get_condensed_starcat_name()
 int alienorum::CatalogReader::read_condensed_star_cat()
 {
     condensed_star_orbits_loaded = false;
+    condensed_brown_dwarfs_loaded = false;
     std::map<Star*, json> orbit_states;
     std::unordered_map<std::string, Star*> saved_stars;
     std::vector<Star*> catalog_stars;
@@ -6786,6 +6856,11 @@ int alienorum::CatalogReader::read_condensed_star_cat()
             std::istringstream header(buffer);
             std::string comment, version, signature;
             header >> comment >> version >> signature;
+            if (version == "BROWN20PC1")
+            {
+                const auto source_signature = brown_dwarf_catalog_signature();
+                condensed_brown_dwarfs_loaded = source_signature.empty() || signature == source_signature;
+            }
             if (version == "ORBITS1")
             {
                 const std::string source_signature = star_orbits_signature();
@@ -6793,6 +6868,20 @@ int alienorum::CatalogReader::read_condensed_star_cat()
             }
             continue;
         }
+        // All fixed fields share this record's bounds.
+        const size_t record_length = strlen(buffer);
+        const auto read_field_onebased = [record_length](const char* record, size_t first, int last, char* value)
+        {
+            if (!first || first > record_length || last < static_cast<int>(first))
+            {
+                value[0] = 0;
+                return;
+            }
+            const size_t offset = first - 1;
+            const size_t count = std::min(static_cast<size_t>(last) - offset, record_length - offset);
+            memcpy(value, record + offset, count);
+            value[count] = 0;
+        };
         Star *s = new Star();
         read_field_onebased(buffer, 1, 14, field);
         s->alienorumid = trim(field);
@@ -6846,37 +6935,64 @@ int alienorum::CatalogReader::read_condensed_star_cat()
 
         read_field_onebased(buffer, 456, 467, field);
         s->WD = trim(field);
-        if (strlen(buffer) > 655)
+        if (record_length > 655)
         {
-            std::istringstream extras(buffer + 655);
-            std::string version, value;
-            while (extras >> version)
+            const char* cursor = buffer + 655;
+            const auto token = [&cursor](std::string& value)
             {
-                if (version == "CHEM1" && extras >> std::quoted(value))
+                while (std::isspace(static_cast<unsigned char>(*cursor))) ++cursor;
+                const char* first = cursor;
+                while (*cursor && !std::isspace(static_cast<unsigned char>(*cursor))) ++cursor;
+                value.assign(first, cursor);
+                return cursor != first;
+            };
+            const auto quoted = [&cursor, &token](std::string& value)
+            {
+                while (std::isspace(static_cast<unsigned char>(*cursor))) ++cursor;
+                if (*cursor != '"') return token(value);
+                ++cursor;
+                value.clear();
+                while (*cursor && *cursor != '"')
+                {
+                    if (*cursor == '\\')
+                    {
+                        ++cursor;
+                        if (!*cursor) return false;
+                    }
+                    value += *cursor++;
+                }
+                if (!*cursor) return false;
+                ++cursor;
+                return true;
+            };
+            std::string version, value;
+            while (token(version))
+            {
+                if (version == "CHEM1" && quoted(value))
                 {
                     json chemistry = json::parse(value, nullptr, false);
                     normalize_uncertain_numbers(chemistry);
                     if (chemistry.is_object()) s->stellar_abundances = std::move(chemistry);
                 }
-                else if (version == "SYS1" && extras >> std::quoted(value))
+                else if (version == "SYS1" && quoted(value))
                 {
                     json system = json::parse(value, nullptr, false);
                     normalize_uncertain_numbers(system);
                     if (system.is_object()) s->stellar_system = std::move(system);
                 }
-                else if (version == "ROT1" && extras >> std::quoted(value))
+                else if (version == "ROT1" && quoted(value))
                 {
                     json rotation = json::parse(value, nullptr, false);
                     normalize_uncertain_numbers(rotation);
                     if (rotation.is_object()) s->stellar_rotation = std::move(rotation);
                 }
-                else if (version == "AGE1" && extras >> std::quoted(value))
+                else if (version == "AGE1" && quoted(value))
                 {
                     json age = json::parse(value, nullptr, false);
                     normalize_uncertain_numbers(age);
                     if (age.is_object()) s->stellar_age = std::move(age);
                 }
-                else if (version == "MET1" && extras >> std::quoted(value))
+                else if (version == "MET1" && quoted(value))
                 {
                     json measurement = json::parse(value, nullptr, false);
                     normalize_uncertain_numbers(measurement);
@@ -6894,7 +7010,7 @@ int alienorum::CatalogReader::read_condensed_star_cat()
                         }
                     }
                 }
-                else if (version == "ORB1" && extras >> std::quoted(value))
+                else if (version == "ORB1" && quoted(value))
                 {
                     json state = json::parse(value);
                     normalize_uncertain_numbers(state);
@@ -6927,13 +7043,24 @@ int alienorum::CatalogReader::read_condensed_star_cat()
                     saved_stars.emplace(baked_star_link_key(state.at(0)), s);
                     orbit_states.emplace(s, std::move(state));
                 }
-                else if (version == "SID1" && extras >> std::quoted(value))
+                else if (version == "SID1" && quoted(value))
                 {
                     saved_stars.emplace(value, s);
                 }
+                else if (version == "AST1" && quoted(value))
+                {
+                    const auto position = json::parse(value, nullptr, false);
+                    if (position.is_array() && position.size() == 4)
+                    {
+                        s->right_ascension = position[0];
+                        s->declination = position[1];
+                        s->epoch = position[2];
+                        s->distance_known = position[3];
+                    }
+                }
                 else if (version == "ALS1")
                 {
-                    while (extras >> std::quoted(value)) s->add_catalog_alias(value);
+                    while (quoted(value)) s->add_catalog_alias(value);
                 }
             }
         }
@@ -7109,6 +7236,7 @@ int alienorum::CatalogReader::read_condensed_star_cat()
 
         read_field_onebased(buffer, 276, 285, field);
         s->sidereal_rotational_period = atof(field) * oneday;
+        if (!s->sidereal_rotational_period) estimate_brown_rotation(s);
         if (!s->sidereal_rotational_period) s->sidereal_rotational_period = oneday*25;
 
         read_field_onebased(buffer, 287, 300, field);
@@ -7640,6 +7768,7 @@ ExoRow CatalogReader::exorow_from_json(const json& source, bool* ok)
         return (it != row.end() && !it->is_null() && it->is_string()) ? it->get<std::string>() : "";
     };
 
+    r.companion_aliases = gets("alt_target_name");
     r.hd_name  = gets("hd_name");
     r.hip_name = gets("hip_name");
 
@@ -7792,6 +7921,7 @@ void CatalogReader::exorow_write_line(FILE* fp, const ExoRow& row)
     write_exo_double(fp, row.radius_observed ? 1 : 0);
     for (double value : {row.st_age, row.st_ageerr1, row.st_ageerr2, row.st_agelim}) write_exo_double(fp, value);
 
+    write_exo_string(fp, row.companion_aliases);
     fputc('\n', fp);
 }
 
@@ -7866,6 +7996,7 @@ bool CatalogReader::exorow_read_line(FILE* fp, ExoRow& row)
     row.st_ageerr1 = read_exo_double(cursor);
     row.st_ageerr2 = read_exo_double(cursor);
     row.st_agelim = read_exo_double(cursor);
+    row.companion_aliases = read_exo_string(cursor);
 
     return true;
 }
@@ -8434,9 +8565,37 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
     return host_star;
 }
 
-bool CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, std::map<int, std::vector<int>>& planet_celids, unsigned int& result)
+bool CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, std::map<int, std::vector<int>>& planet_celids, unsigned int& result, ExactStarSearchIndex* lookup)
 {
     alienorum::CatalogLock catalog_lock(catalog_mutex);
+    // Exact body aliases can identify a stellar companion already loaded by another catalog.
+    // The import-wide index keeps this independent of the size of the stellar catalog.
+    if (!row.companion_aliases.empty())
+    {
+        std::unique_ptr<ExactStarSearchIndex> local_lookup;
+        if (!lookup)
+        {
+            local_lookup = std::make_unique<ExactStarSearchIndex>();
+            lookup = local_lookup.get();
+        }
+        std::istringstream aliases(row.companion_aliases);
+        std::string alias;
+        while (std::getline(aliases, alias, '#'))
+        {
+            const int index = find_object(trim(alias).c_str(), true, 9e29, 0, lookup);
+            if (index < 0 || !cels[index] || cels[index] == host_star) continue;
+            Star* companion = static_cast<Star*>(cels[index]);
+            companion->add_catalog_alias(row.pl_name);
+            companion->add_catalog_alias(alias);
+            if (!(companion->mass > 0) && row.pl_bmassj > 0)
+                companion->mass = row.pl_bmassj*exo_jupiter_to_earth_mass*earth_mass;
+            if (!(companion->volumetric_mean_radius > 0) && row.pl_radj > 0)
+                companion->volumetric_mean_radius = row.pl_radj*exo_jupiter_to_earth_radius*exo_earth_radius_m;
+            estimate_brown_rotation(companion);
+            lookup->add(index, *companion);
+            return false;
+        }
+    }
     // 2. Instantiate and fill target Planet properties
     Planet* new_planet = new Planet();
     new_planet->catalog_designation = row.pl_name;
@@ -9303,6 +9462,14 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
     const char* exocache = "catalogs/exoplanets.json";
     const char* nasa_cache = "catalogs/exoplanets_nasa.json";
     const char* eu_cache = "catalogs/exoplanets_eu.json";
+    const auto status_catalog = [&](const char* path) -> const json&
+    {
+        const auto saved = exoplanet_status_catalogs.find(path);
+        if (saved != exoplanet_status_catalogs.end()) return saved->second;
+        std::ifstream input(path);
+        return exoplanet_status_catalogs.emplace(path,
+            input ? read_exoplanet_status_catalog(input) : json()).first->second;
+    };
     const auto valid_source = [](const json& rows)
     {
         return rows.is_array() && !rows.empty() && std::all_of(rows.begin(), rows.end(), [](const json& row)
@@ -9316,8 +9483,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
         std::error_code error;
         const auto modified = fs::last_write_time(path, error);
         if (error || fs::file_time_type::clock::now() - modified >= std::chrono::hours(24)) return false;
-        std::ifstream input(path);
-        return input && valid_source(json::parse(input, nullptr, false));
+        return valid_source(status_catalog(path));
     };
     const char* derived_cache = stars_only ? "catalogs/exoplanets_stars.dat" : "catalogs/exoplanets_planets.dat";
     const char* position_catalog = "catalogs/exoplanet_host_positions.dat";
@@ -9404,8 +9570,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
     if (abort_load) return 0;
     for (const char* path : {exocache, nasa_cache, eu_cache})
     {
-        std::ifstream input(path);
-        if (input) add_rejection_links(json::parse(input, nullptr, false));
+        add_rejection_links(status_catalog(path));
     }
     add_rejection_links(exoplanet_tap_catalog);
     rejections.resolve();
@@ -9421,7 +9586,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
         std::ifstream cache_header(derived_cache);
         std::string version;
         std::getline(cache_header, version);
-        derived_cache_valid = version == "# EXO_TRANSIT6";
+        derived_cache_valid = version == "# EXO_TRANSIT7";
 
     }
 
@@ -9480,7 +9645,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                 {
                     continue;
                 }
-                if (add_exoplanet_from_row(row, host_star, planet_celids, result))
+                if (add_exoplanet_from_row(row, host_star, planet_celids, result, &host_lookup))
                 {
                     addedexo++;
                 }
@@ -9619,7 +9784,11 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                 std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
                 output << buffer;
                 output.close();
-                if (output && !abort_load) replace_exoplanet_cache(temporary, path);
+                if (output && !abort_load)
+                {
+                    replace_exoplanet_cache(temporary, path);
+                    exoplanet_status_catalogs.erase(path);
+                }
                 std::error_code error;
                 fs::remove(temporary, error);
                 return;
@@ -10042,6 +10211,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
         fs::remove(temporary, error);
     }
     exoplanet_tap_catalog = planets_array;
+    exoplanet_status_catalogs.erase(exocache);
 
     std::string tmp_cache = std::string(derived_cache) + ".tmp";
     FILE* cachefp = fopen(tmp_cache.c_str(), "wb");
@@ -10049,7 +10219,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
     if (cachefp)
     {
         setvbuf(cachefp, cache_io_buf, _IOFBF, sizeof(cache_io_buf));
-        fputs("# EXO_TRANSIT6\n", cachefp);
+        fputs("# EXO_TRANSIT7\n", cachefp);
     }
 
     int rows_written = 0;
@@ -10122,7 +10292,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
             continue;
         }
 
-        if (add_exoplanet_from_row(row, host_star, planet_celids, result))
+        if (add_exoplanet_from_row(row, host_star, planet_celids, result, &host_lookup))
         {
             if (cachefp)
             {

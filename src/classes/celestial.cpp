@@ -16,6 +16,7 @@
 #include "celestial.h"
 #include "objectsearch.h"
 #include "surfaceoptions.h"
+#include "texturegeneration.h"
 #include "shore.h"
 #include "cloudclimate.h"
 #include "surfacephase.h"
@@ -23,6 +24,8 @@
 #include "giantreflectance.h"
 #include "lavafissures.h"
 #include "wdcolor.h"
+#include "browncolor.h"
+#include "mdwarfcolor.h"
 #include "../loaders.h"
 
 using namespace alienorum;
@@ -177,6 +180,9 @@ void CelestialObject::update_texture_color()
     const double generated_bv = measured;
     body->generated_texture_color = map->mean_texture_color(this);
     body->generated_texture_bv = generated_bv;
+    const Color mean_color = body->generated_texture_color;
+    if (mean_color.red > 0 && mean_color.green > 0)
+        VR_color = log(mean_color.red / mean_color.green) * invlogmagnbase - bv_correction;
     // A previous texture may carry a different B-V zero point. Validate its
     // physical provenance independently of the color being replaced.
     const auto& model = body->giant_color_model;
@@ -187,7 +193,7 @@ void CelestialObject::update_texture_color()
     if (spectral)
     {
         Color mean = map->mean_texture_color(this);
-        const double vr = mean.red > 0 ? log(mean.red / mean.green) * invlogmagnbase - bv_correction : measured;
+        const double vr = VR_color;
         mean.normalize(1);
         body->giant_color_model["texture"] =
         {
@@ -2458,10 +2464,11 @@ bool Map::color_within_cap(double lat, double lon, double angle, RGB3 &color, bo
         const unsigned long left = first % image_width, right = last % image_width;
         const unsigned long top = first / image_width, bottom = last / image_width;
         if (left > right || top > bottom) return false;
-        if (uniform_region_generation != gen)
+        const unsigned int revision = surface_revision();
+        if (uniform_region_generation != revision)
         {
             uniform_regions.clear();
-            uniform_region_generation = gen;
+            uniform_region_generation = revision;
 #if PERF_P035
             if (allocated > 64) forget_uniform_owner(this);
 #endif
@@ -2538,6 +2545,19 @@ SurfaceMaterial Map::phase_material(unsigned long column, unsigned long row, Sur
             : (bytes[10] & 2) ? ((bytes[10] & 16) ? SurfaceMaterial::ground : SurfaceMaterial::water) : static_cast<SurfaceMaterial>(bytes[9]);
     }
     return base;
+}
+
+std::pair<RGB3, SurfaceMaterial> Map::underlying_surface_at(double latitude, double longitude)
+{
+    const auto index = idx_of(latitude, longitude);
+    if (index == idx_not_ready || index >= allocated) return {RGB3(0, 0, 0), SurfaceMaterial::unknown};
+    auto material = surface_materials.size() == allocated ? surface_materials[index] : SurfaceMaterial::unknown;
+    if (water_phase && water_phase->generation == gen)
+        material = static_cast<SurfaceMaterial>(water_phase->original_material(index % image_width,
+            index / image_width, static_cast<unsigned char>(material)));
+    if (material == SurfaceMaterial::ice) material = SurfaceMaterial::water;
+    if (material == SurfaceMaterial::frost) material = SurfaceMaterial::ground;
+    return {original_phase_color(index % image_width, index / image_width), material};
 }
 
 bool Map::phase_ocean_at(double latitude, double longitude)
@@ -3569,7 +3589,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
         const bool simulated_life = p->resolve_sim_life(!p->preserve_loaded_parameters);
         const bool life_possible = habitat_possible && simulated_life;
         // Keep palette draws stable even when the life scenario suppresses vegetation.
-        if (!p->preserve_loaded_parameters && p->has_water && habitat_possible && randomize_txgen
+        if (!p->preserve_loaded_parameters && p->has_water && habitat_possible && texture_randomization_enabled()
             && !p->vegetation_r && !p->vegetation_g && !p->vegetation_b)
         {
             CelestialObject *light_center = cel->get_light_center();
@@ -4881,6 +4901,45 @@ void Map::generate_stellar_map(CelestialObject *cel)
     // Physical color calibration is fixed for this texture, independent of the view.
     const double color_correction = bv_correction;
     assert(cel->typeclass() == class_star);
+    if (stellar_regime(cel) == regime_substellar)
+    {
+        const BrownWeather weather(static_cast<Star*>(cel));
+        const unsigned long height = std::max(2UL, static_cast<unsigned long>(cel->fictitious_map_height));
+        const unsigned long width = height*2, count = width*height;
+        auto red = std::make_unique<unsigned char[]>(count);
+        auto green = std::make_unique<unsigned char[]>(count);
+        auto blue = std::make_unique<unsigned char[]>(count);
+        std::vector<Color> pixels(count);
+        double peak = 0;
+        for (unsigned long row = 0; row < height; ++row)
+        {
+            const double latitude = _pi/2 - _pi*row/(height-1);
+            for (unsigned long column = 0; column < width; ++column)
+            {
+                Color& pixel = pixels[row*width+column];
+                pixel = brown_weather_color(weather, latitude, 2*_pi*column/width);
+                peak = std::max({peak, pixel.red, pixel.green, pixel.blue});
+            }
+        }
+        const double scale = 255/peak;
+        for (unsigned long i = 0; i < count; ++i)
+        {
+            red[i] = std::clamp(std::lround(pixels[i].red*scale), 0L, 255L);
+            green[i] = std::clamp(std::lround(pixels[i].green*scale), 0L, 255L);
+            blue[i] = std::clamp(std::lround(pixels[i].blue*scale), 0L, 255L);
+        }
+        std::lock_guard<std::mutex> guard(mtx);
+        delete[] red_data;
+        delete[] green_data;
+        delete[] blue_data;
+        red_data = red.release(); green_data = green.release(); blue_data = blue.release();
+        image_height = height; image_width = width; allocated = count;
+        lat_scale = height/_pi; lon_scale = width/(2*_pi);
+        inv_lat_scale = 1/lat_scale; inv_lon_scale = 1/lon_scale;
+        procedurally_generated = true;
+        touch_gen();
+        return;
+    }
     double T_eff, mass_solar, f_obl, radius_m, mass_g, surface_g, logg_cgs, p_rot_days, tau_conv_days, rossby, activity, spot_dT, gd_beta, gd_mean,
         scale_height, d_granule, granule_correction, cells_across, gran_scale, gran_nyquist, gran_amp, gran_dT, spot_base_deg, net_scale, plage_gain,
         net_gain, mean_spot_rad, edge_scale, edge_amount, fil_scale, bv_at_teff, ref_max, inv_ref_max;
@@ -4891,6 +4950,8 @@ void Map::generate_stellar_map(CelestialObject *cel)
     Star *star = static_cast<Star*>(cel);
     Color wd_linear;
     const bool has_wd_color = star->resolve_wd_color(wd_linear);
+    Color m_linear;
+    const bool has_m_color = stellar_reference_color(star, m_linear);
     int num_groups, num_spots;
     Color ref_col;
     Map *fac = nullptr;
@@ -4922,7 +4983,12 @@ void Map::generate_stellar_map(CelestialObject *cel)
         std::cout << "Allocated " << allocated << " pixels for fictitious stellar map." << std::endl;
 
         stellar_regime_t regime = stellar_regime(cel);
-        T_eff = (cel->temperature > 0) ? cel->temperature : Star::temperature_from_BV(cel->BV_color);
+        T_eff = has_m_color ? (is_m_color_source(star) ? m_dwarf_temperature(star)
+            : ((star->temperature <= 0 && !star->spectral_type[0])
+                ? Star::interpolate_mseq_temp(Star::get_mseqidx_from_BV(star->BV_color)) : star->estimate_temperature()))
+            : ((cel->temperature > 0) ? cel->temperature : Star::temperature_from_BV(cel->BV_color));
+        if (star->is_mira_variable() && star->mira_pulsation.is_object())
+            T_eff = star->mira_pulsation.value("mean_temperature_K", T_eff);
         if (!(T_eff > 0) || isnan(T_eff) || isinf(T_eff)) T_eff = sun_temp;
 
         mass_solar = cel->mass / solar_mass;
@@ -5113,6 +5179,11 @@ void Map::generate_stellar_map(CelestialObject *cel)
                 rgb = wd_srgb_from_linear(Color(wd_linear.red * lum,
                     wd_linear.green * lum, wd_linear.blue * lum));
             }
+            else if (has_m_color)
+            {
+                const Color local = m_dwarf_linear_color(T_local);
+                rgb = wd_srgb_from_linear(Color(local.red*lum, local.green*lum, local.blue*lum));
+            }
             else
             {
                 double bv_local = cel->BV_color + (bv_of(T_local) - bv_at_teff);
@@ -5139,6 +5210,22 @@ void Map::generate_stellar_map(CelestialObject *cel)
         }
     }
 
+    if (has_m_color)
+    {
+        unsigned char peak = 0;
+        for (unsigned long i = 0; i < allocated; ++i)
+            peak = std::max({peak, red_data[i], green_data[i], blue_data[i]});
+        if (peak > 0)
+        {
+            const double scale = 255.0/peak;
+            for (unsigned long i = 0; i < allocated; ++i)
+            {
+                red_data[i] = std::min(255L, std::lround(red_data[i]*scale));
+                green_data[i] = std::min(255L, std::lround(green_data[i]*scale));
+                blue_data[i] = std::min(255L, std::lround(blue_data[i]*scale));
+            }
+        }
+    }
     generating_fic_texture = false;
     if (fac) fac->touch_gen();
     procedurally_generated = true;

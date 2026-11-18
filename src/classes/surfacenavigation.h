@@ -10,6 +10,7 @@ namespace alienorum
 {
     class LocalSurfaceTile;
     class VegetationHabitat;
+    double vegetation_cover_fraction(const RGB3& ground, const RGB3& foliage);
 
     // One material interpretation for horizon painting, scenery, and navigation.
     class SurfaceSampler
@@ -48,6 +49,9 @@ namespace alienorum
         bool vegetation_color(const RGB3 &sample) const;
         bool vegetation_at(double latitude, double longitude);
         double vegetation_density_at(double latitude, double longitude);
+        bool tree_site_at(double latitude, double longitude);
+        double tree_density_at(double latitude, double longitude);
+        TreeAppearance tree_appearance_at(double latitude, double longitude, const std::vector<LocalClimate>& recent_climates);
         bool water_at(double latitude, double longitude);
         bool basin_at(double latitude, double longitude);
         bool water_at(double latitude, double longitude, WaterPatch& patch, bool include_frozen_basins = false);

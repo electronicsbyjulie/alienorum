@@ -146,6 +146,12 @@ namespace
         const std::array<double, 3>& saturation)
     {
         constexpr std::array<double, 3> molar = {.044, .028, .018};
+        bool all_gaseous = true;
+        for (size_t i = 0; i < available.size(); ++i)
+        {
+            if (!(available[i] <= saturation[i] * molar[i] / .044)) all_gaseous = false;
+        }
+        if (all_gaseous) return available;
         std::array<double, 3> gas{};
         double low = .018, high = .044;
         for (int iteration = 0; iteration < 52; ++iteration)
