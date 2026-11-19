@@ -1284,7 +1284,7 @@ void draw_addcel_window(ImGuiIO& io)
         ImGui::EndCombo();
     }
 
-    if (cboceltyp_selected_idx == 4)
+    if (cboceltyp_selected_idx == 7)
         ImGui::Text("Note: Use this to add custom or fictitious objects.\nTo add real satellites (such as ISS, GPS, Iridium,\nHubble, etc.) use the ^ command instead.");
 
     if (ImGui::Button("Go"))
@@ -1297,8 +1297,8 @@ void draw_addcel_window(ImGuiIO& io)
             cel_obj_class cls = cels[addcenidx]->typeclass();
             bool is_cen_planet = (cls == class_planet || cls == class_moon);
 
-            if (cboceltyp_selected_idx == 2 && is_cen_planet) cboceltyp_selected_idx = 3;
-            else if (cboceltyp_selected_idx == 3 && !is_cen_planet) cboceltyp_selected_idx = 2;
+            if (cboceltyp_selected_idx >= 2 && cboceltyp_selected_idx <= 5 && is_cen_planet) cboceltyp_selected_idx = 6;
+            else if (cboceltyp_selected_idx == 6 && !is_cen_planet) cboceltyp_selected_idx = 2;
 
             CelestialObject *cel = nullptr;
             switch (cboceltyp_selected_idx)
@@ -1308,16 +1308,23 @@ void draw_addcel_window(ImGuiIO& io)
 
                 case 2:
                     cel = new Planet();
-                    cel->type = rocky;
+                    cel->type = gas_giant;
                     break;
 
                 case 3:
+                case 4:
+                case 5:
+                    cel = new Planet();
+                    cel->type = rocky;
+                    break;
+
+                case 6:
                     cel = new Moon();
                     cel->type = rocky;
                     ((Moon*)cel)->orbit_type = ot_equatorial;
                     break;
 
-                case 4: cel = new Satellite();  cel->type = artificial;    break;
+                case 7: cel = new Satellite();  cel->type = artificial;    break;
 
                 default:
                 std::cerr << "Unimplemented object type" << std::endl;
@@ -1355,8 +1362,17 @@ void draw_addcel_window(ImGuiIO& io)
                 if (cel->typeclass() == class_planet || cel->typeclass() == class_moon)
                 {
                     Planet* pl = (Planet*)cel;
-                    pl->mass = (cel->typeclass() == class_moon) ? lunar_mass : earth_mass;
-                    if (cls == class_star && pl->orbit) pl->set_habitable_orbit();
+                    if (cboceltyp_selected_idx == 2) pl->mass = jupiter_mass * frand(0.4, frand(1.5, frand(2.5, 13)));
+                    else pl->mass = (cel->typeclass() == class_moon) ? frand(0, lunar_mass) : (earth_mass * frand(0.6, 3.7));
+                    if (cls == class_star && pl->orbit)
+                    {
+                        pl->set_habitable_orbit();
+                        if (cboceltyp_selected_idx == 2) pl->orbit->semimajor_axis *= 10;
+                        else if (cboceltyp_selected_idx == 3) pl->orbit->semimajor_axis *= 3;
+                        else if (cboceltyp_selected_idx == 5) pl->orbit->semimajor_axis *= 0.4;
+
+                        pl->orbit->compute_period(pl->mass);
+                    }
                     pl->classify(pl->is_in_con_HZ(), true);
                     pl->estimate_radius();
                     pl->estimate_albedo_and_absmagn();

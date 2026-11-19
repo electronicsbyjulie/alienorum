@@ -108,10 +108,36 @@ bool show_dev_dial = false;
 int inside_galaxy_idx = -1;
 bool searched = false, focus_findbox = false, whtbkgd = false;
 double mag_limit_adjusted = normal_best_mag_limit;
-const char* lbltypes[nlbltyp] = { "Brightest (A)", "Intrinsic (V)", "Nearby (Sh+N)", "Bayer (Sh+F)", "Flamsteed (F)", "Gould (Sh+G)",
-    "Sunlike (Sh+C)", "Has Planets (Sh+P)", "Planet in HZ (Sh+L)", "Binary Orbit (2)", "Known Poles (Sh+X)" };
-const char* celtypes[nceltyp] = { "Galaxy", "Star", "Planet", "Moon", "Satellite" };
+
+const char* lbltypes[nlbltyp] =
+{
+    "Brightest (A)",
+    "Intrinsic (V)",
+    "Nearby (Sh+N)",
+    "Bayer (Sh+F)",
+    "Flamsteed (F)",
+    "Gould (Sh+G)",
+    "Sunlike (Sh+C)",
+    "Has Planets (Sh+P)",
+    "Planet in HZ (Sh+L)",
+    "Binary Orbit (2)",
+    "Known Poles (Sh+X)"
+};
+
+const char* celtypes[nceltyp] =
+{
+    "Galaxy",
+    "Star",
+    "Jovian Planet",
+    "Outer Planet",
+    "Temperate Planet",
+    "Inner Planet",
+    "Moon",
+    "Spacecraft"
+};
+
 const char* compass[16] = { "N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW" };
+
 bool have_Gliese = false, have_BSC = false, have_HIP = false, have_WD = false, have_CCDM = false, have_SB9 = false, have_Uranio = false,
     have_astorb = false, have_comets = false, have_exo = false, have_RC3 = false, have_UNGC = false, have_GCVS = false,
     noexo = false, nosats = false, radio_silence = false, keyprobe = false, local_tmstep = false;

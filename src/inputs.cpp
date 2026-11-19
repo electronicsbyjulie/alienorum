@@ -695,8 +695,8 @@ void process_key_cmd_char(char c)
         if (addcenidx < 0) return;
         cboceltyp_selected_idx = 2;
         cls = cels[addcenidx]->typeclass();
-        if (cls == class_planet) cboceltyp_selected_idx = 3;
-        else if (cls == class_moon) cboceltyp_selected_idx = 4;
+        if (cls == class_planet) cboceltyp_selected_idx = 6;
+        else if (cls == class_moon) cboceltyp_selected_idx = 7;
         addcelwnd = true;
         break;
 

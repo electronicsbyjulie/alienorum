@@ -145,7 +145,7 @@ const std::time_t J2000_TIME_T = 946684800;
 #define lbltype_planethz 8
 #define lbltype_binary 9
 #define lbltype_knpole 10
-#define nceltyp 5
+#define nceltyp 8
 #define _filter_Hipparcos_stars_appmag 0
 #define _filter_Hipparcos_stars_absmag 0
 #define _cursor_fade 2
