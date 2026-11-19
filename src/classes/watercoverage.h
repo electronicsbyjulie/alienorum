@@ -210,9 +210,15 @@ namespace alienorum
             body->user_edited = true;
             return true;
         }
-        void prepare_generation(CelestialObject *object)
+        void prepare_generation(CelestialObject *object, double displacement = 0)
         {
-            if (object != body || !editable()) return;
+            if (!object || (object->typeclass() != class_planet && object->typeclass() != class_moon)) return;
+            refresh(static_cast<Planet*>(object), displacement);
+            if (!editable()) return;
+            // A supplied waterline belongs to the old terrain. Carry its measured
+            // area onto the replacement terrain, even without a slider edit.
+            if (!pending && body->has_water_supplied && coverage.ready())
+                edit(coverage.percent(body->has_water));
             if (!pending) return;
             if (budget_target)
             {

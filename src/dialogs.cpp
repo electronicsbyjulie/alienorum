@@ -2847,14 +2847,14 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::SameLine();
             if (!generating_fic_texture && ImGui::Button("Update"))
             {
-                water_editor.prepare_generation(cel);
+                water_editor.prepare_generation(cel, shore_displacement);
                 cel->mark_all_maps_for_regen();
             }
             ImGui::SameLine();
             if (!generating_fic_texture && texture_loads_pending.load() == 0 && ImGui::Button("Regenerate"))
             {
                 if (save_tex_thread.joinable()) save_tex_thread.join();
-                water_editor.prepare_generation(cel);
+                water_editor.prepare_generation(cel, shore_displacement);
                 ((Planet*)cel)->preserve_loaded_parameters = false;
                 cel->rnd_seed = rand();
                 cel->user_edited = true;
@@ -2864,7 +2864,7 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::SameLine();
             if (!generating_fic_texture && ImGui::Button("Reseed"))
             {
-                water_editor.prepare_generation(cel);
+                water_editor.prepare_generation(cel, shore_displacement);
                 cel->rnd_seed = 0;
                 cel->randomize();
             }

@@ -2619,6 +2619,56 @@ TEST_F(ShoreNavigationTest, ImportedWaterCoverageUsesEqualAreaAndAcceptsGenerati
 
 }
 
+TEST_F(ShoreNavigationTest, RegenerationPreservesSuppliedCoverageWithoutASliderEdit)
+{
+    Planet *planet = world([](double lat, double) { return sin(lat) < .42; }, false);
+    snprintf(planet->name, sizeof(planet->name), "%s", "Litaui");
+    planet->has_water = .79;
+    planet->has_water_supplied = true;
+    planet->volumetric_mean_radius = earth_radius;
+    planet->temperature = 320;
+    planet->sidereal_rotational_period = oneday;
+    planet->fictitious_map_height = 64;
+    planet->preserve_loaded_parameters = true;
+    WaterCoverage original;
+    original.refresh(planet, 0);
+    ASSERT_TRUE(original.ready());
+    const double target = original.percent(planet->has_water);
+    EXPECT_NEAR(target, 71, 1);
+    WaterCoverageEditor editor;
+    editor.prepare_generation(planet);
+    ASSERT_TRUE(editor.has_target());
+    EXPECT_DOUBLE_EQ(editor.percent(), target);
+    const bool old_randomize = randomize_txgen;
+    randomize_txgen = false;
+    planet->preserve_loaded_parameters = false;
+    planet->rnd_seed = 123456;
+    planet->mark_all_maps_for_regen(true);
+    planet->surf_map = new Map(planet);
+    planet->surf_map->generate_rocky_map(planet);
+    editor.poll(0);
+    for (int pass = 0; pass < 3 && editor.has_target(); ++pass)
+    {
+        wait_for_texture_tasks();
+        editor.poll(0);
+    }
+    randomize_txgen = old_randomize;
+    EXPECT_FALSE(editor.has_target());
+    EXPECT_NEAR(editor.percent(), target, 2);
+    EXPECT_TRUE(planet->has_water_supplied);
+    EXPECT_TRUE(planet->surface_water_model.is_null());
+}
+
+TEST_F(ShoreNavigationTest, RegenerationLeavesUneditedWaterBudgetsInControl)
+{
+    Planet *planet = world([](double lat, double) { return lat < 0; }, false);
+    planet->has_water_supplied = false;
+    WaterCoverageEditor editor;
+    editor.prepare_generation(planet);
+    EXPECT_FALSE(editor.has_target());
+    EXPECT_FALSE(planet->has_water_supplied);
+}
+
 TEST_F(ShoreNavigationTest, WaterCoverageTargetAppliesAfterFirstElevationGeneration)
 {
     Planet *planet = world([](double, double) { return false; }, false);
