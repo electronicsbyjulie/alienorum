@@ -7095,11 +7095,11 @@ void draw_horizon()
             if (first_ground == ground_height) reset_horizon_ground_gpu_stats();
         }
 
-        #if TEXTURED_GROUND
-        const bool ground_detail_active = !horizon_ground_detail_reference && p && !gaseous
-            && cel->type != lavaworld && map && map->is_complete();
-        if (!faded && (paint_biomes || haze.active() || ground_detail_active)
-            && (!bounded_ground || first_ground < ground_height))
+        const bool ground_detail_active = TEXTURED_GROUND && !horizon_ground_detail_reference
+            && p && !gaseous && cel->type != lavaworld && map && map->is_complete();
+        const bool draw_mapped_ground = !faded && (paint_biomes || haze.active() || ground_detail_active)
+            && (!bounded_ground || first_ground < ground_height);
+        if (draw_mapped_ground)
         {
             ImDrawList *ground = ImGui::GetBackgroundDrawList();
             const auto ground_setup_start = std::chrono::steady_clock::now();
@@ -7588,10 +7588,10 @@ void draw_horizon()
                 std::chrono::steady_clock::now() - ground_paint_start).count();
             if (!reuse_ground && ground_stride == 1) full_ground_paint_ms = precipitation_stats.ground_paint_milliseconds;
         }
-        #endif
 
+        const bool draw_water_waves = draw_mapped_ground && surface_water && screen_w > 0;
         bool certified_dry = false;
-        if (horizon_fast_path(6) && surface_water && !faded && screen_w > 0 && surface_radius > 0)
+        if (horizon_fast_path(6) && draw_water_waves && surface_radius > 0)
         {
             const double reach = terrain_mesh ? std::max(surface_range,
                 std::min(std::max(60000.0, surface_range * 8.0), surface_radius * .15)) : surface_range;
@@ -7599,7 +7599,7 @@ void draw_horizon()
             certified_dry = surface.uniform_sample(viewer_lat, viewer_lon, reach / surface_radius + 1e-8,
                 footprint) && !footprint.water;
         }
-        if (surface_water && !faded && screen_w > 0 && !certified_dry)
+        if (draw_water_waves && !certified_dry)
         {
             double wave_t = ImGui::GetTime();
             static std::vector<GlintSource> retained_glint_sources;

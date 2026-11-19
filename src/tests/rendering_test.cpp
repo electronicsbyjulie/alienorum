@@ -3939,12 +3939,21 @@ TEST_F(RenderingRegressionTest, SceneryShadowsFollowTheHostInsteadOfTheSystemPri
     }
 }
 
+static ImU32 sunlit_test_surface_color(Planet* world, int red, int green, int blue)
+{
+    const auto daylight = Color::reflected_daylight(world->get_light_center());
+    return IM_COL32(red * daylight.red, green * daylight.green, blue * daylight.blue, 255);
+}
+
 TEST_F(RenderingRegressionTest, WalkingAcrossVegetationBordersKeepsBothGroundTypesVisible)
 {
     Planet *world = surface(true);
+    set(show_clouds, false);
     set(altitude, -0.4);
     const double radius = world->get_equatorial_radius();
     const double border = biome_border(world);
+    const ImU32 vegetation_color = sunlit_test_surface_color(world, 80, 140, 30);
+    const ImU32 bare_color = sunlit_test_surface_color(world, 160, 120, 80);
     for (int side = -1; side <= 1; side += 2)
     {
         viewer_lon = border + side * 0.05 / radius;
@@ -3958,19 +3967,14 @@ TEST_F(RenderingRegressionTest, WalkingAcrossVegetationBordersKeepsBothGroundTyp
             {
                 continue;
             }
-            vegetated += pixels[index] == 80 && pixels[index + 1] == 140 && pixels[index + 2] == 30;
-            bare += pixels[index] == 160 && pixels[index + 1] == 120 && pixels[index + 2] == 80;
+            const ImU32 color = IM_COL32(pixels[index], pixels[index + 1], pixels[index + 2], 255);
+            vegetated += color == vegetation_color;
+            bare += color == bare_color;
         }
         EXPECT_GT(vegetated, 0) << "Viewer offset: " << side * 0.05 << " m";
         EXPECT_GT(bare, 0) << "Viewer offset: " << side * 0.05 << " m";
         ImGui::NewFrame();
     }
-}
-
-static ImU32 sunlit_test_surface_color(Planet* world, int red, int green, int blue)
-{
-    const auto daylight = Color::reflected_daylight(world->get_light_center());
-    return IM_COL32(red * daylight.red, green * daylight.green, blue * daylight.blue, 255);
 }
 
 TEST_F(RenderingRegressionTest, ShorelineShowsLandAndShimmeringSeaFromBothSides)
@@ -10049,6 +10053,7 @@ TEST(GroundDetailTest, AtlasIsRepeatableAndPressureSelectsDifferentMaterials)
         EXPECT_NEAR(material[0]+material[1]+material[2], 1, 1e-6);
 }
 
+#if TEXTURED_GROUND
 TEST_F(RenderingRegressionTest, GroundDetailChangesNearGroundAndRetainsLava)
 {
     surface(true);
@@ -10114,6 +10119,7 @@ TEST_F(RenderingRegressionTest, GroundDetailFrameCostAt720p)
     SDL_SetWindowSize(window, 192, 108);
     SDL_GL_SwapWindow(window);
 }
+#endif
 
 TEST_F(RenderingRegressionTest, PrettyStarColorsShortcutTogglesTheSharedSetting)
 {

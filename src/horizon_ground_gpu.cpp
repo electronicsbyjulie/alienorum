@@ -232,6 +232,11 @@ void main()
         glUseProgram(previous_program);
         glGenTextures(1, &depth_texture);
         glGenTextures(1, &horizon_texture);
+        return true;
+    }
+
+    static void initialize_detail_texture()
+    {
         glGenTextures(1, &detail_texture);
         GLint old_texture, old_alignment;
         glGetIntegerv(GL_TEXTURE_BINDING_2D, &old_texture);
@@ -267,7 +272,6 @@ void main()
         }
         glBindTexture(GL_TEXTURE_2D, old_texture);
         glPixelStorei(GL_UNPACK_ALIGNMENT, old_alignment);
-        return true;
     }
 
     bool prepare_horizon_ground_gpu(int width, int height, const std::vector<float> &distances,
@@ -285,6 +289,7 @@ void main()
         GLint limit = 0;
         glGetIntegerv(GL_MAX_TEXTURE_SIZE, &limit);
         if (width > limit || height > limit) return false;
+        if (detail.active && !detail_texture) initialize_detail_texture();
 
         GLint previous_texture, previous_row_length, previous_alignment;
         glGetIntegerv(GL_TEXTURE_BINDING_2D, &previous_texture);
