@@ -64,6 +64,7 @@
 #define cumulus_day_maximum 0.71
 #define cloud_opacity_threshold 0.90
 
+// Optional close-up overlay. The base terrain colors are painted independently.
 #define TEXTURED_GROUND 0
 
 // Shoreline and other surface boundary params
