@@ -3647,6 +3647,101 @@ TEST_F(CatalogParsingTest, CachedPublishedWhiteDwarfIsSearchable)
     delete_the_universe();
 }
 
+TEST_F(CatalogParsingTest, InitialExoplanetPassReusesDistantSupplementNamesAndAliases)
+{
+    Star* original = make_star("TRAPPIST-1");
+    original->add_catalog_alias("2MASS J23062928-0502285");
+    original->add_catalog_alias("EPIC 246199087");
+    for (int index = 0; index < 20; ++index)
+        make_star(("Other catalog entry " + std::to_string(index)).c_str());
+    const int count = ncelobjs;
+    TestCatalogReader reader;
+    ExactStarSearchIndex lookup;
+    for (const char* name : {"TRAPPIST-1", "2MASS J23062928-0502285", "EPIC 246199087"})
+    {
+        ExoRow row;
+        row.hostname = name;
+        row.ra = 346.623;
+        row.dec = -5.041;
+        row.sy_dist = 12.4;
+        bool fresh = true;
+        EXPECT_EQ(reader.resolve_or_create_exostar(row, false, &fresh, &lookup), original);
+        EXPECT_FALSE(fresh);
+        EXPECT_EQ(ncelobjs, count);
+        EXPECT_EQ(reader.resolve_or_create_exostar(row, false, &fresh), original);
+        EXPECT_FALSE(fresh);
+        EXPECT_EQ(ncelobjs, count);
+    }
+    delete_the_universe();
+}
+
+TEST_F(CatalogParsingTest, TrappistSupplementHostReceivesItsCachedPlanetsWithoutAnotherStar)
+{
+    load_brown_dwarf_supplement();
+    const int original = find_object("TRAPPIST-1", true, 9e29, 0);
+    ASSERT_GE(original, 0);
+    ExactStarSearchIndex lookup;
+    TestCatalogReader reader;
+    FILE* input = fopen("catalogs/exoplanets_planets.dat", "r");
+    ASSERT_NE(input, nullptr);
+    ExoRow row;
+    unsigned int planets = 0;
+    std::map<int, std::vector<int>> planet_ids;
+    while (reader.exorow_read_line(input, row))
+    {
+        if (row.hostname != "TRAPPIST-1") continue;
+        bool fresh = true;
+        Star* host = reader.resolve_or_create_exostar(row, false, &fresh, &lookup);
+        EXPECT_EQ(host, cels[original]);
+        EXPECT_FALSE(fresh);
+        reader.add_exoplanet_from_row(row, host, planet_ids, planets, &lookup);
+    }
+    fclose(input);
+    EXPECT_GE(planets, 7u);
+    int stars = 0, companions = 0;
+    for (int index = 0; cels[index]; ++index)
+    {
+        if (cels[index]->typeclass() == class_star && !strcmp(cels[index]->name, "TRAPPIST-1")) ++stars;
+        if (cels[index]->typeclass() == class_planet && cels[index]->orbit
+            && cels[index]->orbit->center == cels[original]) ++companions;
+    }
+    EXPECT_EQ(stars, 1);
+    EXPECT_GE(companions, 7);
+    delete_the_universe();
+}
+
+TEST_F(CatalogParsingTest, UltracoolComponentAliasesReusePublishedOrbitTargets)
+{
+    load_brown_dwarf_supplement();
+    const int legacy_inner = find_object("GJ 569 C", true, 9e29, 0);
+    const int canonical_inner = find_object("Gl 569 Bb", true, 9e29, 0);
+    ASSERT_GE(canonical_inner, 0);
+    EXPECT_EQ(legacy_inner, canonical_inner);
+    const int legacy_wide = find_object("SDSS J1416+1348 B", true, 9e29, 0);
+    const int canonical_wide = find_object("ULAS J1416+1348", true, 9e29, 0);
+    ASSERT_GE(canonical_wide, 0);
+    EXPECT_EQ(legacy_wide, canonical_wide);
+    EXPECT_NE(legacy_wide, find_object("SDSS J1416+1348", true, 9e29, 0));
+    delete_the_universe();
+}
+
+TEST_F(CatalogParsingTest, InitialExoplanetPassKeepsSimilarUnrelatedHostNamesDistinct)
+{
+    Star* original = make_star("TRAPPIST-1");
+    TestCatalogReader reader;
+    ExactStarSearchIndex lookup;
+    ExoRow row;
+    row.hostname = "TRAPPIST-2";
+    row.ra = 100;
+    row.dec = 20;
+    row.sy_dist = 100;
+    bool fresh = false;
+    Star* other = reader.resolve_or_create_exostar(row, false, &fresh, &lookup);
+    EXPECT_NE(other, original);
+    EXPECT_TRUE(fresh);
+    delete_the_universe();
+}
+
 TEST_F(CatalogParsingTest, WhiteDwarfHostReloadRetainsTheOriginalObject)
 {
     // Synthetic measurements isolate the host identity from atmospheric and orbital models.

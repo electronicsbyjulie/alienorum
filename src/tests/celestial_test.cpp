@@ -14,6 +14,9 @@
 #include "../classes/surfacenavigation.h"
 #include "../classes/watercoverage.h"
 #include "../classes/cloudclimate.h"
+#include "../classes/terrain_contours.h"
+#include "../classes/shore.h"
+#include "../classes/moon.h"
 #include "surface_phase_fixture.h"
 #include "universe_fixture.h"
 #include "../loaders.h"
@@ -21,6 +24,32 @@
 
 using namespace alienorum;
 using json = nlohmann::json;
+
+TEST(TerrainContoursTest, LiquidBasinsHaveShelvesAndDryCrustsRetainDiverseRelief)
+{
+    const auto wet = TerrainContours::from_physics(6371000, 5.972e24, 288, 101325, true, 51);
+    const auto dry = TerrainContours::from_physics(6052000, 4.867e24, 735, 9.2e6, false, 51);
+    const auto bare = TerrainContours::from_physics(1737000, 7.342e22, 250, 0, false, 51);
+    const auto cold = TerrainContours::from_physics(2575000, 1.345e23, 94, 1.5e5, false, 51);
+    const auto small = TerrainContours::from_physics(50000, 1e18, 180, 0, false, 51);
+    EXPECT_DOUBLE_EQ(wet.strength, 1);
+    EXPECT_GT(wet.height(.5, .7) - wet.height(.5, .3), .35);
+    EXPECT_NEAR(wet.height(.5, wet.boundary), .46, 1e-10);
+    EXPECT_LT(dry.strength, wet.strength);
+    EXPECT_GT(dry.lowland_fraction, bare.lowland_fraction);
+    EXPECT_GT(cold.icy_crust, .7);
+    EXPECT_GT(cold.province_coupling, bare.province_coupling);
+    EXPECT_DOUBLE_EQ(small.strength, 0);
+    EXPECT_DOUBLE_EQ(small.height(.37, .8), .37);
+    EXPECT_GT(wet.province(.5, .7), wet.province(.5, .3));
+    for (int index = 0; index <= 1000; ++index)
+    {
+        const double field = index / 1000.0;
+        EXPECT_GE(wet.height(0, field), 0);
+        EXPECT_LE(wet.height(1, field), 1);
+        if (index) EXPECT_GE(wet.height(.5, field), wet.height(.5, field - .001) - 1e-12);
+    }
+}
 
 TEST(GiantCloudTextureTest, SeededCloudsRepeatWithoutDependingOnSamplingOrder)
 {
@@ -2491,6 +2520,166 @@ class CoverageTestMap : public ShoreTestMap
         touch_gen();
     }
 };
+
+TEST_F(ShoreNavigationTest, GeneratedContoursConserveOceanVolumeAcrossSeedsAndResolutions)
+{
+    const bool previous_randomize = randomize_txgen;
+    struct RestoreRandomize
+    {
+        bool value;
+        ~RestoreRandomize() { randomize_txgen = value; }
+    } restore{previous_randomize};
+    randomize_txgen = false;
+    Star* host = make_star();
+    AtmosphericInventory inventory;
+    inventory.water_mass_fraction = 1.335e21 / (earth_mass * .001);
+    inventory.surface_water_share = 1;
+    for (unsigned int seed : {51u, 7921u, 123456u})
+    {
+        std::vector<double> previous_heights;
+        for (unsigned int resolution : {64u, 128u})
+        {
+            SCOPED_TRACE(std::to_string(seed) + ":" + std::to_string(resolution));
+            Planet* planet = make_planet(host);
+            planet->temperature = 288;
+            planet->temperature_supplied = true;
+            planet->sidereal_rotational_period = oneday;
+            planet->has_water = .5;
+            planet->has_water_supplied = true;
+            planet->preserve_loaded_parameters = true;
+            planet->ensure_atmosphere()->surface_pressure = oneatm;
+            planet->fictitious_map_height = resolution;
+            planet->rnd_seed = seed;
+            planet->surf_map = new Map(planet);
+            planet->surf_map->generate_rocky_map(planet);
+            WaterCoverage coverage;
+            coverage.refresh(planet, 0);
+            ASSERT_TRUE(coverage.editable());
+            const auto heights = coverage.height_samples();
+            const auto range = std::minmax_element(heights.begin(), heights.end());
+            EXPECT_GT(*range.second - *range.first, .3);
+            const auto budget = CosmicShore::estimate_atmosphere(*host, *planet, inventory);
+            const auto water = CosmicShore::estimate_surface_water(*planet, budget.diagnostics, heights);
+            ASSERT_TRUE(water.valid);
+            const double depth = water.diagnostics["equivalent_depth_m"].get<double>();
+            EXPECT_NEAR(water.diagnostics["represented_depth_m"].get<double>(), depth, 1e-7);
+            const double surface_fraction = budget.diagnostics["water_partition"]["surface_condensed_mass_fraction"].get<double>();
+            const double expected_depth = surface_fraction * (planet->mass * .001)
+                / (1000 * 4 * _pi * planet->volumetric_mean_radius * planet->volumetric_mean_radius);
+            EXPECT_NEAR(depth, expected_depth, 1e-8);
+            EXPECT_GT(depth, 1000);
+            EXPECT_LE(depth, 2620);
+            EXPECT_GT(water.diagnostics["coverage_fraction"].get<double>(), .4);
+            EXPECT_LT(water.diagnostics["coverage_fraction"].get<double>(), .95);
+            EXPECT_NEAR(coverage.percent(water.level) * .01,
+                water.diagnostics["coverage_fraction"].get<double>(), 1e-4);
+            if (!previous_heights.empty())
+            {
+                ASSERT_EQ(heights.size(), previous_heights.size());
+                double error = 0;
+                for (size_t index = 0; index < heights.size(); ++index)
+                    error += std::abs(heights[index] - previous_heights[index]) / heights.size();
+                EXPECT_LT(error, .025);
+            }
+            previous_heights = heights;
+        }
+    }
+}
+
+TEST_F(ShoreNavigationTest, LiquidSurfaceSatellitesShareTheBasinContours)
+{
+    Planet* primary = make_planet(make_star());
+    Moon* moon = new Moon();
+    moon->mass = .1 * earth_mass;
+    moon->volumetric_mean_radius = .5 * earth_radius;
+    moon->type = rocky;
+    moon->temperature = 288;
+    moon->temperature_supplied = true;
+    moon->has_water = .5;
+    moon->has_water_supplied = true;
+    moon->preserve_loaded_parameters = true;
+    moon->sidereal_rotational_period = 3 * oneday;
+    moon->orbit = new Orbit();
+    moon->orbit->center = primary;
+    moon->orbit->semimajor_axis = 8e8;
+    moon->orbit->compute_period(moon->mass);
+    moon->cenobj = primary->cenobj;
+    moon->ensure_atmosphere()->surface_pressure = oneatm;
+    moon->fictitious_map_height = 64;
+    moon->rnd_seed = 51;
+    ASSERT_TRUE(append_cel(moon));
+    moon->surf_map = new Map(moon);
+    moon->surf_map->generate_rocky_map(moon);
+    WaterCoverage coverage;
+    coverage.refresh(moon, 0);
+    ASSERT_TRUE(coverage.editable());
+    const auto range = std::minmax_element(coverage.height_samples().begin(), coverage.height_samples().end());
+    EXPECT_GT(*range.second - *range.first, .3);
+    EXPECT_GT(coverage.percent(.5), 30);
+    EXPECT_LT(coverage.percent(.5), 95);
+}
+
+TEST_F(ShoreNavigationTest, GeneratedProvincesFollowDiverseCrustsAndRetainImportedHeights)
+{
+    struct Scenario
+    {
+        double radius, mass, temperature, pressure;
+        bool icy;
+    };
+    const Scenario scenarios[] =
+    {
+        {6371000, 5.972e27, 288, 101325, false},
+        {6052000, 4.867e27, 735, 9.2e6, false},
+        {3390000, 6.417e26, 210, 600, false},
+        {1737000, 7.342e25, 250, 0, false},
+        {2575000, 1.345e26, 94, 1.5e5, true},
+        {50000, 1e21, 180, 0, false}
+    };
+    const bool previous_randomize = randomize_txgen;
+    struct RestoreRandomize
+    {
+        bool value;
+        ~RestoreRandomize() { randomize_txgen = value; }
+    } restore{previous_randomize};
+    randomize_txgen = false;
+    int scenario_index = 0;
+    for (const auto& scenario : scenarios)
+    {
+        Planet* planet = make_planet(make_star());
+        planet->volumetric_mean_radius = scenario.radius;
+        planet->mass = scenario.mass;
+        planet->temperature = scenario.temperature;
+        planet->temperature_supplied = true;
+        planet->type = scenario.icy ? icy : rocky;
+        planet->sidereal_rotational_period = oneday;
+        planet->has_water = scenario_index == 0 ? .50 : 0;
+        planet->has_water_supplied = true;
+        planet->preserve_loaded_parameters = true;
+        planet->ensure_atmosphere()->surface_pressure = scenario.pressure;
+        planet->fictitious_map_height = 96;
+        planet->rnd_seed = 7921;
+        planet->surf_map = new Map(planet);
+        planet->surf_map->generate_rocky_map(planet);
+        ASSERT_TRUE(planet->surf_map->is_complete());
+        const size_t count = planet->surf_map->get_width() * planet->surf_map->get_height();
+        std::vector<float> original(count), retained(count);
+        planet->surf_map->export_bump(original.data());
+        const auto range = std::minmax_element(original.begin(), original.end());
+        EXPECT_GT(*range.second - *range.first, 0);
+        if (const char* folder = std::getenv("ALIENORUM_TERRAIN_PREVIEW"))
+        {
+            std::filesystem::create_directories(folder);
+            const std::string prefix = std::string(folder) + "/contours_" + std::to_string(scenario_index);
+            EXPECT_TRUE(planet->surf_map->save_to_png(prefix + ".png"));
+            EXPECT_TRUE(planet->surf_map->save_to_png(prefix + "_height.png", true));
+        }
+        planet->mark_all_maps_for_regen();
+        wait_for_texture_tasks();
+        planet->surf_map->export_bump(retained.data());
+        EXPECT_EQ(original, retained);
+        ++scenario_index;
+    }
+}
 
 TEST_F(ShoreNavigationTest, WaterCoverageConvertsSurfaceAreaInsteadOfScalingWaterLevel)
 {

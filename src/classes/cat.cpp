@@ -8293,6 +8293,14 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
     }
     if (!host_star)
     {
+        // Every source name can already exist in a supplement or saved catalog.
+        // Use the shared exact index before any legacy search shortcut.
+        const int existing = find_object(hostname.c_str(), true, 9e29, 0, lookup);
+        if (existing >= 0 && cels[existing]->typeclass() == class_star)
+            host_star = static_cast<Star*>(cels[existing]);
+    }
+    if (!host_star)
+    {
         if (loaded_starsonly || worth_searching(hostname))
         {
 

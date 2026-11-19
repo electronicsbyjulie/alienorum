@@ -197,8 +197,17 @@ def build(folder):
                 item["parameters"]["distance_method"] = band + " median absolute magnitude of supplied spectral neighbors"
                 item["distance_estimated"] = True
                 break
+    # Historical component identifiers used by the orbital catalog.
+    legacy = dict([
+        (("Gl 569B", "Bb"), ["GJ 569 C"]),
+        (("ULAS J141623.94+134836.3", ""), ["SDSS J1416+1348 B"]),
+    ])
     used = collections.Counter(item["name"] for item in records)
     for item in records:
+        identity = (item["parameters"]["original_name"], item["parameters"].get("component", ""))
+        for alias in legacy.get(identity, []):
+            if alias not in item["aliases"]:
+                item["aliases"].append(alias)
         if used[item["name"]] > 1:
             previous = item["name"]
             item["aliases"] = [alias for alias in item["aliases"] if alias != previous]

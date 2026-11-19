@@ -23,6 +23,7 @@
 #include "giantclouds.h"
 #include "giantreflectance.h"
 #include "lavafissures.h"
+#include "terrain_contours.h"
 #include "wdcolor.h"
 #include "browncolor.h"
 #include "mdwarfcolor.h"
@@ -3546,6 +3547,63 @@ void Map::generate_rocky_map(CelestialObject *cel)
         double edge_dist, mottle_strength, ms, invms, mottle_noise, hue_noise;
         unsigned int x, y;
         int idx, province_idx, neighbor_province_idx, mottled_idx;
+        const LocalClimate annual_climate = p->local_climate();
+        const double salinity = p->ocean_chemistry().at("salinity_g_kg").get<double>();
+        const double freezing = seawater_freezing_k(salinity, pressure);
+        bool liquid_water = false;
+        if (p->has_water > 0 && pressure >= 611.657)
+        {
+            // Include temperate regions of a partially frozen or synchronous surface.
+            // Annual conditions keep the geological scenario independent of the date.
+            for (const auto& direction : {Point(1,0,0), Point(-1,0,0), Point(0,1,0), Point(0,-1,0), Point(0,0,1), Point(0,0,-1)})
+            {
+                const double temperature = annual_climate.temperature(direction.x, direction.y, direction.z, 0, true, false, false);
+                if (temperature >= freezing && temperature < Tboil) liquid_water = true;
+            }
+        }
+        TerrainContours contours = TerrainContours::from_physics(cel->volumetric_mean_radius,
+            cel->mass * .001, annual_climate.mean_k, pressure, liquid_water, cel->rnd_seed);
+        const Point contour_offset(61 * TerrainContours::variation(cel->rnd_seed ^ 0x68e31da4U),
+            61 * TerrainContours::variation(cel->rnd_seed ^ 0xb5297a4dU),
+            61 * TerrainContours::variation(cel->rnd_seed ^ 0x1b56c4e9U));
+        struct TerrainSample
+        {
+            double wx, wy, wz, field, roughness, detail;
+        };
+        const auto terrain_sample = [&](double sx, double sy, double sz, bool with_detail)
+        {
+            TerrainSample sample;
+            sample.wx = sx * scale + (fBm(sx * warp_scale + 12.3, sy * warp_scale + 4.1, sz * warp_scale + 9.8, 3, lacunarity, .5) - .5) * warp_strength;
+            sample.wy = sy * scale + (fBm(sx * warp_scale + 3.1, sy * warp_scale + 19.2, sz * warp_scale + 2.4, 3, lacunarity, .5) - .5) * warp_strength;
+            sample.wz = sz * scale + (fBm(sx * warp_scale + 8.5, sy * warp_scale + 7.7, sz * warp_scale + 14.6, 3, lacunarity, .5) - .5) * warp_strength;
+            sample.field = fBm(sample.wx * .58 + contour_offset.x, sample.wy * .58 + contour_offset.y,
+                sample.wz * .58 + contour_offset.z, 3, lacunarity, .5);
+            sample.roughness = contours.upland(sample.field);
+            sample.detail = with_detail ? fBm(sample.wx, sample.wy, sample.wz, octaves,
+                lacunarity, gain * (.3 + .7 * sample.roughness)) : .5;
+            return sample;
+        };
+        // Calibrate province area on the sphere, without any dependence on waterline
+        // or pixel resolution. This is the same field used by the volume solver.
+        if (contours.strength > 0)
+        {
+            std::vector<double> fields;
+            constexpr int rows = 32, columns = 64;
+            fields.reserve(rows * columns);
+            for (int row = 0; row < rows; ++row)
+            {
+                const double z = -1 + 2.0 * (row + .5) / rows;
+                const double ring = std::sqrt(1 - z * z);
+                for (int column = 0; column < columns; ++column)
+                {
+                    const double angle = 2 * _pi * (column + .5) / columns;
+                    fields.push_back(terrain_sample(ring * std::cos(angle), ring * std::sin(angle), z, false).field);
+                }
+            }
+            const size_t quantile = static_cast<size_t>(contours.lowland_fraction * (fields.size() - 1));
+            std::nth_element(fields.begin(), fields.begin() + quantile, fields.end());
+            contours.boundary = fields[quantile];
+        }
         if (!p->preserve_loaded_parameters && !p->has_water_supplied && p->surface_water_model.is_object())
         {
             // Equal-area samples of this terrain fix the waterline before biome colors
@@ -3565,11 +3623,8 @@ void Map::generate_rocky_map(CelestialObject *cel)
                     if (create_bump)
                     {
                         const double sx = ring * std::cos(angle), sy = ring * std::sin(angle);
-                        const double wx = sx * scale + (fBm(sx * warp_scale + 12.3, sy * warp_scale + 4.1, z * warp_scale + 9.8, 3, lacunarity, 0.5) - 0.5) * warp_strength;
-                        const double wy = sy * scale + (fBm(sx * warp_scale + 3.1, sy * warp_scale + 19.2, z * warp_scale + 2.4, 3, lacunarity, 0.5) - 0.5) * warp_strength;
-                        const double wz = z * scale + (fBm(sx * warp_scale + 8.5, sy * warp_scale + 7.7, z * warp_scale + 14.6, 3, lacunarity, 0.5) - 0.5) * warp_strength;
-                        const double roughness = fBm(sx * province_scale * 0.8, sy * province_scale * 0.8, z * province_scale * 0.8, 2, lacunarity, 0.5);
-                        height = fBm(wx, wy, wz, octaves, lacunarity, gain * (0.3 + 0.7 * roughness));
+                        const auto sample = terrain_sample(sx, sy, z, true);
+                        height = contours.height(sample.detail, sample.field);
                     }
                     else
                     {
@@ -3606,8 +3661,6 @@ void Map::generate_rocky_map(CelestialObject *cel)
         climate.vegetation_min_k = p->veg_min_temp;
         climate.vegetation_max_k = p->veg_max_temp;
         const VegetationHabitat habitat(p->vegetation_seasons());
-        const double salinity = p->ocean_chemistry().at("salinity_g_kg").get<double>();
-        const double freezing = seawater_freezing_k(salinity, pressure);
         if (p->has_water) inv_h2o_level = 1.0 / p->has_water;
 
         // A small per-planet palette of terrain "provinces" -- bright highlands against darker
@@ -3625,8 +3678,8 @@ void Map::generate_rocky_map(CelestialObject *cel)
         double province_rmult[4] = {1.0, 1.0, 1.0, 1.0};
         double province_gmult[4] = {1.0, 1.0, 1.0, 1.0};
         double province_bmult[4] = {1.0, 1.0, 1.0, 1.0};
-        int tholin_province = cold_icy_world ? (num_provinces - 1) : -1;
-        for (int p_i = 1; p_i < num_provinces; ++p_i)
+        int tholin_province = cold_icy_world ? 0 : -1;
+        for (int p_i = 0; p_i < num_provinces; ++p_i)
         {
             if (p_i == tholin_province)
             {
@@ -3685,22 +3738,12 @@ void Map::generate_rocky_map(CelestialObject *cel)
                     return;
                 }
 
-                // Generate a low-frequency 3D warp vector
-                double warp_x = fBm(nx * warp_scale + 12.3, ny * warp_scale + 4.1, nz * warp_scale + 9.8, 3, lacunarity, 0.5);
-                double warp_y = fBm(nx * warp_scale + 3.1, ny * warp_scale + 19.2, nz * warp_scale + 2.4, 3, lacunarity, 0.5);
-                double warp_z = fBm(nx * warp_scale + 8.5, ny * warp_scale + 7.7, nz * warp_scale + 14.6, 3, lacunarity, 0.5);
-                
-                // Offset the primary coordinates using the warp vector
-                double wx = nx * scale + (warp_x - 0.5) * warp_strength;
-                double wy = ny * scale + (warp_y - 0.5) * warp_strength;
-                double wz = nz * scale + (warp_z - 0.5) * warp_strength;
-
-                // Spatially modulate roughness (0.0 = smooth maria, 1.0 = rugged highlands)
-                double roughness_mask = fBm(nx * province_scale * 0.8, ny * province_scale * 0.8, nz * province_scale * 0.8, 2, lacunarity, 0.5);
-                double local_gain = gain * (0.3 + 0.7 * roughness_mask); 
-
-                // Get warped, locally-modulated height value
-                height_value = create_bump ? fBm(wx, wy, wz, octaves, lacunarity, local_gain)
+                // The raster and volume samples share precisely the same contour field.
+                const auto sample = terrain_sample(nx, ny, nz, create_bump);
+                const double wx = sample.wx, wy = sample.wy, wz = sample.wz;
+                const double roughness_mask = sample.roughness;
+                const double local_gain = gain * (.3 + .7 * roughness_mask);
+                height_value = create_bump ? contours.height(sample.detail, sample.field)
                     : fmin(1.0, fmax(0.0, (inv_bump_scale * bump_data[idx] + 0.5)));
 
                 if (create_bump) bump_data[idx] = bump_scale * (height_value - 0.5);
@@ -3720,9 +3763,13 @@ void Map::generate_rocky_map(CelestialObject *cel)
                     border_noise = fBm(nx * border_noise_scale + 61.4, ny * border_noise_scale + 8.8, nz * border_noise_scale + 29.6,
                         3, lacunarity, gain);
 
-                    double albedo_stretched = fmin(1.0, fmax(0.0, (albedo_value - 0.5) * 2.2 + 0.5));
-                    province_pos = fmod(albedo_stretched * num_provinces + (border_noise - 0.5) * border_roughness, (double)num_provinces);
-                    if (province_pos < 0) province_pos += num_provinces;
+                    const double independent = std::clamp((albedo_value - .5) * 2.2 + .5, 0.0, 1.0);
+                    const double province_field = contours.province(independent, height_value);
+                    // Keep the high and low ends distinct instead of wrapping one into
+                    // the other. Independent geology still breaks up each elevation band.
+                    province_pos = std::clamp(province_field * num_provinces
+                        + (border_noise - .5) * border_roughness * (1 - .7 * contours.province_coupling),
+                        0.0, num_provinces - 1e-6);
                     province_idx = (int)province_pos;
                     if (province_idx >= num_provinces) province_idx = num_provinces - 1;
                     province_t = province_pos - province_idx;
@@ -3751,8 +3798,8 @@ void Map::generate_rocky_map(CelestialObject *cel)
                     double blend1 = 1.0 - blend_factor;
                     
                     neighbor_province_idx = (province_t < 0.5)
-                        ? (province_idx - 1 + num_provinces) % num_provinces
-                        : (province_idx + 1) % num_provinces;
+                        ? std::max(0, province_idx - 1)
+                        : std::min(num_provinces - 1, province_idx + 1);
                     
                     rmult = blend1 * province_rmult[province_idx] + blend_factor * province_rmult[neighbor_province_idx];
                     gmult = blend1 * province_gmult[province_idx] + blend_factor * province_gmult[neighbor_province_idx];
