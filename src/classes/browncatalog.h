@@ -15,24 +15,36 @@ namespace alienorum
 
     inline std::string brown_dwarf_catalog_signature()
     {
-        std::ifstream source("catalogs/brown_dwarfs_20pc.json", std::ios::binary);
-        if (!source) return {};
         uint64_t hash = 14695981039346656037ULL;
-        char value;
-        while (source.get(value))
+        bool present = false;
+        for (const char* path : {"catalogs/brown_dwarfs_20pc.json", "catalogs/ultracool_dwarfs.json"})
         {
-            hash ^= static_cast<unsigned char>(value);
-            hash *= 1099511628211ULL;
+            std::ifstream source(path, std::ios::binary);
+            if (!source) continue;
+            present = true;
+            char value;
+            while (source.get(value))
+            {
+                hash ^= static_cast<unsigned char>(value);
+                hash *= 1099511628211ULL;
+            }
         }
-        return std::to_string(hash);
+        return present ? std::to_string(hash) : std::string();
     }
 
-    inline unsigned int load_brown_dwarf_supplement(const char* path = "catalogs/brown_dwarfs_20pc.json")
+    inline unsigned int load_brown_dwarf_supplement(const char* path = nullptr)
     {
-        std::ifstream input(path);
-        if (!input) return 0;
-        const json catalog = json::parse(input, nullptr, false);
-        if (!catalog.is_object() || !catalog.contains("records") || !catalog["records"].is_array()) return 0;
+        json catalog = {{"records", json::array()}};
+        const std::vector<std::string> paths = path ? std::vector<std::string>{path}
+            : std::vector<std::string>{"catalogs/brown_dwarfs_20pc.json", "catalogs/ultracool_dwarfs.json"};
+        for (const auto& filename : paths)
+        {
+            std::ifstream input(filename);
+            if (!input) continue;
+            json supplement = json::parse(input, nullptr, false);
+            if (!supplement.is_object() || !supplement.contains("records") || !supplement["records"].is_array()) continue;
+            for (auto& record : supplement["records"]) catalog["records"].push_back(std::move(record));
+        }
         CatalogLock lock(catalog_mutex);
         ExactStarSearchIndex names;
         std::vector<Star*> brown;
@@ -109,7 +121,7 @@ namespace alienorum
                 star->temperature = record.value("temperature", 0.0);
                 if (!(star->temperature > 0)) star->temperature = brown_temperature(star.get());
                 star->mass = record.value("mass_solar", .04)*solar_mass;
-                star->volumetric_mean_radius = jupiter_radius;
+                star->volumetric_mean_radius = record.value("radius_jupiter", 1.0)*jupiter_radius;
                 star->radial_velocity = record.value("radial_velocity", 0.0)*1000;
                 star->estimate_BV(star->temperature);
                 // Gaia G is retained as a labelled visual proxy. Otherwise use a flux estimate.
@@ -126,6 +138,15 @@ namespace alienorum
                 brown.push_back(target);
                 ++added;
             }
+            const std::string preferred = record.value("name", "");
+            if (!target->user_added && !target->user_edited && !target->has_custom_name
+                && !preferred.empty() && preferred.size() < strlen(target->name))
+            {
+                target->add_catalog_alias(target->name);
+                snprintf(target->name, sizeof(target->name), "%s", preferred.c_str());
+                target->namelen = strlen(target->name);
+            }
+            if (record.contains("parameters")) target->stellar_parameters = record["parameters"];
             for (const auto& alias : record.value("aliases", json::array())) target->add_catalog_alias(alias.get<std::string>());
             imported[target] = {system_root(record), record.value("hierarchy", "")};
             names.add(target->seqno, *target);

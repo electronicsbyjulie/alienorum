@@ -6372,6 +6372,12 @@ std::string alienorum::CatalogReader::format_condensed_star_line(Star* s, bool e
         extra << " AGE1 " << std::quoted(s->stellar_age.dump());
         line += extra.str();
     }
+    if (s->stellar_parameters.is_object())
+    {
+        std::ostringstream extra;
+        extra << " PAR1 " << std::quoted(s->stellar_parameters.dump());
+        line += extra.str();
+    }
     if (s->stellar_system.is_object())
     {
         std::ostringstream extra;
@@ -6991,6 +6997,12 @@ int alienorum::CatalogReader::read_condensed_star_cat()
                     json age = json::parse(value, nullptr, false);
                     normalize_uncertain_numbers(age);
                     if (age.is_object()) s->stellar_age = std::move(age);
+                }
+                else if (version == "PAR1" && quoted(value))
+                {
+                    json parameters = json::parse(value, nullptr, false);
+                    normalize_uncertain_numbers(parameters);
+                    if (parameters.is_object()) s->stellar_parameters = std::move(parameters);
                 }
                 else if (version == "MET1" && quoted(value))
                 {

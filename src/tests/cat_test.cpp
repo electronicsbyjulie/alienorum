@@ -5966,9 +5966,10 @@ TEST_F(CatalogParsingTest, EpsilonIndCensusNamesReuseLegacyBAndCWithoutGlieseIde
 TEST_F(StellarDownloadTest, BrownDwarfsAreFoldedIntoTheWriterAndReloadWithoutASupplementImport)
 {
     std::filesystem::copy_file(original / "catalogs/brown_dwarfs_20pc.json", "catalogs/brown_dwarfs_20pc.json");
+    std::filesystem::copy_file(original / "catalogs/ultracool_dwarfs.json", "catalogs/ultracool_dwarfs.json");
     CatalogReader reader;
     const int written = reader.write_condensed_star_cat({});
-    ASSERT_GT(written, 400);
+    ASSERT_GT(written, 4000);
     std::ifstream saved("catalogs/soles_alienorum.dat");
     const std::string text((std::istreambuf_iterator<char>(saved)), std::istreambuf_iterator<char>());
     EXPECT_NE(text.find("# BROWN20PC1 "), std::string::npos);
@@ -5988,6 +5989,35 @@ TEST_F(StellarDownloadTest, BrownDwarfsAreFoldedIntoTheWriterAndReloadWithoutASu
     EXPECT_DOUBLE_EQ(cels[found]->right_ascension, ra);
     EXPECT_DOUBLE_EQ(cels[found]->declination, dec);
     EXPECT_DOUBLE_EQ(cels[found]->epoch, epoch);
+    const int luhman = find_object("Luhman 16 A", true, 9e29, 0);
+    ASSERT_GE(luhman, 0);
+    EXPECT_EQ(static_cast<Star*>(cels[luhman])->stellar_parameters["catalog"], "UltracoolSheet 2.1.0");
+}
+
+TEST_F(CatalogParsingTest, UltracoolSheetAddsDistantObjectsWithShortSearchableComponentNames)
+{
+    ASSERT_GT(load_brown_dwarf_supplement(), 4000u);
+    const int a = find_object("Luhman 16 A", true, 9e29, 0);
+    const int b = find_object("Luhman 16 B", true, 9e29, 0);
+    ASSERT_GE(a, 0);
+    ASSERT_GE(b, 0);
+    EXPECT_NE(a, b);
+    EXPECT_STREQ(cels[a]->name, "Luhman 16 A");
+    EXPECT_STREQ(cels[b]->name, "Luhman 16 B");
+    EXPECT_EQ(find_object("WISE J104915.57-531906.1 A", true, 9e29, 0), a);
+    EXPECT_EQ(find_object("WISE J104915.57-531906.1 B", true, 9e29, 0), b);
+    int distant = 0, documented = 0;
+    for (int index = 0; cels[index]; ++index)
+    {
+        auto* star = static_cast<Star*>(cels[index]);
+        distant += star->distance > 20 * parsec;
+        documented += star->stellar_parameters.is_object();
+    }
+    EXPECT_GT(distant, 2000);
+    EXPECT_GT(documented, 3900);
+    const int count = ncelobjs;
+    EXPECT_EQ(load_brown_dwarf_supplement(), 0u);
+    EXPECT_EQ(ncelobjs, count);
 }
 
 TEST_F(CatalogParsingTest, ImportedBrownDwarfsDoNotReceiveInventedAlienorumIds)

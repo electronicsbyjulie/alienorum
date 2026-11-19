@@ -8,22 +8,43 @@
 #include <unordered_set>
 #include "../src/classes/cat.h"
 #include "../src/classes/browncatalog.h"
+#include "../src/loaders.h"
 
 using namespace alienorum;
 
 int main(int argc, char** argv)
 {
+    if (argc == 2 && std::string(argv[1]) == "--bake-orbits")
+    {
+        cels = new CelestialObject*[MAX_CELOBJS]();
+        Star::load_main_seq_dat();
+        read_cons_lines();
+        CatalogReader reader;
+        const int count = reader.read_condensed_star_cat();
+        if (count <= 0) return 1;
+        const int orbits = reader.read_star_orbits_dat(cels);
+        if (!reader.bake_condensed_star_orbits()) return 1;
+        const int a = find_object("Luhman 16 A", true, 9e29, 0);
+        const int b = find_object("Luhman 16 B", true, 9e29, 0);
+        if (a < 0 || b < 0 || !cels[b]->orbit || cels[b]->orbit->center != cels[a]) return 1;
+        std::cout << "Baked " << orbits << " orbit records for " << count << " catalog objects.\n";
+        return 0;
+    }
     if (argc != 3)
     {
         std::cerr << "Usage: rebuild_brown_dwarf_catalog INPUT OUTPUT\n";
         return 2;
     }
     if (std::string(argv[1]) == argv[2]) return 2;
-    std::ifstream source("catalogs/brown_dwarfs_20pc.json");
-    const json supplement = json::parse(source);
     std::unordered_set<std::string> identities;
-    for (const auto& record : supplement.at("records"))
-        for (const auto& alias : record.at("aliases")) identities.insert(stellar_alias_key(alias.get<std::string>()));
+    for (const char* path : {"catalogs/brown_dwarfs_20pc.json", "catalogs/ultracool_dwarfs.json"})
+    {
+        std::ifstream source(path);
+        if (!source) continue;
+        const json supplement = json::parse(source);
+        for (const auto& record : supplement.at("records"))
+            for (const auto& alias : record.at("aliases")) identities.insert(stellar_alias_key(alias.get<std::string>()));
+    }
     cels = new CelestialObject*[MAX_CELOBJS]();
     auto anchor = new Star();
     snprintf(anchor->name, sizeof(anchor->name), "Catalog rebuild anchor");
@@ -110,6 +131,24 @@ int main(int argc, char** argv)
         const auto found = existing.find(row);
         if (found != existing.end())
         {
+            const std::string display = found->second->name;
+            if (display != field(line, 15, 39)) line.replace(15, 39, display + std::string(39 - display.size(), ' '));
+            if (found->second->stellar_parameters.is_object())
+            {
+                const auto previous = line.find(" PAR1 ");
+                if (previous != std::string::npos)
+                {
+                    std::istringstream stream(line.substr(previous + 6));
+                    std::string ignored;
+                    stream >> std::quoted(ignored);
+                    const auto length = stream.tellg();
+                    line.erase(previous, length < 0 ? std::string::npos : 6 + static_cast<size_t>(length));
+                }
+                std::ostringstream metadata;
+                metadata << " PAR1 " << std::quoted(found->second->stellar_parameters.dump());
+                const auto aliases = line.find(" ALS1 ");
+                line.insert(aliases == std::string::npos ? line.size() : aliases, metadata.str());
+            }
             bool has_tag = line.rfind(" ALS1 ") != std::string::npos;
             for (const auto& alias : found->second->catalog_aliases)
             {
