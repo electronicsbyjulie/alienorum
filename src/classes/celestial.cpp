@@ -24,6 +24,7 @@
 #include "giantreflectance.h"
 #include "lavafissures.h"
 #include "terrain_contours.h"
+#include "craterprofile.h"
 #include "wdcolor.h"
 #include "browncolor.h"
 #include "mdwarfcolor.h"
@@ -4202,8 +4203,13 @@ void Map::stamp_craters(CelestialObject *cel, double bump_scale)
     if (num_craters < 1) return;
 
     double planet_radius = cel->volumetric_mean_radius;
+    if (!(planet_radius > 0) || !std::isfinite(planet_radius) || !(bump_scale > 0) || !std::isfinite(bump_scale)) return;
     double min_diam = 50.0;                                                 // meters.
     double max_diam = fmin(planet_radius * 0.3, 900000.0);                  // cap basins at ~900 km or 30% of the planet, whichever is smaller
+    const double gravity = G * cel->mass / (planet_radius * planet_radius);
+    const double transition = CraterProfile::transition_diameter(gravity, cel->type == icy);
+    // Preserve the map's existing pressure-dependent rendering relief convention.
+    const double relief_scale = bump_scale / (.001 * planet_radius / log(20.0));
 
     std::vector<Crater> craters(num_craters);
     for (int i = 0; i < num_craters; ++i)
@@ -4218,13 +4224,13 @@ void Map::stamp_craters(CelestialObject *cel, double bump_scale)
 
         // Heavily skewed toward small craters, like real crater size-frequency distributions.
         double diam = min_diam + (max_diam - min_diam) * pow(cel->cel_frand(0, 1), 5);
-        c.angular_radius = fmax(1e-4, (diam * 0.5) / planet_radius);
+        c.angular_radius = fmax(1e-10, (diam * 0.5) / planet_radius);
 
-        c.depth = bump_scale * cel->cel_frand(0.3, 0.9);
+        c.depth = CraterProfile::depth(diam) * relief_scale * cel->cel_frand(.35, 1.0);
         c.rim_height = c.depth * cel->cel_frand(0.15, 0.35);
         c.rim_width = cel->cel_frand(0.15, 0.3);
         c.reach_factor = 1.0 + 3.0 * c.rim_width;
-        c.central_peak = (diam > max_diam * 0.5) ? c.depth * cel->cel_frand(0.2, 0.4) : 0.0;
+        c.central_peak = (diam > transition) ? c.depth * cel->cel_frand(0.2, 0.4) : 0.0;
 
         c.has_rays = (diam > max_diam * 0.67) && (cel->cel_frand(0, 1) < 0.01 * fmin(1.0, bombardment_factor));
         c.ray_freq = cel->cel_frand(5, 10);
@@ -4246,11 +4252,12 @@ void Map::stamp_craters(CelestialObject *cel, double bump_scale)
 
     for (const Crater &c : craters)
     {
+        if (c.angular_radius * image_height / _pi < .6) continue;
         double theta_c = acos(fmax(-1.0, fmin(1.0, c.cz)));
         double phi_c = atan2(c.cy, c.cx);
         if (phi_c < 0) phi_c += 2 * _pi;
 
-        double reach = c.angular_radius * (c.has_rays ? c.ray_extent_factor : c.reach_factor);
+        double reach = 1.05 * c.angular_radius * (c.has_rays ? c.ray_extent_factor : c.reach_factor);
         double theta_lo = fmax(0.0, theta_c - reach), theta_hi = fmin(_pi, theta_c + reach);
         long y_lo = (long)(theta_lo / _pi * image_height) - 1;
         long y_hi = (long)(theta_hi / _pi * image_height) + 1;
@@ -4275,31 +4282,20 @@ void Map::stamp_craters(CelestialObject *cel, double bump_scale)
                 double dot = fmax(-1.0, fmin(1.0, px * c.cx + py * c.cy + pz * c.cz));
                 double d = acos(dot);
                 double r = d / c.angular_radius;
+                const double east = px * c.ex + py * c.ey + pz * c.ez;
+                const double north = px * c.tnx + py * c.tny + pz * c.tnz;
+                const double bearing = atan2(east, north);
+                r /= 1 + .025 * sin(5 * bearing + c.ray_phase) + .015 * sin(11 * bearing - c.ray_phase);
                 if (r > c.reach_factor && !(c.has_rays && r <= c.ray_extent_factor)) continue;
 
                 double bump_delta = 0.0, color_mult = 1.0;
                 if (r < c.reach_factor)
                 {
-                    if (r < 1.0)
-                    {
-                        // Bowl floor, with an optional central peak for larger/complex craters.
-                        bump_delta = c.depth * (r * r - 1.0);
-                        if (c.central_peak > 0) bump_delta += c.central_peak * exp(-(r / 0.15) * (r / 0.15));
-                    }
-                    else
-                    {
-                        // Raised rim, fading out into the terrain. Kept subtle: most craters are
-                        // old, and real standout brightness belongs to the rays below.
-                        // The brightening wants the rim's profile, which is the Gaussian on its
-                        // own -- dividing the scaled height back out again only reintroduces
-                        // c.rim_height as a divisor, and fmax() cannot guard that: for a
-                        // negative rim height it returns 1e-6 rather than the height, turning a
-                        // number that belongs in (0,1] into billions of the wrong sign.
-                        double t = (r - 1.0) / c.rim_width;
-                        double rim_profile = exp(-t * t);
-                        bump_delta = c.rim_height * rim_profile;
-                        color_mult += 0.15 * rim_profile;
-                    }
+                    const bool peak_ring = 2 * c.angular_radius * planet_radius > 12 * transition;
+                    bump_delta = CraterProfile::elevation(r, c.depth, c.rim_height, c.rim_width, c.central_peak, peak_ring);
+                    const double freshness = c.depth > 0 ? (c.rim_height / c.depth - .15) / .20 : 0;
+                    const double patch = .5 + .5 * sin(3 * bearing + c.ray_phase);
+                    color_mult = CraterProfile::rim_albedo(r, c.rim_width, freshness, patch);
                 }
 
                 unsigned long idx = y * image_width + x;

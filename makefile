@@ -42,6 +42,7 @@ CLASSES_SRC = $(CLASSES_DIR)/fictionalstars.cpp $(CLASSES_DIR)/point.cpp $(CLASS
 			$(CLASSES_DIR)/cons.cpp $(CLASSES_DIR)/sscimport.cpp $(CLASSES_DIR)/exocons.cpp $(CLASSES_DIR)/sound.cpp $(CLASSES_DIR)/objectsearch.cpp
 TESTS_SRC = $(TESTS_DIR)/giantreflectance_test.cpp $(TESTS_DIR)/fictionalstars_test.cpp $(TESTS_DIR)/point_test.cpp $(TESTS_DIR)/color_test.cpp \
 			$(TESTS_DIR)/known_bugs_regression_test.cpp \
+			$(TESTS_DIR)/crater_profile_test.cpp \
 			$(TESTS_DIR)/objectsearch_test.cpp $(TESTS_DIR)/currentconditions_test.cpp \
 			$(TESTS_DIR)/celestial_test.cpp $(TESTS_DIR)/galaxy_test.cpp $(TESTS_DIR)/star_test.cpp \
 			$(TESTS_DIR)/planet_test.cpp $(TESTS_DIR)/moon_test.cpp $(TESTS_DIR)/comet_test.cpp \

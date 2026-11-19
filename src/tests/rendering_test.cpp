@@ -23,6 +23,8 @@
 #include "../inputs.h"
 #include "../dialogs.h"
 #include "../sphere_impostor.h"
+#include "crater_lighting_fixture.h"
+#include "../snapshot_io.h"
 #include "../housekeeping.h"
 #include "../classes/clouds_gpu.h"
 #include "../classes/cloudlighting.h"
@@ -10202,5 +10204,74 @@ TEST_F(RenderingRegressionTest, PrettyStarColorsUpdateExistingCpuAndGpuDiscsWith
         draw_sphere(star, _pi/6);
         EXPECT_EQ(render(), realistic);
         ImGui::NewFrame();
+    }
+}
+
+TEST_F(RenderingRegressionTest, CraterWallsFollowOppositeLightsAtTheEquatorAndPole)
+{
+    for (bool polar : {false, true})
+    {
+        CraterLightingMap map(256, polar);
+        SphereImpostorInput input{};
+        input.cz = 2.2;
+        input.r = input.axis_x = input.axis_y = input.axis_z = 1;
+        input.basisX[0] = 1;
+        input.basisY[polar ? 2 : 1] = 1;
+        input.day_map_texture = gputex_for(&map);
+        input.bump_map_texture = gputex_bump_for(&map);
+        input.fallback_color = IM_COL32(160, 160, 160, 255);
+        input.night_illum = .03;
+        for (double& channel : input.daylight_tint) channel = 1;
+        const auto capture = [&](bool relief)
+        {
+            input.bump_strength = relief ? 1 : 0;
+            impostor_begin_frame();
+            double xmin, ymin, xmax, ymax;
+            EXPECT_TRUE(queue_sphere_impostor(input, 1, dispcx, dispcy, dispcx, &xmin, &ymin, &xmax, &ymax));
+            auto pixels = render();
+            ImGui::NewFrame();
+            return pixels;
+        };
+        const auto value = [&](const std::vector<unsigned char>& pixels, int axis, int offset)
+        {
+            double sum = 0;
+            for (int dy = -1; dy <= 1; ++dy)
+            {
+                for (int dx = -1; dx <= 1; ++dx)
+                {
+                    const int x = render_width / 2 + (axis == 0 ? offset : 0) + dx;
+                    const int y = render_height / 2 + (axis == 1 ? offset : 0) + dy;
+                    sum += pixels[(y * render_width + x) * 4];
+                }
+            }
+            return sum / 9;
+        };
+        for (int axis : {0, 1})
+        {
+            for (int direction : {-1, 1})
+            {
+                SCOPED_TRACE(::testing::Message() << "polar=" << polar << ", axis=" << axis << ", direction=" << direction);
+                input.light_dir[0] = input.light_dir[1] = 0;
+                input.light_dir[axis] = direction * .8;
+                input.light_dir[2] = -.6;
+                const auto flat = capture(false), bowl = capture(true);
+                const int near_light = value(flat, axis, 12) > value(flat, axis, -12) ? 12 : -12;
+                EXPECT_GT(value(flat, axis, near_light) - value(flat, axis, -near_light), 10);
+                // The inner wall closest to the source faces away from it; the
+                // opposite wall faces the source. Subtract the smooth sphere's light.
+                EXPECT_LT(value(bowl, axis, near_light) - value(flat, axis, near_light), -3);
+                EXPECT_GT(value(bowl, axis, -near_light) - value(flat, axis, -near_light), 3);
+                if (const char* directory = std::getenv("ALIENORUM_CRATER_PREVIEW"))
+                {
+                    std::filesystem::create_directories(directory);
+                    std::vector<unsigned char> rgb(render_width * render_height * 3);
+                    for (size_t index = 0; index < bowl.size() / 4; ++index)
+                        for (int channel = 0; channel < 3; ++channel) rgb[index * 3 + channel] = bowl[index * 4 + channel];
+                    const std::string path = std::string(directory) + "/crater_" + std::to_string(polar)
+                        + "_" + std::to_string(axis) + "_" + std::to_string(direction) + ".png";
+                    EXPECT_TRUE(save_snapshot_pixels(path, render_width, render_height, std::move(rgb), false));
+                }
+            }
+        }
     }
 }
