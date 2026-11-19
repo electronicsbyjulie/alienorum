@@ -16,6 +16,7 @@ namespace alienorum
         double horizon_cpu_milliseconds = 0;
         double ground_setup_milliseconds = 0, ground_paint_milliseconds = 0;
         int ground_sample_stride = 1;
+        size_t ground_pixel_samples = 0;
         bool ground_cache_active = false, ground_cache_hit = false;
         const char* ground_cache_reason = "unused";
         size_t particles = 0, flakes = 0;

@@ -6078,20 +6078,17 @@ void draw_horizon()
         {
             return std::min(base_distance(screen_x, screen_y), terrain_raster.distance_at(screen_x, screen_y));
         };
-        const auto ground_coord = [&](double screen_x, double screen_y)
+        const auto ground_coord_at_depth = [&](double screen_x, double screen_y, double depth)
         {
             const double x = (screen_x - dispcx) / surface_focal();
             const double y = (dispcy - screen_y) / surface_focal();
             const double north = surface_cos_altitude() - y * surface_sin_altitude();
-            const double depth = visible_distance(screen_x, screen_y);
             const double distance = std::isfinite(depth) ? depth : surface_range;
             return surface_coord(distance, azimuth + atan2(x, north));
         };
-
-        const auto ground_pixel_sample = [&](int x, int y)
+        const auto ground_coord = [&](double screen_x, double screen_y)
         {
-            const auto coord = ground_coord(x + 0.5, y + 0.5);
-            return surface.sample(coord.first, coord.second);
+            return ground_coord_at_depth(screen_x, screen_y, visible_distance(screen_x, screen_y));
         };
 
         if (performance_enabled(37) && !horizon_terrain_cpu_reference && surface.has_biomes() && map && map->is_complete())
@@ -6445,6 +6442,26 @@ void draw_horizon()
         // Measure visible horizon line screen bounds and per-column horizon heights
         double min_hz_y = full_ground_view ? 0 : 1e9;
         int screen_w = (int)(dispcx * 2.0);
+        struct GroundPixel
+        {
+            double depth = NAN;
+            RGB3 color;
+            bool water = false;
+        };
+        static std::vector<GroundPixel> ground_pixels;
+        bool use_ground_pixels = false;
+        const auto ground_pixel_is_water = [&](int x, int y)
+        {
+            if (use_ground_pixels && !ground_pixels.empty())
+            {
+                const auto& pixel = ground_pixels[static_cast<size_t>(y) * screen_w + x];
+                if (std::isfinite(pixel.depth) || (!terrain_mesh && !std::isnan(pixel.depth)))
+                    return pixel.water;
+            }
+            const auto coord = ground_coord(x + 0.5, y + 0.5);
+            return surface.water_at(coord.first, coord.second);
+        };
+
         static std::vector<double> retained_horizon_columns;
         std::vector<double> temporary_horizon_columns;
         static FrameScratch<double> horizon_columns_scratch;
@@ -7228,9 +7245,6 @@ void draw_horizon()
                 same_lighting = true;
                 ground_inputs[16] = ground_inputs[21] = 0;
             }
-            ground_inputs.insert(ground_inputs.end(), ground_light.begin(), ground_light.end());
-            ground_inputs.insert(ground_inputs.end(), haze.extinction.begin(), haze.extinction.end());
-            for (double light : haze.light) ground_inputs.push_back(uniform_lit_source ? 0 : std::clamp(int(light), 0, 255));
             ground_inputs.push_back(dev_dial);
             // Ground bearings already use the observer's local north. The
             // celestial-frame correction rotates the sky, not this painting.
@@ -7240,6 +7254,27 @@ void draw_horizon()
             ground_inputs.push_back(surface_water);
             ground_inputs.push_back(shore_displacement);
             ground_inputs.push_back(double(local_phase_revision));
+            auto sample_inputs = ground_inputs;
+            // These fields describe shading only. Pixel coordinates and source colors
+            // remain valid while the scene is relit.
+            sample_inputs[15] = sample_inputs[16] = sample_inputs[21] = 0;
+            auto sample_key = std::make_tuple(cel, map, viewer_lat, viewer_lon,
+                p && p->simulated_surface_life_allowed(), std::move(sample_inputs));
+            static decltype(sample_key) saved_sample_key;
+            const bool retain_samples = paint_biomes && map && map->is_complete() && !generating_fic_texture;
+            use_ground_pixels = retain_samples;
+            if (!retain_samples || sample_key != saved_sample_key)
+            {
+                ground_pixels.clear();
+                saved_sample_key = std::move(sample_key);
+            }
+
+            if (!uniform_lit_source)
+            {
+                ground_inputs.insert(ground_inputs.end(), ground_light.begin(), ground_light.end());
+                ground_inputs.insert(ground_inputs.end(), haze.extinction.begin(), haze.extinction.end());
+                for (double light : haze.light) ground_inputs.push_back(std::clamp(int(light), 0, 255));
+            }
             ground_inputs.push_back(1); // Base-color sample stride; masks and haze stay at full resolution.
             auto ground_key = std::make_tuple(cel, map, std::move(ground_inputs));
             static decltype(ground_key) saved_ground_key;
@@ -7397,6 +7432,28 @@ void draw_horizon()
                 const double distance = visible_distance(x, y);
                 return pressure_haze_color(haze, color, std::isfinite(distance) ? distance : surface_range);
             };
+            const auto ground_pixel_color = [&](int x, int y)
+            {
+                if (!retain_samples) return ground_color(x + 0.5, y + 0.5);
+                if (ground_pixels.empty()) ground_pixels.resize(static_cast<size_t>(screen_w) * ground_height);
+                auto& pixel = ground_pixels[static_cast<size_t>(y) * screen_w + x];
+                if (std::isnan(pixel.depth))
+                {
+                    pixel.depth = visible_distance(x + 0.5, y + 0.5);
+                    if (!terrain_mesh || std::isfinite(pixel.depth))
+                    {
+                        const auto coord = ground_coord_at_depth(x + 0.5, y + 0.5, pixel.depth);
+                        const auto sample = surface.sample(coord.first, coord.second);
+                        pixel.color = sample.color;
+                        pixel.water = sample.water;
+                        ++precipitation_stats.ground_pixel_samples;
+                    }
+                }
+                if (terrain_mesh && !std::isfinite(pixel.depth)) return static_cast<ImU32>(0);
+                remember_channels(pixel.color);
+                return pressure_haze_color(haze, lit_surface_color(pixel.color),
+                    std::isfinite(pixel.depth) ? pixel.depth : surface_range);
+            };
             const auto sampled_gpu_tile = [&](int left, int top, int right, int bottom)
             {
                 const auto coord = ground_coord((left + right) * .5, (top + bottom) * .5);
@@ -7475,7 +7532,7 @@ void draw_horizon()
                         for (int x = left; x <= right; ++x)
                         {
                             const ImU32 current = x < right && y + 0.5 >= min_hz_y_at_x[x]
-                                ? ground_color(x + 0.5, y + 0.5) : 0;
+                                ? ground_pixel_color(x, y) : 0;
                             if (current != previous)
                             {
                                 if (previous & IM_COL32_A_MASK)
@@ -8051,7 +8108,7 @@ void draw_horizon()
                                     if (!certified_water)
                                     {
                                         ++water_stats.samples;
-                                        if (!ground_pixel_sample(x, y).water) continue;
+                                        if (!ground_pixel_is_water(x, y)) continue;
                                     }
                                     const ImU32 alpha = static_cast<ImU32>((w_col >> IM_COL32_A_SHIFT) * coverage);
                                     waves->AddRectFilled(ImVec2(x, y), ImVec2(x + 1, y + 1),
@@ -8684,7 +8741,7 @@ void draw_horizon()
                         }
 
                         if (surface_water && base_valid && sx >= 0 && sx < screen_w && sy >= 0 && sy < ground_height
-                            && ground_pixel_sample(static_cast<int>(sx), static_cast<int>(sy)).water) continue;
+                            && ground_pixel_is_water(static_cast<int>(sx), static_cast<int>(sy))) continue;
 
                         rocks.emplace_back();
                         #if PERF_P043

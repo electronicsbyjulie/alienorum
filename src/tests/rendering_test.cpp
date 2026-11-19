@@ -5629,6 +5629,38 @@ TEST_F(RenderingRegressionTest, GroundPaintingCacheRetainsPixelsAndInvalidatesLi
     }
 }
 
+TEST_F(RenderingRegressionTest, MixedGroundReusesPixelSamplesWhenRelit)
+{
+    auto* world = surface(true);
+    delete world->surf_map;
+    world->surf_map = new CoastalTestMap(true, true);
+    set(horizon_ground_gpu_reference, true);
+    set(viewer_lat, .0002);
+    set(viewer_lon, .4);
+    set(altitude, -.25);
+    set(show_clouds, true);
+    const auto capture = [&]()
+    {
+        freeze_surface_time();
+        find_horizon();
+        draw_horizon();
+        auto pixels = render();
+        ImGui::NewFrame();
+        return pixels;
+    };
+
+    const auto initial = capture();
+    EXPECT_GT(precipitation_stats.ground_pixel_samples, 0u);
+    luminous_flux = 1e9;
+    redlight_mode = true;
+    const auto relit = capture();
+    EXPECT_GT(image_difference(initial, relit), 0);
+    EXPECT_EQ(precipitation_stats.ground_pixel_samples, 0u);
+    world->surf_map->touch_gen();
+    EXPECT_EQ(capture(), relit);
+    EXPECT_GT(precipitation_stats.ground_pixel_samples, 0u);
+}
+
 TEST_F(RenderingRegressionTest, UniformSourceRetainsSamplingAcrossLiveIlluminationAndRedlightEdits)
 {
     auto* world = surface(true);
