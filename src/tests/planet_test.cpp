@@ -4838,6 +4838,20 @@ TEST_F(PlanetClassificationEvidenceTest, NewStellarOrbitsUseTheConservativeZone)
     }
 }
 
+TEST(PlanetPhotometryTest, JovianCreationAlbedoSurvivesMagnitudeRecalculation)
+{
+    Planet body;
+    body.type = hot_jupiter;
+    body.volumetric_mean_radius = 1.6 * jupiter_radius;
+    body.estimate_albedo_and_absmagn();
+    EXPECT_DOUBLE_EQ(body.albedo, .01);
+
+    body.set_geometric_albedo(Planet::jovian_geometric_albedo);
+    EXPECT_DOUBLE_EQ(body.albedo, .5);
+    body.estimate_albedo();
+    EXPECT_NEAR(body.albedo, .5, 1e-12);
+}
+
 TEST(OrbitalSpacingTest, ScreensCloseCrossingAndMassiveOrbits)
 {
     EXPECT_TRUE(orbital_spacing_warning(AU, 0, earth_mass, AU, 0, earth_mass, solar_mass));

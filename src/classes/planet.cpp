@@ -1773,6 +1773,14 @@ void alienorum::Planet::incline_exo_orbit(double sys_solincl, double sys_solnode
     }
 }
 
+void Planet::set_geometric_albedo(double value)
+{
+    albedo = value;
+    const double radius_earth = volumetric_mean_radius / earth_radius;
+    const double magnitude = earth_absmag - log(radius_earth * radius_earth * albedo / earth_albedo) / log(magnbase);
+    if (!std::isnan(magnitude)) absolute_magnitude = magnitude;
+}
+
 void Planet::estimate_albedo()
 {
     double rearths = volumetric_mean_radius / earth_radius;
@@ -1786,7 +1794,7 @@ void Planet::estimate_albedo_and_absmagn()
 {
     double p_rad_e = fmax(0.01, volumetric_mean_radius / earth_radius);
     double est_albedo = 0.3;
-    if (type == gas_giant       ) est_albedo = 0.5;
+    if (type == gas_giant       ) est_albedo = jovian_geometric_albedo;
     else if (type == hot_jupiter) est_albedo = 0.01;
     else if (type == clearskies ) est_albedo = 0.1;
     else if (type == ice_giant  ) est_albedo = 0.3;

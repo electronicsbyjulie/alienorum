@@ -1375,7 +1375,8 @@ void draw_addcel_window(ImGuiIO& io)
                     }
                     pl->classify(pl->is_in_con_HZ(), true);
                     pl->estimate_radius();
-                    pl->estimate_albedo_and_absmagn();
+                    if (cboceltyp_selected_idx == 2) pl->set_geometric_albedo(Planet::jovian_geometric_albedo);
+                    else pl->estimate_albedo_and_absmagn();
                     pl->estimate_rotation();
                     pl->apply_cosmic_shoreline();
                     pl->sync_host_statistics();
@@ -1618,11 +1619,7 @@ void draw_objedit_window(ImGuiIO& io)
                 ImGui::SetNextItemWidth(txtwid);
                 if (ImGui::InputDouble("##edtalbdo", &edit_albedo, 0, 0, "%.6f"))
                 {
-                    p->albedo = edit_albedo;
-
-                    double disc_area = pow(p->volumetric_mean_radius / earth_radius, 2);
-                    double absmag = earth_absmag - log(disc_area * p->albedo / earth_albedo) / log(magnbase);
-                    if (!isnan(absmag)) p->absolute_magnitude = absmag;
+                    p->set_geometric_albedo(edit_albedo);
                     if (cel->typeclass() == class_planet || cel->typeclass() == class_moon) ((Planet*)cel)->estimate_surface_temperature();
 
                     cel->user_edited = true;

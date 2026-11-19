@@ -141,6 +141,8 @@ namespace alienorum
         double phase_brightness(double alpha);              // Fraction of the body's opposition brightness left at phase angle alpha (radians).
         double phase_slope_parameter();                     // The IAU G, governing how fast a regolith world dims off opposition.
         double cloud_deck_fraction();                       // 0 for bare ground, 1 for a world we only ever see the top of the weather of.
+        static constexpr double jovian_geometric_albedo = 0.5;
+        void set_geometric_albedo(double value);
         void estimate_albedo();                             // if radius and abs mag known
         void estimate_albedo_and_absmagn();                 // if not known, e.g. exoplanets
         void update_location(double tmnow);                 // Only applicable if we have an orbit; otherwise just return.
