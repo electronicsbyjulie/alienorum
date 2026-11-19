@@ -4678,7 +4678,7 @@ void draw_system_view()
 
                 if (p->is_in_con_HZ())
                 {
-                    std::string hz = p->has_approximate_HZ() ? "Habitable Zone (approx.)" : "Habitable Zone";
+                    std::string hz = "Habitable Zone";
                     llbl.pos.y += lsz.y + 5;
                     lsz = ImGui::CalcTextSize(hz.c_str());
                     llbl.pos.x = p->drawnx - lsz.x/2;
