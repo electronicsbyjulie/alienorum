@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cctype>
+#include <array>
 #include <cstdlib>
 #include <cstring>
 #include <cmath>
@@ -12,8 +13,17 @@ namespace alienorum
 {
     enum class NeighborhoodType
     {
-        all, sunlike, orange, red_dwarfs, sirius, subgiants, giants_ob, white_dwarfs, brown_dwarfs
+        all, sunlike, orange, red_dwarfs, sirius, subgiants, giants_ob, white_dwarfs, brown_dwarfs,
+        red_brown_dwarfs
     };
+    inline constexpr std::array<NeighborhoodType, 8> neighborhood_types =
+    {
+        NeighborhoodType::all, NeighborhoodType::sunlike, NeighborhoodType::orange,
+        NeighborhoodType::red_brown_dwarfs, NeighborhoodType::sirius, NeighborhoodType::subgiants,
+        NeighborhoodType::giants_ob, NeighborhoodType::white_dwarfs
+    };
+    inline constexpr char neighborhood_type_labels[] =
+        "(All Types)\0Sunlike\0Orange Dwarfs\0Red+Brown Dwarfs\0Sirius-like\0Subgiants\0Giants + OB\0White Dwarfs\0";
     enum class NeighborhoodOrder { nearest, brightest };
     enum class NeighborhoodLuminosity { unknown, v, iv_v, iv, iii_iv, iii, ii, i, vii };
 
@@ -98,7 +108,8 @@ namespace alienorum
         for (size_t pos = suffix; pos < compact.size(); ++pos)
         {
             if (pos > suffix && std::isalpha(static_cast<unsigned char>(compact[pos - 1]))) continue;
-            if (compact.compare(pos, 3, "VAR") == 0) continue;
+            if (compact.compare(pos, 3, "VAR") == 0 || compact.compare(pos, 5, "INT-G") == 0
+                || compact.compare(pos, 4, "VL-G") == 0 || compact.compare(pos, 5, "FLD-G") == 0) continue;
             for (const auto& entry : classes)
             {
                 if (compact.compare(pos, strlen(entry.first), entry.first) == 0)
@@ -109,6 +120,18 @@ namespace alienorum
             }
         }
         return result;
+    }
+
+    inline bool compact_cool_dwarf(const Star& star, double temperature_k)
+    {
+        if (star.is_white_dwarf() || star.volumetric_mean_radius > 2 * solar_radius) return false;
+        const auto spectrum = neighborhood_spectrum(star.spectral_type);
+        if (spectrum.type && strchr("MLTY", spectrum.type)
+            && (spectrum.luminosity == NeighborhoodLuminosity::unknown || spectrum.luminosity == NeighborhoodLuminosity::v)) return true;
+        // A missing spectrum does not erase a supplied cool temperature and compact radius.
+        return !spectrum.type && temperature_k > 0 && temperature_k < 4000
+            && star.mass > 0 && star.mass < .8 * solar_mass
+            && star.volumetric_mean_radius > 0 && star.volumetric_mean_radius < solar_radius;
     }
 
     inline bool neighborhood_dwarf_magnitude(const Star& star, const NeighborhoodSpectrum& spectrum)
@@ -135,6 +158,11 @@ namespace alienorum
             : ((spectrum.type && std::strchr("LTY", spectrum.type))
                 || (star.temperature > 0 && star.temperature < 2300)));
         if (filter == NeighborhoodType::brown_dwarfs) return brown;
+        if (filter == NeighborhoodType::red_brown_dwarfs)
+        {
+            if (brown || neighborhood_matches_type(star, NeighborhoodType::red_dwarfs)) return true;
+            return compact_cool_dwarf(star, star.temperature);
+        }
         const bool unknown = lum == NeighborhoodLuminosity::unknown;
         const bool dwarf = lum == NeighborhoodLuminosity::v;
         switch (filter)

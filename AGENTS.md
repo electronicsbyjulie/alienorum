@@ -1,5 +1,10 @@
 # Alienorum Project Rules & Guidelines for AI Agents
 
+## Regression Test Protection
+- New regression tests may be added freely.
+- Changing or removing an existing regression test requires explicit, formal, informed developer approval before editing it. Explain the current test, the proposed change, and its effect on coverage and expected behavior; wait for the developer to explicitly approve or decline that exact change.
+- Do not weaken assertions, alter expected results, skip or disable tests, or replace fixtures to accommodate an implementation change without that approval. Fix the implementation while preserving existing regression tests.
+
 ## Brace Style
 - **Generally use Allman style braces; NEVER use K&R style** for all multi-line code blocks, functions, control structures (`if`, `else`, `for`, `while`, `switch`, `try`, `catch`, `finally`), classes, structs, and namespaces across all languages. However, if a statement or inline function can fit on one line or is already one line, you may write it/leave it as one line, even if it contains braces.
 - Otherwise, each opening brace (`{`) and its closing counterpart (`}`) MUST always match the same level of indent.

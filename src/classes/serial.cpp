@@ -460,6 +460,14 @@ static int find_object_impl(const char* search_term, bool os, double ml, int lev
                 ||  (s->constellation[1] & 0x5f) != (match_cons[1] & 0x5f)
                 ||  (s->constellation[2] & 0x5f) != (match_cons[2] & 0x5f)
                 )) continue;
+        if (match_comp && is_gliese && cels[i]->typeclass() == class_star
+            && has_same_numbers(s->Gliese, search_term))
+        {
+            // Published component letters belong to the identifier, even when
+            // the star has a proper display name with no trailing letter.
+            const std::string identifier = trim(s->Gliese);
+            if (!identifier.empty() && identifier.back() == match_comp) return i;
+        }
         if (match_comp)
         {
             m = strlen(cels[i]->name);

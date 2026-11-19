@@ -847,9 +847,12 @@ void Star::apply_mira_pulsation(double phase)
 double Star::bolometric_luminosity(double tempK) const
 {
     if (!tempK) tempK = estimate_temperature();
+    const bool cool_dwarf = compact_cool_dwarf(*this, tempK);
     // Evolved stars do not follow the main-sequence color/luminosity relation.
     // Use their physical radius and temperature when available, including remnants.
-    if ((is_evolved() || (is_mira_variable() && mira_pulsation.is_object()))
+    // A visual or Gaia-G proxy is not a total-energy measurement for a cool
+    // molecular atmosphere. Stefan-Boltzmann applies independently of its color.
+    if ((is_evolved() || cool_dwarf || (is_mira_variable() && mira_pulsation.is_object()))
         && std::isfinite(volumetric_mean_radius) && volumetric_mean_radius > 0
         && std::isfinite(tempK) && tempK > 0)
         return pow(volumetric_mean_radius / solar_radius, 2) * pow(tempK / sun_temp, 4);

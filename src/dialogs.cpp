@@ -3231,11 +3231,11 @@ void draw_stellar_neighborhood(ImGuiIO &io)
     if (!cels[1]) return;
     ImGui::Begin("Stellar Neighborhood", &neighborhood, 0);
 
-    int type_choice = static_cast<int>(neighborhood_type);
+    const auto type_position = std::find(neighborhood_types.begin(), neighborhood_types.end(), neighborhood_type);
+    int type_choice = type_position == neighborhood_types.end() ? 3 : static_cast<int>(type_position - neighborhood_types.begin());
     ImGui::SetNextItemWidth(155);
-    ImGui::Combo("##neighborhood_type", &type_choice,
-        "(All Types)\0Sunlike\0Orange Dwarfs\0Red Dwarfs\0Sirius-like\0Subgiants\0Giants + OB\0White Dwarfs\0Brown Dwarfs\0");
-    neighborhood_type = static_cast<NeighborhoodType>(type_choice);
+    ImGui::Combo("##neighborhood_type", &type_choice, neighborhood_type_labels);
+    neighborhood_type = neighborhood_types[type_choice];
     ImGui::SameLine();
     int order_choice = static_cast<int>(neighborhood_order);
     ImGui::SetNextItemWidth(110);
