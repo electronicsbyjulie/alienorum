@@ -5811,6 +5811,25 @@ static void apply_body_metadata(CelestialObject* body, const json& record)
     body->known_poles = record.value("known_poles", body->known_poles);
     if (body->typeclass() == class_planet || body->typeclass() == class_moon)
     {
+        auto* planet = static_cast<Planet*>(body);
+        // Older universe saves acquire calibration from the local catalog.
+        // An explicitly saved height, including zero, keeps its associated offset.
+        if (!std::isfinite(planet->bump_height))
+        {
+            const auto height = record.find("BumpHeight"), offset = record.find("BumpOffset");
+            if (height != record.end() && height->is_number())
+            {
+                const double value = height->get<double>();
+                if (std::isfinite(value) && value >= 0)
+                {
+                    planet->bump_height = value;
+                    if (offset != record.end() && offset->is_number() && std::isfinite(offset->get<double>()))
+                    {
+                        planet->bump_offset = offset->get<double>();
+                    }
+                }
+            }
+        }
         const auto texture = record.find("PlantCrownTexture");
         const auto saved_texture = record.find("plant_crown_texture");
         auto& supplied = static_cast<Planet*>(body)->plant_crown_texture;
@@ -6130,6 +6149,7 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
                 try
                 {
                     pl.at(mapkeys[j]).get_to(mapurl);
+                    if (mapurl.rfind("maps/", 0) == 0) continue; // Bundled local numeric maps.
                     if (mapurl.c_str())
                     {
                         std::string destdir = (std::string)"maps/";

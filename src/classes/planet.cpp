@@ -1719,6 +1719,7 @@ double Planet::viewer_reflectance_magnitude(CelestialLocation seen_from, double 
 
 double Planet::estimate_bump_scale()
 {
+    if (std::isfinite(bump_height) && bump_height >= 0) return bump_height;
     const double P_HALF = 100.0;   // Pa
     double p_pa = fmax(get_surface_pressure(), 0.0);
     double relief = 1.0 / (1.0 + log1p(p_pa / P_HALF));
@@ -2598,6 +2599,8 @@ json Planet::to_json()
         towrite["ring_inner_radius"] = ring_inner_radius * 1e-3;
         towrite["ring_mean_opacity"] = ring_mean_opacity;
     }
+    if (std::isfinite(bump_height) && bump_height >= 0) towrite["bump_height"] = bump_height;
+    if (std::isfinite(bump_offset) && bump_offset != 0) towrite["bump_offset"] = bump_offset;
     towrite["transparent_clouds"] = transparent_clouds;
     towrite["vegetation_r"] = vegetation_r;
     towrite["vegetation_g"] = vegetation_g;
@@ -2766,6 +2769,10 @@ bool Planet::from_json(const json& j)
     try { j.at("vegetation_r").get_to(vegetation_r); } catch (...) { ; }
     try { j.at("vegetation_g").get_to(vegetation_g); } catch (...) { ; }
     try { j.at("vegetation_b").get_to(vegetation_b); } catch (...) { ; }
+    bump_height = ocean_numeric(j, "bump_height");
+    if (bump_height < 0) bump_height = NAN;
+    bump_offset = ocean_numeric(j, "bump_offset");
+    if (!std::isfinite(bump_offset)) bump_offset = 0;
     surface_air_gradient_k_m = ocean_numeric(j, "surface_air_gradient_k_m");
     veg_min_temp = 278;
     veg_max_temp = 310;

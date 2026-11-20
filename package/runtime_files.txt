@@ -465,7 +465,7 @@ object_name_pool.dat
 maps/Charon_surf.jpg
 maps/Earth_bump.png
 maps/Earth_surf.jpg
-maps/Mars_bump.jpg
+maps/Mars_bump.png
 maps/Mars_surf.jpg
 maps/Moon_bump.jpg
 maps/Moon_surf.png

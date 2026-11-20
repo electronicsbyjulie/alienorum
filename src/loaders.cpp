@@ -541,20 +541,27 @@ void load_textures(CelestialObject* cel)
             if (cls == class_planet || cls == class_moon)
             {
                 Planet *p = (Planet*)cel;
-                filename = (std::string)"maps" + _FSSTR + (std::string)cel->name + (std::string)"_bump.jpg";
-                if (file_exists(filename.c_str()))
+                const std::string bump_base = std::string("maps") + _FSSTR + cel->name + "_bump";
+                const double bump_scale = p->estimate_bump_scale();
+                bool loaded = false;
+                // An explicit calibration selects the bundled numeric PNG ahead of an old JPEG cache.
+                if (std::isfinite(p->bump_height) && file_exists((bump_base + ".png").c_str()))
                 {
-                    cel->surf_map->load_from_jpeg(filename, true, p->estimate_bump_scale());
-                    cel->has_real_maps = true;
+                    loaded = cel->surf_map->load_calibrated_bump(bump_base + ".png", bump_scale, p->bump_offset);
+                    if (!loaded) loaded = cel->surf_map->load_from_png(bump_base + ".png", true, bump_scale, p->bump_offset);
                 }
-                else
+                if (!loaded && file_exists((bump_base + ".jpg").c_str()))
                 {
-                    filename = (std::string)"maps" + _FSSTR + (std::string)cel->name + (std::string)"_bump.png";
-                    if (file_exists(filename.c_str()))
-                    {
-                        cel->surf_map->load_from_png(filename, true, p->estimate_bump_scale());
-                        cel->has_real_maps = true;
-                    }
+                    loaded = cel->surf_map->load_from_jpeg(bump_base + ".jpg", true, bump_scale, p->bump_offset);
+                }
+                if (!loaded && file_exists((bump_base + ".png").c_str()))
+                {
+                    loaded = cel->surf_map->load_from_png(bump_base + ".png", true, bump_scale, p->bump_offset);
+                }
+                if (loaded)
+                {
+                    p->m_bump_scale = bump_scale;
+                    cel->has_real_maps = true;
                 }
             }
         }

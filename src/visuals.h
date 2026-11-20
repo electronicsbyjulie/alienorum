@@ -86,6 +86,10 @@ extern double horizon_ground_motion_budget_ms;
 // Opt-in: precision-preserving noise is slower on older integrated GPUs.
 #define horizon_gpu_mesh_generation 0
 #endif
+// Set to 0 for an A/B build without cached distant elevation sampling.
+#ifndef horizon_distant_terrain
+#define horizon_distant_terrain 1
+#endif
 #ifndef distant_biome_pixel_sampling
 #define distant_biome_pixel_sampling 1    // Set to 0 to restore adaptive sampling near the horizon.
 #endif

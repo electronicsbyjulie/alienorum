@@ -30,6 +30,9 @@ namespace alienorum
     class Planet : public CelestialObject
     {
         public:
+        // Imported bump range and midpoint elevation, in metres; absent range uses the estimate.
+        double bump_height = NAN;
+        double bump_offset = 0;
         double albedo = 0;
         json giant_color_model = nullptr;
         // Rebuilt from each generated texture; no catalog photometry is replaced.

@@ -15,6 +15,7 @@
 #include "point.h"
 #include "alert_flags.h"
 #include "color.h"
+#include "elevationgrid.h"
 
 namespace alienorum
 {
@@ -239,6 +240,7 @@ namespace alienorum
 
         unsigned char *red_data = nullptr, *green_data = nullptr, *blue_data = nullptr;
         double *bump_data = nullptr;
+        ElevationGrid calibrated_bump;
         std::vector<SurfaceMaterial> surface_materials;
         std::shared_ptr<SurfacePhase> water_phase;
         std::shared_ptr<LocalClimate> initial_surface_climate;
@@ -294,8 +296,9 @@ namespace alienorum
         void water_phase_from_json(const json& saved);
 
         bool load_from_bmp(std::string filename, bool as_bump = false, double bump_scale = 20000);
-        bool load_from_jpeg(std::string filename, bool as_bump = false, double bump_scale = 20000);
-        bool load_from_png(std::string filename, bool as_bump = false, double bump_scale = 20000);
+        bool load_from_jpeg(std::string filename, bool as_bump = false, double bump_scale = 20000, double bump_offset = 0);
+        bool load_from_png(std::string filename, bool as_bump = false, double bump_scale = 20000, double bump_offset = 0);
+        bool load_calibrated_bump(std::string filename, double bump_scale, double bump_offset);
         bool save_to_png(std::string filename, bool as_bump = false);
         void correct_colors(double rtot, double gtot, double btot);
         inline bool has_bump_data() const

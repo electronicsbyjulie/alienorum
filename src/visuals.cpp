@@ -41,6 +41,7 @@
 #include "classes/surfacebiomes.h"
 #include "classes/surfacenavigation.h"
 #include "classes/horizonterrain.h"
+#include "classes/distantskyline.h"
 #include "classes/wdcolor.h"
 #include "classes/wdlimb.h"
 #include <tuple>
@@ -5949,7 +5950,8 @@ void draw_horizon()
         const bool ocean_world = surface.ocean_world();
         const bool surface_water = surface.has_surface_water();
         const bool paint_biomes = surface_water || (surface_biomes && cel->type != lavaworld);
-        const bool veiled_uniform_ground = haze.active() && !paint_biomes && map && map->is_complete();
+        const bool veiled_uniform_ground = haze.active() && !paint_biomes && map && map->is_complete()
+            && !(horizon_distant_terrain && show_terrain && !gaseous && !ocean_world && map->has_bump_data());
         const auto water_at = [&](double latitude, double longitude)
         {
             return surface.water_at(latitude, longitude);
@@ -6294,6 +6296,31 @@ void draw_horizon()
                 hzheight[j] = hz_dy[j];
             }
         }
+
+        #if horizon_distant_terrain
+        if (show_terrain && !gaseous && !ocean_world && cel->surf_map
+            && cel->surf_map->is_complete() && cel->surf_map->has_bump_data())
+        {
+            static DistantSkyline distant_skyline;
+            distant_skyline.update(cel->surf_map, cel->surf_map->gen, whereami,
+                viewer_lat, viewer_lon, surface_radius, surface_eye, surface_refraction.curvature,
+                [&](double latitude, double longitude)
+                {
+                    return cel->surf_map->elevation_at_bilinear(latitude, longitude);
+                });
+            for (int node = 0; node < hznodes; ++node)
+            {
+                const double bearing = 2 * _pi * node / hznodes;
+                const double elevation = distant_skyline.angle(bearing);
+                const Point direction(sin(bearing) * cos(elevation), sin(elevation), cos(bearing) * cos(elevation));
+                const Cartesian2D projected(direction, azimuth, altitude, zoom);
+                if (projected.x > -1e20 && std::isfinite(projected.y))
+                {
+                    hzheight[node] = fmin(hzheight[node], projected.y * dispcx + dispcy);
+                }
+            }
+        }
+        #endif
 
         #if lavaworld_heat_shimmer
         if (show_terrain)

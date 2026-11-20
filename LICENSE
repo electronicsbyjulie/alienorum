@@ -56,6 +56,10 @@ MOLA Team/Goddard Space Flight Center, respectively, and are in the Public Domai
 https://astrogeology.usgs.gov/search/map/mars_viking_global_color_mosaic_925m
 https://astrogeology.usgs.gov/search/map/mars_mgs_mola_dem_463m
 
+The calibrated Mars elevation PNG is derived from NASA MGS MOLA MEGT90N000EB,
+version 2.0, produced by the MOLA team at NASA Goddard Space Flight Center.
+Source: https://pds-geosciences.wustl.edu/missions/mgs/megdr.html
+
 The Titan surface and clouds maps are derived from the following image courtesy VIMS Team,
 Univ. Arizona, U. Nantes, ESA, NASA:
 https://science.nasa.gov/image-article/apod-2026-may-2-seeing-titan/

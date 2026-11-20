@@ -1294,7 +1294,7 @@ namespace
     }
 }
 
-bool Map::load_from_jpeg(std::string filename, bool as_bump, double bump_scale)
+bool Map::load_from_jpeg(std::string filename, bool as_bump, double bump_scale, double bump_offset)
 {
     if (!as_bump)
     {
@@ -1409,7 +1409,7 @@ bool Map::load_from_jpeg(std::string filename, bool as_bump, double bump_scale)
                         + 0.002196 * jpeg_image_buffer[0][i+1]
                         + 0.000588 * jpeg_image_buffer[0][i+2])
                     : (   0.003921 * jpeg_image_buffer[0][i]);   // 1/255, matching the RGB weights' sum
-                double val = bump_scale * (lum - 0.5);
+                double val = bump_scale * (lum - 0.5) + bump_offset;
                 if (bump_resample) bump_src_data[j] = val;
                 else bump_data[j] = val;
             }
@@ -1437,11 +1437,12 @@ bool Map::load_from_jpeg(std::string filename, bool as_bump, double bump_scale)
         resample_equirect(bump_src_data, bump_src_w, bump_src_h, bump_data, image_width, image_height);
     }
 
-    if (!as_bump) touch_gen();
+    if (as_bump) calibrated_bump.clear();
+    touch_gen();
     return true;
 }
 
-bool Map::load_from_png(std::string filename, bool as_bump, double bump_scale)
+bool Map::load_from_png(std::string filename, bool as_bump, double bump_scale, double bump_offset)
 {
     if (!as_bump)
     {
@@ -1615,7 +1616,7 @@ bool Map::load_from_png(std::string filename, bool as_bump, double bump_scale)
                             (( 0.001137 * pixel[0]
                              + 0.002196 * pixel[1]
                              + 0.000588 * pixel[2])
-                             - 0.5);
+                             - 0.5) + bump_offset;
                     if (bump_resample) bump_src_data[i] = val;
                     else bump_data[i] = val;
                 }
@@ -1645,7 +1646,7 @@ bool Map::load_from_png(std::string filename, bool as_bump, double bump_scale)
 
                 if (as_bump)
                 {
-                    double val = bump_scale * (pixel[0] / 255.0 - 0.5);
+                    double val = bump_scale * (pixel[0] / 255.0 - 0.5) + bump_offset;
                     if (bump_resample) bump_src_data[i] = val;
                     else bump_data[i] = val;
                 }
@@ -1673,12 +1674,34 @@ bool Map::load_from_png(std::string filename, bool as_bump, double bump_scale)
         resample_equirect(bump_src_data, bump_src_w, bump_src_h, bump_data, image_width, image_height);
     }
 
-    if (!as_bump) touch_gen();
+    if (as_bump) calibrated_bump.clear();
+    touch_gen();
+    return true;
+}
+
+bool Map::load_calibrated_bump(std::string filename, double bump_scale, double bump_offset)
+{
+    if (!image_width || !image_height || allocated < image_width * image_height) return false;
+    ElevationGrid decoded;
+    if (!decoded.load(filename, bump_scale, bump_offset, mcel && mcel->map_inverted)) return false;
+    auto shading = std::make_unique<double[]>(allocated);
+    for (unsigned long y = 0; y < image_height; ++y)
+    {
+        for (unsigned long x = 0; x < image_width; ++x)
+        {
+            shading[y * image_width + x] = decoded.sample(half_pi - y / lat_scale, x / lon_scale - _pi);
+        }
+    }
+    delete[] bump_data;
+    bump_data = shading.release();
+    calibrated_bump = std::move(decoded);
+    touch_gen();
     return true;
 }
 
 bool Map::save_to_png(std::string filename, bool as_bump)
 {
+    if (as_bump && !calibrated_bump.empty()) return calibrated_bump.save(filename);
     if (!image_width || !image_height || image_width > PNG_UINT_31_MAX || image_height > PNG_UINT_31_MAX
         || image_width > std::numeric_limits<size_t>::max() / image_height
         || image_width * image_height > std::numeric_limits<size_t>::max() / 3
@@ -3264,6 +3287,7 @@ RGB3 Map::color_at_bilinear(double lat, double lon) const
 
 double Map::elevation_at_bilinear(double lat, double lon) const
 {
+    if (!calibrated_bump.empty()) return calibrated_bump.sample(lat, lon);
     if (!bump_data || !image_width || !image_height || allocated < image_width * image_height
         || !std::isfinite(lat) || !std::isfinite(lon))
     {
@@ -3294,6 +3318,7 @@ double Map::elevation_at_bilinear(double lat, double lon) const
 
 double Map::elevation_at(double lat, double lon)
 {
+    if (!calibrated_bump.empty()) return calibrated_bump.sample(lat, lon);
     if (bump_data)
     {
         unsigned int idx = idx_of(lat, lon);
@@ -5410,6 +5435,7 @@ void alienorum::Map::_map_resample_bump_regen_rocky(CelestialObject *cel)
 void alienorum::Map::mark_for_map_regen(CelestialObject *cel, bool discard_bump)
 {
     if (abort_load.load()) return;
+    if (discard_bump) calibrated_bump.clear();
     if (discard_bump && bump_data)
     {
         double *old_bump = bump_data;
