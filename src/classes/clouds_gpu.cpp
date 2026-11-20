@@ -529,6 +529,7 @@ void main()
         GLuint texture;
         unsigned int revision;
         CloudGeometryMode geometry_mode;
+        float resolution_scale;
     };
     static CloudSkyGpuParams s_pool[4];
     static int s_pool_index = 0;
@@ -1310,7 +1311,7 @@ void main()
         return true;
     }
 
-    static bool prepare_cache(int width, int height)
+    static bool prepare_cache(int width, int height, float resolution_scale)
     {
         if (!s_composite || !s_gen_framebuffers || !s_bind_framebuffer
             || !s_framebuffer_texture || !s_check_framebuffer)
@@ -1319,7 +1320,7 @@ void main()
         }
         // Render a compact cloud layer, then upscale with linear filtering.
         // This also reduces the tile work during camera motion.
-        const double scale = std::min(0.4, std::min(896.0 / width, 504.0 / height));
+        const double scale = resolution_scale * std::min(0.4, std::min(896.0 / width, 504.0 / height));
         const int cw = std::max(1, (int)std::ceil(width * scale));
         const int ch = std::max(1, (int)std::ceil(height * scale));
         if (!s_cache_texture)
@@ -1362,7 +1363,7 @@ void main()
         // Offscreen geometry and cloud caches cover their whole attachments.
         // The final screen pass restores the command's scissor test below.
         glDisable(GL_SCISSOR_TEST);
-        const bool cached = prepare_cache(viewport[2], viewport[3]);
+        const bool cached = prepare_cache(viewport[2], viewport[3], p.resolution_scale);
         if (!cached || !cache_matches(p, viewport[2], viewport[3]))
         {
             const int render_width = cached ? s_cache_width : viewport[2];
@@ -1634,6 +1635,7 @@ void main()
         p->texture = in.texture;
         p->revision = in.revision;
         p->geometry_mode = in.geometry_mode;
+        p->resolution_scale = in.resolution_scale;
         if (in.sample_overhead)
         {
             sample_rain_cover(*p);

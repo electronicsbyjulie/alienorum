@@ -574,6 +574,7 @@ int main (int argc, char** argv)
             if (!done && !loading_frame)
                 advance_clock(std::chrono::duration<double>(std::chrono::steady_clock::now() - suspended_at).count());
             resumed_from_minimize = true;
+            update_horizon_quality(0);
             continue;
         }
         if (!loading_frame) process_pending_universe_load();
@@ -1268,6 +1269,7 @@ int main (int argc, char** argv)
             frame_dur = std::chrono::duration<double>(std::chrono::steady_clock::now()-frame_began).count();
             if (frame_dur < best_frame_dur) best_frame_dur = frame_dur;
             io.DeltaTime = frame_dur;
+            update_horizon_quality(!loading_frame && view_mode == vm_horizon && whereami >= 0 ? frame_dur : 0);
             is_click = is_dbl_click = false;
 
             advance_clock(frame_dur);

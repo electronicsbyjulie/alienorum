@@ -1725,6 +1725,24 @@ void draw_objedit_window(ImGuiIO& io)
             }
             ImGui::SameLine();
             ImGui::Text("%s", "y");
+            if (tc == class_planet || tc == class_moon)
+            {
+                ImGui::SameLine(col2);
+                ImGui::Text("%s", "Bump Height");
+                auto* body = static_cast<Planet*>(cel);
+                double edit_bump_height = body->bump_height;
+                if (isnan(edit_bump_height)) edit_bump_height = fmin(65535, body->volumetric_mean_radius * 0.1);
+                ImGui::SameLine(col3);
+                ImGui::SetNextItemWidth(txtwid);
+                if (ImGui::InputDouble("##edtbh", &edit_bump_height, 0, 0, "%.1f"))
+                {
+                    body->bump_height = edit_bump_height;
+                    body->m_bump_scale = body->estimate_bump_scale();
+                    body->user_edited = true;
+                }
+                ImGui::SameLine();
+                ImGui::Text("%s", "m");
+            }
 
             double edit_oblt = cel->oblateness;
             ImGui::Text("%s", "Oblateness");

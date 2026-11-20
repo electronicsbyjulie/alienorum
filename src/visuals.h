@@ -139,7 +139,6 @@ struct RockInstance
     double width;
     double height;
     double size;
-    double lift_px;
     double opacity;
     uint32_t seed_val;
     bool base_valid;
@@ -166,6 +165,7 @@ void find_horizon();
 float horizon_background_clip_y();
 void draw_local_rings();
 void draw_horizon();
+void update_horizon_quality(double frame_seconds);
 void draw_sky_gradient();
 void draw_cons_lines();
 void draw_cached_labels();

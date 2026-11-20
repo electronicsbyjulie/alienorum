@@ -74,16 +74,25 @@ void set_viewer_surface_location(bool also_set_plane)
     else
         equatorial_radius = cel->get_equatorial_radius();
 
+    double observer_height = 0;
+    if (view_mode == vm_horizon)
+    {
+        observer_height = fmax(0.01, viewer_eye_height);
+        if (cel->surf_map && !uses_gaseous_map(cel->type))
+        {
+            observer_height += cel->surf_map->elevation_at_bilinear(viewer_lat, viewer_lon);
+        }
+    }
     const double rotation_phase = cel->timeofday();
     struct SurfaceObserverContext
     {
         const CelestialObject* body = nullptr;
-        std::array<double, 30> key = {};
+        std::array<double, 31> key = {};
         CelestialLocation observer, pole;
         double north = 0, correction = 0;
     };
     static SurfaceObserverContext context;
-    std::array<double, 30> key = {};
+    std::array<double, 31> key = {};
     if (performance_enabled(12))
     {
         const auto& location = cel->location;
@@ -103,6 +112,7 @@ void set_viewer_surface_location(bool also_set_plane)
         key[index++] = rotation_phase;
         key[index++] = obl;
         key[index++] = equatorial_radius;
+        key[index++] = observer_height;
         key[index++] = also_set_plane;
         if (dwh)
         {
@@ -133,6 +143,10 @@ void set_viewer_surface_location(bool also_set_plane)
         cursor.z *= ((Moon*)cel)->depth * .5;
     }
     else cursor.y *= obl;
+    if (observer_height != 0)
+    {
+        cursor.scale(fmax(0.01, cursor.magnitude() + observer_height));
+    }
     cursor = rotate3D(cursor, center, yaxis, -rotation_phase);
     cursor = rotate3D(cursor, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
 

@@ -45,6 +45,7 @@
 #include "../classes/surfaceprefetch.h"
 #include "../classes/localsurfacetile.h"
 #include "../classes/horizonbackground.h"
+#include "../classes/horizonquality.h"
 #include "../classes/framescratch.h"
 #include "../horizon_ground_gpu.h"
 #include "../classes/grounddetail.h"
@@ -87,6 +88,27 @@ struct CloudTestView
     double horizon_angle = -0.0001;
     std::array<float, 3> haze_extinction{}, haze_light{};
 };
+
+TEST(HorizonQualityTest, SustainedSlowFramesReduceDetailAndRecoveryRestoresIt)
+{
+    HorizonQuality quality;
+    quality.observe(.7);
+    EXPECT_EQ(quality.ground_stride(), 1);
+    for (int frame = 0; frame < 5; ++frame) quality.observe(.12);
+    EXPECT_EQ(quality.ground_stride(), 2);
+    EXPECT_FLOAT_EQ(quality.cloud_scale(), .8f);
+    for (int frame = 0; frame < 5; ++frame) quality.observe(.12);
+    EXPECT_EQ(quality.ground_stride(), 4);
+    for (int frame = 0; frame < 60; ++frame) quality.observe(.09);
+    EXPECT_EQ(quality.ground_stride(), 4);
+    for (int frame = 0; frame < 90; ++frame) quality.observe(.05);
+    EXPECT_EQ(quality.ground_stride(), 1);
+    EXPECT_FLOAT_EQ(quality.cloud_scale(), 1);
+    for (int frame = 0; frame < 5; ++frame) quality.observe(.12);
+    EXPECT_EQ(quality.ground_stride(), 2);
+    quality.observe(0);
+    EXPECT_EQ(quality.ground_stride(), 1);
+}
 
 class SceneryTestMap : public Map
 {
@@ -1196,6 +1218,39 @@ TEST_F(RenderingRegressionTest, SunclockWithoutNightMapKeepsSurfaceVisibleThroug
     EXPECT_TRUE(show_clouds);
     blanket->set_cloud_floor(0);
     EXPECT_DOUBLE_EQ(capture(), cloudy);
+}
+
+TEST_F(RenderingRegressionTest, SunclockKeepsTerrainLightingWithTransparentClouds)
+{
+    Planet* world = surface();
+    world->volumetric_mean_radius = 1;
+    world->oblateness = 0;
+    world->sidereal_rotational_period = 0;
+    world->lon_J2000_offset = 0;
+    world->location.equatorial_plane.a = 0;
+    world->get_light_center()->location.local_position = Point(.8 * AU, 0, -.6 * AU);
+    delete world->surf_map;
+    world->surf_map = new CraterLightingMap(128);
+    world->cloud_map = new UniformCloudTestMap(0);
+    world->transparent_clouds = true;
+    set(view_mode, vm_sunclock);
+    set(selected_locale, static_cast<Locale*>(nullptr));
+    set(show_clouds, false);
+    const auto capture = [&]()
+    {
+        draw_sunclock();
+        auto pixels = render();
+        ImGui::NewFrame();
+        return pixels;
+    };
+    const auto terrain = capture();
+    show_clouds = true;
+    ASSERT_NE(world->get_day_map(), world->surf_map);
+    EXPECT_EQ(capture(), terrain);
+    show_clouds = false;
+    delete world->surf_map;
+    world->surf_map = new CraterLightingMap(128, false, true);
+    EXPECT_GT(image_difference(capture(), terrain), 0);
 }
 
 TEST_F(RenderingRegressionTest, LavaSunclockDayStaysBrighterThanNightUnderStellarTint)
@@ -3912,6 +3967,117 @@ TEST_F(RenderingRegressionTest, DISABLED_HorizonGroundGpuTimings)
     SDL_GL_SwapWindow(window);
 }
 
+TEST_F(RenderingRegressionTest, HorizonObserverUsesMappedElevationAndSeesBelowLevelFromSummit)
+{
+    Planet* world = surface();
+    world->volumetric_mean_radius = 3396180;
+    world->oblateness = 0;
+    world->sidereal_rotational_period = oneday;
+    Map* map = world->surf_map;
+    ASSERT_TRUE(map->load_calibrated_bump("maps/Mars_bump.png", 65535, -.5));
+    set(viewer_eye_height, 1.75);
+    set(viewer_lat, 22 * fiftyseventh);
+    set(viewer_lon, -138.1 * fiftyseventh);
+    const auto check_camera_radius = [&]()
+    {
+        set_viewer_surface_location(true);
+        const double elevation = map->elevation_at_bilinear(viewer_lat, viewer_lon);
+        EXPECT_NEAR((here.local_position - world->location.local_position).magnitude(),
+            world->get_equatorial_radius() + elevation + viewer_eye_height, 1e-4);
+    };
+    ASSERT_LT(map->elevation_at_bilinear(viewer_lat, viewer_lon), 0);
+    check_camera_radius();
+    viewer_lat = 18.65 * fiftyseventh;
+    viewer_lon = -133.8 * fiftyseventh;
+    ASSERT_GT(map->elevation_at_bilinear(viewer_lat, viewer_lon), 19000);
+    check_camera_radius();
+    set(azimuth, 0.0);
+    set(altitude, 0.0);
+    set(zoom, 10.0);
+    const auto capture = [&]()
+    {
+        find_horizon();
+        draw_horizon();
+        auto pixels = render();
+        ImGui::NewFrame();
+        return pixels;
+    };
+    const auto summit = capture();
+    show_terrain = false;
+    const auto reference = capture();
+    const auto alpha_below_level = [&](const auto& pixels, int offset)
+    {
+        const int x = render_width / 2;
+        const int y = render_height / 2 + offset;
+        return pixels[(static_cast<size_t>(render_height - 1 - y) * render_width + x) * 4 + 3];
+    };
+    EXPECT_EQ(alpha_below_level(summit, 6), 0);
+    EXPECT_EQ(alpha_below_level(reference, 6), 255);
+    EXPECT_EQ(alpha_below_level(summit, 36), 255);
+}
+
+TEST_F(RenderingRegressionTest, MappedHorizonRevealsAtmosphereStarsAndCloudsBelowLevel)
+{
+    Planet* world = surface();
+    world->volumetric_mean_radius = 3396180;
+    world->oblateness = 0;
+    ASSERT_TRUE(world->surf_map->load_calibrated_bump("maps/Mars_bump.png", 65535, -20000));
+    world->ensure_atmosphere()->surface_pressure = 636;
+    world->cloud_map = new UniformCloudTestMap(255);
+    set(viewer_lat, 18.65 * fiftyseventh);
+    set(viewer_lon, -133.8 * fiftyseventh);
+    set(azimuth, 0.0);
+    set(altitude, 0.0);
+    set(zoom, 10.0);
+    set(whtbkgd, false);
+    set(show_orbits, false);
+    set(show_labels, false);
+    set(show_localsys, true);
+    set(here, CelestialLocation());
+    set(sky_grad, std::map<int, RGB3>{});
+    set(sky_mag_shift, 0.0);
+    set(global_brightness, 1.0);
+
+    Star* star = make_star("Star below level");
+    star->cenobj = star;
+    star->tmp_vis_flag = true;
+    star->location.local_position = star->tmprel = Point(0, -.007 * light_year, light_year);
+    star->drawnx = dispcx;
+    star->drawny = dispcy + .007 * zoom * dispcx;
+    double magnitudes[] = {999, 999, 999, -10};
+    double radii[4] = {}, blooms[4] = {};
+    bool discs[4] = {};
+    set(vmag_cache, static_cast<double*>(magnitudes));
+    set(angular_radius, static_cast<double*>(radii));
+    set(bloomrad_cache, static_cast<double*>(blooms));
+    set(discinstead, static_cast<bool*>(discs));
+    set(selected, star->seqno);
+
+    const int row = static_cast<int>(dispcy) + 6;
+    const size_t pixel = (static_cast<size_t>(render_height - 1 - row) * render_width + render_width / 2) * 4;
+    const auto capture = [&](bool draw_star, bool draw_cloud)
+    {
+        find_horizon();
+        draw_sky_gradient();
+        if (draw_star) draw_objects();
+        if (draw_cloud) EXPECT_TRUE(draw_cloudy_sky());
+        draw_horizon();
+        auto pixels = render();
+        ImGui::NewFrame();
+        return pixels;
+    };
+    const auto clear = capture(false, false);
+    ASSERT_TRUE(sky_grad.count(row));
+    EXPECT_GT(clear[pixel] + clear[pixel + 1] + clear[pixel + 2], 0);
+    const auto stars = capture(true, false);
+    EXPECT_NE(stars[pixel], clear[pixel]);
+    set(show_clouds, true);
+    world->overcast = true;
+    const auto without_clouds = capture(false, false);
+    const auto clouds = capture(false, true);
+    EXPECT_NE(clouds[pixel], without_clouds[pixel]);
+}
+
 TEST_F(RenderingRegressionTest, RockFacesStayOpaqueAtEveryVisibleDistance)
 {
     surface();
@@ -5775,6 +5941,47 @@ TEST_F(RenderingRegressionTest, GroundMaskUploadsRetainPixelsAndTrackDepthHorizo
     EXPECT_EQ(capture(), edited_horizon);
     EXPECT_EQ(horizon_ground_gpu_stats().depth_uploads, 1u);
     EXPECT_EQ(horizon_ground_gpu_stats().horizon_uploads, 1u);
+}
+
+TEST_F(RenderingRegressionTest, WalkingGroundPreviewRefinesOverSeveralStationaryFrames)
+{
+    auto* world = surface(true);
+    world->has_water = 0;
+    delete world->surf_map;
+    world->surf_map = new MountainBandsTestMap();
+    set(horizon_ground_gpu_reference, false);
+    set(horizon_ground_motion_budget_ms, 0.0);
+    set(viewer_lat, .0003);
+    set(altitude, -.5);
+    const auto capture = [&]()
+    {
+        freeze_surface_time();
+        find_horizon();
+        draw_horizon();
+        auto pixels = render();
+        ImGui::NewFrame();
+        return pixels;
+    };
+    capture();
+    viewer_lat += 3.0 / earth_radius;
+    const auto coarse = capture();
+    ASSERT_STREQ(precipitation_stats.ground_cache_reason, "walking preview");
+    auto refined = capture();
+    EXPECT_STREQ(precipitation_stats.ground_cache_reason, "refining");
+    EXPECT_FALSE(precipitation_stats.ground_cache_hit);
+    int frames = 1;
+    while (!precipitation_stats.ground_cache_hit && frames < 9)
+    {
+        refined = capture();
+        ++frames;
+    }
+    EXPECT_TRUE(precipitation_stats.ground_cache_hit);
+    EXPECT_GE(frames, 4);
+    EXPECT_NE(coarse, refined);
+    horizon_ground_gpu_reference = true;
+    capture();
+    horizon_ground_gpu_reference = false;
+    EXPECT_EQ(capture(), refined);
 }
 
 TEST_F(RenderingRegressionTest, PanningHazyCoastPreservesDetailedGroundPixels)
@@ -7714,6 +7921,36 @@ TEST_F(RenderingRegressionTest, WaterCachesReuseGeometryAndInvalidateSurfaceCert
         EXPECT_EQ(land.samples, 0u);
         EXPECT_EQ(land.uniform_water_points, 0u);
     }
+}
+
+TEST_F(RenderingRegressionTest, SlowHorizonFramesReduceWaveWorkAndRebuildCachedGeometry)
+{
+    struct QualityReset
+    {
+        ~QualityReset() { update_horizon_quality(0); }
+    } reset;
+    update_horizon_quality(0);
+    Planet* world = surface(true);
+    delete world->surf_map;
+    world->surf_map = new BlueBiomeTestMap(SurfaceMaterial::water);
+    show_terrain = false;
+    altitude = -.4;
+    const auto paint = [&]()
+    {
+        scenery();
+        return horizon_water_stats();
+    };
+    const auto full = paint();
+    ASSERT_GT(full.uniform_water_points, 100u);
+    for (int frame = 0; frame < 10; ++frame) update_horizon_quality(.12);
+    const auto reduced = paint();
+    EXPECT_EQ(reduced.geometry_builds, 1u);
+    EXPECT_LT(reduced.uniform_water_points, full.uniform_water_points / 2);
+    EXPECT_EQ(paint().geometry_builds, 0u);
+    update_horizon_quality(0);
+    const auto restored = paint();
+    EXPECT_EQ(restored.geometry_builds, 1u);
+    EXPECT_EQ(restored.uniform_water_points, full.uniform_water_points);
 }
 
 TEST_F(RenderingRegressionTest, GlintColorCachePreservesPhotometricAndWhiteDwarfEdits)

@@ -39,6 +39,7 @@ namespace alienorum
         // Reference modes support image comparisons without changing cloud shapes.
         CloudGeometryMode geometry_mode = CloudGeometryMode::accelerated;
         bool sample_overhead = false;
+        float resolution_scale = 1;
     };
 
     struct CloudRainCover

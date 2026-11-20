@@ -404,10 +404,14 @@ void main()
         {
             const float left = rectangle.left, top = rectangle.top;
             const float right = rectangle.right, bottom = rectangle.bottom;
+            const bool shaded = rectangle.corners[0] != 0;
+            const ImU32 top_right = shaded ? rectangle.corners[0] : rectangle.color;
+            const ImU32 bottom_right = shaded ? rectangle.corners[1] : rectangle.color;
+            const ImU32 bottom_left = shaded ? rectangle.corners[2] : rectangle.color;
             batch.vertices.insert(batch.vertices.end(),
             {
-                {left, top, rectangle.color}, {right, top, rectangle.color}, {right, bottom, rectangle.color},
-                {left, top, rectangle.color}, {right, bottom, rectangle.color}, {left, bottom, rectangle.color}
+                {left, top, rectangle.color}, {right, top, top_right}, {right, bottom, bottom_right},
+                {left, top, rectangle.color}, {right, bottom, bottom_right}, {left, bottom, bottom_left}
             });
             ++stats.tiles;
             if (batch.haze.extinction[1] > 0) ++stats.haze_tiles;

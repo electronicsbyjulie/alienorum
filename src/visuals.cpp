@@ -41,6 +41,7 @@
 #include "classes/surfacebiomes.h"
 #include "classes/surfacenavigation.h"
 #include "classes/horizonterrain.h"
+#include "classes/horizonquality.h"
 #include "classes/distantskyline.h"
 #include "classes/terrainlighting.h"
 #include "classes/wdcolor.h"
@@ -105,6 +106,12 @@ static bool is_observing_object(const CelestialObject* object)
 {
     return view_mode != vm_system && cels && whereami >= 0 && whereami < ncelobjs
         && object == cels[whereami];
+}
+
+static bool has_mapped_horizon(const CelestialObject* body)
+{
+    return horizon_distant_terrain && show_terrain && body && !uses_gaseous_map(body->type)
+        && body->surf_map && body->surf_map->is_complete() && body->surf_map->has_calibrated_bump();
 }
 
 static bool exclude_observing_object(CelestialObject *object)
@@ -3490,7 +3497,8 @@ bool draw_single_object(int i)
     flare = fmin(max_flare, fmax(f_bloom, f_mag) / fmax(1, f_ang));*/
 
     // if (flare >= 5) std::cout << cels[i]->name << " f_bloom=" << f_bloom << " f_mag=" << f_mag << " f_ang=" << f_ang << " flare=" << flare << std::endl;
-    if (view_mode == vm_horizon && cels[i]->Decl_as_radians(here) < cutoff_alt - angular_radius[i]) flare = 0;
+    if (view_mode == vm_horizon && whereami >= 0 && !has_mapped_horizon(cels[whereami])
+        && cels[i]->Decl_as_radians(here) < cutoff_alt - angular_radius[i]) flare = 0;
     bloomrad = fmin(max_bloomrad, bloomrad*10);
     if (cls == class_galaxy)
     {
@@ -4312,6 +4320,7 @@ void draw_objects()
 
     // Grid and backdrop labels belong behind celestial objects.
     draw_cached_labels();
+    const bool mapped_horizon = view_mode == vm_horizon && whereami >= 0 && has_mapped_horizon(cels[whereami]);
     // Collect visible objects before painting either their discs or labels.
     for (pass=0; pass<=1; pass++) for (int index : frame_draw_candidates())
     {
@@ -4401,7 +4410,8 @@ void draw_objects()
             // occludes them when its foreground is painted later in the frame.
             bool gasball = view_mode == vm_horizon && whereami > 0 && uses_gaseous_map(cels[whereami]->type);
             double cutoff_alt = gasball ? -25*fiftyseventh : 0;
-            if (view_mode == vm_horizon && !dragging && cels[i]->Decl_as_radians(here) < cutoff_alt - angular_radius[i] && angular_radius[i] < sphere_rad_threshold)
+            if (view_mode == vm_horizon && !mapped_horizon && !dragging
+                && cels[i]->Decl_as_radians(here) < cutoff_alt - angular_radius[i] && angular_radius[i] < sphere_rad_threshold)
             {
                 continue;
             }
@@ -5058,6 +5068,8 @@ void draw_sunclock()
     const bool hide_cloud_deck = cel->surf_map && (cel->overcast || !cel->transparent_clouds
         || (cel->cloud_map && cel->cloud_map->mean_cloud_opacity() >= cloud_opacity_threshold));
     Map *map = hide_cloud_deck ? cel->surf_map : cel->get_day_map();
+    // The day color can be a cloud composite. Read terrain from the surface map.
+    Map *bump_map = cel->surf_map && cel->surf_map->has_bump_data() ? cel->surf_map : map;
     if (cel->night_map && cel->surf_map) cel->night_map->update_night_phase(cel->surf_map);
     // Without a night texture, dim the combined surface and clouds together.
     // A synthetic cloud-only night map would hide the surface behind black.
@@ -5099,7 +5111,7 @@ void draw_sunclock()
 
     sclk_in.day_map_texture = map ? gputex_for(map) : 0;
     sclk_in.night_map_texture = nmap ? gputex_for(nmap) : 0;
-    sclk_in.bump_map_texture = map ? gputex_bump_for(map) : 0;
+    sclk_in.bump_map_texture = gputex_bump_for(bump_map);
 
     sclk_in.fallback_color[0] = prgb.r / 255.0;
     sclk_in.fallback_color[1] = prgb.g / 255.0;
@@ -5170,7 +5182,7 @@ void draw_sunclock()
             {
                 dx = dispcx + x;
                 lon = lon_from_x(x);
-                elevation = (map) ? (map->elevation_at(lat, lon)) : 0;
+                elevation = bump_map ? bump_map->elevation_at(lat, lon) : 0;
                 land = Point::from_ra_dec(lon, lat, dwh ? 1 : (equatorial_radius + elevation), 0);
 
                 if (dwh)
@@ -5198,12 +5210,12 @@ void draw_sunclock()
                         is_day = fmin(1, pow(cos_theta, 1.0/3.0));
                         is_night = 0;
                         #if sunclock_terrain_lighting
-                        if (map && map->has_bump_data())
+                        if (bump_map && bump_map->has_bump_data())
                         {
                             const TerrainVector axes = {sclk_in.body_axes[0], sclk_in.body_axes[1], sclk_in.body_axes[2]};
                             const auto normal = terrain_normal(lon, lat, axes,
-                                2 * _pi / std::max(1ul, map->get_width()), _pi / std::max(1ul, map->get_height()),
-                                [&](double latitude, double longitude) { return map->elevation_at_bilinear(latitude, longitude); });
+                                2 * _pi / std::max(1ul, bump_map->get_width()), _pi / std::max(1ul, bump_map->get_height()),
+                                [&](double latitude, double longitude) { return bump_map->elevation_at_bilinear(latitude, longitude); });
                             Point normal_point(normal[0], normal[1], normal[2]);
                             normal_point = rotate3D(normal_point, center, yaxis, -cel->timeofday());
                             normal_point = rotate3D(normal_point, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
@@ -5385,6 +5397,8 @@ float horizon_background_clip_y()
     auto* planet = static_cast<Planet*>(body);
     Map* map = body->surf_map;
     if (!map || !map->gen || !map->is_complete() || generating_fic_texture) return height;
+    // The reference-sphere silhouette cannot clip sky in a mapped depression.
+    if (has_mapped_horizon(body)) return height;
     double radius = body->get_equatorial_radius();
     if (!(radius > 0)) radius = body->volumetric_mean_radius;
     if (!(radius > 0)) return height;
@@ -5878,6 +5892,13 @@ void draw_local_rings()
     }
 }
 
+static HorizonQuality horizon_quality;
+
+void update_horizon_quality(double frame_seconds)
+{
+    horizon_quality.observe(frame_seconds);
+}
+
 void draw_horizon()
 {
     precipitation_stats = {};
@@ -6000,8 +6021,10 @@ void draw_horizon()
         {
             return shared_surface ? surface_context.curvature : surface_refraction.curvature;
         };
+        const bool calibrated_skyline = !ocean_world && has_mapped_horizon(cel);
+        // A synthetic surface extended to the reference horizon would fill mapped valleys.
         const bool terrain_mesh = show_terrain && surface_biomes
-            && !ocean_world && cel->type != lavaworld;
+            && !ocean_world && cel->type != lavaworld && !calibrated_skyline;
         struct PrefetchRoute
         {
             CelestialObject* body = nullptr;
@@ -6088,7 +6111,7 @@ void draw_horizon()
             return std::numeric_limits<double>::infinity();
         };
         // The projected horizon can disappear when every view ray faces the ground.
-        const bool full_ground_view = !gaseous
+        bool full_ground_view = !gaseous
             && std::isfinite(base_distance(0, 0))
             && std::isfinite(base_distance(dispcx * 2, 0))
             && std::isfinite(base_distance(0, dispcy * 2))
@@ -6139,8 +6162,9 @@ void draw_horizon()
             rgb.b = std::fmin(255, (double)rgb.b + xlavabrt * nrgb.b);
         }
 
-        double hzheight[hznodes];
-        if (show_terrain && !gaseous && !ocean_world && !terrain_mesh)
+        double hzheight[hznodes], calibrated_horizon_x[hznodes];
+        const double* terrain_horizon_x = calibrated_skyline ? calibrated_horizon_x : hz_dx;
+        if (show_terrain && !gaseous && !ocean_world && !terrain_mesh && !calibrated_skyline)
         {
             // The raw noise shape and distant bump relief depend only on where the viewer is standing,
             // so they are cached and regenerated when viewer_lat/viewer_lon/whereami/eye_height changes.
@@ -6326,15 +6350,34 @@ void draw_horizon()
                 [&](double latitude, double longitude)
                 {
                     return cel->surf_map->elevation_at_bilinear(latitude, longitude);
-                }, horizon_distant_terrain_lighting != 0);
+                }, horizon_distant_terrain_lighting != 0, calibrated_skyline);
             if (horizon_distant_terrain_lighting) lit_distant_skyline = &distant_skyline;
+            if (calibrated_skyline)
+            {
+                const auto below_skyline = [&](double screen_x, double screen_y)
+                {
+                    const double x = (screen_x - dispcx) / surface_focal();
+                    const double y = (dispcy - screen_y) / surface_focal();
+                    const double north = surface_cos_altitude() - y * surface_sin_altitude();
+                    const double up = y * surface_cos_altitude() + surface_sin_altitude();
+                    return atan2(up, hypot(x, north)) <= distant_skyline.angle(azimuth + atan2(x, north));
+                };
+                full_ground_view = below_skyline(0, 0) && below_skyline(dispcx * 2, 0)
+                    && below_skyline(0, dispcy * 2) && below_skyline(dispcx * 2, dispcy * 2);
+            }
             for (int node = 0; node < hznodes; ++node)
             {
                 const double bearing = 2 * _pi * node / hznodes;
                 const double elevation = distant_skyline.angle(bearing);
                 const Point direction(sin(bearing) * cos(elevation), sin(elevation), cos(bearing) * cos(elevation));
                 const Cartesian2D projected(direction, azimuth, altitude, zoom);
-                if (projected.x > -1e20 && std::isfinite(projected.y))
+                if (calibrated_skyline)
+                {
+                    calibrated_horizon_x[node] = projected.x > -1e20 && std::isfinite(projected.x)
+                        ? projected.x * dispcx + dispcx : -1e9;
+                    hzheight[node] = std::isfinite(projected.y) ? projected.y * dispcx + dispcy : -1e9;
+                }
+                else if (projected.x > -1e20 && std::isfinite(projected.y))
                 {
                     hzheight[node] = fmin(hzheight[node], projected.y * dispcx + dispcy);
                 }
@@ -6448,9 +6491,11 @@ void draw_horizon()
                 {
                     for (int end = std::min(j + 7, hznodes); end > j; --end)
                     {
-                        const double first_x = hz_dx[prior_horizon % hznodes], last_x = hz_dx[end % hznodes];
+                        const double first_x = terrain_horizon_x[prior_horizon % hznodes], last_x = terrain_horizon_x[end % hznodes];
                         const bool offscreen = fmax(first_x, last_x) < -3 || fmin(first_x, last_x) > dispcx * 2 + 3;
-                        if (offscreen && horizon_segment_within(hz_dx, hzheight, hznodes, prior_horizon, end))
+                        const double error = horizon_quality.silhouette_error();
+                        if ((offscreen || error > .025)
+                            && horizon_segment_within(terrain_horizon_x, hzheight, hznodes, prior_horizon, end, error))
                         {
                             terrain_lod_stats.horizon_segments_removed += end - j;
                             j = end;
@@ -6458,10 +6503,10 @@ void draw_horizon()
                         }
                     }
                 }
-                if (hz_dx[j%hznodes] > -1e5 && hzheight[j%hznodes] > -1e5)
+                if (terrain_horizon_x[j%hznodes] > -1e5 && hzheight[j%hznodes] > -1e5)
                 {
                     j1 = j%hznodes;
-                    if (hz_fx > -1e8 && hz_fy < 1e8 && hz_fy > -1e4 && hzheight[j1] > -1e4 && fabs(hz_fx-hz_dx[j1]) < dispcx * zoom)
+                    if (hz_fx > -1e8 && hz_fy < 1e8 && hz_fy > -1e4 && hzheight[j1] > -1e4 && fabs(hz_fx-terrain_horizon_x[j1]) < dispcx * zoom)
                     {
                         if (altitude > (fiftyseventh * 40) && (hzheight[j1] <= 0 || hz_fy <= 0))
                         {
@@ -6471,15 +6516,15 @@ void draw_horizon()
                         hz_y1 = hz_fy;
 
                         points[0] = ImVec2(hz_fx, hz_y1);
-                        points[1] = ImVec2(hz_dx[j1]+1, hz_y);
-                        points[2] = ImVec2(hz_dx[j1]+1, dispcy*2);
+                        points[1] = ImVec2(terrain_horizon_x[j1]+1, hz_y);
+                        points[2] = ImVec2(terrain_horizon_x[j1]+1, dispcy*2);
                         points[3] = ImVec2(hz_fx, dispcy*2);
 
                         ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(points, 4, terraincol);
                     }
 
                     _skip_hz_element:
-                    hz_fx = hz_dx[j1];
+                    hz_fx = terrain_horizon_x[j1];
                     hz_fy = hzheight[j1];
                     prior_horizon = j;
                 }
@@ -6519,7 +6564,9 @@ void draw_horizon()
 
         for (j = 0; j < hznodes; j++)
         {
-            if (draw_marker[j] && hzheight[j] > -1e4 && hzheight[j] < 1e5)
+            const bool on_screen = calibrated_skyline
+                ? terrain_horizon_x[j] >= 0 && terrain_horizon_x[j] < screen_w : draw_marker[j];
+            if (on_screen && hzheight[j] > -1e4 && hzheight[j] < 1e5)
             {
                 if (hzheight[j] < min_hz_y)
                 {
@@ -6536,10 +6583,10 @@ void draw_horizon()
         {
             int j0 = (j + hznodes - 1) % hznodes;
             int j1_idx = j % hznodes;
-            if (hz_dx[j0] > -1e5 && hz_dx[j1_idx] > -1e5 && hzheight[j0] > -1e4 && hzheight[j1_idx] > -1e4)
+            if (terrain_horizon_x[j0] > -1e5 && terrain_horizon_x[j1_idx] > -1e5 && hzheight[j0] > -1e4 && hzheight[j1_idx] > -1e4)
             {
-                double x_left = hz_dx[j0];
-                double x_right = hz_dx[j1_idx];
+                double x_left = terrain_horizon_x[j0];
+                double x_right = terrain_horizon_x[j1_idx];
                 double y_left = hzheight[j0];
                 double y_right = hzheight[j1_idx];
                 if (fabs(x_left - x_right) < dispcx * zoom)
@@ -6575,6 +6622,7 @@ void draw_horizon()
             : ((performance_enabled(25) && !horizon_terrain_cpu_reference) ? retained_base_columns : temporary_base_columns);
         base_horizon_y_at_x = min_hz_y_at_x;
         #endif
+        const double relief_start = fmin(fmax(150.0, surface_range * 0.15), surface_radius * 0.01);
         if (terrain_mesh)
         {
             constexpr int terrain_columns = 512;
@@ -6623,7 +6671,6 @@ void draw_horizon()
                     const double scale = surface_radius / 50000.0;
                     return horizon_noise_value(relief_noise, x * scale, y * scale, z * scale, 12);
                 };
-                const double near_range = fmin(fmax(150.0, surface_range * 0.15), surface_radius * 0.01);
                 const double far_range = fmin(fmax(60000.0, surface_range * 8.0), surface_radius * 0.15);
                 const double base_elevation = map->has_bump_data()
                     ? map->elevation_at_bilinear(viewer_lat, viewer_lon) : 0.0;
@@ -6640,7 +6687,7 @@ void draw_horizon()
                 std::array<double, terrain_rows> row_distances, row_sines, row_cosines;
                 for (int row = 0; row < terrain_rows; ++row)
                 {
-                    row_distances[row] = near_range * pow(far_range / near_range,
+                    row_distances[row] = relief_start * pow(far_range / relief_start,
                         static_cast<double>(row) / (terrain_rows - 1));
                     row_sines[row] = sin(row_distances[row] / surface_radius);
                     row_cosines[row] = cos(row_distances[row] / surface_radius);
@@ -6697,7 +6744,7 @@ void draw_horizon()
                 for (int row = 0; row < terrain_rows; ++row)
                 {
                     const double distance = row_distances[row];
-                    const double rise = std::clamp((distance - near_range) / (1.5 * surface_range), 0.0, 1.0);
+                    const double rise = std::clamp((distance - relief_start) / (1.5 * surface_range), 0.0, 1.0);
                     const double ramp = rise * rise * (3.0 - 2.0 * rise);
                     for (int column = 0; column < terrain_columns; ++column)
                     {
@@ -7322,6 +7369,9 @@ void draw_horizon()
                 ground_inputs.insert(ground_inputs.end(), haze.extinction.begin(), haze.extinction.end());
                 for (double light : haze.light) ground_inputs.push_back(std::clamp(int(light), 0, 255));
             }
+            const int shore_stride = gpu_ground && surface_water && !horizon_terrain_cpu_reference
+                ? horizon_quality.shore_stride() : 1;
+            ground_inputs.push_back(shore_stride);
             ground_inputs.push_back(1); // Base-color sample stride; masks and haze stay at full resolution.
             auto ground_key = std::make_tuple(cel, map, std::move(ground_inputs));
             static decltype(ground_key) saved_ground_key;
@@ -7341,7 +7391,7 @@ void draw_horizon()
             // An unchanged observer can reuse the exact painting even at a color
             // or material boundary. Certify a neighborhood only after actual travel.
             const bool position_reusable = (latitude_step == 0 && longitude_step == 0)
-                || (clear_of_boundary && travel < std::min(2.0, surface_radius * .001)
+                || (!calibrated_skyline && clear_of_boundary && travel < std::min(2.0, surface_radius * .001)
                     && fabs(viewer_lat) < half_pi - .001);
             int ground_stride = 1;
             if (horizon_motion_ground_sampling && gpu_ground && paint_biomes && !surface_water && ground_cache_valid
@@ -7355,7 +7405,32 @@ void draw_horizon()
                     && (!position_reusable || old[10] != current[10] || old[11] != current[11] || old[12] != current[12]))
                     ground_stride = 2;
             }
+            if (gpu_ground && paint_biomes && !surface_water && !horizon_terrain_cpu_reference)
+                ground_stride = std::max(ground_stride, horizon_quality.ground_stride());
             std::get<2>(ground_key).back() = ground_stride;
+            struct GroundPreviewTile
+            {
+                int left, top, right, bottom;
+                std::vector<HorizonGroundRect> colors;
+            };
+            static std::vector<GroundPreviewTile> preview_tiles;
+            static size_t refined_tiles = 0;
+            static decltype(ground_key) preview_key;
+            static double preview_latitude = 0, preview_longitude = 0;
+            static auto previous_position = std::make_tuple(cel, map, map ? map->gen : 0u, viewer_lat, viewer_lon);
+            const auto position = std::make_tuple(cel, map, map ? map->gen : 0u, viewer_lat, viewer_lon);
+            const double walk_distance = surface_radius * hypot(viewer_lat - std::get<3>(previous_position),
+                cos(viewer_lat) * std::remainder(viewer_lon - std::get<4>(previous_position), 2 * _pi));
+            const bool walking = std::get<0>(previous_position) == cel && std::get<1>(previous_position) == map
+                && std::get<2>(previous_position) == std::get<2>(position) && walk_distance > 0 && walk_distance <= 5;
+            previous_position = position;
+            const bool preview_allowed = horizon_motion_ground_sampling && gpu_ground && retain_samples
+                && !surface_water && !uniform_lit_source && !horizon_terrain_cpu_reference;
+            const bool start_preview = preview_allowed && walking && !position_reusable
+                && (full_ground_paint_ms > horizon_ground_motion_budget_ms || horizon_quality.ground_stride() > 1);
+            const bool continue_preview = preview_allowed && !walking && !preview_tiles.empty()
+                && preview_latitude == viewer_lat && preview_longitude == viewer_lon && preview_key == ground_key;
+            if (!start_preview && !continue_preview) preview_tiles.clear();
             precipitation_stats.ground_sample_stride = ground_stride;
             const bool reuse_ground = ground_cache_valid && position_reusable && same_lighting && ground_key == saved_ground_key;
             const char* cache_reason = "first painting";
@@ -7376,7 +7451,7 @@ void draw_horizon()
                 }
             }
             if (ground_cache_valid && !same_lighting) cache_reason = "lighting";
-            if (ground_stride > 1) cache_reason = "panning";
+            if (ground_stride > 1) cache_reason = horizon_quality.ground_stride() > 1 ? "frame budget" : "panning";
             else if (ground_cache_valid && std::get<2>(saved_ground_key).back() > 1) cache_reason = "refining";
             precipitation_stats.ground_cache_reason = reuse_ground ? "reused" : cache_reason;
             precipitation_stats.ground_cache_active = true;
@@ -7385,7 +7460,8 @@ void draw_horizon()
             const auto paint_ground_rect = [&](ImVec2 low, ImVec2 high, ImU32 color)
             {
                 ground->AddRectFilled(low, high, color);
-                if (saved_cpu_rectangles.size() < 1048576) saved_cpu_rectangles.push_back({low, high, color});
+                if (continue_preview || saved_cpu_rectangles.size() < 1048576)
+                    saved_cpu_rectangles.push_back({low, high, color});
                 else retain_ground = false;
             };
             const auto gpu_tile_color = [&](int left, int top, int right, int bottom, RGB3 &color, bool nearby = false)
@@ -7564,11 +7640,17 @@ void draw_horizon()
                         self(self, mid_x, mid_y, right, bottom);
                         return;
                     }
-                    if (ground_stride > 1)
+                    const double distant_shore_start = terrain_mesh ? std::min(120.0, relief_start) : 120.0;
+                    const int stride = shore_stride > 1 && top >= horizon_max
+                        && surface_cos_altitude() >= 0 && top_north > 0 && bottom_north > 0
+                        && base_distance(std::clamp<double>(dispcx, left + .5, right - .5), bottom - .5)
+                            >= distant_shore_start
+                        ? shore_stride : ground_stride;
+                    if (stride > 1)
                     {
-                        for (int y = top; y < bottom; y += ground_stride)
-                            for (int x = left; x < right; x += ground_stride)
-                                sampled_gpu_tile(x, y, std::min(right, x + ground_stride), std::min(bottom, y + ground_stride));
+                        for (int y = top; y < bottom; y += stride)
+                            for (int x = left; x < right; x += stride)
+                                sampled_gpu_tile(x, y, std::min(right, x + stride), std::min(bottom, y + stride));
                         return;
                     }
                     // Sample every pixel, then merge equal colors into horizontal runs.
@@ -7643,7 +7725,85 @@ void draw_horizon()
                     self(self, left, mid_y, right, bottom);
                 }
             };
-            if (reuse_ground)
+            if (start_preview || continue_preview)
+            {
+                if (start_preview)
+                {
+                    ground_cache_valid = false;
+                    preview_tiles.clear();
+                    refined_tiles = 0;
+                    saved_cpu_rectangles.clear();
+                    saved_gpu_rectangles.clear();
+                    painted_channels.fill(false);
+                    preview_key = ground_key;
+                    // The stationary pass uses the frame budget rather than the panning stride.
+                    std::get<2>(preview_key).back() = horizon_quality.ground_stride();
+                    preview_latitude = viewer_lat;
+                    preview_longitude = viewer_lon;
+                    constexpr int sample_step = 8;
+                    const auto color_at = [&](int x, int y)
+                    {
+                        const double sample_y = std::clamp(std::max(double(y), min_hz_y_at_x[std::min(x, screen_w - 1)] + .5),
+                            .5, ground_height - .5);
+                        const auto coord = ground_coord(x, sample_y);
+                        return lit_surface_color(surface_sample(coord.first, coord.second));
+                    };
+                    for (int x = 0; x < screen_w; x += 32)
+                    {
+                        const int right = std::min(screen_w, x + 32);
+                        const double first = *std::min_element(min_hz_y_at_x.begin() + x, min_hz_y_at_x.begin() + right);
+                        for (int y = 0; y < ground_height; y += 32)
+                        {
+                            const int bottom = std::min(ground_height, y + 32);
+                            if (bottom <= first) continue;
+                            auto& tile = preview_tiles.emplace_back(GroundPreviewTile{x, y, right, bottom, {}});
+                            const int rows = (bottom - y + sample_step - 1) / sample_step;
+                            const int columns = (right - x + sample_step - 1) / sample_step;
+                            std::array<std::array<ImU32, 5>, 5> colors;
+                            for (int row = 0; row <= rows; ++row)
+                                for (int column = 0; column <= columns; ++column)
+                                    colors[row][column] = color_at(std::min(right, x + column * sample_step),
+                                        std::min(bottom, y + row * sample_step));
+                            for (int row = 0; row < rows; ++row)
+                                for (int column = 0; column < columns; ++column)
+                                    tile.colors.push_back({x + column * sample_step, y + row * sample_step,
+                                        std::min(right, x + (column + 1) * sample_step),
+                                        std::min(bottom, y + (row + 1) * sample_step), colors[row][column],
+                                        {colors[row][column + 1], colors[row + 1][column + 1], colors[row + 1][column]}});
+                        }
+                    }
+                }
+                else
+                {
+                    for (const auto& rectangle : saved_cpu_rectangles)
+                        ground->AddRectFilled(rectangle.low, rectangle.high, rectangle.color);
+                    const size_t end = std::min(preview_tiles.size(),
+                        refined_tiles + std::max<size_t>(1, (preview_tiles.size() * 15 + 99) / 100));
+                    for (; refined_tiles < end; ++refined_tiles)
+                    {
+                        const auto& tile = preview_tiles[refined_tiles];
+                        patch(patch, tile.left, tile.top, tile.right, tile.bottom);
+                    }
+                    saved_gpu_rectangles.insert(saved_gpu_rectangles.end(), gpu_rectangles.begin(), gpu_rectangles.end());
+                    gpu_rectangles = saved_gpu_rectangles;
+                    if (refined_tiles == preview_tiles.size())
+                    {
+                        ground_cache_valid = retain_ground
+                            && saved_cpu_rectangles.size() < 1048576 && saved_gpu_rectangles.size() <= 1048576;
+                        saved_ground_key = ground_key;
+                        painted_latitude = viewer_lat;
+                        painted_longitude = viewer_lon;
+                        for (int channel = 0; channel < 256; ++channel)
+                            painted_lighting[channel] = std::clamp(int(channel * is_day), 0, 255);
+                    }
+                }
+                for (size_t tile = refined_tiles; tile < preview_tiles.size(); ++tile)
+                    gpu_rectangles.insert(gpu_rectangles.end(), preview_tiles[tile].colors.begin(), preview_tiles[tile].colors.end());
+                if (refined_tiles == preview_tiles.size()) preview_tiles.clear();
+                precipitation_stats.ground_cache_reason = start_preview ? "walking preview" : "refining";
+                precipitation_stats.ground_cache_hit = false;
+            }
+            else if (reuse_ground)
             {
                 for (const auto& rectangle : saved_cpu_rectangles)
                     ground->AddRectFilled(rectangle.low, rectangle.high, rectangle.color);
@@ -7690,7 +7850,8 @@ void draw_horizon()
             if (gpu_ground) queue_horizon_ground_gpu(std::move(gpu_rectangles));
             precipitation_stats.ground_paint_milliseconds = std::chrono::duration<double, std::milli>(
                 std::chrono::steady_clock::now() - ground_paint_start).count();
-            if (!reuse_ground && ground_stride == 1) full_ground_paint_ms = precipitation_stats.ground_paint_milliseconds;
+            if (!reuse_ground && !start_preview && !continue_preview && ground_stride == 1)
+                full_ground_paint_ms = precipitation_stats.ground_paint_milliseconds;
         }
 
         #if horizon_distant_terrain_lighting
@@ -7923,13 +8084,16 @@ void draw_horizon()
                 std::vector<WaveSpan> spans;
             };
             static std::vector<WaveRow> wave_rows;
+            const double wave_scale = water_cpu_reference ? 1.0 : horizon_quality.wave_scale();
+            const int num_wave_rows = std::max(2, static_cast<int>(std::lround(WAVE_NUM_ROWS * wave_scale)));
+            const int num_steps = std::max(1, static_cast<int>(std::lround(WAVE_STEPS_PER_ROW * wave_scale)));
             auto wave_key = std::make_tuple(whereami, R_planet, surface_radius, surface_eye, surface_lift,
-                surface_range, delta_far, delta_near, azimuth, altitude, zoom, dispcx, dispcy, screen_w);
+                surface_range, delta_far, delta_near, azimuth, altitude, zoom, dispcx, dispcy, screen_w,
+                num_wave_rows, num_steps);
             static decltype(wave_key) saved_wave_key;
             static bool wave_valid = false;
             const bool geometry_changed = !wave_valid || wave_key != saved_wave_key;
             const bool rebuild_geometry = water_cpu_reference || !performance_enabled(51) || geometry_changed;
-            int num_wave_rows = WAVE_NUM_ROWS;
             if (rebuild_geometry)
             {
                 ++water_stats.geometry_builds;
@@ -7947,7 +8111,6 @@ void draw_horizon()
                     const double root = sqrt(fmax(0.0, slope * slope - 4.0 * curvature * surface_eye));
                     row.distance = slope + root > 0
                         ? fmin(surface_range, 2.0 * surface_eye / (slope + root)) : surface_range;
-                    const int num_steps = WAVE_STEPS_PER_ROW;
                     const double step_angle = (0.9 / fmax(0.3, zoom)) / (double)num_steps;
                     const double row_offset = (wr_i % 2 == 1) ? (0.5 * step_angle) : 0.0;
                     const Point row_point = horizon_fast_path(6) ? rotate3D(zaxis, center, xaxis, delta) : center;
@@ -8284,6 +8447,7 @@ void draw_horizon()
 
             if (show_terrain)
             {
+                const double foreground_range = terrain_mesh ? std::min(surface_range, relief_start) : surface_range;
                 #if lavaworld_crust_fissures
                 if (show_terrain)
                 {
@@ -8334,8 +8498,7 @@ void draw_horizon()
                                 return false;
                             }
 
-                            int ix_lookup = (int)fmax(0.0, fmin((double)(screen_w - 1), fx));
-                            if (fy < min_hz_y_at_x[ix_lookup] - 2.0)
+                            if (d_horiz >= foreground_range || !std::isfinite(base_distance(fx, fy)))
                             {
                                 return false;
                             }
@@ -8543,7 +8706,8 @@ void draw_horizon()
                         recent_tree_climates.push_back(p->current_local_climate(true, tree_epoch - sample * 3 * oneday));
                     saved_tree_climate_key = tree_climate_key;
                 }
-                const double scenery_range = has_plants ? std::max(PLANT_MAX_DIST, ROCK_MAX_DIST) : ROCK_MAX_DIST;
+                const double plant_range = PLANT_MAX_DIST * (scenery_cpu_reference ? 1.0 : horizon_quality.plant_range_scale());
+                const double scenery_range = has_plants ? std::max(plant_range, double(ROCK_MAX_DIST)) : ROCK_MAX_DIST;
                 static SurfaceSceneryCache scenery_cache;
                 const auto &scenery = scenery_cache.update(R_planet, viewer_lat, viewer_lon,
                     scenery_range + canopy_margin, scenery_spacing, static_cast<std::uint64_t>(whereami), !performance_enabled(40));
@@ -8603,7 +8767,7 @@ void draw_horizon()
                 auto projection_key = std::make_tuple(scenery_key, cel, map,
                     viewer_lat, viewer_lon, azimuth, altitude, zoom, dispcx, dispcy,
                     h_eye, R_planet, s_horizon, horizon_lift_rad, dittrsa, shore_displacement,
-                    P_surf, terrain_mesh, show_terrain, horizon_terrain_cpu_reference, horizon_terrain_gpu_reference,
+                    P_surf, terrain_mesh, foreground_range, show_terrain, horizon_terrain_cpu_reference, horizon_terrain_gpu_reference,
                     p ? p->plant_trunk_height : 0.0, p ? p->plant_trunk_width : 0.0,
                     p ? p->plant_crown_size : 0.0, p ? p->plant_crown_oblateness : 0.0,
                     performance_enabled(39), performance_enabled(40), performance_enabled(41), performance_enabled(43));
@@ -8647,13 +8811,12 @@ void draw_horizon()
                         const uint32_t rhash = object.seed;
                         double theta_world = performance_enabled(41) ? 0 : atan2(object.east, object.north);
                         const double squared_distance = object.east * object.east + object.north * object.north;
-                        const double limit = is_vegetation ? PLANT_MAX_DIST : ROCK_MAX_DIST;
+                        const double object_range = is_vegetation ? plant_range : ROCK_MAX_DIST;
+                        const double limit = terrain_mesh ? std::min(object_range, foreground_range) : object_range;
                         if (performance_enabled(41) && !scenery_cpu_reference && (squared_distance < .0025 - 1e-12
                             || squared_distance > limit * limit + 1e-8)) continue;
                         const double dist_m = hypot(object.east, object.north);
-                        double dist_ratio = dist_m / ROCK_MAX_DIST;
-                        if (is_vegetation) dist_ratio *= 0.666;
-                        if (dist_m < 0.05 || dist_m >= (is_vegetation ? PLANT_MAX_DIST : ROCK_MAX_DIST))
+                        if (dist_m < 0.05 || dist_m >= limit)
                         {
                             continue;
                         }
@@ -8818,23 +8981,12 @@ void draw_horizon()
                             continue;
                         }
 
-                        double rock_lift_px = 0.0;
-                        if (!dittrsa && base_valid && !is_vegetation)
+                        // Project scenery onto the base surface even when hills rise behind it.
+                        if (!dittrsa && base_valid && (!std::isfinite(base_distance(sx, sy))
+                            || (calibrated_skyline && sx >= 0 && sx < screen_w
+                                && sy < min_hz_y_at_x[static_cast<int>(sx)])))
                         {
-                            int ix_lookup = fmax(0, fmin(screen_w - 1, (int)round(sx)));
-                            double ground_span = sy - min_hz_y_at_x[ix_lookup];
-                            if (ground_span > 0.0)
-                            {
-                                double slope_factor = 0.45 * pow(fmin(1.0, dist_ratio), 1.2);
-                                rock_lift_px = ground_span * slope_factor;
-                                sy -= rock_lift_px;
-                                crown_sy -= rock_lift_px;
-                            }
-
-                            if (!is_vegetation && sy < min_hz_y_at_x[ix_lookup])
-                            {
-                                continue;
-                            }
+                            continue;
                         }
 
                         if (surface_water && base_valid && sx >= 0 && sx < screen_w && sy >= 0 && sy < ground_height
@@ -8861,10 +9013,7 @@ void draw_horizon()
                         rocks[num_rocks].width = rw;
                         rocks[num_rocks].height = rh;
                         rocks[num_rocks].size = rock_size;
-                        rocks[num_rocks].lift_px = rock_lift_px;
-                        const double fade = std::clamp((1.0 - dist_ratio) / 0.25, 0.0, 1.0);
-                        rocks[num_rocks].opacity = 1.0; // fade * fade * (3.0 - 2.0 * fade)
-                            // * std::clamp(rw - 1.5, 0.0, 1.0);
+                        rocks[num_rocks].opacity = 1.0;
                         rocks[num_rocks].seed_val = rhash;
                         rocks[num_rocks].base_valid = base_valid;
                         rocks[num_rocks].vegetation = is_vegetation;
@@ -9041,11 +9190,6 @@ void draw_horizon()
 
                             if (tip_valid)
                             {
-                                if (rk.lift_px > 0.0 && rk.ground_dist > 0.0)
-                                {
-                                    tip_y -= rk.lift_px * (dist_tip / rk.ground_dist);
-                                }
-
                                 double half_base_w = is_vegetation ? (rk.trunk_w_base * 0.5) : (rw * 0.45);
                                 ImVec2 shad_pts[3];
                                 shad_pts[0] = ImVec2(rx - half_base_w, ry);
@@ -9832,6 +9976,7 @@ void draw_sky_gradient()
             const double radius = p->get_equatorial_radius();
             const double dip = radius > 0 ? acos(radius / (radius + fmax(.01, viewer_eye_height))) : 0;
             const double horizon_angle = p->atmospheric_horizon_lift() - dip;
+            const bool mapped_horizon = has_mapped_horizon(p);
             const bool mineral = show_terrain && lavaworld_mineral_sky && p->type == lavaworld;
             if (!mineral)
             {
@@ -9848,9 +9993,9 @@ void draw_sky_gradient()
                 const double up = sin(altitude) + vertical * cos(altitude);
                 const double forward = cos(altitude) - vertical * sin(altitude);
                 const double elevation = atan2(up, fabs(forward));
-                if (elevation < horizon_angle) continue;
+                if (!mapped_horizon && elevation < horizon_angle) continue;
                 // Fixed angular falloff: zoom selects a smaller region of this same sky.
-                const double height = (elevation - horizon_angle) * dispcx;
+                const double height = fmax(0.0, elevation - horizon_angle) * dispcx;
                 const double row_redden = redden * pow(.99, height);
                 const double rr = r * pow(falloff_r, height) * (1 - row_redden) + sunset_r * row_redden;
                 const double gg = g * pow(falloff_g, height) * (1 - row_redden) + sunset_g * row_redden;
@@ -10488,8 +10633,11 @@ bool draw_cloudy_sky()
     // curve. Projection, map sampling, cloud geometry, and shading run per pixel.
     constexpr double cloud_height = 5000.0;
     const double eye_height = std::isfinite(viewer_eye_height) ? std::max(0.01, viewer_eye_height) : 1.75;
+    const bool mapped_horizon = has_mapped_horizon(cel);
+    const double cloud_eye = eye_height + (mapped_horizon
+        ? cel->surf_map->elevation_at_bilinear(viewer_lat, viewer_lon) : 0.0);
     const double scale = std::clamp(planet_radius * 0.001, 1200.0, 8000.0);
-    const double observer = planet_radius + eye_height;
+    const double observer = planet_radius + cloud_eye;
     const double shell = planet_radius + cloud_height;
     const double cos_lat = cos(viewer_lat), sin_lat = sin(viewer_lat);
     const double cos_lon = cos(viewer_lon), sin_lon = sin(viewer_lon);
@@ -10562,10 +10710,10 @@ bool draw_cloudy_sky()
     in.camera[14] = (float)sin_lat;
     in.world[0] = (float)(observer / scale);
     in.world[1] = (float)(shell / scale);
-    in.world[2] = (float)((cloud_height - eye_height) * (shell + observer) / (scale * scale));
-    // Match the apparent ground boundary in find_horizon(), before cloud-ray refraction.
-    const double horizon_dip = acos(std::clamp(planet_radius / observer, 0.0, 1.0));
-    in.world[3] = (float)sin(p->atmospheric_horizon_lift() - horizon_dip);
+    in.world[2] = (float)((cloud_height - cloud_eye) * (shell + observer) / (scale * scale));
+    // Mapped terrain masks cloud rays when the terrain is painted over the sky.
+    const double horizon_dip = acos(std::clamp(planet_radius / (planet_radius + eye_height), 0.0, 1.0));
+    in.world[3] = mapped_horizon ? -1.0f : (float)sin(p->atmospheric_horizon_lift() - horizon_dip);
     in.world[8] = dragging ? 0.0f : 1.0f;
     for (int channel = 0; channel < 3; ++channel)
     {
@@ -10604,6 +10752,7 @@ bool draw_cloudy_sky()
     in.revision = cel->cloud_map->gen;
     in.refraction = refraction;
     in.sample_overhead = show_terrain && p->has_water >= 0.05 && p->type != lavaworld;
+    in.resolution_scale = horizon_quality.cloud_scale();
     if (queue_cloud_sky_gpu(in))
     {
         #if planetary_rain

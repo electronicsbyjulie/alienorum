@@ -11,6 +11,7 @@ namespace alienorum
     {
         int left, top, right, bottom;
         ImU32 color;
+        std::array<ImU32, 3> corners{}; // Top right, bottom right, bottom left.
     };
 
     struct HorizonGroundGpuStats

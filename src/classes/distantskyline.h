@@ -23,7 +23,7 @@ namespace alienorum
         };
 
     private:
-        using Key = std::tuple<const void*, unsigned int, int, double, double, double, double, double, bool>;
+        using Key = std::tuple<const void*, unsigned int, int, double, double, double, double, double, bool, bool>;
         Key saved{};
         bool valid = false;
         std::array<double, columns> angles{};
@@ -32,9 +32,10 @@ namespace alienorum
     public:
         template<class Sample>
         void update(const void* map, unsigned int generation, int world, double latitude,
-            double longitude, double radius, double eye, double curvature, const Sample& elevation, bool layered = false)
+            double longitude, double radius, double eye, double curvature, const Sample& elevation,
+            bool layered = false, bool sample_foreground = false)
         {
-            const Key key{map, generation, world, latitude, longitude, radius, eye, curvature, layered};
+            const Key key{map, generation, world, latitude, longitude, radius, eye, curvature, layered, sample_foreground};
             if (valid && key == saved) return;
             const double base = elevation(latitude, longitude);
             const double sin_lat = sin(latitude), cos_lat = cos(latitude);
@@ -42,14 +43,20 @@ namespace alienorum
             // Two thousand kilometres captures tall distant relief on large rocky worlds.
             // Limit the arc on small bodies; sample every 5 km or finer there.
             const double reach = std::min(2000000.0, radius * .5);
-            constexpr int rows = 400;
+            constexpr int far_rows = 400;
+            const int near_rows = sample_foreground ? 32 : 0;
+            const int rows = far_rows + near_rows;
             std::vector<std::array<double, 3>> positions(layered ? rows * columns : 0);
             std::vector<double> elevations(layered ? rows * columns : 0);
             terrain_layers.clear();
-            std::array<double, rows> distances{}, sines{}, cosines{};
+            std::vector<double> distances(rows), sines(rows), cosines(rows);
+            const double first_far = reach / far_rows;
+            const double first_near = std::min(1.0, first_far * .01);
             for (int row = 0; row < rows; ++row)
             {
-                distances[row] = reach * (row + 1.0) / rows;
+                distances[row] = row < near_rows
+                    ? first_near * pow(first_far / first_near, double(row) / near_rows)
+                    : first_far * (row - near_rows + 1);
                 sines[row] = sin(distances[row] / radius);
                 cosines[row] = cos(distances[row] / radius);
             }
@@ -85,7 +92,8 @@ namespace alienorum
                 // Keep only faces that raise the horizon above all nearer rings.
                 // Hidden terrain has no draw cost; normals remain physical, without refraction.
                 std::array<double, columns> prior, next;
-                prior.fill(-atan(2 * sqrt(std::max(0.0, curvature * eye))));
+                const double reference_eye = eye + (sample_foreground ? std::max(0.0, base) : 0.0);
+                prior.fill(-atan(2 * sqrt(std::max(0.0, curvature * reference_eye))));
                 for (int row = 0; row < rows; ++row)
                 {
                     for (int column = 0; column < columns; ++column)

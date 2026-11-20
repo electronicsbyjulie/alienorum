@@ -305,6 +305,7 @@ namespace alienorum
         {
             return bump_data && image_height;
         }
+        bool has_calibrated_bump() const { return !calibrated_bump.empty(); }
         inline bool has_rgb_data() const
         {
             return red_data && green_data && blue_data && image_height;
