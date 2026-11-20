@@ -3,6 +3,11 @@
 
 #include "imgui.h"
 
+// Set to 0 for an A/B build with the original smooth surface lighting.
+#ifndef sunclock_terrain_lighting
+#define sunclock_terrain_lighting 1
+#endif
+
 namespace alienorum
 {
     const int max_sunclock_casters = 4;
@@ -27,6 +32,7 @@ namespace alienorum
         double fallback_color[3];
         double daylight_tint[3];
 
+        bool terrain_lighting = sunclock_terrain_lighting != 0;
         bool self_luminous;
         bool redlight_mode;
 

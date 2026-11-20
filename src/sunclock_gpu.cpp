@@ -37,6 +37,31 @@ namespace alienorum
         "const float TWO_PI = 6.28318530717958647692;\n"
         "const float HALF_PI = 1.57079632679489661923;\n"
         "\n"
+        "vec3 terrain_position(float lon, float lat, vec3 axes, vec2 dx, vec2 dy)\n"
+        "{\n"
+        "    vec3 direction = vec3(-sin(lon) * cos(lat), sin(lat), cos(lon) * cos(lat));\n"
+        "    vec3 position = direction * axes;\n"
+        "    vec2 uv = vec2(fract(lon / TWO_PI + 0.5), 0.5 - lat / PI);\n"
+        "    float height = textureGrad(uBumpMap, uv, dx, dy).r;\n"
+        "    float radius = length(position);\n"
+        "    return radius > 0.0 ? position * ((radius + height) / radius) : position;\n"
+        "}\n"
+        "\n"
+        "vec3 terrain_normal(float lon, float lat, vec3 axes, vec2 dx, vec2 dy)\n"
+        "{\n"
+        "    vec3 fallback = normalize(vec3(-sin(lon) * cos(lat), sin(lat), cos(lon) * cos(lat)) / axes);\n"
+        "    if (abs(cos(lat)) < 0.0001) return fallback;\n"
+        "    vec2 tex_size = vec2(textureSize(uBumpMap, 0));\n"
+        "    float dl = TWO_PI / tex_size.x;\n"
+        "    float dp = PI / tex_size.y;\n"
+        "    vec3 east = terrain_position(lon + dl, lat, axes, dx, dy);\n"
+        "    vec3 west = terrain_position(lon - dl, lat, axes, dx, dy);\n"
+        "    vec3 north = terrain_position(lon, min(HALF_PI, lat + dp), axes, dx, dy);\n"
+        "    vec3 south = terrain_position(lon, max(-HALF_PI, lat - dp), axes, dx, dy);\n"
+        "    vec3 normal = normalize(cross(north - south, east - west));\n"
+        "    return dot(normal, fallback) < 0.0 ? -normal : normal;\n"
+        "}\n"
+        "\n"
         "float disc_overlap(float R, float r, float d)\n"
         "{\n"
         "    if (d >= R + r)\n"
@@ -140,6 +165,15 @@ namespace alienorum
         "        {\n"
         "            is_day = min(1.0, pow(cos_theta, 1.0 / 3.0));\n"
         "            is_night = 0.0;\n"
+        "            if (has_bump_tex > 0.5 && uParams1[1].w > 0.5)\n"
+        "            {\n"
+        "                vec3 local_normal = terrain_normal(lon, lat, body_axes, dUVdx, dUVdy);\n"
+        "                vec3 normal = normalize((uRotMatrix * vec4(local_normal, 0.0)).xyz);\n"
+        "                float surface_cosine = dot(normal, light_dir);\n"
+        "                float ratio = (0.22 + 0.78 * max(0.0, surface_cosine))\n"
+        "                    / (0.22 + 0.78 * max(0.0, cos_theta));\n"
+        "                is_day = min(1.0, is_day * ratio);\n"
+        "            }\n"
         "\n"
         "            if (num_casters > 0)\n"
         "            {\n"
@@ -374,11 +408,11 @@ namespace alienorum
         p->params1[2] = (float)in.altitude;
         p->params1[3] = (float)in.zoom;
 
-        // Column 1: daylight tint RGB, unused
+        // Column 1: daylight tint RGB, terrain lighting toggle
         p->params1[4] = (float)in.daylight_tint[0];
         p->params1[5] = (float)in.daylight_tint[1];
         p->params1[6] = (float)in.daylight_tint[2];
-        p->params1[7] = 0.0f;
+        p->params1[7] = in.terrain_lighting ? 1.0f : 0.0f;
 
         // Column 2: fallback RGB, self_luminous
         p->params1[8]  = (float)in.fallback_color[0];

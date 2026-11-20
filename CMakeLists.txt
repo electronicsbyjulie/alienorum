@@ -156,13 +156,19 @@ add_executable(terrain_elevation_test EXCLUDE_FROM_ALL src/tests/terrain_elevati
 target_link_libraries(terrain_elevation_test PRIVATE PNG::PNG)
 add_executable(distant_terrain_lighting_test EXCLUDE_FROM_ALL src/tests/distant_terrain_lighting_test.cpp)
 target_link_libraries(distant_terrain_lighting_test PRIVATE PNG::PNG)
+add_executable(solar_terrain_test EXCLUDE_FROM_ALL src/tests/solar_terrain_test.cpp)
+target_include_directories(solar_terrain_test PRIVATE src/include)
+target_link_libraries(solar_terrain_test PRIVATE PNG::PNG)
+add_executable(sunclock_terrain_gpu_test EXCLUDE_FROM_ALL src/tests/sunclock_terrain_gpu_test.cpp src/sunclock_gpu.cpp)
+target_include_directories(sunclock_terrain_gpu_test PRIVATE src/include)
+target_link_libraries(sunclock_terrain_gpu_test PRIVATE IMGUI OpenGL::GL)
 
 # --- Windows installer packaging (see package/build_windows_installer.sh) ---
 if(WIN32)
 	install(TARGETS alienorum RUNTIME DESTINATION .)
 
     # One explicit payload for both installer preflight and CMake installation,
-    # including the stellar evolution, cool-giant reflection, and calibrated Mars elevation grids.
+    # including the stellar evolution, cool-giant reflection, and calibrated planetary elevation grids.
     # Do not install whole source directories: they contain development artifacts.
     set(runtime_manifest "${CMAKE_SOURCE_DIR}/package/runtime_files.txt")
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${runtime_manifest}")

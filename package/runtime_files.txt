@@ -467,7 +467,6 @@ maps/Earth_bump.png
 maps/Earth_surf.jpg
 maps/Mars_bump.png
 maps/Mars_surf.jpg
-maps/Moon_bump.jpg
 maps/Moon_surf.png
 maps/Pluto_surf.jpg
 maps/Titan_clouds.jpg
@@ -475,3 +474,17 @@ maps/Titan_surf.jpg
 maps/Uranus_ring.png
 maps/Uranus_ringx.png
 starname.dat
+maps/Moon_bump.png
+maps/Mercury_bump.png
+maps/Venus_bump.png
+maps/Mimas_bump.png
+maps/Tethys_bump.png
+maps/Dione_bump.png
+maps/Phoebe_bump.png
+maps/Phobos_bump.png
+maps/Deimos_bump.png
+maps/Hyperion_bump.png
+maps/Janus_bump.png
+maps/Epimetheus_bump.png
+maps/Enceladus_bump.png
+maps/Titan_bump.png

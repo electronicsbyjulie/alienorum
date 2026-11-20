@@ -42,6 +42,7 @@
 #include "classes/surfacenavigation.h"
 #include "classes/horizonterrain.h"
 #include "classes/distantskyline.h"
+#include "classes/terrainlighting.h"
 #include "classes/wdcolor.h"
 #include "classes/wdlimb.h"
 #include <tuple>
@@ -5197,6 +5198,22 @@ void draw_sunclock()
                         cos_theta = cos(theta);
                         is_day = fmin(1, pow(cos_theta, 1.0/3.0));
                         is_night = 0;
+                        #if sunclock_terrain_lighting
+                        if (map && map->has_bump_data())
+                        {
+                            const TerrainVector axes = {sclk_in.body_axes[0], sclk_in.body_axes[1], sclk_in.body_axes[2]};
+                            const auto normal = terrain_normal(lon, lat, axes,
+                                2 * _pi / std::max(1ul, map->get_width()), _pi / std::max(1ul, map->get_height()),
+                                [&](double latitude, double longitude) { return map->elevation_at_bilinear(latitude, longitude); });
+                            Point normal_point(normal[0], normal[1], normal[2]);
+                            normal_point = rotate3D(normal_point, center, yaxis, -cel->timeofday());
+                            normal_point = rotate3D(normal_point, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
+                            const double surface_cosine = normal_point.x * sclk_in.light_dir[0]
+                                + normal_point.y * sclk_in.light_dir[1] + normal_point.z * sclk_in.light_dir[2];
+                            is_day = fmin(1.0, is_day * terrain_light_ratio(surface_cosine, cos_theta));
+                        }
+                        #endif
+
                     }
                     // TODO: Twilight
                     else

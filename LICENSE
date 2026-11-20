@@ -42,14 +42,37 @@ https://svs.gsfc.nasa.gov/3895
 The Earth surface map is (C) 2014 Solar System Scope, used pursuant to CC-BY-4.0.
 https://commons.wikimedia.org/wiki/File:Solarsystemscope_texture_8k_earth_daymap.jpg
 
-The Earth bump map is (C) 2023 Avsa, used pursuant to CC-BY-SA 4.0.
-https://commons.wikimedia.org/wiki/File:World_elevation_map.png
+The Earth elevation map is derived from NOAA NCEI ETOPO 2022 public-domain data.
+https://www.ncei.noaa.gov/products/etopo-global-relief-model
 
 Earth cloud maps contain modified EUMETSAT data and are auto-downloaded from Matt Eason's
 website. See https://github.com/matteason/live-cloud-maps
 
-The Moon surface and bump maps are courtesy NASA's Scientific Visualization Studio,
+The Moon surface map is courtesy NASA's Scientific Visualization Studio,
 https://svs.gsfc.nasa.gov/4720, and are believed to be in the Public Domain.
+
+Calibrated planetary elevation maps:
+Moon: NASA LRO LOLA team, LDEM_16 V3.1 (2019), public-domain mission data.
+https://imbrium.mit.edu/DATA/LOLA_GDR/CYLINDRICAL/IMG/LDEM_16.LBL
+Mercury: USGS, Becker et al., MESSENGER MDIS Global DEM V2 (2016).
+https://astrogeology.usgs.gov/search/map/mercury_messenger_global_dem_665m
+Venus: NASA Magellan / USGS Global Topography V02, public-domain mission data.
+https://astrogeology.usgs.gov/search/map/venus_magellan_global_topography_4641m
+Mimas, Tethys, Dione, Phoebe: R. W. Gaskell (2020), NASA PDS shape models.
+https://sbn.psi.edu/pds/resource/mimasshape.html
+https://sbn.psi.edu/pds/resource/tethysshape.html
+https://sbn.psi.edu/pds/resource/dioneshape.html
+https://sbn.psi.edu/pds/resource/phoebeshape.html
+Phobos, Deimos, Hyperion, Janus, Epimetheus: Thomas et al. (2021), Small Body
+Optical Shape Models, NASA PDS, https://doi.org/10.26033/g5e0-kh52
+Enceladus: M. T. Bland et al. (2019/2020), USGS Cassini shape model,
+public-domain data; shape ellipsoid removed during terrain conversion.
+https://astrogeology.usgs.gov/search/map/enceladus_cassini_iss_global_point_cloud
+Titan: P. Corlies et al. (2017), globally interpolated topography,
+CC0 1.0 Universal, https://doi.org/10.7298/m4dv-gv95
+https://creativecommons.org/publicdomain/zero/1.0/
+The numeric PNGs include source, calibration, and processing metadata.
+BJJ maps remain runtime downloads and are excluded from the installer.
 
 The Mars surface and bump maps are courtesy USGS Astrogeology Science Center and
 MOLA Team/Goddard Space Flight Center, respectively, and are in the Public Domain.

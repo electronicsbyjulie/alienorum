@@ -383,6 +383,7 @@ static void complete_ring_textures(CelestialObject* cel)
 void load_textures(CelestialObject* cel)
 {
     const ScopedTextureGenerationOptions generation(cel);
+    bool calibrated_bump_loaded = false;
     if ((cel->typeclass() == class_planet || cel->typeclass() == class_moon)
         && !uses_rocky_map(cel->type) && !uses_gaseous_map(cel->type))
     {
@@ -548,6 +549,7 @@ void load_textures(CelestialObject* cel)
                 if (std::isfinite(p->bump_height) && file_exists((bump_base + ".png").c_str()))
                 {
                     loaded = cel->surf_map->load_calibrated_bump(bump_base + ".png", bump_scale, p->bump_offset);
+                    calibrated_bump_loaded = loaded;
                     if (!loaded) loaded = cel->surf_map->load_from_png(bump_base + ".png", true, bump_scale, p->bump_offset);
                 }
                 if (!loaded && file_exists((bump_base + ".jpg").c_str()))
@@ -751,6 +753,20 @@ void load_textures(CelestialObject* cel)
 
             default:
                 break;
+        }
+    }
+
+    // A moon can have a measured shape without an imported color texture.
+    if (!cel->ignore_map_files && !calibrated_bump_loaded && cel->surf_map
+        && (cel->typeclass() == class_planet || cel->typeclass() == class_moon))
+    {
+        auto* planet = static_cast<Planet*>(cel);
+        const std::string numeric_map = std::string("maps") + _FSSTR + cel->name + "_bump.png";
+        if (std::isfinite(planet->bump_height) && file_exists(numeric_map.c_str())
+            && cel->surf_map->load_calibrated_bump(numeric_map, planet->estimate_bump_scale(), planet->bump_offset))
+        {
+            planet->m_bump_scale = planet->estimate_bump_scale();
+            cel->has_real_maps = true;
         }
     }
 
