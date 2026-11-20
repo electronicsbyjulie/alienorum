@@ -162,6 +162,9 @@ target_link_libraries(solar_terrain_test PRIVATE PNG::PNG)
 add_executable(sunclock_terrain_gpu_test EXCLUDE_FROM_ALL src/tests/sunclock_terrain_gpu_test.cpp src/sunclock_gpu.cpp)
 target_include_directories(sunclock_terrain_gpu_test PRIVATE src/include)
 target_link_libraries(sunclock_terrain_gpu_test PRIVATE IMGUI OpenGL::GL)
+add_executable(ring_terrain_occlusion_test EXCLUDE_FROM_ALL src/tests/ring_terrain_occlusion_test.cpp src/sphere_impostor.cpp src/horizon_ground_gpu.cpp)
+target_include_directories(ring_terrain_occlusion_test PRIVATE src/include)
+target_link_libraries(ring_terrain_occlusion_test PRIVATE IMGUI OpenGL::GL)
 
 # --- Windows installer packaging (see package/build_windows_installer.sh) ---
 if(WIN32)

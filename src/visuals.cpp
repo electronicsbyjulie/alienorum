@@ -4397,9 +4397,8 @@ void draw_objects()
                 }
             }
 
-            // Counterintuitive that we would process *more* objects during dragging and not *less*,
-            // but since discs become transparent wireframes during drag, it only makes sense that the
-            // ground should become transparent as well.
+            // Keep sky objects available while moving the camera. Solid terrain still
+            // occludes them when its foreground is painted later in the frame.
             bool gasball = view_mode == vm_horizon && whereami > 0 && uses_gaseous_map(cels[whereami]->type);
             double cutoff_alt = gasball ? -25*fiftyseventh : 0;
             if (view_mode == vm_horizon && !dragging && cels[i]->Decl_as_radians(here) < cutoff_alt - angular_radius[i] && angular_radius[i] < sphere_rad_threshold)
@@ -5931,7 +5930,7 @@ void draw_horizon()
         {
             return rgba_apply_redlight(IM_COL32(fmin(255, ground_light[0] * sample.r),
                 fmin(255, ground_light[1] * sample.g), fmin(255, ground_light[2] * sample.b),
-                dragging ? (192 - 128 * is_day) : 255));
+                255));
         };
 
         const auto incident_tint = cel->type == lavaworld
@@ -6364,7 +6363,7 @@ void draw_horizon()
         double hz_fx = -1e9, hz_y = 1e9, hz_y1 = 1e9, hz_fy = 1e9;
         ImVec2 points[4];
         bool faded = !dragging && gaseous;
-        ImU32 terraincol = rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, dragging ? (192-128*is_day) : 255));
+        ImU32 terraincol = rgba_apply_redlight(IM_COL32(rgb.r, rgb.g, rgb.b, 255));
         #if lavaworld_crust_fissures
         if (show_terrain)
         {
@@ -6373,7 +6372,7 @@ void draw_horizon()
                 int crust_r = (int)fmin(55.0, fmax(18.0, rgb.r * 0.22));
                 int crust_g = (int)fmin(42.0, fmax(14.0, rgb.g * 0.18));
                 int crust_b = (int)fmin(42.0, fmax(14.0, rgb.b * 0.18));
-                terraincol = rgba_apply_redlight(IM_COL32(crust_r, crust_g, crust_b, dragging ? (192 - 128 * is_day) : 255));
+                terraincol = rgba_apply_redlight(IM_COL32(crust_r, crust_g, crust_b, 255));
             }
         }
         #endif
@@ -7274,7 +7273,7 @@ void draw_horizon()
                 double(whereami), double(cel->type), double(map ? map->gen : 0), double(gpu_ground),
                 0, 0, surface_eye, surface_radius, surface_range, surface_lift,
                 azimuth, altitude, zoom, dispcx, dispcy, double(paint_biomes ? 0 : unveiled_terraincol),
-                double(dragging ? int(192 - 128 * is_day) : 255),
+                255,
                 double(paint_biomes), double(surface_biomes), double(terrain_mesh), double(dragging),
                 double(redlight_mode), double(show_terrain), double(horizon_terrain_cpu_reference),
                 double(horizon_ground_gpu_reference), double(shared_surface), double(generating_fic_texture),
@@ -7736,7 +7735,7 @@ void draw_horizon()
                     return std::clamp(int(value * ground_light[index] * lighting), 0, 255);
                 };
                 ImU32 color = IM_COL32(channel(distant_ground_rgb.r, 0), channel(distant_ground_rgb.g, 1),
-                    channel(distant_ground_rgb.b, 2), dragging ? (192 - 128 * is_day) : 255);
+                    channel(distant_ground_rgb.b, 2), 255);
                 color = pressure_haze_color(haze, rgba_apply_redlight(color), layer->distance);
                 terrain_draw->AddQuadFilled(polygon[0], polygon[1], polygon[2], polygon[3], color);
             }
