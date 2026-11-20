@@ -5947,6 +5947,7 @@ void draw_horizon()
             return surface.color_at(latitude, longitude);
         };
         RGB3 rgb = surface_sample(viewer_lat, viewer_lon);
+        const RGB3 distant_ground_rgb = rgb;
         const bool ocean_world = surface.ocean_world();
         const bool surface_water = surface.has_surface_water();
         const bool paint_biomes = surface_water || (surface_biomes && cel->type != lavaworld);
@@ -6269,7 +6270,8 @@ void draw_horizon()
             coastal_water.assign(hznodes, false);
             for (j = 0; j < hznodes; j++)
             {
-                double bump_px = cached_bump_relief[j] * dispcx * zoom;
+                double bump_px = (horizon_distant_terrain && horizon_distant_terrain_lighting)
+                    ? 0.0 : cached_bump_relief[j] * dispcx * zoom;
                 double proc_px = terrain_height * (cached_raw_noise[j] - cached_raw_min) * 2.5;
                 hzheight[j] = hz_dy[j] - (bump_px + proc_px);
                 coastal_relief[j] = (bump_px + proc_px) * surface_range / (dispcx * zoom);
@@ -6297,6 +6299,7 @@ void draw_horizon()
             }
         }
 
+        const DistantSkyline* lit_distant_skyline = nullptr;
         #if horizon_distant_terrain
         if (show_terrain && !gaseous && !ocean_world && cel->surf_map
             && cel->surf_map->is_complete() && cel->surf_map->has_bump_data())
@@ -6307,7 +6310,8 @@ void draw_horizon()
                 [&](double latitude, double longitude)
                 {
                     return cel->surf_map->elevation_at_bilinear(latitude, longitude);
-                });
+                }, horizon_distant_terrain_lighting != 0);
+            if (horizon_distant_terrain_lighting) lit_distant_skyline = &distant_skyline;
             for (int node = 0; node < hznodes; ++node)
             {
                 const double bearing = 2 * _pi * node / hznodes;
@@ -7672,6 +7676,56 @@ void draw_horizon()
                 std::chrono::steady_clock::now() - ground_paint_start).count();
             if (!reuse_ground && ground_stride == 1) full_ground_paint_ms = precipitation_stats.ground_paint_milliseconds;
         }
+
+        #if horizon_distant_terrain_lighting
+        if (lit_distant_skyline && !full_ground_view)
+        {
+            auto* source = cel->get_light_center();
+            const Point light_point = source
+                ? rotate3D(to_viewer_plane(source->tmprel), center, yaxis, -azimuth_correction) : Point(0, 1, 0);
+            const double light_length = fmax(1e-12, light_point.magnitude());
+            const std::array<double, 3> light = {light_point.x / light_length, light_point.y / light_length, light_point.z / light_length};
+            ImDrawList* terrain_draw = ImGui::GetBackgroundDrawList();
+            const ImDrawListFlags saved_flags = terrain_draw->Flags;
+            terrain_draw->Flags &= ~ImDrawListFlags_AntiAliasedFill;
+            const auto project_layer = [&](double bearing, double elevation, ImVec2& projected)
+            {
+                Point direction(sin(bearing) * cos(elevation), sin(elevation), cos(bearing) * cos(elevation));
+                direction = rotate3D(direction, center, yaxis, -azimuth);
+                direction = rotate3D(direction, center, xaxis, altitude);
+                if (direction.z <= 1e-5) return false;
+                projected = ImVec2(dispcx + surface_focal() * direction.x / direction.z,
+                    dispcy - surface_focal() * direction.y / direction.z);
+                return std::isfinite(projected.x) && std::isfinite(projected.y);
+            };
+            const auto& layers = lit_distant_skyline->layers();
+            // The cache clips every band against nearer terrain before these back-to-front draws.
+            for (auto layer = layers.rbegin(); layer != layers.rend(); ++layer)
+            {
+                ImVec2 polygon[4];
+                if (!project_layer(layer->bearing_left, layer->top_left, polygon[0])
+                    || !project_layer(layer->bearing_right, layer->top_right, polygon[1])
+                    || !project_layer(layer->bearing_right, layer->bottom_right, polygon[2])
+                    || !project_layer(layer->bearing_left, layer->bottom_left, polygon[3])) continue;
+                const double left = fmin(polygon[0].x, polygon[3].x), right = fmax(polygon[1].x, polygon[2].x);
+                const double top = fmin(polygon[0].y, polygon[1].y), bottom = fmax(polygon[2].y, polygon[3].y);
+                if (right < 0 || left > dispcx * 2 || bottom < 0 || top > dispcy * 2) continue;
+                const double center_x = .25 * (polygon[0].x + polygon[1].x + polygon[2].x + polygon[3].x);
+                const double center_y = .25 * (polygon[0].y + polygon[1].y + polygon[2].y + polygon[3].y);
+                if (terrain_mesh && terrain_raster.distance_at(center_x, center_y) < layer->distance) continue;
+                const double lighting = DistantSkyline::illumination(*layer, light, haze.sky_opacity);
+                const auto channel = [&](unsigned char value, int index)
+                {
+                    return std::clamp(int(value * ground_light[index] * lighting), 0, 255);
+                };
+                ImU32 color = IM_COL32(channel(distant_ground_rgb.r, 0), channel(distant_ground_rgb.g, 1),
+                    channel(distant_ground_rgb.b, 2), dragging ? (192 - 128 * is_day) : 255);
+                color = pressure_haze_color(haze, rgba_apply_redlight(color), layer->distance);
+                terrain_draw->AddQuadFilled(polygon[0], polygon[1], polygon[2], polygon[3], color);
+            }
+            terrain_draw->Flags = saved_flags;
+        }
+        #endif
 
         const bool draw_water_waves = draw_mapped_ground && surface_water && screen_w > 0;
         bool certified_dry = false;

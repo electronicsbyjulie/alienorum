@@ -90,6 +90,10 @@ extern double horizon_ground_motion_budget_ms;
 #ifndef horizon_distant_terrain
 #define horizon_distant_terrain 1
 #endif
+// Set to 0 to benchmark the original single-color distant silhouette.
+#ifndef horizon_distant_terrain_lighting
+#define horizon_distant_terrain_lighting 1
+#endif
 #ifndef distant_biome_pixel_sampling
 #define distant_biome_pixel_sampling 1    // Set to 0 to restore adaptive sampling near the horizon.
 #endif

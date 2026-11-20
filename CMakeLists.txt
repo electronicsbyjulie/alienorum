@@ -154,6 +154,8 @@ endif()
 # Standalone numeric terrain regression checks; no display or catalog startup.
 add_executable(terrain_elevation_test EXCLUDE_FROM_ALL src/tests/terrain_elevation_test.cpp)
 target_link_libraries(terrain_elevation_test PRIVATE PNG::PNG)
+add_executable(distant_terrain_lighting_test EXCLUDE_FROM_ALL src/tests/distant_terrain_lighting_test.cpp)
+target_link_libraries(distant_terrain_lighting_test PRIVATE PNG::PNG)
 
 # --- Windows installer packaging (see package/build_windows_installer.sh) ---
 if(WIN32)
