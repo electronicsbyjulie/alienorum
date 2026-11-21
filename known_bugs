@@ -1,7 +1,7 @@
 
 [x] Downhill views now render the visible valley or crater floor and the opposite slope. Verified with an airless valley rendering test and the small-world rock occlusion test.
 
-[x] Verified live NASA and Exoplanet.eu feeds through the importer. Proxima b and d and COCONUTS-2 b come from the provider catalogs. Proxima c comes from the Exoplanet.eu candidate export. Published rejections apply across aliases in the downloaded catalogs, caches, and local NASA CSV fallback.
+[x] Verified live NASA and Exoplanet.eu feeds through the importer. Proxima b and d and COCONUTS-2 b come from the provider catalogs. Proxima c comes from the Exoplanet.eu candidate export. Published rejections apply across aliases in the downloaded catalogs, caches, and local NASA CSV fallback. The matching host and period distinguish 82 Eridani’s confirmed 89-day planet from the rejected 40-day signal.
 
 [x] Selected planets in system view now draw one name label. Verified by counting the labels queued for the selected planet.
 

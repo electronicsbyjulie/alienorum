@@ -14,18 +14,19 @@
 
 namespace alienorum
 {
-    // The compact-cache path only consumes identities and classifications.
-    // Discard physical measurements while parsing, including nested originals.
-    inline nlohmann::json read_exoplanet_status_catalog(std::istream& input)
+    // Keep only fields used for identity and classification, including nested originals.
+    inline nlohmann::json read_exoplanet_status_catalog(std::istream& input, bool include_orbits = false)
     {
-        return nlohmann::json::parse(input, [](int, nlohmann::json::parse_event_t event, nlohmann::json& value)
+        return nlohmann::json::parse(input, [include_orbits](int, nlohmann::json::parse_event_t event, nlohmann::json& value)
         {
             if (event != nlohmann::json::parse_event_t::key) return true;
             const auto& key = value.get_ref<const std::string&>();
             return key == "pl_name" || key == "hostname" || key == "alt_target_name"
                 || key == "alternate_names" || key == "catalog_aliases" || key == "source_measurements"
                 || key == "planet_status" || key == "koi_disposition" || key == "disposition"
-                || key == "tfopwg_disp" || key == "k2c_disp";
+                || key == "tfopwg_disp" || key == "k2c_disp"
+                || (include_orbits && (key == "source_catalog" || key == "pl_orbper"
+                    || key == "ra" || key == "dec" || key == "sy_dist"));
         }, false);
     }
 
@@ -83,7 +84,7 @@ namespace alienorum
         return names;
     }
 
-    inline std::vector<std::string> exoplanet_alias_keys(const nlohmann::json& row)
+    inline std::vector<std::string> exoplanet_alias_keys(const nlohmann::json& row, bool include_measurements = true)
     {
         std::vector<std::string> keys;
         for (const char* field : {"pl_name", "alt_target_name", "alternate_names"})
@@ -95,6 +96,7 @@ namespace alienorum
         }
         for (const char* field : {"catalog_aliases", "source_measurements"})
         {
+            if (!include_measurements && strcmp(field, "source_measurements") == 0) continue;
             const auto values = row.find(field);
             if (values == row.end() || !values->is_array()) continue;
             for (const auto& value : *values)
@@ -112,39 +114,135 @@ namespace alienorum
 
     class ExoplanetRejections
     {
+        struct OrbitClaim
+        {
+            std::vector<std::string> names;
+            std::string provider;
+            double period, ra, dec, distance;
+        };
         std::unordered_map<std::string, std::vector<std::string>> links;
+        std::unordered_map<std::string, std::set<std::string>> direct_rejections;
+        std::vector<OrbitClaim> claims;
+        std::set<std::pair<std::string, std::string>> alias_conflicts;
         std::set<std::string> rejected;
 
+        bool conflicts(const std::string& first, const std::string& second) const
+        {
+            return alias_conflicts.count(std::minmax(first, second));
+        }
+
     public:
-        void add(const nlohmann::json& row)
+        void add(const nlohmann::json& row, const std::string& provider = {})
         {
             if (!row.is_object()) return;
-            const auto keys = exoplanet_alias_keys(row);
+            const auto keys = exoplanet_alias_keys(row, false);
             if (keys.empty()) return;
             const bool excluded = rejected_exoplanet_status(row);
-            for (const auto& key : keys)
+            const auto field = row.find("source_catalog");
+            const std::string source = provider.empty() && field != row.end() && field->is_string()
+                ? field->get<std::string>() : provider;
+            const auto values = row.find("source_measurements");
+            const bool merged = values != row.end() && values->is_array() && !values->empty();
+            if (!merged || excluded)
             {
-                links[key].push_back(keys.front());
-                links[keys.front()].push_back(key);
-                if (excluded) rejected.insert(key);
+                for (const auto& key : keys)
+                {
+                    links[key].push_back(keys.front());
+                    links[keys.front()].push_back(key);
+                    if (excluded) direct_rejections[key].insert(source);
+                }
             }
-            if (row.contains("source_measurements") && row["source_measurements"].is_array())
-                for (const auto& original : row["source_measurements"]) add(original);
+            const auto number = [&](const char* name)
+            {
+                const auto value = row.find(name);
+                return value != row.end() && value->is_number() ? value->get<double>() : NAN;
+            };
+            if (merged)
+            {
+                for (const auto& original : *values)
+                {
+                    if (!original.is_object()) continue;
+                    const auto original_names = exoplanet_alias_keys(original, false);
+                    if (!original_names.empty())
+                    {
+                        links[keys.front()].push_back(original_names.front());
+                        links[original_names.front()].push_back(keys.front());
+                    }
+                    add(original);
+                }
+            }
+            else if (!excluded && !source.empty())
+            {
+                const double period = number("pl_orbper"), distance = number("sy_dist");
+                const double ra = number("ra"), dec = number("dec");
+                if (period > 0 && distance > 0 && std::isfinite(ra) && std::isfinite(dec))
+                    claims.push_back({keys, source, period, ra, dec, distance});
+            }
         }
 
         void resolve()
         {
+            alias_conflicts.clear();
+            // A publication can reuse a letter for a different orbit. Disambiguate
+            // rejection aliases using the rejecting provider's own active orbits.
+            for (const auto& claim : claims)
+            {
+                if (claim.names.size() < 2 || direct_rejections.count(claim.names.front())) continue;
+                for (const auto& alias : claim.names)
+                {
+                    if (alias.size() < 2) continue;
+                    const auto rejection = direct_rejections.find(alias);
+                    if (rejection == direct_rejections.end() || rejection->second.size() != 1) continue;
+                    const auto& provider = *rejection->second.begin();
+                    if (provider.empty() || provider == claim.provider) continue;
+                    std::string counterpart;
+                    for (const auto& active : claims)
+                    {
+                        if (active.provider != provider || direct_rejections.count(active.names.front())) continue;
+                        const auto& active_name = active.names.front();
+                        if (active_name.size() != alias.size() || active_name.compare(0, alias.size() - 1,
+                            alias, 0, alias.size() - 1) != 0) continue;
+                        if (std::abs(active.period - claim.period) > .005 * claim.period
+                            || std::abs(active.distance - claim.distance) > .05 * claim.distance) continue;
+                        const double east = std::remainder(active.ra - claim.ra, 360.0)
+                            * std::cos(claim.dec * 0.017453292519943295);
+                        if (std::hypot(east, active.dec - claim.dec) > 1.0 / 60) continue;
+                        if (!counterpart.empty() && counterpart != active.names.front())
+                        {
+                            counterpart.clear();
+                            break;
+                        }
+                        counterpart = active.names.front();
+                    }
+                    if (!counterpart.empty())
+                    {
+                        alias_conflicts.insert(std::minmax(claim.names.front(), alias));
+                        alias_conflicts.insert(std::minmax(counterpart, alias));
+                    }
+                }
+            }
+            rejected.clear();
+            for (const auto& entry : direct_rejections) rejected.insert(entry.first);
             std::vector<std::string> queue(rejected.begin(), rejected.end());
             for (size_t i = 0; i < queue.size(); ++i)
                 for (const auto& alias : links[queue[i]])
-                    if (rejected.insert(alias).second) queue.push_back(alias);
+                    if (!conflicts(queue[i], alias) && rejected.insert(alias).second) queue.push_back(alias);
         }
 
         bool excludes(const nlohmann::json& row) const
         {
             if (rejected_exoplanet_status(row)) return true;
-            for (const auto& key : exoplanet_alias_keys(row))
-                if (rejected.count(key)) return true;
+            const auto keys = exoplanet_alias_keys(row, false);
+            if (!keys.empty() && rejected.count(keys.front())) return true;
+            const auto originals = row.find("source_measurements");
+            if (originals != row.end() && originals->is_array() && !originals->empty())
+            {
+                for (const auto& original : *originals)
+                    if (original.is_object() && excludes(original)) return true;
+                return false;
+            }
+            for (const auto& key : keys)
+                if (rejected.count(key) && !conflicts(keys.front(), key)) return true;
             return false;
         }
     };

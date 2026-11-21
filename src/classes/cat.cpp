@@ -4614,13 +4614,14 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
 
     path += candidate;
     ExoplanetRejections rejections;
-    for (const char* source : {"catalogs/exoplanet_rejections_nasa.json", "catalogs/exoplanet_rejections_eu.json",
-        "catalogs/exoplanets.json", "catalogs/exoplanets_nasa.json", "catalogs/exoplanets_eu.json"})
+    for (const auto& [source, provider] : std::array<std::pair<const char*, const char*>, 5>{{
+        {"catalogs/exoplanet_rejections_nasa.json", "NASA"}, {"catalogs/exoplanet_rejections_eu.json", "EU"},
+        {"catalogs/exoplanets.json", ""}, {"catalogs/exoplanets_nasa.json", "NASA"}, {"catalogs/exoplanets_eu.json", "EU"}}})
     {
         std::ifstream input(source);
         if (!input) continue;
-        const auto rows = read_exoplanet_status_catalog(input);
-        if (rows.is_array()) for (const auto& row : rows) rejections.add(row);
+        const auto rows = read_exoplanet_status_catalog(input, true);
+        if (rows.is_array()) for (const auto& row : rows) rejections.add(row, provider);
     }
     rejections.resolve();
 
@@ -9666,7 +9667,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
         if (saved != exoplanet_status_catalogs.end()) return saved->second;
         std::ifstream input(path);
         return exoplanet_status_catalogs.emplace(path,
-            input ? read_exoplanet_status_catalog(input) : json()).first->second;
+            input ? read_exoplanet_status_catalog(input, true) : json()).first->second;
     };
     const auto valid_source = [](const json& rows)
     {
@@ -9723,9 +9724,9 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
 
     ExoplanetRejections rejections;
     json eu_candidates = json::array();
-    const auto add_rejection_links = [&](const json& rows)
+    const auto add_rejection_links = [&](const json& rows, const std::string& provider = std::string())
     {
-        if (rows.is_array()) for (const auto& row : rows) rejections.add(row);
+        if (rows.is_array()) for (const auto& row : rows) rejections.add(row, provider);
     };
     for (const auto& source : std::vector<std::pair<std::string, std::string>>
         {
@@ -9777,10 +9778,9 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
         }
     }
     if (abort_load) return 0;
-    for (const char* path : {exocache, nasa_cache, eu_cache})
-    {
-        add_rejection_links(status_catalog(path));
-    }
+    add_rejection_links(status_catalog(exocache));
+    add_rejection_links(status_catalog(nasa_cache), "NASA");
+    add_rejection_links(status_catalog(eu_cache), "EU");
     add_rejection_links(exoplanet_tap_catalog);
     rejections.resolve();
 
@@ -9790,13 +9790,16 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                                (!file_exists(position_catalog) ||
                                 fs::last_write_time(derived_cache) >= fs::last_write_time(position_catalog));
 
-    if (derived_cache_valid)
+    bool reconcile_saved_sources = false;
+    if (file_exists(derived_cache))
     {
         std::ifstream cache_header(derived_cache);
         std::string version;
         std::getline(cache_header, version);
-        derived_cache_valid = version == "# EXO_TRANSIT9" || (version == "# EXO_TRANSIT7"
-            && !file_exists(exocache) && !file_exists(nasa_cache) && !file_exists(eu_cache));
+        reconcile_saved_sources = (version == "# EXO_TRANSIT8" || version == "# EXO_TRANSIT9")
+            && valid_source(status_catalog(nasa_cache)) && valid_source(status_catalog(eu_cache));
+        derived_cache_valid = derived_cache_valid && (version == "# EXO_TRANSIT10" || (version == "# EXO_TRANSIT7"
+            && !file_exists(exocache) && !file_exists(nasa_cache) && !file_exists(eu_cache)));
     }
 
     if (exoplanet_tap_attempted || !exoplanet_tap_catalog.empty())
@@ -9884,7 +9887,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
 
     if (radio_silence) do_download = false;
 
-    if (do_download && !radio_silence)
+    if ((do_download && !radio_silence) || (reconcile_saved_sources && planets_array.empty()))
     {
         exoplanet_tap_attempted = true;
         // Share cancellation, response limits, and alternate HTTP-method support.
@@ -9954,7 +9957,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                                "st_mass,st_rad,sy_dist,ra,dec,sy_vmag,st_spectype,st_teff,st_lum,st_rotp,st_age,st_ageerr1,st_ageerr2,st_agelim,st_met,st_meterr1,st_meterr2,st_metlim,st_metratio+"
                                "from+pscomppars+order+by+pl_name+asc&format=json";
 
-        if (!recent_source(nasa_cache) && !fetch_tap(nasa_url, readBufferNASA))
+        if (!radio_silence && !recent_source(nasa_cache) && !fetch_tap(nasa_url, readBufferNASA))
         {
             std::cerr << "NASA TAP Query failed." << std::endl;
         }
@@ -9972,7 +9975,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                              "star_metallicity+as+st_met,'[Fe/H]'+as+st_metratio+"
                              "from+exoplanet.epn_core+where+publication_status='Published+in+a+refereed+paper'+order+by+target_name+asc";
 
-        if (!recent_source(eu_cache) && !fetch_tap(eu_url, readBufferEU))
+        if (!radio_silence && !recent_source(eu_cache) && !fetch_tap(eu_url, readBufferEU))
         {
             std::cerr << "Exoplanet.eu TAP Query failed." << std::endl;
         }
@@ -10019,8 +10022,8 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
         };
         source_buffer(nasa_cache, "NASA", readBufferNASA);
         source_buffer(eu_cache, "EU", readBufferEU);
-        for (const auto* buffer : {&readBufferNASA, &readBufferEU})
-            if (!buffer->empty()) add_rejection_links(json::parse(*buffer, nullptr, false));
+        if (!readBufferNASA.empty()) add_rejection_links(json::parse(readBufferNASA, nullptr, false), "NASA");
+        if (!readBufferEU.empty()) add_rejection_links(json::parse(readBufferEU, nullptr, false), "EU");
         rejections.resolve();
 
         try
@@ -10440,7 +10443,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
     if (cachefp)
     {
         setvbuf(cachefp, cache_io_buf, _IOFBF, sizeof(cache_io_buf));
-        fputs("# EXO_TRANSIT9\n", cachefp);
+        fputs("# EXO_TRANSIT10\n", cachefp);
     }
 
     int rows_written = 0;

@@ -2992,6 +2992,144 @@ TEST(ExoplanetStatusTest, RejectionTraversesAliasesAcrossBothSourcesWithoutRejec
     EXPECT_NE(exoplanet_status_key("42 Dra B b"), exoplanet_status_key("42 Dra b"));
 }
 
+TEST(ExoplanetStatusTest, ReusedLetterKeepsAConfirmedOrbitAndRejectsTheOtherSignal)
+{
+    const auto orbit = [](const char* name, const char* aliases, double period)
+    {
+        return json{{"pl_name", name}, {"alt_target_name", aliases}, {"pl_orbper", period},
+            {"ra", 50.0}, {"dec", -43.0}, {"sy_dist", 6.0}};
+    };
+    const auto published = orbit("Survey c", "HD 20794 c", 89.68);
+    auto confirmed = orbit("HD 20794 d", "", 89.69);
+    confirmed["ra"] = 50.0164;
+    confirmed["dec"] = -42.997;
+    const auto false_positive = orbit("Survey legacy c", "HD 20794 c", 40.11);
+    ExoplanetRejections rejections;
+    rejections.add({{"pl_name", "HD 20794 c"}, {"planet_status", "False Positive Planet"}}, "NASA");
+    rejections.add(published, "EU");
+    rejections.add(false_positive, "EU");
+    rejections.resolve();
+    EXPECT_TRUE(rejections.excludes(published));
+    rejections.add(confirmed, "NASA");
+    rejections.resolve();
+    EXPECT_FALSE(rejections.excludes(published));
+    EXPECT_FALSE(rejections.excludes(confirmed));
+    EXPECT_TRUE(rejections.excludes(false_positive));
+    EXPECT_TRUE(rejections.excludes({{"pl_name", "HD 20794 c"}}));
+}
+
+TEST_F(StellarDownloadTest, ProviderRowsRecoverThe82EridaniOrbits)
+{
+    struct RestoreNetwork
+    {
+        bool saved = radio_silence;
+        ~RestoreNetwork() { radio_silence = saved; }
+    } restore;
+    ASSERT_FALSE(std::filesystem::exists("exoname.dat"));
+    radio_silence = false;
+    class ProviderReader : public CatalogReader
+    {
+    protected:
+        bool fetch_stellar_catalog_json(const std::string& url, const std::string&, json& rows) override
+        {
+            const bool nasa = url.find("exoplanetarchive") != std::string::npos;
+            if (!nasa && url.find("voparis") == std::string::npos) return false;
+            // The two source snapshots use different letters and rounded positions.
+            json host = nasa
+                ? json{{"hostname", "HD 20794"}, {"hd_name", "HD 20794"}, {"hip_name", "HIP 15510"},
+                    {"ra", 49.9997666}, {"dec", -43.0666533}, {"sy_dist", 6.00278}, {"sy_vmag", 4.26},
+                    {"st_lum", -.16311}, {"st_mass", .79}, {"st_rad", .93}, {"st_teff", 5368}, {"st_spectype", "G6 V"}}
+                : json{{"hostname", "82 Eri"}, {"ra", 49.9833333}, {"dec", -43.0697222}, {"sy_dist", 6.06},
+                    {"sy_vmag", 4.26}, {"st_mass", .813}, {"st_rad", .9}, {"st_teff", 5490}, {"st_spectype", "G8V"}};
+            rows = json::array();
+            const auto orbit = [&](const char* name, const char* aliases, double period, double axis,
+                double eccentricity, double minimum_mass)
+            {
+                json row = host;
+                row.update({{"pl_name", name}, {"alt_target_name", aliases}, {"pl_orbper", period},
+                    {"pl_orbsmax", axis}, {"pl_orbeccen", eccentricity}, {"pl_msinie", minimum_mass}});
+                rows.push_back(std::move(row));
+            };
+            if (nasa)
+            {
+                orbit("HD 20794 b", "", 18.314, .1257, .064, 2.15);
+                orbit("HD 20794 d", "", 89.68, .3625, .077, 2.98);
+                orbit("HD 20794 e", "", 147.02, .509, .29, 4.77);
+                orbit("HD 20794 f", "", 647.6, 1.3541, .45, 5.82);
+            }
+            else
+            {
+                orbit("82 Eri b", "e Eri b#HD 20794 b", 18.313, .1257, .057, 2.149);
+                orbit("82 Eri c", "HD 20794 c#e Eri c", 89.68, .3625, .077, 2.98);
+                orbit("82 Eri d", "e Eri d#HD 20794 d", 648.2, 1.354, .47, 5.81);
+                orbit("82 Eri e", "e Eri e#HD 20794 e", 147.02, .509, .29, 4.77);
+            }
+            return true;
+        }
+    };
+    std::ofstream("catalogs/exoplanet_rejections_nasa.json") << json::array({
+        {{"pl_name", "HD 20794 c"}, {"planet_status", "False Positive Planet"}, {"source_catalog", "NASA"}}
+    });
+    ProviderReader reader;
+    reader.load_exoplanets_from_tap(true);
+    ASSERT_EQ(reader.load_exoplanets_from_tap(false), 4u);
+
+    const double periods[] = {18.314, 89.68, 647.6};
+    std::ifstream input("catalogs/exoplanets.json");
+    const auto merged = json::parse(input, nullptr, false);
+    ASSERT_TRUE(merged.is_array());
+    for (double period : periods)
+    {
+        const auto row = std::find_if(merged.begin(), merged.end(), [period](const auto& entry)
+        {
+            return std::abs(entry.value("pl_orbper", 0.0) - period) < .001;
+        });
+        ASSERT_NE(row, merged.end()) << period;
+        std::set<std::string> providers;
+        for (const auto& source : row->at("source_measurements")) providers.insert(source.at("source_catalog"));
+        EXPECT_EQ(providers, (std::set<std::string>{"EU", "NASA"})) << period;
+    }
+
+    const auto check_orbits = [&]()
+    {
+        const CelestialObject* host = nullptr;
+        std::array<const Planet*, 3> planets{};
+        for (int i = 0; cels[i]; ++i)
+        {
+            if (cels[i]->deleted || cels[i]->typeclass() != class_planet) continue;
+            auto* planet = static_cast<Planet*>(cels[i]);
+            ASSERT_NE(planet->orbit, nullptr);
+            const double period = planet->orbit->period / oneday;
+            EXPECT_GT(std::abs(period - 40.114), 4.0);
+            for (size_t j = 0; j < planets.size(); ++j)
+            {
+                if (std::abs(period - periods[j]) >= .001) continue;
+                ASSERT_EQ(planets[j], nullptr) << period;
+                planets[j] = planet;
+                if (!host) host = planet->orbit->center;
+                ASSERT_NE(host, nullptr);
+                EXPECT_EQ(planet->orbit->center, host);
+                EXPECT_FALSE(planet->catalog_candidate);
+                if (j == planets.size() - 1)
+                {
+                    EXPECT_NEAR(planet->orbit->semimajor_axis / AU, 1.3541, .0001);
+                    EXPECT_NEAR(planet->orbit->eccentricity, .45, .001);
+                    EXPECT_TRUE(planet->is_in_con_HZ());
+                }
+            }
+        }
+        for (size_t j = 0; j < planets.size(); ++j) EXPECT_NE(planets[j], nullptr) << periods[j];
+    };
+    check_orbits();
+    delete_the_universe();
+    make_star("Sol");
+    radio_silence = true;
+    CatalogReader cached;
+    cached.load_exoplanets_from_tap(true);
+    ASSERT_EQ(cached.load_exoplanets_from_tap(false), 4u);
+    check_orbits();
+}
+
 TEST_F(StellarDownloadTest, CandidateExportRetainsMeasuredOrbitsAndRespectsRejections)
 {
     struct RestoreNetwork

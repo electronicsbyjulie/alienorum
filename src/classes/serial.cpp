@@ -193,7 +193,8 @@ std::vector<int> ExactStarSearchIndex::candidates(const char *term) const
     return result;
 }
 
-static int find_object_impl(const char* search_term, bool os, double ml, int levreq, const ExactStarSearchIndex *index)
+static int find_object_impl(const char* search_term, bool os, double ml, int levreq,
+    const ExactStarSearchIndex *index, int *catalog_planet = nullptr)
 {
     const bool indexed = index && os && levreq >= 0 && levreq <= 1;
     const std::vector<int> candidates = indexed ? index->candidates(search_term) : std::vector<int>();
@@ -312,7 +313,7 @@ static int find_object_impl(const char* search_term, bool os, double ml, int lev
 
     uint32_t is_hd  = ((search_term[0]&0x5f) == 'H' && (search_term[1]&0x5f) == 'D') ? atoi(&search_term[2]) : 0,
         is_hip = ((search_term[0]&0x5f) == 'H' && (search_term[1]&0x5f) == 'I' && (search_term[2]&0x5f) == 'P') ? atoi(&search_term[3]) : 0;
-    int result = -1, catalog_planet = -1;
+    int result = -1;
     const char *match_cons = nullptr;
     char match_comp = 0;
     n = strlen(search_term);
@@ -448,11 +449,11 @@ static int find_object_impl(const char* search_term, bool os, double ml, int lev
             result = i;
             break;
         }
-        if (!os && catalog_planet < 0 && cels[i]->typeclass() == class_planet)
+        if (catalog_planet && *catalog_planet < 0 && cels[i]->typeclass() == class_planet)
         {
             const auto* planet = static_cast<const Planet*>(cels[i]);
             if (!planet->catalog_designation.empty() && !strcasecmp(planet->catalog_designation.c_str(), search_term))
-                catalog_planet = i;
+                *catalog_planet = i;
         }
         if (cels[i]->typeclass() == class_star)
         {
@@ -494,7 +495,6 @@ static int find_object_impl(const char* search_term, bool os, double ml, int lev
             }
         }
     }
-    if (result < 0 && catalog_planet >= 0) return catalog_planet;
     if (is_gliese)
     {
         return result;
@@ -666,7 +666,9 @@ int find_object(const char *term, bool stars, double limit, int distance, const 
         if (object >= 0 && object < ncelobjs && cels[object] == match && !match->deleted) return object;
     }
     // Resolve exact identities before considering any approximate display-name match.
-    const int exact = find_object_impl(term, stars, limit, distance > 0 ? 1 : 0, index);
+    int catalog_planet = -1;
+    const int exact = find_object_impl(term, stars, limit, distance > 0 ? 1 : 0,
+        index, stars ? nullptr : &catalog_planet);
     if (exact >= 0) return exact;
     if (!stars)
     {
@@ -689,11 +691,14 @@ int find_object(const char *term, bool stars, double limit, int distance, const 
                     if (planet >= 0) return -1;
                     planet = object;
                 }
+                if (planet < 0 && catalog_planet >= 0 && cels[catalog_planet]->orbit
+                    && cels[catalog_planet]->orbit->center == cels[host]) return catalog_planet;
                 // A known host with no such planet must not match another system.
                 return planet;
             }
         }
     }
+    if (catalog_planet >= 0) return catalog_planet;
     if (aliases.empty()) return distance <= 1 ? exact : find_object_impl(term, stars, limit, distance, index);
     const std::string wd_key = wd_identifier_key(term);
     if (!wd_key.empty())
