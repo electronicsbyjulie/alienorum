@@ -5577,6 +5577,39 @@ TEST(TerrainTerminatorTest, ReliefSeesTheSunOnlyNearTheTerminator)
     EXPECT_DOUBLE_EQ(terrain_solar_exposure(0, 0, sun), .5);
 }
 
+TEST_F(RenderingRegressionTest, BumpMapShaderShowsElevationWithoutLighting)
+{
+    BumpySceneryTestMap map;
+    SunClockGpuInput input{};
+    input.sclk_scale = _pi / dispcx;
+    input.show_bump_map = true;
+    input.bump_map_texture = gputex_bump_for(&map, true);
+    input.bump_span = 3700;
+    ASSERT_NE(input.bump_map_texture, 0u);
+    const auto capture = [&](double light_direction)
+    {
+        input.light_dir[0] = light_direction;
+        input.daylight_tint[0] = 1;
+        EXPECT_TRUE(queue_sunclock_gpu(input, dispcx, dispcy));
+        auto pixels = render();
+        ImGui::NewFrame();
+        return pixels;
+    };
+    const auto east = capture(1);
+    const auto west = capture(-1);
+    EXPECT_EQ(east, west);
+    int darkest = 255, brightest = 0;
+    for (size_t i = 0; i < east.size(); i += 4)
+    {
+        if (east[i + 3] == 0) continue;
+        EXPECT_EQ(east[i], east[i + 1]);
+        EXPECT_EQ(east[i], east[i + 2]);
+        darkest = std::min(darkest, int(east[i]));
+        brightest = std::max(brightest, int(east[i]));
+    }
+    EXPECT_GT(brightest - darkest, 100);
+}
+
 TEST_F(RenderingRegressionTest, SunClockTerrainNormalsShadeTheDarkHemisphere)
 {
     auto* world = surface();
@@ -9977,6 +10010,45 @@ TEST(SystemViewInputTest, MousePanningRotatesPlanetsWithoutDrawingCrosshairsOrMo
     std::tie(view_mode, system_view_yaw, system_view_pitch, azimuth, altitude, spin, zoom, trackidx, viewchanged) = previous;
     ImGui::DestroyContext(context);
     ImGui::SetCurrentContext(previous_context);
+}
+
+TEST_F(UniverseFixture, DollarKeyTogglesTheSurfaceMapViews)
+{
+    auto* world = make_planet(make_star("Sol"));
+    ImGuiContext* previous_context = ImGui::GetCurrentContext();
+    ImGuiContext* context = ImGui::CreateContext();
+    const auto previous = std::make_tuple(view_mode, whereami, zoom, altitude, azimuth, viewchanged, trackidx);
+    whereami = world->seqno;
+    for (ViewMode mode : {vm_spaceship, vm_horizon, vm_skymap, vm_system, vm_bumpmap})
+    {
+        view_mode = mode;
+        process_key_cmd_char('$');
+        EXPECT_EQ(view_mode, vm_sunclock);
+    }
+
+    zoom = 3;
+    azimuth = .4;
+    altitude = .2;
+    process_key_cmd_char('$');
+    EXPECT_EQ(view_mode, vm_bumpmap);
+    EXPECT_DOUBLE_EQ(zoom, 3);
+    EXPECT_DOUBLE_EQ(azimuth, .4);
+    EXPECT_DOUBLE_EQ(altitude, .2);
+
+    std::tie(view_mode, whereami, zoom, altitude, azimuth, viewchanged, trackidx) = previous;
+    ImGui::DestroyContext(context);
+    ImGui::SetCurrentContext(previous_context);
+    delete_the_universe();
+}
+
+TEST(BumpMapViewTest, RasterContainsTheStoredElevations)
+{
+    BumpySceneryTestMap map;
+    EXPECT_EQ(map.bump_raster_size(), (std::array<unsigned long, 2>{2, 2}));
+    EXPECT_EQ(map.bump_elevation_range(), (std::array<double, 2>{0, 3700}));
+    std::array<float, 4> pixels{};
+    map.export_bump_raster(pixels.data());
+    EXPECT_EQ(pixels, (std::array<float, 4>{0, 2500, 1200, 3700}));
 }
 
 TEST_F(UniverseFixture, SystemViewRetainsTheCustomMousePointer)

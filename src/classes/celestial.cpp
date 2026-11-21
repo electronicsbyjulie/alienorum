@@ -2027,6 +2027,38 @@ void Map::export_bump(float *out) const
         out[i] = bump_data ? (float)bump_data[i] : 0.0f;
 }
 
+std::array<unsigned long, 2> Map::bump_raster_size() const
+{
+    if (!calibrated_bump.empty()) return {calibrated_bump.get_width(), calibrated_bump.get_height()};
+    if (!has_bump_data() || allocated < image_width * image_height) return {0, 0};
+    return {image_width, image_height};
+}
+
+void Map::export_bump_raster(float* out) const
+{
+    const auto [width, height] = bump_raster_size();
+    for (size_t i = 0; i < width * height; ++i)
+    {
+        const double value = calibrated_bump.empty() ? bump_data[i] : calibrated_bump.elevation_at_index(i);
+        out[i] = std::isfinite(value) ? static_cast<float>(value) : 0;
+    }
+}
+
+std::array<double, 2> Map::bump_elevation_range() const
+{
+    if (!has_bump_data()) return {0, 0};
+    const auto [width, height] = bump_raster_size();
+    std::array<double, 2> range{INFINITY, -INFINITY};
+    for (size_t i = 0; i < width * height; ++i)
+    {
+        const double elevation = calibrated_bump.empty() ? bump_data[i] : calibrated_bump.elevation_at_index(i);
+        const double value = std::isfinite(elevation) ? elevation : 0;
+        range[0] = std::min(range[0], value);
+        range[1] = std::max(range[1], value);
+    }
+    return width && height ? range : std::array<double, 2>{0, 0};
+}
+
 void Map::overlay_cloud_map(Map *clouds)
 {
     if (!clouds || !clouds->is_complete() || !has_rgb_data())

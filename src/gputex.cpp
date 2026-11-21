@@ -279,16 +279,21 @@ namespace alienorum
     // cached at once, so they can't share one Map*-keyed table.
     static std::unordered_map<Map*, GpuTexEntry> gpubumptex_cache;
 
-    GLuint gputex_bump_for(Map* map)
+    static GpuTexEntry bump_raster_texture;
+
+    GLuint gputex_bump_for(Map* map, bool display_raster)
     {
         if (!map || !map->gen || !map->has_bump_data()) return 0;
 
-        GpuTexEntry &entry = gpubumptex_cache[map];
+        GpuTexEntry &entry = display_raster ? bump_raster_texture : gpubumptex_cache[map];
         if (entry.tex && entry.gen == map->gen) return entry.tex;
 
-        unsigned long w = map->get_width(), h = map->get_height();
+        auto [w, h] = display_raster ? map->bump_raster_size()
+            : std::array<unsigned long, 2>{map->get_width(), map->get_height()};
+        if (!w || !h) return 0;
         std::vector<float> bump(w * h);
-        map->export_bump(bump.data());
+        if (display_raster) map->export_bump_raster(bump.data());
+        else map->export_bump(bump.data());
 
         // Same downsampling reasoning as gputex_for() -- see its own comment -- reusing the
         // same GL_MAX_TEXTURE_SIZE query (a driver property, not a per-texture one).
@@ -842,6 +847,8 @@ namespace alienorum
             }
         }
         gpubumptex_cache.clear();
+        if (bump_raster_texture.tex) glDeleteTextures(1, &bump_raster_texture.tex);
+        bump_raster_texture = {};
         if (reference_galaxy_tex)
         {
             glDeleteTextures(1, &reference_galaxy_tex);

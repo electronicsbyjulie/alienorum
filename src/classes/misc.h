@@ -171,7 +171,7 @@ const std::time_t J2000_TIME_T = 946684800;
 #define cache_labels 1
 #define global_font_size (8.647 * 1.8)
 
-#define NUM_VIEWMODES 5
+#define NUM_VIEWMODES 6
 enum ViewMode
 {
     vm_spaceship = 0,
@@ -179,8 +179,14 @@ enum ViewMode
     vm_sunclock = 2,
     vm_skymap = 3,
     vm_system = 4,
-    vm_model = 5                // Not implemented yet.
+    vm_bumpmap = 5,
+    vm_model = 6                // Not implemented yet.
 };
+
+constexpr bool is_surface_map_view(ViewMode mode)
+{
+    return mode == vm_sunclock || mode == vm_bumpmap;
+}
 
 #define NUM_VPLANES 4
 enum ViewerPlaneMode

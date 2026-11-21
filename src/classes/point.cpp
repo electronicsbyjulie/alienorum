@@ -514,7 +514,7 @@ void wrapped_line(ImVec2 term1, ImVec2 term2, ImU32 color, float thickness, ImGu
         }
     };
     double wrap_w = io.DisplaySize.x * zoom;
-    if ((view_mode == vm_skymap || view_mode == vm_sunclock) && wrap_w > 0)
+    if ((view_mode == vm_skymap || is_surface_map_view(view_mode)) && wrap_w > 0)
     {
         double dx = double(term2.x) - term1.x;
         if (dx > wrap_w * 0.5)

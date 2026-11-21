@@ -39,7 +39,7 @@ std::string default_theme = "Perseus";
 std::string viewer_theme = default_theme;
 std::mutex mtx;
 std::vector<DrawLabel> labels2draw;
-const char* vmtext[NUM_VIEWMODES] = { "Spaceship", "Planetfall", "Sun Clock", "Celestial Atlas", "Solar System" };
+const char* vmtext[NUM_VIEWMODES] = { "Spaceship", "Planetfall", "Sun Clock", "Celestial Atlas", "Solar System", "Bump Map" };
 const char* vptext[NUM_VPLANES] = { "Local", "ICRF", "Ecliptic", "Galactic" };
 ViewerPlaneMode vplane_mode = vplane_local;
 ViewMode view_mode = vm_spaceship;
@@ -319,7 +319,7 @@ double lat_from_y(double y)
 void enforce_y_pan_limit()
 {
     double limit = half_pi;
-    if (view_mode == vm_skymap || view_mode == vm_sunclock)
+    if (view_mode == vm_skymap || is_surface_map_view(view_mode))
     {
         limit = fmax(0, half_pi * (1.0 - 1.0 / zoom));
     }

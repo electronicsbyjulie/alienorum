@@ -111,6 +111,15 @@ namespace alienorum
         "    float has_bump_tex  = uParams1[3].z;\n"
         "    float redlight_mode = uParams1[3].w;\n"
         "\n"
+        "    if (uParams2[3].x > 0.5)\n"
+        "    {\n"
+        "        float height = textureGrad(uBumpMap, uv, dUVdx, dUVdy).r;\n"
+        "        float span = uParams2[3].z;\n"
+        "        float gray = span > 0.0 ? clamp((height - uParams2[3].y) / span, 0.0, 1.0) : 0.5;\n"
+        "        FragColor = vec4(vec3(gray), 1.0);\n"
+        "        return;\n"
+        "    }\n"
+        "\n"
         "    vec3 dir = vec3(-sin(lon) * cos(lat), sin(lat), cos(lon) * cos(lat));\n"
         "    vec3 land_unrot = dir * body_axes;\n"
         "    float base_radius = length(land_unrot);\n"
@@ -423,10 +432,10 @@ namespace alienorum
         p->params2[10] = (float)in.light_pos_rel[2];
         p->params2[11] = 0.0f;
 
-        // Column 3: unused
-        p->params2[12] = 0.0f;
-        p->params2[13] = 0.0f;
-        p->params2[14] = 0.0f;
+        // Column 3: bump map view, minimum elevation, elevation span, unused
+        p->params2[12] = in.show_bump_map ? 1.0f : 0.0f;
+        p->params2[13] = (float)in.bump_minimum;
+        p->params2[14] = (float)in.bump_span;
         p->params2[15] = 0.0f;
 
         // Rotation matrix (already column-major 4x4)

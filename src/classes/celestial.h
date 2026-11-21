@@ -361,6 +361,9 @@ namespace alienorum
         // As export_rgba(), for bump_data: width*height caller-allocated floats, in metres like
         // elevation_at(), all 0 when there is no bump data.
         void export_bump(float *out) const;
+        std::array<unsigned long, 2> bump_raster_size() const;
+        void export_bump_raster(float* out) const;
+        std::array<double, 2> bump_elevation_range() const;
     };
 
     class Locale

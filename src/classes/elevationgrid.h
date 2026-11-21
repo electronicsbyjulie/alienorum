@@ -125,6 +125,14 @@ namespace alienorum
             return fclose(file) == 0;
         }
 
+        unsigned int get_width() const { return width; }
+        unsigned int get_height() const { return height; }
+
+        double elevation_at_index(size_t index) const
+        {
+            return (values[index] / 65535.0 - .5) * span + offset;
+        }
+
         double sample(double latitude, double longitude) const
         {
             if (empty() || !std::isfinite(latitude) || !std::isfinite(longitude)) return 0;

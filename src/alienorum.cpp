@@ -710,7 +710,7 @@ int main (int argc, char** argv)
                             : IM_COL32(255,255,255,255)),
                     toplbl.c_str());
             }
-            else if (view_mode == vm_sunclock)
+            else if (view_mode == vm_sunclock && whereami >= 0)
             {
                 std::string toplbl = std::string("Sun clock for ") + std::string(cels[whereami]->name);
                 ImGui::GetBackgroundDrawList()->AddText(ImVec2(5,5),
@@ -739,10 +739,10 @@ int main (int argc, char** argv)
             }
 
             bool earth_clouds_shown = false;
-            if (view_mode == vm_sunclock)
+            if (is_surface_map_view(view_mode))
             {
                 draw_sunclock();
-                if (show_clouds && whereami == iamhome && iamhome >= 0 && cels[iamhome]
+                if (view_mode == vm_sunclock && show_clouds && whereami == iamhome && iamhome >= 0 && cels[iamhome]
                     && cels[iamhome]->has_eumetsat_clouds()) earth_clouds_shown = true;
             }
             else
@@ -847,7 +847,7 @@ int main (int argc, char** argv)
                 identify_object_under_cursor(io);
             }
 
-            if (is_dbl_click && (view_mode == vm_sunclock))
+            if (is_dbl_click && is_surface_map_view(view_mode) && whereami >= 0)
             {
                 viewer_lat = (double)(dispcy - io.MousePos.y) * sclk_scale + altitude;
                 viewer_lon = (double)(io.MousePos.x - dispcx) * sclk_scale + azimuth;
@@ -1193,13 +1193,14 @@ int main (int argc, char** argv)
                 ? cels[trackidx]->name
                 : ( (selected >= 0)
                     ? cels[selected]->name
-                    : ((biggest_cel && biggest_cel->onscreen && (bigcel_sz >= 4) && (view_mode != vm_skymap && view_mode != vm_sunclock && view_mode != vm_system))
+                    : ((biggest_cel && biggest_cel->onscreen && (bigcel_sz >= 4) && (view_mode != vm_skymap && !is_surface_map_view(view_mode) && view_mode != vm_system))
                         ? std::string(biggest_cel->name) // + std::string(".")
                         : std::string("")
                         ));
 
             if (view_mode == vm_skymap) snapname += ".skymap";
             if (view_mode == vm_sunclock) snapname += ".sunclock";
+            if (view_mode == vm_bumpmap) snapname += ".bumpmap";
 
             shnapsot_fname << snapdir << _FILESLASH
                 << subject

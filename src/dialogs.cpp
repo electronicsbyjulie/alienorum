@@ -627,10 +627,13 @@ void draw_status_window(ImGuiIO& io)            // the S panel
         {
             for (int n = 0; n < NUM_VIEWMODES; n++)
             {
+                const auto mode = static_cast<ViewMode>(n);
+                const auto cls = cels[whereami]->typeclass();
+                if (is_surface_map_view(mode) && cls != class_star && cls != class_planet && cls != class_moon) continue;
                 const bool is_selected = (n == view_mode);
                 if (ImGui::Selectable(vmtext[n], is_selected))
                 {
-                    view_mode = (ViewMode)n;
+                    view_mode = mode;
                     if (view_mode == vm_system) statuswnd = false;
                     set_viewer_location_and_plane();
                     viewchanged = true;
@@ -849,7 +852,7 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
         }
         #endif
     }
-    else if (is_an_obj_under_cursor >= 0 || view_mode == vm_sunclock)
+    else if (is_an_obj_under_cursor >= 0 || (is_surface_map_view(view_mode) && whereami >= 0))
     {
         int i = -1;
         double lmag = 9999;
@@ -947,7 +950,7 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
 
             ImGui::Separator();
         }
-        else if (view_mode == vm_sunclock)
+        else if (is_surface_map_view(view_mode))
         {
             double lat, lon;
             if (i >= 0)
@@ -958,8 +961,8 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
             }
             else
             {
-                lat = 0.0 - _pi * (io.MousePos.y-dispcy) / dispcx;
-                lon = _pi * io.MousePos.x / dispcx - _pi;
+                lat = lat_from_y(io.MousePos.y - dispcy);
+                lon = std::remainder(lon_from_x(io.MousePos.x - dispcx), 2 * _pi);
 
                 if (lat < -half_pi) lat = -half_pi;
                 if (lat >  half_pi) lat =  half_pi;
@@ -1052,7 +1055,7 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
         }
         else if (i >= 0 && cels[i]->type == artificial)
         {
-            if (view_mode == vm_sunclock && whereami >= 0)
+            if (is_surface_map_view(view_mode) && whereami >= 0)
                 ImGui::Text("Alt:      %.3f km",
                     (cels[i]->location.distance_to(here) - cels[whereami]->volumetric_mean_radius) / 1000);  // TODO: Compensate for oblateness.
             else ImGui::Text("Dist:     %s", cels[i]->scaled_distance(here).c_str());

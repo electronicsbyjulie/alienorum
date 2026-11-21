@@ -25,9 +25,25 @@ namespace
     bool pending_default_universe = false;
 }
 
+static void enter_surface_map_view(ViewMode mode)
+{
+    if (whereami < 0 || whereami >= ncelobjs || !cels[whereami]) return;
+    const auto cls = cels[whereami]->typeclass();
+    if (cls != class_star && cls != class_planet && cls != class_moon) return;
+
+    if (!is_surface_map_view(view_mode) || mode == vm_sunclock)
+    {
+        zoom = 1;
+        altitude = azimuth = 0;
+    }
+    view_mode = mode;
+    viewchanged = true;
+    trackidx = -1;
+}
+
 static CelestialObject* cloud_refresh_target()
 {
-    int index = (view_mode == vm_sunclock || view_mode == vm_horizon) ? whereami
+    int index = (is_surface_map_view(view_mode) || view_mode == vm_horizon) ? whereami
         : (selected >= 0 ? selected : (trackidx >= 0 ? trackidx : whereami));
     if (index < 0 || index >= ncelobjs || !cels[index]) return nullptr;
     const auto cls = cels[index]->typeclass();
@@ -59,8 +75,8 @@ void center_selected()
     {
         if (view_mode == vm_system) view_mode = vm_spaceship;
         azimuth = cels[selected]->RA_as_radians(here,
-            (whereami >= 0 && view_mode == vm_sunclock) ? cels[whereami]->timeofday() : 0)
-            * ((view_mode == vm_sunclock) ? 1 : -1);
+            (whereami >= 0 && is_surface_map_view(view_mode)) ? cels[whereami]->timeofday() : 0)
+            * ((is_surface_map_view(view_mode)) ? 1 : -1);
         altitude = cels[selected]->Decl_as_radians_refracted(here);
     }
     enforce_y_pan_limit();
@@ -73,8 +89,8 @@ void center_tracked()
     {
         if (view_mode == vm_system) view_mode = vm_spaceship;
         azimuth = cels[trackidx]->RA_as_radians(here,
-            (whereami >= 0 && view_mode == vm_sunclock) ? cels[whereami]->timeofday() : 0)
-            * ((view_mode == vm_sunclock) ? 1 : -1);
+            (whereami >= 0 && is_surface_map_view(view_mode)) ? cels[whereami]->timeofday() : 0)
+            * ((is_surface_map_view(view_mode)) ? 1 : -1);
         altitude = cels[trackidx]->Decl_as_radians_refracted(here);
     }
     enforce_y_pan_limit();
@@ -162,7 +178,7 @@ void identify_object_under_cursor(ImGuiIO& io)
     if (is_an_obj_under_cursor < 0)
     {
         double threshold = 3 / zoom;
-        if (view_mode == vm_sunclock)
+        if (is_surface_map_view(view_mode) && whereami >= 0)
         {
             double mlat = lat_from_y(io.MousePos.y - dispcy) * fiftyseven, mlon = lon_from_x(io.MousePos.x - dispcx) * fiftyseven, dlat, dlon, r, br = 1e29;
 
@@ -205,7 +221,7 @@ void pan_with_crosshairs(ImGuiIO& io)
     double& pan_pitch = view_mode == vm_system ? system_view_pitch : altitude;
     double amount = 1;
     if (view_mode == vm_skymap) amount = 3;
-    else if (view_mode == vm_sunclock) amount = 5;
+    else if (is_surface_map_view(view_mode)) amount = 5;
     else if (view_mode == vm_system) amount = -3;
 
     if (ImGui::IsMouseDown(2))
@@ -490,7 +506,16 @@ void show_menu()
             ImGui::Separator();
             if (ImGui::MenuItem(vmtext[0], "&", view_mode == vm_spaceship)) { process_key_cmd_char('&'); menu_clicked = true; }
             if (ImGui::MenuItem(vmtext[1], "_", view_mode == vm_horizon)) { process_key_cmd_char('_'); menu_clicked = true; }
-            if (ImGui::MenuItem(vmtext[2], "$", view_mode == vm_sunclock)) { process_key_cmd_char('$'); menu_clicked = true; }
+            if (ImGui::MenuItem(vmtext[vm_sunclock], view_mode == vm_sunclock ? nullptr : "$", view_mode == vm_sunclock))
+            {
+                enter_surface_map_view(vm_sunclock);
+                menu_clicked = true;
+            }
+            if (ImGui::MenuItem(vmtext[vm_bumpmap], view_mode == vm_sunclock ? "$" : nullptr, view_mode == vm_bumpmap))
+            {
+                enter_surface_map_view(vm_bumpmap);
+                menu_clicked = true;
+            }
             if (ImGui::MenuItem(vmtext[3], "\\", view_mode == vm_skymap)) { process_key_cmd_char('\\'); menu_clicked = true; }
             if (ImGui::MenuItem(vmtext[4], "Ctrl+V", view_mode == vm_system)) { process_key_cmd_ctrl_char('v'); menu_clicked = true; }
             if (ImGui::BeginMenu("Viewer Plane"))
@@ -778,7 +803,7 @@ void process_key_cmd_char(char c)
         }
         else break;
 
-        if (view_mode == vm_skymap || view_mode == vm_sunclock) altitude = 0;
+        if (view_mode == vm_skymap || is_surface_map_view(view_mode)) altitude = 0;
         if (view_mode == vm_system) view_mode = vm_spaceship;
         velocity = center;
         viewchanged = true;
@@ -984,7 +1009,7 @@ void process_key_cmd_char(char c)
         zoom = 1;
         global_brightness = default_brightness;
         viewchanged = true;
-        if (view_mode == vm_skymap || view_mode == vm_sunclock) altitude = 0;
+        if (view_mode == vm_skymap || is_surface_map_view(view_mode)) altitude = 0;
         break;
         case '*': zoom *= 1.1; global_brightness *= 1.05; viewchanged = true; scrollhold = 1; break;
         case '/': zoom *= 0.9; if (zoom < 1) zoom = 1; else global_brightness *= 0.95; viewchanged = true; scrollhold = 1; break;
@@ -1039,23 +1064,9 @@ void process_key_cmd_char(char c)
         break;
 
         case '$':
-        if (whereami >= 0)
-        {
-            cel_obj_class cls = cels[whereami]->typeclass();
-            // Galaxies, comets, and satellites do not currently have texture map behavior defined so there's nothing
-            // to show in a sun clock, and trying to show a galactic sun clock results in a crash.
-            if (cls == class_star || cls == class_planet || cls == class_moon)
-            {
-                view_mode = vm_sunclock;
-                zoom=1;
-                altitude=0;
-                azimuth=0;
-                viewchanged = true;
-                trackidx = -1;
-            }
-        }
+        enter_surface_map_view(view_mode == vm_sunclock ? vm_bumpmap : vm_sunclock);
         break;
-    
+
         case '&': view_mode = vm_spaceship; viewer_lat = viewer_home_lat; viewer_lon = viewer_home_lon; viewer_tz = viewer_home_tz; save_viewer_latlon = viewchanged = true; break;
         case '\\': view_mode = vm_skymap; zoom=1; altitude=0; azimuth=0; break;
         case ':': /* view_mode = vm_model; */ break;                 // not yet implemented but want to keep the placeholder
@@ -1664,7 +1675,7 @@ bool apply_object_search_action(const ObjectSearchMatch& match, ObjectSearchActi
             viewchanged = true;
             break;
         case ObjectSearchAction::focus:
-            if (view_mode == vm_sunclock) view_mode = vm_spaceship;
+            if (is_surface_map_view(view_mode)) view_mode = vm_spaceship;
             selected = match.index;
             trackidx = -1;
             center_selected();

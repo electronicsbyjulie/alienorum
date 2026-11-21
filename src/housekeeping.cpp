@@ -252,7 +252,7 @@ void set_viewer_location_and_plane()
     {
         set_viewer_surface_location(true);
     }
-    else if (view_mode == vm_sunclock)
+    else if (is_surface_map_view(view_mode))
     {
         here = cels[whereami]->location;
         azimuth_correction = 0;
@@ -524,7 +524,7 @@ const std::vector<int>& frame_pick_candidates()
 {
     const auto& candidates = performance_enabled(73) && !picking_cpu_reference
         ? frame_draw_candidates() : frame_object_candidates();
-    return view_mode == vm_system || view_mode == vm_sunclock ? frame_objects().all : candidates;
+    return view_mode == vm_system || is_surface_map_view(view_mode) ? frame_objects().all : candidates;
 }
 
 bool planetary_system_is_active(const CelestialObject* cel)

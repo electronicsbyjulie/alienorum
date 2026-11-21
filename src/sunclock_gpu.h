@@ -32,6 +32,9 @@ namespace alienorum
         double fallback_color[3];
         double daylight_tint[3];
 
+        bool show_bump_map = false;
+        double bump_minimum = 0, bump_span = 0;
+
         bool terrain_lighting = sunclock_terrain_lighting != 0;
         bool self_luminous;
         bool redlight_mode;

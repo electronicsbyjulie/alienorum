@@ -4864,8 +4864,13 @@ void sc_draw_object(CelestialObject *obj, CelestialObject *cel)
     }
     else if (cls == class_planet || cls == class_moon)
     {
-        spawn_texture_load(obj);
         icon_draw->AddCircleFilled(objdxy, ico_sz + 1.5f, icon_border);
+        if (view_mode == vm_bumpmap)
+        {
+            icon_draw->AddCircleFilled(objdxy, ico_sz, rgba_apply_redlight(IM_COL32(204, 204, 204, 255)));
+            return;
+        }
+        spawn_texture_load(obj);
 
         Color objcol = Color::color_from_magnitude_indices(0, obj->BV_color + planet_bv_correction);
         objcol.normalize(255);
@@ -5006,31 +5011,12 @@ static void compute_sunclock_rot_matrix(CelestialObject *cel, double rot_mat[16]
     rot_mat[12] = 0.0;  rot_mat[13] = 0.0;  rot_mat[14] = 0.0;  rot_mat[15] = 1.0;
 }
 
-ViewMode last_vmode = vm_spaceship;
-void draw_sunclock()
+static void draw_sunclock_surface(CelestialObject *cel)
 {
-    if (whereami < 0) return;
-
-    int i;
-    if (last_vmode != view_mode)
-    {
-        for (i=0; cels[i]; i++)
-        {
-            cels[i]->drawnx = cels[i]->drawny = -1e9;
-        }
-    }
-
-    CelestialObject *cel = cels[whereami];
-    CelestialObject *lightcen = cel->get_light_center();
-    bool self_luminous = (lightcen == cel);
-    cel_obj_class cls = cel->typeclass();
-
-    if (!cel->nlocales) cel->read_locales("locales.json");
-
-    spawn_texture_load(cel);
-
-    if (cls == class_planet || cls == class_moon)
-        static_cast<Planet*>(cel)->update_surface_phase(viewer_lat, viewer_lon);
+    const auto cls = cel->typeclass();
+    auto* lightcen = cel->get_light_center();
+    const bool self_luminous = !lightcen || lightcen == cel;
+    if (!lightcen) lightcen = cel;
 
     Color c = cls == class_star
         ? Color::color_from_star(0, (Star*)cel, cel->BV_color)
@@ -5042,8 +5028,7 @@ void draw_sunclock()
     daylight.saturate(.25);
     daylight.normalize(1);
 
-    int x, y, dx, dy, step=2, size = dispcx/2, halfwid = size*2;
-    sclk_scale = half_pi / size / zoom;
+    int x, y, dx, dy, i, step=2, halfwid = 2 * static_cast<int>(dispcx / 2);
     double lat, lon, obl = 1.0 - cel->oblateness, elevation;
     // Opaque decks obscure geography; retain patchy weather over a visible surface.
     const bool hide_cloud_deck = cel->surf_map && (cel->overcast || !cel->transparent_clouds
@@ -5265,6 +5250,85 @@ void draw_sunclock()
         }
     }
 
+}
+
+static void draw_bump_map_surface(Map* map)
+{
+    auto* draw = ImGui::GetBackgroundDrawList();
+    if (!map || !map->has_bump_data())
+    {
+        draw->AddText(ImVec2(5, 25), whtbkgd ? IM_COL32_BLACK : IM_COL32_WHITE, "No bump map available");
+        return;
+    }
+
+    const auto key = std::make_pair(map, map->gen);
+    static decltype(std::make_pair(map, map->gen)) cached_map{};
+    static std::array<double, 2> range{};
+    if (cached_map != key)
+    {
+        range = map->bump_elevation_range();
+        cached_map = key;
+    }
+
+    SunClockGpuInput input{};
+    input.sclk_scale = sclk_scale;
+    input.azimuth = azimuth;
+    input.altitude = altitude;
+    input.zoom = zoom;
+    input.bump_map_texture = gputex_bump_for(map, true);
+    input.show_bump_map = true;
+    input.bump_minimum = range[0];
+    input.bump_span = range[1] - range[0];
+    if (input.bump_map_texture && queue_sunclock_gpu(input, dispcx, dispcy)) return;
+
+    constexpr int step = 2;
+    for (int y = 0; y < dispcy * 2; y += step)
+    {
+        const double lat = lat_from_y(y + .5 - dispcy);
+        if (fabs(lat) > half_pi) continue;
+        for (int x = 0; x < dispcx * 2; x += step)
+        {
+            const double height = map->elevation_at_bilinear(lat, lon_from_x(x + .5 - dispcx));
+            const double gray = input.bump_span > 0
+                ? std::clamp((height - input.bump_minimum) / input.bump_span, 0.0, 1.0) : .5;
+            const int value = std::lround(255 * gray);
+            draw->AddRectFilled(ImVec2(x, y), ImVec2(x + step, y + step), IM_COL32(value, value, value, 255));
+        }
+    }
+}
+
+ViewMode last_vmode = vm_spaceship;
+void draw_sunclock()
+{
+    if (whereami < 0 || whereami >= ncelobjs || !cels[whereami]) return;
+
+    if (last_vmode != view_mode)
+    {
+        for (int i = 0; cels[i]; ++i) cels[i]->drawnx = cels[i]->drawny = -1e9;
+    }
+
+    CelestialObject* cel = cels[whereami];
+    if (!cel->nlocales) cel->read_locales("locales.json");
+    spawn_texture_load(cel);
+    sclk_scale = half_pi / std::max(1, static_cast<int>(dispcx / 2)) / zoom;
+
+    if (view_mode == vm_bumpmap)
+    {
+        draw_bump_map_surface(cel->surf_map);
+        const std::string title = std::string("Bump map for ") + cel->name;
+        auto* draw = ImGui::GetBackgroundDrawList();
+        draw->AddText(ImVec2(6, 6), IM_COL32_BLACK, title.c_str());
+        draw->AddText(ImVec2(5, 5), IM_COL32_WHITE, title.c_str());
+    }
+    else
+    {
+        const auto cls = cel->typeclass();
+        if (cls == class_planet || cls == class_moon)
+            static_cast<Planet*>(cel)->update_surface_phase(viewer_lat, viewer_lon);
+        draw_sunclock_surface(cel);
+    }
+
+    int i, dx, dy;
     if (selected_locale)
     {
         dx = dispcx + fmod(selected_locale->lon * fiftyseventh - azimuth , _pi*2) / sclk_scale;
