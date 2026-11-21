@@ -2631,7 +2631,7 @@ bool Map::phase_ocean_at(double latitude, double longitude)
 }
 
 LocalSurfaceState Map::surface_state_at(double latitude, double longitude, const LocalClimate& climate,
-    double salinity, double pressure)
+    double salinity, double pressure, bool use_current_climate)
 {
     const auto index = idx_of(latitude, longitude);
     if (index == idx_not_ready || index >= allocated)
@@ -2646,6 +2646,12 @@ LocalSurfaceState Map::surface_state_at(double latitude, double longitude, const
         || phase_ocean_at(latitude, longitude)
         || ((original == SurfaceMaterial::unknown || (procedurally_generated && original == SurfaceMaterial::ground))
             && climate.water_fraction > 0 && elevation <= climate.sea_level_m);
+    if (use_current_climate)
+    {
+        // Surface textures and phase tiles have their own publication times.
+        return local_surface_state(climate, -cos(latitude)*cos(longitude), -cos(latitude)*sin(longitude),
+            sin(latitude), elevation, ocean, salinity, pressure);
+    }
     // Use the same cell and representative coordinates as texture publication.
     const double lat = half_pi - row / lat_scale, lon = column / lon_scale - _pi;
     const LocalClimate& prepared = initial_surface_climate && initial_climate_generation == gen
@@ -4114,14 +4120,14 @@ void alienorum::Map::generate_lava_map(CelestialObject *cel, bool is_night)
         const double offset_y = cel->cel_frand(0.0, 100.0);
         const double offset_z = cel->cel_frand(0.0, 100.0);
 
-        double tempK = p->estimate_surface_temperature();
-        if (!std::isfinite(tempK) || tempK <= 0.0) tempK = 1350.0;
-        const bool tidal_locked = p->orbit && p->orbit->center
-            && p->orbit->center->type == star && p->is_tidal_locked();
-        // Both textures cover the globe. The renderer selects the actual illuminated
-        // hemisphere, so heating follows the map's lighting state, not a fixed longitude.
-        const double local_temperature = tempK * (is_night ? (tidal_locked ? 0.60 : 0.75) : 1.25);
-        const double heat = local_temperature / (local_temperature + 1500.0);
+        const LocalClimate climate = p->current_local_climate(true);
+        // Both textures cover the globe. Sample representative day and night ground
+        // temperatures and let the lighting pass place each texture on its hemisphere.
+        const double side = is_night ? -1 : 1;
+        const double surface_k = climate.temperature(side * climate.sun_x, side * climate.sun_y,
+            side * climate.sun_z, climate.sea_level_m, false);
+        // Active fissures retain an incandescence contribution from the world's thermal baseline.
+        const double heat = .5 * (surface_k / (surface_k + 1500.0) + climate.mean_k / (climate.mean_k + 1500.0));
         const double emission = is_night ? (0.10 + 0.22 * heat) : (0.65 + 0.35 * heat);
         LavaFissures lava_fissures(static_cast<std::uint32_t>(cel->rnd_seed));
 

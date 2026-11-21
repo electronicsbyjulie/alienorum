@@ -4848,7 +4848,7 @@ void sc_draw_object(CelestialObject *obj, CelestialObject *cel)
         ImU32 obj32 = rgba_apply_redlight(IM_COL32((int)objcol.red, (int)objcol.green, (int)objcol.blue, 255));
         icon_draw->AddCircleFilled(objdxy, 11, icon_border);
         icon_draw->AddCircleFilled(objdxy, 10, obj32);
-        double lstep = _pi / 8;
+        double lstep = _pi / 9;
         double r = 20;
         int dx1 = objdxy.x, dx2, dy1 = objdxy.y - r, dy2;
         for (theta = lstep; theta <= _pi*2+0.001; theta += lstep)
@@ -5454,7 +5454,7 @@ void draw_sunclock()
         }
     }
 
-    if (view_mode == vm_bumpmap || view_mode == vm_thermal) return;
+    if (view_mode != vm_sunclock) return;
 
     // Subsolar point
     CelestialObject *sun = cel->get_light_center();
@@ -5785,7 +5785,7 @@ static void draw_planetary_rain(Planet *p)
     }
 
     // Reevaluate local conditions while walking, as latitude, altitude, and daylight change.
-    const double local_temperature = p->est_current_local_temp(viewer_lat, viewer_lon);
+    const double local_temperature = p->surface_temperature_at(viewer_lat, viewer_lon);
     if (!std::isfinite(local_temperature) || local_temperature <= 0 || local_temperature >= 647) return;
     const double snow_fraction = precipitation_snow_fraction(local_temperature);
 

@@ -8,6 +8,15 @@
 
 namespace alienorum
 {
+    struct AirlessTemperatureCycle
+    {
+        static constexpr int latitudes = 33, hours = 128;
+        std::array<std::array<float, hours>, latitudes> temperature_k{};
+
+        AirlessTemperatureCycle(double sun_z, double solar_frequency, double absorbed, double basal);
+        double temperature(double latitude, double hour) const;
+    };
+
     // Prepared once for a map, with no catalog or atmosphere queries per pixel.
     struct LocalClimate
     {
@@ -17,6 +26,7 @@ namespace alienorum
         double lapse_k_m = 0.0065;
         double sea_level_m = 0;
         double regional_k = 3;
+        std::array<double, 3> regional_origin{17.25, 53.5, 89.75};
         double dry_belt_k = 12;
         double sun_x = -1, sun_y = 0, sun_z = 0;
         bool stellar_locked = false;
@@ -25,7 +35,11 @@ namespace alienorum
         double instantaneous_flux = 1;
         double internal_flux_fraction = 0;
         double solar_frequency = 0, land_diurnal_seconds = 0, water_diurnal_seconds = 0;
+        double diurnal_stellar_gain = NAN;
         std::array<double, 33> land_seasonal_flux{}, water_seasonal_flux{};
+        std::shared_ptr<const AirlessTemperatureCycle> airless_cycle;
+        double airless_stellar_flux = 0, airless_basal_flux = 0;
+        bool airless_surface = false;
         std::shared_ptr<const IceSeason> ice_season;
         bool ice_pending = false;
         double ice_mean_anomaly = 0;
@@ -36,14 +50,7 @@ namespace alienorum
             return std::atan2(y * sun_x - x * sun_y, x * sun_x + y * sun_y);
         }
 
-        double regional_temperature(double x, double y, double z) const
-        {
-            // Several spatial scales break up ice margins without longitude seams
-            // or changes between frames. This is a climate scenario, not weather data.
-            return regional_k * (.65 * std::sin(3 * x + 1.7 * y) * std::sin(4 * z - 2 * y)
-                + .25 * std::sin(13 * x - 7 * y + 3 * z) * std::sin(11 * z + 5 * y)
-                + .10 * std::sin(43 * x + 29 * y) * std::sin(37 * z - 17 * y));
-        }
+        double regional_temperature(double x, double y, double z) const;
 
         double temperature(double x, double y, double z, double elevation_m) const
         {
@@ -54,10 +61,20 @@ namespace alienorum
         double temperature(double x, double y, double z, double elevation_m, bool ocean,
             bool include_diurnal = true, bool include_ice = true) const
         {
+            const double incident = x * sun_x + y * sun_y + z * sun_z;
+            if (airless_surface && include_diurnal)
+            {
+                if (airless_cycle)
+                {
+                    const double hour = std::atan2(y * sun_x - x * sun_y, x * sun_x + y * sun_y);
+                    return airless_cycle->temperature(std::asin(std::clamp(z, -1.0, 1.0)), hour);
+                }
+                return std::pow(airless_basal_flux + airless_stellar_flux * std::max(0.0, incident), .25);
+            }
             double base = mean_k + contrast_k * (1.0 / 3.0 - z * z);
             if (stellar_locked)
             {
-                const double illumination = std::max(0.0, x * sun_x + y * sun_y + z * sun_z);
+                const double illumination = std::max(0.0, incident);
                 const double flux = internal_flux_fraction + (1 - internal_flux_fraction)
                     * (redistribution + (1.0 - redistribution) * 4.0 * illumination);
                 base = mean_k * std::sqrt(std::sqrt(std::max(0.0, flux)));
@@ -89,13 +106,14 @@ namespace alienorum
                     const double sine = horizontal > 1e-12 ? (y * sun_x - x * sun_y) / horizontal : 0;
                     const double hour = std::atan2(sine, cosine);
                     const double tau = water ? water_diurnal_seconds : land_diurnal_seconds;
+                    const double gain = std::isfinite(diurnal_stellar_gain) ? diurnal_stellar_gain : 1 - redistribution;
                     const auto integral = [sunset](int n) { return n ? std::sin(n * sunset) / n : sunset; };
                     for (int n = 1; n <= 8; ++n)
                     {
                         const double amplitude = 2 / 3.141592653589793 * (a * integral(n)
                             + b * 0.5 * (integral(n - 1) + integral(n + 1)));
                         const double response = n * solar_frequency * tau;
-                        flux += 4 * instantaneous_flux * (1 - redistribution) * amplitude
+                        flux += 4 * instantaneous_flux * gain * amplitude
                             * std::cos(n * hour - std::atan(response)) / std::sqrt(1 + response * response);
                     }
                 }

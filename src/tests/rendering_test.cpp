@@ -10090,6 +10090,55 @@ TEST_F(UniverseFixture, ThermalRasterMatchesLocalTemperatureEstimates)
     delete_the_universe();
 }
 
+TEST_F(RenderingRegressionTest, SurfaceMapAndPlanetfallShowTheSameLocalTemperature)
+{
+    set(simnow, double(J2000_TIME_T));
+    set(JDnow, J2000);
+    auto* host = make_star("Sol");
+    host->distance = 0;
+    host->update_location(simnow);
+    auto* world = make_planet(host);
+    world->sidereal_rotational_period = oneday;
+    world->temperature = 250;
+    world->temperature_supplied = true;
+    world->update_location(simnow);
+
+    set(whereami, world->seqno);
+    set(here, world->location);
+    set(viewer_lat, .2);
+    set(viewer_lon, _pi - world->local_solar_time(0));
+    set(altitude, viewer_lat);
+    set(azimuth, viewer_lon);
+    set(trackidx, -1);
+    set(is_an_obj_under_cursor, -1);
+    set(is_a_locale_under_cursor, static_cast<Locale*>(nullptr));
+    set(statuswnd, true);
+    set(objinfwnd, true);
+    set(themes, std::vector<std::string>{"Perseus"});
+    set(themes_selected_idx, 0);
+    ImGuiIO& io = ImGui::GetIO();
+    io.MousePos = ImVec2(dispcx, dispcy);
+
+    const double current = world->est_current_local_temp(viewer_lat, viewer_lon, true);
+    ASSERT_GT(std::abs(current - world->est_current_local_temp(viewer_lat, viewer_lon)), 10);
+    char temperature[32];
+    std::snprintf(temperature, sizeof(temperature), "%.1f K", current);
+
+    ImGui::LogToBuffer();
+    view_mode = vm_thermal;
+    draw_objinf_window(io);
+    const std::string map_text = ImGui::GetCurrentContext()->LogBuffer.c_str();
+    ImGui::LogFinish();
+    ImGui::LogToBuffer();
+    view_mode = vm_horizon;
+    draw_status_window(io);
+    const std::string horizon_text = ImGui::GetCurrentContext()->LogBuffer.c_str();
+    ImGui::LogFinish();
+
+    EXPECT_NE(map_text.find(std::string("Temp:     ") + temperature), std::string::npos) << map_text;
+    EXPECT_NE(horizon_text.find(std::string("Est. temp.:   ") + temperature), std::string::npos) << horizon_text;
+}
+
 TEST(BumpMapViewTest, RasterContainsTheStoredElevations)
 {
     BumpySceneryTestMap map;

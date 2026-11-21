@@ -1137,6 +1137,69 @@ void Planet::classify(bool HZ, bool mnrk, bool ck)
     if (!ck || (envelope_selection && previous_type != type)) set_color_from_type(HZ);
 }
 
+AirlessTemperatureCycle::AirlessTemperatureCycle(double sun_z, double solar_frequency, double absorbed, double basal)
+{
+    const double frequency = std::abs(solar_frequency);
+    // A longer solar day warms a deeper layer by diffusion.
+    const double ground_capacity = 300 / std::sqrt(frequency);
+    const double step = 2 * _pi / (hours * frequency);
+    const double emission = STEFAN_BOLTZMANN * step / ground_capacity;
+    const double sun_horizontal = std::sqrt(std::max(0.0, 1 - sun_z * sun_z));
+    std::array<double, hours> cosine{};
+    for (int sample = 0; sample < hours; ++sample)
+        cosine[sample] = std::cos(2 * _pi * (sample - .5) / hours);
+    for (int row = 0; row < latitudes; ++row)
+    {
+        const double latitude = -half_pi + _pi * row / (latitudes - 1);
+        const double offset = std::sin(latitude) * sun_z;
+        const double amplitude = std::cos(latitude) * sun_horizontal;
+        const double average = daily_stellar_heating(std::sin(latitude), sun_z);
+        double temperature = std::pow((basal + absorbed * average) / STEFAN_BOLTZMANN, .25);
+        for (int cycle = 0; cycle < 4; ++cycle)
+        {
+            for (int sample = 0; sample < hours; ++sample)
+            {
+                const double sunlight = absorbed * std::max(0.0, offset + amplitude * cosine[sample]);
+                const double input = temperature + (basal + sunlight) * step / ground_capacity;
+                // Backward Euler remains stable through long nights and intense daylight.
+                double next = std::min(input, std::pow(input / emission, .25));
+                for (int iteration = 0; iteration < 8; ++iteration)
+                {
+                    const double slope = emission * next * next * next;
+                    const double correction = (next + slope * next - input) / (1 + 4 * slope);
+                    next -= correction;
+                    if (std::abs(correction) < .001) break;
+                }
+                temperature = next;
+                const int column = solar_frequency > 0 ? sample : (hours - sample) % hours;
+                temperature_k[row][column] = temperature;
+            }
+        }
+    }
+}
+
+double AirlessTemperatureCycle::temperature(double latitude, double hour) const
+{
+    const double row = std::clamp((latitude + half_pi) / _pi * (latitudes - 1), 0.0, double(latitudes - 1));
+    const double column = (hour / (2 * _pi) + 1) * hours;
+    const int south = static_cast<int>(row), north = std::min(south + 1, latitudes - 1);
+    const int west = static_cast<int>(column) % hours, east = (west + 1) % hours;
+    const double fraction = column - std::floor(column);
+    const double lower = temperature_k[south][west] + fraction * (temperature_k[south][east] - temperature_k[south][west]);
+    const double upper = temperature_k[north][west] + fraction * (temperature_k[north][east] - temperature_k[north][west]);
+    return lower + (row - south) * (upper - lower);
+}
+
+double LocalClimate::regional_temperature(double x, double y, double z) const
+{
+    if (regional_k == 0 || !std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z)) return 0;
+    // Sample three scales on the sphere so the variation crosses the longitude seam smoothly.
+    const double noise = fBm(3.2 * x + regional_origin[0], 3.2 * y + regional_origin[1],
+        3.2 * z + regional_origin[2], 3, 2.07, .44);
+    const double polar_taper = std::max(0.0, 1 - z * z * z * z);
+    return regional_k * polar_taper * std::clamp(1.35 * (2 * noise - 1), -1.0, 1.0);
+}
+
 LocalClimate Planet::local_climate()
 {
     LocalClimate climate;
@@ -1153,9 +1216,13 @@ LocalClimate Planet::local_climate()
     const double gravity = estimate_surface_gravity();
     climate.lapse_k_m = std::isfinite(gravity)
         ? 0.0065 * std::clamp(gravity, 0.0, 3.0) * pressure / (pressure + 0.01) : 0;
-    climate.sea_level_m = m_bump_scale > 0 ? m_bump_scale * (has_water - 0.5) : 0;
+    const bool measured_bathymetry = bump_has_bathymetry && surf_map && surf_map->has_calibrated_bump();
+    climate.sea_level_m = m_bump_scale > 0 && !measured_bathymetry ? m_bump_scale * (has_water - 0.5) : 0;
     climate.dry_belt_k = climate.mean_k * 0.04 * pressure / (pressure + 0.01);
     climate.regional_k = climate.mean_k * 0.012 / (1.0 + pressure / 10.0);
+    const uint64_t regional_seed = uint64_t(texture_seed()) << 32;
+    climate.regional_origin = {256 * life_draw(regional_seed + 1),
+        256 * life_draw(regional_seed + 2), 256 * life_draw(regional_seed + 3)};
     climate.contrast_k *= 1 - climate.internal_flux_fraction;
     climate.dry_belt_k *= 1 - climate.internal_flux_fraction;
     climate.regional_k *= 1 - climate.internal_flux_fraction;
@@ -1344,10 +1411,21 @@ LocalClimate Planet::current_local_climate(bool include_supplied, double sample_
     const double spin = sampling && sidereal_rotational_period
         ? 2 * _pi * (now - simnow) / sidereal_rotational_period : 0;
     const Point body_sun = rotate3D(sunlight, center, yaxis, timeofday() + spin);
-    const double longitude = find_angle(body_sun.z, -body_sun.x);
-    climate.sun_x = -std::cos(declination) * std::cos(longitude);
-    climate.sun_y = -std::cos(declination) * std::sin(longitude);
-    climate.sun_z = std::sin(declination);
+    double longitude = find_angle(body_sun.z, -body_sun.x);
+    double latitude = declination;
+    const double actual_distance = location.distance_to(source->location);
+    if (!sampling && !std::isfinite(cloud_epoch))
+    {
+        const double solar_time = local_solar_time(0);
+        if (solar_time >= 0)
+        {
+            longitude = _pi - solar_time;
+            latitude = source->Decl_as_radians(location);
+        }
+    }
+    climate.sun_x = -std::cos(latitude) * std::cos(longitude);
+    climate.sun_y = -std::cos(latitude) * std::sin(longitude);
+    climate.sun_z = std::sin(latitude);
 
     double ocean = 0;
     if (has_water_supplied && has_water <= 0) ocean = 0;
@@ -1387,15 +1465,27 @@ LocalClimate Planet::current_local_climate(bool include_supplied, double sample_
         gas(c.NH3_portion, .017031, 35.1); gas(c.SO2_portion, .064066, 39.9);
     }
     const double cp = mixture_mass > 0 ? cp_molar / mixture_mass : 1005;
-    const double atmosphere_capacity = std::max(0.0, get_surface_pressure()) / gravity * cp;
+    const double pressure = std::max(0.0, get_surface_pressure());
+    const double atmosphere_column = pressure / gravity;
+    const double atmosphere_capacity = atmosphere_column * cp;
     // Sensible heat only: the separate enthalpy columns carry freezing/melting
     // energy explicitly. Do not add the former artificial latent-heat buffer here.
     const double liquid = std::clamp((climate.mean_k - 263.15) / 20, 0.0, 1.0);
     const double water_capacity = 2.09e8;
-    const double stellar_flux = est_bolometric_flux() * 1361;
-    const double feedback = std::max(0.01, (stellar_flux * (1 - std::clamp(estimate_bond_albedo(), 0.0, 0.99))
-        + 4 * tidal_heat_flux()) / climate.mean_k);
-    const double actual_distance = location.distance_to(source->location);
+    const double absorbed = est_bolometric_flux() * 1361 * (1 - std::clamp(estimate_bond_albedo(), 0.0, 0.99));
+    const double tidal = tidal_heat_flux();
+    const double feedback = std::max(0.01, (absorbed + 4 * tidal) / climate.mean_k);
+    const bool rocky_surface = uses_rocky_map(type);
+    climate.airless_surface = rocky_surface && pressure <= 1 && std::isfinite(absorbed) && absorbed >= 0;
+    if (climate.stellar_locked && atmosphere_capacity > 0)
+    {
+        const double gas_constant = mixture_mass > 0 ? 8.31446 / mixture_mass : 287;
+        const double wave_speed = std::sqrt(gas_constant * climate.mean_k);
+        const double crossing_time = volumetric_mean_radius / wave_speed;
+        // Estimate the column that can radiate from an infrared optical depth of order one.
+        const double radiative_time = atmosphere_capacity / (feedback * std::max(1.0, get_atmospheric_tau()));
+        climate.redistribution *= radiative_time / (radiative_time + crossing_time);
+    }
     double spin_period = sidereal_rotational_period;
     if (spin_period == 0 && orbit && is_tidal_locked()) spin_period = orbit->period;
     const std::vector<double> cache_key =
@@ -1404,7 +1494,9 @@ LocalClimate Planet::current_local_climate(bool include_supplied, double sample_
         climate.sea_level_m, climate.dry_belt_k, climate.regional_k, double(climate.stellar_locked),
         forcing.eccentricity, forcing.mean_anomaly, forcing.period, forcing.pole_u, forcing.pole_v,
         climate.sun_x, climate.sun_y, climate.sun_z, actual_distance, axis, atmosphere_capacity,
-        water_capacity, ocean, feedback, spin_period, double(supplied), climate.internal_flux_fraction
+        water_capacity, ocean, feedback, spin_period, double(supplied), climate.internal_flux_fraction,
+        double(climate.airless_surface), double(rocky_surface), atmosphere_column,
+        climate.regional_origin[0], climate.regional_origin[1], climate.regional_origin[2]
     };
     const bool phase_pending = atm && atm->pressure_model.is_object()
         && atm->pressure_model.contains("phase_available_column_pa")
@@ -1444,9 +1536,33 @@ LocalClimate Planet::current_local_climate(bool include_supplied, double sample_
         climate.water_seasonal_flux[row] = ocean_history.local_flux(latitude, annual_heating, share) * reference;
     }
     climate.solar_frequency = spin_period ? 2 * _pi * (1 / spin_period - 1 / period) : -2 * _pi / period;
+    if (climate.airless_surface)
+    {
+        const double current_absorbed = absorbed * climate.instantaneous_flux / reference;
+        const double basal = tidal + STEFAN_BOLTZMANN * std::pow(2.7, 4);
+        climate.airless_stellar_flux = current_absorbed / STEFAN_BOLTZMANN;
+        climate.airless_basal_flux = basal / STEFAN_BOLTZMANN;
+        if (!climate.stellar_locked && std::abs(climate.solar_frequency) > 1e-12)
+        {
+            climate.airless_cycle = std::make_shared<AirlessTemperatureCycle>(climate.sun_z, climate.solar_frequency,
+                current_absorbed, basal);
+        }
+    }
     // The diurnal surface exchanges heat with a shallow atmospheric boundary layer and 1 m of water.
     climate.land_diurnal_seconds = (2e5 + 0.05 * atmosphere_capacity) / feedback;
     climate.water_diurnal_seconds = (4.18e6 * liquid + 1.93e6 * (1 - liquid) + 0.05 * atmosphere_capacity) / feedback;
+    if (rocky_surface && !climate.stellar_locked && !climate.airless_surface)
+    {
+        // The surface responds to local sunlight and loses heat to the air above it.
+        // The atmospheric column sets transmission and a bounded turbulent exchange coefficient.
+        const double column = atmosphere_column / (oneatm / 9.80665);
+        const double transmission = 1 / (1 + .6 * column);
+        const double surface_feedback = feedback + 16 * column / (column + .1);
+        const double boundary_capacity = .002 * atmosphere_capacity;
+        climate.diurnal_stellar_gain = transmission * feedback / surface_feedback;
+        climate.land_diurnal_seconds = (8e4 + boundary_capacity) / surface_feedback;
+        climate.water_diurnal_seconds = (4.18e6 * liquid + 1.93e6 * (1 - liquid) + boundary_capacity) / surface_feedback;
+    }
     climate.current_conditions = true;
     if (climate.ice_season)
     {
@@ -1574,39 +1690,59 @@ void Planet::update_surface_phase(double latitude, double longitude)
     }
 }
 
-static double current_local_temperature(Map* map, const LocalClimate& climate, double salinity, double pressure,
-    double lat, double lon)
+namespace
 {
-    if (!std::isfinite(lat) || !std::isfinite(lon)) return climate.mean_k;
-    lat = std::clamp(lat, -half_pi, half_pi);
-    if (map && map->is_complete())
-        return map->surface_state_at(lat, lon, climate, salinity, pressure).temperature;
-    return climate.temperature(-std::cos(lat) * std::cos(lon), -std::cos(lat) * std::sin(lon),
-        std::sin(lat), climate.sea_level_m);
+    struct SurfaceTemperatureSampler
+    {
+        LocalClimate climate;
+        Map* map;
+        double salinity = 0, pressure = 0;
+        bool live_surface;
+
+        SurfaceTemperatureSampler(Planet& planet, bool live)
+            : climate(planet.current_local_climate(live)), map(planet.surf_map), live_surface(live)
+        {
+            if (map && map->is_complete())
+            {
+                salinity = planet.ocean_chemistry().at("salinity_g_kg").get<double>();
+                pressure = planet.get_surface_pressure();
+            }
+            else map = nullptr;
+        }
+
+        double temperature(double latitude, double longitude) const
+        {
+            if (!std::isfinite(latitude) || !std::isfinite(longitude)) return climate.mean_k;
+            latitude = std::clamp(latitude, -half_pi, half_pi);
+            if (map) return map->surface_state_at(latitude, longitude, climate, salinity, pressure, live_surface).temperature;
+            const double ring = std::cos(latitude);
+            return climate.temperature(-ring * std::cos(longitude), -ring * std::sin(longitude),
+                std::sin(latitude), climate.sea_level_m);
+        }
+    };
 }
 
-double Planet::est_current_local_temp(double lat, double lon)
+double Planet::surface_temperature_at(double latitude, double longitude)
 {
-    const LocalClimate climate = current_local_climate();
-    if (!surf_map || !surf_map->is_complete() || !std::isfinite(lat) || !std::isfinite(lon))
-        return current_local_temperature(nullptr, climate, 0, 0, lat, lon);
-    return current_local_temperature(surf_map, climate, ocean_chemistry().at("salinity_g_kg").get<double>(),
-        get_surface_pressure(), lat, lon);
+    return SurfaceTemperatureSampler(*this, true).temperature(latitude, longitude);
+}
+
+double Planet::est_current_local_temp(double lat, double lon, bool live_surface)
+{
+    if (live_surface) return surface_temperature_at(lat, lon);
+    return SurfaceTemperatureSampler(*this, false).temperature(lat, lon);
 }
 
 void Planet::sample_current_local_temperatures(float* samples, int width, int height)
 {
-    const LocalClimate climate = current_local_climate();
-    const bool mapped = surf_map && surf_map->is_complete();
-    const double salinity = mapped ? ocean_chemistry().at("salinity_g_kg").get<double>() : 0;
-    const double pressure = mapped ? get_surface_pressure() : 0;
+    const SurfaceTemperatureSampler surface(*this, true);
     for (int row = 0; row < height; ++row)
     {
         const double lat = half_pi - (row + .5) * _pi / height;
         for (int column = 0; column < width; ++column)
         {
             const double lon = -_pi + (column + .5) * 2 * _pi / width;
-            samples[row * width + column] = current_local_temperature(surf_map, climate, salinity, pressure, lat, lon);
+            samples[row * width + column] = surface.temperature(lat, lon);
         }
     }
 }

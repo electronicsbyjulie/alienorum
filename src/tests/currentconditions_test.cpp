@@ -6,6 +6,7 @@
 #include "../inputs.h"
 #include "../loaders.h"
 #include "../classes/cloudclimate.h"
+#include "../classes/surfaceclimate.h"
 #include "../classes/thermalclimate.h"
 #include "universe_fixture.h"
 
@@ -381,6 +382,42 @@ TEST_F(CurrentConditionsTest, DiurnalHeatingIncludesAfternoonLagAndOceanBufferin
     EXPECT_LT(std::abs(ocean_range), std::abs(land_range));
 }
 
+TEST_F(CurrentConditionsTest, EarthThermalMapShowsDailyLandHeatingAboveMeasuredSeaLevel)
+{
+    if (!std::filesystem::exists("maps/Earth_surf.jpg") || !std::filesystem::exists("maps/Earth_bump.png"))
+        GTEST_SKIP() << "Earth color and relief maps are unavailable";
+    Planet* earth = world(oneatm);
+    earth->temperature = 288;
+    earth->temperature_supplied = true;
+    earth->obliquity = 23.45 * fiftyseventh;
+    earth->has_water = .79;
+    earth->bump_has_bathymetry = true;
+    earth->m_bump_scale = 65535;
+    earth->surf_map = new Map(earth);
+    ASSERT_TRUE(earth->surf_map->load_from_jpeg("maps/Earth_surf.jpg"));
+    ASSERT_TRUE(earth->surf_map->load_calibrated_bump("maps/Earth_bump.png", earth->m_bump_scale, -.5));
+
+    const double lat = 25 * fiftyseventh;
+    const double land_lon = 10 * fiftyseventh, water_lon = -148 * fiftyseventh;
+    const auto climate = earth->current_local_climate(true);
+    EXPECT_DOUBLE_EQ(climate.sea_level_m, 0);
+    EXPECT_FALSE(earth->surf_map->surface_state_at(lat, land_lon, climate, 35, oneatm, true).ocean);
+    EXPECT_TRUE(earth->surf_map->surface_state_at(lat, water_lon, climate, 35, oneatm, true).ocean);
+
+    std::array<double, 12> land{}, ocean{};
+    for (size_t step = 0; step < land.size(); ++step)
+    {
+        simnow = J2000_TIME_T + step * oneday / land.size();
+        earth->update_location(simnow);
+        land[step] = earth->est_current_local_temp(lat, land_lon, true);
+        ocean[step] = earth->est_current_local_temp(lat, water_lon, true);
+    }
+    const auto [land_min, land_max] = std::minmax_element(land.begin(), land.end());
+    const auto [water_min, water_max] = std::minmax_element(ocean.begin(), ocean.end());
+    EXPECT_GT(*land_max - *land_min, 12);
+    EXPECT_LT(*water_max - *water_min, (*land_max - *land_min) * .25);
+}
+
 TEST_F(CurrentConditionsTest, SameEpochEditsInvalidateClimateAndExplicitDrySurfacesStayDry)
 {
     Planet* planet = world(oneatm, true);
@@ -394,6 +431,82 @@ TEST_F(CurrentConditionsTest, SameEpochEditsInvalidateClimateAndExplicitDrySurfa
     const auto dense = planet->current_local_climate();
     EXPECT_GT(dense.land_diurnal_seconds, dry.land_diurnal_seconds);
     EXPECT_DOUBLE_EQ(planet->current_local_climate().land_diurnal_seconds, dense.land_diurnal_seconds);
+}
+
+TEST_F(CurrentConditionsTest, RegionalPerlinVariationIsStableAndUsesTheWorldSeed)
+{
+    Planet* planet = world(oneatm);
+    planet->rnd_seed = 73;
+    const auto first = planet->current_local_climate();
+    const double variation = first.regional_temperature(.6, 0, .8);
+    EXPECT_LE(std::abs(variation), first.regional_k);
+
+    phase(planet, .25);
+    EXPECT_DOUBLE_EQ(planet->current_local_climate().regional_temperature(.6, 0, .8), variation);
+    planet->rnd_seed = 74;
+    EXPECT_NE(planet->current_local_climate().regional_temperature(.6, 0, .8), variation);
+    planet->rnd_seed = 73;
+    EXPECT_DOUBLE_EQ(planet->current_local_climate().regional_temperature(.6, 0, .8), variation);
+}
+
+TEST_F(CurrentConditionsTest, ThermalRasterTracksSunlightOnWorldsWithSuppliedMeanTemperatures)
+{
+    Planet* mercury = world();
+    mercury->orbit->semimajor_axis = .387 * AU;
+    mercury->orbit->period = 88 * oneday;
+    mercury->orbit->eccentricity = .2;
+    mercury->sidereal_rotational_period = 2 * mercury->orbit->period / 3;
+    mercury->temperature = 440;
+    mercury->temperature_supplied = true;
+    phase(mercury, .2);
+
+    constexpr int width = 64, height = 33;
+    std::array<float, width * height> raster{};
+    mercury->sample_current_local_temperatures(raster.data(), width, height);
+    const double noon = _pi - mercury->local_solar_time(0);
+    const double day = mercury->est_current_local_temp(0, noon, true);
+    const double night = mercury->est_current_local_temp(0, noon + _pi, true);
+    EXPECT_GT(day, 500);
+    EXPECT_LT(night, 180);
+    EXPECT_GT(night, 50);
+    EXPECT_DOUBLE_EQ(mercury->temperature, 440);
+    for (int column = 0; column < width; ++column)
+    {
+        const double lon = -_pi + (column + .5) * 2 * _pi / width;
+        EXPECT_FLOAT_EQ(raster[(height / 2) * width + column], mercury->est_current_local_temp(0, lon, true));
+    }
+
+    phase(mercury, .7);
+    EXPECT_LT(mercury->est_current_local_temp(0, noon, true), day - 100);
+}
+
+TEST_F(CurrentConditionsTest, ThermalRasterUsesSolarDayForMoonLockedToItsPlanet)
+{
+    Planet* earth = world(oneatm);
+    Moon* moon = new Moon;
+    moon->type = rocky;
+    moon->mass = .0123 * earth_mass;
+    moon->volumetric_mean_radius = .273 * earth_radius;
+    moon->bond_albedo = .12;
+    moon->orbit = new Orbit;
+    moon->orbit->center = earth;
+    moon->orbit->semimajor_axis = 384400000;
+    moon->orbit->period = 27.3 * oneday;
+    moon->sidereal_rotational_period = moon->orbit->period;
+    moon->temperature = 250;
+    moon->temperature_supplied = true;
+    ASSERT_TRUE(append_cel(moon));
+    phase(earth, 0);
+    moon->update_location(simnow);
+    ASSERT_TRUE(moon->is_tidal_locked());
+    const auto climate = moon->current_local_climate(true);
+    EXPECT_FALSE(climate.stellar_locked);
+    EXPECT_NEAR(2 * _pi / climate.solar_frequency / oneday, 29.5, .1);
+    const double noon = _pi - moon->local_solar_time(0);
+    EXPECT_GT(moon->est_current_local_temp(0, noon, true), 350);
+    EXPECT_LT(moon->est_current_local_temp(0, noon + _pi, true), 160);
+    EXPECT_GT(moon->est_current_local_temp(0, noon + _pi, true), 80);
+    EXPECT_DOUBLE_EQ(moon->temperature, 250);
 }
 
 TEST_F(CurrentConditionsTest, TimeJumpsAreDeterministicAndSuppliedMeansRetainLegacyReadouts)

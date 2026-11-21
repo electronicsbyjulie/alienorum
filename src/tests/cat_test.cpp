@@ -6262,6 +6262,44 @@ TEST_F(CatalogParsingTest, JanssenAndInnerTauCetiPlanetsIncludeAtmosphericScatte
     }
 }
 
+TEST_F(CatalogParsingTest, JanssenThermalRasterHasADayNightContrast)
+{
+    Star::load_main_seq_dat();
+    TestCatalogReader reader;
+    FILE* file = fopen("catalogs/exoplanets_planets.dat", "r");
+    ASSERT_NE(file, nullptr);
+    ExoRow row;
+    while (reader.exorow_read_line(file, row) && row.pl_name != "55 Cnc Ae") {}
+    fclose(file);
+    ASSERT_EQ(row.pl_name, "55 Cnc Ae");
+    Star* host = make_star(row.hostname.c_str(), row.st_mass * solar_mass);
+    host->temperature = row.st_teff;
+    host->volumetric_mean_radius = row.st_rad * solar_radius;
+    host->absolute_magnitude = row.sy_vmag - 5 * std::log10(row.sy_dist) + 5;
+    snprintf(host->spectral_type, sizeof(host->spectral_type), "%s", row.st_spectype.c_str());
+    host->BV_color = Star::interpolate_mseq_BV(Star::get_mseqidx_from_sptyp(host->spectral_type));
+    reader.apply_exoplanet_metallicity(row, host);
+    std::map<int, std::vector<int>> planets;
+    unsigned int count = 0;
+    ASSERT_TRUE(reader.add_exoplanet_from_row(row, host, planets, count));
+    ASSERT_EQ(count, 1u);
+    auto* planet = static_cast<Planet*>(cels[planets.at(host->seqno).front()]);
+    host->update_location(simnow);
+    planet->update_location(simnow);
+    ASSERT_TRUE(planet->is_tidal_locked());
+    const double noon = _pi - planet->local_solar_time(0);
+    const double latitude = host->Decl_as_radians(planet->location);
+    const double day = planet->est_current_local_temp(latitude, noon, true);
+    const double night = planet->est_current_local_temp(-latitude, noon + _pi, true);
+    EXPECT_GT(day - night, 100) << "surface pressure " << planet->get_surface_pressure()
+        << " Pa, atmospheric optical depth " << planet->get_atmospheric_tau();
+    constexpr int width = 64, height = 32;
+    std::array<float, width * height> raster{};
+    planet->sample_current_local_temperatures(raster.data(), width, height);
+    const auto [coldest, hottest] = std::minmax_element(raster.begin(), raster.end());
+    EXPECT_GT(*hottest - *coldest, 100);
+}
+
 TEST_F(CatalogParsingTest, BrownCompanionAliasDoesNotCreateAPlanetAcrossCache)
 {
     Star* host = make_star("eps Ind B");

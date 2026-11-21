@@ -1,9 +1,41 @@
 
-[x] Downhill views now render the visible valley or crater floor and the opposite slope. Verified with an airless valley rendering test and the small-world rock occlusion test.
+What does your regression test show for 82 Eridani planets? It passes, right? Because we keep only the 18 day, 90 day, and 648 day planets? THEN WHY DO I SEE SEVEN PLANETS IN THE SYSTEM. INCLUDING THE DISPROVEN ONE. WE FIXED THIS ALREADY TODAY AND IT REGRESSED YET AGAIN. WHY DO YOU HAVE SUCH A PROBLEM WITH 82 ERIDANI THAT FIXES KEEP REGRESSING THERE. I WANT THIS FIXED AND I DON'T EVER WANT TO SEE ANY 82 ERIDANI BUGS RECUR EVER EVER EVER EVER EVER EVER EVER EVER EVER EVER EVER EVER EVER EVER EVER EVER EVER EVER AGAIN.
 
-[x] Verified live NASA and Exoplanet.eu feeds through the importer. Proxima b and d and COCONUTS-2 b come from the provider catalogs. Proxima c comes from the Exoplanet.eu candidate export. Published rejections apply across aliases in the downloaded catalogs, caches, and local NASA CSV fallback. The matching host and period distinguish 82 Eridani’s confirmed 89-day planet from the rejected 40-day signal.
 
-[x] Selected planets in system view now draw one name label. Verified by counting the labels queued for the selected planet.
+Fix the generic PNG loader to accept 16 bit grayscale, then check that the Earth relief test works.
 
-[x] The disc and sun clock use the same terrain sunlight rule. Elevated terrain can catch sunlight near the terminator, while terrain deeper in night receives ambient or night-map light. Pandora at JD 2461366.142 was the reported example. Verified with terrain exposure, crater lighting, and sun-clock rendering tests.
+
+Are these build warnings worth fixing?
+
+src/classes/universe_catalog.cpp: In function ‘json {anonymous}::read_part(const std::filesystem::__cxx11::path&, const std::string&, Repairs&)’:
+src/classes/universe_catalog.cpp:789:32: warning: loop variable ‘suffix’ creates a copy from type ‘const std::string’ {aka ‘const std::__cxx11::basic_string<char>’} [-Wrange-loop-construct]
+  789 |         for (const std::string suffix : {std::string(), std::string(".bak")})
+      |                                ^~~~~~
+src/classes/universe_catalog.cpp:789:32: note: use reference type to prevent copying
+  789 |         for (const std::string suffix : {std::string(), std::string(".bak")})
+      |                                ^~~~~~
+      |                                &
+src/classes/universe_catalog.cpp:813:44: warning: loop variable ‘catalog_suffix’ creates a copy from type ‘const std::string’ {aka ‘const std::__cxx11::basic_string<char>’} [-Wrange-loop-construct]
+  813 |                     for (const std::string catalog_suffix : {std::string(), std::string(".bak")})
+      |                                            ^~~~~~~~~~~~~~
+src/classes/universe_catalog.cpp:813:44: note: use reference type to prevent copying
+  813 |                     for (const std::string catalog_suffix : {std::string(), std::string(".bak")})
+      |                                            ^~~~~~~~~~~~~~
+      |                                            &
+src/classes/universe_catalog.cpp: In static member function ‘static bool alienorum::Serialization::load_file(const std::string&, alienorum::CelestialObject**, unsigned int, bool)’:
+src/classes/universe_catalog.cpp:952:28: warning: loop variable ‘suffix’ creates a copy from type ‘const std::string’ {aka ‘const std::__cxx11::basic_string<char>’} [-Wrange-loop-construct]
+  952 |     for (const std::string suffix : {std::string(), std::string(".bak")})
+      |                            ^~~~~~
+src/classes/universe_catalog.cpp:952:28: note: use reference type to prevent copying
+  952 |     for (const std::string suffix : {std::string(), std::string(".bak")})
+      |                            ^~~~~~
+      |                            &
+g++ src/classes/shore.cpp -std=c++17 -O2 -MMD -MP -Isrc/include/imgui -Isrc/include/imgui/backends -Wall -Wformat -I./src/include -I./src/include/imgui -I./src/classes  `sdl2-config --cflags` -c -o obj/internal/shore.o
+g++ src/classes/cons.cpp -std=c++17 -O2 -MMD -MP -Isrc/include/imgui -Isrc/include/imgui/backends -Wall -Wformat -I./src/include -I./src/include/imgui -I./src/classes  `sdl2-config --cflags` -c -o obj/internal/cons.o
+src/classes/cons.cpp: In function ‘alienorum::Constellation* identify_cons_of_star(alienorum::Star*)’:
+src/classes/cons.cpp:266:16: warning: the address of ‘alienorum::Star::constellation’ will never be NULL [-Waddress]
+  266 |         if (s->constellation && !strcasecmp(s->constellation, cons.abbrev.c_str())) return &cons;
+      |             ~~~^~~~~~~~~~~~~
+
+If so, there may be other similar warnings to knock out while you're at it.
 
