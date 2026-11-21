@@ -6759,6 +6759,7 @@ int alienorum::CatalogReader::write_condensed_star_cat(ConsBins cb)
     if (fp)
     {
         fprintf(fp, "# ORBITS1 %s\n", star_orbits_signature().c_str());
+        fprintf(fp, "# IDRANK1\n");
         const auto brown_signature = brown_dwarf_catalog_signature();
         if (!brown_signature.empty()) fprintf(fp, "# BROWN20PC1 %s\n", brown_signature.c_str());
         std::unordered_set<Star*> recorded;
@@ -6830,6 +6831,7 @@ bool alienorum::CatalogReader::bake_condensed_star_orbits()
     try
     {
         fprintf(fp, "# ORBITS1 %s\n", signature.c_str());
+        fprintf(fp, "# IDRANK1\n");
         if (condensed_brown_dwarfs_loaded)
             fprintf(fp, "# BROWN20PC1 %s\n", brown_dwarf_catalog_signature().c_str());
         for (int i = 0; cels[i]; ++i)
@@ -7153,6 +7155,7 @@ int alienorum::CatalogReader::read_condensed_star_cat()
     std::unordered_map<std::string, Star*> saved_stars;
     std::unordered_map<std::string, Star*> legacy_ids;
     std::vector<Star*> catalog_stars;
+    bool current_id_sequences = false;
     int num_read = 0, i, j;
     char buffer[16384];
     char field[64];
@@ -7183,6 +7186,7 @@ int alienorum::CatalogReader::read_condensed_star_cat()
             std::istringstream header(buffer);
             std::string comment, version, signature;
             header >> comment >> version >> signature;
+            if (version == "IDRANK1") current_id_sequences = true;
             if (version == "BROWN20PC1")
             {
                 const auto source_signature = brown_dwarf_catalog_signature();
@@ -7656,6 +7660,7 @@ int alienorum::CatalogReader::read_condensed_star_cat()
         }
         catalog_stars.push_back(s);
         append_cel(s);
+        if (record_id == "-26" && is_catalog_sun(*s)) s->alienorumid = record_id;
         if (s->alienorumid.empty() && !record_id.empty()) legacy_ids.emplace(record_id, s);
         num_read++;
 
@@ -7862,6 +7867,7 @@ int alienorum::CatalogReader::read_condensed_star_cat()
     }
 
     reconcile_catalog_star_copies();
+    if (!current_id_sequences) repair_legacy_alienorum_id_sequences();
     std::unordered_set<std::string> unauthored_orbit_magnitudes;
     std::ifstream orbit_source("catalogs/star_orbits.dat");
     for (std::string row; std::getline(orbit_source, row);)

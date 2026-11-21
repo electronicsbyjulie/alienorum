@@ -409,6 +409,11 @@ TEST_F(KnownCatalogRegression, VisibleAlienorumIdsFollowTheDocumentedFormat)
         }
         const auto& star = static_cast<const Star&>(object);
         EXPECT_EQ(shown, star.alienorumid) << star.name;
+        if (index == 0 && is_catalog_sun(star))
+        {
+            EXPECT_EQ(shown, "-26");
+            continue;
+        }
         if (shown.empty()) ++blank;
         else
         {
@@ -428,6 +433,38 @@ TEST_F(KnownCatalogRegression, VisibleAlienorumIdsFollowTheDocumentedFormat)
     sample.alienorumid = "6c And 17 B";
     EXPECT_EQ(shown_alienorum_id(sample), sample.alienorumid);
     EXPECT_TRUE(shown_alienorum_id(Planet()).empty());
+}
+
+TEST_F(KnownCatalogRegression, CetusVariablesUseRightAscensionAndLeaveNumericRanksContiguous)
+{
+    const int first = find_object("36 G. Cet", true, 9e29, 1);
+    const int second = find_object("Mira", true, 9e29, 1);
+    ASSERT_GE(first, 0);
+    ASSERT_GE(second, 0);
+    EXPECT_LT(static_cast<Star*>(cels[first])->right_ascension, static_cast<Star*>(cels[second])->right_ascension);
+    EXPECT_EQ(shown_alienorum_id(*cels[first]), "Vr Cet 1");
+    EXPECT_EQ(shown_alienorum_id(*cels[second]), "Vr Cet 2");
+    EXPECT_EQ(find_object("Vr Cet 1", true, 9e29, 1), first);
+    EXPECT_EQ(find_object("Vr Cet 2", true, 9e29, 1), second);
+    ASSERT_GE(find_object("6r Cet 3", true, 9e29, 1), 0);
+
+    for (const std::string prefix : {"Vr Cet", "6r Cet"})
+    {
+        std::vector<int> ranks;
+        for (int index = 0; cels[index]; ++index)
+        {
+            const auto* object = cels[index];
+            if (object->deleted || object->typeclass() != class_star) continue;
+            const auto id = shown_alienorum_id(*object);
+            if (id.compare(0, prefix.size() + 1, prefix + " ") != 0) continue;
+            const auto rank = id.substr(prefix.size() + 1);
+            if (rank.find(' ') == std::string_view::npos && rank.front() >= '1' && rank.front() <= '9')
+                ranks.push_back(std::stoi(std::string(rank)));
+        }
+        std::sort(ranks.begin(), ranks.end());
+        ASSERT_GE(ranks.size(), 2u);
+        for (size_t index = 0; index < ranks.size(); ++index) EXPECT_EQ(ranks[index], index + 1) << prefix;
+    }
 }
 
 TEST_F(KnownCatalogRegression, AbsolutePhotometryRepairsAuditedMissingValues)

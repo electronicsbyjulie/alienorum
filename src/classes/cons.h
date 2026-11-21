@@ -48,6 +48,7 @@ Constellation* identify_cons_from_coords(double RA, double Decl);
 Constellation* identify_designated_cons_of_star(const Star* star);
 Constellation* identify_cons_of_star(Star* s);
 ConsBins fill_alienorum_ids();
+void repair_legacy_alienorum_id_sequences();
 extern Constellation *cons4lbl;
 
 #endif
