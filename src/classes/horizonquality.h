@@ -10,6 +10,7 @@ namespace alienorum
         int level = 0;
         double slow_seconds = 0;
         double fast_seconds = 0;
+        double frame_seconds = 0;
 
     public:
         void observe(double seconds)
@@ -19,6 +20,7 @@ namespace alienorum
                 *this = {};
                 return;
             }
+            frame_seconds = seconds;
             slow_seconds = seconds > .100 ? slow_seconds + std::min(seconds, .2) : 0;
             fast_seconds = seconds < .080 ? fast_seconds + seconds : 0;
             if (slow_seconds >= .5 && level < 2)
@@ -33,6 +35,8 @@ namespace alienorum
             }
         }
 
+        bool can_refine_terrain() const { return frame_seconds > 0 && frame_seconds <= .100; }
+        bool should_undo_terrain_refinement() const { return frame_seconds > 1.0 / 7; }
         int ground_stride() const { return 1 << level; }
         float cloud_scale() const { return 1.0f - .2f * level; }
         double wave_scale() const { return 1.0 - .25 * level; }

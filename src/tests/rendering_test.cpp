@@ -112,6 +112,34 @@ TEST(HorizonQualityTest, SustainedSlowFramesReduceDetailAndRecoveryRestoresIt)
     EXPECT_EQ(quality.ground_stride(), 1);
 }
 
+TEST(HorizonQualityTest, TerrainRefinementRequiresAtLeastTenFramesPerSecond)
+{
+    HorizonQuality quality;
+    EXPECT_FALSE(quality.can_refine_terrain());
+    quality.observe(.05);
+    EXPECT_TRUE(quality.can_refine_terrain());
+    quality.observe(.100);
+    EXPECT_TRUE(quality.can_refine_terrain());
+    quality.observe(.101);
+    EXPECT_FALSE(quality.can_refine_terrain());
+    quality.observe(.09);
+    EXPECT_TRUE(quality.can_refine_terrain());
+    quality.observe(0);
+    EXPECT_FALSE(quality.can_refine_terrain());
+}
+
+TEST(HorizonQualityTest, TerrainRefinementRollsBackBelowSevenFramesPerSecond)
+{
+    HorizonQuality quality;
+    EXPECT_FALSE(quality.should_undo_terrain_refinement());
+    quality.observe(1.0 / 7);
+    EXPECT_FALSE(quality.should_undo_terrain_refinement());
+    quality.observe(1.0 / 6);
+    EXPECT_TRUE(quality.should_undo_terrain_refinement());
+    quality.observe(1.0 / 8);
+    EXPECT_FALSE(quality.should_undo_terrain_refinement());
+}
+
 class SceneryTestMap : public Map
 {
     public:

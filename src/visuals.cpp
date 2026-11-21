@@ -5994,24 +5994,35 @@ void draw_horizon()
         const TerrainVector terrain_axes{surface_radius, surface_radius, surface_radius};
         const double normal_lon_step = bump_lighting ? 2 * _pi / std::max(1ul, map->get_width()) : 0;
         const double normal_lat_step = bump_lighting ? _pi / std::max(1ul, map->get_height()) : 0;
-        const auto terrain_illumination = [&](double lat, double lon, double incidence)
+        struct TerrainLighting
         {
-            if (!direct_flux) return haze.surface_illumination(is_day, source_tint);
-            const double radial_cosine = cos(lat) * (-sin(lon) * terrain_light.x + cos(lon) * terrain_light.z)
-                + sin(lat) * terrain_light.y;
+            Point direction;
+            double direct, ambient, solar_radius_sine, daylight, instellation;
+            PressureHaze haze;
+            std::array<double, 3> tint;
+        };
+        const TerrainLighting current_lighting{
+            terrain_light, direct_flux, ambient_flux, solar_sine, is_day, instellation_scale, haze, source_tint};
+        const auto terrain_illumination = [&](const TerrainLighting& lighting, double lat, double lon, double incidence)
+        {
+            if (!lighting.direct) return lighting.haze.surface_illumination(lighting.daylight, lighting.tint);
+            const auto& direction = lighting.direction;
+            const double radial_cosine = cos(lat) * (-sin(lon) * direction.x + cos(lon) * direction.z)
+                + sin(lat) * direction.y;
             const double exposure = terrain_solar_exposure(radial_cosine,
-                skyline_elevation(lat, lon) / surface_radius, solar_sine);
-            const double daylight = (ambient_flux + direct_flux * fmax(0.0, incidence) * exposure) * 2.5e-11;
-            return haze.surface_illumination(fmin(1, (daylight + starlight) / instellation_scale), source_tint);
+                skyline_elevation(lat, lon) / surface_radius, lighting.solar_radius_sine);
+            const double daylight = (lighting.ambient + lighting.direct * fmax(0.0, incidence) * exposure) * 2.5e-11;
+            return lighting.haze.surface_illumination(fmin(1, (daylight + starlight) / lighting.instellation), lighting.tint);
         };
-        const auto sampled_illumination = [&](double lat, double lon)
+        const auto sampled_illumination = [&](const TerrainLighting& lighting, double lat, double lon)
         {
-            if (!direct_flux) return haze.surface_illumination(is_day, source_tint);
+            if (!lighting.direct) return lighting.haze.surface_illumination(lighting.daylight, lighting.tint);
             const auto normal = terrain_normal(lon, lat, terrain_axes, normal_lon_step, normal_lat_step, skyline_elevation);
-            return terrain_illumination(lat, lon, normal[0] * terrain_light.x + normal[1] * terrain_light.y
-                + normal[2] * terrain_light.z);
+            const auto& direction = lighting.direction;
+            return terrain_illumination(lighting, lat, lon, normal[0] * direction.x + normal[1] * direction.y
+                + normal[2] * direction.z);
         };
-        const auto ground_light = sampled_illumination(viewer_lat, viewer_lon);
+        const auto ground_light = sampled_illumination(current_lighting, viewer_lat, viewer_lon);
         const auto surface_color_with_light = [&](const RGB3& sample, const std::array<double, 3>& light)
         {
             return rgba_apply_redlight(IM_COL32(fmin(255, light[0] * sample.r),
@@ -7923,18 +7934,46 @@ void draw_horizon()
             ImDrawList* ground = ImGui::GetBackgroundDrawList();
             const double focal = surface_focal();
             const double sine = surface_sin_altitude(), cosine = surface_cos_altitude();
-            const auto cache_key = std::make_tuple(map, local_surface_revision, whereami, viewer_lat, viewer_lon,
+            const int motion_stride = horizon_mapped_terrain_always_per_pixel ? 1 : 4 * horizon_quality.ground_stride();
+            const auto view_key = std::make_tuple(cel, map, local_surface_revision, whereami, viewer_lat, viewer_lon,
                 surface_eye, surface_radius, surface_curvature(), azimuth, altitude, zoom, dispcx, dispcy,
+                screen_w, ground_height, motion_stride, shore_displacement, redlight_mode);
+            const auto lighting_key = std::make_tuple(
                 std::round(terrain_light.x * 1000), std::round(terrain_light.y * 1000), std::round(terrain_light.z * 1000),
-                direct_flux, ambient_flux, solar_sine, starlight, instellation_scale, source_tint,
-                ground_light, haze.extinction, haze.light, redlight_mode, horizon_quality.ground_stride(), shore_displacement);
-            static std::optional<std::decay_t<decltype(cache_key)>> last_paint;
+                direct_flux, ambient_flux, solar_sine, instellation_scale, source_tint,
+                ground_light, haze.extinction, haze.light, haze.sky_opacity);
             struct ReliefTile { ImVec2 low, high; ImU32 color; };
-            static std::vector<ReliefTile> relief_tiles;
-            static std::vector<double> relief_columns;
-            if (last_paint != cache_key)
+            struct ReliefPaint
             {
-                relief_tiles.clear();
+                std::vector<ReliefTile> tiles;
+                std::vector<double> columns;
+                int stride = 0, next_row = 0;
+                std::decay_t<decltype(lighting_key)> shading_key;
+                TerrainLighting lighting;
+            };
+            static std::optional<std::decay_t<decltype(view_key)>> previous_view;
+            static int previous_frame = -1;
+            static std::chrono::steady_clock::time_point last_motion;
+            static ReliefPaint visible, pending;
+            static std::vector<ReliefPaint> coarser_passes;
+            const int frame = ImGui::GetFrameCount();
+            const bool view_changed = previous_view != view_key || (frame != previous_frame && frame != previous_frame + 1);
+            previous_view = view_key;
+            previous_frame = frame;
+            const auto now = std::chrono::steady_clock::now();
+            if (view_changed || dragging) last_motion = now;
+            const bool settling = now - last_motion < std::chrono::milliseconds(10);
+            const auto begin_paint = [&](ReliefPaint& paint, int stride)
+            {
+                paint.tiles.clear();
+                paint.columns.assign(screen_w, ground_height);
+                paint.stride = stride;
+                paint.next_row = 0;
+                paint.shading_key = lighting_key;
+                paint.lighting = current_lighting;
+            };
+            const auto paint_rows = [&](ReliefPaint& paint, std::chrono::steady_clock::time_point deadline)
+            {
                 const auto sightline = [&](double x, double y)
                 {
                     const double east = (x - dispcx) / focal;
@@ -7949,7 +7988,8 @@ void draw_horizon()
                     if (!std::isfinite(distance)) return ImU32(0);
                     const auto [lat, lon] = surface_coord(distance, ray.first);
                     const RGB3 sample = surface_sample(lat, lon);
-                    return pressure_haze_color(haze, surface_color_with_light(sample, sampled_illumination(lat, lon)), distance);
+                    return pressure_haze_color(paint.lighting.haze,
+                        surface_color_with_light(sample, sampled_illumination(paint.lighting, lat, lon)), distance);
                 };
                 const auto hits_terrain = [&](double x, double y)
                 {
@@ -7958,17 +7998,17 @@ void draw_horizon()
                 };
                 // Shade each surface tile at the first terrain hit. Resolve mixed sky
                 // and ground tiles at pixel centers to preserve the skyline.
-                const int tile = 4 * horizon_quality.ground_stride();
-                relief_columns.assign(screen_w, ground_height);
-                for (int y = 0; y < ground_height; y += tile)
+                const int tile = paint.stride;
+                while (paint.next_row < ground_height)
                 {
+                    const int y = paint.next_row;
                     const int bottom = std::min(ground_height, y + tile);
                     int start = 0;
                     ImU32 previous = 0;
                     const auto run = [&](int x, ImU32 color)
                     {
                         if (color == previous) return;
-                        if (previous) relief_tiles.push_back({ImVec2(start, y), ImVec2(x, bottom), previous});
+                        if (previous) paint.tiles.push_back({ImVec2(start, y), ImVec2(x, bottom), previous});
                         start = x;
                         previous = color;
                     };
@@ -7977,13 +8017,13 @@ void draw_horizon()
                         const int right = std::min(screen_w, x + tile);
                         const auto ray = sightline((x + right) * .5, (y + bottom) * .5);
                         const bool hit = mapped_skyline->covers_slope(ray.first, ray.second);
-                        bool mixed = hits_terrain(x + .5, y + .5) != hit || hits_terrain(right - .5, y + .5) != hit
-                            || hits_terrain(x + .5, bottom - .5) != hit || hits_terrain(right - .5, bottom - .5) != hit;
+                        const bool mixed = tile > 1 && (hits_terrain(x + .5, y + .5) != hit || hits_terrain(right - .5, y + .5) != hit
+                            || hits_terrain(x + .5, bottom - .5) != hit || hits_terrain(right - .5, bottom - .5) != hit);
                         if (!mixed)
                         {
                             run(x, hit ? color_at(ray) : 0);
                             if (hit) for (int column = x; column < right; ++column)
-                                relief_columns[column] = std::min(relief_columns[column], double(y));
+                                paint.columns[column] = std::min(paint.columns[column], double(y));
                             continue;
                         }
                         run(x, 0);
@@ -7992,16 +8032,59 @@ void draw_horizon()
                             {
                                 const ImU32 color = color_at(sightline(column + .5, row + .5));
                                 if (!color) continue;
-                                relief_tiles.push_back({ImVec2(column, row), ImVec2(column + 1, row + 1), color});
-                                relief_columns[column] = std::min(relief_columns[column], double(row));
+                                paint.tiles.push_back({ImVec2(column, row), ImVec2(column + 1, row + 1), color});
+                                paint.columns[column] = std::min(paint.columns[column], double(row));
                             }
                     }
                     run(screen_w, 0);
+                    paint.next_row = bottom;
+                    if (std::chrono::steady_clock::now() >= deadline) break;
                 }
-                last_paint = cache_key;
+            };
+            if (settling)
+            {
+                pending.stride = 0;
+                coarser_passes.clear();
+                if (view_changed || visible.stride != motion_stride || visible.shading_key != lighting_key)
+                {
+                    begin_paint(visible, motion_stride);
+                    paint_rows(visible, std::chrono::steady_clock::time_point::max());
+                }
             }
-            min_hz_y_at_x = relief_columns;
-            for (const auto& tile : relief_tiles) ground->AddRectFilled(tile.low, tile.high, tile.color);
+            else if (horizon_quality.should_undo_terrain_refinement() && !coarser_passes.empty())
+            {
+                std::swap(visible, coarser_passes.back());
+                coarser_passes.pop_back();
+                pending.stride = 0;
+            }
+            else
+            {
+                // Keep displaying the completed pass until the next one covers the entire view.
+                // A moving camera discards the partial pass and immediately repaints at the motion stride.
+                const bool can_refine = horizon_quality.can_refine_terrain();
+                const auto deadline = std::chrono::steady_clock::now()
+                    + std::chrono::milliseconds(can_refine ? 12 : 2);
+                if (!can_refine && pending.stride < visible.stride && visible.shading_key != lighting_key)
+                    pending.stride = 0;
+                if (pending.stride == 0)
+                {
+                    const int target_stride = can_refine ? std::max(1, visible.stride / 2) : visible.stride;
+                    if (target_stride < visible.stride || visible.shading_key != lighting_key)
+                        begin_paint(pending, target_stride);
+                }
+                if (pending.stride != 0 && (can_refine || pending.stride == visible.stride))
+                {
+                    paint_rows(pending, deadline);
+                    if (pending.next_row == ground_height)
+                    {
+                        if (pending.stride < visible.stride) coarser_passes.push_back(std::move(visible));
+                        std::swap(visible, pending);
+                        pending.stride = 0;
+                    }
+                }
+            }
+            min_hz_y_at_x = visible.columns;
+            for (const auto& tile : visible.tiles) ground->AddRectFilled(tile.low, tile.high, tile.color);
             if (!min_hz_y_at_x.empty()) min_hz_y = *std::min_element(min_hz_y_at_x.begin(), min_hz_y_at_x.end());
         }
         #if horizon_distant_terrain_lighting
@@ -8042,7 +8125,7 @@ void draw_horizon()
                 const auto [lat, lon] = surface_coord(layer->distance, .5 * (layer->bearing_left + layer->bearing_right));
                 const double incidence = layer->normal[0] * light[0] + layer->normal[1] * light[1] + layer->normal[2] * light[2];
                 const ImU32 color = pressure_haze_color(haze,
-                    surface_color_with_light(distant_ground_rgb, terrain_illumination(lat, lon, incidence)), layer->distance);
+                    surface_color_with_light(distant_ground_rgb, terrain_illumination(current_lighting, lat, lon, incidence)), layer->distance);
                 terrain_draw->AddQuadFilled(polygon[0], polygon[1], polygon[2], polygon[3], color);
             }
             terrain_draw->Flags = saved_flags;

@@ -94,6 +94,10 @@ extern double horizon_ground_motion_budget_ms;
 #ifndef horizon_distant_terrain_lighting
 #define horizon_distant_terrain_lighting 1
 #endif
+#ifndef horizon_mapped_terrain_always_per_pixel
+// Beta: set to 0 to restore coarse tiles while moving and refine at rest.
+#define horizon_mapped_terrain_always_per_pixel 0
+#endif
 #ifndef distant_biome_pixel_sampling
 #define distant_biome_pixel_sampling 1    // Set to 0 to restore adaptive sampling near the horizon.
 #endif
