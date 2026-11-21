@@ -49,4 +49,3 @@ views
 /catalogs/*
 !/catalogs/giant_reflectance.json
 !/catalogs/giant_reflectance.txt
-!/catalogs/exoplanet_supplement.json

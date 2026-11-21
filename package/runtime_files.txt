@@ -25,7 +25,6 @@ catalogs/brown_dwarfs_20pc.json
 catalogs/ultracool_dwarfs.json
 catalogs/asteroids.json
 catalogs/exoplanet_host_positions.dat
-catalogs/exoplanet_supplement.json
 catalogs/galaxy_properties.json
 catalogs/giant_reflectance.json
 catalogs/giant_reflectance.txt

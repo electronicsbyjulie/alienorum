@@ -4613,6 +4613,17 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
     }
 
     path += candidate;
+    ExoplanetRejections rejections;
+    for (const char* source : {"catalogs/exoplanet_rejections_nasa.json", "catalogs/exoplanet_rejections_eu.json",
+        "catalogs/exoplanets.json", "catalogs/exoplanets_nasa.json", "catalogs/exoplanets_eu.json"})
+    {
+        std::ifstream input(source);
+        if (!input) continue;
+        const auto rows = read_exoplanet_status_catalog(input);
+        if (rows.is_array()) for (const auto& row : rows) rejections.add(row);
+    }
+    rejections.resolve();
+
     std::stringstream lmss;
     lmss << "Loading exoplanets from " << path << "...";
     mtx.lock();
@@ -4620,6 +4631,7 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
     mtx.unlock();
 
     fp = fopen(path.c_str(), "r");
+    if (!fp) return 0;
     int i=0;
     int col_plnm=-1, col_stnm=-1, col_hd=-1, col_orbper=-1, col_sma=-1, col_rade=-1, col_radj=-1,
         col_mass_e=-1, col_mass_j=-1, col_eccn=-1, col_incl=-1, col_periepo=-1, col_argperi=-1,
@@ -4697,6 +4709,14 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
                 if (i == col_plnm)
                 {
                     planet_name = field;
+                    if (rejections.excludes({{"pl_name", planet_name}}))
+                    {
+                        delete p;
+                        if (s_is_new) delete s;
+                        p = nullptr;
+                        s = nullptr;
+                        break;
+                    }
                     if (p)
                     {
                         strcpy(p->name, planet_name.c_str());
@@ -9032,6 +9052,10 @@ void CatalogReader::merge_exoplanet_solution(json& destination, const json& sour
         if (!field.value().is_null() && (!destination.contains(field.key()) || destination[field.key()].is_null()))
             destination[field.key()] = field.value();
     }
+    const auto disposition = source.find("planet_status");
+    if (disposition != source.end() && disposition->is_string()
+        && exoplanet_status_key(disposition->get_ref<const std::string&>()) == "confirmed")
+        destination["planet_status"] = *disposition;
     destination["source_measurements"] = std::move(measurements);
 }
 
@@ -9661,7 +9685,6 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
     };
     const char* derived_cache = stars_only ? "catalogs/exoplanets_stars.dat" : "catalogs/exoplanets_planets.dat";
     const char* position_catalog = "catalogs/exoplanet_host_positions.dat";
-    const char* supplement_catalog = "catalogs/exoplanet_supplement.json";
     const auto host_positions = read_exoplanet_host_positions(position_catalog);
 
     std::stringstream lmss;
@@ -9699,6 +9722,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
     }
 
     ExoplanetRejections rejections;
+    json eu_candidates = json::array();
     const auto add_rejection_links = [&](const json& rows)
     {
         if (rows.is_array()) for (const auto& row : rows) rejections.add(row);
@@ -9706,7 +9730,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
     for (const auto& source : std::vector<std::pair<std::string, std::string>>
         {
             {"catalogs/exoplanet_rejections_nasa.json", "https://exoplanetarchive.ipac.caltech.edu/docs/removed_targets.html"},
-            {"catalogs/exoplanet_rejections_eu.json", "https://exoplanet.eu/catalog/csv/?query_f=planet_status%3D%22retracted%22+or+planet_status%3D%22false+positive%22"}
+            {"catalogs/exoplanet_rejections_eu.json", "https://exoplanet.eu/catalog/csv/?query_f=planet_status%3D%22retracted%22+or+planet_status%3D%22false+positive%22+or+planet_status%3D%22candidate%22"}
         })
     {
         std::ifstream input(source.first);
@@ -9741,6 +9765,16 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                 std::cerr << "Planet status refresh failed; retaining saved classifications: " << source.second << std::endl;
         }
         add_rejection_links(statuses);
+        if (source.first == "catalogs/exoplanet_rejections_eu.json" && valid_statuses(statuses))
+        {
+            for (auto& row : statuses)
+            {
+                bool valid = false;
+                if (exoplanet_status_key(row.value("planet_status", "")) == "candidate")
+                    exorow_from_json(row, &valid);
+                if (valid) eu_candidates.push_back(std::move(row));
+            }
+        }
     }
     if (abort_load) return 0;
     for (const char* path : {exocache, nasa_cache, eu_cache})
@@ -9750,7 +9784,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
     add_rejection_links(exoplanet_tap_catalog);
     rejections.resolve();
 
-    // Derived caches also expire when the fixed host supplement changes.
+    // Derived caches also expire when the host positions change.
     bool derived_cache_valid = file_exists(derived_cache) &&
                                (!file_exists(exocache) || file_age(derived_cache) <= file_age(exocache) + 60) &&
                                (!file_exists(position_catalog) ||
@@ -9761,11 +9795,8 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
         std::ifstream cache_header(derived_cache);
         std::string version;
         std::getline(cache_header, version);
-        derived_cache_valid = version == "# EXO_TRANSIT8"
-            || (version == "# EXO_TRANSIT7" && !file_exists(supplement_catalog));
-        if (derived_cache_valid && file_exists(supplement_catalog))
-            derived_cache_valid = fs::last_write_time(derived_cache) >= fs::last_write_time(supplement_catalog);
-
+        derived_cache_valid = version == "# EXO_TRANSIT9" || (version == "# EXO_TRANSIT7"
+            && !file_exists(exocache) && !file_exists(nasa_cache) && !file_exists(eu_cache));
     }
 
     if (exoplanet_tap_attempted || !exoplanet_tap_catalog.empty())
@@ -9789,7 +9820,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
 
             while (exorow_read_line(fp, row))
             {
-                if (rejections.excludes({{"pl_name", row.pl_name}})) continue;
+                if (rejections.excludes({{"pl_name", row.pl_name}, {"alt_target_name", row.companion_aliases}})) continue;
                 alienorum::CatalogLock catalog_lock(catalog_mutex);
                 if (abort_load)
                 {
@@ -10064,6 +10095,8 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                 {
                     return;
                 }
+                if (from_nasa && (!litem.contains("planet_status") || litem["planet_status"].is_null()))
+                    litem["planet_status"] = "Confirmed";
                 litem["st_met_source"] = from_nasa ? "NASA pscomppars" : "exoplanet.eu";
                 std::string pl_name = litem.value("pl_name", "");
                 if (pl_name.empty()) return;
@@ -10290,6 +10323,9 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                 throw;
             }
 
+            // The EU TAP table does not carry candidate rows. Its CSV catalog publishes them with dispositions.
+            for (const auto& item : eu_candidates) register_planet(item, false);
+
             // Read NASA Second (fills in the gaps)
             try
             {
@@ -10349,7 +10385,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
         if (combined) planets_array = json::parse(combined, nullptr, false);
         if (!planets_array.is_array() || planets_array.empty())
         {
-            planets_array = json::array();
+            planets_array = std::move(eu_candidates);
             for (const char* path : {eu_cache, nasa_cache})
             {
                 std::ifstream input(path);
@@ -10374,33 +10410,6 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
             {
                 out_fs << planets_array.dump(4);
                 out_fs.close();
-            }
-        }
-    }
-
-    if (std::ifstream input{supplement_catalog}; input)
-    {
-        const json supplement = json::parse(input, nullptr, false);
-        if (supplement.is_array())
-        {
-            std::set<std::string> present;
-            for (const auto& row : planets_array)
-            {
-                present.insert(exoplanet_status_key(row.value("pl_name", "")));
-                const auto aliases = exoplanet_alias_keys(row);
-                present.insert(aliases.begin(), aliases.end());
-            }
-            for (const auto& row : supplement)
-            {
-                if (!row.is_object()) continue;
-                const std::string identity = exoplanet_status_key(row.value("pl_name", ""));
-                const auto aliases = exoplanet_alias_keys(row);
-                if (!identity.empty() && !rejections.excludes(row)
-                    && std::none_of(aliases.begin(), aliases.end(), [&](const auto& alias) { return present.count(alias); }))
-                {
-                    planets_array.push_back(row);
-                    present.insert(aliases.begin(), aliases.end());
-                }
             }
         }
     }
@@ -10431,7 +10440,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
     if (cachefp)
     {
         setvbuf(cachefp, cache_io_buf, _IOFBF, sizeof(cache_io_buf));
-        fputs("# EXO_TRANSIT8\n", cachefp);
+        fputs("# EXO_TRANSIT9\n", cachefp);
     }
 
     int rows_written = 0;

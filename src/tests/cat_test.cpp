@@ -2992,6 +2992,70 @@ TEST(ExoplanetStatusTest, RejectionTraversesAliasesAcrossBothSourcesWithoutRejec
     EXPECT_NE(exoplanet_status_key("42 Dra B b"), exoplanet_status_key("42 Dra b"));
 }
 
+TEST_F(StellarDownloadTest, CandidateExportRetainsMeasuredOrbitsAndRespectsRejections)
+{
+    struct RestoreNetwork
+    {
+        bool saved = radio_silence;
+        ~RestoreNetwork() { radio_silence = saved; }
+    } restore;
+    radio_silence = false;
+    class ProviderReader : public CatalogReader
+    {
+    protected:
+        bool fetch_stellar_catalog_json(const std::string& url, const std::string&, json& rows) override
+        {
+            if (url.find("/catalog/csv/") == std::string::npos) return false;
+            rows = parse_eu_planet_status("name,planet_status,star_name,alternate_names,orbital_period,ra,dec,star_distance\n"
+                "Survey host b,Candidate,Survey host,,1928,217,-62,1.295\n"
+                "Survey host c,Candidate,Survey host,Alternate c,22,217,-62,1.295\n"
+                "Survey host d,Retracted,Survey host,,35,217,-62,1.295\n");
+            return rows.is_array();
+        }
+    };
+    std::filesystem::remove("catalogs/exoplanet_rejections_eu.json");
+    std::ofstream("catalogs/exoplanet_rejections_nasa.json") << parse_nasa_planet_status(
+        "<a name=\"refuted\"></a><ul><li>Alternate c</li></ul><a name=\"false_pos\"></a>"
+        "<a name=\"reinstated\"></a><li>Survey host b</li>");
+    auto* host = make_star("Survey host");
+    ProviderReader reader;
+    ASSERT_EQ(reader.load_exoplanets_from_tap(false), 1u);
+    ASSERT_EQ(host->pl_indices.size(), 1u);
+    const auto* planet = static_cast<const Planet*>(cels[host->pl_indices.front()]);
+    EXPECT_EQ(planet->catalog_designation, "Survey host b");
+    EXPECT_TRUE(planet->catalog_candidate);
+    EXPECT_NEAR(planet->orbit->period / oneday, 1928, 1e-9);
+}
+
+TEST_F(StellarDownloadTest, LegacyCsvRespectsRejectionsThroughProviderAliases)
+{
+    std::ofstream("catalogs/exoplanet_rejections_nasa.json") << json::array({
+        {{"pl_name", "Rejection alias c"}, {"planet_status", "False Positive Planet"}}
+    });
+    std::ofstream("catalogs/exoplanets_eu.json") << json::array({
+        {{"pl_name", "Legacy host c"}, {"alt_target_name", "Other designation c#Rejection alias c"}}
+    });
+    std::ofstream file("catalogs/PSCompPars_fixture.csv");
+    const std::vector<std::string> columns = {"pl_name", "hostname", "hd_name", "pl_orbper", "pl_orbsmax",
+        "pl_rade", "pl_bmasse", "pl_orbeccen", "pl_orbincl", "pl_orbtper", "pl_orblper", "pl_trueobliq",
+        "st_spectype", "st_rad", "st_mass", "st_teff", "ra", "dec", "sy_dist", "sy_vmag"};
+    for (const auto& column : columns) file << "# COLUMN " << column << ": fixture\n";
+    for (const auto& column : columns) file << column << ',';
+    file << '\n';
+    for (const char* name : {"Legacy host c", "Legacy host b"})
+        file << name << ",Legacy host,HD 0,10,0.1,1,1,0,5,2451545,0,0,G2V,1,1,5772,15,10,10,8\n";
+    file.close();
+    auto* host = make_star("Legacy host");
+    host->cenobj = host;
+    const bool saved_have_exo = have_exo;
+    CatalogReader reader;
+    const int loaded = reader.read_exoplanets_catalog(cels, MAX_CELOBJS);
+    have_exo = saved_have_exo;
+    EXPECT_EQ(loaded, 1);
+    EXPECT_GE(find_object("Legacy host b", false, 9e29, 0), 0);
+    EXPECT_LT(find_object("Legacy host c", false, 9e29, 0), 0);
+}
+
 TEST_F(StellarDownloadTest, RejectionsFromEitherProviderApplyToJsonAndDerivedCaches)
 {
     struct RestoreNetwork

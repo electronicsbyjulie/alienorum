@@ -10,6 +10,7 @@
 #include <unordered_map>
 #include <vector>
 #include "nlohmann/json.hpp"
+#include "numeric.h"
 
 namespace alienorum
 {
@@ -59,7 +60,7 @@ namespace alienorum
 
     inline std::vector<std::string> exoplanet_name_list(std::string text)
     {
-        for (const char* separator : {" & ", " and ", "/", ";", "|"})
+        for (const char* separator : {" & ", " and ", "#", "/", ";", "|"})
         {
             size_t position = 0;
             while ((position = text.find(separator, position)) != std::string::npos)
@@ -180,14 +181,52 @@ namespace alienorum
         const auto index = [&](const char* key) { return std::find(header.begin(), header.end(), key) - header.begin(); };
         const size_t name = index("name"), status = index("planet_status"), aliases = index("alternate_names");
         if (name == header.size() || status == header.size()) return nullptr;
+        const std::pair<const char*, const char*> numeric_fields[] = {
+            {"orbital_period", "pl_orbper"}, {"semi_major_axis", "pl_orbsmax"}, {"eccentricity", "pl_orbeccen"},
+            {"inclination", "pl_orbincl"}, {"inclination_error_min", "pl_orbinclerr2"},
+            {"inclination_error_max", "pl_orbinclerr1"}, {"omega", "pl_orblper"}, {"tperi", "pl_orbtper"},
+            {"tzero_tr", "pl_tranmid"}, {"mass", "pl_bmassj"}, {"mass_sini", "pl_msinij"},
+            {"mass_error_min", "pl_bmassjerr2"}, {"mass_error_max", "pl_bmassjerr1"},
+            {"radius", "pl_radj"}, {"radius_error_min", "pl_radjerr2"}, {"radius_error_max", "pl_radjerr1"},
+            {"ra", "ra"}, {"dec", "dec"}, {"star_distance", "sy_dist"}, {"mag_v", "sy_vmag"},
+            {"star_mass", "st_mass"}, {"star_radius", "st_rad"}, {"star_teff", "st_teff"},
+            {"star_metallicity", "st_met"}, {"star_age", "st_age"}
+        };
+        const std::pair<const char*, const char*> text_fields[] = {
+            {"star_name", "hostname"}, {"star_sp_type", "st_spectype"}, {"detection_type", "detection_type"}
+        };
         nlohmann::json result = nlohmann::json::array();
         for (size_t i = 1; i < records.size(); ++i)
         {
             const auto& values = records[i];
             if (values.size() == 1 && values[0].empty()) continue;
             if (values.size() != header.size()) return nullptr;
-            result.push_back({{"pl_name", values[name]}, {"planet_status", values[status]},
-                {"alt_target_name", aliases < values.size() ? values[aliases] : ""}, {"source_catalog", "EU"}});
+            nlohmann::json row = {{"pl_name", values[name]}, {"planet_status", values[status]},
+                {"alt_target_name", aliases < values.size() ? values[aliases] : ""}, {"source_catalog", "EU"}};
+            if (exoplanet_status_key(values[status]) == "candidate")
+            {
+                for (const auto& [column, key] : numeric_fields)
+                {
+                    const size_t position = index(column);
+                    double value = 0;
+                    if (position < values.size() && parse_numeric_value(values[position], value)) row[key] = value;
+                }
+                for (const auto& [column, key] : text_fields)
+                {
+                    const size_t position = index(column);
+                    if (position < values.size()) row[key] = values[position];
+                }
+                const size_t stellar_aliases = index("star_alternate_names");
+                if (stellar_aliases < values.size())
+                {
+                    for (const auto& alias : exoplanet_name_list(values[stellar_aliases]))
+                    {
+                        if (alias.rfind("HIP ", 0) == 0) row["hip_name"] = alias;
+                        if (alias.rfind("HD ", 0) == 0) row["hd_name"] = alias;
+                    }
+                }
+            }
+            result.push_back(std::move(row));
         }
         return result;
     }
