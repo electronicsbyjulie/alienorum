@@ -1,4 +1,5 @@
 #include "browncatalog.h"
+#include "alienorumid.h"
 #include "../catalog_lock_trace.h"
 #include "numeric.h"
 #include "exoplanetstatus.h"
@@ -250,6 +251,14 @@ void CatalogReader::download_catalogs(bool hih)
     }
 }
 
+// Catalog Julian epochs use noon and a 365.25-day Julian year.
+static constexpr double catalog_j2000 = 2451545.0;
+
+static double catalog_julian_epoch(double year)
+{
+    return catalog_j2000 + (year - 2000.0) * 365.25;
+}
+
 // Assumes no other star catalogs have been loaded before Gliese,
 // since Gliese contains the Sun.
 static void set_icrs_astrometry(Star& star, double ra, double dec, double source_year,
@@ -266,7 +275,7 @@ static void set_icrs_astrometry(Star& star, double ra, double dec, double source
         declination_per_year = -declination_per_year;
     }
     if (star.right_ascension < 0) star.right_ascension += 2 * _pi;
-    star.epoch = J2000;
+    star.epoch = catalog_j2000;
     star.proper_motion_RA = longitude_per_year / oneyear;
     star.proper_motion_decl = declination_per_year / oneyear;
 }
@@ -411,12 +420,12 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
             convert_to_J2000(ra, dec, 1950, ra2000, dec2000, true);
             s->right_ascension = ra2000;
             s->declination = dec2000;
-            s->epoch = J2000; // 2433282.42345905;
+            s->epoch = catalog_j2000;
         }
         else
         {
             s->mass = solar_mass;
-            s->epoch = J2000;
+            s->epoch = catalog_j2000;
         }
 
         //  31- 36  F6.3 arcsec/yr pm       ? Total proper motion
@@ -848,7 +857,7 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
             if (is_new) delete s;
             continue;
         }
-        s->epoch = J2000;
+        s->epoch = catalog_j2000;
 
         if (!s->get_component() && buffer[49] > ' ' && !has_explicit_system(systems, HD))
         {
@@ -1812,7 +1821,8 @@ namespace
             if (line.compare(0, sizeof(prefix) - 1, prefix)) continue;
             std::istringstream fields(line.substr(sizeof(prefix) - 1));
             std::string duplicate, canonical;
-            if (!(fields >> std::quoted(duplicate) >> std::quoted(canonical)) || duplicate == canonical) continue;
+            if (!(fields >> std::quoted(duplicate) >> std::quoted(canonical)) ||
+                duplicate.empty() || canonical.empty() || duplicate == canonical) continue;
             identities.emplace_back(std::move(duplicate), std::move(canonical));
         }
         return identities;
@@ -2134,7 +2144,7 @@ namespace
             const double dra = pm ? pm * sin(angle) / fmax(1e-6, cos(r.dec)) : 0;
             const double ddec = pm ? pm * cos(angle) : 0;
             // Source positions are at B1950; propagate motion before precessing the frame.
-            const double years = (J2000 - 2433282.42345905) * oneday / oneyear;
+            const double years = (catalog_j2000 - 2433282.42345905) / 365.25;
             convert_to_J2000(r.ra + dra * years, r.dec + ddec * years, 1950, ra, dec, true);
             double next_ra, next_dec;
             convert_to_J2000(r.ra + dra * (years + 1), r.dec + ddec * (years + 1), 1950, next_ra, next_dec, true);
@@ -2596,7 +2606,7 @@ int alienorum::CatalogReader::read_WD_catalog(CelestialObject **objects, int max
             s->declination = dec;
             s->proper_motion_RA = pmra;
             s->proper_motion_decl = pmdec;
-            s->epoch = J2000;
+            s->epoch = catalog_j2000;
             s->mass = 0.6 * solar_mass; // Explicit WD fallback, rather than a main-sequence estimate.
             added++;
         }
@@ -5816,6 +5826,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels, int first_host)
                 s->absolute_magnitude = 4.74 - log(lum) * invlogmagnbase
                     - Star::bolometric_correction(effective_temperature);
             }
+            if (!has_visual_magnitude) estimate_catalog_absolute_magnitude(*s, false, msun > 0);
         }
         else if (!s || s == A)
         {
@@ -6036,7 +6047,7 @@ static void apply_stellar_surface_metadata(Star* body, const json& record)
     try
     {
         const double epoch = record.at("Epoch").get<double>();
-        body->epoch = J2000 + (epoch - 2000) * oneyear / oneday;
+        body->epoch = catalog_julian_epoch(epoch);
         if (body->orbit) body->orbit->epoch = body->epoch;
     }
     catch (...) { ; }
@@ -6209,7 +6220,7 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
             try { pl.at("UBmag").get_to(p->UB_color); } catch (...) { if (createnew) p->UB_color = p->orbit->center->UB_color; }
             try { pl.at("CloudsStatic").get_to(p->static_clouds); } catch (...) { ; }
             try { pl.at("Eccentricity").get_to(p->orbit->eccentricity); } catch (...) { ; }
-            try { pl.at("Epoch").get_to(p->epoch); p->epoch = J2000 + (p->epoch - 2000)*(oneyear/oneday); p->orbit->epoch = p->epoch; } catch (...) { ; }
+            try { p->orbit->epoch = p->epoch = catalog_julian_epoch(pl.at("Epoch").get<double>()); } catch (...) { ; }
             try { double pre; pl.at("EqPrecession").get_to(pre); p->precession = pre ? (_pi * 2 / pre / oneyear) : 0; } catch (...) { ; }
             try { double pre; pl.at("NodePrecession").get_to(pre); p->orbit->prec_node = pre ? (_pi * 2 / pre / oneyear) : 0; } catch (...) { ; }
             try { double pro; pl.at("ArgPeriProcession").get_to(pro); p->orbit->proc_argperi = pro ? (_pi * 2 / pro / oneyear) : 0; } catch (...) { ; }
@@ -6468,13 +6479,7 @@ std::string alienorum::CatalogReader::format_condensed_star_line(Star* s, bool e
     put(202, 212, number(s->radial_velocity));
     put(214, 224, number(s->parallax));
     put(226, 236, number(s->distance / light_year));
-    if ((!std::isfinite(s->absolute_magnitude) || fabs(s->absolute_magnitude) >= 99)
-        && std::isfinite(s->apparent_magnitude) && s->apparent_magnitude >= -40 && s->apparent_magnitude < 99
-        && std::isfinite(s->distance) && s->distance > 0)
-    {
-        const double brightness = pow(magnbase, -s->apparent_magnitude) * pow(fmax(AU, s->distance) / parsec / 10, 2);
-        s->absolute_magnitude = -log(brightness) * invlogmagnbase;
-    }
+    estimate_catalog_absolute_magnitude(*s);
     put(238, 243, magnitude(s->absolute_magnitude));
     if (s->mass) put(245, 255, number(s->mass / solar_mass));
     if (s->volumetric_mean_radius) put(257, 267, number(s->volumetric_mean_radius / solar_radius));
@@ -6615,7 +6620,7 @@ std::string alienorum::CatalogReader::format_condensed_star_line(Star* s, bool e
         extra << " ORB1 " << std::quoted(state.dump());
         line += extra.str();
     }
-    if (s->alienorumid.empty() || purple_catalog_id(s->alienorumid))
+    if (s->alienorumid.empty() || purple_catalog_id(s->alienorumid) || s->epoch != catalog_j2000)
     {
         const json position = json::array({s->right_ascension, s->declination, s->epoch, s->distance_known});
         std::ostringstream extra;
@@ -6652,13 +6657,14 @@ static void reconcile_catalog_star_copies()
         if (object->orbit && object->orbit->center) referenced.insert(object->orbit->center);
         if (object->cenobj && object->cenobj != object) referenced.insert(object->cenobj);
         if (object->typeclass() != class_star) continue;
-        const auto match = matches.find(object->name);
-        if (match != matches.end()) match->second.push_back(static_cast<Star*>(object));
         auto* star = static_cast<Star*>(object);
-        if (!star->WD.empty() && star->WD != star->name)
+        const auto match = matches.find(star->name);
+        if (match != matches.end()) match->second.push_back(star);
+        for (const auto* designation : {&star->WD, &star->gaia_wd_name})
         {
-            const auto designation = matches.find(star->WD);
-            if (designation != matches.end()) designation->second.push_back(star);
+            if (designation->empty() || *designation == star->name) continue;
+            const auto match = matches.find(*designation);
+            if (match != matches.end()) match->second.push_back(star);
         }
     }
     for (const auto& identity : identities)
@@ -6674,8 +6680,9 @@ static void reconcile_catalog_star_copies()
             const std::string wd = wd_identifier_key(identity.second);
             if (!wd.empty())
             {
-                if (!wd_candidate(copy) || (!copy->WD.empty() && wd_identifier_key(copy->WD) != wd)) continue;
-                copy->WD = identity.second;
+                std::string& designation = wd.compare(0, 3, "WDJ") == 0 ? copy->gaia_wd_name : copy->WD;
+                if (!wd_candidate(copy) || (!designation.empty() && wd_identifier_key(designation) != wd)) continue;
+                designation = wd;
             }
             copy->add_catalog_alias(copy->name);
             std::strcpy(copy->name, identity.second.c_str());
@@ -6684,14 +6691,59 @@ static void reconcile_catalog_star_copies()
             continue;
         }
         auto* original = originals.front();
-        if (original->deleted || copy->orbit || copy->multisys || referenced.count(copy)
-            || copy->HD || copy->HIP || copy->HR || copy->gaia_source_id) continue;
+        if (original->deleted || original->user_added || original->user_edited ||
+            copy->HD || copy->HIP || copy->HR || copy->gaia_source_id) continue;
+        if (copy->orbit || copy->multisys || referenced.count(copy))
+        {
+            // A verified resolved component can replace the old combined-light entry.
+            const char slot = copy->get_component();
+            if (!copy->orbit || !copy->multisys || slot < 'B' || original->orbit || original->multisys ||
+                !brown_catalog_component(*original)) continue;
+            original->stellar_parameters["combined_component"] = {{"name", copy->name},
+                {"mass_solar", copy->mass / solar_mass}, {"temperature_k", copy->temperature},
+                {"absolute_visual_magnitude", copy->absolute_magnitude}};
+            original->orbit = copy->orbit;
+            copy->orbit = nullptr;
+            original->location = copy->location;
+            original->cenobj = copy->cenobj;
+            original->origcenname = copy->origcenname;
+            copy->multisys->add_member(original, slot);
+            copy->multisys = nullptr;
+            for (int index = 0; cels[index]; ++index)
+            {
+                auto* object = cels[index];
+                if (object->cenobj == copy) object->cenobj = original;
+                if (object->orbit && object->orbit->center == copy) object->orbit->center = original;
+            }
+        }
         for (const auto& alias : copy->catalog_aliases) original->add_catalog_alias(alias);
         for (const auto& alias : {std::string(copy->name), copy->origname, std::string(copy->Gliese), copy->WD, copy->gaia_wd_name})
             original->add_catalog_alias(alias);
         if (!original->Gliese[0] && copy->Gliese[0])
             snprintf(original->Gliese, sizeof(original->Gliese), "%s", copy->Gliese);
         copy->deleted = true;
+    }
+}
+
+void alienorum::reconcile_catalog_companion_photometry(Star& star)
+{
+    if (star.deleted || star.fictional_origin.is_object() || !star.orbit || !star.orbit->center ||
+        star.orbit->center->typeclass() != class_star || !std::isfinite(star.apparent_magnitude) ||
+        star.apparent_magnitude < -40 || star.apparent_magnitude >= 99) return;
+
+    const CelestialObject* root = star.orbit->center;
+    for (int depth = 0; root && depth < 64; ++depth)
+    {
+        if (root == &star) return;
+        const auto* parent = root->orbit ? root->orbit->center : nullptr;
+        if (!parent || parent->typeclass() != class_star)
+        {
+            // Anchor intrinsic brightness to the fixed distance of the system.
+            if (std::isfinite(root->distance) && root->distance > 0)
+                star.absolute_magnitude = star.apparent_magnitude - 5.0 * log10(root->distance / (10 * parsec));
+            return;
+        }
+        root = parent;
     }
 }
 
@@ -7099,6 +7151,7 @@ int alienorum::CatalogReader::read_condensed_star_cat()
     condensed_brown_dwarfs_loaded = false;
     std::map<Star*, json> orbit_states;
     std::unordered_map<std::string, Star*> saved_stars;
+    std::unordered_map<std::string, Star*> legacy_ids;
     std::vector<Star*> catalog_stars;
     int num_read = 0, i, j;
     char buffer[16384];
@@ -7157,8 +7210,10 @@ int alienorum::CatalogReader::read_condensed_star_cat()
             value[count] = 0;
         };
         Star *s = new Star();
+        s->epoch = catalog_j2000;
         read_field_onebased(buffer, 1, 14, field);
-        s->alienorumid = trim(field);
+        const std::string record_id = trim(field);
+        if (valid_alienorum_id(record_id)) s->alienorumid = record_id;
 
         read_field_onebased(buffer, 16, 54, field);
 
@@ -7601,6 +7656,7 @@ int alienorum::CatalogReader::read_condensed_star_cat()
         }
         catalog_stars.push_back(s);
         append_cel(s);
+        if (s->alienorumid.empty() && !record_id.empty()) legacy_ids.emplace(record_id, s);
         num_read++;
 
         if (!(num_read & 0x1fff)) loading_msg = std::string("Loading star catalog (") + std::string(s->alienorumid) + std::string(")...");
@@ -7631,6 +7687,7 @@ int alienorum::CatalogReader::read_condensed_star_cat()
 
     std::unordered_map<std::string_view, Star*> id_to_star;
     id_to_star.reserve(num_read + 100);
+    for (const auto& [id, star] : legacy_ids) id_to_star.emplace(id, star);
 
     std::vector<Star*> orbiting_stars;
     orbiting_stars.reserve(16384);
@@ -7805,7 +7862,27 @@ int alienorum::CatalogReader::read_condensed_star_cat()
     }
 
     reconcile_catalog_star_copies();
-    for (auto* star : catalog_stars) repair_brown_catalog_star(*star);
+    std::unordered_set<std::string> unauthored_orbit_magnitudes;
+    std::ifstream orbit_source("catalogs/star_orbits.dat");
+    for (std::string row; std::getline(orbit_source, row);)
+    {
+        if (row.size() < 47 || row.front() == '#') continue;
+        const std::string name = trim(row.substr(24, 23));
+        double magnitude = 0;
+        if (row.size() <= 176 || !parse_numeric_value(row.substr(176, 15), magnitude))
+            unauthored_orbit_magnitudes.insert(name);
+        else
+            unauthored_orbit_magnitudes.erase(name);
+    }
+    for (auto* star : catalog_stars)
+    {
+        const bool orbit_source_without_magnitude = unauthored_orbit_magnitudes.count(star->name);
+        if (star->absolute_magnitude == 0 && star->apparent_magnitude >= 99 && orbit_source_without_magnitude)
+            star->absolute_magnitude = 1e29;
+        repair_brown_catalog_star(*star);
+        estimate_catalog_absolute_magnitude(*star, true, orbit_source_without_magnitude);
+        reconcile_catalog_companion_photometry(*star);
+    }
     return num_read;
 }
 
@@ -8863,7 +8940,7 @@ bool CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, s
     alienorum::CatalogLock catalog_lock(catalog_mutex);
     const double jupiter_masses = std::isfinite(row.pl_bmassj) ? row.pl_bmassj : row.pl_bmasse / exo_jupiter_to_earth_mass;
     Star* detached_planet = nullptr;
-    if (jupiter_masses >= 1 && jupiter_masses < 13 && lookup)
+    if (jupiter_masses >= 1 && jupiter_masses <= 13 && lookup)
     {
         // A cold companion can have entered the stellar census before its orbit
         // and mass were identified. Retire that duplicate after adding the planet.
@@ -8875,8 +8952,12 @@ bool CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, s
             {
                 if (cels[index] == host_star || cels[index]->typeclass() != class_star) continue;
                 auto* companion = static_cast<Star*>(cels[index]);
-                if (!companion->orbit && !companion->user_added && !companion->user_edited
-                    && stellar_regime(companion) == regime_substellar
+                const bool matching_census_mass = brown_catalog_component(*companion)
+                    && fabs(companion->mass / jupiter_mass - jupiter_masses) < .1 * jupiter_masses;
+                if ((!companion->orbit || (matching_census_mass && companion->orbit->center == host_star))
+                    && !companion->deleted
+                    && !companion->user_added && !companion->user_edited
+                    && (matching_census_mass || stellar_regime(companion) == regime_substellar)
                     && exoplanet_status_key(companion->name) == exoplanet_status_key(row.pl_name))
                 {
                     detached_planet = companion;
@@ -9121,7 +9202,21 @@ bool CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, s
 
     // Append planet object to global array
     append_cel(new_planet);
-    if (detached_planet) detached_planet->deleted = true;
+    if (detached_planet)
+    {
+        if (detached_planet->multisys) detached_planet->multisys->remove_member(detached_planet);
+        for (int index = 0; cels[index]; ++index)
+        {
+            auto* object = cels[index];
+            if (object->cenobj == detached_planet) object->cenobj = new_planet->cenobj;
+            if (object->orbit && object->orbit->center == detached_planet)
+            {
+                object->orbit->center = new_planet;
+                object->orbit->center_name = new_planet->name;
+            }
+        }
+        detached_planet->deleted = true;
+    }
     result++;
 
     planet_celids[host_star->seqno].push_back(new_planet->seqno);

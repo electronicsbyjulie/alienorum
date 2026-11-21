@@ -1491,7 +1491,7 @@ void main()
             && p.light[8] == s_rain_params.light[8] && p.light[9] == s_rain_params.light[9])
         {
             const bool same_pose = std::memcmp(p.camera + 4, s_rain_params.camera + 4, 12 * sizeof(float)) == 0
-                && std::memcmp(p.world, s_rain_params.world, 4 * sizeof(float)) == 0;
+                && std::memcmp(p.world, s_rain_params.world, 3 * sizeof(float)) == 0;
             const Vec3 eye = {p.camera[12] * p.world[0], p.camera[13] * p.world[0], p.camera[14] * p.world[0]};
             const Vec3 previous_eye = {s_rain_params.camera[12] * s_rain_params.world[0],
                 s_rain_params.camera[13] * s_rain_params.world[0], s_rain_params.camera[14] * s_rain_params.world[0]};
@@ -1604,6 +1604,7 @@ void main()
         }
         if (!s_inverse_valid || std::memcmp(s_table, in.refraction, sizeof(s_table)) != 0)
         {
+            const float previous_zenith = s_inverse_table[1024];
             std::memcpy(s_table, in.refraction, sizeof(s_table));
             float* inverse = s_inverse_table;
             int index = 0;
@@ -1621,7 +1622,8 @@ void main()
             }
             s_inverse_valid = true;
             s_cache_valid = false;
-            s_rain_cached = false;
+            // The rain probe always samples overhead, at the last inverse-curve entry.
+            if (s_inverse_table[1024] != previous_zenith) s_rain_cached = false;
             if (!s_refraction)
             {
                 glGenTextures(1, &s_refraction);
@@ -1659,7 +1661,6 @@ void main()
         else
         {
             s_rain_cover = CloudRainCover();
-            s_rain_cached = false;
             s_rain_cached = false;
             s_stats.overhead_cpu_ms = 0;
         }

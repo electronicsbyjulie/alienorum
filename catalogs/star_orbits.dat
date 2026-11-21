@@ -840,8 +840,10 @@ HD219877                96 Aqr C                21.2371d                        
 A0620-00                A0620-00 B              0.32301416667d              50.98                   0.0169258AU             0                   JD2446082.7481                                  0.34        1.057       0.44        5000
 
 # https://en.wikipedia.org/w/index.php?title=AB_Doradus&oldid=1374633611
-# Published components: AB Dor A -> AB Dor C; sequential names used below.
-HD36705                 AB Dor C                12.895y         159.2       63          157.3       0.304s      0.281       0                   1991.822                                        0.09                    0.0021      2925
+# The outer orbit is measured for combined AB Dor C. Ca represents that orbit in the resolved scenario.
+# Climent et al. 2019 tentatively resolve Ca and Cb. Their separation is projected. https://arxiv.org/abs/1911.04736
+HD36705                 AB Dor Ca               12.895y         159.2       63          157.3       0.304s      0.281       0                   1991.822                                        0.072
+AB Dor Ca               AB Dor Cb                                                                   0.58AU?                                                                                     0.013
 
 # https://en.wikipedia.org/w/index.php?title=AB_Doradus&oldid=1374633611
 # Published components: AB Dor Ba -> AB Dor Bb; sequential names used below.

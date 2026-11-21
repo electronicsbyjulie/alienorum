@@ -1,6 +1,7 @@
 #ifndef _Satellite
 #define _Satellite
 
+#include <memory>
 #include "celestial.h"
 
 #define sat_download_interval (3600 * 2)
@@ -29,25 +30,33 @@ namespace alienorum
         std::string ORBIT_CENTER;
         std::string ORBIT_TYPE;
         std::string EPOCH;
-        double MEAN_MOTION;
+        double MEAN_MOTION = 0;
         double ECCENTRICITY;
         double RA_OF_ASC_NODE;
         double ARG_OF_PERICENTER;
         double MEAN_ANOMALY;
-        uint32_t EPHEMERIS_TYPE;
+        uint32_t EPHEMERIS_TYPE = 0;
         std::string CLASSIFICATION_TYPE;
         uint32_t ELEMENT_SET_NO;
         uint32_t REV_AT_EPOCH;
-        double BSTAR;
-        double MEAN_MOTION_DOT;
-        double MEAN_MOTION_DDOT;
+        double BSTAR = 0;
+        double MEAN_MOTION_DOT = 0;
+        double MEAN_MOTION_DDOT = 0;
     };
 
     class Satellite : public CelestialObject
     {
+        struct Sgp4State;
+        std::shared_ptr<const Sgp4State> sgp4_state;
+        double gp_epoch_seconds = NAN;
+        double gp_motion_dot = 0;
+        double gp_motion_ddot = 0;
+        void initialize_sgp4();
+        friend class SatSource;
+
         public:
-        double bstar;
-        double mean_motion;
+        double bstar = 0;
+        double mean_motion = 0;
 
         Satellite();
         void update_location(double tmnow);

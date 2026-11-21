@@ -406,8 +406,7 @@ ConsBins fill_alienorum_ids()
             // constellation, it just has no fixed sky position of its own. Binning it there
             // used to get it written into the condensed star catalog a second time, once here
             // and once via the explicit cels[0] write in write_condensed_star_cat().
-            int m = floor(fabs(s->apparent_magnitude)) * sgn(s->apparent_magnitude);
-            s->alienorumid = std::to_string(m);          // The only -26 mag star from Earth, so this alone is unique.
+            s->alienorumid.clear();
             continue;
         }
         if (purple_catalog_id(s->alienorumid)
@@ -490,10 +489,8 @@ ConsBins fill_alienorum_ids()
                             : std::to_string(m))
                         + std::string(1, cc)
                         + std::string(" ")
-                        + cs->abbrev
-                        + std::string(" ")
-                        + (n>1 ? std::to_string(i+1) : std::string(""))
-                        ;
+                        + cs->abbrev;
+                    if (n > 1) s->alienorumid += " " + std::to_string(i + 1);
 
                     if (s->multisys)
                     {
@@ -503,6 +500,7 @@ ConsBins fill_alienorum_ids()
                             Star *B = s->multisys->get_member(comp);
                             if (B)
                             {
+                                if (brown_catalog_component(*B) && B->apparent_magnitude >= 99) continue;
                                 B->alienorumid = lop_component(s->alienorumid.c_str()) + std::string(" ") + std::string(1, B->get_component());
                             }
                         }

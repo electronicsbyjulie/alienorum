@@ -203,6 +203,7 @@ namespace alienorum
         public:
         ~StarMulti();
         void add_member(Star* s, char comp);
+        void remove_member(Star* s);
         Star* get_member(char comp);
         char is_member(Star* s);
         int num_members();

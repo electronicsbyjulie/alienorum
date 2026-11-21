@@ -70,6 +70,7 @@ OBJS += $(OBJINT)/fictionalstars_ui.o $(OBJINT)/globals.o $(OBJINT)/loaders.o $(
 
 TESTS = $(addprefix $(BIN)/, $(basename $(notdir $(TESTS_SRC))))
 OBJS += $(OBJINT)/windowidle.o
+OBJS += $(OBJINT)/SGP4.o
 TEST_OBJS = $(addprefix $(OBJ)/tests/, $(notdir $(TESTS_SRC:.cpp=.o)))
 
 INCLUDES = -I./src/include -I./$(IMGUI_DIR) -I./$(CLASSES_DIR)
@@ -328,6 +329,9 @@ $(OBJINT)/horizon_terrain_gpu.o: src/horizon_terrain_gpu.cpp
 
 $(OBJINT)/horizon_mesh_gpu.o: src/horizon_mesh_gpu.cpp
 	$(CPP) src/horizon_mesh_gpu.cpp $(CPPFLAGS) -c -o $(OBJINT)/horizon_mesh_gpu.o
+
+$(OBJINT)/SGP4.o: src/vendor/sgp4/SGP4.cpp
+	$(CPP) $< $(CPPFLAGS) -c -o $@
 
 
 # Cache test translation units independently, while relinking every suite against changed

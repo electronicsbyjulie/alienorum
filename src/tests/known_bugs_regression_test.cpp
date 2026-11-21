@@ -4,10 +4,12 @@
 #include <fstream>
 #include <iomanip>
 #include <queue>
+#include <regex>
 #include <set>
 #include <sstream>
 #include <unordered_map>
 #include <gtest/gtest.h>
+#include "../classes/alienorumid.h"
 #include "../classes/browncatalog.h"
 #include "../classes/cat.h"
 #include "../classes/neighborhoodfilter.h"
@@ -389,6 +391,86 @@ TEST_F(KnownCatalogRegression, BakedCatalogKeepsOneStarPerVerifiedCrossIdentific
     {
         if (cels[index]->deleted || cels[index]->typeclass() != class_star) continue;
         EXPECT_FALSE(retired_names.count(cels[index]->name)) << cels[index]->name;
+    }
+}
+
+TEST_F(KnownCatalogRegression, VisibleAlienorumIdsFollowTheDocumentedFormat)
+{
+    const std::regex format(R"((V|-[1-9][0-9]?|[0-9])[bcwyorp] [A-Z][A-Za-z]{2}( [1-9][0-9]*)?( [B-Z])?)");
+    size_t numbered = 0, blank = 0;
+    for (int index = 0; cels[index]; ++index)
+    {
+        const auto& object = *cels[index];
+        const auto shown = shown_alienorum_id(object);
+        if (object.typeclass() != class_star)
+        {
+            EXPECT_TRUE(shown.empty()) << object.name;
+            continue;
+        }
+        const auto& star = static_cast<const Star&>(object);
+        EXPECT_EQ(shown, star.alienorumid) << star.name;
+        if (shown.empty()) ++blank;
+        else
+        {
+            ++numbered;
+            EXPECT_TRUE(std::regex_match(shown.begin(), shown.end(), format)) << star.name << ' ' << shown;
+        }
+    }
+    EXPECT_GT(numbered, 100000u);
+    EXPECT_GT(blank, 1000u);
+
+    Star sample;
+    for (const char* bad : {"p-deadbeef", "U2eb4935ee7abc", "-26", "10p Vel 1", "4r Qqq", "4r Ori 0"})
+    {
+        sample.alienorumid = bad;
+        EXPECT_TRUE(shown_alienorum_id(sample).empty()) << bad;
+    }
+    sample.alienorumid = "6c And 17 B";
+    EXPECT_EQ(shown_alienorum_id(sample), sample.alienorumid);
+    EXPECT_TRUE(shown_alienorum_id(Planet()).empty());
+}
+
+TEST_F(KnownCatalogRegression, AbsolutePhotometryRepairsAuditedMissingValues)
+{
+    ExactStarSearchIndex lookup;
+    for (const char* name : {"LP 443-17 B", "HR 5110 B", "Zet Cap B", "Gam Cas C", "Zet Cyg B", "VW LMi C",
+        "GW Ori B", "HD 136138 B", "G 240-23 B", "2MASS J04173459-4834391 B", "AB Dor Ca", "SCR J0723-8015 B",
+        "LP 848-50 B", "WT 1827 B", "LP 909-18 B", "eta Boo Ab", "L 403-31 B", "BD+16 2708 Bb", "G 139-29 B",
+        "WISEA J191239.34-501617.9 B", "LP 754-5 B", "LEHPM 2-1265 B", "LP 575-35 B",
+        "[MFL2000] J210104.18+030705.1 B", "WISE J0855-0714"})
+    {
+        const int index = find_object(name, true, 9e29, 1, &lookup);
+        ASSERT_GE(index, 0) << name;
+        EXPECT_TRUE(std::isfinite(cels[index]->absolute_magnitude)) << name;
+        EXPECT_NE(cels[index]->absolute_magnitude, 0) << name;
+    }
+    const int lp = find_object("LP 443-17 B", true, 9e29, 1, &lookup);
+    ASSERT_GE(lp, 0);
+    EXPECT_GT(cels[lp]->absolute_magnitude, 12);
+    EXPECT_LT(cels[lp]->absolute_magnitude, 60);
+}
+
+TEST_F(KnownCatalogRegression, ABDorResolvedCompanionReusesTheCombinedDesignation)
+{
+    const int ca = find_object("AB Dor Ca", true, 9e29, 1);
+    const int a = find_object("HD 36705", true, 9e29, 1);
+    const int cb = find_object("AB Dor Cb", false, 9e29, 1);
+    ASSERT_GE(a, 0);
+    ASSERT_GE(ca, 0);
+    ASSERT_GE(cb, 0);
+    EXPECT_EQ(find_object("AB Dor C", true, 9e29, 1), ca);
+    ASSERT_NE(cels[ca]->orbit, nullptr);
+    ASSERT_NE(cels[cb]->orbit, nullptr);
+    EXPECT_EQ(cels[ca]->orbit->center, cels[a]);
+    EXPECT_EQ(cels[cb]->orbit->center, cels[ca]);
+    EXPECT_EQ(cels[cb]->typeclass(), class_planet);
+    EXPECT_EQ(find_object("AB Dor Cb", true, 9e29, 1), -1);
+    const auto* primary = static_cast<const Star*>(cels[a]);
+    ASSERT_NE(primary->multisys, nullptr);
+    for (char slot = 'A'; slot <= 'Z'; ++slot)
+    {
+        const auto* member = primary->multisys->get_member(slot);
+        if (member) EXPECT_FALSE(member->deleted) << slot << ' ' << member->name;
     }
 }
 

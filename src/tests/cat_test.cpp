@@ -174,23 +174,32 @@ TEST_F(StellarRotationTest, HipparcosVariabilityImportSkipsRowsWithoutLoadedStar
 
 TEST_F(StellarRotationTest, CondensedWriterKeepsVerifiedIdentityWhenOnlyTheAliasWasImported)
 {
-    std::ofstream("starname.dat") << "# Duplicate star \"GJ 4365\" \"WD2347+292\"\n";
+    std::ofstream("starname.dat") << "# Duplicate star \"GJ 4365\" \"WD2347+292\"\n"
+        << "# Duplicate star \"GJ 4366\" \"WDJ235501.23+290402.34\"\n";
     Star* dwarf = target(12345);
     std::strcpy(dwarf->name, "GJ 4365");
     std::strcpy(dwarf->Gliese, dwarf->name);
     std::strcpy(dwarf->spectral_type, "DA9");
     dwarf->apparent_magnitude = 15.72;
+    Star* gaia_dwarf = target(12346);
+    std::strcpy(gaia_dwarf->name, "GJ 4366");
+    std::strcpy(gaia_dwarf->Gliese, gaia_dwarf->name);
+    std::strcpy(gaia_dwarf->spectral_type, "DA8");
 
     CatalogReader reader;
-    ASSERT_EQ(reader.write_condensed_star_cat({}), 2);
+    ASSERT_EQ(reader.write_condensed_star_cat({}), 3);
     delete_the_universe();
-    ASSERT_EQ(reader.read_condensed_star_cat(), 2);
+    ASSERT_EQ(reader.read_condensed_star_cat(), 3);
 
     const int canonical = find_object("WD2347+292", true, 9e29, 1);
     ASSERT_GE(canonical, 0);
     EXPECT_STREQ(cels[canonical]->name, "WD2347+292");
     EXPECT_EQ(find_object("GJ 4365", true, 9e29, 1), canonical);
     EXPECT_DOUBLE_EQ(static_cast<Star*>(cels[canonical])->apparent_magnitude, 15.72);
+    const int gaia = find_object("WDJ235501.23+290402.34", true, 9e29, 1);
+    ASSERT_GE(gaia, 0);
+    EXPECT_STREQ(cels[gaia]->name, "WDJ235501.23+290402.34");
+    EXPECT_EQ(find_object("GJ 4366", true, 9e29, 1), gaia);
 }
 
 TEST_F(StellarRotationTest, DurchmusterungZeroZonesHaveDistinctKeysAndRoundTrip)
@@ -225,6 +234,42 @@ TEST_F(StellarRotationTest, AuthoredBondAlbedoIncludesZeroAndSurvivesSave)
     Planet restored;
     ASSERT_TRUE(restored.from_json(world->to_json()));
     EXPECT_DOUBLE_EQ(restored.estimate_bond_albedo(), 0);
+}
+
+TEST_F(StellarRotationTest, CatalogJulianYear2000StartsAtNoon)
+{
+    std::ofstream("catalogs/planets.json") << R"([
+        {"BODYNAME":"Epoch test","CENTER_OF_ORBIT":"Sol","Epoch":2000,"SEMIMAJOR_AXIS":1}
+    ])";
+    CatalogReader reader;
+    ASSERT_EQ(reader.read_local_planets(cels, MAX_CELOBJS, cels[0]), 1);
+    ASSERT_NE(cels[1]->orbit, nullptr);
+    EXPECT_DOUBLE_EQ(cels[1]->orbit->epoch, 2451545.0);
+    EXPECT_DOUBLE_EQ(cels[1]->epoch, 2451545.0);
+    EXPECT_EQ(from_iso_string("2000-01-01T00:00:00"), J2000_TIME_T);
+}
+
+TEST_F(StellarRotationTest, CensusPhotometryReplacesAnOldDefaultAndPreservesMeasuredZero)
+{
+    Star* dwarf = target(12345);
+    dwarf->stellar_parameters = {{"census_component", true}};
+    dwarf->mass = .07 * solar_mass;
+    dwarf->volumetric_mean_radius = jupiter_radius;
+    dwarf->temperature = 0;
+    dwarf->spectral_type[0] = '\0';
+    dwarf->absolute_magnitude = 0;
+    Star* measured = target(12346);
+    measured->absolute_magnitude = 0;
+
+    CatalogReader reader;
+    ASSERT_EQ(reader.write_condensed_star_cat({}), 3);
+    delete_the_universe();
+    ASSERT_EQ(reader.read_condensed_star_cat(), 3);
+    ASSERT_NE(hdcache[12345], nullptr);
+    ASSERT_NE(hdcache[12346], nullptr);
+    EXPECT_GT(hdcache[12345]->absolute_magnitude, 12);
+    EXPECT_LT(hdcache[12345]->absolute_magnitude, 60);
+    EXPECT_DOUBLE_EQ(hdcache[12346]->absolute_magnitude, 0);
 }
 
 TEST_F(StellarRotationTest, TauCetiCatalogBeltFeedsTheVolatileBudget)

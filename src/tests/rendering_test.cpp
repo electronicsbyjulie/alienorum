@@ -4521,6 +4521,31 @@ TEST_F(RenderingRegressionTest, SupportingLinesClipCrossingsAndRejectOffscreenGe
     }
 }
 
+TEST_F(RenderingRegressionTest, DeclinationGridSurvivesTheSixHourProjectionBoundary)
+{
+    make_star("Observer");
+    make_star("Second star");
+    set(azimuth, -half_pi);
+    set(redlight_mode, false);
+    set(global_style.grid_color, IM_COL32(0, 255, 0, 255));
+    set(global_style.grid_color_brighter, IM_COL32(255, 0, 255, 255));
+    auto* draw = ImGui::GetBackgroundDrawList();
+    for (const double pitch : {0.0, .07, -.07})
+    {
+        set(altitude, pitch);
+        const int first = draw->VtxBuffer.Size;
+        draw_ra_dec_lines();
+        int equator = 0;
+        for (int index = first; index < draw->VtxBuffer.Size; ++index)
+        {
+            const auto& vertex = draw->VtxBuffer[index];
+            if ((vertex.col & 0xffffffu) == 0xff00ffu && vertex.pos.x > 1 && vertex.pos.x < 191)
+                ++equator;
+        }
+        EXPECT_GT(equator, 20) << pitch;
+    }
+}
+
 TEST_F(RenderingRegressionTest, ReturnToPresentRefreshesMovingAndCulledStars)
 {
     double magnitudes[4] = {}, radii[4] = {}, bloom[4] = {};
@@ -6425,6 +6450,53 @@ TEST_F(RenderingRegressionTest, CloudyCoastReducesGroundWorkInMotionAndRecoversA
     viewer_lat += 4 / world->get_equatorial_radius();
     EXPECT_EQ(capture(), 4);
     EXPECT_EQ(capture(), 1);
+}
+
+TEST_F(RenderingRegressionTest, CloudyCoastFirstPaintRefinesToTheReferenceImage)
+{
+    update_horizon_quality(0);
+    auto* world = surface(true);
+    delete world->surf_map;
+    world->surf_map = new CoastalTestMap(true, true);
+    world->cloud_map = new UniformCloudTestMap(153);
+    set(horizon_ground_gpu_reference, false);
+    set(show_clouds, true);
+    set(viewer_lat, .0002);
+    set(altitude, -.18);
+    render_width = 800;
+    render_height = 450;
+    SDL_SetWindowSize(window, render_width, render_height);
+    set(dispcx, 400.0);
+    set(dispcy, 225.0);
+    ImGui::GetIO().DisplaySize = ImVec2(render_width, render_height);
+    ImGui::EndFrame();
+    ImGui::NewFrame();
+    const auto capture = [&]()
+    {
+        freeze_surface_time();
+        find_horizon();
+        EXPECT_TRUE(draw_cloudy_sky());
+        draw_horizon();
+        auto pixels = render();
+        ImGui::NewFrame();
+        return pixels;
+    };
+    const auto expected = capture();
+    const double exact_ms = precipitation_stats.ground_paint_milliseconds;
+    auto* reference_map = world->surf_map;
+    world->surf_map = new CoastalTestMap(true, true);
+    delete reference_map;
+    set(horizon_ground_motion_budget_ms, 20.0);
+    capture();
+    EXPECT_STREQ(precipitation_stats.ground_cache_reason, "initial preview");
+    const double preview_ms = precipitation_stats.ground_paint_milliseconds;
+    std::vector<unsigned char> refined;
+    for (int frame = 0; frame < 9 && !precipitation_stats.ground_cache_hit; ++frame)
+        refined = capture();
+    EXPECT_TRUE(precipitation_stats.ground_cache_hit);
+    EXPECT_EQ(image_difference(expected, refined, 1), 0);
+    std::cout << "Cloudy coast ground paint " << exact_ms << " ms exact, " << preview_ms << " ms initial preview.\n";
+    SDL_SetWindowSize(window, 192, 108);
 }
 
 TEST_F(RenderingRegressionTest, RingOuterEdgeDoesNotLeakIntoTheInnerGap)

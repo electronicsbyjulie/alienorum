@@ -127,7 +127,7 @@ void Star::set_component(char comp, Star* compA)
 Star::Star()
 {
     _class = class_star;
-    apparent_magnitude = 1e29;
+    apparent_magnitude = absolute_magnitude = 1e29;
     memset(spectral_type, 0, 32*sizeof(char));
     memset(Bayer, 0, 32*sizeof(char));
     memset(Flamsteed, 0, 32*sizeof(char));
@@ -709,10 +709,10 @@ void Star::rename_from_Bayer_Flamsteed()
 
     if (multisys && multisys->get_member('A') == this)
     {
-        Star* companion;
-        for (char c = 'B'; (companion = multisys->get_member(c)); c++)
+        for (char c = 'B'; c <= 'Z'; c++)
         {
-            if (companion->has_custom_name) continue;
+            Star* companion = multisys->get_member(c);
+            if (!companion || companion->has_custom_name) continue;
 
             // Only borrow "<primary base> <letter>" when the companion has no identity of its own,
             // or it's identical to the primary's -- never when it already reads differently (Zeta
@@ -1761,12 +1761,10 @@ void Star::gotta_be_named_something()
     // base name" trivially against itself, self-appending the letter (e.g. "Gamma 1 Velorum B").
     if (multisys && multisys->get_member('A') == this)
     {
-        Star* companion;
-        for (char c = 'B'; (companion = multisys->get_member(c)); c++)
+        for (char c = 'B'; c <= 'Z'; c++)
         {
-            if(companion == nullptr)
-                break;
-            if (companion->has_custom_name) continue;
+            Star* companion = multisys->get_member(c);
+            if (!companion || companion->has_custom_name) continue;
 
             // Only fall back to "<primary base> <letter>" when the companion has no name of its
             // own, or its own name is identical to the primary's (54 Psc A/B, sharing one
@@ -2690,6 +2688,14 @@ void StarMulti::add_member(Star *s, char comp)
     }
     members[cidx] = s;
     s->multisys = this;
+}
+
+void StarMulti::remove_member(Star* star)
+{
+    const char slot = is_member(star);
+    if (!slot) return;
+    members[slot - 'A'] = nullptr;
+    star->multisys = nullptr;
 }
 
 Star *StarMulti::get_member(char comp)

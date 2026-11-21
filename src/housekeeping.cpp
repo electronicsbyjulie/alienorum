@@ -4,6 +4,7 @@
 #include "inputs.h"
 #include "dialogs.h"
 #include "visuals.h"        // eclipse_obscuration(): an eclipse dims the daylight computed here
+#include "classes/browncatalog.h"
 #include <cstdint>
 #include <unordered_set>
 #include <unordered_map>
@@ -1076,6 +1077,41 @@ void set_center_objects()
     first_letter_index.clear();
     for (i=0; i<36; i++) first_letter_index.push_back(std::vector<CelestialObject*>());
 
+    // Absolute magnitude integrity
+    // Codex: LEAVE THIS THE FUCK ALONE unless it has a bug. Then fix the bug. QUIT DELETING MY EDITS.
+    for (i=0; cels[i]; i++)
+    {
+        if (!cels[i]->deleted && (!std::isfinite(cels[i]->absolute_magnitude) || cels[i]->absolute_magnitude > 99))
+        {
+            cel_obj_class cls = cels[i]->typeclass();
+            // Estimate from apparent mag if known
+            if (cls == class_star)
+            {
+                Star *s = (Star*)cels[i];
+                if (s->apparent_magnitude < 99 && std::isfinite(s->apparent_magnitude)
+                    && s->distance > 0 && std::isfinite(s->distance))
+                    s->absolute_magnitude = s->apparent_magnitude - 5 * log10(fmax(AU, s->distance) / (10 * parsec));
+                else
+                    estimate_catalog_absolute_magnitude(*s);
+            }
+            
+            // Estimate from size and albedo if known
+            else if (cls == class_planet || cls == class_moon)
+            {
+                auto* planet = static_cast<Planet*>(cels[i]);
+                const double disc_area = pow(planet->volumetric_mean_radius / earth_radius, 2);
+                const double reflected = disc_area * planet->albedo / earth_albedo;
+                if (planet->volumetric_mean_radius > 0 && reflected > 0 && std::isfinite(reflected))
+                    planet->absolute_magnitude = earth_absmag - log(reflected) / log(magnbase);
+            }
+
+            // If still no good, give up.
+            if ((!std::isfinite(cels[i]->absolute_magnitude) || cels[i]->absolute_magnitude > 99)
+                && !(cls == class_star && cels[i]->absolute_magnitude == 1e29))
+                cels[i]->absolute_magnitude = 99;
+        }
+    }
+
     // Emptied for the same reason as the letter buckets above: this pass rebuilds both indices
     // from the whole array, and it runs more than once -- loading a universe file calls it, and
     // then the end of the startup sequence calls it again. Left uncleared, every star in every
@@ -1180,17 +1216,7 @@ void set_center_objects()
         {
             Star *s = (Star*)cels[i];
             s->update_location(simnow);
-            if (!s->fictional_origin.is_object() && s->orbit && s->orbit->center && s->orbit->center->typeclass() == class_star &&
-                std::isfinite(s->apparent_magnitude) && s->apparent_magnitude >= -40 && s->apparent_magnitude < 99)
-            {
-                // Bound companions use the adopted system distance, rather than an independent
-                // catalog parallax. Keep the reference distance fixed when simulation time moves.
-                const double observed_distance = s->cenobj->distance;
-                if (std::isfinite(observed_distance) && observed_distance > 0)
-                {
-                    s->absolute_magnitude = s->apparent_magnitude - 5.0 * log10(observed_distance / (10.0 * parsec));
-                }
-            }
+            reconcile_catalog_companion_photometry(*s);
         }
         else if (cels[i]->orbit)
         {

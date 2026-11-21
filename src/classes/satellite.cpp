@@ -9,6 +9,7 @@
 #include <unordered_map>
 #include "satellite.h"
 #include "serial.h"
+#include "../vendor/sgp4/SGP4.h"
 
 using namespace alienorum;
 
@@ -16,18 +17,70 @@ std::vector<SatSource> sat_sources;
 std::vector<SatRecord> sat_data;
 std::map<uint32_t, SatSource*> best_source;
 
+struct Satellite::Sgp4State
+{
+    elsetrec record{};
+};
+
+static double satellite_epoch_seconds(const std::string& iso_epoch)
+{
+    double seconds = from_iso_string(iso_epoch, "%Y-%m-%dT%H:%M:%S");
+    if (iso_epoch.size() <= 19 || iso_epoch[19] != '.') return seconds;
+    double fraction = 0, place = .1;
+    for (size_t i = 20; i < iso_epoch.size() && iso_epoch[i] >= '0' && iso_epoch[i] <= '9'; ++i)
+    {
+        fraction += (iso_epoch[i] - '0') * place;
+        place *= .1;
+    }
+    return seconds + fraction;
+}
+
 Satellite::Satellite()
 {
     _class = class_satellite;
     type = artificial;
 }
 
+void Satellite::initialize_sgp4()
+{
+    if (!orbit || !std::isfinite(gp_epoch_seconds) || !(mean_motion > 0) ||
+        !(orbit->eccentricity >= 0 && orbit->eccentricity < 1)) return;
+    constexpr double minutes_per_day = 1440;
+    const double epoch = (gp_epoch_seconds - J2000_TIME_T) / oneday + (J2000 - 2433281.5);
+    const double motion_unit = 2 * _pi / minutes_per_day;
+    auto model = std::make_shared<Sgp4State>();
+    if (SGP4Funcs::sgp4init(wgs72, 'i', "00000", epoch, bstar,
+            gp_motion_dot * motion_unit / minutes_per_day,
+            gp_motion_ddot * motion_unit / (minutes_per_day * minutes_per_day),
+            orbit->eccentricity, orbit->arg_periapsis, orbit->inclination, orbit->mean_anomaly,
+            mean_motion * 60, orbit->ascending_node, model->record) && !model->record.error)
+    {
+        sgp4_state = std::move(model);
+    }
+}
+
 void Satellite::update_location(double tmnow)
 {
     if (!orbit || !orbit->center) return;
     Rotation center_equator = orbit->center->location.equatorial_plane;
-    if (!orbit->center->onscreen && angular_radius[orbit->center->seqno] <= 1)
+    if (angular_radius && !orbit->center->onscreen && orbit->center->seqno >= 0 &&
+        angular_radius[orbit->center->seqno] <= 1)
         angular_radius[orbit->center->seqno] = 1.1;                             // just enough to get it going without slowing down the render.
+    if (!sgp4_state && std::isfinite(gp_epoch_seconds)) initialize_sgp4();
+    if (sgp4_state)
+    {
+        // A fresh state permits time jumps and backward playback, including deep-space orbits.
+        elsetrec record = sgp4_state->record;
+        double position[3], velocity[3];
+        if (!SGP4Funcs::sgp4(record, (tmnow - gp_epoch_seconds) / 60, position, velocity)) return;
+        update_orbit_location(tmnow, &center_equator);
+        if (deleted) return;
+        // TEME starts at the equinox. The scene uses +Z at RA zero and +Y at the pole.
+        const Point equatorial(-1000 * position[1], 1000 * position[2], 1000 * position[0]);
+        location.local_position = orbit->center->location.local_position
+            + rotate3D(equatorial, center, center_equator.v, -center_equator.a);
+        return;
+    }
     update_orbit_location(tmnow, &center_equator);
 }
 
@@ -36,6 +89,11 @@ json Satellite::to_json()
     json towrite = CelestialObject::to_json();
 
     if (bstar) towrite["bstar"] = bstar;
+    if (std::isfinite(gp_epoch_seconds))
+    {
+        towrite["sgp4"] = {{"epoch_utc_seconds", gp_epoch_seconds}, {"mean_motion_radians_per_second", mean_motion},
+            {"mean_motion_dot", gp_motion_dot}, {"mean_motion_ddot", gp_motion_ddot}};
+    }
 
     return towrite;
 }
@@ -43,7 +101,17 @@ json Satellite::to_json()
 bool Satellite::from_json(json j)
 {
     CelestialObject::from_json(j);
+    sgp4_state.reset();
+    gp_epoch_seconds = NAN;
     try { j.at("bstar").get_to(bstar); } catch (...) { ; }
+    if (j.contains("sgp4") && j["sgp4"].is_object())
+    {
+        const auto& gp = j["sgp4"];
+        gp_epoch_seconds = gp.value("epoch_utc_seconds", static_cast<double>(NAN));
+        mean_motion = gp.value("mean_motion_radians_per_second", 0.0);
+        gp_motion_dot = gp.value("mean_motion_dot", 0.0);
+        gp_motion_ddot = gp.value("mean_motion_ddot", 0.0);
+    }
     return true;
 }
 
@@ -324,13 +392,9 @@ bool SatSource::populate(Satellite *sat, unsigned int idx, int hours_threshold)
     if (sat->typeclass() != class_satellite) return false;
     if (hours_threshold < 6) hours_threshold = 6;
 
-    SatRecord& sr = sat_data[idx];
-    strcpy(sat->name, sr.OBJECT_NAME.c_str());
-    sat->namelen = strlen(sat->name);
-    if (!sat->orbit) sat->orbit = new Orbit;
     int cenidx;
 
-    uint32_t norad_id = sr.NORAD_CAT_ID;
+    uint32_t norad_id = sat_data[idx].NORAD_CAT_ID;
 
     // If any source for the indicated sat is newer than the threshold, use it and don't bother to download best.
     bool download_best = true;
@@ -358,6 +422,10 @@ bool SatSource::populate(Satellite *sat, unsigned int idx, int hours_threshold)
         }
     }
 
+    const SatRecord& sr = sat_data[idx];
+    snprintf(sat->name, sizeof(sat->name), "%s", sr.OBJECT_NAME.c_str());
+    sat->namelen = strlen(sat->name);
+    if (!sat->orbit) sat->orbit = new Orbit;
     cenidx = -1;
     for (int i = 0; cels[i]; ++i)
     {
@@ -376,7 +444,8 @@ bool SatSource::populate(Satellite *sat, unsigned int idx, int hours_threshold)
 
     sat->orbit->center = cels[cenidx];
     sat->cenobj = sat->orbit->center->cenobj;
-    sat->epoch = sat->orbit->epoch = (double)(from_iso_string(sr.EPOCH, "%Y-%m-%dT%H:%M:%S") - J2000_TIME_T) / oneday + J2000;
+    const double epoch_seconds = satellite_epoch_seconds(sr.EPOCH);
+    sat->epoch = sat->orbit->epoch = (epoch_seconds - J2000_TIME_T) / oneday + J2000;
 
     sat->mass = 1e3;                        // unknown
     sat->volumetric_mean_radius = 5;        // unknown
@@ -388,9 +457,15 @@ bool SatSource::populate(Satellite *sat, unsigned int idx, int hours_threshold)
     sat->orbit->ascending_node = sr.RA_OF_ASC_NODE * fiftyseventh;
     sat->orbit->arg_periapsis = sr.ARG_OF_PERICENTER * fiftyseventh;
     sat->orbit->mean_anomaly = sr.MEAN_ANOMALY * fiftyseventh;
-    sat->orbit->period = sr.PERIOD * 60;
+    sat->orbit->period = sr.PERIOD > 0 ? sr.PERIOD * 60 : sr.MEAN_MOTION > 0 ? oneday / sr.MEAN_MOTION : 0;
     sat->orbit->compute_semimajor_axis(sat->mass);
     sat->bstar = sr.BSTAR;
+    sat->sgp4_state.reset();
+    sat->gp_epoch_seconds = sr.ORBIT_CENTER == "EA" && sr.EPHEMERIS_TYPE == 0 && sr.MEAN_MOTION > 0
+        ? epoch_seconds : NAN;
+    sat->gp_motion_dot = sr.MEAN_MOTION_DOT;
+    sat->gp_motion_ddot = sr.MEAN_MOTION_DDOT;
+    sat->initialize_sgp4();
 
     if (sat->orbit->center->typeclass() == class_planet || sat->orbit->center->typeclass() == class_moon)
     {

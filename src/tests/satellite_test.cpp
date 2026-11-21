@@ -347,6 +347,44 @@ TEST_F(SatellitePopulateTest, FillsInTheOrbitFromTheCatalogRecord)
     delete_the_universe();
 }
 
+TEST_F(SatellitePopulateTest, Sgp4MatchesValladoReferenceAndPreservesFractionalEpoch)
+{
+    Planet* earth = make_earth();
+    earth->location = CelestialLocation();
+    SatRecord record = iss_record();
+    // Vanguard 1 from the Vallado SGP4 verification set.
+    record.OBJECT_NAME = "Vanguard 1";
+    record.NORAD_CAT_ID = 5;
+    record.EPOCH = "2000-06-27T18:50:19.733568";
+    record.MEAN_MOTION = 10.82419157;
+    record.PERIOD = 1440 / record.MEAN_MOTION;
+    record.ECCENTRICITY = .1859667;
+    record.INCLINATION = 34.2682;
+    record.RA_OF_ASC_NODE = 348.7242;
+    record.ARG_OF_PERICENTER = 331.7664;
+    record.MEAN_ANOMALY = 19.3264;
+    record.BSTAR = .000028098;
+    sat_data.push_back(record);
+
+    Satellite sat;
+    ASSERT_TRUE(SatSource::populate(&sat, 0));
+    Satellite restored;
+    ASSERT_TRUE(restored.from_json(sat.to_json()));
+    ASSERT_NE(restored.orbit, nullptr);
+    restored.orbit->center = earth;
+    const double epoch = from_iso_string("2000-06-27T18:50:19") + .733568;
+    const auto position = [&](double minutes, double x, double y, double z)
+    {
+        const Point expected(-1000 * y, 1000 * z, 1000 * x);
+        sat.update_location(epoch + minutes * 60);
+        restored.update_location(epoch + minutes * 60);
+        EXPECT_LT(sat.location.local_position.distance_to(expected), 1.0) << minutes;
+        EXPECT_LT(restored.location.local_position.distance_to(expected), 1.0) << minutes;
+    };
+    position(360, -7154.03120202, -3783.17682504, -3536.19412294);
+    position(0, 7022.46529266, -1400.08296755, .03995155);
+}
+
 TEST_F(SatellitePopulateTest, ComputesTheNodalPrecession)
 {
     // The formula lives in populate(); this calls it rather than restating it, so that changing

@@ -16,6 +16,7 @@
 #endif
 
 #include "dialogs.h"
+#include "classes/alienorumid.h"
 #include "universe_save_progress.h"
 #include "inputs.h"
 #include "loaders.h"
@@ -892,7 +893,8 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
             if (cels[i]->type == star)
             {
                 Star* s = (Star*)cels[i];
-                if (s->alienorumid.size()) ImGui::Text("%s", s->alienorumid.c_str());
+                const auto id = shown_alienorum_id(*s);
+                if (!id.empty()) ImGui::TextUnformatted(id.data(), id.data() + id.size());
                 if (strlen(s->Bayer) && strlen(s->Flamsteed))
                 {
                     int Fl = atoi(s->Flamsteed);
@@ -1033,7 +1035,9 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
             {
                 Star* s = (Star*)cels[i];
                 ImGui::Text("SpTyp:    %s", s->spectral_type);
-                ImGui::Text("AbsMag:   %.2f", s->absolute_magnitude);
+                if (std::isfinite(s->absolute_magnitude) && std::abs(s->absolute_magnitude) < 1e28)
+                    ImGui::Text("AbsMag:   %.2f", s->absolute_magnitude);
+                else ImGui::TextUnformatted("AbsMag:   unavailable");
             }
             ImGui::Separator();
         }
@@ -1044,7 +1048,9 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
             if (s->distance_known || s->cenobj == mycenobj)
             {
                 ImGui::Text("Dist:     %s", cels[i]->scaled_distance(here, sat_low_orbit).c_str());
-                ImGui::Text("AbsMag:   %.2f", s->absolute_magnitude);
+                if (std::isfinite(s->absolute_magnitude) && std::abs(s->absolute_magnitude) < 1e28)
+                    ImGui::Text("AbsMag:   %.2f", s->absolute_magnitude);
+                else ImGui::TextUnformatted("AbsMag:   unavailable");
             }
         }
         else if (i >= 0 && cels[i]->type == galaxy)
@@ -1597,10 +1603,11 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::Text("%s", sssurfgrav.str().c_str());
 
             double edit_absmag = cel->absolute_magnitude;
+            const bool has_absmag = std::isfinite(edit_absmag) && std::abs(edit_absmag) < 1e28;
             ImGui::Text("%s", "Abs. Magn.");
             ImGui::SameLine(col1);
             ImGui::SetNextItemWidth(txtwid);
-            if (ImGui::InputDouble("##edtabsmag", &edit_absmag, 0, 0, "%.3f"))
+            if (ImGui::InputDouble("##edtabsmag", &edit_absmag, 0, 0, has_absmag ? "%.3f" : "?"))
             {
                 cel->absolute_magnitude = edit_absmag;
                 cel->user_edited = true;

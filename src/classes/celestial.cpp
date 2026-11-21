@@ -1102,8 +1102,8 @@ void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
         location.orbital_plane = location.local_system_plane;
     }
 
-    // Precess the equinox
-    equinox_eff = equinox - precession * seconds_since_epoch;
+    const double seconds_since_equator_epoch = (tmnow_as_epoch - epoch) * oneday;
+    equinox_eff = equinox - precession * seconds_since_equator_epoch;
     Point pole = yaxis;
     pole = rotate3D(pole, center, Point(sin(equinox_eff), 0, -cos(equinox_eff)), -obliquity);
     pole = rotate3D(pole, center, location.orbital_plane.v, -location.orbital_plane.a);

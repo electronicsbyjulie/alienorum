@@ -2261,6 +2261,29 @@ TEST(OrbitLocationTest, AnEccentricOrbitIsNearestAtPeriapsis)
     EXPECT_GT(at_apoapsis, at_periapsis);
 }
 
+TEST(OrbitLocationTest, SecularPolePrecessionUsesTheEquatorialEpoch)
+{
+    Star sun;
+    sun.mass = solar_mass;
+    Planet world;
+    world.epoch = 2451545.0;
+    world.equinox = .6;
+    world.obliquity = .3;
+    world.precession = .02 / oneday;
+    world.orbit = new Orbit();
+    world.orbit->center = &sun;
+    world.orbit->semimajor_axis = AU;
+    world.orbit->period = 365.25 * oneday;
+    const double date = J2000_TIME_T + 2.5 * oneday;
+
+    for (const double orbit_epoch : {2451545.0, 2451500.0})
+    {
+        world.orbit->epoch = orbit_epoch;
+        world.update_location(date);
+        EXPECT_NEAR(world.equinox_eff, .56, 1e-12);
+    }
+}
+
 TEST(OrbitLocationTest, ABodyWithNoCenterStaysPut)
 {
     Planet rogue;

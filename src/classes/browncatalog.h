@@ -14,10 +14,64 @@ namespace alienorum
 {
     inline bool condensed_brown_dwarfs_loaded = false;
 
+    void reconcile_catalog_companion_photometry(Star& star);
+
     inline bool brown_catalog_candidate(const Star& star)
     {
         return !star.is_white_dwarf() && ((star.mass > 0 && star.mass < .075 * solar_mass)
             || (star.spectral_type[0] && strchr("LTY", star.spectral_type[0])));
+    }
+
+    inline void estimate_catalog_absolute_magnitude(Star& star, bool repair_census_zero = false,
+        bool use_orbit_source_mass = false)
+    {
+        const bool has_apparent = std::isfinite(star.apparent_magnitude) && std::abs(star.apparent_magnitude) < 99;
+        const bool census_default = repair_census_zero && !has_apparent && star.absolute_magnitude == 0
+            && !star.user_added && !star.user_edited && brown_catalog_candidate(star)
+            && ((star.stellar_parameters.is_object() && star.stellar_parameters.value("census_component", false))
+                || (star.spectral_type[0] && strchr("LTY", star.spectral_type[0])));
+        if (!census_default && std::isfinite(star.absolute_magnitude) && std::abs(star.absolute_magnitude) < 99) return;
+        if (census_default) star.absolute_magnitude = 1e29;
+        if (has_apparent && star.distance > 0 && std::isfinite(star.distance))
+        {
+            star.absolute_magnitude = star.apparent_magnitude - 5 * log10(star.distance / (10 * parsec));
+            return;
+        }
+
+        double temperature = star.temperature;
+        double radius = star.volumetric_mean_radius / solar_radius;
+        std::string method = "Visual blackbody estimate from temperature and radius";
+        if (!(temperature > 0) && star.spectral_type[0] && strchr("LTY", star.spectral_type[0]))
+        {
+            temperature = brown_temperature(&star);
+            method = "Visual blackbody estimate from spectral type and radius";
+        }
+        if (!(temperature > 0) && brown_catalog_candidate(star) && star.mass > 0 && radius > 0)
+        {
+            // Burrows et al. (2001), equation 1, with the reference opacity.
+            double age = star.stellar_age.is_object() ? star.stellar_age.value("value_gyr", 1.0) : 1.0;
+            if (!std::isfinite(age)) age = 1.0;
+            const double luminosity = 4e-5 * pow(std::max(.1, age), -1.3) * pow(star.mass / (.05 * solar_mass), 2.64);
+            temperature = sun_temp * pow(luminosity / (radius * radius), .25);
+            method = "Visual blackbody estimate from brown dwarf cooling at " + std::to_string(age) + " Gyr";
+        }
+        if (use_orbit_source_mass && (!std::isfinite(radius) || !(radius > 0) || !(temperature > 0)) &&
+            star.mass > .075 * solar_mass && !star.is_white_dwarf())
+        {
+            const double index = Star::get_mseqidx_from_mass(star.mass / solar_mass);
+            if (!(temperature > 0)) temperature = Star::interpolate_mseq_temp(index);
+            if (!std::isfinite(radius) || !(radius > 0)) radius = Star::interpolate_mseq_rad(index);
+            method = "Visual blackbody estimate with a mass-based stellar calibration";
+        }
+        if (!(radius > 0) || !std::isfinite(radius)) return;
+        if (!(temperature > 0) || !std::isfinite(temperature)) return;
+        const double flux = blackbody_flux(temperature, V_band) / blackbody_flux(sun_temp, V_band) * radius * radius;
+        if (!(flux > 0) || !std::isfinite(flux)) return;
+        const double magnitude = 4.83 - log(flux) * invlogmagnbase;
+        if (!std::isfinite(magnitude) || std::abs(magnitude) >= 99) return;
+        star.absolute_magnitude = magnitude;
+        if (!star.stellar_parameters.is_object()) star.stellar_parameters = json::object();
+        star.stellar_parameters["absolute_magnitude_estimate"] = method;
     }
 
     inline bool brown_component_label(const std::string& name)
@@ -355,6 +409,7 @@ namespace alienorum
                     target->stellar_parameters["census_component"] = true;
                 update_brown_catalog_photometry(*target, record);
                 repair_brown_catalog_star(*target);
+                estimate_catalog_absolute_magnitude(*target, true);
             }
             for (const auto& alias : record.value("aliases", json::array())) target->add_catalog_alias(alias.get<std::string>());
             imported[target] = {system_root(record), row_hierarchy};

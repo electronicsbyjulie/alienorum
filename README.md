@@ -101,9 +101,16 @@ Sublight speed can be useful for moving between nearby solar system objects, whi
 To stop spaceflight, press X.
 
 
-## Hovering, Selecting, Tracking
+## Alienorum IDs
 
-See [Alienorum IDs](docs/alienorum-ids.md) for the brightness, color, and constellation codes used in star names.
+This project uses an internal star catalog, Soles Alienorum, literally "alien suns", with its own format for internal IDs. It is based on magnitude (brightness), color, and constellation. For example, Betelgeuse is 0r Ori - read that as "zero-red Orionis" - and Vega is 0c Lyr, or "zero-cyan Lyrae". Both are magnitude zero stars so they start with a zero. Tau Ceti is 3y Cet ("three-yellow Ceti") because it is the only yellow magnitude 3 star in the constellation Cetus. When more than one star in a constellaation fits the same magnitude number and color, we add a sequence number, such as 5r Cen 12, the twelfth magnitude 5 red star in Centaurus. Sequence numbers count stars by decreasing brightness, so for example 4y Per 1 is the brightest fourth magnitude yellow star in Perseus.
+
+The colors are b for blue, c cyan, w white, y yellow, o orange, r red, and p purple. Brown dwarfs are called purple in this system because their actual colors range from pink to deep violet, due to sodium and potassium in their atmospheres that absorb most of the stars' light, letting through wavelengths that we see as purplish.
+
+The Sun has an AlienorumID, unlike most star catalogs that either omit it or just call it Sun. In Soles Alienorum its ID is simply -26. No other object in our sky has a magnitude anywhere near -26 (if it did, the Earth would cook), so no color letter is necessary, and the Sun is not a member of any constellation from Earth's point of view.
+
+
+## Hovering, Selecting, Tracking
 
 Hovering the mouse over a celestial object displays information about that object in the right hand pane. Clicking will select the object, resulting in a green circle around it. To clear object selection, press Shift+S.
 

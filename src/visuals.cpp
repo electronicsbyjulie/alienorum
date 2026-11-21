@@ -218,6 +218,11 @@ void draw_ra_dec_lines()
             : cels[whereami]->location.equatorial_plane)
         : here.equatorial_plane;
 
+    const auto valid_grid_projection = [](const Cartesian2D& point)
+    {
+        return std::abs(point.x) < 1e4 && std::abs(point.y) < 1e4;
+    };
+
     // RA and Dec lines.
     for (i=0; i<24; i++)
     {
@@ -233,7 +238,7 @@ void draw_ra_dec_lines()
             }
             if (airy_rock) jadolzhnaperejexatdoma = refract_true_point(jadolzhnaperejexatdoma);
             zdes = Cartesian2D(jadolzhnaperejexatdoma, azimuth, altitude, zoom);
-            if (zdes.x < -1e4 || zdes.y < -1e4 || prev.x < -1e4 || prev.y < -1e4)
+            if (!valid_grid_projection(zdes))
             {
                 prev_valid = false;
                 continue;
@@ -277,7 +282,7 @@ void draw_ra_dec_lines()
             }
             if (airy_rock) umenjanetdeneg = refract_true_point(umenjanetdeneg);
             zdes = Cartesian2D(umenjanetdeneg, azimuth, altitude, zoom);
-            if (zdes.x < -1e4 || zdes.y < -1e4 || prev.x < -1e4 || prev.y < -1e4)
+            if (!valid_grid_projection(zdes))
             {
                 prev_valid = false;
                 continue;
@@ -320,7 +325,7 @@ void draw_ra_dec_lines()
 
             zdes = Cartesian2D(pt, azimuth+azimuth_correction, altitude, zoom);
 
-            if (zdes.x < -1e4 || zdes.y < -1e4 || prev.x < -1e4 || prev.y < -1e4)
+            if (!valid_grid_projection(zdes))
             {
                 prev_valid = false;
                 continue;
@@ -6741,18 +6746,22 @@ void draw_horizon()
         int screen_w = (int)(dispcx * 2.0);
         struct GroundPixel
         {
-            double depth = NAN;
+            double depth = 0;
+            uint32_t generation = 0;
             RGB3 color;
             bool water = false;
         };
         static std::vector<GroundPixel> ground_pixels;
+        static uint32_t ground_pixel_generation = 1;
         bool use_ground_pixels = false;
         const auto ground_pixel_is_water = [&](int x, int y)
         {
-            if (use_ground_pixels && !ground_pixels.empty())
+            const size_t index = static_cast<size_t>(y) * screen_w + x;
+            if (use_ground_pixels && index < ground_pixels.size())
             {
-                const auto& pixel = ground_pixels[static_cast<size_t>(y) * screen_w + x];
-                if (std::isfinite(pixel.depth) || (!terrain_mesh && !std::isnan(pixel.depth)))
+                const auto& pixel = ground_pixels[index];
+                if (pixel.generation == ground_pixel_generation
+                    && (std::isfinite(pixel.depth) || (!terrain_mesh && !std::isnan(pixel.depth))))
                     return pixel.water;
             }
             const auto coord = ground_coord(x + 0.5, y + 0.5);
@@ -7592,7 +7601,11 @@ void draw_horizon()
             use_ground_pixels = retain_samples;
             if (!retain_samples || sample_key != saved_sample_key)
             {
-                ground_pixels.clear();
+                if (++ground_pixel_generation == 0)
+                {
+                    ground_pixels.clear();
+                    ground_pixel_generation = 1;
+                }
                 saved_sample_key = std::move(sample_key);
             }
 
@@ -7661,9 +7674,12 @@ void draw_horizon()
                 && std::get<2>(previous_position) == std::get<2>(position) && walk_distance > 0 && walk_distance <= 5;
             previous_position = position;
             const bool preview_allowed = horizon_motion_ground_sampling && gpu_ground && retain_samples
-                && !surface_water && !uniform_lit_source && !horizon_terrain_cpu_reference;
-            const bool start_preview = preview_allowed && walking && !position_reusable
+                && !uniform_lit_source && !horizon_terrain_cpu_reference;
+            const bool cold_preview = !same_ground && preview_tiles.empty() && std::isfinite(horizon_ground_motion_budget_ms)
+                && screen_w >= 800 && ground_height >= 450;
+            const bool moving_preview = walking && !position_reusable
                 && (full_ground_paint_ms > horizon_ground_motion_budget_ms || horizon_quality.ground_stride() > 1);
+            const bool start_preview = preview_allowed && (cold_preview || moving_preview);
             const bool continue_preview = preview_allowed && !walking && !preview_tiles.empty()
                 && preview_latitude == viewer_lat && preview_longitude == viewer_lon && preview_key == ground_key;
             if (!start_preview && !continue_preview) preview_tiles.clear();
@@ -7795,10 +7811,12 @@ void draw_horizon()
             const auto ground_pixel_color = [&](int x, int y)
             {
                 if (!retain_samples) return ground_color(x + 0.5, y + 0.5);
-                if (ground_pixels.empty()) ground_pixels.resize(static_cast<size_t>(screen_w) * ground_height);
+                const size_t pixel_count = static_cast<size_t>(screen_w) * ground_height;
+                if (ground_pixels.size() != pixel_count) ground_pixels.resize(pixel_count);
                 auto& pixel = ground_pixels[static_cast<size_t>(y) * screen_w + x];
-                if (std::isnan(pixel.depth))
+                if (pixel.generation != ground_pixel_generation)
                 {
+                    pixel.generation = ground_pixel_generation;
                     pixel.depth = visible_distance(x + 0.5, y + 0.5);
                     if (!terrain_mesh || std::isfinite(pixel.depth))
                     {
@@ -8037,7 +8055,7 @@ void draw_horizon()
                 for (size_t tile = refined_tiles; tile < preview_tiles.size(); ++tile)
                     gpu_rectangles.insert(gpu_rectangles.end(), preview_tiles[tile].colors.begin(), preview_tiles[tile].colors.end());
                 if (refined_tiles == preview_tiles.size()) preview_tiles.clear();
-                precipitation_stats.ground_cache_reason = start_preview ? "walking preview" : "refining";
+                precipitation_stats.ground_cache_reason = cold_preview ? "initial preview" : start_preview ? "walking preview" : "refining";
                 precipitation_stats.ground_cache_hit = false;
             }
             else if (reuse_ground)
