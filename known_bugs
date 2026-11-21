@@ -1,0 +1,7 @@
+
+In vm_horizon mode, when the sky is cloudy and there are rocks or trees in the view, something that was added to improve performance actually worsened it; the frame rate is acceptable (not great but acceptable) until panning or walking, at which point the frame rate drops dismally low, to less than 1 fps.
+
+In system view, if a planet is drawn near the host star and it has several moons, any attempt to click on the first 1 or 2 moons sometimes impinges on the host star's rectangle and selects the star instead. The hover+selection rectangle is a design choice for performance reasons, so in system view the moons' rectangles should get priority over the planets, which should get priority over the stars.
+
+On sufficiently small moons and planets, rocks located past the horizon are visible through solid ground when they should be hidden.
+

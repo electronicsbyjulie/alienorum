@@ -2652,12 +2652,13 @@ void draw_objedit_window(ImGuiIO& io)
                     if ((uses_rocky_map(p->type) || p->has_water) && !randomize_txgen)
                     {
                         ImGui::SameLine();
-                        ImGui::Text("%s", "Coldest veg.:   ");
+                        ImGui::Text("%s", "Life possible?  ");
                         ImGui::SameLine();
                         ImGui::SetNextItemWidth(txtwid*.6);
-                        if (ImGui::InputDouble("##edtvegcold", &p->veg_min_temp))
+                        bool czcanlife = p->simulated_surface_life_allowed();
+                        if (ImGui::Checkbox("##edtcanlife", &czcanlife))
                         {
-                            p->veg_min_temp = std::clamp(p->veg_min_temp, ORGANIC_LIFE_MIN_TEMP_K, p->veg_max_temp);
+                            p->has_life = czcanlife;
                             cel->user_edited = true;
                         }
                         ImGui::SameLine();
@@ -2676,12 +2677,13 @@ void draw_objedit_window(ImGuiIO& io)
                     if ((uses_rocky_map(p->type) || p->has_water) && !randomize_txgen)
                     {
                         ImGui::SameLine();
-                        ImGui::Text("%s", "Hottest veg.:   ");
+                        ImGui::Text("%s", "Land plants?  ");
                         ImGui::SameLine();
                         ImGui::SetNextItemWidth(txtwid*.6);
-                        if (ImGui::InputDouble("##edtveghot", &p->veg_max_temp))
+                        bool czcanplants = p->simulated_land_plants_allowed();
+                        if (ImGui::Checkbox("##edtcanlife", &czcanplants))
                         {
-                            p->veg_max_temp = std::clamp(p->veg_max_temp, p->veg_min_temp, ORGANIC_LIFE_MAX_TEMP_K);
+                            p->has_plants = czcanplants;
                             cel->user_edited = true;
                         }
                         ImGui::SameLine();
@@ -2697,6 +2699,54 @@ void draw_objedit_window(ImGuiIO& io)
                         update_taucalc = true;
                         cel->user_edited = true;
                     }
+                    if ((uses_rocky_map(p->type) || p->has_water) && !randomize_txgen)
+                    {
+                        ImGui::SameLine();
+                        ImGui::Text("%s", "Coldest veg.:   ");
+                        ImGui::SameLine();
+                        ImGui::SetNextItemWidth(txtwid*.6);
+                        if (ImGui::InputDouble("##edtvegcold", &p->veg_min_temp))
+                        {
+                            p->veg_min_temp = std::clamp(p->veg_min_temp, ORGANIC_LIFE_MIN_TEMP_K, p->veg_max_temp);
+                            cel->user_edited = true;
+                        }
+                        ImGui::SameLine();
+                        ImGui::Text("%s", "degK");
+                    }
+
+                    ImGui::Text("%s", "Sulfur dioxide %");
+                    ImGui::SameLine(col15);
+                    ImGui::SetNextItemWidth(txtwid);
+                    if (ImGui::InputDouble("##edtso2", &so2_percent, 0, 0, "%.6f"))
+                    {
+                        p->ensure_atmosphere()->ensure_composition()->SO2_portion = so2_percent * 0.01;
+                        update_taucalc = true;
+                        cel->user_edited = true;
+                    }
+                    if ((uses_rocky_map(p->type) || p->has_water) && !randomize_txgen)
+                    {
+                        ImGui::SameLine();
+                        ImGui::Text("%s", "Hottest veg.:   ");
+                        ImGui::SameLine();
+                        ImGui::SetNextItemWidth(txtwid*.6);
+                        if (ImGui::InputDouble("##edtveghot", &p->veg_max_temp))
+                        {
+                            p->veg_max_temp = std::clamp(p->veg_max_temp, p->veg_min_temp, ORGANIC_LIFE_MAX_TEMP_K);
+                            cel->user_edited = true;
+                        }
+                        ImGui::SameLine();
+                        ImGui::Text("%s", "degK");
+                    }
+
+                    ImGui::Text("%s", "Hydrogen sulfide %");
+                    ImGui::SameLine(col15);
+                    ImGui::SetNextItemWidth(txtwid);
+                    if (ImGui::InputDouble("##edth2s", &h2s_percent, 0, 0, "%.6f"))
+                    {
+                        p->ensure_atmosphere()->ensure_composition()->H2S_portion = h2s_percent * 0.01;
+                        update_taucalc = true;
+                        cel->user_edited = true;
+                    }
                     if (p->vegetation_r < 0) p->vegetation_r = 0;
                     if (p->vegetation_r > 255) p->vegetation_r = 255;
                     if ((uses_rocky_map(p->type) || p->has_water) && !randomize_txgen)
@@ -2708,12 +2758,12 @@ void draw_objedit_window(ImGuiIO& io)
                         ImGui::InputInt("##edtvegr", &p->vegetation_r);
                     }
 
-                    ImGui::Text("%s", "Sulfur dioxide %");
+                    ImGui::Text("%s", "Carbon monoxide %");
                     ImGui::SameLine(col15);
                     ImGui::SetNextItemWidth(txtwid);
-                    if (ImGui::InputDouble("##edtso2", &so2_percent, 0, 0, "%.6f"))
+                    if (ImGui::InputDouble("##edtco", &co_percent, 0, 0, "%.6f"))
                     {
-                        p->ensure_atmosphere()->ensure_composition()->SO2_portion = so2_percent * 0.01;
+                        p->ensure_atmosphere()->ensure_composition()->CO_portion = co_percent * 0.01;
                         update_taucalc = true;
                         cel->user_edited = true;
                     }
@@ -2728,12 +2778,12 @@ void draw_objedit_window(ImGuiIO& io)
                         ImGui::InputInt("##edtvegg", &p->vegetation_g);
                     }
 
-                    ImGui::Text("%s", "Hydrogen sulfide %");
+                    ImGui::Text("%s", "Hydrogen cyanide %");
                     ImGui::SameLine(col15);
                     ImGui::SetNextItemWidth(txtwid);
-                    if (ImGui::InputDouble("##edth2s", &h2s_percent, 0, 0, "%.6f"))
+                    if (ImGui::InputDouble("##edthcn", &hcn_percent, 0, 0, "%.6f"))
                     {
-                        p->ensure_atmosphere()->ensure_composition()->H2S_portion = h2s_percent * 0.01;
+                        p->ensure_atmosphere()->ensure_composition()->HCN_portion = hcn_percent * 0.01;
                         update_taucalc = true;
                         cel->user_edited = true;
                     }
@@ -2748,24 +2798,6 @@ void draw_objedit_window(ImGuiIO& io)
                         ImGui::InputInt("##edtvegb", &p->vegetation_b);
                     }
 
-                    ImGui::Text("%s", "Carbon monoxide %");
-                    ImGui::SameLine(col15);
-                    ImGui::SetNextItemWidth(txtwid);
-                    if (ImGui::InputDouble("##edtco", &co_percent, 0, 0, "%.6f"))
-                    {
-                        p->ensure_atmosphere()->ensure_composition()->CO_portion = co_percent * 0.01;
-                        update_taucalc = true;
-                        cel->user_edited = true;
-                    }
-                    ImGui::Text("%s", "Hydrogen cyanide %");
-                    ImGui::SameLine(col15);
-                    ImGui::SetNextItemWidth(txtwid);
-                    if (ImGui::InputDouble("##edthcn", &hcn_percent, 0, 0, "%.6f"))
-                    {
-                        p->ensure_atmosphere()->ensure_composition()->HCN_portion = hcn_percent * 0.01;
-                        update_taucalc = true;
-                        cel->user_edited = true;
-                    }
                     ImGui::Text("%s", "Hydrogen %");
                     ImGui::SameLine(col15);
                     ImGui::SetNextItemWidth(txtwid);
@@ -2775,6 +2807,7 @@ void draw_objedit_window(ImGuiIO& io)
                         update_taucalc = true;
                         cel->user_edited = true;
                     }
+
                     ImGui::Text("%s", "Ammonia %");
                     ImGui::SameLine(col15);
                     ImGui::SetNextItemWidth(txtwid);
@@ -2784,6 +2817,7 @@ void draw_objedit_window(ImGuiIO& io)
                         update_taucalc = true;
                         cel->user_edited = true;
                     }
+
                     ImGui::Text("%s", "Ethane %");
                     ImGui::SameLine(col15);
                     ImGui::SetNextItemWidth(txtwid);

@@ -3671,7 +3671,9 @@ void Map::generate_rocky_map(CelestialObject *cel)
         const bool life_possible = habitat_possible && simulated_life;
         const bool microbial_only = life_possible && !p->simulated_land_plants_allowed();
         // Keep palette draws stable even when the life scenario suppresses vegetation.
-        if (!p->preserve_loaded_parameters && p->has_water && habitat_possible && texture_randomization_enabled()
+        if (!p->simulated_surface_life_allowed())
+            p->vegetation_r = p->vegetation_g = p->vegetation_b = 0;                    // prevent covering map with rocks in the color of impossible vegetation
+        else if (!p->preserve_loaded_parameters && p->has_water && habitat_possible && texture_randomization_enabled()
             && !p->vegetation_r && !p->vegetation_g && !p->vegetation_b)
         {
             CelestialObject *light_center = cel->get_light_center();
