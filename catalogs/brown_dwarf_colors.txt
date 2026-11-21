@@ -1,0 +1,23 @@
+Brown dwarf visible colors
+
+CIE 1931 chromaticities from Steven R. Cranmer (2021),
+"Brown Dwarfs are Violet: A New Calculation of Human-eye Colors of
+Main-sequence Stars and Substellar Objects."
+Paper: https://doi.org/10.3847/2515-5172/ac225c
+Data: https://doi.org/10.5281/zenodo.5293307
+License: Creative Commons Attribution 4.0 International
+https://creativecommons.org/licenses/by/4.0/
+
+The compiled table uses solar-composition Sonora spectra (Marley et al.
+2021) at log g = 5, from 200 to 2400 K. A 3000 K PHOENIX point
+(Husser et al. 2013) supplies a display interpolation above 2400 K.
+CIE xy is interpolated, converted to linear sRGB, brought into the display
+gamut toward white, and normalized. This describes an amplified visible
+hue, not infrared imagery or naked-eye detectability.
+
+Cloud bands, patches, and vortices are procedural illustrations. Their
+placement is repeatable for each object. Rotation, gravity, temperature,
+and metallicity adjust the illustrative pattern; they do not constitute
+an atmospheric circulation calculation or a resolved observational map.
+Evidence for bands: Millar-Blanchaer et al. (2020),
+https://doi.org/10.3847/1538-4357/ab6ef2

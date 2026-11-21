@@ -1,0 +1,28 @@
+M-star display colors
+
+Reference CIE chromaticities: Steven R. Cranmer (2021),
+Brown Dwarfs are Violet: A New Calculation of Human-eye Colors of
+Main-sequence Stars and Substellar Objects.
+Paper: https://doi.org/10.3847/2515-5172/ac225c
+Data: https://doi.org/10.5281/zenodo.5293307
+License: CC BY 4.0, https://creativecommons.org/licenses/by/4.0/
+
+PHOENIX solar-composition, log g=5 spectra between 2300 and 3900 K
+supply a normalized visible-color reference. This reference palette is
+also used for M giants for visual consistency; their different gravity
+and individual molecular abundances are not separately modeled.
+Mira optical-temperature changes retain their time-dependent hue.
+
+Discs, glow, neighborhood swatches, and illumination share this palette.
+Stored catalog photometry is preserved. Supplied temperature takes
+priority, with subtype calibration as the fallback. Dwarf and subdwarf
+prefixes are recognized. No extra saturation is applied to this palette.
+
+Pretty Star Colors (View menu, Ctrl+J) selects the historical vivid
+photometric palette for ordinary stars and adds 20 percent saturation
+to white-dwarf display colors. Brown-dwarf colors stay unchanged.
+Realistic mode uses the published reference spectra for ordinary stars,
+including the hotter PHOENIX and hot-star reference entries in Cranmer's
+table. Different reference gravities follow the published grid.
+Generated textures retain a realistic baseline; a display tint switches
+modes immediately. The preference is saved with user settings.
