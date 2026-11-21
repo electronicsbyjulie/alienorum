@@ -25,13 +25,20 @@ namespace
     bool pending_default_universe = false;
 }
 
+static ViewMode next_surface_map_view(ViewMode mode)
+{
+    if (mode == vm_sunclock) return vm_bumpmap;
+    if (mode == vm_bumpmap) return vm_thermal;
+    return vm_sunclock;
+}
+
 static void enter_surface_map_view(ViewMode mode)
 {
     if (whereami < 0 || whereami >= ncelobjs || !cels[whereami]) return;
     const auto cls = cels[whereami]->typeclass();
     if (cls != class_star && cls != class_planet && cls != class_moon) return;
 
-    if (!is_surface_map_view(view_mode) || mode == vm_sunclock)
+    if (!is_surface_map_view(view_mode))
     {
         zoom = 1;
         altitude = azimuth = 0;
@@ -506,15 +513,13 @@ void show_menu()
             ImGui::Separator();
             if (ImGui::MenuItem(vmtext[0], "&", view_mode == vm_spaceship)) { process_key_cmd_char('&'); menu_clicked = true; }
             if (ImGui::MenuItem(vmtext[1], "_", view_mode == vm_horizon)) { process_key_cmd_char('_'); menu_clicked = true; }
-            if (ImGui::MenuItem(vmtext[vm_sunclock], view_mode == vm_sunclock ? nullptr : "$", view_mode == vm_sunclock))
+            for (ViewMode mode : {vm_sunclock, vm_bumpmap, vm_thermal})
             {
-                enter_surface_map_view(vm_sunclock);
-                menu_clicked = true;
-            }
-            if (ImGui::MenuItem(vmtext[vm_bumpmap], view_mode == vm_sunclock ? "$" : nullptr, view_mode == vm_bumpmap))
-            {
-                enter_surface_map_view(vm_bumpmap);
-                menu_clicked = true;
+                if (ImGui::MenuItem(vmtext[mode], next_surface_map_view(view_mode) == mode ? "$" : nullptr, view_mode == mode))
+                {
+                    enter_surface_map_view(mode);
+                    menu_clicked = true;
+                }
             }
             if (ImGui::MenuItem(vmtext[3], "\\", view_mode == vm_skymap)) { process_key_cmd_char('\\'); menu_clicked = true; }
             if (ImGui::MenuItem(vmtext[4], "Ctrl+V", view_mode == vm_system)) { process_key_cmd_ctrl_char('v'); menu_clicked = true; }
@@ -1064,7 +1069,7 @@ void process_key_cmd_char(char c)
         break;
 
         case '$':
-        enter_surface_map_view(view_mode == vm_sunclock ? vm_bumpmap : vm_sunclock);
+        enter_surface_map_view(next_surface_map_view(view_mode));
         break;
 
         case '&': view_mode = vm_spaceship; viewer_lat = viewer_home_lat; viewer_lon = viewer_home_lon; viewer_tz = viewer_home_tz; save_viewer_latlon = viewchanged = true; break;

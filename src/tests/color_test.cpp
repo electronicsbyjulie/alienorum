@@ -18,6 +18,32 @@ class RealisticStarColorEnvironment : public ::testing::Environment
 };
 static auto* realistic_star_color_environment = ::testing::AddGlobalTestEnvironment(new RealisticStarColorEnvironment());
 
+TEST(ColorTest, FalseColorAndFireRampsPackEightBitsPerChannel)
+{
+    const auto pack = [](Color color)
+    {
+        return ImGui::ColorConvertFloat4ToU32(ImVec4(color.red, color.green, color.blue, 1));
+    };
+    const auto relief = Color::false_from_unity_range;
+    EXPECT_EQ(pack(relief(-1)), IM_COL32_BLACK);
+    EXPECT_EQ(pack(relief(.1)), IM_COL32(0, 0, 64, 255));
+    EXPECT_EQ(pack(relief(.2)), IM_COL32(0, 0, 128, 255));
+    EXPECT_EQ(pack(relief(.4)), IM_COL32(0, 170, 170, 255));
+    EXPECT_EQ(pack(relief(.6)), IM_COL32(0, 191, 0, 255));
+    EXPECT_EQ(pack(relief(.8)), IM_COL32(255, 255, 0, 255));
+    EXPECT_EQ(pack(relief(2)), IM_COL32_WHITE);
+
+    const auto fire = Color::fire_from_unity_range;
+    EXPECT_EQ(pack(fire(-1)), IM_COL32_BLACK);
+    EXPECT_EQ(pack(fire(1.0 / 12)), IM_COL32(0, 0, 64, 255));
+    EXPECT_EQ(pack(fire(1.0 / 6)), IM_COL32(0, 0, 128, 255));
+    EXPECT_EQ(pack(fire(2.0 / 6)), IM_COL32(170, 0, 170, 255));
+    EXPECT_EQ(pack(fire(.5)), IM_COL32(255, 0, 0, 255));
+    EXPECT_EQ(pack(fire(4.0 / 6)), IM_COL32(255, 128, 0, 255));
+    EXPECT_EQ(pack(fire(5.0 / 6)), IM_COL32(255, 255, 0, 255));
+    EXPECT_EQ(pack(fire(2)), IM_COL32_WHITE);
+}
+
 TEST(ColorTest, GlareUsesIndependentRedGreenIndex)
 {
     struct Restore
@@ -778,7 +804,7 @@ TEST(StarColorModeTest, OrdinaryStarsUseTheSelectedPaletteAndKeepMagnitudeScalin
     }
 }
 
-TEST(StarColorModeTest, WhiteDwarfsGainModestSaturationAndBrownDwarfsStayIdentical)
+TEST(StarColorModeTest, GreenWhiteDwarfReachesFullSpreadAndBrownDwarfStaysIdentical)
 {
     Star star;
     star.WD = "WD1328+648";
@@ -792,7 +818,7 @@ TEST(StarColorModeTest, WhiteDwarfsGainModestSaturationAndBrownDwarfsStayIdentic
         return std::max({color.red, color.green, color.blue})-std::min({color.red, color.green, color.blue});
     };
     EXPECT_GT(spread(pretty), spread(realistic));
-    EXPECT_LT(spread(pretty), spread(realistic)*1.5);
+    EXPECT_DOUBLE_EQ(spread(pretty), 1.0);
     star.WD.clear(); star.gaia_wd_name.clear();
     strcpy(star.spectral_type, "T6");
     star.temperature = 1000;

@@ -1574,16 +1574,41 @@ void Planet::update_surface_phase(double latitude, double longitude)
     }
 }
 
+static double current_local_temperature(Map* map, const LocalClimate& climate, double salinity, double pressure,
+    double lat, double lon)
+{
+    if (!std::isfinite(lat) || !std::isfinite(lon)) return climate.mean_k;
+    lat = std::clamp(lat, -half_pi, half_pi);
+    if (map && map->is_complete())
+        return map->surface_state_at(lat, lon, climate, salinity, pressure).temperature;
+    return climate.temperature(-std::cos(lat) * std::cos(lon), -std::cos(lat) * std::sin(lon),
+        std::sin(lat), climate.sea_level_m);
+}
+
 double Planet::est_current_local_temp(double lat, double lon)
 {
     const LocalClimate climate = current_local_climate();
-    if (!std::isfinite(lat) || !std::isfinite(lon)) return climate.mean_k;
-    lat = std::clamp(lat, -half_pi, half_pi);
-    if (surf_map && surf_map->is_complete())
-        return surf_map->surface_state_at(lat, lon, climate, ocean_chemistry().at("salinity_g_kg").get<double>(),
-            get_surface_pressure()).temperature;
-    const double elevation = climate.sea_level_m;
-    return climate.temperature(-std::cos(lat) * std::cos(lon), -std::cos(lat) * std::sin(lon), std::sin(lat), elevation);
+    if (!surf_map || !surf_map->is_complete() || !std::isfinite(lat) || !std::isfinite(lon))
+        return current_local_temperature(nullptr, climate, 0, 0, lat, lon);
+    return current_local_temperature(surf_map, climate, ocean_chemistry().at("salinity_g_kg").get<double>(),
+        get_surface_pressure(), lat, lon);
+}
+
+void Planet::sample_current_local_temperatures(float* samples, int width, int height)
+{
+    const LocalClimate climate = current_local_climate();
+    const bool mapped = surf_map && surf_map->is_complete();
+    const double salinity = mapped ? ocean_chemistry().at("salinity_g_kg").get<double>() : 0;
+    const double pressure = mapped ? get_surface_pressure() : 0;
+    for (int row = 0; row < height; ++row)
+    {
+        const double lat = half_pi - (row + .5) * _pi / height;
+        for (int column = 0; column < width; ++column)
+        {
+            const double lon = -_pi + (column + .5) * 2 * _pi / width;
+            samples[row * width + column] = current_local_temperature(surf_map, climate, salinity, pressure, lat, lon);
+        }
+    }
 }
 
 void Planet::set_explicit_mass(double value)

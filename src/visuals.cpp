@@ -5277,6 +5277,7 @@ static void draw_bump_map_surface(Map* map)
     input.zoom = zoom;
     input.bump_map_texture = gputex_bump_for(map, true);
     input.show_bump_map = true;
+    input.scalar_palette = SurfaceScalarPalette::relief;
     input.bump_minimum = range[0];
     input.bump_span = range[1] - range[0];
     if (input.bump_map_texture && queue_sunclock_gpu(input, dispcx, dispcy)) return;
@@ -5291,10 +5292,109 @@ static void draw_bump_map_surface(Map* map)
             const double height = map->elevation_at_bilinear(lat, lon_from_x(x + .5 - dispcx));
             const double gray = input.bump_span > 0
                 ? std::clamp((height - input.bump_minimum) / input.bump_span, 0.0, 1.0) : .5;
-            const int value = std::lround(255 * gray);
-            draw->AddRectFilled(ImVec2(x, y), ImVec2(x + step, y + step), IM_COL32(value, value, value, 255));
+            const Color faux = Color::false_from_unity_range(gray);
+            const ImU32 color = ImGui::ColorConvertFloat4ToU32(ImVec4(faux.red, faux.green, faux.blue, 1));
+            draw->AddRectFilled(ImVec2(x, y), ImVec2(x + step, y + step), color);
         }
     }
+}
+
+static void draw_thermal_map_surface(CelestialObject* body)
+{
+    constexpr int width = 256, height = 128;
+    static std::array<float, width * height> samples;
+    static float coldest = 0, hottest = 0;
+    static CelestialObject* cached_body = nullptr;
+    static Map* cached_map = nullptr;
+    static double sampled_time = 0, sampled_temperature = 0;
+    static unsigned int sampled_surface = 0, revision = 0;
+    static std::chrono::steady_clock::time_point sampled_at;
+    auto* draw = ImGui::GetBackgroundDrawList();
+    const auto cls = body->typeclass();
+    const bool planetary = cls == class_planet || cls == class_moon;
+    if (!planetary && (cls != class_star || !std::isfinite(body->temperature) || body->temperature <= 0))
+    {
+        draw->AddText(ImVec2(5, 25), whtbkgd ? IM_COL32_BLACK : IM_COL32_WHITE, "No temperature estimate available");
+        return;
+    }
+
+    const auto now = std::chrono::steady_clock::now();
+    const auto surface = body->surf_map ? body->surf_map->surface_revision() : 0;
+    const bool new_map = cached_body != body || cached_map != body->surf_map;
+    const bool climate_changed = sampled_temperature != body->temperature
+        || (planetary && (sampled_time != simnow || sampled_surface != surface));
+    if (new_map || (climate_changed && now - sampled_at >= std::chrono::milliseconds(250)))
+    {
+        if (planetary) static_cast<Planet*>(body)->sample_current_local_temperatures(samples.data(), width, height);
+        else samples.fill(body->temperature);
+
+        coldest = INFINITY;
+        hottest = -INFINITY;
+        for (float temperature : samples)
+        {
+            if (!std::isfinite(temperature)) continue;
+            coldest = std::min(coldest, temperature);
+            hottest = std::max(hottest, temperature);
+        }
+        if (std::isfinite(coldest))
+        {
+            for (float& temperature : samples)
+                if (!std::isfinite(temperature)) temperature = coldest;
+        }
+        cached_body = body;
+        cached_map = body->surf_map;
+        sampled_time = simnow;
+        sampled_temperature = body->temperature;
+        sampled_surface = surface;
+        sampled_at = now;
+        ++revision;
+    }
+    if (!std::isfinite(coldest))
+    {
+        draw->AddText(ImVec2(5, 25), whtbkgd ? IM_COL32_BLACK : IM_COL32_WHITE, "No temperature estimate available");
+        return;
+    }
+
+    SunClockGpuInput input{};
+    input.sclk_scale = sclk_scale;
+    input.azimuth = azimuth;
+    input.altitude = altitude;
+    input.zoom = zoom;
+    input.bump_map_texture = gputex_thermal_raster(samples.data(), width, height, revision);
+    input.show_bump_map = true;
+    input.scalar_palette = SurfaceScalarPalette::fire;
+    input.bump_minimum = coldest;
+    input.bump_span = hottest - coldest;
+    if (!input.bump_map_texture || !queue_sunclock_gpu(input, dispcx, dispcy))
+    {
+        constexpr int step = 4;
+        for (int y = 0; y < dispcy * 2; y += step)
+        {
+            const double lat = lat_from_y(y + step * .5 - dispcy);
+            if (fabs(lat) > half_pi) continue;
+            const double row = std::clamp((half_pi - lat) * height / _pi - .5, 0.0, double(height - 1));
+            const int north = static_cast<int>(row), south = std::min(north + 1, height - 1);
+            for (int x = 0; x < dispcx * 2; x += step)
+            {
+                const double lon = lon_from_x(x + step * .5 - dispcx);
+                const double column = (lon / (2 * _pi) + .5) * width - .5;
+                const int left = static_cast<int>(std::floor(column));
+                const int west = (left % width + width) % width, east = (west + 1) % width;
+                const double fraction = column - left;
+                const double upper = samples[north * width + west] * (1 - fraction) + samples[north * width + east] * fraction;
+                const double lower = samples[south * width + west] * (1 - fraction) + samples[south * width + east] * fraction;
+                const double temperature = upper + (lower - upper) * (row - north);
+                const double value = input.bump_span > 0 ? (temperature - coldest) / input.bump_span : .5;
+                const Color rgb = Color::fire_from_unity_range(value);
+                draw->AddRectFilled(ImVec2(x, y), ImVec2(x + step, y + step),
+                    ImGui::ColorConvertFloat4ToU32(ImVec4(rgb.red, rgb.green, rgb.blue, 1)));
+            }
+        }
+    }
+
+    const auto range = std::to_string(std::lround(coldest)) + " to " + std::to_string(std::lround(hottest)) + " K";
+    draw->AddText(ImVec2(6, 26), IM_COL32_BLACK, range.c_str());
+    draw->AddText(ImVec2(5, 25), IM_COL32_WHITE, range.c_str());
 }
 
 ViewMode last_vmode = vm_spaceship;
@@ -5312,10 +5412,11 @@ void draw_sunclock()
     spawn_texture_load(cel);
     sclk_scale = half_pi / std::max(1, static_cast<int>(dispcx / 2)) / zoom;
 
-    if (view_mode == vm_bumpmap)
+    if (view_mode == vm_bumpmap || view_mode == vm_thermal)
     {
-        draw_bump_map_surface(cel->surf_map);
-        const std::string title = std::string("Bump map for ") + cel->name;
+        if (view_mode == vm_bumpmap) draw_bump_map_surface(cel->surf_map);
+        else draw_thermal_map_surface(cel);
+        const std::string title = std::string(view_mode == vm_bumpmap ? "Bump map for " : "Thermal map for ") + cel->name;
         auto* draw = ImGui::GetBackgroundDrawList();
         draw->AddText(ImVec2(6, 6), IM_COL32_BLACK, title.c_str());
         draw->AddText(ImVec2(5, 5), IM_COL32_WHITE, title.c_str());
@@ -5352,6 +5453,8 @@ void draw_sunclock()
             sc_draw_object(cels[i], cel);
         }
     }
+
+    if (view_mode == vm_bumpmap || view_mode == vm_thermal) return;
 
     // Subsolar point
     CelestialObject *sun = cel->get_light_center();

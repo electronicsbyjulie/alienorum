@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <iostream>
 #include "sunclock_gpu.h"
+#include "classes/color.h"
 #include "classes/terrainlighting.h"
 #include "imgui/backends/imgui_impl_opengl3_loader.h"
 
@@ -29,6 +30,7 @@ namespace alienorum
         "uniform mat4 uParams2;\n"
         "uniform mat4 uRotMatrix;\n"
         "uniform mat4 uCasters;\n"
+        "uniform mat4 uBumpPalette[2];\n"
         "\n"
         "uniform sampler2D uDayMap;\n"
         "uniform sampler2D uNightMap;\n"
@@ -60,6 +62,11 @@ namespace alienorum
         "    float a1 = atan(2.0 * lens, d2 + r2 - R2);\n"
         "    float a2 = atan(2.0 * lens, d2 + R2 - r2);\n"
         "    return clamp((r2 * a1 + R2 * a2 - lens) / (PI * R2), 0.0, 1.0);\n"
+        "}\n"
+        "\n"
+        "vec3 bumpPaletteStop(int index)\n"
+        "{\n"
+        "    return index < 4 ? uBumpPalette[0][index].rgb : uBumpPalette[1][index - 4].rgb;\n"
         "}\n"
         "\n"
         "void main()\n"
@@ -116,7 +123,15 @@ namespace alienorum
         "        float height = textureGrad(uBumpMap, uv, dUVdx, dUVdy).r;\n"
         "        float span = uParams2[3].z;\n"
         "        float gray = span > 0.0 ? clamp((height - uParams2[3].y) / span, 0.0, 1.0) : 0.5;\n"
-        "        FragColor = vec4(vec3(gray), 1.0);\n"
+        "        vec3 color = vec3(gray);\n"
+        "        if (uParams2[3].w > 0.5)\n"
+        "        {\n"
+        "            float segments = uParams2[3].w;\n"
+        "            float position = gray * segments;\n"
+        "            int index = min(int(position), int(segments) - 1);\n"
+        "            color = mix(bumpPaletteStop(index), bumpPaletteStop(index + 1), position - float(index));\n"
+        "        }\n"
+        "        FragColor = vec4(color, 1.0);\n"
         "        return;\n"
         "    }\n"
         "\n"
@@ -245,6 +260,7 @@ namespace alienorum
         float params2[16];
         float rot_matrix[16];
         float casters[16];
+        float bump_palette[32];
 
         GLuint day_tex;
         GLuint night_tex;
@@ -259,6 +275,7 @@ namespace alienorum
     static GLuint s_vao = 0, s_vbo = 0, s_ebo = 0;
     static GLint s_aPosLoc = -1, s_aXYLoc = -1;
     static GLint s_uParams1Loc = -1, s_uParams2Loc = -1, s_uRotMatrixLoc = -1, s_uCastersLoc = -1;
+    static GLint s_uBumpPaletteLoc = -1;
     static GLint s_uDayMapLoc = -1, s_uNightMapLoc = -1, s_uBumpMapLoc = -1;
 
     static GLuint compile_shader(GLenum type, const char *src)
@@ -309,6 +326,7 @@ namespace alienorum
         s_uParams2Loc   = glGetUniformLocation(s_program, "uParams2");
         s_uRotMatrixLoc = glGetUniformLocation(s_program, "uRotMatrix");
         s_uCastersLoc   = glGetUniformLocation(s_program, "uCasters");
+        s_uBumpPaletteLoc = glGetUniformLocation(s_program, "uBumpPalette[0]");
 
         s_uDayMapLoc   = glGetUniformLocation(s_program, "uDayMap");
         s_uNightMapLoc = glGetUniformLocation(s_program, "uNightMap");
@@ -355,6 +373,7 @@ namespace alienorum
         glUniformMatrix4fv(s_uParams2Loc, 1, GL_FALSE, p->params2);
         glUniformMatrix4fv(s_uRotMatrixLoc, 1, GL_FALSE, p->rot_matrix);
         glUniformMatrix4fv(s_uCastersLoc, 1, GL_FALSE, p->casters);
+        if (p->params2[15] > 0.5f) glUniformMatrix4fv(s_uBumpPaletteLoc, 2, GL_FALSE, p->bump_palette);
 
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, p->day_tex);
@@ -432,11 +451,25 @@ namespace alienorum
         p->params2[10] = (float)in.light_pos_rel[2];
         p->params2[11] = 0.0f;
 
-        // Column 3: bump map view, minimum elevation, elevation span, unused
+        // Column 3: bump map view, minimum elevation, elevation span, palette segment count
         p->params2[12] = in.show_bump_map ? 1.0f : 0.0f;
         p->params2[13] = (float)in.bump_minimum;
         p->params2[14] = (float)in.bump_span;
-        p->params2[15] = 0.0f;
+        const bool fire = in.scalar_palette == SurfaceScalarPalette::fire;
+        const int segments = fire ? 6 : in.scalar_palette == SurfaceScalarPalette::relief ? 5 : 0;
+        p->params2[15] = static_cast<float>(segments);
+        if (segments)
+        {
+            std::fill_n(p->bump_palette, 32, 0.0f);
+            const auto palette = fire ? Color::fire_from_unity_range : Color::false_from_unity_range;
+            for (int i = 0; i <= segments; ++i)
+            {
+                const Color color = palette(double(i) / segments);
+                p->bump_palette[4 * i] = color.red;
+                p->bump_palette[4 * i + 1] = color.green;
+                p->bump_palette[4 * i + 2] = color.blue;
+            }
+        }
 
         // Rotation matrix (already column-major 4x4)
         for (int i = 0; i < 16; i++)

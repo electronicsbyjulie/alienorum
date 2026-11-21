@@ -143,6 +143,7 @@ namespace alienorum
         LocalClimate current_local_climate(bool include_supplied = false, double sample_epoch = NAN);
         std::vector<LocalClimate> vegetation_seasons();
         double est_current_local_temp(double lat, double lon);
+        void sample_current_local_temperatures(float* samples, int width, int height);
         void set_explicit_mass(double value);
         void set_explicit_radius(double value);
         void set_bump_height(double value);

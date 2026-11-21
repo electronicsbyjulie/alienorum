@@ -18,6 +18,8 @@ namespace alienorum
         double radius;
     };
 
+    enum class SurfaceScalarPalette { grayscale, relief, fire };
+
     struct SunClockGpuInput
     {
         double sclk_scale;
@@ -33,6 +35,7 @@ namespace alienorum
         double daylight_tint[3];
 
         bool show_bump_map = false;
+        SurfaceScalarPalette scalar_palette = SurfaceScalarPalette::grayscale;
         double bump_minimum = 0, bump_span = 0;
 
         bool terrain_lighting = sunclock_terrain_lighting != 0;

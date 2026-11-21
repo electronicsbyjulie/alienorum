@@ -1201,6 +1201,7 @@ int main (int argc, char** argv)
             if (view_mode == vm_skymap) snapname += ".skymap";
             if (view_mode == vm_sunclock) snapname += ".sunclock";
             if (view_mode == vm_bumpmap) snapname += ".bumpmap";
+            if (view_mode == vm_thermal) snapname += ".thermal";
 
             shnapsot_fname << snapdir << _FILESLASH
                 << subject

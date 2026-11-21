@@ -10019,7 +10019,7 @@ TEST_F(UniverseFixture, DollarKeyTogglesTheSurfaceMapViews)
     ImGuiContext* context = ImGui::CreateContext();
     const auto previous = std::make_tuple(view_mode, whereami, zoom, altitude, azimuth, viewchanged, trackidx);
     whereami = world->seqno;
-    for (ViewMode mode : {vm_spaceship, vm_horizon, vm_skymap, vm_system, vm_bumpmap})
+    for (ViewMode mode : {vm_spaceship, vm_horizon, vm_skymap, vm_system})
     {
         view_mode = mode;
         process_key_cmd_char('$');
@@ -10029,15 +10029,64 @@ TEST_F(UniverseFixture, DollarKeyTogglesTheSurfaceMapViews)
     zoom = 3;
     azimuth = .4;
     altitude = .2;
-    process_key_cmd_char('$');
-    EXPECT_EQ(view_mode, vm_bumpmap);
-    EXPECT_DOUBLE_EQ(zoom, 3);
-    EXPECT_DOUBLE_EQ(azimuth, .4);
-    EXPECT_DOUBLE_EQ(altitude, .2);
+    for (ViewMode expected : {vm_bumpmap, vm_thermal, vm_sunclock})
+    {
+        process_key_cmd_char('$');
+        EXPECT_EQ(view_mode, expected);
+        EXPECT_DOUBLE_EQ(zoom, 3);
+        EXPECT_DOUBLE_EQ(azimuth, .4);
+        EXPECT_DOUBLE_EQ(altitude, .2);
+    }
 
     std::tie(view_mode, whereami, zoom, altitude, azimuth, viewchanged, trackidx) = previous;
     ImGui::DestroyContext(context);
     ImGui::SetCurrentContext(previous_context);
+    delete_the_universe();
+}
+
+TEST_F(UniverseFixture, ThermalShortcutKeepsTheMapViewThroughTheCycle)
+{
+    auto* world = make_planet(make_star("Sol"));
+    ImGuiContext* previous_context = ImGui::GetCurrentContext();
+    ImGuiContext* context = ImGui::CreateContext();
+    const auto previous = std::make_tuple(view_mode, whereami, zoom, altitude, azimuth, viewchanged, trackidx);
+    whereami = world->seqno;
+    view_mode = vm_sunclock;
+    zoom = 3;
+    azimuth = .4;
+    altitude = .2;
+    for (ViewMode expected : {vm_bumpmap, vm_thermal, vm_sunclock})
+    {
+        process_key_cmd_char('$');
+        EXPECT_EQ(view_mode, expected);
+        EXPECT_DOUBLE_EQ(zoom, 3);
+        EXPECT_DOUBLE_EQ(azimuth, .4);
+        EXPECT_DOUBLE_EQ(altitude, .2);
+    }
+
+    std::tie(view_mode, whereami, zoom, altitude, azimuth, viewchanged, trackidx) = previous;
+    ImGui::DestroyContext(context);
+    ImGui::SetCurrentContext(previous_context);
+    delete_the_universe();
+}
+
+TEST_F(UniverseFixture, ThermalRasterMatchesLocalTemperatureEstimates)
+{
+    auto* world = make_planet(make_star("Sol"));
+    constexpr int width = 8, height = 4;
+    std::array<float, width * height> raster{};
+    world->sample_current_local_temperatures(raster.data(), width, height);
+    for (int row = 0; row < height; ++row)
+    {
+        for (int column = 0; column < width; ++column)
+        {
+            const double latitude = half_pi - (row + .5) * _pi / height;
+            const double longitude = -_pi + (column + .5) * 2 * _pi / width;
+            EXPECT_FLOAT_EQ(raster[row * width + column], world->est_current_local_temp(latitude, longitude));
+        }
+    }
+    const auto extremes = std::minmax_element(raster.begin(), raster.end());
+    EXPECT_LT(*extremes.first, *extremes.second);
     delete_the_universe();
 }
 

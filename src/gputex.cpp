@@ -359,6 +359,24 @@ namespace alienorum
         return entry.tex;
     }
 
+    static GpuTexEntry thermal_texture;
+
+    GLuint gputex_thermal_raster(const float* samples, int width, int height, unsigned int revision)
+    {
+        if (!SDL_GL_GetCurrentContext()) return 0;
+        if (thermal_texture.tex && thermal_texture.gen == revision) return thermal_texture.tex;
+        if (!thermal_texture.tex) glGenTextures(1, &thermal_texture.tex);
+        glBindTexture(GL_TEXTURE_2D, thermal_texture.tex);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, width, height, 0, GL_RED, GL_FLOAT, samples);
+        thermal_texture.gen = revision;
+        return thermal_texture.tex;
+    }
+
     static GLuint reference_galaxy_tex = 0;
     static GLuint reference_galaxy_inv_tex = 0;
     static bool reference_galaxy_attempted = false;
@@ -849,6 +867,8 @@ namespace alienorum
         gpubumptex_cache.clear();
         if (bump_raster_texture.tex) glDeleteTextures(1, &bump_raster_texture.tex);
         bump_raster_texture = {};
+        if (thermal_texture.tex) glDeleteTextures(1, &thermal_texture.tex);
+        thermal_texture = {};
         if (reference_galaxy_tex)
         {
             glDeleteTextures(1, &reference_galaxy_tex);

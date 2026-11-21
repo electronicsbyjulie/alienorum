@@ -268,6 +268,38 @@ Color Color::stellar_texture_tint(Star* star)
         desired.green/std::max(reference.green, 1e-9), desired.blue/std::max(reference.blue, 1e-9));
 }
 
+Color Color::false_from_unity_range(double input)
+{
+    static const std::array<Color, 6> palette =
+    {
+        Color(0, 0, 0), Color(0, 0, .5), Color(0, .666, .666), Color(0, 0.75, 0),
+        Color(1, 1, 0), Color(1, 1, 1)
+    };
+    const double position = std::clamp(std::isnan(input) ? 0.0 : input, 0.0, 1.0) * (palette.size() - 1);
+    const size_t index = std::min(static_cast<size_t>(position), palette.size() - 2);
+    const double fraction = position - index;
+    const Color& low = palette[index];
+    const Color& high = palette[index + 1];
+    return Color(low.red + (high.red - low.red) * fraction,
+        low.green + (high.green - low.green) * fraction, low.blue + (high.blue - low.blue) * fraction);
+}
+
+Color Color::fire_from_unity_range(double input)
+{
+    static const std::array<Color, 7> palette =
+    {
+        Color(0, 0, 0), Color(0, 0, .5), Color(.666, 0, .666), Color(1, 0, 0),
+        Color(1, .5, 0), Color(1, 1, 0), Color(1, 1, 1)
+    };
+    const double position = std::clamp(std::isnan(input) ? 0.0 : input, 0.0, 1.0) * (palette.size() - 1);
+    const size_t index = std::min(static_cast<size_t>(position), palette.size() - 2);
+    const double fraction = position - index;
+    const Color& low = palette[index];
+    const Color& high = palette[index + 1];
+    return Color(low.red + (high.red - low.red) * fraction,
+        low.green + (high.green - low.green) * fraction, low.blue + (high.blue - low.blue) * fraction);
+}
+
 RGB3 Color::rgb_from_color(Color c, double mult)
 {
     return rgb_from_color(c, mult, global_inverse_gamma, redlight_mode);

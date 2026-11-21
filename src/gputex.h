@@ -27,6 +27,7 @@ namespace alienorum
     // sphere_impostor.cpp). Returns 0 if map is null or has no bump data (has_bump_data()
     // false) -- most maps never load one; this is not the common case gputex_for() is.
     GLuint gputex_bump_for(Map* map, bool display_raster = false);
+    GLuint gputex_thermal_raster(const float* samples, int width, int height, unsigned int revision);
 
     // Returns a cached OpenGL texture name for the Milky Way backdrop (galaxies/internal/Milky Way.jpg)
     // When inverted is true, returns an inverted version for white background mode.

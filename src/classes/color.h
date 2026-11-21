@@ -63,6 +63,8 @@ namespace alienorum
         static Color reflected_daylight(CelestialObject* source, double offset = 0);
         static Color color_from_star(double Vmag, Star *star, double fallback_BV, bool pretty = fancy_star_col);
         static Color stellar_texture_tint(Star* star);
+        static Color false_from_unity_range(double input);
+        static Color fire_from_unity_range(double input);
 
         static RGB3 rgb_from_color(Color c, double multiplier = 1);
         static RGB3 rgb_from_color(Color c, double multiplier, double inverse_gamma, bool apply_redlight);
