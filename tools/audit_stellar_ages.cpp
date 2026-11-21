@@ -17,7 +17,8 @@ int main(int argc, char** argv)
     const int loaded = reader.read_condensed_star_cat();
     if (loaded <= 0) return 2;
     std::ofstream output(argc > 1 ? argv[1] : "/tmp/alienorum-stellar-age-audit.tsv");
-    output << "name\tHD\tHIP\tspectrum\tmass_solar\tage_gyr\tlower_gyr\tupper_gyr\tsource\n";
+    output << "name\tHD\tHIP\tspectrum\tmass_solar\tage_gyr\tlower_gyr\tupper_gyr\tsource"
+        << "\tinitial_mass_solar\tlog_temperature_k\tlog_luminosity_solar\tphase\tfit_distance\n";
     size_t total = 0, invalid = 0, old_ceiling = 0, models = 0;
     std::map<std::string, size_t> sources;
     for (int i = 0; cels[i]; ++i)
@@ -35,7 +36,10 @@ int main(int argc, char** argv)
             && fabs(value - 13.8) < 1e-6) ++old_ceiling;
         output << star->name << '\t' << star->HD << '\t' << star->HIP << '\t' << star->spectral_type
             << '\t' << star->mass / solar_mass << '\t' << value << '\t'
-            << age.value("lower_gyr", value) << '\t' << age.value("upper_gyr", value) << '\t' << source << '\n';
+            << age.value("lower_gyr", value) << '\t' << age.value("upper_gyr", value) << '\t' << source << '\t'
+            << age.value("initial_mass_solar", 0.0) << '\t' << age.value("log_temperature_k", 0.0) << '\t'
+            << age.value("log_luminosity_solar", 0.0) << '\t' << age.value("phase", -999) << '\t'
+            << age.value("fit_distance", 0.0) << '\n';
     }
     std::cout << "Catalog stars: " << total << "; model estimates: " << models
         << "; invalid ages: " << invalid << "; exact fallback ceilings: " << old_ceiling << '\n';

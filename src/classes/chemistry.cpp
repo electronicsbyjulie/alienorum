@@ -176,6 +176,7 @@ void CatalogReader::apply_stellar_abundances(Star* host)
     {
         json catalog;
         std::unordered_map<std::string, const json*> rows;
+        std::unordered_map<std::string, const json*> observations;
         std::set<std::string> published_sources;
     };
     static std::map<std::string, AgeTable> age_tables;
@@ -191,6 +192,10 @@ void CatalogReader::apply_stellar_abundances(Star* host)
             AgeTable& index = table->second;
             index.catalog = input ? json::parse(input, nullptr, false) : json();
             const json& catalog = index.catalog;
+            if (catalog.is_object() && catalog.contains("evolution_observations"))
+                for (const auto& row : catalog.at("evolution_observations"))
+                    for (const char* id : {"hip", "hd", "gaia"})
+                        if (row.contains(id)) index.observations[std::string(id) + ":" + row.at(id).dump()] = &row;
             if (catalog.is_object() && catalog.contains("rows") && catalog["rows"].is_array())
                 for (const auto& row : catalog["rows"])
                 {
@@ -212,6 +217,21 @@ void CatalogReader::apply_stellar_abundances(Star* host)
                 }
         }
         normalize_uncertain_numbers(host->stellar_age);
+        if (!host->user_edited && !host->user_added
+            && !(host->stellar_parameters.is_object() && host->stellar_parameters.contains("evolution")))
+            for (const auto& key : {"hip:" + std::to_string(host->HIP), "hd:" + std::to_string(host->HD),
+                "gaia:" + std::to_string(host->gaia_source_id)})
+            {
+                const auto observation = table->second.observations.find(key);
+                if (observation == table->second.observations.end()) continue;
+                const json& candidate = *observation->second;
+                if ((host->HIP && candidate.contains("hip") && candidate.at("hip") != host->HIP)
+                    || (host->HD && candidate.contains("hd") && candidate.at("hd") != host->HD)
+                    || (host->gaia_source_id && candidate.contains("gaia") && candidate.at("gaia") != host->gaia_source_id)) continue;
+                if (!host->stellar_parameters.is_object()) host->stellar_parameters = json::object();
+                host->stellar_parameters["evolution"] = candidate.at("observations");
+                break;
+            }
         const bool valid_age = std::isfinite(numeric(host->stellar_age, "value_gyr"))
             && numeric(host->stellar_age, "value_gyr") >= 0;
         const bool published = host->stellar_age.is_object() && !host->user_edited && !host->user_added

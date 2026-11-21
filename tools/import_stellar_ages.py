@@ -190,7 +190,7 @@ def build(args):
                          "Luck_2018": "https://doi.org/10.3847/1538-3881/aaa9b5",
                          **references["sources"]},
                 coverage=dict(stars=len(result), alternatives=sum(map(len, matches.values())), selected_sources=dict(counts)),
-                rows=result)
+                evolution_observations=references.get("evolution_observations", []), rows=result)
 
 
 def main():

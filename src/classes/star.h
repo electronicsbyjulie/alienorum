@@ -30,7 +30,7 @@ namespace alienorum
         json stellar_rotation = nullptr;             // Period provenance and supplied/assumed pole fields.
         json stellar_age = nullptr;                  // Published age, uncertainties and source alternatives.
         json stellar_parameters = nullptr;           // Sources and assumptions for atmospheric and bulk properties.
-        mutable std::array<double, 6> evolution_inputs{{NAN, NAN, NAN, NAN, NAN, NAN}};
+        mutable std::array<double, 10> evolution_inputs{{NAN, NAN, NAN, NAN, NAN, NAN, NAN, NAN, NAN, NAN}};
         mutable json evolution_result = nullptr;
         json evolution_diagnostics() const;
         void repair_estimated_mass();

@@ -151,6 +151,9 @@ elseif(WIN32)
     )
 endif()
 
+# Development-only stellar calibration tool.
+add_executable(benchmark_stellar_ages EXCLUDE_FROM_ALL tools/benchmark_stellar_ages.cpp)
+target_include_directories(benchmark_stellar_ages PRIVATE src/include)
 # Standalone numeric terrain regression checks; no display or catalog startup.
 add_executable(terrain_elevation_test EXCLUDE_FROM_ALL src/tests/terrain_elevation_test.cpp)
 target_link_libraries(terrain_elevation_test PRIVATE PNG::PNG)

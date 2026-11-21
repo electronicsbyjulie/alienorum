@@ -40,7 +40,7 @@ CLASSES_SRC = $(CLASSES_DIR)/fictionalstars.cpp $(CLASSES_DIR)/point.cpp $(CLASS
             $(CLASSES_DIR)/misc.cpp $(CLASSES_DIR)/planet.cpp $(CLASSES_DIR)/moon.cpp $(CLASSES_DIR)/galaxy.cpp $(CLASSES_DIR)/comet.cpp \
 			$(CLASSES_DIR)/serial.cpp $(CLASSES_DIR)/universe_catalog.cpp $(CLASSES_DIR)/noise.cpp $(CLASSES_DIR)/satellite.cpp $(CLASSES_DIR)/shore.cpp $(CLASSES_DIR)/patch.cpp \
 			$(CLASSES_DIR)/cons.cpp $(CLASSES_DIR)/sscimport.cpp $(CLASSES_DIR)/exocons.cpp $(CLASSES_DIR)/sound.cpp $(CLASSES_DIR)/objectsearch.cpp
-TESTS_SRC = $(TESTS_DIR)/giantreflectance_test.cpp $(TESTS_DIR)/fictionalstars_test.cpp $(TESTS_DIR)/point_test.cpp $(TESTS_DIR)/color_test.cpp \
+TESTS_SRC = $(TESTS_DIR)/stellarage_test.cpp $(TESTS_DIR)/giantreflectance_test.cpp $(TESTS_DIR)/fictionalstars_test.cpp $(TESTS_DIR)/point_test.cpp $(TESTS_DIR)/color_test.cpp \
 			$(TESTS_DIR)/known_bugs_regression_test.cpp \
 			$(TESTS_DIR)/crater_profile_test.cpp \
 			$(TESTS_DIR)/objectsearch_test.cpp $(TESTS_DIR)/currentconditions_test.cpp \
@@ -141,6 +141,9 @@ deepclean:
 	rm -Rf $(BIN)/*
 
 apps: alienorum
+
+$(BIN)/benchmark_stellar_ages: tools/benchmark_stellar_ages.cpp src/classes/stellarevolution.h | $(BIN)
+	$(CPP) $< $(CPPFLAGS) -o $@
 
 $(BIN)/rebuild_brown_dwarf_catalog: tools/rebuild_brown_dwarf_catalog.cpp $(OBJS)
 	$(CPP) tools/rebuild_brown_dwarf_catalog.cpp $(OBJS) $(CPPFLAGS) $(LIBS) -o $@

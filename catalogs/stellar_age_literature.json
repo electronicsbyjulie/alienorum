@@ -7,6 +7,20 @@
     "Torres_2015_Capella": "https://doi.org/10.1088/0004-637X/807/1/26",
     "Marini_2023_Capella": "https://doi.org/10.1051/0004-6361/202346758"
   },
+  "evolution_observations": [
+    {
+      "hd": 39801,
+      "hip": 27989,
+      "observations": {
+        "temperature_k": 3500,
+        "temperature_error_k": 200,
+        "luminosity_solar": 125892.54117941663,
+        "log_luminosity_error_dex": 0.22,
+        "source": "https://doi.org/10.3847/0004-637X/819/1/7",
+        "interpretation": "Dolan 2016 adopted observations, Table 2; evolutionary fitting inputs, not a supplied age"
+      }
+    }
+  ],
   "rows": [
     {"name": "Sun", "value_gyr": 4.5673, "source": "Connelly_2012_Solar_System_chronology"},
     {"hip": 8102, "hd": 10700, "value_gyr": 7.63, "lower_gyr": 6.13, "upper_gyr": 8.50, "source": "Pagano_2015_Tau_Ceti"},

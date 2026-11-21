@@ -94,6 +94,7 @@ def build(archive, output):
                 continue
             match = re.search(r"feh_([mp])(\d+\.\d+)", member.name)
             metallicity = float(match[2]) * (-1 if match[1] == "m" else 1)
+            isochrones = {}
             for raw in models.extractfile(member):
                 if raw.startswith(b"#") or not raw.strip():
                     continue
@@ -105,26 +106,40 @@ def build(archive, output):
                     continue
                 if not all(map(math.isfinite, (age, initial, mass, luminosity, temperature))):
                     continue
-                key = (metallicity, phase, round(temperature / .0125),
-                       round(luminosity / .075), round(age / .15))
-                values = (temperature, luminosity, mass, initial, age)
-                if key not in cells:
-                    cells[key] = [1, *values, age, age]
-                else:
-                    cell = cells[key]
-                    cell[0] += 1
-                    for i, value in enumerate(values, 1):
-                        cell[i] += value
-                    cell[6], cell[7] = min(cell[6], age), max(cell[7], age)
+                isochrones.setdefault(age, []).append((initial, mass, luminosity, temperature, phase))
+            ages = sorted(isochrones)
+            for age_index, age in enumerate(ages):
+                previous = ages[age_index - 1] if age_index else age
+                following = ages[age_index + 1] if age_index + 1 < len(ages) else age
+                time_width = (10 ** ((age + following) / 2) - 10 ** ((age + previous) / 2)) / 1e9
+                rows = sorted(isochrones[age])
+                for index, (initial, mass, luminosity, temperature, phase) in enumerate(rows):
+                    left = rows[index - 1][0] if index else initial
+                    right = rows[index + 1][0] if index + 1 < len(rows) else initial
+                    weight = .5 * max(0, right - left) * time_width * initial ** -2.35
+                    if weight <= 0:
+                        continue
+                    key = (metallicity, phase, round(temperature / .0125),
+                           round(luminosity / .075), round(age / .15))
+                    values = (temperature, luminosity, mass, initial, age)
+                    if key not in cells:
+                        cells[key] = [weight, *(weight * value for value in values), age, age]
+                    else:
+                        cell = cells[key]
+                        cell[0] += weight
+                        for i, value in enumerate(values, 1):
+                            cell[i] += weight * value
+                        cell[6], cell[7] = min(cell[6], age), max(cell[7], age)
     output.parent.mkdir(parents=True, exist_ok=True)
     with output.open("w") as stream:
         stream.write("# MIST 1.2 nonrotating; https://doi.org/10.3847/0004-637X/823/2/102\n")
-        stream.write("# [Fe/H] phase logTeff logL current_mass initial_mass logAgeYr lower_logAge upper_logAge\n")
+        stream.write("# Grid revision 2: Salpeter IMF integrated over initial-mass and linear-age cells\n")
+        stream.write("# [Fe/H] phase logTeff logL current_mass initial_mass logAgeYr lower_logAge upper_logAge lnPopulationWeight\n")
         for key, values in sorted(cells.items()):
             count, temperature, luminosity, mass, initial, age, lower, upper = values
             stream.write(f"{key[0]:.2f} {key[1]} " + " ".join(
                 f"{value / count:.6f}" for value in (temperature, luminosity, mass, initial, age))
-                + f" {lower:.6f} {upper:.6f}\n")
+                + f" {lower:.6f} {upper:.6f} {math.log(count):.8f}\n")
     print(f"Wrote {len(cells)} evolutionary grid cells to {output}")
 
 
@@ -135,10 +150,26 @@ if __name__ == "__main__":
     parser.add_argument("--download", action="store_true")
     parser.add_argument("--cooling-archive", type=Path, default=Path("/tmp/alienorum-wd-cooling.tar.gz"))
     parser.add_argument("--cooling-only", action="store_true")
+    parser.add_argument("--retain-cooling", type=Path,
+                        help="Copy cooling rows from an existing grid without rebuilding them")
     args = parser.parse_args()
     if args.download:
         urllib.request.urlretrieve(URL, args.archive)
         urllib.request.urlretrieve(COOLING_URL, args.cooling_archive)
+    cooling_rows = []
+    if args.retain_cooling:
+        for line in args.retain_cooling.read_text().splitlines():
+            if line and not line.startswith("#") and int(line.split()[1]) >= 100:
+                cooling_rows.append(line)
+        if not cooling_rows:
+            raise ValueError("The supplied grid contains no cooling rows")
     if not args.cooling_only:
         build(args.archive, args.output)
-    append_cooling(args.output, args.cooling_archive)
+    if args.retain_cooling:
+        with args.output.open("a") as stream:
+            stream.write("# Montreal cooling rows retained; Bedard 2020 and Kalirai 2008\n")
+            stream.write("# Montreal cooling: https://www.astro.umontreal.ca/~bergeron/CoolingModels/\n")
+            stream.write("# WD references: Bedard et al. (2020), ApJ 901, 93; Kalirai et al. (2008), arXiv:0706.3894\n")
+            stream.write("\n".join(cooling_rows) + "\n")
+    else:
+        append_cooling(args.output, args.cooling_archive)

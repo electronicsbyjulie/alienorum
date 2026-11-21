@@ -1799,17 +1799,22 @@ json Star::evolution_diagnostics() const
 {
     static std::array<std::mutex, 64> locks;
     std::lock_guard<std::mutex> guard(locks[(reinterpret_cast<std::uintptr_t>(this) >> 5) % locks.size()]);
+    const json observed = stellar_parameters.is_object()
+        ? stellar_parameters.value("evolution", json::object()) : json::object();
     double effective = temperature;
+    double observed_temperature = 0;
+    const bool calibrated_temperature = stellar_nonnegative_value(observed, "temperature_k", observed_temperature)
+        && observed_temperature > 0;
+    if (calibrated_temperature) effective = observed_temperature;
     double mean_radius = 0, mean_temperature = 0;
     const bool mean_continuum = is_mira_variable()
         && stellar_nonnegative_value(mira_pulsation, "mean_temperature_K", mean_temperature)
         && stellar_nonnegative_value(mira_pulsation, "mean_radius_m", mean_radius)
         && mean_temperature > 0 && mean_radius > 0;
-    if (mean_continuum) effective = mean_temperature;
+    if (mean_continuum && !calibrated_temperature) effective = mean_temperature;
     if (!(effective > 0) || !std::isfinite(effective))
     {
-        const double index = get_mseqidx_from_BV(BV_color);
-        effective = interpolate_mseq_temp(index);
+        effective = estimate_temperature();
         if (!(effective > 0) || !std::isfinite(effective)) effective = 5772;
     }
     double luminosity;
@@ -1840,6 +1845,14 @@ json Star::evolution_diagnostics() const
         luminosity = interpolate_mseq_lum(get_mseqidx_from_temp(effective));
     }
     if (!(luminosity > 0) || !std::isfinite(luminosity)) luminosity = 1;
+    double observed_luminosity = 0;
+    const bool calibrated_luminosity = stellar_nonnegative_value(observed, "luminosity_solar", observed_luminosity)
+        && observed_luminosity > 0;
+    if (calibrated_luminosity)
+    {
+        luminosity = observed_luminosity;
+        luminosity_assumed = false;
+    }
     int group = 0;
     const auto classification = neighborhood_spectrum(spectral_type);
     const auto luminosity_class = classification.luminosity;
@@ -1854,27 +1867,51 @@ json Star::evolution_diagnostics() const
         if (mass > 0 && std::isfinite(mass)) luminosity_assumed = false;
     }
     else if (luminosity_class == NeighborhoodLuminosity::v) group = 1;
-    else if (luminosity_class == NeighborhoodLuminosity::iv || luminosity_class == NeighborhoodLuminosity::iii_iv
-        || luminosity_class == NeighborhoodLuminosity::iii || luminosity_class == NeighborhoodLuminosity::ii
-        || luminosity_class == NeighborhoodLuminosity::i) group = 2;
+    else if (luminosity_class == NeighborhoodLuminosity::iv || luminosity_class == NeighborhoodLuminosity::iv_v) group = 6;
+    else if (luminosity_class == NeighborhoodLuminosity::i) group = 7;
+    else if (luminosity_class == NeighborhoodLuminosity::iii_iv
+        || luminosity_class == NeighborhoodLuminosity::iii || luminosity_class == NeighborhoodLuminosity::ii) group = 2;
     // A composite or incomplete classification can hide an evolved star. Its measured
     // HR-diagram position carries more information than a dwarf temperature lookup.
     const double sequence = interpolate_mseq_lum(get_mseqidx_from_temp(effective));
-    const bool above_sequence = group < 3 && sequence > 0 && luminosity > 4 * sequence;
-    if (above_sequence && group != 2) group = 0;
-    const double abundance = group < 3 && std::isfinite(metallicity) ? metallicity : 0;
+    const bool cooling = group >= 3 && group <= 5;
+    const bool above_sequence = !cooling && sequence > 0 && luminosity > 4 * sequence;
+    if (above_sequence && (group == 0 || group == 1)) group = 0;
+    const double abundance = !cooling && std::isfinite(metallicity) ? metallicity : 0;
     double supplied_mass = mass > 0 && std::isfinite(mass) ? mass / solar_mass : 0;
     double mass_index = get_mseqidx_from_sptyp(spectral_type);
     if (mass_index < mseqmin || mass_index > mseqmax) mass_index = get_mseqidx_from_BV(BV_color);
     const double dwarf_mass = interpolate_mseq_mass(mass_index);
-    if ((group == 2 || above_sequence) && dwarf_mass > 0 && fabs(supplied_mass / dwarf_mass - 1) < .0002)
+    const bool measured_mass = user_edited || user_added
+        || (stellar_system.is_object() && stellar_system.contains("mass"))
+        || (observed.is_object() && observed.contains("mass_solar"));
+    if (!measured_mass && (group == 2 || group == 6 || group == 7 || above_sequence)
+        && dwarf_mass > 0 && fabs(supplied_mass / dwarf_mass - 1) < .0002)
         supplied_mass = 0;
+    double observed_mass = 0;
+    if (stellar_nonnegative_value(observed, "mass_solar", observed_mass) && observed_mass > 0)
+        supplied_mass = observed_mass;
+    double temperature_sigma = .035, luminosity_sigma = .20, metallicity_sigma = .40, mass_sigma = .30;
+    double error = 0;
+    if (stellar_nonnegative_value(observed, "temperature_error_k", error))
+        temperature_sigma = std::hypot(error / (effective * std::log(10.0)), .0125 / std::sqrt(12.0));
+    if (stellar_nonnegative_value(observed, "log_luminosity_error_dex", error))
+        luminosity_sigma = std::hypot(error, .075 / std::sqrt(12.0));
+    if (stellar_nonnegative_value(observed, "metallicity_error", error)) metallicity_sigma = std::max(.08, error);
+    if (supplied_mass > 0 && stellar_nonnegative_value(observed, "mass_error_solar", error))
+        mass_sigma = std::max(.03, error / (supplied_mass * std::log(10.0)));
     double supplied_age = -1;
     stellar_nonnegative_value(stellar_age, "value_gyr", supplied_age);
-    const std::array<double, 6> inputs{{log10(effective), log10(luminosity), abundance, double(group), supplied_mass, supplied_age}};
+    const std::array<double, 10> inputs{{log10(effective), log10(luminosity), abundance, double(group),
+        supplied_mass, supplied_age, temperature_sigma, luminosity_sigma, metallicity_sigma, mass_sigma}};
     const auto result_with_provenance = [&]()
     {
         json result = evolution_result;
+        result["temperature_basis"] = calibrated_temperature ? "supplied_evolution_observation"
+            : temperature > 0 ? "stellar_temperature" : "colour_temperature_estimate";
+        result["luminosity_basis"] = calibrated_luminosity ? "supplied_evolution_observation"
+            : mean_continuum ? "mean_continuum" : "photometry_or_radius";
+        if (observed.is_object() && observed.contains("source")) result["observations_source"] = observed.at("source");
         if (mean_continuum) result["pulsation_basis"] = "mean_continuum_radius_and_temperature";
         if (luminosity_assumed && result.contains("value_gyr"))
         {
@@ -1886,7 +1923,8 @@ json Star::evolution_diagnostics() const
     };
     if (inputs == evolution_inputs && evolution_result.is_object()) return result_with_provenance();
     evolution_inputs = inputs;
-    const auto fit = StellarEvolutionGrid::instance().fit(inputs[0], inputs[1], abundance, group, supplied_mass, supplied_age);
+    const auto fit = StellarEvolutionGrid::instance().fit(inputs[0], inputs[1], abundance, group, supplied_mass, supplied_age,
+        temperature_sigma, luminosity_sigma, metallicity_sigma, mass_sigma);
     evolution_result = json::object();
     if (fit.valid)
     {
@@ -1898,6 +1936,15 @@ json Star::evolution_diagnostics() const
                 ? "Bedard_2020_cooling_and_progenitor_prior" : "MIST_1.2_HR_diagram_fit"}, {"fit_distance", fit.distance},
             {"interpretation", "Model_scenario_with_HR_diagram_and_evolutionary_phase_uncertainty"}
         };
+        evolution_result["model_revision"] = 2;
+        evolution_result["log_temperature_k"] = inputs[0];
+        evolution_result["log_luminosity_solar"] = inputs[1];
+        evolution_result["mass_constraint_solar"] = supplied_mass;
+        evolution_result["mass_constraint_origin"] = measured_mass ? "authored_or_published" : "catalogue_or_interpolated";
+        evolution_result["phase_probabilities"] = json::array();
+        for (const auto& phase : fit.phase_probabilities)
+            evolution_result["phase_probabilities"].push_back({{"phase", phase.first}, {"probability", phase.second}});
+        evolution_result["effective_grid_samples"] = fit.effective_samples;
         if (fit.phase >= 100)
             evolution_result["interpretation"] = fit.mass < .5 ? "Cooling_sequence_with_broad_binary_history_prior"
                 : "Cooling_sequence_with_initial_final_mass_and_progenitor_lifetime_prior";
@@ -1915,6 +1962,9 @@ void Star::repair_estimated_mass()
 {
     if (user_edited || user_added || is_white_dwarf() || !(mass > 0)) return;
     if (stellar_system.is_object() && stellar_system.contains("mass")) return;
+    if (stellar_parameters.is_object() && stellar_parameters.contains("evolution")
+        && stellar_parameters.at("evolution").is_object()
+        && stellar_parameters.at("evolution").contains("mass_solar")) return;
     const auto classification = neighborhood_spectrum(spectral_type);
     if ((classification.luminosity == NeighborhoodLuminosity::v
         || classification.luminosity == NeighborhoodLuminosity::unknown)
@@ -1992,9 +2042,15 @@ json Star::age_diagnostics() const
         parent = primary->orbit ? primary->orbit->center : nullptr;
     }
     const json evolution = evolution_diagnostics();
-    const double stellar_mass = evolution.contains("mass_solar") ? evolution.at("mass_solar").get<double>()
+    const double stellar_mass = evolution.contains("initial_mass_solar") ? evolution.at("initial_mass_solar").get<double>()
         : mass > 0 && std::isfinite(mass) ? mass / solar_mass : 1;
-    const double lifetime = 10 * std::pow(std::clamp(stellar_mass, .08, 100.0), -2.5);
+    double lifetime = StellarEvolutionGrid::instance().main_sequence_lifetime_gyr(stellar_mass, metallicity);
+    if (!(lifetime > 0) || !std::isfinite(lifetime))
+    {
+        // Retain a broad fallback if the model file is absent; massive-star clocks flatten.
+        const double m = std::clamp(stellar_mass, .08, 300.0);
+        lifetime = m <= 10 ? 10 * std::pow(m, -2.5) : .03 * std::pow(m / 10, -1.3) + .002;
+    }
     double age = .45 * std::min(13.8, lifetime);
     std::string source = "main_sequence_lifetime_prior";
     double declared_period = 0;
