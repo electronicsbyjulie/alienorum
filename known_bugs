@@ -1,7 +1,17 @@
 
-In vm_horizon mode, when the sky is cloudy and there are rocks or trees in the view, something that was added to improve performance actually worsened it; the frame rate is acceptable (not great but acceptable) until panning or walking, at which point the frame rate drops dismally low, to less than 1 fps.
+In vm_horizon mode, when the sky is cloudy and there are rocks or trees in the view, something that was added to improve performance actually worsened it; the frame rate is acceptable (not great but acceptable) until panning or walking, at which point the frame rate drops dismally low, to less than 1 fps. Turning off both clouds and terrain produces only a slight frame rate improvement.
 
 In system view, if a planet is drawn near the host star and it has several moons, any attempt to click on the first 1 or 2 moons sometimes impinges on the host star's rectangle and selects the star instead. The hover+selection rectangle is a design choice for performance reasons, so in system view the moons' rectangles should get priority over the planets, which should get priority over the stars.
 
 On sufficiently small moons and planets, rocks located past the horizon are visible through solid ground when they should be hidden.
+
+In system view, stars in multi-star systems sometimes overlap, confusing each other's labels and obscuring the "system view for" label at the top of the screen.
+
+Are the four listed components of the Rigel system really different ages? Check this on the internet and, if necessary, adjust the age estimation to account for multi systems that form together.
+
+Editing an object to make it smaller does not change the bump height. Subsequently editing the bump height does not update the bump scale LIKE I FUCKING ASKED YOU TO! Consequently, in vm_horizon mode, craters on a normal sized moon can irreversibly become deep wells once said moon is made smaller.
+
+In sun clock mode, let's make sure we apply normal-based shading to the night side too, not just the day side.
+
+When climbing up the side of a steep hill, such as inside the rim of a crater, when looking back make sure the downhill side is visible, e.g. the crater center, without obscuring it with a flat local horizon that wouldn't be there in real life.
 

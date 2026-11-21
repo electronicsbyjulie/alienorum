@@ -282,6 +282,18 @@ bool SurfaceSampler::water_at(double latitude, double longitude)
     return water && water_sample(info(latitude, longitude));
 }
 
+double SurfaceSampler::skyline_elevation(double latitude, double longitude)
+{
+    const double height = map->elevation_at_bilinear(latitude, longitude);
+    if (height >= 0 || !water || !planet || !planet->bump_has_bathymetry) return height;
+
+    // Match the relief map's geographic cell. The shoreline displacement is a visual effect.
+    const auto material = map->material_at(latitude, longitude);
+    if (material == SurfaceMaterial::ice || map->phase_ocean_at(latitude, longitude)
+        || water_sample({map->color_at(latitude, longitude), material})) return 0;
+    return height;
+}
+
 bool SurfaceSampler::basin_at(double latitude, double longitude)
 {
     if (!water || !map) return false;

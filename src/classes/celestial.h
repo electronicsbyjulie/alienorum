@@ -108,6 +108,7 @@ namespace alienorum
         double ascending_node = 0;                  // RADIANS!
         double inclination = 0;                     // RADIANS!
         double semimajor_axis = 0;
+        double photocentric_semimajor_axis = 0;     // metres, published scale of the combined light.
         double eccentricity = 0;
         double arg_periapsis = 0;                   // RADIANS!
 
@@ -116,6 +117,7 @@ namespace alienorum
 
         double mean_anomaly = 0;                    // RADIANS!
         double epoch = J2000;                       // JD
+        bool epoch_is_transit = false;
         double period = 0;                          // seconds. Zero on an open orbit, which has none.
 
         // An escaping body -- a comet on a parabola or a hyperbola -- has no semimajor axis worth

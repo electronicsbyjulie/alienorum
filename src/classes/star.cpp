@@ -72,11 +72,12 @@ std::vector<Star*> alienorum::stellar_alias_matches(const std::string &identifie
 
 // Canonical key for a Durchmusterung designation, e.g. survey="BD", declination=-2, sequential=5958
 // -> "BD-02 05958". Returns an empty string when survey is blank/unset, so callers can test .size().
-std::string bonn_survey_key(const char* survey, int declination, unsigned int sequential)
+std::string bonn_survey_key(const char* survey, int declination, unsigned int sequential, char sign)
 {
     if (!survey[0] || survey[0] == ' ' || !survey[1] || survey[1] == ' ') return std::string();
     char buf[32];
-    snprintf(buf, sizeof(buf), "%c%c%+03d %05u", survey[0], survey[1], declination, sequential);
+    snprintf(buf, sizeof(buf), "%c%c%c%02d %05u", survey[0], survey[1],
+        (declination < 0 || (declination == 0 && sign == '-')) ? '-' : '+', abs(declination), sequential);
     return std::string(buf);
 }
 
@@ -1719,7 +1720,7 @@ void Star::assign_identifier_name()
         name[0] = Bonn_survey[0];
         name[1] = Bonn_survey[1];
         name[2] = Bonn_survey_sign;
-        strcpy(&name[3], (std::to_string(abs(Bonn_survey_declination)) + std::string(" ")
+        strcpy(&name[3], ((Bonn_survey_declination == 0 ? std::string("00") : std::to_string(abs(Bonn_survey_declination))) + std::string(" ")
             + std::to_string(Bonn_survey_sequential) ).c_str() );
     }
     else if (!trim(name).size() && SB9) strcpy(name, (std::string("SB9-")+std::to_string(SB9)).c_str() );

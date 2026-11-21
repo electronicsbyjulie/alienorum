@@ -15,7 +15,7 @@ namespace alienorum
     class Star : public CelestialObject
     {
         public:
-        double proper_motion_RA = 0;                // radians / second
+        double proper_motion_RA = 0;                // d(RA)/dt, radians / second
         double proper_motion_decl = 0;              // radians / second
         double radial_velocity = 0;                 // meters / second
         bool has_fictional_motion = false;
@@ -229,6 +229,6 @@ extern alienorum::Star **hdcache, **hipcache;
 extern std::map<std::string, alienorum::Star*> dmcache;
 extern std::vector<Star*> favestars;
 extern bool show_favestars, label_favestars;
-std::string bonn_survey_key(const char* survey, int declination, unsigned int sequential);
+std::string bonn_survey_key(const char* survey, int declination, unsigned int sequential, char sign = '+');
 
 #endif

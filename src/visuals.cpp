@@ -5990,6 +5990,10 @@ void draw_horizon()
         const bool paint_biomes = surface_water || (surface_biomes && cel->type != lavaworld);
         const bool veiled_uniform_ground = haze.active() && !paint_biomes && map && map->is_complete()
             && !(horizon_distant_terrain && show_terrain && !gaseous && !ocean_world && map->has_bump_data());
+        const auto skyline_elevation = [&](double latitude, double longitude)
+        {
+            return surface.skyline_elevation(latitude, longitude);
+        };
         const auto water_at = [&](double latitude, double longitude)
         {
             return surface.water_at(latitude, longitude);
@@ -6245,7 +6249,7 @@ void draw_horizon()
                 bool has_bump = (cel->surf_map && cel->surf_map->has_bump_data());
                 double h_eye = shared_surface ? surface_eye : fmax(0.01, viewer_eye_height);
                 double geom_dist = surface_range;
-                double E0 = has_bump ? cel->surf_map->elevation_at_bilinear(viewer_lat, viewer_lon) : 0.0;
+                double E0 = has_bump ? skyline_elevation(viewer_lat, viewer_lon) : 0.0;
                 double hz_dip = surface_refraction.dip;
 
                 std::array<std::array<double, 3>, 8> bump_steps;
@@ -6271,7 +6275,7 @@ void draw_horizon()
                             double phi = asin(sin_phi);
                             double d_lon = atan2(skyline_directions[j][0] * sine * cos_lat, cosine - sin_lat * sin_phi);
                             double lam = viewer_lon + d_lon;
-                            double Es = cel->surf_map->elevation_at_bilinear(phi, lam);
+                            double Es = skyline_elevation(phi, lam);
                             double h_apparent = (Es - E0) - surface_refraction.curvature * s * s;
                             double alpha = (h_apparent - h_eye) / s;
                             if (alpha > max_alpha)
@@ -6345,12 +6349,9 @@ void draw_horizon()
             && cel->surf_map->is_complete() && cel->surf_map->has_bump_data())
         {
             static DistantSkyline distant_skyline;
-            distant_skyline.update(cel->surf_map, cel->surf_map->gen, whereami,
+            distant_skyline.update(cel->surf_map, local_surface_revision, whereami,
                 viewer_lat, viewer_lon, surface_radius, surface_eye, surface_refraction.curvature,
-                [&](double latitude, double longitude)
-                {
-                    return cel->surf_map->elevation_at_bilinear(latitude, longitude);
-                }, horizon_distant_terrain_lighting != 0, calibrated_skyline);
+                skyline_elevation, horizon_distant_terrain_lighting != 0, calibrated_skyline);
             if (horizon_distant_terrain_lighting) lit_distant_skyline = &distant_skyline;
             if (calibrated_skyline)
             {

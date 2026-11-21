@@ -82,7 +82,8 @@ namespace alienorum::stellar_row
         if (!text(line, 439, 440).empty())
         {
             const int declination = int(numeric(442, 445));
-            record["Bonn_survey_sign"] = declination < 0 ? "-" : "+";
+            const std::string zone = text(line, 442, 445);
+            record["Bonn_survey_sign"] = !zone.empty() && zone.front() == '-' ? "-" : "+";
             record["Bonn_survey_declination"] = declination;
             record["Bonn_survey_sequential"] = int(numeric(447, 452));
         }

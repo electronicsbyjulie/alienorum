@@ -1012,7 +1012,8 @@ void Planet::classify(bool HZ, bool mnrk, bool ck)
         const double luminosity = host->bolometric_luminosity(teff);
         irradiation = luminosity / pow(stellar_orbit->semimajor_axis / AU, 2);
         // A fixed neutral albedo for an unmeasured surface avoids a class/color feedback loop.
-        const double bond = std::isfinite(albedo) && albedo > 0 ? std::clamp(albedo, 0.0, 1.0) : 0.3;
+        const double bond = std::isfinite(bond_albedo) ? bond_albedo
+            : std::isfinite(albedo) && albedo > 0 ? std::clamp(albedo, 0.0, 1.0) : 0.3;
         equilibrium = pow(irradiation * (1.0 - bond) / (4.0 * STEFAN_BOLTZMANN_NORM), 0.25);
         classification_evidence["host"] = host->name;
         classification_evidence["stellar_chemistry"] = host->chemistry_diagnostics();
@@ -1999,6 +2000,7 @@ double Planet::est_bolometric_flux(double t_eff)
 
 double Planet::estimate_bond_albedo()
 {
+    if (std::isfinite(bond_albedo)) return bond_albedo;
     #if 1
     struct Entry
     {
@@ -2591,6 +2593,8 @@ json Planet::to_json()
     if (has_spectral_giant_color()) towrite["giant_color_model"] = giant_color_model;
 
     if (albedo) towrite["albedo"] = albedo;
+    if (std::isfinite(bond_albedo)) towrite["bond_albedo"] = bond_albedo;
+    if (bump_has_bathymetry) towrite["bump_has_bathymetry"] = true;
     towrite["opposition_surge"] = opposition_surge;
     if (atm) towrite["atmosphere"] = atm->to_json();
     if (J2) towrite["J2"] = J2;
@@ -2751,6 +2755,9 @@ bool Planet::from_json(const json& j)
     classification_evidence = j.contains("classification_evidence") && j["classification_evidence"].is_object()
         ? j["classification_evidence"] : json(nullptr);
     try { j.at("albedo").get_to(albedo); } catch (...) { ; }
+    bond_albedo = optional_number("bond_albedo");
+    if (bond_albedo < 0 || bond_albedo > 1) bond_albedo = NAN;
+    bump_has_bathymetry = j.value("bump_has_bathymetry", false);
     try
     {
         j.at("msini").get_to(msini);

@@ -165,7 +165,7 @@ void identify_object_under_cursor(ImGuiIO& io)
             if (cel->nlocales) for (i=0; i<cel->nlocales; i++)
             {
                 dlat = fabs(cel->locales[i].lat - mlat);
-                dlon = fabs(cel->locales[i].lon - mlon);
+                dlon = fabs(std::remainder(cel->locales[i].lon - mlon, 360.0));
                 if (dlon < threshold && dlat < threshold)
                 {
                     r = sqrt(dlat*dlat + dlon*dlon);

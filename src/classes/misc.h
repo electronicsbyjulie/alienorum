@@ -82,7 +82,7 @@ using json = nlohmann::json;
 #define planetary_rain 1
 #define show_local_temp 1
 
-#define lunar_mass 7.349E+22
+#define lunar_mass 7.349E+25
 #define earth_mass 5.97217e+27
 #define jupiter_mass 1.898e+30
 #define solar_mass 1.988475e+33

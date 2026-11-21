@@ -103,6 +103,73 @@ class StellarRotationTest : public CatalogParsingTest
     }
 };
 
+TEST_F(StellarRotationTest, HipparcosAndTychoPropagateInIcrsAndKeepZeroCoordinates)
+{
+    std::filesystem::create_directories("catalogs/Hipparcos");
+    const auto row = [](bool tycho, const std::string& hip, const std::string& dec)
+    {
+        std::string line(450, ' ');
+        line.replace(tycho ? 210 : 8, hip.size(), hip);
+        line.replace(41, 4, "5.00");
+        line.replace(51, 3, "0.0");
+        line.replace(64, dec.size(), dec);
+        line.replace(79, 4, "10.0");
+        line.replace(87, 4, "1000");
+        line.replace(96, 2, "0?");
+        line.replace(245, 4, "0.65");
+        return line + '\n';
+    };
+    std::ofstream("catalogs/Hipparcos/hip_main.dat") << row(false, "12345", "60") << row(false, "12346", "0");
+    std::ofstream("catalogs/Hipparcos/tyc_main.dat") << row(true, "12347", "60");
+
+    CatalogReader reader;
+    ASSERT_EQ(reader.read_Hipparcos_catalog(cels, MAX_CELOBJS), 2);
+    ASSERT_EQ(reader.read_Tycho_catalog(cels, MAX_CELOBJS), 1);
+    for (const int id : {12345, 12346, 12347})
+    {
+        const Star* star = hipcache[id];
+        ASSERT_NE(star, nullptr);
+        const double factor = id == 12346 ? 1 : 2;
+        EXPECT_NEAR(star->right_ascension * fiftyseven, 8.75 * factor / 3600, 1e-10);
+        EXPECT_NEAR(star->proper_motion_RA * fiftyseven * oneyear, factor / 3600, 1e-10);
+        EXPECT_DOUBLE_EQ(star->proper_motion_decl, 0);
+    }
+}
+
+TEST_F(StellarRotationTest, DurchmusterungZeroZonesHaveDistinctKeysAndRoundTrip)
+{
+    EXPECT_EQ(bonn_survey_key("BD", 0, 120, '-'), "BD-00 00120");
+    EXPECT_EQ(bonn_survey_key("BD", 0, 120, '+'), "BD+00 00120");
+    Star* object = target(12345);
+    strcpy(object->Bonn_survey, "BD");
+    object->Bonn_survey_sign = '-';
+    object->Bonn_survey_sequential = 120;
+    const auto line = CatalogReader::format_condensed_star_line(object);
+    EXPECT_EQ(line.substr(441, 4), "-00 ");
+    std::ofstream out("catalogs/soles_alienorum.dat");
+    out << CatalogReader::format_condensed_star_line(static_cast<Star*>(cels[0])) << line;
+    out.close();
+    delete_the_universe();
+    CatalogReader reader;
+    ASSERT_TRUE(reader.read_condensed_star_cat());
+    EXPECT_EQ(static_cast<Star*>(cels[1])->Bonn_survey_sign, '-');
+}
+
+TEST_F(StellarRotationTest, AuthoredBondAlbedoIncludesZeroAndSurvivesSave)
+{
+    std::ofstream("catalogs/planets.json") << R"([
+        {"BODYNAME":"Calibration","CENTER_OF_ORBIT":"Sol","Mass":5.9722e24,
+         "VolMeanRad":6371000,"SEMIMAJOR_AXIS":149597870700,"ABSMG":5,"BondAlbedo":"0?"}
+    ])";
+    CatalogReader reader;
+    ASSERT_EQ(reader.read_local_planets(cels, MAX_CELOBJS, cels[0]), 1);
+    Planet* world = static_cast<Planet*>(cels[1]);
+    EXPECT_DOUBLE_EQ(world->estimate_bond_albedo(), 0);
+    Planet restored;
+    ASSERT_TRUE(restored.from_json(world->to_json()));
+    EXPECT_DOUBLE_EQ(restored.estimate_bond_albedo(), 0);
+}
+
 TEST_F(StellarRotationTest, TauCetiCatalogBeltFeedsTheVolatileBudget)
 {
     std::filesystem::copy_file(original / "catalogs/star_orbits.dat", "catalogs/star_orbits.dat");
@@ -1945,6 +2012,30 @@ static const char comets_borrelly[] =
     "+0006 +1.30627991735647E+0000 +6.37644740779076E-0001 +3.51916453503980E+0002 +7.424703303"
     "83701E+0001 +2.93047065198311E+0001 10.39 10.00  5.00 12.80  5.00  5.00";
 
+TEST_F(CatalogParsingTest, AsteroidDensityAndOsculationDateUseInternalUnits)
+{
+    AstorbRow row;
+    row.number = 1;
+    row.name = "Ceres";
+    row.diam = 848.4;
+    row.incl = 10.588056;
+    row.sma = 2.76577848;
+    std::string raw(astorb_ceres);
+    ASSERT_TRUE(CatalogReader::load_asteroid(&row, raw.data()));
+    EXPECT_DOUBLE_EQ(row.cel->orbit->epoch, 2459300.5);
+    EXPECT_NEAR(row.cel->density(), 1.853, 1e-9);
+}
+
+TEST_F(CatalogParsingTest, CometBulkDensityUsesGrams)
+{
+    CometRow row;
+    row.code = "19P";
+    std::string raw(comets_borrelly);
+    ASSERT_TRUE(CatalogReader::load_comet(&row, raw.data()));
+    ASSERT_NE(row.cel, nullptr);
+    EXPECT_NEAR(row.cel->density(), .6, 1e-9);
+}
+
 TEST_F(CatalogParsingTest, LoadsAnAsteroidFromItsAstorbLine)
 {
     // read_astorb_catalog() fills these three from the same line before it calls load_asteroid(),
@@ -2456,6 +2547,43 @@ public:
     using CatalogReader::apply_exoplanet_metallicity;
     using CatalogReader::apply_stellar_abundances;
 };
+
+TEST_F(CatalogParsingTest, TransitMidpointPlacesPlanetBetweenObserverAndHost)
+{
+    Star* host = make_star("Transit host");
+    host->right_ascension = .84;
+    host->declination = .2;
+    host->distance = 10 * parsec;
+    host->update_location(simnow);
+    ExoRow row;
+    row.pl_name = "Transit host b";
+    row.hostname = "Transit host";
+    row.transiting = true;
+    row.pl_orbincl = 90;
+    row.pl_orbper = 7.3;
+    row.pl_orbeccen = .2;
+    row.pl_orblper = 75;
+    row.pl_tranmid = 2459001.1234;
+
+    TestCatalogReader reader;
+    std::map<int, std::vector<int>> planets;
+    unsigned int count = 0;
+    ASSERT_TRUE(reader.add_exoplanet_from_row(row, host, planets, count));
+    reader.apply_exoplanet_names(planets);
+    auto* planet = static_cast<Planet*>(cels[planets.at(host->seqno).front()]);
+    ASSERT_TRUE(planet->orbit->epoch_is_transit);
+    const double epoch = row.pl_tranmid - host->distance / (speed_of_light * oneday);
+    EXPECT_NEAR(planet->orbit->epoch, epoch, 1e-9);
+    const double date = J2000_TIME_T + (epoch - J2000) * oneday;
+    host->update_location(date);
+    planet->update_location(date);
+    auto displacement = cels[0]->location - host->location;
+    Point toward_observer(displacement);
+    toward_observer.scale(1);
+    Point toward_planet = planet->location.local_position - host->location.local_position;
+    toward_planet.scale(1);
+    EXPECT_LT((toward_observer - toward_planet).magnitude(), 1e-6);
+}
 
 TEST_F(CatalogParsingTest, MetalPoorRvCatalogPlanetsUseChemistryAfterCacheAndInclinationUpdates)
 {

@@ -3456,4 +3456,4 @@ ZTF J1813+4251          ZTF J1813+4251 B        3069.6                      78.8
 
 # Luhman 16 A/B relative orbit. Bedin et al. (2024), Table 2 data fit, https://doi.org/10.1002/asna.20230158
 # WISE component designations remain searchable catalog aliases.
-Luhman 16 A             Luhman 16 B             26.55y          130.02      79.92       136.67      3.52AU      0.344                           JD2458141.415
+                                                26.55y          130.02      79.92       136.67      3.52AU      0.344                           JD2458141.415                                                                                           WISE J104915.57-531906.1 A              WISE J104915.57-531906.1 B

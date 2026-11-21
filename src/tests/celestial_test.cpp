@@ -1027,6 +1027,72 @@ class ShoreNavigationTest : public UniverseFixture
     }
 };
 
+TEST_F(ShoreNavigationTest, EarthSkylineUsesSeaLevelAboveBathymetry)
+{
+    Planet* earth = make_planet(make_star(), "Earth");
+    earth->temperature = 288;
+    earth->temperature_supplied = true;
+    earth->has_water = .71;
+    earth->bump_has_bathymetry = true;
+    earth->ensure_atmosphere()->surface_pressure = oneatm;
+    earth->surf_map = new Map(earth);
+    ASSERT_TRUE(earth->surf_map->load_from_jpeg("maps/Earth_surf.jpg"));
+    ASSERT_TRUE(earth->surf_map->load_calibrated_bump("maps/Earth_bump.png", 65535, -.5));
+    SurfaceBiomes biomes;
+    SurfaceSampler surface(earth, earth->surf_map, biomes, earth_radius, 0);
+
+    for (const auto& site : {std::pair<double, double>{30, -148}, {-30, 80}, {-48.8767, -123.3933}})
+    {
+        const double lat = site.first * fiftyseventh, lon = site.second * fiftyseventh;
+        ASSERT_LT(earth->surf_map->elevation_at_bilinear(lat, lon), -2000);
+        EXPECT_DOUBLE_EQ(surface.skyline_elevation(lat, lon), 0);
+    }
+    const double mountain_lat = 28 * fiftyseventh, mountain_lon = 87 * fiftyseventh;
+    EXPECT_GT(surface.skyline_elevation(mountain_lat, mountain_lon), 3000);
+}
+
+TEST(SolarDayTest, VenusAndMoonHaveTheirSynodicDayLengths)
+{
+    Star sun;
+    Planet venus, earth;
+    Moon moon;
+    venus.orbit = new Orbit;
+    venus.orbit->center = &sun;
+    venus.orbit->period = 19414200;
+    venus.sidereal_rotational_period = 20997150;
+    venus.obliquity = 177.36 * fiftyseventh;
+
+    earth.orbit = new Orbit;
+    earth.orbit->center = &sun;
+    earth.orbit->period = 31558149.7635;
+    moon.orbit = new Orbit;
+    moon.orbit->center = &earth;
+    moon.orbit->period = moon.sidereal_rotational_period = 2360591.5;
+    EXPECT_NEAR(venus.stellar_day() / oneday, 116.75, .01);
+    EXPECT_NEAR(moon.stellar_day() / oneday, 29.53, .01);
+}
+
+TEST(OrbitMassFallbackTest, EarthAndGanymedeScalesUseGrams)
+{
+    Planet primary;
+    Orbit orbit;
+    orbit.center = &primary;
+    orbit.semimajor_axis = 10 * earth_radius;
+    primary.type = rocky;
+    primary.volumetric_mean_radius = earth_radius;
+    orbit.compute_period();
+    EXPECT_DOUBLE_EQ(primary.mass, earth_mass);
+    const double axis = orbit.semimajor_axis;
+    orbit.compute_semimajor_axis();
+    EXPECT_NEAR(orbit.semimajor_axis, axis, 1e-6);
+
+    primary.type = icy;
+    primary.mass = 0;
+    primary.volumetric_mean_radius = 2631200.0644;
+    orbit.compute_period();
+    EXPECT_DOUBLE_EQ(primary.mass, 1.4819e26);
+}
+
 TEST_F(ShoreNavigationTest, DetailedCoastMatchesRenderedMaterialsFromEitherSide)
 {
     Planet *planet = world([](double lat, double) { return lat < 0; });

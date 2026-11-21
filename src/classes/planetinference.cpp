@@ -67,6 +67,7 @@ namespace
         target.orbit->eccentricity = source.orbit->eccentricity;
         target.orbit->period = source.orbit->period;
         target.albedo = source.albedo;
+        target.bond_albedo = source.bond_albedo;
         if (source.is_bv_observed || source.lock_bv_color) target.BV_color = source.BV_color;
         target.sidereal_rotational_period = source.sidereal_rotational_period;
         target.tidal_k2_over_q = source.tidal_k2_over_q;
@@ -258,7 +259,7 @@ bool alienorum::apply_joint_planet_inference(Star& host, Planet& p, bool allow_i
         }
     }
     const json chemistry = planet_formation_chemistry(host);
-    const json input =
+    json input =
     {
         {"revision", revision}, {"observed_mass_g", observed_mass ? inference_number(p.mass) : json(nullptr)},
         {"observed_radius_m", observed_radius ? inference_number(p.volumetric_mean_radius) : json(nullptr)},
@@ -280,6 +281,7 @@ bool alienorum::apply_joint_planet_inference(Star& host, Planet& p, bool allow_i
         {"water_level", p.has_water_supplied ? inference_number(p.has_water) : json(nullptr)},
         {"custom_inventory", custom_inventory}
     };
+    if (std::isfinite(p.bond_albedo)) input["bond_albedo"] = p.bond_albedo;
     if (previous.is_object() && previous.value("input_state", json(nullptr)) == input)
     {
         apply_result(p, previous, true);

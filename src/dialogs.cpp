@@ -905,9 +905,8 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
                 if (s->WD.size()) ImGui::Text("%s", s->WD.c_str());
                 if (s->Bonn_survey[0])
                 {
-                    char BD[3] = {s->Bonn_survey[0],s->Bonn_survey[1],0};
-                    std::string bdstr = std::string(BD) + (s->Bonn_survey_declination > 0 ? std::string(1, s->Bonn_survey_sign) : std::string(""))
-                        + std::to_string(s->Bonn_survey_declination) + std::string(" ") + std::to_string(s->Bonn_survey_sequential);
+                    const std::string bdstr = bonn_survey_key(s->Bonn_survey, s->Bonn_survey_declination,
+                        s->Bonn_survey_sequential, s->Bonn_survey_sign);
                     ImGui::Text("%s", bdstr.c_str());
                 }
                 ImGui::Separator();
@@ -2661,8 +2660,6 @@ void draw_objedit_window(ImGuiIO& io)
                             p->has_life = czcanlife;
                             cel->user_edited = true;
                         }
-                        ImGui::SameLine();
-                        ImGui::Text("%s", "degK");
                     }
 
                     ImGui::Text("%s", "Nitrous oxide %");
@@ -2677,17 +2674,15 @@ void draw_objedit_window(ImGuiIO& io)
                     if ((uses_rocky_map(p->type) || p->has_water) && !randomize_txgen)
                     {
                         ImGui::SameLine();
-                        ImGui::Text("%s", "Land plants?  ");
+                        ImGui::Text("%s", "Land plants?    ");
                         ImGui::SameLine();
                         ImGui::SetNextItemWidth(txtwid*.6);
                         bool czcanplants = p->simulated_land_plants_allowed();
-                        if (ImGui::Checkbox("##edtcanlife", &czcanplants))
+                        if (ImGui::Checkbox("##edtcanplants", &czcanplants))
                         {
                             p->has_plants = czcanplants;
                             cel->user_edited = true;
                         }
-                        ImGui::SameLine();
-                        ImGui::Text("%s", "degK");
                     }
 
                     ImGui::Text("%s", "Ozone %");

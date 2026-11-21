@@ -65,13 +65,21 @@ double alienorum::CelestialObject::cel_frand(double min, double max)
 
 double alienorum::CelestialObject::stellar_day()
 {
-    if (!sidereal_rotational_period || !orbit || !orbit->period) 
-        return sidereal_rotational_period;
-    bool is_retrograde = (obliquity > _pi);
-    double adjustment = is_retrograde ? (1.0 + (sidereal_rotational_period / orbit->period))
-                                      : (1.0 - (sidereal_rotational_period / orbit->period));
-    if (adjustment == 0.0) return sidereal_rotational_period;               // if tidal locked
-    return sidereal_rotational_period / adjustment;
+    const double rotation = std::abs(sidereal_rotational_period);
+    if (!(rotation > 0)) return 0;
+
+    CelestialObject* light = get_light_center();
+    const CelestialObject* illuminated = this;
+    while (light && illuminated->orbit && illuminated->orbit->center && illuminated->orbit->center != light)
+        illuminated = illuminated->orbit->center;
+
+    const double year = light && illuminated->orbit && illuminated->orbit->center == light
+        ? illuminated->orbit->period : 0;
+    if (!(year > 0)) return rotation;
+
+    const bool retrograde = sidereal_rotational_period < 0 || std::cos(obliquity) < 0;
+    const double relative_rate = (retrograde ? -1.0 : 1.0) / rotation - 1.0 / year;
+    return relative_rate == 0 ? INFINITY : std::abs(1.0 / relative_rate);
 }
 
 CelestialObject::CelestialObject()
@@ -499,111 +507,61 @@ static void notify_orbit_statistics(CelestialObject* object)
     Planet::mark_host_statistics_dirty(object);
 }
 
+static double estimate_orbit_center_mass(CelestialObject* body)
+{
+    if (body->mass > 0) return body->mass;
+    if (body->type == star) return static_cast<Star*>(body)->estimate_mass();
+
+    double radius = body->volumetric_mean_radius;
+    if (!(radius > 0) && (body->typeclass() == class_planet || body->typeclass() == class_moon))
+    {
+        static_cast<Planet*>(body)->estimate_radius();
+        radius = body->volumetric_mean_radius;
+    }
+    if (!(radius > 0)) return 0;
+
+    // Masses are in grams and radii are in metres.
+    switch (body->type)
+    {
+        case hot_jupiter:
+            return sphere_volume(radius) * hot_jupiter_density;
+        case gas_giant:
+        case ice_giant:
+            return jupiter_mass * std::pow(radius / jupiter_radius, 3);
+        case waterworld:
+        case hycean:
+            return 6 * earth_mass * std::pow(radius / (earth_radius * 1.7), 3);
+        case icy:
+            return 1.4819e26 * std::pow(radius / 2631200.0644, 3);
+        case rocky:
+        case lavaworld:
+        case clearskies:
+            return earth_mass * std::pow(radius / earth_radius, 3);
+        default:
+            return 0;
+    }
+}
+
 void Orbit::compute_period(double mm)
 {
     notify_orbit_statistics(center);
     if (!center) return;
-    if (is_open()) { period = 0; return; }               // Nothing to compute: it never comes back.
-    if (!center->mass)
-    {
-        switch (center->type)
-        {
-            case galaxy:
-            // TODO;
-            return;
-
-            case star:
-            ((Star*)(center))->estimate_mass();
-            break;
-
-            case hot_jupiter:
-            if (!center->volumetric_mean_radius) return;
-            center->mass = sphere_volume(center->volumetric_mean_radius) * hot_jupiter_density;
-            break;
-
-            case gas_giant: case ice_giant:
-            if (!center->volumetric_mean_radius) return;
-            center->mass = sphere_volume(center->volumetric_mean_radius / jupiter_radius) * jupiter_mass;
-            break;
-
-            case waterworld:
-            if (!center->volumetric_mean_radius) return;
-            center->mass = sphere_volume(center->volumetric_mean_radius / earth_radius / 1.7) * earth_mass * 6;             // LHS 1140 b
-            break;
-
-            case icy:
-            if (!center->volumetric_mean_radius) return;
-            center->mass = sphere_volume(center->volumetric_mean_radius / 2631200.0644) * 1.4819e+23;                       // Ganymede
-            break;
-
-            case rocky:
-            case lavaworld:
-            if (!center->volumetric_mean_radius) return;
-            center->mass = sphere_volume(center->volumetric_mean_radius / earth_radius) * earth_mass;
-            break;
-
-            default:
-            // TODO:
-            return;
-        }
-    }
-
-    double mass = center->mass + mm;
-    period = (_pi+_pi) * sqrt(semimajor_axis*semimajor_axis*semimajor_axis/(G*mass));
+    if (is_open()) { period = 0; return; }
+    if (!(semimajor_axis > 0)) return;
+    const double central_mass = estimate_orbit_center_mass(center);
+    if (!(central_mass > 0) || !(central_mass + mm > 0)) return;
+    center->mass = central_mass;
+    period = 2 * _pi * sqrt(semimajor_axis * semimajor_axis * semimajor_axis / (G * (central_mass + mm)));
 }
 
 void Orbit::compute_semimajor_axis(double mm)
 {
     notify_orbit_statistics(center);
-    if (!center) return;
-    if (!period) return;
-    if (is_open()) return;                               // An open orbit's scale is its perihelion, set where it is read.
-    if (!center->mass)
-    {
-        switch (center->type)
-        {
-            case galaxy:
-            // TODO;
-            return;
-
-            case star:
-            ((Star*)(center))->estimate_mass();
-            break;
-
-            case hot_jupiter:
-            if (!center->volumetric_mean_radius) return;
-            center->mass = sphere_volume(center->volumetric_mean_radius) * hot_jupiter_density;
-            break;
-
-            case gas_giant: case ice_giant:
-            if (!center->volumetric_mean_radius) return;
-            center->mass = sphere_volume(center->volumetric_mean_radius / jupiter_radius) * jupiter_mass;
-            break;
-
-            case waterworld:
-            if (!center->volumetric_mean_radius) return;
-            center->mass = sphere_volume(center->volumetric_mean_radius / earth_radius / 1.7) * earth_mass * 6;             // LHS 1140 b
-            break;
-
-            case icy:
-            if (!center->volumetric_mean_radius) return;
-            center->mass = sphere_volume(center->volumetric_mean_radius / 2631200.0644) * 1.4819e+23;                       // Ganymede
-            break;
-
-            case rocky:
-            case lavaworld:
-            if (!center->volumetric_mean_radius) return;
-            center->mass = sphere_volume(center->volumetric_mean_radius / earth_radius) * earth_mass;
-            break;
-
-            default:
-            // TODO:
-            return;
-        }
-    }
-
-    double mass = center->mass + mm;
-    semimajor_axis = pow(G*mass*period*period / (_pi*_pi*4), 1.0/3);
+    if (!center || !(period > 0) || is_open()) return;
+    const double central_mass = estimate_orbit_center_mass(center);
+    if (!(central_mass > 0) || !(central_mass + mm > 0)) return;
+    center->mass = central_mass;
+    semimajor_axis = std::cbrt(G * (central_mass + mm) * period * period / (4 * _pi * _pi));
 }
 
 void Orbit::compute_center_mass(double mm)
@@ -1037,22 +995,9 @@ void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
 
     if (!orbit->period && !orbit->num_osc && !orbit->is_open())
     {
-        if (!orbit->center->mass)
-        {
-            cel_obj_class cls = orbit->center->typeclass();
-            if (cls == class_star) orbit->center->mass = ((Star*)orbit->center)->estimate_mass();
-            if (cls == class_planet || cls == class_moon)
-            {
-                ((Planet*)orbit->center)->estimate_radius();
-                orbit->center->mass = pow(volumetric_mean_radius / earth_radius, 3) * earth_mass;
-            }
-        }
-
-        if (!orbit->semimajor_axis) orbit->semimajor_axis = location.distance_to(orbit->center->location);
-        if (!orbit->semimajor_axis) orbit->semimajor_axis = AU * 10;
-
-        orbit->period = oneyear * sqrt(pow(orbit->semimajor_axis/AU, 3)) / (orbit->center->mass / solar_mass);
-        // std::cout << name << " estimated orbit period=" << (orbit->period / oneday) << " days." << std::endl;
+        if (!(orbit->semimajor_axis > 0)) orbit->semimajor_axis = location.distance_to(orbit->center->location);
+        if (!(orbit->semimajor_axis > 0)) orbit->semimajor_axis = AU * 10;
+        orbit->compute_period(mass);
     }
 
     double tmnow_as_epoch = (tmnow - J2000_TIME_T)/oneday + J2000;
@@ -1221,6 +1166,8 @@ json Orbit::to_json()
     if (prec_node) record["prec_node"] = prec_node*fiftyseven*oneyear;
     if (proc_argperi) record["proc_argperi"] = proc_argperi*fiftyseven*oneyear;
     if (T_periapsis) record["T_periapsis"] = T_periapsis;
+    if (epoch_is_transit) record["epoch_is_transit"] = true;
+    if (photocentric_semimajor_axis) record["photocentric_semimajor_axis"] = photocentric_semimajor_axis;
     if (laplace.a || laplace.v.x || laplace.v.y || laplace.v.z) record["laplace"] = laplace.to_json();
     return record;
 }
@@ -1228,6 +1175,8 @@ json Orbit::to_json()
 bool Orbit::from_json(json j)
 {
     T_periapsis = prec_node = proc_argperi = 0;
+    epoch_is_transit = j.value("epoch_is_transit", false);
+    photocentric_semimajor_axis = j.value("photocentric_semimajor_axis", 0.0);
     laplace = Rotation();
     try { j.at("center_name").get_to(center_name); } catch (...) { ; }
     try { j.at("ascending_node").get_to(ascending_node); ascending_node *= fiftyseventh; } catch (...) { ; }

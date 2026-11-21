@@ -34,6 +34,8 @@ namespace alienorum
         double bump_height = NAN;
         double bump_offset = 0;
         double albedo = 0;
+        double bond_albedo = NAN;
+        bool bump_has_bathymetry = false;
         json giant_color_model = nullptr;
         // Rebuilt from each generated texture; no catalog photometry is replaced.
         Color generated_texture_color;

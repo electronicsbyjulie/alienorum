@@ -93,6 +93,7 @@
         "VolMeanRad": 6051800
     },
     {
+        "BumpHasBathymetry": true,
         "ABSMG": -3.86,
         "ArgPeri": 114.20783,
         "AscNode": 348.73936,
@@ -321,6 +322,9 @@
         "VolMeanRad": 24622000
     },
     {
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=134340",
+        "ABSMG": -0.55,
+        "AsteroidNumber": 134340,
         "BODYNAME": "Pluto",
         "BVmag": 0.867,
         "#BVSource": "Compiled observed B-V = 0.867 +/- 0.016 mag, Hainaut, Boehnhardt and Protopapa 2012, MBOSS color table. Main-object entries describe the system; used as an empirical primary-color proxy. https://arxiv.org/abs/1209.1896",
@@ -329,7 +333,7 @@
         "Equinox": 43.24,
         "Mass": 1.3e+22,
         "Obliquity": 119.51,
-        "RotationPeriod": 551856.672,
+        "RotationPeriod": 551856.6,
         "SurfMap": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/30/Pluto-map-sept-16-2015.jpg/3840px-Pluto-map-sept-16-2015.jpg"
     },
     {
@@ -345,6 +349,13 @@
         "RingRadius": 4057
     },
     {
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=1",
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "RotationPeriod": 32667.012,
+        "VolMeanRad": 469700.0,
+        "GeometricAlbedo": 0.09,
+        "ABSMG": 3.34,
+        "AsteroidNumber": 1,
         "BODYNAME": "Ceres",
         "BVmag": 0.72,
         "#BVSource": "Observed B-V from Lowell ASTORB, asteroid 1 (Ceres), columns 55-58 of catalogs/astorb/astorb.dat; https://asteroid.lowell.edu/main/astorb",
@@ -353,18 +364,39 @@
         "SurfMap": "https://assets.science.nasa.gov/dynamicimage/assets/science/psd/solar/2023/09/p/i/a/2/PIA20354_hires.jpg?w=1200&h=600&fit=clip&crop=faces%2Cfocalpoint"
     },
     {
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=2",
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "RotationPeriod": 28127.597,
+        "VolMeanRad": 256500.0,
+        "GeometricAlbedo": 0.155,
+        "ABSMG": 4.12,
+        "AsteroidNumber": 2,
         "BODYNAME": "Pallas",
         "BVmag": 0.66,
         "#BVSource": "Observed B-V from Lowell ASTORB, asteroid 2 (Pallas), columns 55-58 of catalogs/astorb/astorb.dat; https://asteroid.lowell.edu/main/astorb",
         "Mass": 2.04195e+20
     },
     {
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=3",
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "RotationPeriod": 25956.0,
+        "VolMeanRad": 123298.0,
+        "GeometricAlbedo": 0.214,
+        "ABSMG": 5.19,
+        "AsteroidNumber": 3,
         "BODYNAME": "Juno",
         "BVmag": 0.81,
         "#BVSource": "Observed B-V from Lowell ASTORB, asteroid 3 (Juno), columns 55-58 of catalogs/astorb/astorb.dat; https://asteroid.lowell.edu/main/astorb",
         "Mass": 2.74958e+19
     },
     {
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=4",
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "RotationPeriod": 19231.6595,
+        "VolMeanRad": 261385.0,
+        "GeometricAlbedo": 0.4228,
+        "ABSMG": 3.25,
+        "AsteroidNumber": 4,
         "BODYNAME": "Vesta",
         "BVmag": 0.80,
         "#BVSource": "Observed B-V from Lowell ASTORB, asteroid 4 (Vesta), columns 55-58 of catalogs/astorb/astorb.dat; https://asteroid.lowell.edu/main/astorb",
@@ -372,54 +404,102 @@
         "SurfMap": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6c/Vesta_map_for_GeoHack.png/1280px-Vesta_map_for_GeoHack.png"
     },
     {
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=89",
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "RotationPeriod": 40993.2,
+        "VolMeanRad": 72741.5,
+        "GeometricAlbedo": 0.189,
+        "ABSMG": 6.39,
+        "AsteroidNumber": 89,
         "BODYNAME": "Julia",
         "BVmag": 0.88,
         "#BVSource": "Observed B-V from Lowell ASTORB, asteroid 89 (Julia), columns 55-58 of catalogs/astorb/astorb.dat; https://asteroid.lowell.edu/main/astorb",
         "Mass": 6.70397e+18
     },
     {
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=105",
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "RotationPeriod": 133740.0,
+        "VolMeanRad": 47432.0,
+        "GeometricAlbedo": 0.032,
+        "ABSMG": 8.75,
+        "AsteroidNumber": 105,
         "BODYNAME": "Artemis",
         "BVmag": 0.70,
         "#BVSource": "Observed B-V from Lowell ASTORB, asteroid 105 (Artemis), columns 55-58 of catalogs/astorb/astorb.dat; https://asteroid.lowell.edu/main/astorb",
         "Mass": 2.11112e+18
     },
     {
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=490",
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "RotationPeriod": 28548.0,
+        "VolMeanRad": 59401.5,
+        "GeometricAlbedo": 0.059,
+        "ABSMG": 8.66,
+        "AsteroidNumber": 490,
         "BODYNAME": "Veritas",
         "BVmag": 0.75,
         "#BVSource": "Observed B-V from Lowell ASTORB, asteroid 490 (Veritas), columns 55-58 of catalogs/astorb/astorb.dat; https://asteroid.lowell.edu/main/astorb",
         "Mass": 6.11102e+17
     },
     {
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=1862",
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "RotationPeriod": 11034.0,
+        "VolMeanRad": 750.0,
+        "GeometricAlbedo": 0.25,
+        "ABSMG": 16.09,
+        "AsteroidNumber": 1862,
         "BODYNAME": "Apollo",
         "BVmag": 0.82,
         "#BVSource": "Observed B-V from Lowell ASTORB, asteroid 1862 (Apollo), columns 55-58 of catalogs/astorb/astorb.dat; https://asteroid.lowell.edu/main/astorb",
         "Mass": 3.35e+12
     },
     {
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=50000",
+        "RotationPeriod": 31824.0,
+        "ABSMG": 2.41,
+        "AsteroidNumber": 50000,
         "BODYNAME": "Quaoar",
         "BVmag": 0.958,
         "#BVSource": "Compiled observed B-V = 0.958 +/- 0.035 mag, Hainaut, Boehnhardt and Protopapa 2012, MBOSS color table. Main-object entries describe the system; used as an empirical primary-color proxy. https://arxiv.org/abs/1209.1896",
         "Mass": 1.39616e+21
     },
     {
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=90482",
+        "RotationPeriod": 47476.8,
+        "ABSMG": 2.13,
+        "AsteroidNumber": 90482,
         "BODYNAME": "Orcus",
         "BVmag": 0.664,
         "#BVSource": "Compiled observed B-V = 0.664 +/- 0.041 mag, Hainaut, Boehnhardt and Protopapa 2012, MBOSS color table. Main-object entries describe the system; used as an empirical primary-color proxy. https://arxiv.org/abs/1209.1896",
         "Mass": 6.32862e+20
     },
     {
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=136108",
+        "RotationPeriod": 14095.44,
+        "ABSMG": 0.14,
+        "AsteroidNumber": 136108,
         "BODYNAME": "Haumea",
         "BVmag": 0.631,
         "#BVSource": "Compiled observed B-V = 0.631 +/- 0.025 mag, Hainaut, Boehnhardt and Protopapa 2012, MBOSS color table. Main-object entries describe the system; used as an empirical primary-color proxy. https://arxiv.org/abs/1209.1896",
         "Mass": 4.05345e+21
     },
     {
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=136199",
+        "RotationPeriod": 93240.0,
+        "ABSMG": -1.26,
+        "AsteroidNumber": 136199,
         "BODYNAME": "Eris",
         "BVmag": 0.805,
         "#BVSource": "Compiled observed B-V = 0.805 +/- 0.015 mag, Hainaut, Boehnhardt and Protopapa 2012, MBOSS color table. Main-object entries describe the system; used as an empirical primary-color proxy. https://arxiv.org/abs/1209.1896",
         "Mass": 1.66e+22
     },
     {
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=136472",
+        "RotationPeriod": 82175.76,
+        "ABSMG": -0.25,
+        "AsteroidNumber": 136472,
         "BODYNAME": "Makemake",
         "BVmag": 0.828,
         "#BVSource": "Compiled observed B-V = 0.828 +/- 0.022 mag, Hainaut, Boehnhardt and Protopapa 2012, MBOSS color table. Main-object entries describe the system; used as an empirical primary-color proxy. https://arxiv.org/abs/1209.1896",
@@ -445,6 +525,10 @@
         "#PhysicalAssumptions": "Radius from JPL H=2.8533 and assumed geometric albedo 0.10; mass assumes density 1500 kg/m^3. Size, mass, spin, poles, and generated surface are unmeasured or illustrative. No supplied atmosphere or satellites."
     },
     {
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=486958",
+        "RotationPeriod": 57304.8,
+        "ABSMG": 11.06,
+        "AsteroidNumber": 486958,
         "BODYNAME": "Arrokoth",
         "Mass": 7.485e+14,
         "VolMeanRad": 19896
@@ -452,7 +536,7 @@
     {
         "ABSMG": 0.21,
         "ArgPeri": 309.7634,
-        "ArgPeriProcession": 2.793e+8,
+        "ArgPeriProcession": 8.8504,
         "AscNode": 124.1228,
         "BODYNAME": "Moon",
         "BumpMap": "maps/Moon_bump.png",
@@ -472,7 +556,7 @@
         "Major": true,
         "Mass": 7.349E+22,
         "MeanAnom": 137.7254,
-        "NodePrecession": 5.869e+8,
+        "NodePrecession": 18.597,
         "Oblateness": 0.0012,
         "Obliquity": 1.5,
         "OrbitPeriod": 2360591.5,
@@ -483,6 +567,8 @@
         "VolMeanRad": 1737371.7
     },
     {
+        "#PhysicalSource": "JPL Satellite Physical Parameters, https://ssd.jpl.nasa.gov/sats/phys_par/",
+        "VolMeanRad": 11080.0,
         "ABSMG": 11.8,
         "ArgPeri": 37.247,
         "AscNode": 344.17,
@@ -510,6 +596,8 @@
         "Width": 22.60
     },
     {
+        "#PhysicalSource": "JPL Satellite Physical Parameters, https://ssd.jpl.nasa.gov/sats/phys_par/",
+        "VolMeanRad": 6200.0,
         "ABSMG": 12.89,
         "ArgPeri": 292.496,
         "AscNode": 339.6,
@@ -528,7 +616,7 @@
         "Height": 10.22,
         "Incl": 1.793,
         "Major": true,
-        "Mass": 1.51E+15,
+        "Mass": 1441350000000000.0,
         "MeanAnom": 20.51,
         "Obliquity": 1.793,
         "OrbitPeriod": 109074.9024,
@@ -537,6 +625,8 @@
         "Width": 11.78
     },
     {
+        "#PhysicalSource": "JPL Satellite Physical Parameters, https://ssd.jpl.nasa.gov/sats/phys_par/",
+        "VolMeanRad": 21500.0,
         "ABSMG": 10.62,
         "ArgPeri": 135.777,
         "AscNode": 146.912,
@@ -548,7 +638,7 @@
         "Equinox": 101.18,
         "Height": 34,
         "Incl": 0.019,
-        "Mass": 1.0E+17,
+        "Mass": 3.745711e+16,
         "MeanAnom": 350.53,
         "Obliquity": 0.019,
         "OrbitPeriod": 25468.88832,
@@ -557,6 +647,8 @@
         "Width": 40
     },
     {
+        "#PhysicalSource": "JPL Satellite Physical Parameters, https://ssd.jpl.nasa.gov/sats/phys_par/",
+        "VolMeanRad": 8200.0,
         "ABSMG": 11.51,
         "ArgPeri": 298.347,
         "AscNode": 28.378,
@@ -569,7 +661,7 @@
         "Equinox": 64.528,
         "Height": 14,
         "Incl": 0.054,
-        "Mass": 2.0E+16,
+        "Mass": 2097598000000000.0,
         "MeanAnom": 2.37,
         "Obliquity": 0.054,
         "OrbitPeriod": 25855.3728,
@@ -578,6 +670,8 @@
         "Width": 16
     },
     {
+        "#PhysicalSource": "JPL Satellite Physical Parameters, https://ssd.jpl.nasa.gov/sats/phys_par/",
+        "VolMeanRad": 83500.0,
         "ABSMG": 6.91,
         "ArgPeri": 321.025,
         "AscNode": 112.472,
@@ -590,7 +684,7 @@
         "Equinox": 109.227,
         "Height": 128,
         "Incl": 0.388,
-        "Mass": 7.5E+18,
+        "Mass": 2.465577e+18,
         "MeanAnom": 336.886,
         "Obliquity": 0.388,
         "OrbitPeriod": 43042.65696,
@@ -599,6 +693,8 @@
         "Width": 146
     },
     {
+        "#PhysicalSource": "JPL Satellite Physical Parameters, https://ssd.jpl.nasa.gov/sats/phys_par/",
+        "VolMeanRad": 49300.0,
         "ABSMG": 8.83,
         "ArgPeri": 5.844,
         "AscNode": 352.544,
@@ -612,7 +708,7 @@
         "Equinox": 356.478,
         "Height": 84,
         "Incl": 1.07,
-        "Mass": 8.0E+17,
+        "Mass": 4.517328e+17,
         "MeanAnom": 282.02,
         "Obliquity": 1.07,
         "OrbitPeriod": 58279.9536,
@@ -713,6 +809,7 @@
         "VolMeanRad": 2410300.2927
     },
     {
+        "RotationSource": "Illustrative asynchronous rotation; photometric period unresolved.",
         "ABSMG": 13.46,
         "ArgPeri": 272.349,
         "AscNode": 217.137,
@@ -726,11 +823,14 @@
         "MeanAnom": 228.076,
         "Obliquity": 27.457,
         "OrbitPeriod": 20815488,
-        "RotationPeriod": "tidal",
+        "RotationPeriod": "43200?",
         "SEMIMAJOR_AXIS": 11165000000,
         "VolMeanRad": 21500
     },
     {
+        "RotationSource": "Pilcher et al. measured synodic period, https://doi.org/10.1016/j.icarus.2012.03.021",
+        "#PhysicalSource": "JPL Satellite Physical Parameters, https://ssd.jpl.nasa.gov/sats/phys_par/",
+        "VolMeanRad": 85000.0,
         "ABSMG": 8.23,
         "ArgPeri": 331.995,
         "AscNode": 57.245,
@@ -743,15 +843,16 @@
         "Epoch": 2000,
         "Height": 120,
         "Incl": 27.496,
-        "Mass": 9.5E+18,
+        "Mass": 2.27065e+18,
         "MeanAnom": 68.721,
         "Obliquity": 27.496,
         "OrbitPeriod": 21648919.68,
-        "RotationPeriod": 34560,
+        "RotationPeriod": 28014.84,
         "SEMIMAJOR_AXIS": 11461000000,
         "Width": 150
     },
     {
+        "RotationSource": "Tentative short-baseline photometric period from Luu (1991), https://tilmanndenk.de/outerjovianmoons/",
         "ABSMG": 11.73,
         "ArgPeri": 49.486,
         "AscNode": 5.528,
@@ -766,11 +867,12 @@
         "MeanAnom": 329.121,
         "Obliquity": 28.302,
         "OrbitPeriod": 22396608,
-        "RotationPeriod": "tidal",
+        "RotationPeriod": "46080?",
         "SEMIMAJOR_AXIS": 11717000000,
         "VolMeanRad": 21100
     },
     {
+        "RotationSource": "Illustrative asynchronous rotation; photometric period unresolved.",
         "ABSMG": 9.87,
         "ArgPeri": 143.591,
         "AscNode": 109.373,
@@ -785,11 +887,12 @@
         "MeanAnom": 332.962,
         "Obliquity": 26.627,
         "OrbitPeriod": 22434001.92,
-        "RotationPeriod": 43200,
+        "RotationPeriod": "43200?",
         "SEMIMAJOR_AXIS": 11741000000,
         "VolMeanRad": 40000
     },
     {
+        "RotationSource": "Tentative short-baseline photometric period from Luu (1991), https://tilmanndenk.de/outerjovianmoons/",
         "ABSMG": 12.13,
         "ArgPeri": 100.619,
         "AscNode": 7.615,
@@ -804,11 +907,12 @@
         "MeanAnom": 248.793,
         "Obliquity": 148.889,
         "OrbitPeriod": 54518400,
-        "RotationPeriod": "tidal",
+        "RotationPeriod": "29880?",
         "SEMIMAJOR_AXIS": 21276000000,
         "VolMeanRad": 14000
     },
     {
+        "RotationSource": "Tentative short-baseline photometric period from Luu (1991), https://tilmanndenk.de/outerjovianmoons/",
         "ABSMG": 11.25,
         "ArgPeri": 28.199,
         "AscNode": 113.738,
@@ -823,11 +927,12 @@
         "MeanAnom": 234.027,
         "Obliquity": 164.907,
         "OrbitPeriod": 59788800,
-        "RotationPeriod": "tidal",
+        "RotationPeriod": "37440?",
         "SEMIMAJOR_AXIS": 23404000000,
         "VolMeanRad": 23400
     },
     {
+        "RotationSource": "Illustrative asynchronous rotation; photometric period unresolved.",
         "ABSMG": 10.3,
         "ArgPeri": 170.45,
         "AscNode": 312.99,
@@ -842,11 +947,12 @@
         "MeanAnom": 280.193,
         "Obliquity": 151.431,
         "OrbitPeriod": 63504000,
-        "RotationPeriod": "tidal",
+        "RotationPeriod": "43200?",
         "SEMIMAJOR_AXIS": 23624000000,
         "VolMeanRad": 28900
     },
     {
+        "RotationSource": "Tentative short-baseline photometric period from Luu (1991), https://tilmanndenk.de/outerjovianmoons/",
         "ABSMG": 11.59,
         "ArgPeri": 346.394,
         "AscNode": 303.081,
@@ -861,11 +967,13 @@
         "MeanAnom": 168.397,
         "Obliquity": 158.109,
         "OrbitPeriod": 65491200,
-        "RotationPeriod": "tidal",
+        "RotationPeriod": "47520?",
         "SEMIMAJOR_AXIS": 23939000000,
         "VolMeanRad": 18000
     },
     {
+        "#PhysicalSource": "JPL Satellite Physical Parameters, https://ssd.jpl.nasa.gov/sats/phys_par/",
+        "VolMeanRad": 14000.0,
         "ABSMG": 9.82,
         "BODYNAME": "Pan",
         "CENTER_OF_ORBIT": "Saturn",
@@ -873,7 +981,7 @@
         "Epoch": 2000,
         "Equinox": 288.56,
         "Height": 21,
-        "Mass": 3.0E+15,
+        "Mass": 4195197000000000.0,
         "MeanAnom": 46.635,
         "OrbitPeriod": 49683.410208,
         "RotationPeriod": "tidal",
@@ -881,6 +989,8 @@
         "Width": 28
     },
     {
+        "#PhysicalSource": "JPL Satellite Physical Parameters, https://ssd.jpl.nasa.gov/sats/phys_par/",
+        "VolMeanRad": 15100.0,
         "ABSMG": 8.24,
         "BODYNAME": "Atlas",
         "CENTER_OF_ORBIT": "Saturn",
@@ -888,7 +998,7 @@
         "Epoch": 2000,
         "Equinox": 254.374,
         "Height": 19,
-        "Mass": 1.0E+16,
+        "Mass": 5543653000000000.0,
         "MeanAnom": 153.701,
         "OrbitPeriod": 51986.7072,
         "RotationPeriod": "tidal",
@@ -896,6 +1006,8 @@
         "Width": 35
     },
     {
+        "#PhysicalSource": "JPL Satellite Physical Parameters, https://ssd.jpl.nasa.gov/sats/phys_par/",
+        "VolMeanRad": 43100.0,
         "ABSMG": 6.22,
         "ArgPeri": 280.554,
         "BODYNAME": "Prometheus",
@@ -905,7 +1017,7 @@
         "Epoch": 2000,
         "Equinox": 254.374,
         "Height": 56,
-        "Mass": 3.3E+17,
+        "Mass": 1.604663e+17,
         "MeanAnom": 12.25,
         "OrbitPeriod": 52826.83488,
         "RotationPeriod": "tidal",
@@ -913,6 +1025,8 @@
         "Width": 81
     },
     {
+        "#PhysicalSource": "JPL Satellite Physical Parameters, https://ssd.jpl.nasa.gov/sats/phys_par/",
+        "VolMeanRad": 40600.0,
         "ABSMG": 6.28,
         "ArgPeri": 167.649,
         "BODYNAME": "Pandora",
@@ -922,7 +1036,7 @@
         "Epoch": 2000,
         "Equinox": 254.374,
         "Height": 64,
-        "Mass": 2.0E+17,
+        "Mass": 1.387411e+17,
         "MeanAnom": 13.918,
         "OrbitPeriod": 54302.821632,
         "RotationPeriod": "tidal",
@@ -930,6 +1044,8 @@
         "Width": 81
     },
     {
+        "#PhysicalSource": "JPL Satellite Physical Parameters, https://ssd.jpl.nasa.gov/sats/phys_par/",
+        "VolMeanRad": 58200.0,
         "ABSMG": 5.44,
         "ArgPeri": 196.136,
         "AscNode": 195.006,
@@ -945,7 +1061,7 @@
         "Equinox": 197.829,
         "Height": 106,
         "Incl": 0.335,
-        "Mass": 5.4E+17,
+        "Mass": 5.264972e+17,
         "MeanAnom": 310.289,
         "Obliquity": 0.335,
         "OrbitPeriod": 60012.576,
@@ -954,6 +1070,8 @@
         "Width": 114
     },
     {
+        "#PhysicalSource": "JPL Satellite Physical Parameters, https://ssd.jpl.nasa.gov/sats/phys_par/",
+        "VolMeanRad": 89200.0,
         "ABSMG": 4.42,
         "ArgPeri": 27.852,
         "AscNode": 303.797,
@@ -969,7 +1087,7 @@
         "Equinox": 297.126,
         "Height": 153,
         "Incl": 0.165,
-        "Mass": 1.92E+18,
+        "Mass": 1.897128e+18,
         "MeanAnom": 183.455,
         "Obliquity": 0.165,
         "OrbitPeriod": 60012.576,
@@ -978,6 +1096,8 @@
         "Width": 185
     },
     {
+        "#PhysicalSource": "JPL Satellite Physical Parameters, https://ssd.jpl.nasa.gov/sats/phys_par/",
+        "VolMeanRad": 198200.0,
         "ABSMG": 3.33,
         "ArgPeri": 92.864,
         "AscNode": 317.457,
@@ -1006,6 +1126,8 @@
         "Width": 393
     },
     {
+        "#PhysicalSource": "JPL Satellite Physical Parameters, https://ssd.jpl.nasa.gov/sats/phys_par/",
+        "VolMeanRad": 252100.0,
         "ABSMG": 2.09,
         "ArgPeri": 334.689,
         "AscNode": 137.077,
@@ -1024,7 +1146,7 @@
         "Height": 497,
         "Incl": 0.01,
         "Major": true,
-        "Mass": 6.5E+19,
+        "Mass": 1.080319e+20,
         "MeanAnom": 292.89,
         "Obliquity": 0.01,
         "OrbitPeriod": 118386.8352,
@@ -1034,6 +1156,8 @@
         "Width": 503
     },
     {
+        "#PhysicalSource": "JPL Satellite Physical Parameters, https://ssd.jpl.nasa.gov/sats/phys_par/",
+        "VolMeanRad": 531100.0,
         "ABSMG": 0.57,
         "ArgPeri": 149.166,
         "AscNode": 149.174,
@@ -1052,7 +1176,7 @@
         "Height": 1053,
         "Incl": 0.168,
         "Major": true,
-        "Mass": 6.27E+20,
+        "Mass": 6.174959e+20,
         "MeanAnom": 159.35,
         "Obliquity": 0.168,
         "OrbitPeriod": 163106.0928,
@@ -1102,6 +1226,8 @@
         "Width": 19
     },
     {
+        "#PhysicalSource": "JPL Satellite Physical Parameters, https://ssd.jpl.nasa.gov/sats/phys_par/",
+        "VolMeanRad": 561400.0,
         "ABSMG": 0.72,
         "ArgPeri": 173.999,
         "AscNode": 57.741,
@@ -1130,6 +1256,8 @@
         "Width": 1123
     },
     {
+        "#PhysicalSource": "JPL Satellite Physical Parameters, https://ssd.jpl.nasa.gov/sats/phys_par/",
+        "VolMeanRad": 18000.0,
         "ABSMG": 8.39,
         "ArgPeri": 80.357,
         "AscNode": 10.214,
@@ -1141,7 +1269,7 @@
         "Equinox": 121.398,
         "Height": 27,
         "Incl": 0.212,
-        "Mass": 3.0E+16,
+        "Mass": 7191765000000000.0,
         "MeanAnom": 48.615,
         "Obliquity": 0.212,
         "OrbitPeriod": 236469.456,
@@ -1150,6 +1278,8 @@
         "Width": 39
     },
     {
+        "#PhysicalSource": "JPL Satellite Physical Parameters, https://ssd.jpl.nasa.gov/sats/phys_par/",
+        "VolMeanRad": 763500.0,
         "ABSMG": 0.04,
         "ArgPeri": 55.869,
         "AscNode": 151.095,
@@ -1174,6 +1304,8 @@
         "Width": 1526
     },
     {
+        "#PhysicalSource": "JPL Satellite Physical Parameters, https://ssd.jpl.nasa.gov/sats/phys_par/",
+        "VolMeanRad": 2574760.0,
         "ABSMG": -1.34,
         "ArgPeri": 173.749,
         "AscNode": 161.046,
@@ -1212,6 +1344,9 @@
         "Width": 5149
     },
     {
+        "RotationSource": "Illustrative spin timescale for a chaotic rotator.",
+        "#PhysicalSource": "JPL Satellite Physical Parameters, https://ssd.jpl.nasa.gov/sats/phys_par/",
+        "VolMeanRad": 135000.0,
         "ABSMG": 4.56,
         "ArgPeri": 105.058,
         "AscNode": 273.863,
@@ -1229,7 +1364,7 @@
         "Height": 205,
         "Incl": 0.568,
         "Major": true,
-        "Mass": 2.0E+19,
+        "Mass": 5.550994e+18,
         "MeanAnom": 341.73,
         "Obliquity": 0.568,
         "OrbitPeriod": 1838299.0176,
@@ -1238,6 +1373,8 @@
         "Width": 266
     },
     {
+        "#PhysicalSource": "JPL Satellite Physical Parameters, https://ssd.jpl.nasa.gov/sats/phys_par/",
+        "VolMeanRad": 734300.0,
         "ABSMG": 1.19,
         "ArgPeri": 276.35,
         "AscNode": 92.583,
@@ -1253,7 +1390,7 @@
         "Incl": 7.57,
         "Lon_J2000_offset": 180,
         "Major": true,
-        "Mass": 1.59E+21,
+        "Mass": 1.805659e+21,
         "MeanAnom": 350.876,
         "Obliquity": 7.57,
         "OrbitPeriod": 6854127.8112,
@@ -1263,6 +1400,8 @@
         "Width": 1491
     },
     {
+        "#PhysicalSource": "JPL Satellite Physical Parameters, https://ssd.jpl.nasa.gov/sats/phys_par/",
+        "VolMeanRad": 106500.0,
         "ABSMG": 6.61,
         "ArgPeri": 337.537,
         "AscNode": 237.143,
@@ -1281,7 +1420,7 @@
         "Height": 204,
         "Incl": 174.751,
         "Major": true,
-        "Mass": 7.2E+18,
+        "Mass": 8.312332e+18,
         "MeanAnom": 174.569,
         "Obliquity": 174.751,
         "OrbitPeriod": 47561472,
@@ -1486,6 +1625,8 @@
         "Width": 162
     },
     {
+        "#PhysicalSource": "JPL Satellite Physical Parameters, https://ssd.jpl.nasa.gov/sats/phys_par/",
+        "VolMeanRad": 235800.0,
         "ABSMG": 3.63,
         "ArgPeri": 312.697,
         "AscNode": 275.001,
@@ -1499,7 +1640,7 @@
         "Height": 465.8,
         "Incl": 4.338,
         "Major": true,
-        "Mass": 6.6E+19,
+        "Mass": 6.442623e+19,
         "MeanAnom": 148.9,
         "Obliquity": 4.338,
         "OrbitPeriod": 122123.86848,
@@ -1508,6 +1649,8 @@
         "Width": 468.4
     },
     {
+        "#PhysicalSource": "JPL Satellite Physical Parameters, https://ssd.jpl.nasa.gov/sats/phys_par/",
+        "VolMeanRad": 578900.0,
         "ABSMG": 1.4,
         "ArgPeri": 340.555,
         "AscNode": 337.044,
@@ -1521,7 +1664,7 @@
         "Height": 1155.4,
         "Incl": 0.042,
         "Major": true,
-        "Mass": 1.35E+21,
+        "Mass": 1.251068e+21,
         "MeanAnom": 350.75,
         "Obliquity": 0.042,
         "OrbitPeriod": 217761.08256,
@@ -1530,6 +1673,7 @@
         "Width": 1155.8
     },
     {
+        "#PhysicalSource": "JPL Satellite Physical Parameters, https://ssd.jpl.nasa.gov/sats/phys_par/",
         "ABSMG": 2.04,
         "ArgPeri": 189.991,
         "AscNode": 325.953,
@@ -1541,7 +1685,7 @@
         "Epoch": 2000,
         "Incl": 0.133,
         "Major": true,
-        "Mass": 1.17E+21,
+        "Mass": 1.27504e+21,
         "MeanAnom": 229.37,
         "Obliquity": 0.133,
         "OrbitPeriod": 358058.1024,
@@ -1550,6 +1694,7 @@
         "VolMeanRad": 584699.7992
     },
     {
+        "#PhysicalSource": "JPL Satellite Physical Parameters, https://ssd.jpl.nasa.gov/sats/phys_par/",
         "ABSMG": 0.97,
         "ArgPeri": 322.028,
         "AscNode": 61.667,
@@ -1561,7 +1706,7 @@
         "Epoch": 2000,
         "Incl": 0.112,
         "Major": true,
-        "Mass": 3.52E+21,
+        "Mass": 3.399607e+21,
         "MeanAnom": 53.85,
         "Obliquity": 0.112,
         "OrbitPeriod": 752190.7968,
@@ -1570,6 +1715,7 @@
         "VolMeanRad": 788899.9057
     },
     {
+        "#PhysicalSource": "JPL Satellite Physical Parameters, https://ssd.jpl.nasa.gov/sats/phys_par/",
         "ABSMG": 1.17,
         "ArgPeri": 311.657,
         "AscNode": 118.682,
@@ -1581,7 +1727,7 @@
         "Epoch": 2000,
         "Incl": 0.069,
         "Major": true,
-        "Mass": 3.01E+21,
+        "Mass": 3.075978e+21,
         "MeanAnom": 85.18,
         "Obliquity": 0.069,
         "OrbitPeriod": 1163212.704,
@@ -1590,6 +1736,8 @@
         "VolMeanRad": 761400.1213
     },
     {
+        "RotationSource": "K2 double-peaked light curve, https://arxiv.org/abs/1706.06837",
+        "RotationPeriod": 35812.8,
         "ABSMG": 8.55,
         "ArgPeri": 342.656,
         "AscNode": 163.54,
@@ -1607,6 +1755,8 @@
         "VolMeanRad": 47999.7511
     },
     {
+        "RotationSource": "Illustrative asynchronous rotation; photometric period unresolved.",
+        "RotationPeriod": "43200?",
         "ABSMG": 11.96,
         "ArgPeri": 18.65,
         "AscNode": 188.164,
@@ -1624,6 +1774,8 @@
         "VolMeanRad": 9999.9216
     },
     {
+        "RotationSource": "K2 and ground-based photometry, https://arxiv.org/abs/1706.06837",
+        "RotationPeriod": 24898.32,
         "ABSMG": 7.07,
         "ArgPeri": 19.882,
         "AscNode": 260.857,
@@ -1641,6 +1793,8 @@
         "VolMeanRad": 94999.8923
     },
     {
+        "RotationSource": "Double-peaked interpretation of the K2 light curve, https://arxiv.org/abs/1706.06837",
+        "RotationPeriod": "51444?",
         "ABSMG": 11.08,
         "ArgPeri": 173.832,
         "AscNode": 316.778,
@@ -1658,6 +1812,8 @@
         "VolMeanRad": 14999.8824
     },
     {
+        "RotationSource": "Double-peaked interpretation of the K2 light curve, https://arxiv.org/abs/1706.06837",
+        "RotationPeriod": "30636?",
         "ABSMG": 11.08,
         "ArgPeri": 358.929,
         "AscNode": 247.62,
@@ -1675,6 +1831,8 @@
         "VolMeanRad": 14999.8824
     },
     {
+        "#PhysicalSource": "JPL Satellite Physical Parameters, https://ssd.jpl.nasa.gov/sats/phys_par/",
+        "Mass": 1.278037e+17,
         "ABSMG": 9.81,
         "ArgPeri": 354.0778,
         "AscNode": 58.582,
@@ -1691,6 +1849,8 @@
         "VolMeanRad": 29000.1549
     },
     {
+        "#PhysicalSource": "JPL Satellite Physical Parameters, https://ssd.jpl.nasa.gov/sats/phys_par/",
+        "Mass": 3.534453e+17,
         "ABSMG": 9.12,
         "ArgPeri": 212.6123,
         "AscNode": 142.0225,
@@ -1707,6 +1867,8 @@
         "VolMeanRad": 39999.6864
     },
     {
+        "#PhysicalSource": "JPL Satellite Physical Parameters, https://ssd.jpl.nasa.gov/sats/phys_par/",
+        "Mass": 1.748947e+18,
         "ABSMG": 7.78,
         "ArgPeri": 282.4269,
         "AscNode": 5.503906,
@@ -1723,6 +1885,8 @@
         "VolMeanRad": 73999.8021
     },
     {
+        "#PhysicalSource": "JPL Satellite Physical Parameters, https://ssd.jpl.nasa.gov/sats/phys_par/",
+        "Mass": 2.845242e+18,
         "ABSMG": 7.64,
         "ArgPeri": 125.5678,
         "AscNode": 285.3589,
@@ -1739,6 +1903,8 @@
         "VolMeanRad": 78999.7629
     },
     {
+        "#PhysicalSource": "JPL Satellite Physical Parameters, https://ssd.jpl.nasa.gov/sats/phys_par/",
+        "Mass": 3.818228e+18,
         "ABSMG": 7.2,
         "ArgPeri": 54.12,
         "AscNode": 326.7974,
@@ -1753,9 +1919,11 @@
         "OrbitPeriod": 47922.09696,
         "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": 73500000,
-        "VolMeanRad": 96500.2628
+        "VolMeanRad": 96000.0
     },
     {
+        "#PhysicalSource": "JPL Satellite Physical Parameters, https://ssd.jpl.nasa.gov/sats/phys_par/",
+        "Mass": 3.870698e+19,
         "ABSMG": 5.53,
         "ArgPeri": 181.2898,
         "AscNode": 217.4241,
@@ -1770,7 +1938,7 @@
         "OrbitPeriod": 96968.06352,
         "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": 117600000,
-        "VolMeanRad": 209000.0179
+        "VolMeanRad": 208000.0
     },
     {
         "ABSMG": -1.3,
@@ -1795,6 +1963,8 @@
         "VolMeanRad": 1353399.8123
     },
     {
+        "RotationSource": "K2 double-peaked light curve, https://doi.org/10.1093/mnras/stw081",
+        "#PhysicalSource": "JPL Satellite Physical Parameters, https://ssd.jpl.nasa.gov/sats/phys_par/",
         "ABSMG": 3.91,
         "ArgPeri": 283.9,
         "AscNode": 332.462,
@@ -1810,11 +1980,12 @@
         "MeanAnom": 215.9,
         "Obliquity": 7.232,
         "OrbitPeriod": 31115766.816,
-        "RotationPeriod": 41470,
+        "RotationPeriod": 41738.4,
         "SEMIMAJOR_AXIS": 5513400000,
-        "VolMeanRad": 179000
+        "VolMeanRad": 170000.0
     },
     {
+        "#PhysicalSource": "JPL Satellite Physical Parameters, https://ssd.jpl.nasa.gov/sats/phys_par/",
         "ABSMG": 2.15,
         "ArgPeri": 209.793,
         "AscNode": 223.015,
@@ -1826,11 +1997,1183 @@
         "Eccentricity": 0.0002,
         "Epoch": 1986.4638,
         "Major": true,
-        "Mass": 1.9E+21,
+        "Mass": 1.58968e+21,
         "MeanAnom": 358.04,
         "OrbitPeriod": 551856.672,
         "RotationPeriod": "tidal",
         "SEMIMAJOR_AXIS": 19410000,
-        "VolMeanRad": 592999.938
+        "VolMeanRad": 606000.0
+    },
+    {
+        "BODYNAME": "Adonis",
+        "AsteroidNumber": 2101,
+        "ABSMG": 18.69,
+        "VolMeanRad": 300.0,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=2101"
+    },
+    {
+        "BODYNAME": "Ajax",
+        "AsteroidNumber": 1404,
+        "ABSMG": 9.29,
+        "GeometricAlbedo": 0.048,
+        "VolMeanRad": 41995.0,
+        "RotationPeriod": 105879.6,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=1404"
+    },
+    {
+        "BODYNAME": "Aldrin",
+        "AsteroidNumber": 6470,
+        "ABSMG": 14.47,
+        "RotationPeriod": 21578.4,
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=6470"
+    },
+    {
+        "BODYNAME": "Amor",
+        "AsteroidNumber": 1221,
+        "ABSMG": 17.37,
+        "VolMeanRad": 500.0,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=1221"
+    },
+    {
+        "BODYNAME": "Anaxagoras",
+        "AsteroidNumber": 4180,
+        "ABSMG": 13.77,
+        "GeometricAlbedo": 0.079,
+        "VolMeanRad": 4859.5,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=4180"
+    },
+    {
+        "BODYNAME": "Anaximandros",
+        "AsteroidNumber": 6006,
+        "ABSMG": 12.94,
+        "GeometricAlbedo": 0.239,
+        "VolMeanRad": 3747.0,
+        "RotationPeriod": 9864.0,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=6006"
+    },
+    {
+        "BODYNAME": "Andersen",
+        "AsteroidNumber": 2476,
+        "ABSMG": 11.43,
+        "GeometricAlbedo": 0.15,
+        "VolMeanRad": 10347.5,
+        "RotationPeriod": 29667.6,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=2476"
+    },
+    {
+        "BODYNAME": "Anitahill",
+        "AsteroidNumber": 6486,
+        "ABSMG": 14.31,
+        "GeometricAlbedo": 0.449,
+        "VolMeanRad": 1645.0,
+        "RotationPeriod": 138029.04,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=6486"
+    },
+    {
+        "BODYNAME": "Annefrank",
+        "AsteroidNumber": 5535,
+        "ABSMG": 13.86,
+        "GeometricAlbedo": 0.311,
+        "VolMeanRad": 2400.0,
+        "RotationPeriod": 54432.0,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=5535"
+    },
+    {
+        "BODYNAME": "Aphrodite",
+        "AsteroidNumber": 1388,
+        "ABSMG": 11.14,
+        "GeometricAlbedo": 0.144,
+        "VolMeanRad": 10677.5,
+        "RotationPeriod": 42995.52,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=1388"
+    },
+    {
+        "BODYNAME": "Archimedes",
+        "AsteroidNumber": 3600,
+        "ABSMG": 13.01,
+        "GeometricAlbedo": 0.321,
+        "VolMeanRad": 3385.0,
+        "RotationPeriod": 19580.4,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=3600"
+    },
+    {
+        "BODYNAME": "Arecibo",
+        "AsteroidNumber": 4337,
+        "ABSMG": 12.43,
+        "GeometricAlbedo": 0.077,
+        "VolMeanRad": 9843.0,
+        "RotationPeriod": 118440.0,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=4337"
+    },
+    {
+        "BODYNAME": "Aristoteles",
+        "AsteroidNumber": 6123,
+        "ABSMG": 13.64,
+        "GeometricAlbedo": 0.164,
+        "VolMeanRad": 3473.0,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=6123"
+    },
+    {
+        "BODYNAME": "Armstrong",
+        "AsteroidNumber": 6469,
+        "ABSMG": 14.56,
+        "GeometricAlbedo": 0.243,
+        "VolMeanRad": 1860.0,
+        "RotationPeriod": 21474.0,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=6469"
+    },
+    {
+        "BODYNAME": "Asimov",
+        "AsteroidNumber": 5020,
+        "ABSMG": 14.7,
+        "GeometricAlbedo": 0.214,
+        "VolMeanRad": 1728.5,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=5020"
+    },
+    {
+        "BODYNAME": "Aten",
+        "AsteroidNumber": 2062,
+        "ABSMG": 17.11,
+        "GeometricAlbedo": 0.26,
+        "VolMeanRad": 550.0,
+        "RotationPeriod": 151740.0,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=2062"
+    },
+    {
+        "BODYNAME": "Atira",
+        "AsteroidNumber": 163693,
+        "ABSMG": 16.41,
+        "RotationPeriod": 12232.8,
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=163693"
+    },
+    {
+        "BODYNAME": "Bach",
+        "AsteroidNumber": 1814,
+        "ABSMG": 12.94,
+        "GeometricAlbedo": 0.18,
+        "VolMeanRad": 3758.0,
+        "RotationPeriod": 26066.88,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=1814"
+    },
+    {
+        "BODYNAME": "Becquerel",
+        "AsteroidNumber": 6914,
+        "ABSMG": 13.05,
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=6914"
+    },
+    {
+        "BODYNAME": "Beethoven",
+        "AsteroidNumber": 1815,
+        "ABSMG": 11.39,
+        "GeometricAlbedo": 0.057,
+        "VolMeanRad": 15299.0,
+        "RotationPeriod": 29451.6,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=1815"
+    },
+    {
+        "BODYNAME": "Bohr",
+        "AsteroidNumber": 3948,
+        "ABSMG": 13.5,
+        "GeometricAlbedo": 0.32,
+        "VolMeanRad": 2572.0,
+        "RotationPeriod": 89582.4,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=3948"
+    },
+    {
+        "BODYNAME": "Cathybennett",
+        "AsteroidNumber": 6493,
+        "ABSMG": 14.21,
+        "RotationPeriod": 12522.6,
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=6493"
+    },
+    {
+        "BODYNAME": "Celsius",
+        "AsteroidNumber": 4169,
+        "ABSMG": 11.29,
+        "GeometricAlbedo": 0.057,
+        "VolMeanRad": 18651.5,
+        "RotationPeriod": 39193.2,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=4169"
+    },
+    {
+        "BODYNAME": "Chiron",
+        "AsteroidNumber": 2060,
+        "ABSMG": 5.54,
+        "GeometricAlbedo": 0.15,
+        "VolMeanRad": 83000.0,
+        "RotationPeriod": 21304.8,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=2060"
+    },
+    {
+        "BODYNAME": "Collins",
+        "AsteroidNumber": 6471,
+        "ABSMG": 13.95,
+        "GeometricAlbedo": 0.036,
+        "VolMeanRad": 4488.0,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=6471"
+    },
+    {
+        "BODYNAME": "Curie",
+        "AsteroidNumber": 7000,
+        "ABSMG": 13.03,
+        "GeometricAlbedo": 0.382,
+        "VolMeanRad": 3248.5,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=7000"
+    },
+    {
+        "BODYNAME": "Dante",
+        "AsteroidNumber": 2999,
+        "ABSMG": 13.89,
+        "GeometricAlbedo": 0.128,
+        "VolMeanRad": 3443.5,
+        "RotationPeriod": 178970.4,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=2999"
+    },
+    {
+        "BODYNAME": "Darwin",
+        "AsteroidNumber": 1991,
+        "ABSMG": 13.54,
+        "GeometricAlbedo": 0.258,
+        "VolMeanRad": 2494.5,
+        "RotationPeriod": 21312.0,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=1991"
+    },
+    {
+        "BODYNAME": "Dobrovolsky",
+        "AsteroidNumber": 1789,
+        "ABSMG": 12.28,
+        "GeometricAlbedo": 0.185,
+        "VolMeanRad": 3961.0,
+        "RotationPeriod": 17325.0,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=1789"
+    },
+    {
+        "BODYNAME": "Doppler",
+        "AsteroidNumber": 3905,
+        "ABSMG": 12.9,
+        "GeometricAlbedo": 0.228,
+        "VolMeanRad": 4010.5,
+        "RotationPeriod": 182880.0,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=3905"
+    },
+    {
+        "BODYNAME": "Earhart",
+        "AsteroidNumber": 3895,
+        "ABSMG": 12.0,
+        "GeometricAlbedo": 0.281,
+        "VolMeanRad": 5192.0,
+        "RotationPeriod": 12832.2,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=3895"
+    },
+    {
+        "BODYNAME": "Edisona",
+        "AsteroidNumber": 742,
+        "ABSMG": 9.6,
+        "GeometricAlbedo": 0.121,
+        "VolMeanRad": 23543.5,
+        "RotationPeriod": 66884.4,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=742"
+    },
+    {
+        "BODYNAME": "Einstein",
+        "AsteroidNumber": 2001,
+        "ABSMG": 13.06,
+        "GeometricAlbedo": 0.81,
+        "VolMeanRad": 1987.5,
+        "RotationPeriod": 19753.2,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=2001"
+    },
+    {
+        "BODYNAME": "Enya",
+        "AsteroidNumber": 6433,
+        "ABSMG": 14.36,
+        "GeometricAlbedo": 0.081,
+        "VolMeanRad": 3708.0,
+        "RotationPeriod": 26640.0,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=6433"
+    },
+    {
+        "BODYNAME": "Epona",
+        "AsteroidNumber": 3838,
+        "ABSMG": 15.67,
+        "RotationPeriod": 8572.32,
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=3838"
+    },
+    {
+        "BODYNAME": "Escher",
+        "AsteroidNumber": 4444,
+        "ABSMG": 13.76,
+        "RotationPeriod": 170305.2,
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=4444"
+    },
+    {
+        "BODYNAME": "Esperanto",
+        "AsteroidNumber": 1421,
+        "ABSMG": 10.6,
+        "GeometricAlbedo": 0.0714,
+        "VolMeanRad": 21655.0,
+        "RotationPeriod": 79135.2,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=1421"
+    },
+    {
+        "BODYNAME": "Euler",
+        "AsteroidNumber": 2002,
+        "ABSMG": 12.51,
+        "GeometricAlbedo": 0.042,
+        "VolMeanRad": 9886.5,
+        "RotationPeriod": 21574.44,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=2002"
+    },
+    {
+        "BODYNAME": "Flamsteed",
+        "AsteroidNumber": 4987,
+        "ABSMG": 14.16,
+        "GeometricAlbedo": 0.185,
+        "VolMeanRad": 2821.0,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=4987"
+    },
+    {
+        "BODYNAME": "Foucault",
+        "AsteroidNumber": 5668,
+        "ABSMG": 13.71,
+        "GeometricAlbedo": 0.229,
+        "VolMeanRad": 2526.0,
+        "RotationPeriod": 9194.4,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=5668"
+    },
+    {
+        "BODYNAME": "Gagarin",
+        "AsteroidNumber": 1772,
+        "ABSMG": 12.71,
+        "GeometricAlbedo": 0.138,
+        "VolMeanRad": 4817.0,
+        "RotationPeriod": 39456.0,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=1772"
+    },
+    {
+        "BODYNAME": "Gaussia",
+        "AsteroidNumber": 1001,
+        "ABSMG": 9.83,
+        "GeometricAlbedo": 0.041,
+        "VolMeanRad": 36355.5,
+        "RotationPeriod": 75564.0,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=1001"
+    },
+    {
+        "BODYNAME": "Gibbs",
+        "AsteroidNumber": 2937,
+        "ABSMG": 13.37,
+        "GeometricAlbedo": 0.38,
+        "VolMeanRad": 2517.5,
+        "RotationPeriod": 10735.2,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=2937"
+    },
+    {
+        "BODYNAME": "Giclas",
+        "AsteroidNumber": 1741,
+        "ABSMG": 11.65,
+        "GeometricAlbedo": 0.374,
+        "VolMeanRad": 6553.5,
+        "RotationPeriod": 10594.8,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=1741"
+    },
+    {
+        "BODYNAME": "Gliese",
+        "AsteroidNumber": 1823,
+        "ABSMG": 12.65,
+        "GeometricAlbedo": 0.189,
+        "VolMeanRad": 4219.5,
+        "RotationPeriod": 16151.04,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=1823"
+    },
+    {
+        "BODYNAME": "Godel",
+        "AsteroidNumber": 3366,
+        "ABSMG": 11.61,
+        "GeometricAlbedo": 0.113,
+        "VolMeanRad": 8467.5,
+        "RotationPeriod": 16862.4,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=3366"
+    },
+    {
+        "BODYNAME": "Golgi",
+        "AsteroidNumber": 6875,
+        "ABSMG": 14.07,
+        "GeometricAlbedo": 0.314,
+        "VolMeanRad": 2092.0,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=6875"
+    },
+    {
+        "BODYNAME": "Greenwich",
+        "AsteroidNumber": 2830,
+        "ABSMG": 12.57,
+        "GeometricAlbedo": 0.172,
+        "VolMeanRad": 3946.0,
+        "RotationPeriod": 288245.16,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=2830"
+    },
+    {
+        "BODYNAME": "Grissom",
+        "AsteroidNumber": 2161,
+        "ABSMG": 12.32,
+        "GeometricAlbedo": 0.074,
+        "VolMeanRad": 7928.5,
+        "RotationPeriod": 18227.88,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=2161"
+    },
+    {
+        "BODYNAME": "Halley",
+        "AsteroidNumber": 2688,
+        "ABSMG": 11.84,
+        "GeometricAlbedo": 0.077,
+        "VolMeanRad": 10762.5,
+        "RotationPeriod": 57679.2,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=2688"
+    },
+    {
+        "BODYNAME": "Herschel",
+        "AsteroidNumber": 2000,
+        "ABSMG": 11.36,
+        "GeometricAlbedo": 0.277,
+        "VolMeanRad": 7384.0,
+        "RotationPeriod": 480960.0,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=2000"
+    },
+    {
+        "BODYNAME": "Hertzsprung",
+        "AsteroidNumber": 1693,
+        "ABSMG": 11.25,
+        "GeometricAlbedo": 0.051,
+        "VolMeanRad": 18886.0,
+        "RotationPeriod": 31770.0,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=1693"
+    },
+    {
+        "BODYNAME": "Hillary",
+        "AsteroidNumber": 3130,
+        "ABSMG": 13.44,
+        "GeometricAlbedo": 0.055,
+        "VolMeanRad": 6553.0,
+        "RotationPeriod": 91015.2,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=3130"
+    },
+    {
+        "BODYNAME": "Hiroshima",
+        "AsteroidNumber": 2247,
+        "ABSMG": 13.52,
+        "GeometricAlbedo": 0.47,
+        "VolMeanRad": 2183.5,
+        "RotationPeriod": 16189.92,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=2247"
+    },
+    {
+        "BODYNAME": "Hopper",
+        "AsteroidNumber": 5773,
+        "ABSMG": 13.73,
+        "GeometricAlbedo": 0.335,
+        "VolMeanRad": 2291.5,
+        "RotationPeriod": 392349.6,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=5773"
+    },
+    {
+        "BODYNAME": "Hubble",
+        "AsteroidNumber": 2069,
+        "ABSMG": 11.69,
+        "GeometricAlbedo": 0.043,
+        "VolMeanRad": 19235.5,
+        "RotationPeriod": 160632.0,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=2069"
+    },
+    {
+        "BODYNAME": "Huygens",
+        "AsteroidNumber": 2801,
+        "ABSMG": 12.07,
+        "GeometricAlbedo": 0.204,
+        "VolMeanRad": 5762.5,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=2801"
+    },
+    {
+        "BODYNAME": "IAU",
+        "AsteroidNumber": 5000,
+        "ABSMG": 14.54,
+        "GeometricAlbedo": 0.205,
+        "VolMeanRad": 2121.0,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=5000"
+    },
+    {
+        "BODYNAME": "Icarus",
+        "AsteroidNumber": 1566,
+        "ABSMG": 16.53,
+        "GeometricAlbedo": 0.51,
+        "VolMeanRad": 500.0,
+        "RotationPeriod": 8181.36,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=1566"
+    },
+    {
+        "BODYNAME": "Jarvis",
+        "AsteroidNumber": 3353,
+        "ABSMG": 13.82,
+        "GeometricAlbedo": 0.049,
+        "VolMeanRad": 5264.0,
+        "RotationPeriod": 727200.0,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=3353"
+    },
+    {
+        "BODYNAME": "Kafka",
+        "AsteroidNumber": 3412,
+        "ABSMG": 13.45,
+        "GeometricAlbedo": 0.231,
+        "VolMeanRad": 3042.0,
+        "RotationPeriod": 9957600.0,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=3412"
+    },
+    {
+        "BODYNAME": "Karl Marx",
+        "AsteroidNumber": 2807,
+        "ABSMG": 13.04,
+        "GeometricAlbedo": 0.057,
+        "VolMeanRad": 8433.0,
+        "RotationPeriod": 31824.0,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=2807"
+    },
+    {
+        "BODYNAME": "Keck",
+        "AsteroidNumber": 5811,
+        "ABSMG": 12.98,
+        "GeometricAlbedo": 0.256,
+        "VolMeanRad": 3823.0,
+        "RotationPeriod": 108000.0,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=5811"
+    },
+    {
+        "BODYNAME": "Kepler",
+        "AsteroidNumber": 1134,
+        "ABSMG": 14.37,
+        "RotationPeriod": 9916.02,
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=1134"
+    },
+    {
+        "BODYNAME": "Kilopi",
+        "AsteroidNumber": 3142,
+        "ABSMG": 12.38,
+        "GeometricAlbedo": 0.225,
+        "VolMeanRad": 4000.5,
+        "RotationPeriod": 54460.8,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=3142"
+    },
+    {
+        "BODYNAME": "Kitt Peak",
+        "AsteroidNumber": 2322,
+        "ABSMG": 13.27,
+        "GeometricAlbedo": 0.0571,
+        "VolMeanRad": 8020.0,
+        "RotationPeriod": 30456.0,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=2322"
+    },
+    {
+        "BODYNAME": "Kuiper",
+        "AsteroidNumber": 1776,
+        "ABSMG": 11.24,
+        "GeometricAlbedo": 0.033,
+        "VolMeanRad": 19976.0,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=1776"
+    },
+    {
+        "BODYNAME": "Lagrangea",
+        "AsteroidNumber": 1006,
+        "ABSMG": 11.41,
+        "GeometricAlbedo": 0.046,
+        "VolMeanRad": 17655.0,
+        "RotationPeriod": 70189.2,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=1006"
+    },
+    {
+        "BODYNAME": "Laplace",
+        "AsteroidNumber": 4628,
+        "ABSMG": 11.23,
+        "GeometricAlbedo": 0.224,
+        "VolMeanRad": 9359.5,
+        "RotationPeriod": 32457.6,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=4628"
+    },
+    {
+        "BODYNAME": "Lavoisier",
+        "AsteroidNumber": 6826,
+        "ABSMG": 13.04,
+        "GeometricAlbedo": 0.353,
+        "VolMeanRad": 3227.5,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=6826"
+    },
+    {
+        "BODYNAME": "Leleakuhonua",
+        "AsteroidNumber": 541132,
+        "ABSMG": 5.57,
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=541132"
+    },
+    {
+        "BODYNAME": "Lennon",
+        "AsteroidNumber": 4147,
+        "ABSMG": 13.26,
+        "GeometricAlbedo": 0.24,
+        "VolMeanRad": 2585.5,
+        "RotationPeriod": 493200.0,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=4147"
+    },
+    {
+        "BODYNAME": "Lev Tolstoj",
+        "AsteroidNumber": 2810,
+        "ABSMG": 12.63,
+        "GeometricAlbedo": 0.257,
+        "VolMeanRad": 3955.0,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=2810"
+    },
+    {
+        "BODYNAME": "Lincoln",
+        "AsteroidNumber": 3153,
+        "ABSMG": 13.17,
+        "GeometricAlbedo": 0.338,
+        "VolMeanRad": 2499.5,
+        "RotationPeriod": 17340.12,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=3153"
+    },
+    {
+        "BODYNAME": "Louvre",
+        "AsteroidNumber": 4513,
+        "ABSMG": 12.18,
+        "GeometricAlbedo": 0.24,
+        "VolMeanRad": 6498.5,
+        "RotationPeriod": 10573.2,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=4513"
+    },
+    {
+        "BODYNAME": "Luyten",
+        "AsteroidNumber": 1964,
+        "ABSMG": 13.52,
+        "GeometricAlbedo": 0.11,
+        "VolMeanRad": 4190.0,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=1964"
+    },
+    {
+        "BODYNAME": "Mark Twain",
+        "AsteroidNumber": 2362,
+        "ABSMG": 13.55,
+        "GeometricAlbedo": 0.312,
+        "VolMeanRad": 2165.5,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=2362"
+    },
+    {
+        "BODYNAME": "McAuliffe",
+        "AsteroidNumber": 3352,
+        "ABSMG": 15.93,
+        "RotationPeriod": 7941.6,
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=3352"
+    },
+    {
+        "BODYNAME": "McNair",
+        "AsteroidNumber": 3354,
+        "ABSMG": 13.34,
+        "GeometricAlbedo": 0.26,
+        "VolMeanRad": 3850.5,
+        "RotationPeriod": 27216.0,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=3354"
+    },
+    {
+        "BODYNAME": "Meitner",
+        "AsteroidNumber": 6999,
+        "ABSMG": 14.35,
+        "GeometricAlbedo": 0.326,
+        "VolMeanRad": 1464.0,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=6999"
+    },
+    {
+        "BODYNAME": "Mendel",
+        "AsteroidNumber": 3313,
+        "ABSMG": 12.3,
+        "GeometricAlbedo": 0.275,
+        "VolMeanRad": 4395.5,
+        "RotationPeriod": 48007.44,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=3313"
+    },
+    {
+        "BODYNAME": "Mendeleev",
+        "AsteroidNumber": 2769,
+        "ABSMG": 12.26,
+        "GeometricAlbedo": 0.067,
+        "VolMeanRad": 6961.0,
+        "RotationPeriod": 29624.4,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=2769"
+    },
+    {
+        "BODYNAME": "Monroe",
+        "AsteroidNumber": 3768,
+        "ABSMG": 11.73,
+        "GeometricAlbedo": 0.069,
+        "VolMeanRad": 13300.5,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=3768"
+    },
+    {
+        "BODYNAME": "Montreal",
+        "AsteroidNumber": 6714,
+        "ABSMG": 12.38,
+        "GeometricAlbedo": 0.195,
+        "VolMeanRad": 4758.5,
+        "RotationPeriod": 9543.6,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=6714"
+    },
+    {
+        "BODYNAME": "Mr. Spock",
+        "AsteroidNumber": 2309,
+        "ABSMG": 11.43,
+        "GeometricAlbedo": 0.144,
+        "VolMeanRad": 9853.5,
+        "RotationPeriod": 24199.2,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=2309"
+    },
+    {
+        "BODYNAME": "Nagasaki",
+        "AsteroidNumber": 5790,
+        "ABSMG": 14.06,
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=5790"
+    },
+    {
+        "BODYNAME": "Nobel",
+        "AsteroidNumber": 6032,
+        "ABSMG": 13.82,
+        "RotationPeriod": 26870.4,
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=6032"
+    },
+    {
+        "BODYNAME": "Odysseus",
+        "AsteroidNumber": 1143,
+        "ABSMG": 8.38,
+        "GeometricAlbedo": 0.05,
+        "VolMeanRad": 57312.0,
+        "RotationPeriod": 36410.4,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=1143"
+    },
+    {
+        "BODYNAME": "Onizuka",
+        "AsteroidNumber": 3355,
+        "ABSMG": 13.86,
+        "GeometricAlbedo": 0.346,
+        "VolMeanRad": 2367.0,
+        "RotationPeriod": 776962.8,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=3355"
+    },
+    {
+        "BODYNAME": "Oort",
+        "AsteroidNumber": 1691,
+        "ABSMG": 10.95,
+        "GeometricAlbedo": 0.065,
+        "VolMeanRad": 16822.0,
+        "RotationPeriod": 36973.8,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=1691"
+    },
+    {
+        "BODYNAME": "Otzi",
+        "AsteroidNumber": 5803,
+        "ABSMG": 12.73,
+        "GeometricAlbedo": 0.07,
+        "VolMeanRad": 7807.0,
+        "RotationPeriod": 13082.4,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=5803"
+    },
+    {
+        "BODYNAME": "Pandora",
+        "AsteroidNumber": 55,
+        "ABSMG": 7.82,
+        "GeometricAlbedo": 0.204,
+        "VolMeanRad": 42397.0,
+        "RotationPeriod": 17294.4,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=55"
+    },
+    {
+        "BODYNAME": "Pascal",
+        "AsteroidNumber": 4500,
+        "ABSMG": 12.83,
+        "GeometricAlbedo": 0.07,
+        "VolMeanRad": 7946.5,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=4500"
+    },
+    {
+        "BODYNAME": "Pasteur",
+        "AsteroidNumber": 4804,
+        "ABSMG": 12.24,
+        "GeometricAlbedo": 0.129,
+        "VolMeanRad": 7713.5,
+        "RotationPeriod": 49284.0,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=4804"
+    },
+    {
+        "BODYNAME": "Patsayev",
+        "AsteroidNumber": 1791,
+        "ABSMG": 11.86,
+        "GeometricAlbedo": 0.034,
+        "VolMeanRad": 14697.0,
+        "RotationPeriod": 71312.4,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=1791"
+    },
+    {
+        "BODYNAME": "Picasso",
+        "AsteroidNumber": 4221,
+        "ABSMG": 12.82,
+        "GeometricAlbedo": 0.167,
+        "VolMeanRad": 5411.5,
+        "RotationPeriod": 11201.04,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=4221"
+    },
+    {
+        "BODYNAME": "Pythagoras",
+        "AsteroidNumber": 6143,
+        "ABSMG": 12.75,
+        "GeometricAlbedo": 0.277,
+        "VolMeanRad": 3994.0,
+        "RotationPeriod": 49824.0,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=6143"
+    },
+    {
+        "BODYNAME": "Randi",
+        "AsteroidNumber": 3163,
+        "ABSMG": 14.1,
+        "GeometricAlbedo": 0.337,
+        "VolMeanRad": 1941.5,
+        "RotationPeriod": 214200.0,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=3163"
+    },
+    {
+        "BODYNAME": "Resnik",
+        "AsteroidNumber": 3356,
+        "ABSMG": 13.26,
+        "GeometricAlbedo": 0.197,
+        "VolMeanRad": 2411.5,
+        "RotationPeriod": 474840.0,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=3356"
+    },
+    {
+        "BODYNAME": "Roddenberry",
+        "AsteroidNumber": 4659,
+        "ABSMG": 14.5,
+        "GeometricAlbedo": 0.193,
+        "VolMeanRad": 1811.0,
+        "RotationPeriod": 43200.0,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=4659"
+    },
+    {
+        "BODYNAME": "Sagan",
+        "AsteroidNumber": 2709,
+        "ABSMG": 13.16,
+        "GeometricAlbedo": 0.259,
+        "VolMeanRad": 3279.5,
+        "RotationPeriod": 18923.04,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=2709"
+    },
+    {
+        "BODYNAME": "Sax",
+        "AsteroidNumber": 3534,
+        "ABSMG": 12.4,
+        "GeometricAlbedo": 0.229,
+        "VolMeanRad": 4505.5,
+        "RotationPeriod": 22395.6,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=3534"
+    },
+    {
+        "BODYNAME": "Schiaparelli",
+        "AsteroidNumber": 4062,
+        "ABSMG": 13.72,
+        "GeometricAlbedo": 0.178,
+        "VolMeanRad": 2734.5,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=4062"
+    },
+    {
+        "BODYNAME": "Schulz",
+        "AsteroidNumber": 3524,
+        "ABSMG": 13.56,
+        "GeometricAlbedo": 0.204,
+        "VolMeanRad": 3268.0,
+        "RotationPeriod": 48204.0,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=3524"
+    },
+    {
+        "BODYNAME": "Scobee",
+        "AsteroidNumber": 3350,
+        "ABSMG": 14.72,
+        "GeometricAlbedo": 0.059,
+        "VolMeanRad": 3700.5,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=3350"
+    },
+    {
+        "BODYNAME": "Sedna",
+        "AsteroidNumber": 90377,
+        "ABSMG": 1.5,
+        "RotationPeriod": 36982.8,
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=90377"
+    },
+    {
+        "BODYNAME": "Shakespeare",
+        "AsteroidNumber": 2985,
+        "ABSMG": 12.28,
+        "GeometricAlbedo": 0.255,
+        "VolMeanRad": 5236.0,
+        "RotationPeriod": 21816.0,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=2985"
+    },
+    {
+        "BODYNAME": "Sirona",
+        "AsteroidNumber": 116,
+        "ABSMG": 7.77,
+        "GeometricAlbedo": 0.256,
+        "VolMeanRad": 35850.0,
+        "RotationPeriod": 43300.8,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=116"
+    },
+    {
+        "BODYNAME": "Smith",
+        "AsteroidNumber": 3351,
+        "ABSMG": 13.09,
+        "GeometricAlbedo": 0.253,
+        "VolMeanRad": 3639.0,
+        "RotationPeriod": 27812.664,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=3351"
+    },
+    {
+        "BODYNAME": "Sphinx",
+        "AsteroidNumber": 896,
+        "ABSMG": 11.74,
+        "GeometricAlbedo": 0.242,
+        "VolMeanRad": 5987.0,
+        "RotationPeriod": 75736.8,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=896"
+    },
+    {
+        "BODYNAME": "Taranis",
+        "AsteroidNumber": 5370,
+        "ABSMG": 15.23,
+        "GeometricAlbedo": 0.037,
+        "VolMeanRad": 1800.0,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=5370"
+    },
+    {
+        "BODYNAME": "Tesla",
+        "AsteroidNumber": 2244,
+        "ABSMG": 11.94,
+        "GeometricAlbedo": 0.05,
+        "VolMeanRad": 12188.5,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=2244"
+    },
+    {
+        "BODYNAME": "Tolkien",
+        "AsteroidNumber": 2675,
+        "ABSMG": 12.36,
+        "GeometricAlbedo": 0.213,
+        "VolMeanRad": 5480.0,
+        "RotationPeriod": 3816000.0,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=2675"
+    },
+    {
+        "BODYNAME": "Tombaugh",
+        "AsteroidNumber": 1604,
+        "ABSMG": 10.63,
+        "GeometricAlbedo": 0.1038,
+        "VolMeanRad": 16165.0,
+        "RotationPeriod": 26064.0,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=1604"
+    },
+    {
+        "BODYNAME": "Toutatis",
+        "AsteroidNumber": 4179,
+        "ABSMG": 15.29,
+        "GeometricAlbedo": 0.405,
+        "VolMeanRad": 2700.0,
+        "RotationPeriod": 633600.0,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=4179"
+    },
+    {
+        "BODYNAME": "Tunguska",
+        "AsteroidNumber": 5471,
+        "ABSMG": 11.69,
+        "GeometricAlbedo": 0.191,
+        "VolMeanRad": 7977.0,
+        "RotationPeriod": 18612.0,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=5471"
+    },
+    {
+        "BODYNAME": "Ukraina",
+        "AsteroidNumber": 1709,
+        "ABSMG": 12.56,
+        "GeometricAlbedo": 0.196,
+        "VolMeanRad": 4722.0,
+        "RotationPeriod": 26208.0,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=1709"
+    },
+    {
+        "BODYNAME": "Urey",
+        "AsteroidNumber": 4716,
+        "ABSMG": 11.69,
+        "GeometricAlbedo": 0.155,
+        "VolMeanRad": 7704.5,
+        "RotationPeriod": 21333.6,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=4716"
+    },
+    {
+        "BODYNAME": "Vivaldi",
+        "AsteroidNumber": 4330,
+        "ABSMG": 14.03,
+        "GeometricAlbedo": 0.862,
+        "VolMeanRad": 1244.0,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=4330"
+    },
+    {
+        "BODYNAME": "Volkov",
+        "AsteroidNumber": 1790,
+        "ABSMG": 12.52,
+        "GeometricAlbedo": 0.511,
+        "VolMeanRad": 3543.5,
+        "RotationPeriod": 38670.84,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=1790"
+    },
+    {
+        "BODYNAME": "Warhol",
+        "AsteroidNumber": 6701,
+        "ABSMG": 12.51,
+        "GeometricAlbedo": 0.202,
+        "VolMeanRad": 4469.0,
+        "RotationPeriod": 12682.8,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=6701"
+    },
+    {
+        "BODYNAME": "Williamina",
+        "AsteroidNumber": 5747,
+        "ABSMG": 12.79,
+        "GeometricAlbedo": 0.154,
+        "VolMeanRad": 4641.5,
+        "RotationPeriod": 707220.0,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=5747"
+    },
+    {
+        "BODYNAME": "Zenon",
+        "AsteroidNumber": 6186,
+        "ABSMG": 13.91,
+        "RotationPeriod": 9659.52,
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=6186"
+    },
+    {
+        "BODYNAME": "van Gogh",
+        "AsteroidNumber": 4457,
+        "ABSMG": 12.18,
+        "GeometricAlbedo": 0.212,
+        "VolMeanRad": 5245.5,
+        "RotationPeriod": 27380.16,
+        "AsteroidRadiusSource": "JPL Small-Body Database",
+        "#AsteroidPhysicalSource": "https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=4457"
     }
 ]

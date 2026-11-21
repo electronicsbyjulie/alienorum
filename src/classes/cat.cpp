@@ -252,6 +252,38 @@ void CatalogReader::download_catalogs(bool hih)
 
 // Assumes no other star catalogs have been loaded before Gliese,
 // since Gliese contains the Sun.
+static void set_icrs_astrometry(Star& star, double ra, double dec, double source_year,
+    double projected_ra_per_year, double declination_per_year)
+{
+    const double elapsed = 2000 - source_year;
+    const double longitude_per_year = projected_ra_per_year / std::max(1e-12, cos(dec));
+    star.right_ascension = std::remainder(ra + elapsed * longitude_per_year, 2 * _pi);
+    star.declination = dec + elapsed * declination_per_year;
+    if (star.declination > half_pi || star.declination < -half_pi)
+    {
+        star.declination = copysign(_pi, star.declination) - star.declination;
+        star.right_ascension = std::remainder(star.right_ascension + _pi, 2 * _pi);
+        declination_per_year = -declination_per_year;
+    }
+    if (star.right_ascension < 0) star.right_ascension += 2 * _pi;
+    star.epoch = J2000;
+    star.proper_motion_RA = longitude_per_year / oneyear;
+    star.proper_motion_decl = declination_per_year / oneyear;
+}
+
+static bool catalog_icrs_position(const char* row, double& ra, double& dec)
+{
+    char field[16];
+    CatalogReader::read_field_onebased(row, 52, 63, field);
+    if (!parse_numeric_value(field, ra)) return false;
+    CatalogReader::read_field_onebased(row, 65, 76, field);
+    if (!parse_numeric_value(field, dec)) return false;
+    if (ra < 0 || ra > 360 || std::abs(dec) > 90) return false;
+    ra *= fiftyseventh;
+    dec *= fiftyseventh;
+    return true;
+}
+
 int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
 {
     std::string path = "catalogs" _FILESLASH "Gliese" _FILESLASH "catalog.dat";
@@ -259,7 +291,7 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
     char field[32];
     int num_read = 0;
     int offset, j;
-    double deg, mnt, sec, ra, dec, ep_y, ra2k, dec2k, pm, pmtheta, absmagn;
+    double deg, mnt, sec, ra, dec, ep_y, pm, pmtheta, absmagn;
     std::string build_name;
     Star *s, *A = nullptr;
 
@@ -395,7 +427,7 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
         read_field_onebased(buffer, 38, 42, field);
         pmtheta = atof(field) * fiftyseventh;
 
-        s->proper_motion_RA = pm * sin(pmtheta);
+        s->proper_motion_RA = pm * sin(pmtheta) / std::max(1e-12, cos(s->declination));
         s->proper_motion_decl = pm * cos(pmtheta);
 
         //  44- 49  F6.1   km/s    RV       ? Radial velocity
@@ -479,7 +511,7 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
             read_field_onebased(buffer, 159, 166, field);
             s->Bonn_survey_sequential = atoi(field);
 
-            std::string dmkey = bonn_survey_key(s->Bonn_survey, s->Bonn_survey_declination, s->Bonn_survey_sequential);
+            std::string dmkey = bonn_survey_key(s->Bonn_survey, s->Bonn_survey_declination, s->Bonn_survey_sequential, s->Bonn_survey_sign);
             if (dmkey.size() && !dmcache.count(dmkey)) dmcache[dmkey] = s;
         }
 
@@ -568,39 +600,42 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
         s->HIP = atoi(field);
         if (!hipcache[s->HIP]) hipcache[s->HIP] = s;
 
-        //  55- 74 F20.16 deg       RAdeg   ?=- Right ascension (J2000) at Ep=Epoch (ra)
+        double source_ra, source_dec;
         read_field_onebased(buffer, 55, 74, field);
-        ra = atof(field) * fiftyseventh;
-        //  76- 98 F23.19 deg       DEdeg   ?=- Declination (J2000) at Ep=Epoch (dec)
+        const bool has_ra = parse_numeric_value(field, source_ra);
         read_field_onebased(buffer, 76, 98, field);
-        dec = atof(field) * fiftyseventh;
-        // 100-108  F9.4  yr        Epoch   [1991.25/2017.97]?=- Reference epoch for coordinates (epoch)
+        const bool has_dec = parse_numeric_value(field, source_dec);
         read_field_onebased(buffer, 100, 108, field);
-        ep_y = atof(field);
-        convert_to_J2000(ra, dec, ep_y, ra2k, dec2k, false);
+        const bool has_epoch = parse_numeric_value(field, ep_y);
 
-        s->right_ascension = ra2k;
-        s->declination = dec2k;
-        s->epoch = J2000;
-
-        // 130-148 F19.15 mas       plx     ?=- Absolute trigonometric parallax (parallax)
         read_field_onebased(buffer, 130, 148, field);
-        s->parallax = atof(field) * 1e-3;
-        s->distance = parsec / s->parallax;
-        s->parallax *= 2.777777777777e-4 * fiftyseventh;
-        s->distance_known = true;
-        double intrinsic_brightness = pow(magnbase, -s->apparent_magnitude) * pow(fmax(AU, s->distance) / parsec / 10, 2);
-        s->absolute_magnitude = -log(intrinsic_brightness) * invlogmagnbase;
+        double parallax_mas;
+        if (parse_numeric_value(field, parallax_mas) && parallax_mas > 0)
+        {
+            s->distance = 1000 * parsec / parallax_mas;
+            s->parallax = parallax_mas * fiftyseventh / 3600000;
+            s->distance_known = true;
+            s->absolute_magnitude = s->apparent_magnitude - 5 * log10(fmax(AU, s->distance) / (10 * parsec));
+        }
 
-        // 184-206 F23.17 mas/yr    pmRA    ?=- Proper motion in right ascension (d(RAcosDE)/dt) (pmra)
+        constexpr double mas_to_radians = fiftyseventh / 3600000;
+        const double latitude = has_dec ? source_dec * fiftyseventh : s->declination;
+        double pmra, pmdec;
         read_field_onebased(buffer, 184, 206, field);
-        ra = atof(field) * 2.777777777777e-4 * fiftyseventh / oneyear;
-        s->proper_motion_RA = ra * cos(s->declination);
-
-        // 230-252 F23.17 mas/yr    pmDE    ?=- Proper motion in declination (pmdec)
+        const bool has_pmra = parse_numeric_value(field, pmra);
         read_field_onebased(buffer, 230, 252, field);
-        dec = atof(field) * 2.777777777777e-4 * fiftyseventh / oneyear;
-        s->proper_motion_decl = dec;
+        const bool has_pmdec = parse_numeric_value(field, pmdec);
+        if (has_ra && has_dec && has_epoch)
+        {
+            set_icrs_astrometry(*s, source_ra * fiftyseventh, latitude, ep_y,
+                has_pmra ? pmra * mas_to_radians : s->proper_motion_RA * oneyear * cos(latitude),
+                has_pmdec ? pmdec * mas_to_radians : s->proper_motion_decl * oneyear);
+        }
+        else
+        {
+            if (has_pmra) s->proper_motion_RA = pmra * mas_to_radians / (oneyear * std::max(1e-12, cos(s->declination)));
+            if (has_pmdec) s->proper_motion_decl = pmdec * mas_to_radians / oneyear;
+        }
 
         // 297-319 F23.18 km/s      RV      ?=- Spectroscopic radial velocity (rv)
         read_field_onebased(buffer, 297, 319, field);
@@ -678,7 +713,7 @@ int CatalogReader::read_BrightStars_catalog(CelestialObject **cels, int max)
         dm_decl = atoi(field);
         read_field_onebased(buffer, 20, 25, field);
         dm_seq = atoi(field);
-        std::string dmkey = bonn_survey_key(dm_survey, dm_decl, dm_seq);
+        std::string dmkey = bonn_survey_key(dm_survey, dm_decl, dm_seq, dm_sign);
 
         HDfound = false;
         if (HD)
@@ -968,7 +1003,7 @@ bool CatalogReader::load_Hipparcos_orbit_line(const char* buffer, CelestialObjec
         s->absolute_magnitude = 1e29;
     }
     s->make_companion_of(A, 'B');
-    s->epoch = J2000 + (1991.25 - 2000);
+    s->epoch = A->epoch;
 
     //   8- 17  F10.4 d        P        Orbital period                           (DO2)
     read_field_onebased(buffer, 8, 17, field);
@@ -980,7 +1015,7 @@ bool CatalogReader::load_Hipparcos_orbit_line(const char* buffer, CelestialObjec
 
     //  31- 38  F8.2  mas      a0       Semi-major axis of photocentric orbit    (DO4)
     read_field_onebased(buffer, 31, 38, field);
-    s->orbit->semimajor_axis = (atof(field)/206264806) * s->distance;
+    s->orbit->photocentric_semimajor_axis = (atof(field) / 206264806) * s->distance;
 
     //  40- 45  F6.4  ---      ecc      [0,1] Eccentricity                       (DO5)
     read_field_onebased(buffer, 40, 45, field);
@@ -1034,6 +1069,14 @@ bool CatalogReader::load_Hipparcos_orbit_line(const char* buffer, CelestialObjec
         s->absolute_magnitude = A->absolute_magnitude + 1;      // garbage number
     }
 
+    const double primary_mass = A->mass > 0 ? A->mass : A->estimate_mass();
+    const double companion_mass = s->mass > 0 ? s->mass : s->estimate_mass();
+    if (s->orbit->period > 0 && primary_mass + companion_mass > 0)
+    {
+        const double p = s->orbit->period;
+        s->orbit->semimajor_axis = std::cbrt(G * (primary_mass + companion_mass) * p * p / (4 * _pi * _pi));
+    }
+
     return true;
 }
 
@@ -1047,7 +1090,7 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
     int num_read = 0;
     int offset, j;
     uint32_t HD, HIP;
-    double deg, mnt, sec, RA, Decl, f;
+    double f;
     Star *s, *A = nullptr;
 
     for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);
@@ -1073,7 +1116,7 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         Star *dms = (Star*)cels[j];
         if (dms->Bonn_survey[0])
         {
-            std::string k = bonn_survey_key(dms->Bonn_survey, dms->Bonn_survey_declination, dms->Bonn_survey_sequential);
+            std::string k = bonn_survey_key(dms->Bonn_survey, dms->Bonn_survey_declination, dms->Bonn_survey_sequential, dms->Bonn_survey_sign);
             if (k.size() && !dmcache.count(k)) dmcache[k] = dms;
         }
     }
@@ -1101,6 +1144,9 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         // 391-396  I6    ---     HD        [1/359083]? HD number <III/135>
         read_field_onebased(buffer, 391, 396, field);
         HD = atoi(field);
+
+        double ra, dec;
+        if (HIP > MAX_HIP || HD > MAX_HD || !catalog_icrs_position(buffer, ra, dec)) continue;
 
         // 398-429  Bonner/Cordoba/Cape Durchmusterung, parsed ahead of the existence check below so
         // it can serve as a fallback match key: a star loaded from Gliese under an old "Wo"/"NN"
@@ -1143,7 +1189,7 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
             read_field_onebased(buffer, 402, 407, field);
             dm_seq = atoi(field);
         }
-        std::string dmkey = bonn_survey_key(dm_survey, dm_decl, dm_seq);
+        std::string dmkey = bonn_survey_key(dm_survey, dm_decl, dm_seq, dm_sign);
 
         s = nullptr;
         bool is_new = false;
@@ -1204,48 +1250,6 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
             if (dmkey.size() && !dmcache.count(dmkey)) dmcache[dmkey] = s;
         }
 
-        //  18- 28  A11   ---     RAhms     Right ascension in h m s, ICRS (J1991.25) (H3)
-        read_field_onebased(buffer, 18, 19, field);
-        deg = atof(field) * 15;
-
-        read_field_onebased(buffer, 21, 22, field);
-        mnt = atof(field) * 15;
-
-        read_field_onebased(buffer, 24, 28, field);
-        sec = atof(field) * 15;
-
-        RA = (deg + mnt/60 + sec/3600) * fiftyseventh;
-
-        //  30- 40  A11   ---     DEdms     Declination in deg ' ", ICRS (J1991.25)   (H4)
-        read_field_onebased(buffer, 30, 30, field);
-        int sgndecl = (field[0] == '-') ? -1 : 1;
-
-        read_field_onebased(buffer, 31, 32, field);
-        deg = atof(field);
-
-        read_field_onebased(buffer, 34, 35, field);
-        mnt = atof(field);
-
-        read_field_onebased(buffer, 37, 40, field);
-        sec = atof(field);
-
-        Decl = (deg + mnt/60 + sec/3600) * fiftyseventh * sgndecl;
-
-        if (RA && Decl)
-        {
-            double ra2000, dec2000;
-            convert_to_J2000(RA, Decl, 1991.25, ra2000, dec2000, false);
-            s->right_ascension = ra2000;
-            s->declination = dec2000;
-            s->epoch = J2000;
-        }
-        else
-        {
-            std::cout << "ERROR: HIP" << HIP << " has no RA/Decl" << std::endl;
-            throw 0xbadda7a;
-            continue;
-        }
-
         //  80- 86  F7.2  mas     Plx       ? Trigonometric parallax
         read_field_onebased(buffer, 80, 86, field);
         f = atof(field) / 1000 / 3600 * fiftyseventh;
@@ -1261,15 +1265,16 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         }
         else if (!s->distance_known) s->distance = light_year*1e4;
 
-        //  88- 95  F8.2 mas/yr   pmRA     *? Proper motion mu_alpha.cos(delta), ICRS
+        // Hipparcos and Tycho positions and motions are in ICRS at J1991.25.
+        constexpr double mas_to_radians = fiftyseventh / 3600000;
+        double pm_ra, pm_dec;
         read_field_onebased(buffer, 88, 95, field);
-        f = atof(field) / 1000 / 3600 / oneyear * fiftyseventh;
-        if (f) s->proper_motion_RA = f;
-
-        //  97-104  F8.2 mas/yr   pmDE     *? Proper motion mu_delta, ICRS
+        if (parse_numeric_value(field, pm_ra)) pm_ra *= mas_to_radians;
+        else pm_ra = s->proper_motion_RA * oneyear * cos(dec);
         read_field_onebased(buffer, 97, 104, field);
-        f = atof(field) / 1000 / 3600 / oneyear * fiftyseventh;
-        if (f) s->proper_motion_decl = f;
+        if (parse_numeric_value(field, pm_dec)) pm_dec *= mas_to_radians;
+        else pm_dec = s->proper_motion_decl * oneyear;
+        set_icrs_astrometry(*s, ra, dec, 1991.25, pm_ra, pm_dec);
 
         //  42- 46  F5.2  mag     Vmag      ? Magnitude in Johnson V                  (H5)
         read_field_onebased(buffer, 42, 46, field);
@@ -1298,7 +1303,8 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
 
         // 436-447  A12   ---     SpType    Spectral type
         read_field_onebased(buffer, 436, 447, field);
-        const std::string spectrum = trim(field);
+        // The main catalog assigns the spectrum of the hot companion to Almach.
+        const std::string spectrum = HIP == 9640 && HD == 12533 ? "K2+IIb" : trim(field);
         const bool classified = s->spectral_type[0] && strpbrk(s->spectral_type, "IV");
         if (!spectrum.empty() && !(classified && spectrum.find("comp") != std::string::npos))
             strcpy(s->spectral_type, spectrum.c_str());
@@ -1323,7 +1329,7 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         }
 
         num_read++;
-        if (num_read >= max-4) return num_read;
+        if (offset >= max-2) break;
 
         mtx.lock();
         if (!(num_read % 123)) loading_msg = std::string("Loaded ") + std::to_string(num_read) + std::string(" objects from The Hipparcos Catalogue...");
@@ -1379,7 +1385,7 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
                 if (offset >= max-2) return num_read++;
             }
             s->make_companion_of(A, buffer[40]);
-            s->epoch = J2000 + (1991.25 - 2000);
+            s->epoch = A->epoch;
         }
 
         //  38- 39  I2     ---     seq      Sequential component number             (DCM6)
@@ -1638,6 +1644,9 @@ int alienorum::CatalogReader::read_Tycho_catalog(CelestialObject **cels, int max
     int num_read = 0;
     uint32_t HD, HIP;
     std::string TYC;
+    if (!hipcache) hipcache = new Star*[MAX_HIP+1]();
+    if (!hdcache) hdcache = new Star*[MAX_HD+1]();
+    for (ncelobjs = 0; cels[ncelobjs]; ++ncelobjs) {}
 
     FILE* fp = fopen(path.c_str(), "rb");
 
@@ -1673,43 +1682,27 @@ int alienorum::CatalogReader::read_Tycho_catalog(CelestialObject **cels, int max
         read_field_onebased(buffer, 310, 315, field);
         HD = atoi(field);
 
+        if (ncelobjs >= max-1) break;
+        double ra, dec;
+        if (HIP > MAX_HIP || HD > MAX_HD || !catalog_icrs_position(buffer, ra, dec)) continue;
         if (HIP && hipcache[HIP]) continue;
         if (HD && hdcache[HD]) continue;
         // std::cout << buffer << std::endl;
 
         Star *s = new Star();
+        s->HIP = HIP;
+        s->HD = HD;
         std::string starname;
 
         if (HD) starname = std::string("HD") + std::to_string(HD);
         else if (HIP) starname = std::string("HIP") + std::to_string(HIP);
         else starname = std::string("TYC") + TYC;
 
+        snprintf(s->name, sizeof(s->name), "%s", starname.c_str());
+
         //  42- 46  F5.2  mag     Vmag      ? Magnitude in Johnson V
         read_field_onebased(buffer, 42, 46, field);
         s->apparent_magnitude = atof(field);
-
-        //  52- 63  F12.8 deg     RAdeg    *alpha, degrees (ICRS, Epoch=J1991.25)
-        read_field_onebased(buffer, 52, 63, field);
-        s->right_ascension = atof(field) * fiftyseventh;
-
-        //  65- 76  F12.8 deg     DEdeg    *delta, degrees (ICRS, Epoch=J1991.25)
-        read_field_onebased(buffer, 65, 76, field);
-        s->declination = atof(field) * fiftyseventh;
-
-        if (s->right_ascension && s->declination)
-        {
-            double ra2000, dec2000;
-            convert_to_J2000(s->right_ascension, s->declination, 1991.25, ra2000, dec2000, false);
-            s->right_ascension = ra2000;
-            s->declination = dec2000;
-            s->epoch = J2000;
-        }
-        else
-        {
-            std::cout << "ERROR: TYC" << TYC << " has no RA/Decl" << std::endl;
-            throw 0xbadda7a;
-            continue;
-        }
 
         //  80- 86  F7.2  mas     Plx      *? Trigonometric parallax
         read_field_onebased(buffer, 80, 86, field);
@@ -1725,15 +1718,16 @@ int alienorum::CatalogReader::read_Tycho_catalog(CelestialObject **cels, int max
         double intrinsic_brightness = pow(magnbase, -s->apparent_magnitude) * pow(fmax(AU, s->distance) / parsec / 10, 2);
         s->absolute_magnitude = -log(intrinsic_brightness) * invlogmagnbase;
 
-        //  88- 95  F8.2 mas/yr   pmRA     *? Proper motion mu_alpha.cos(delta), ICRS
+        // Hipparcos and Tycho positions and motions are in ICRS at J1991.25.
+        constexpr double mas_to_radians = fiftyseventh / 3600000;
+        double pm_ra, pm_dec;
         read_field_onebased(buffer, 88, 95, field);
-        f = atof(field) / 1000 / 3600 / oneyear * fiftyseventh;
-        if (f) s->proper_motion_RA = f;
-
-        //  97-104  F8.2 mas/yr   pmDE     *? Proper motion mu_delta, ICRS
+        if (parse_numeric_value(field, pm_ra)) pm_ra *= mas_to_radians;
+        else pm_ra = s->proper_motion_RA * oneyear * cos(dec);
         read_field_onebased(buffer, 97, 104, field);
-        f = atof(field) / 1000 / 3600 / oneyear * fiftyseventh;
-        if (f) s->proper_motion_decl = f;
+        if (parse_numeric_value(field, pm_dec)) pm_dec *= mas_to_radians;
+        else pm_dec = s->proper_motion_decl * oneyear;
+        set_icrs_astrometry(*s, ra, dec, 1991.25, pm_ra, pm_dec);
 
         // 246-251  F6.3  mag     B-V       ? Johnson B-V colour
         read_field_onebased(buffer, 246, 251, field);
@@ -1746,9 +1740,12 @@ int alienorum::CatalogReader::read_Tycho_catalog(CelestialObject **cels, int max
         s->origname = s->name;
 
         append_cel(s);
+        if (HIP) hipcache[HIP] = s;
+        if (HD) hdcache[HD] = s;
         num_read++;
     }
 
+    fclose(fp);
     return num_read;
 }
 
@@ -2404,7 +2401,7 @@ int alienorum::CatalogReader::read_WD_catalog(CelestialObject **objects, int max
         {
             add("HIP" + std::to_string(s->HIP));
         }
-        add(bonn_survey_key(s->Bonn_survey, s->Bonn_survey_declination, s->Bonn_survey_sequential));
+        add(bonn_survey_key(s->Bonn_survey, s->Bonn_survey_declination, s->Bonn_survey_sequential, s->Bonn_survey_sign));
         if (s->Bayer[0] && s->constellation[0])
         {
             add(std::string(s->Bayer) + s->constellation);
@@ -2813,7 +2810,6 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
         {
 #if _ALLOW_CCDM_ADDITIONS
             s = new Star();
-            s->epoch = J2000 + (1991.25 - 2000);
 
             append_cel(s);
             offset++;
@@ -2870,16 +2866,16 @@ int CatalogReader::read_CCDM_catalog(CelestialObject **cels, int max)
         rho /= (3600 * fiftyseven);
 
         // Fill in positional parameters based on angular separation
-        s->right_ascension = A->right_ascension - rho * sin(theta) / cos(A->declination);
+        s->right_ascension = A->right_ascension + rho * sin(theta) / std::max(1e-12, cos(A->declination));
         s->declination = A->declination + rho * cos(theta);
 
         s->location = A->location;                      // Copies local system reference frame
-        s->epoch = J2000;
-        s->update_location(J2000_TIME_T);
+        s->epoch = A->epoch;
+        s->update_location(simnow);
 
         // Estimate the semimajor axis
-        double sma = asep * A->distance / 206264.806;
-        s->orbit->semimajor_axis = sma;
+        if (!(s->orbit->semimajor_axis > 0))
+            s->orbit->semimajor_axis = asep * A->distance / 206264.806;
 
         // Figure the absolute magnitude
         if (s->distance_known)
@@ -3180,6 +3176,22 @@ int CatalogReader::read_SB9_catalog(CelestialObject **cels, int max)
     return num_read;
 }
 
+static void apply_asteroid_physical_properties(Planet& asteroid, const json& record)
+{
+    const auto number = [&](const char* key, double& target, double scale = 1)
+    {
+        const auto field = record.find(key);
+        if (field != record.end() && field->is_number()) target = field->get<double>() * scale;
+    };
+    number("GeometricAlbedo", asteroid.albedo);
+    number("ABSMG", asteroid.absolute_magnitude);
+    number("VolMeanRad", asteroid.volumetric_mean_radius);
+    number("RotationPeriod", asteroid.sidereal_rotational_period);
+    if (record.contains("Mass")) number("Mass", asteroid.mass, 1000);
+    else if (record.contains("AsteroidRadiusSource"))
+        asteroid.mass = 1853000 * sphere_volume(asteroid.volumetric_mean_radius);
+}
+
 bool CatalogReader::load_asteroid(AstorbRow *r, char *buffer)
 {
     std::string path = "catalogs" _FILESLASH "astorb" _FILESLASH "astorb.dat";
@@ -3258,7 +3270,7 @@ bool CatalogReader::load_asteroid(AstorbRow *r, char *buffer)
         p->volumetric_mean_radius = 664500 * pow(10, -absmagn / 5) / sqrt(p->albedo);
     }
     assert(!isinf(p->volumetric_mean_radius));
-    p->mass = p->volumetric_mean_radius * p->volumetric_mean_radius * p->volumetric_mean_radius * 4.0/3 * _pi * 1853;  // Representative icy-rocky bulk density.
+    p->mass = sphere_volume(p->volumetric_mean_radius) * 1853000;  // Representative icy-rocky bulk density.
 
     // 107-114  A8 "YYYYMMDD" Epoch     Epoch of osculation, yyyymmdd (TDT) (2)
     read_field_onebased(buffer, 107, 110, field);
@@ -3272,8 +3284,12 @@ bool CatalogReader::load_asteroid(AstorbRow *r, char *buffer)
     epoch.tm_year = _year - 1900;
     epoch.tm_mon = _month - 1;
     epoch.tm_mday = _day;
-    time_t t = mktime(&epoch);
-    p->epoch = p->orbit->epoch = (((double)t - J2000_TIME_T)/oneday) + 2451544.5;
+#ifdef _WIN32
+    const time_t t = _mkgmtime(&epoch);
+#else
+    const time_t t = timegm(&epoch);
+#endif
+    p->epoch = p->orbit->epoch = J2000 + (double(t) - J2000_TIME_T) / oneday;
 
     // 116-125  F10.6 deg     M         Mean anomaly (3)
     read_field_onebased(buffer, 116, 125, field);
@@ -3308,6 +3324,20 @@ bool CatalogReader::load_asteroid(AstorbRow *r, char *buffer)
     if (!p->mass) p->mass = 2.0e+6 * sphere_volume(p->volumetric_mean_radius);
     p->estimate_rotation();
     if (!p->albedo) p->estimate_albedo_and_absmagn();
+
+    if (delete_buffer && r->number)
+    {
+        std::ifstream supplemental("catalogs/planets.json");
+        const auto records = json::parse(supplemental, nullptr, false);
+        if (records.is_array())
+        {
+            for (const auto& record : records)
+            {
+                if (record.value("AsteroidNumber", 0u) == r->number)
+                    apply_asteroid_physical_properties(*p, record);
+            }
+        }
+    }
 
     append_cel(p);
     if (delete_buffer) delete[] buffer;
@@ -3557,7 +3587,7 @@ bool CatalogReader::load_comet(CometRow *r, char *buffer)
     if (c->volumetric_mean_radius < 100) c->volumetric_mean_radius = 100;
     assert(!isinf(c->volumetric_mean_radius));
 
-    c->mass = sphere_volume(c->volumetric_mean_radius) * 600;       // Nuclei are porous ice: about six tenths the density of water.
+    c->mass = sphere_volume(c->volumetric_mean_radius) * 600000;       // Nuclei are porous ice: about six tenths the density of water.
     c->absolute_magnitude = c->H1 ? c->H1 : h_nucleus;
     c->BV_color = 0.65;                                             // Sunlight, near enough: a coma is dust and gas scattering it back at us.
 
@@ -3796,6 +3826,38 @@ void CatalogReader::reconcile_exoplanet_inclinations(
 }
 
 #define _debug_exoplanet_inclinations 0
+static void set_transit_phase(Planet& planet)
+{
+    Orbit& orbit = *planet.orbit;
+    const double e = orbit.eccentricity;
+    if (!orbit.epoch_is_transit || !(orbit.period > 0) || !(orbit.semimajor_axis > 0)
+        || e < 0 || e >= 1) return;
+
+    auto* host = static_cast<Star*>(orbit.center);
+    const double date = J2000_TIME_T + (orbit.epoch - J2000) * oneday;
+    host->update_location(date);
+    auto displacement = cels[0]->location - host->location;
+    const Point to_observer(displacement);
+    const auto set_anomaly = [&](double true_anomaly)
+    {
+        const double eccentric_anomaly = atan2(sqrt(1 - e * e) * sin(true_anomaly), e + cos(true_anomaly));
+        orbit.mean_anomaly = eccentric_anomaly - e * sin(eccentric_anomaly);
+    };
+    const auto projection = [&](double true_anomaly)
+    {
+        set_anomaly(true_anomaly);
+        planet.update_location(date);
+        Point direction = planet.location.local_position - host->location.local_position;
+        direction.scale(1);
+        return direction.x * to_observer.x + direction.y * to_observer.y + direction.z * to_observer.z;
+    };
+    // Project the observer's direction into the final orbital plane, selecting inferior conjunction.
+    const double along_periapsis = projection(0);
+    const double along_quadrature = projection(half_pi);
+    set_anomaly(atan2(along_quadrature, along_periapsis));
+    host->update_location(simnow);
+}
+
 void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>& planet_celids,
     const ExactStarSearchIndex *lookup)
 {
@@ -4415,6 +4477,11 @@ void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>&
                                             p->orbit->inclination, p->orbit->ascending_node);
 
             p->location.local_system_plane = s->location.local_system_plane;
+            if (p->orbit->epoch_is_transit)
+            {
+                set_transit_phase(*p);
+                p->update_location(simnow);
+            }
             p->lock_equatorial_plane = false;
             if (p->mass != classified_masses[i])
             {
@@ -5812,6 +5879,16 @@ static void apply_body_metadata(CelestialObject* body, const json& record)
     if (body->typeclass() == class_planet || body->typeclass() == class_moon)
     {
         auto* planet = static_cast<Planet*>(body);
+        if (!std::isfinite(planet->bond_albedo))
+        {
+            const auto bond = record.find("BondAlbedo");
+            if (bond != record.end() && bond->is_number())
+            {
+                const double value = bond->get<double>();
+                if (value >= 0 && value <= 1) planet->bond_albedo = value;
+            }
+        }
+        planet->bump_has_bathymetry = record.value("BumpHasBathymetry", planet->bump_has_bathymetry);
         // Older universe saves acquire calibration from the local catalog.
         // An explicitly saved height, including zero, keeps its associated offset.
         if (!std::isfinite(planet->bump_height))
@@ -5904,13 +5981,14 @@ void CatalogReader::apply_local_catalog_metadata(CelestialObject** objects)
     json records;
     file >> records;
     normalize_uncertain_numbers(records);
+    std::unordered_multimap<std::string_view, CelestialObject*> objects_by_name;
+    for (int i = 0; objects[i]; ++i) objects_by_name.emplace(objects[i]->name, objects[i]);
     for (const auto& record : records)
     {
         const std::string name = record.value("BODYNAME", "");
-        for (int i = 0; objects[i]; ++i)
-        {
-            if (name == objects[i]->name) apply_body_metadata(objects[i], record);
-        }
+        const auto matches = objects_by_name.equal_range(name);
+        for (auto it = matches.first; it != matches.second; ++it)
+            apply_body_metadata(it->second, record);
     }
 }
 
@@ -5932,6 +6010,16 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
     if (offset >= (max-1)) return 0;
 
     std::unordered_map<std::string, int> center_indices;
+    std::unordered_map<unsigned int, int> asteroid_indices;
+    if (!must_orbit)
+    {
+        for (int index = 0; cels[index]; ++index)
+        {
+            if (cels[index]->typeclass() != class_planet) continue;
+            const auto number = static_cast<const Planet*>(cels[index])->asteroid_no;
+            if (number) asteroid_indices.emplace(number, index);
+        }
+    }
 
     for (i=0; i<n; i++)
     {
@@ -5947,7 +6035,18 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
                 pl.at("CENTER_OF_ORBIT").get_to(cenname);
             }
             catch (...) { ; }
-            j = cenname.size() ? -1 : find_object(bodyname.c_str(), false, 9e+29, 0);
+            if (must_orbit && cenname.empty()) continue;
+            const auto asteroid_number = pl.value("AsteroidNumber", 0u);
+            if (asteroid_number)
+            {
+                const auto asteroid = asteroid_indices.find(asteroid_number);
+                if (asteroid == asteroid_indices.end()) continue;
+                j = asteroid->second;
+            }
+            else
+            {
+                j = cenname.empty() ? find_object(bodyname.c_str(), false, 9e+29, 0) : -1;
+            }
             k = -1;
             if (cenname.size())
             {
@@ -6021,11 +6120,13 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
                 p->known_poles = true;
             }
             catch (...) { ; }
+            if (asteroid_number)
+                apply_asteroid_physical_properties(*p, pl);
+
             try { pl.at("ABSMG").get_to(p->absolute_magnitude); } catch (...) { ; }
             try { pl.at("ArgPeri").get_to(p->orbit->arg_periapsis); p->orbit->arg_periapsis *= fiftyseventh; } catch (...) { ; }
             try { pl.at("AscNode").get_to(p->orbit->ascending_node); p->orbit->ascending_node *= fiftyseventh; } catch (...) { ; }
 
-            try { /* TODO: pl.at("BondAlbedo").get_to(p->BV_color); */ } catch (...) { ; }
             try { pl.at("BVmag").get_to(p->BV_color); p->lock_bv_color = true; p->is_bv_observed = true; }
             catch (...) { if (createnew) p->BV_color = p->orbit->center->BV_color; }
             try { pl.at("UBmag").get_to(p->UB_color); } catch (...) { if (createnew) p->UB_color = p->orbit->center->UB_color; }
@@ -6136,7 +6237,8 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
                 try { pl.at("Major" ).get_to(m->major_moon); } catch (...) { ; }
                 if (!m->orbit) std::cout << "WARNING: " << m->name << " has no orbit." << std::endl << std::flush;
                 if (m->orbit && !m->sidereal_rotational_period) m->sidereal_rotational_period = m->orbit->period;
-                if (m->depth > zero_isnt_really_zero && m->width > zero_isnt_really_zero && m->height > zero_isnt_really_zero)
+                if (!pl.contains("VolMeanRad") && m->depth > zero_isnt_really_zero
+                    && m->width > zero_isnt_really_zero && m->height > zero_isnt_really_zero)
                     m->volumetric_mean_radius = pow(m->depth * m->width * m->height, 1.0/3.0) * 0.5;
                 assert(!isinf(m->volumetric_mean_radius));
             }
@@ -6326,7 +6428,9 @@ std::string alienorum::CatalogReader::format_condensed_star_line(Star* s, bool e
     if (s->Bonn_survey[0])
     {
         put(439, 440, std::string(s->Bonn_survey, 2));
-        put(442, 445, (s->Bonn_survey_declination < 0 ? "-" : "+") + std::to_string(abs(s->Bonn_survey_declination)));
+        const int zone = s->Bonn_survey_declination;
+        const bool south = zone < 0 || (zone == 0 && s->Bonn_survey_sign == '-');
+        put(442, 445, std::string(south ? "-" : "+") + (zone ? std::to_string(abs(zone)) : "00"));
         put(447, 452, std::to_string(s->Bonn_survey_sequential));
     }
     if (s->has_custom_name) put(454, 454, "Y");
@@ -6428,6 +6532,7 @@ std::string alienorum::CatalogReader::format_condensed_star_line(Star* s, bool e
                 s->orbit->eccentricity, s->orbit->arg_periapsis, s->orbit->mean_anomaly,
                 s->orbit->epoch, s->orbit->heliocentric_inclination, s->orbit->heliocentric_node,
                 s->orbit->inclination, s->orbit->ascending_node});
+            if (s->orbit->photocentric_semimajor_axis) state[15].push_back(s->orbit->photocentric_semimajor_axis);
         }
         std::ostringstream extra;
         extra << " ORB1 " << std::quoted(state.dump());
@@ -6740,7 +6845,8 @@ int alienorum::CatalogReader::apply_gaia_astrometry(CelestialObject** cels)
 
         if (rec.pm_ra != 0.0f || rec.pm_dec != 0.0f)
         {
-            s->proper_motion_RA = (rec.pm_ra / 1000.0) / 3600.0 / oneyear * fiftyseventh;
+            s->proper_motion_RA = (rec.pm_ra / 1000.0) / 3600.0 / oneyear * fiftyseventh
+                / std::max(1e-12, cos(s->declination));
             s->proper_motion_decl = (rec.pm_dec / 1000.0) / 3600.0 / oneyear * fiftyseventh;
         }
 
@@ -7328,13 +7434,14 @@ int alienorum::CatalogReader::read_condensed_star_cat()
             s->Bonn_survey[1] = str[1];
 
             read_field_onebased(buffer, 442, 445, field);
-            s->Bonn_survey_sign = field[0];
+            const std::string zone = trim(field);
+            s->Bonn_survey_sign = !zone.empty() && zone.front() == '-' ? '-' : '+';
             s->Bonn_survey_declination = atoi(field);
 
             read_field_onebased(buffer, 447, 452, field);
             s->Bonn_survey_sequential = atoi(field);
 
-            std::string dmkey = bonn_survey_key(s->Bonn_survey, s->Bonn_survey_declination, s->Bonn_survey_sequential);
+            std::string dmkey = bonn_survey_key(s->Bonn_survey, s->Bonn_survey_declination, s->Bonn_survey_sequential, s->Bonn_survey_sign);
             if (dmkey.size() && !dmcache.count(dmkey)) dmcache[dmkey] = s;
         }
 
@@ -7528,6 +7635,7 @@ int alienorum::CatalogReader::read_condensed_star_cat()
             s->orbit->heliocentric_node = elements.at(7);
             s->orbit->inclination = elements.at(8);
             s->orbit->ascending_node = elements.at(9);
+            if (elements.size() > 10) s->orbit->photocentric_semimajor_axis = elements.at(10);
         }
         const int flags = state.at(3);
         s->known_poles = flags & 1;
@@ -8702,16 +8810,17 @@ bool CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, s
         new_planet->obliquity = row.pl_trueobliq * fiftyseventh;
 
     // 3. Allocate and map the planetary Orbit data structure
-    Orbit* orb = new Orbit();
+    Orbit* orb = new_planet->orbit = new Orbit();
     orb->center = host_star;
     orb->center_name = host_star->name;
 
     double pl_tranmid=0, pl_orbtper=0, pl_orblper=0;
 
     // Subtract light travel time to get true epochs.
-    if (!isnan(row.pl_orbtper)) pl_orbtper = row.pl_orbtper - host_star->distance/light_year*oneyear/oneday;
+    const double light_days = host_star->distance / (speed_of_light * oneday);
+    if (!isnan(row.pl_orbtper)) pl_orbtper = row.pl_orbtper - light_days;
     if (!isnan(row.pl_orblper)) pl_orblper = row.pl_orblper;
-    if (!isnan(row.pl_tranmid)) pl_tranmid = row.pl_tranmid - host_star->distance/light_year*oneyear/oneday;
+    if (!isnan(row.pl_tranmid)) pl_tranmid = row.pl_tranmid - light_days;
 
     if (!isnan(row.pl_orbper))
         orb->period = row.pl_orbper * oneday;
@@ -8748,15 +8857,9 @@ bool CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, s
     }
     else if (pl_tranmid)
     {
-        host_star->update_location(simnow);
         orb->epoch = new_planet->epoch = pl_tranmid;
-        double pl_tranmid_timet = (pl_tranmid - J2000) * oneyear + J2000_TIME_T;
-        orb->mean_anomaly = (360 - pl_orblper) * fiftyseventh + cels[0]->RA_as_radians(host_star->location, 0);
-        for (int i=0; i<10; i++)
-        {
-            new_planet->update_location(pl_tranmid_timet);
-            orb->mean_anomaly += cels[0]->RA_as_radians(host_star->location, 0) - new_planet->RA_as_radians(host_star->location, 0);
-        }
+        orb->epoch_is_transit = true;
+        set_transit_phase(*new_planet);
     }
 
     for (const int h : host_star->pl_indices)
@@ -8768,12 +8871,13 @@ bool CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, s
         {
             if (orb->inclination && !cels[h]->orbit->inclination) cels[h]->orbit->inclination = orb->inclination;
             if (orb->arg_periapsis && !cels[h]->orbit->arg_periapsis) cels[h]->orbit->arg_periapsis = orb->arg_periapsis;
-            if ((orb->mean_anomaly && !cels[h]->orbit->mean_anomaly) || (orb->epoch != J2000 && cels[h]->orbit->epoch != J2000))
+            if ((pl_orbtper || pl_tranmid) && (pl_orbtper || cels[h]->orbit->epoch == J2000
+                || cels[h]->orbit->epoch_is_transit))
             {
                 cels[h]->orbit->epoch = orb->epoch;
                 cels[h]->orbit->mean_anomaly = orb->mean_anomaly;
+                cels[h]->orbit->epoch_is_transit = orb->epoch_is_transit;
             }
-            delete orb;
             delete new_planet;
             return false;             // Skip adding a duplicate planet.
             // std::cerr << "WARNING: " << row.pl_name << " is too similar to " << cels[h]->name << "; possible duplicate." << std::endl;
@@ -8781,7 +8885,6 @@ bool CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, s
         }
     }
 
-    new_planet->orbit = orb;
     new_planet->update_location(simnow);
 
     // 4. Run automated estimation/classification fallbacks provided in class declarations.
