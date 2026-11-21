@@ -3969,6 +3969,56 @@ TEST_F(RenderingRegressionTest, DISABLED_HorizonGroundGpuTimings)
     SDL_GL_SwapWindow(window);
 }
 
+TEST_F(RenderingRegressionTest, HorizonGroundUsesSlopeLightingBeyondTheTerminator)
+{
+    class LedgeMap : public CraterLightingMap
+    {
+    public:
+        explicit LedgeMap(double radius) : CraterLightingMap(128, false, true)
+        {
+            for (unsigned long row = 0; row < image_height; ++row)
+            {
+                for (unsigned long column = 0; column < image_width; ++column)
+                {
+                    const double longitude = column / lon_scale - _pi;
+                    bump_data[row * image_width + column] = radius * (.003 - .003 * sin(40 * longitude));
+                }
+            }
+        }
+    };
+
+    auto* world = surface();
+    world->oblateness = 0;
+    world->sidereal_rotational_period = oneday;
+    delete world->surf_map;
+    world->surf_map = new LedgeMap(world->get_equatorial_radius());
+    auto* source = world->get_light_center();
+    source->absolute_magnitude = 4.8;
+    set(global_brightness, 1.0);
+    set(luminous_flux, 0.0);
+    set(altitude, -half_pi + .01);
+    set_viewer_surface_location(true);
+    const auto capture = [&](double east)
+    {
+        auto direction = rotate3D(Point(-east, 0, -.02), center, yaxis, -world->timeofday());
+        direction = rotate3D(direction, center, world->location.equatorial_plane.v, -world->location.equatorial_plane.a);
+        source->location = world->location;
+        source->location.local_position = world->location.local_position + direction * AU;
+        source->tmprel = source->location.local_position - here.local_position;
+        EXPECT_LT(source->Decl_as_radians(here), 0);
+        freeze_surface_time();
+        find_horizon();
+        draw_horizon();
+        const auto pixels = render();
+        ImGui::NewFrame();
+        return pixels[(static_cast<size_t>(render_height / 2) * render_width + render_width / 2) * 4];
+    };
+
+    const auto toward_source = capture(1);
+    const auto away_from_source = capture(-1);
+    EXPECT_GT(toward_source, away_from_source + 5);
+}
+
 TEST_F(RenderingRegressionTest, HorizonObserverUsesMappedElevationAndSeesBelowLevelFromSummit)
 {
     Planet* world = surface();

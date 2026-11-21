@@ -5917,22 +5917,12 @@ void draw_horizon()
 
         double is_day = fmin(1, luminous_flux*2.5e-11 + starlight);
 
-        // Adjust for relative instellation.
-        if (p)
-        {
-            is_day /= fmin(1, fmax(0.01, sqrt(p->mean_instellation())));
-            is_day = fmin(1, is_day);
-        }
+        const double instellation_scale = p ? std::clamp(sqrt(p->mean_instellation()), .01, 1.0) : 1.0;
+        is_day = fmin(1, is_day / instellation_scale);
 
-        const Color source_color = Color::reflected_daylight(cel->get_light_center());
+        auto* light_source = cel->get_light_center();
+        const Color source_color = Color::reflected_daylight(light_source);
         const std::array<double, 3> source_tint = {source_color.red, source_color.green, source_color.blue};
-        const auto ground_light = haze.surface_illumination(is_day, source_tint);
-        const auto lit_surface_color = [&](const RGB3& sample)
-        {
-            return rgba_apply_redlight(IM_COL32(fmin(255, ground_light[0] * sample.r),
-                fmin(255, ground_light[1] * sample.g), fmin(255, ground_light[2] * sample.b),
-                255));
-        };
 
         const auto incident_tint = cel->type == lavaworld
             ? std::array<double, 3>{1, 1, 1} : haze.illumination_tint(source_tint);
@@ -5973,6 +5963,63 @@ void draw_horizon()
         const auto skyline_elevation = [&](double latitude, double longitude)
         {
             return surface.skyline_elevation(latitude, longitude);
+        };
+        // Replace the primary source's direct contribution while retaining twilight
+        // and light from other objects in the observer's flux.
+        Point terrain_light;
+        double direct_flux = 0, ambient_flux = luminous_flux, solar_sine = 0;
+        const bool bump_lighting = show_terrain && !gaseous && !ocean_world && map
+            && map->is_complete() && map->has_bump_data() && light_source && light_source != cel;
+        if (bump_lighting)
+        {
+            const Point to_light = light_source->location.local_position - cel->location.local_position;
+            const double light_distance = to_light.magnitude();
+            const double magnitude = light_source->viewer_magnitude(here);
+            if (light_distance > 0 && magnitude < -10)
+            {
+                const double flux = global_brightness * pow(magnbase, -magnitude)
+                    * fmax(1.0 - eclipse_obscuration(light_source), 1.2e-3);
+                if (std::isfinite(flux) && flux > 0)
+                {
+                    direct_flux = flux;
+                    ambient_flux = fmax(0.0, luminous_flux
+                        - flux * fmax(0.0, sin(light_source->Decl_as_radians(here))));
+                    solar_sine = std::clamp(light_source->get_equatorial_radius() / light_distance, 0.0, 1.0);
+                    terrain_light = rotate3D(to_light * (1 / light_distance), center,
+                        cel->location.equatorial_plane.v, cel->location.equatorial_plane.a);
+                    terrain_light = rotate3D(terrain_light, center, yaxis, cel->timeofday());
+                }
+            }
+        }
+        const TerrainVector terrain_axes{surface_radius, surface_radius, surface_radius};
+        const double normal_lon_step = bump_lighting ? 2 * _pi / std::max(1ul, map->get_width()) : 0;
+        const double normal_lat_step = bump_lighting ? _pi / std::max(1ul, map->get_height()) : 0;
+        const auto terrain_illumination = [&](double lat, double lon, double incidence)
+        {
+            if (!direct_flux) return haze.surface_illumination(is_day, source_tint);
+            const double radial_cosine = cos(lat) * (-sin(lon) * terrain_light.x + cos(lon) * terrain_light.z)
+                + sin(lat) * terrain_light.y;
+            const double exposure = terrain_solar_exposure(radial_cosine,
+                skyline_elevation(lat, lon) / surface_radius, solar_sine);
+            const double daylight = (ambient_flux + direct_flux * fmax(0.0, incidence) * exposure) * 2.5e-11;
+            return haze.surface_illumination(fmin(1, (daylight + starlight) / instellation_scale), source_tint);
+        };
+        const auto sampled_illumination = [&](double lat, double lon)
+        {
+            if (!direct_flux) return haze.surface_illumination(is_day, source_tint);
+            const auto normal = terrain_normal(lon, lat, terrain_axes, normal_lon_step, normal_lat_step, skyline_elevation);
+            return terrain_illumination(lat, lon, normal[0] * terrain_light.x + normal[1] * terrain_light.y
+                + normal[2] * terrain_light.z);
+        };
+        const auto ground_light = sampled_illumination(viewer_lat, viewer_lon);
+        const auto surface_color_with_light = [&](const RGB3& sample, const std::array<double, 3>& light)
+        {
+            return rgba_apply_redlight(IM_COL32(fmin(255, light[0] * sample.r),
+                fmin(255, light[1] * sample.g), fmin(255, light[2] * sample.b), 255));
+        };
+        const auto lit_surface_color = [&](const RGB3& sample)
+        {
+            return surface_color_with_light(sample, ground_light);
         };
         const auto water_at = [&](double latitude, double longitude)
         {
@@ -7874,20 +7921,12 @@ void draw_horizon()
         if (mapped_skyline)
         {
             ImDrawList* ground = ImGui::GetBackgroundDrawList();
-            const auto* source = cel->get_light_center();
-            Point local_light = source ? source->location.local_position - cel->location.local_position : Point();
-            const double light_length = local_light.magnitude();
-            if (light_length > 0)
-            {
-                local_light = rotate3D(local_light * (1 / light_length), center,
-                    cel->location.equatorial_plane.v, cel->location.equatorial_plane.a);
-                local_light = rotate3D(local_light, center, yaxis, cel->timeofday());
-            }
             const double focal = surface_focal();
             const double sine = surface_sin_altitude(), cosine = surface_cos_altitude();
             const auto cache_key = std::make_tuple(map, local_surface_revision, whereami, viewer_lat, viewer_lon,
                 surface_eye, surface_radius, surface_curvature(), azimuth, altitude, zoom, dispcx, dispcy,
-                std::round(local_light.x * 1000), std::round(local_light.y * 1000), std::round(local_light.z * 1000),
+                std::round(terrain_light.x * 1000), std::round(terrain_light.y * 1000), std::round(terrain_light.z * 1000),
+                direct_flux, ambient_flux, solar_sine, starlight, instellation_scale, source_tint,
                 ground_light, haze.extinction, haze.light, redlight_mode, horizon_quality.ground_stride(), shore_displacement);
             static std::optional<std::decay_t<decltype(cache_key)>> last_paint;
             struct ReliefTile { ImVec2 low, high; ImU32 color; };
@@ -7904,24 +7943,13 @@ void draw_horizon()
                     const double up = vertical * cosine + sine;
                     return std::make_pair(azimuth + atan2(east, north), up / fmax(1e-12, hypot(east, north)));
                 };
-                const TerrainVector axes{surface_radius, surface_radius, surface_radius};
-                const double normal_step = std::clamp(1.0 / surface_radius, 1e-7, .005);
                 const auto color_at = [&](const std::pair<double, double>& ray)
                 {
                     const double distance = mapped_skyline->distance_at_slope(ray.first, ray.second);
                     if (!std::isfinite(distance)) return ImU32(0);
                     const auto [lat, lon] = surface_coord(distance, ray.first);
                     const RGB3 sample = surface_sample(lat, lon);
-                    const auto normal = terrain_normal(lon, lat, axes, normal_step, normal_step, skyline_elevation);
-                    const double slope_light = normal[0] * local_light.x + normal[1] * local_light.y
-                        + normal[2] * local_light.z;
-                    const double brightness = light_length > 0 ? .24 + .76 * sqrt(fmax(0.0, slope_light)) : 1;
-                    const auto channel = [&](unsigned char value, int index)
-                    {
-                        return std::clamp(int(value * ground_light[index] * brightness), 0, 255);
-                    };
-                    return pressure_haze_color(haze, rgba_apply_redlight(IM_COL32(channel(sample.r, 0),
-                        channel(sample.g, 1), channel(sample.b, 2), 255)), distance);
+                    return pressure_haze_color(haze, surface_color_with_light(sample, sampled_illumination(lat, lon)), distance);
                 };
                 const auto hits_terrain = [&](double x, double y)
                 {
@@ -7979,9 +8007,8 @@ void draw_horizon()
         #if horizon_distant_terrain_lighting
         if (lit_distant_skyline && !mapped_skyline && !full_ground_view)
         {
-            auto* source = cel->get_light_center();
-            const Point light_point = source
-                ? rotate3D(to_viewer_plane(source->tmprel), center, yaxis, -azimuth_correction) : Point(0, 1, 0);
+            const Point light_point = light_source
+                ? rotate3D(to_viewer_plane(light_source->tmprel), center, yaxis, -azimuth_correction) : Point(0, 1, 0);
             const double light_length = fmax(1e-12, light_point.magnitude());
             const std::array<double, 3> light = {light_point.x / light_length, light_point.y / light_length, light_point.z / light_length};
             ImDrawList* terrain_draw = ImGui::GetBackgroundDrawList();
@@ -8012,14 +8039,10 @@ void draw_horizon()
                 const double center_x = .25 * (polygon[0].x + polygon[1].x + polygon[2].x + polygon[3].x);
                 const double center_y = .25 * (polygon[0].y + polygon[1].y + polygon[2].y + polygon[3].y);
                 if (terrain_mesh && terrain_raster.distance_at(center_x, center_y) < layer->distance) continue;
-                const double lighting = DistantSkyline::illumination(*layer, light, haze.sky_opacity);
-                const auto channel = [&](unsigned char value, int index)
-                {
-                    return std::clamp(int(value * ground_light[index] * lighting), 0, 255);
-                };
-                ImU32 color = IM_COL32(channel(distant_ground_rgb.r, 0), channel(distant_ground_rgb.g, 1),
-                    channel(distant_ground_rgb.b, 2), 255);
-                color = pressure_haze_color(haze, rgba_apply_redlight(color), layer->distance);
+                const auto [lat, lon] = surface_coord(layer->distance, .5 * (layer->bearing_left + layer->bearing_right));
+                const double incidence = layer->normal[0] * light[0] + layer->normal[1] * light[1] + layer->normal[2] * light[2];
+                const ImU32 color = pressure_haze_color(haze,
+                    surface_color_with_light(distant_ground_rgb, terrain_illumination(lat, lon, incidence)), layer->distance);
                 terrain_draw->AddQuadFilled(polygon[0], polygon[1], polygon[2], polygon[3], color);
             }
             terrain_draw->Flags = saved_flags;
