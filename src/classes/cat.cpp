@@ -1360,7 +1360,7 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         //  43- 48  I6     ---     HIP      HIP number                               (DC8)
         read_field_onebased(buffer, 43, 48, field);
         HIP = atoi(field);
-        if (!hipcache[HIP]) continue;
+        if (!HIP || HIP > MAX_HIP || !hipcache[HIP]) continue;
         s = hipcache[HIP];
 
         //   1- 10  A10    ---     CCDM     CCDM number                              (DC1)
@@ -1462,7 +1462,7 @@ int CatalogReader::read_Hipparcos_catalog(CelestialObject **cels, int max)
         //   1-  6  I6    ---   HIP         Identifier (HIP)
         read_field_onebased(buffer, 1, 6, field);
         HIP = atoi(field);
-        if (!HIP) continue;
+        if (!HIP || HIP > MAX_HIP || !hipcache[HIP]) continue;
         Star *s = hipcache[HIP];
 
         //  25- 30  A6    ---   VarType    *Variability type as in GCVS/NSV
@@ -1802,6 +1802,22 @@ int alienorum::CatalogReader::read_Uranometria_catalog(CelestialObject **cels, i
 
 namespace
 {
+    std::vector<std::pair<std::string, std::string>> verified_duplicate_stars()
+    {
+        constexpr char prefix[] = "# Duplicate star ";
+        std::ifstream input("starname.dat");
+        std::vector<std::pair<std::string, std::string>> identities;
+        for (std::string line; std::getline(input, line);)
+        {
+            if (line.compare(0, sizeof(prefix) - 1, prefix)) continue;
+            std::istringstream fields(line.substr(sizeof(prefix) - 1));
+            std::string duplicate, canonical;
+            if (!(fields >> std::quoted(duplicate) >> std::quoted(canonical)) || duplicate == canonical) continue;
+            identities.emplace_back(std::move(duplicate), std::move(canonical));
+        }
+        return identities;
+    }
+
     std::string wd_key(std::string text)
     {
         const std::string wd = wd_identifier_key(text);
@@ -2253,6 +2269,11 @@ int alienorum::CatalogReader::read_WD_catalog(CelestialObject **objects, int max
         {
             found->second.aliases.push_back(wd_field(line, 1, 14));
         }
+    }
+    for (const auto& [alias, canonical] : verified_duplicate_stars())
+    {
+        const auto found = records.find(wd_identifier_key(canonical));
+        if (found != records.end()) found->second.aliases.push_back(alias);
     }
     const WdGaiaIndex gaia_index = wd_load_gaia(root, fetch_gaia);
     std::unordered_map<uint64_t, std::vector<std::string>> gaia_records;
@@ -6594,7 +6615,7 @@ std::string alienorum::CatalogReader::format_condensed_star_line(Star* s, bool e
         extra << " ORB1 " << std::quoted(state.dump());
         line += extra.str();
     }
-    if (s->alienorumid.empty())
+    if (s->alienorumid.empty() || purple_catalog_id(s->alienorumid))
     {
         const json position = json::array({s->right_ascension, s->declination, s->epoch, s->distance_known});
         std::ostringstream extra;
@@ -6614,21 +6635,14 @@ std::string alienorum::CatalogReader::format_condensed_star_line(Star* s, bool e
 
 static void reconcile_catalog_star_copies()
 {
-    constexpr char prefix[] = "# Duplicate star ";
-    std::ifstream input("starname.dat");
-    std::vector<std::pair<std::string, std::string>> identities;
-    std::map<std::string, std::vector<Star*>, std::less<>> matches;
-    for (std::string line; std::getline(input, line);)
-    {
-        if (line.compare(0, sizeof(prefix) - 1, prefix)) continue;
-        std::istringstream fields(line.substr(sizeof(prefix) - 1));
-        std::string duplicate, canonical;
-        if (!(fields >> std::quoted(duplicate) >> std::quoted(canonical)) || duplicate == canonical) continue;
-        matches.try_emplace(duplicate);
-        matches.try_emplace(canonical);
-        identities.emplace_back(std::move(duplicate), std::move(canonical));
-    }
+    const auto identities = verified_duplicate_stars();
     if (identities.empty()) return;
+    std::map<std::string, std::vector<Star*>, std::less<>> matches;
+    for (const auto& [alias, canonical] : identities)
+    {
+        matches.try_emplace(alias);
+        matches.try_emplace(canonical);
+    }
 
     std::unordered_set<CelestialObject*> referenced;
     for (int index = 0; cels[index]; ++index)
@@ -6640,16 +6654,37 @@ static void reconcile_catalog_star_copies()
         if (object->typeclass() != class_star) continue;
         const auto match = matches.find(object->name);
         if (match != matches.end()) match->second.push_back(static_cast<Star*>(object));
+        auto* star = static_cast<Star*>(object);
+        if (!star->WD.empty() && star->WD != star->name)
+        {
+            const auto designation = matches.find(star->WD);
+            if (designation != matches.end()) designation->second.push_back(star);
+        }
     }
     for (const auto& identity : identities)
     {
         const auto& copies = matches.at(identity.first);
         const auto& originals = matches.at(identity.second);
-        if (copies.size() != 1 || originals.size() != 1) continue;
+        if (copies.size() != 1 || originals.size() > 1) continue;
         auto* copy = copies.front();
+        if (copy->deleted || copy->user_added || copy->user_edited) continue;
+        if (originals.empty() || originals.front() == copy)
+        {
+            if (identity.second.size() >= sizeof(copy->name)) continue;
+            const std::string wd = wd_identifier_key(identity.second);
+            if (!wd.empty())
+            {
+                if (!wd_candidate(copy) || (!copy->WD.empty() && wd_identifier_key(copy->WD) != wd)) continue;
+                copy->WD = identity.second;
+            }
+            copy->add_catalog_alias(copy->name);
+            std::strcpy(copy->name, identity.second.c_str());
+            copy->namelen = identity.second.size();
+            copy->origname = copy->name;
+            continue;
+        }
         auto* original = originals.front();
-        if (copy->deleted || original->deleted || copy->user_added || copy->user_edited
-            || copy->orbit || copy->multisys || referenced.count(copy)
+        if (original->deleted || copy->orbit || copy->multisys || referenced.count(copy)
             || copy->HD || copy->HIP || copy->HR || copy->gaia_source_id) continue;
         for (const auto& alias : copy->catalog_aliases) original->add_catalog_alias(alias);
         for (const auto& alias : {std::string(copy->name), copy->origname, std::string(copy->Gliese), copy->WD, copy->gaia_wd_name})
@@ -6663,6 +6698,7 @@ static void reconcile_catalog_star_copies()
 int alienorum::CatalogReader::write_condensed_star_cat(ConsBins cb)
 {
     load_brown_dwarf_supplement();
+    finalize_brown_catalog();
     reconcile_catalog_star_copies();
     int i, n, written = 0;
     char c;
@@ -7769,6 +7805,7 @@ int alienorum::CatalogReader::read_condensed_star_cat()
     }
 
     reconcile_catalog_star_copies();
+    for (auto* star : catalog_stars) repair_brown_catalog_star(*star);
     return num_read;
 }
 

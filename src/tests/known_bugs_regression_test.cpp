@@ -8,6 +8,7 @@
 #include <sstream>
 #include <unordered_map>
 #include <gtest/gtest.h>
+#include "../classes/browncatalog.h"
 #include "../classes/cat.h"
 #include "../classes/neighborhoodfilter.h"
 #include "../classes/patch.h"
@@ -415,4 +416,45 @@ TEST_F(KnownCatalogRegression, Live82EridaniContainsExactlyTheConfirmedCatalogOr
     EXPECT_NEAR(periods[2], 647.6, 4);
     for (const char* extra : {"82 Eri e", "82 Eri f", "82 Eri g", "82 Eri h"})
         EXPECT_LT(find_object(extra, false, 9e29, 0), 0) << extra;
+}
+
+TEST_F(KnownCatalogRegression, PurpleIdentifiersPreserveStellarRanksAndSourcePhotometry)
+{
+    const int teegarden_index = find_object("Teegarden's Star", true, 9e29, 0);
+    const int brown_index = find_object("Luhman 16 A", true, 9e29, 0);
+    const int companion_index = find_object("Luhman 16 B", true, 9e29, 0);
+    const int invalid_index = find_object("AB Dor Ca", true, 9e29, 0);
+    ASSERT_GE(teegarden_index, 0);
+    ASSERT_GE(brown_index, 0);
+    ASSERT_GE(companion_index, 0);
+    ASSERT_GE(invalid_index, 0);
+    auto* teegarden = static_cast<Star*>(cels[teegarden_index]);
+    auto* brown = static_cast<Star*>(cels[brown_index]);
+    auto* companion = static_cast<Star*>(cels[companion_index]);
+    auto* invalid = static_cast<Star*>(cels[invalid_index]);
+    ASSERT_EQ(std::floor(brown->apparent_magnitude), 22.0);
+    EXPECT_NEAR(teegarden->mass / solar_mass, .097, 1e-9);
+    EXPECT_DOUBLE_EQ(teegarden->apparent_magnitude, 15.13);
+    EXPECT_DOUBLE_EQ(invalid->apparent_magnitude, 1e29);
+    EXPECT_DOUBLE_EQ(invalid->temperature, 0);
+    std::map<Star*, std::string> published;
+    for (int index = 0; cels[index]; ++index)
+    {
+        if (cels[index]->typeclass() != class_star || cels[index]->deleted) continue;
+        auto* star = static_cast<Star*>(cels[index]);
+        if (!star->alienorumid.empty()) published.emplace(star, star->alienorumid);
+    }
+    brown->alienorumid = "p-0000000000";
+    companion->alienorumid = "p-0000000000 B";
+    finalize_brown_catalog();
+    EXPECT_TRUE(brown->alienorumid.empty());
+    EXPECT_TRUE(companion->alienorumid.empty());
+    EXPECT_EQ(find_object("Luhman 16 A", true, 9e29, 0), brown_index);
+    EXPECT_EQ(find_object("Luhman 16 B", true, 9e29, 0), companion_index);
+    EXPECT_TRUE(teegarden->alienorumid.empty());
+    EXPECT_TRUE(invalid->alienorumid.empty());
+    finalize_brown_catalog();
+    EXPECT_TRUE(brown->alienorumid.empty());
+    EXPECT_TRUE(companion->alienorumid.empty());
+    for (const auto& [star, previous] : published) EXPECT_EQ(star->alienorumid, previous) << star->name;
 }

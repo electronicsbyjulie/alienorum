@@ -15,8 +15,8 @@
 
 const double _pi = 3.14159265358979323846;
 const double half_pi = _pi * 0.5;
-const double deg_to_rad = fiftyseventh;
-const double rad_to_deg = fiftyseven;
+const double deg_to_rad = _pi / 180;
+const double rad_to_deg = 180 / _pi;
 const double V_band = 5.5e-7;
 const double B_band = 4.4e-7;
 const double invlogmagnbase = 1.0 / std::log(std::pow(100.0, 0.2));
@@ -261,6 +261,8 @@ struct StarRecord
     std::string assigned_id = "";
     int soles_index = -1;
     bool is_soles = false;
+    bool separate_substellar = false;
+    bool ranked_purple = false;
     char component = 0;
     int host_idx = -1;
 };
@@ -444,6 +446,15 @@ int main()
         rec.ra_deg = ra_deg;
         rec.dec_deg = dec_deg;
         rec.vmag = safe_stod(l.substr(76, 6), 99.0);
+        const char spectrum = l[83];
+        const double mass = l.size() > 244 ? safe_stod(l.substr(244, 11), 0.0) : 0.0;
+        const auto magnitude_end = rec.orig_id.find(' ');
+        const bool purple = magnitude_end != std::string::npos && magnitude_end > 1
+            && rec.orig_id[magnitude_end - 1] == 'p';
+        rec.ranked_purple = purple && safe_stod(rec.orig_id.substr(0, magnitude_end - 1), 99) < 10;
+        rec.separate_substellar = purple || rec.orig_id.rfind("p-", 0) == 0
+            || (rec.orig_id.empty()
+            && ((spectrum == 'L' || spectrum == 'T' || spectrum == 'Y') || (mass > 0 && mass < .075)));
 
         double bv = safe_stod(l.substr(99, 6), 0.65);
         double tempK = temperature_from_BV(bv);
@@ -660,6 +671,15 @@ int main()
     for (size_t i = 0; i < all_stars.size(); i++)
     {
         StarRecord& r = all_stars[i];
+        if (r.separate_substellar)
+        {
+            if (r.ranked_purple && r.component == 0 && r.vmag < 10)
+            {
+                r.assigned_id = r.orig_id;
+                r.color = 'p';
+            }
+            continue;
+        }
         if (r.vmag >= 10.0) continue;
         if (r.component > 0) continue;
 
@@ -705,7 +725,18 @@ int main()
     for (size_t i = 0; i < all_stars.size(); i++)
     {
         StarRecord& r = all_stars[i];
-        if (r.component > 0 && r.is_soles)
+        if (r.ranked_purple && r.component > 0)
+        {
+            const auto parent = orig_host_to_star_idx.find(r.orig_host_id);
+            if (parent != orig_host_to_star_idx.end() && all_stars[parent->second].assigned_id == r.orig_host_id)
+            {
+                r.assigned_id = r.orig_id;
+                r.host_idx = parent->second;
+                ++companions_assigned;
+            }
+            continue;
+        }
+        if (r.component > 0 && r.is_soles && !r.separate_substellar)
         {
             int host_idx = -1;
             if (!r.orig_host_id.empty() && orig_host_to_star_idx.find(r.orig_host_id) != orig_host_to_star_idx.end())
@@ -750,7 +781,7 @@ int main()
     std::map<std::string, std::vector<StarRecord>> cons_records;
     for (const auto& r : all_stars)
     {
-        if (!r.assigned_id.empty() && !r.cons.empty())
+        if (!r.assigned_id.empty() && !r.cons.empty() && !r.separate_substellar)
         {
             cons_records[r.cons].push_back(r);
         }

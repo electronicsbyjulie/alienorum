@@ -17,6 +17,7 @@
 #include <exception>
 #include <memory>
 #include <future>
+#include <optional>
 
 using namespace alienorum;
 
@@ -1298,6 +1299,8 @@ void load_catalogs()
         if (load_aborted()) return;
     }
 
+    if (!magnitude_test) finalize_brown_catalog();
+
     if (load_univ.size())
     {
         if (load_universe(load_univ)) SDL_SetWindowTitle(window, (load_univ + std::string(" - Alienorum")).c_str());
@@ -1438,6 +1441,7 @@ void cache_cons_lines()
     int ncons = constellations.size();
     std::unordered_map<std::string, int> resolved_cache;
     resolved_cache.reserve(1024);
+    std::optional<ExactStarSearchIndex> endpoint_index;
 
     for (int i = 0; i < ncons; i++)
     {
@@ -1503,7 +1507,8 @@ void cache_cons_lines()
 
             // Constellation endpoints are identifiers; a similar name is a different star.
             // Explicitly named endpoints are independent of the display magnitude limit.
-            int found = find_object(starname.c_str(), true, 9e29, 1);
+            if (!endpoint_index) endpoint_index.emplace();
+            int found = find_object(starname.c_str(), true, 9e29, 1, &*endpoint_index);
             resolved_cache.emplace(starname, found);
             return found;
         };

@@ -136,6 +136,63 @@ TEST_F(StellarRotationTest, HipparcosAndTychoPropagateInIcrsAndKeepZeroCoordinat
     }
 }
 
+TEST_F(StellarRotationTest, HipparcosVariabilityImportSkipsRowsWithoutLoadedStars)
+{
+    std::filesystem::create_directories("catalogs/Hipparcos");
+    std::string main_row(450, ' ');
+    main_row.replace(8, 5, "12345");
+    main_row.replace(41, 4, "5.00");
+    main_row.replace(51, 3, "0.0");
+    main_row.replace(64, 3, "0.0");
+    main_row.replace(79, 4, "10.0");
+    main_row.replace(435, 3, "G2V");
+    std::ofstream("catalogs/Hipparcos/hip_main.dat") << main_row << '\n';
+    std::ofstream{"catalogs/Hipparcos/h_dm_com.dat"};
+    std::ofstream{"catalogs/Hipparcos/hip_dm_o.dat"};
+    const auto variable_row = [](const std::string& hip)
+    {
+        std::string row(105, ' ');
+        row.replace(0, hip.size(), hip);
+        row.replace(24, 4, "DSCT");
+        row.replace(56, 3, "0.5");
+        row.replace(92, 12, "Test Cepheid");
+        return row + '\n';
+    };
+    std::ofstream("catalogs/Hipparcos/hip_va_1.dat")
+        << variable_row("12346") << variable_row("999999") << variable_row("12345");
+
+    CatalogReader reader;
+    ASSERT_EQ(reader.read_Hipparcos_catalog(cels, MAX_CELOBJS), 1);
+    EXPECT_EQ(ncelobjs, 2);
+    EXPECT_EQ(hipcache[12346], nullptr);
+    const auto* star = hipcache[12345];
+    ASSERT_NE(star, nullptr);
+    EXPECT_EQ(star->variability_type, "DSCT");
+    EXPECT_DOUBLE_EQ(star->variability_period, .5 * oneday);
+    EXPECT_STREQ(star->name, "Test Cepheid");
+}
+
+TEST_F(StellarRotationTest, CondensedWriterKeepsVerifiedIdentityWhenOnlyTheAliasWasImported)
+{
+    std::ofstream("starname.dat") << "# Duplicate star \"GJ 4365\" \"WD2347+292\"\n";
+    Star* dwarf = target(12345);
+    std::strcpy(dwarf->name, "GJ 4365");
+    std::strcpy(dwarf->Gliese, dwarf->name);
+    std::strcpy(dwarf->spectral_type, "DA9");
+    dwarf->apparent_magnitude = 15.72;
+
+    CatalogReader reader;
+    ASSERT_EQ(reader.write_condensed_star_cat({}), 2);
+    delete_the_universe();
+    ASSERT_EQ(reader.read_condensed_star_cat(), 2);
+
+    const int canonical = find_object("WD2347+292", true, 9e29, 1);
+    ASSERT_GE(canonical, 0);
+    EXPECT_STREQ(cels[canonical]->name, "WD2347+292");
+    EXPECT_EQ(find_object("GJ 4365", true, 9e29, 1), canonical);
+    EXPECT_DOUBLE_EQ(static_cast<Star*>(cels[canonical])->apparent_magnitude, 15.72);
+}
+
 TEST_F(StellarRotationTest, DurchmusterungZeroZonesHaveDistinctKeysAndRoundTrip)
 {
     EXPECT_EQ(bonn_survey_key("BD", 0, 120, '-'), "BD-00 00120");
@@ -6548,4 +6605,27 @@ TEST_F(CatalogParsingTest, ImportedBrownDwarfsDoNotReceiveInventedAlienorumIds)
         Star* object = static_cast<Star*>(cels[i]);
         EXPECT_TRUE(object->alienorumid.empty()) << object->name;
     }
+}
+
+TEST_F(CatalogParsingTest, BrownDwarfPhotometryPreservesTheSourceBand)
+{
+    Star* star = make_star("Test ultracool companion", .06 * solar_mass);
+    star->distance = 15 * parsec;
+    star->volumetric_mean_radius = jupiter_radius;
+    star->temperature = 0;
+    star->spectral_type[0] = 0;
+    update_brown_catalog_photometry(*star, json::object());
+    EXPECT_DOUBLE_EQ(star->temperature, 0);
+    EXPECT_DOUBLE_EQ(star->apparent_magnitude, 1e29);
+    update_brown_catalog_photometry(*star, {{"gmag", 17.0}, {"temperature", 1700.0}});
+    EXPECT_DOUBLE_EQ(star->temperature, 1700.0);
+    EXPECT_DOUBLE_EQ(star->gaia_g_magnitude, 17.0);
+    EXPECT_EQ(star->stellar_parameters["magnitude_band"], "Gaia G");
+    EXPECT_TRUE(star->apparent_magnitude_estimated);
+
+    update_brown_catalog_photometry(*star, {{"vmag", 20.0}});
+    EXPECT_DOUBLE_EQ(star->apparent_magnitude, 20.0);
+    EXPECT_DOUBLE_EQ(star->gaia_g_magnitude, 17.0);
+    EXPECT_EQ(star->stellar_parameters["magnitude_band"], "Johnson V");
+    EXPECT_FALSE(star->apparent_magnitude_estimated);
 }

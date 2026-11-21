@@ -1,0 +1,25 @@
+
+Add a section in the README to document the AlienorumID format. Include the new p color for brown dwarfs and explain about the sodium and potassium making them look purple.
+
+Because you've shown that I can't trust you, create the following regression test: no hashed ID is ever shown to the user. AlienorumIDs follow the documented magnitude+color+space+constellation format, sometimes adding space+sequence_number, and some stars have blank AlienorumIDs. As well, non-stellar objects lack AlienorumIDs. NOTHING ELSE EVER APPEARS IN THE AlienorumID FIELD, EVER, EXCEPT A VALID ID CONFORMING TO THIS NAMING SYSTEM, OR A BLANK. EVER.
+
+AB Dor Ca and Cb are still duplicates of AB Dor C. C has a planet; Ca and Cb are not linked to each other or to the AB Dor system and they have bullshit absolute magnitudes. Either fix the system to include Ca and Cb, with the planet orbiting whichever star it orbits (or Ca if it orbits a barycenter, since we never merged the barycenters branch), or exclude Ca and Cb and keep only C. Do not code a single-system exclusion for Ca and Cb; if you go that route, apply a change that will work for all similar conflicts.
+
+When panned to exactly RA 6:00:00 Decl 00:00:00, the declination grid lines disappear. Looking up or down restores all but the declination zero line.
+
+Something is drastically slowing the frame rate when panning or walking near a shore that has plants and clouds. Even just switching to horizon view produces a noticeable delay preparing the initial horizon frame. Proxima has a planet where this slowdown can be easily observed. Do a performance audit of the terrain and cloud render for vm_horizon and see if something is not being cached properly or if a cache is paradoxically slowing the render.
+
+Fix the following bugs from the revised correctness report, then once fixed, remove them from the revised report:
+
+    Secular pole orientation can inherit the orbital interpolation's time origin.
+
+    The civil-time anchor is half a day earlier than astronomical J2000.0.
+
+    Artificial-satellite predictions use a simplified propagator.
+
+    Earth-view photometry. (Do not merely edit the soles_alienorum catalog since we regenerate it and your edits would be lost. Find the cause of the error and correct it.)
+
+Regression testing was initially proposed in order to catch you in your habit of repeatedly inventing new code regressions. However, you've found ways around even that, by constantly introducing new bugs that pass the regression tests, and thanks to you, there hasn't been a stable revision of this app since I signed up for a Codex subscription. Why am I paying OpenAI $100 a month to have you come in and innovate new ways to shit all over my code that I worked so hard on? There is so much that I want to address from the correctness audit that's waiting on these banal errors and bugs you keep adding, not to mention new features that are forever postponed, and I don't know if I'm going to get a chance to finish the correctness report this weekend with you tossing new obstacles in my path at every step. So let's think of a better way to test. Is there a setup you can put together that lets you and another bot - I haven't decided yet which one - test the app UI as a user would, viewing the window, sending keystrokes and realistic mouse actions, thoroughly trying out every feature and function, and keeping an eye out for anything that looks off or doesn't work right? That doesn't mean following a script and comparing with a canned set of accepted outputs. It means EXPLORING as a real space enthusiast would, as a real world building enthusiast would, as a real scientist would, USING the app like you really want to visit other places in the universe, making use of technical knowledge, and reporting back ANYTHING that looks off. Is this possible? Write a proposal in project root.
+
+Once you finish fixing these items, make a list of all the new bugs you added in the process - don't bullshit me there aren't any, because there will be - and add them to the end of this file. I'll verify each one before telling you to fix them.
+

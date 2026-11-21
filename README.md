@@ -103,6 +103,8 @@ To stop spaceflight, press X.
 
 ## Hovering, Selecting, Tracking
 
+See [Alienorum IDs](docs/alienorum-ids.md) for the brightness, color, and constellation codes used in star names.
+
 Hovering the mouse over a celestial object displays information about that object in the right hand pane. Clicking will select the object, resulting in a green circle around it. To clear object selection, press Shift+S.
 
 After slecting an object, pressing O will teleport to that object. The local reference plane will update in the 
@@ -151,6 +153,8 @@ What might it be like to visit an exoplanet? Alienorum combines what astronomers
 ### Sun Clock
 
 Sun clock mode shows the entire surface of the planet or moon as a cylindrical projection lit up in areas that are in daylight. It is pannable and zoomable. Resolution is limited for performance reasons, but you can zoom in much closer than the resolution of most texture maps.
+
+There is also a bump map (i.e. contour relief) mode and a thermal mode.
 
 
 ### Sky Map

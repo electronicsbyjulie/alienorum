@@ -1,8 +1,10 @@
+#include <array>
 #include <cmath>
 #include <vector>
 #include <sstream>
 #include "cons.h"
 #include "serial.h"
+#include "browncatalog.h"
 
 int num_reg_cons = 0;
 std::vector<Constellation> constellations;
@@ -102,35 +104,27 @@ bool might_star_be_maybe_in_constellation(double s_ra, double s_decl, const std:
     int n = bounds.size();
     if (n < 3) return false;
 
-    for (int i = 0; i < n; ++i)
+    const auto direction_to = [&](const ConsBoundary& boundary) -> std::array<double, 3>
     {
-        const ConsBoundary& a = bounds[i];
-        const ConsBoundary& b = bounds[(i + 1) % n];
-        // Convert vertices to unit vectors.
-        double ca = cos(a.decl);
-        double xb = ca * cos(a.RA);
-        double yb = ca * sin(a.RA);
-        double zb = sin(a.decl);
+        const double cos_boundary_decl = cos(boundary.decl);
+        const double x = cos_boundary_decl * cos(boundary.RA) - x0;
+        const double y = cos_boundary_decl * sin(boundary.RA) - y0;
+        const double z = sin(boundary.decl) - z0;
+        const double length = sqrt(x * x + y * y + z * z);
+        if (length == 0.0) return {};
+        return {x / length, y / length, z / length};
+    };
 
-        double cb = cos(b.decl);
-        double xc = cb * cos(b.RA);
-        double yc = cb * sin(b.RA);
-        double zc = sin(b.decl);
-
-        // Vectors from point to the two vertices.
-        double v1x = xb - x0;
-        double v1y = yb - y0;
-        double v1z = zb - z0;
-        double v2x = xc - x0;
-        double v2y = yc - y0;
-        double v2z = zc - z0;
-
-        // Normalize them.
-        double len1 = sqrt(v1x * v1x + v1y * v1y + v1z * v1z);
-        double len2 = sqrt(v2x * v2x + v2y * v2y + v2z * v2z);
-        if (len1 == 0.0 || len2 == 0.0) continue;
-        v1x /= len1; v1y /= len1; v1z /= len1;
-        v2x /= len2; v2y /= len2; v2z /= len2;
+    // Adjacent edges share a vertex, so reuse its normalized direction.
+    const auto first = direction_to(bounds.front());
+    auto previous = first;
+    for (int i = 1; i <= n; ++i)
+    {
+        const auto [v1x, v1y, v1z] = previous;
+        previous = i < n ? direction_to(bounds[i]) : first;
+        const auto [v2x, v2y, v2z] = previous;
+        if ((v1x == 0.0 && v1y == 0.0 && v1z == 0.0) ||
+            (v2x == 0.0 && v2y == 0.0 && v2z == 0.0)) continue;
 
         // Compute the angle between the two vectors.
         double dot = v1x * v2x + v1y * v2y + v1z * v2z;
@@ -335,16 +329,67 @@ char get_color_code_from_temp(double tempK)
     return 'r';
 }
 
+static Constellation* alienorum_id_constellation(Star* star)
+{
+    auto* cons = identify_cons_of_star(star);
+    if (!cons) return nullptr;
+    // Serpens Caput and Serpens Cauda share one sequence.
+    std::string base = cons->abbrev;
+    while (!base.empty() && std::isdigit(static_cast<unsigned char>(base.back()))) base.pop_back();
+    if (base != cons->abbrev)
+    {
+        for (auto& candidate : constellations) if (candidate.abbrev == base) return &candidate;
+    }
+    return cons;
+}
+
+void alienorum::assign_purple_catalog_ids()
+{
+    if (constellations.empty()) return;
+    std::map<std::pair<int, std::string>, std::vector<Star*>> bins;
+    for (int i = 1; cels[i]; ++i)
+    {
+        if (cels[i]->typeclass() != class_star) continue;
+        auto* star = static_cast<Star*>(cels[i]);
+        if (!star->alienorumid.empty() || !purple_catalog_primary(*star)) continue;
+        const auto* cons = alienorum_id_constellation(star);
+        if (!cons) continue;
+        bins[{static_cast<int>(star->apparent_magnitude), cons->abbrev}].push_back(star);
+    }
+    for (auto& [bin, stars] : bins)
+    {
+        const auto [magnitude, constellation] = bin;
+        std::sort(stars.begin(), stars.end(), [](const Star* a, const Star* b)
+        {
+            if (a->apparent_magnitude != b->apparent_magnitude) return a->apparent_magnitude < b->apparent_magnitude;
+            if (a->right_ascension != b->right_ascension) return a->right_ascension < b->right_ascension;
+            return std::strcmp(a->name, b->name) < 0;
+        });
+        for (size_t i = 0; i < stars.size(); ++i)
+        {
+            auto* star = stars[i];
+            star->alienorumid = std::to_string(magnitude) + "p " + constellation + " " + std::to_string(i + 1);
+            if (!star->multisys) continue;
+            for (char component = 'B'; component <= 'Z'; ++component)
+            {
+                auto* member = star->multisys->get_member(component);
+                if (member && member->alienorumid.empty()) member->alienorumid = star->alienorumid + " " + component;
+            }
+        }
+    }
+}
+
 ConsBins fill_alienorum_ids()
 {
     ConsBins bins;
+    finalize_brown_catalog();
 
     // Serpens Caput/Cauda are two disjoint boundary regions (SER1/SER2) but one constellation:
     // unify them under plain "Ser" so alienorumids count through Serpens as a single sequence.
     int i, j, n;
     for (i=0; cels[i]; i++)
     {
-        if (cels[i]->typeclass() != class_star) continue;
+        if (cels[i]->deleted || cels[i]->typeclass() != class_star) continue;
         Star* s = (Star*)cels[i];
         if (s->declination >= _pi) s->declination -= _pi*2;
 
@@ -365,16 +410,12 @@ ConsBins fill_alienorum_ids()
             s->alienorumid = std::to_string(m);          // The only -26 mag star from Earth, so this alone is unique.
             continue;
         }
+        if (purple_catalog_id(s->alienorumid)
+            || (s->alienorumid.empty() && (brown_catalog_candidate(*s)
+                || brown_catalog_component(*s)))) continue;
 
-        Constellation *cs = identify_cons_of_star(s);
+        Constellation *cs = alienorum_id_constellation(s);
         if (!cs) continue;
-
-        std::string base = cs->abbrev;
-        while (!base.empty() && std::isdigit(static_cast<unsigned char>(base.back()))) base.pop_back();
-        if (base != cs->abbrev)
-        {
-            for (auto& candidate : constellations) if (candidate.abbrev == base) { cs = &candidate; break; }
-        }
 
         int m = floor(fabs(s->apparent_magnitude)) * sgn(s->apparent_magnitude);
         if (m < -30 || m > 50) m = 20;
@@ -417,7 +458,7 @@ ConsBins fill_alienorum_ids()
             // CREATING ALIENORUMIDS FOR STARS WHOSE SYSTEM PRIMARY IS OF MAG >= 10 IS A SEVERE CORRECTNESS ERROR AND A REGRESSION.
             // LEAVE THOSE ALIENORUMIDS BLANK.
             // Later we will incorporate Gaia to get the catalog complete to a higher magnitude.
-            if (m >= 10)
+            if (m >= alienorum_magnitude_limit)
             {
                 for (const auto& [color, stars] : val2)
                 {

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <iomanip>
 #include <chrono>
+#include "../classes/browncatalog.h"
 #include "../classes/cons.h"
 #include "../classes/star.h"
 #include "../classes/exocons.h"
@@ -413,6 +414,38 @@ TEST_F(ConstellationTest, FillAlienorumIds_FormatsCorrectly)
     // floor(2.4) = 2. Should contain "2", a color code, and "Ori"
     EXPECT_TRUE(s1->alienorumid.find("2") != std::string::npos);
     EXPECT_TRUE(s1->alienorumid.find("Ori") != std::string::npos);
+}
+
+TEST_F(ConstellationTest, PurpleRanksUseMagnitudeAndConstellationBelowTheCatalogCeiling)
+{
+    Constellation vela;
+    vela.name = "Vela";
+    vela.abbrev = "Vel";
+    vela.bounds.emplace_back();
+    constellations.push_back(vela);
+    append_cel(new Star());
+    const auto dwarf = [](const char* name, double magnitude)
+    {
+        auto* star = new Star();
+        std::snprintf(star->name, sizeof(star->name), "%s", name);
+        std::snprintf(star->spectral_type, sizeof(star->spectral_type), "%s", "T4");
+        std::snprintf(star->constellation, sizeof(star->constellation), "%s", "Vel");
+        star->apparent_magnitude = magnitude;
+        star->mass = .04 * solar_mass;
+        append_cel(star);
+        return star;
+    };
+    auto* fainter = dwarf("Fainter test dwarf", 9.4);
+    auto* brighter = dwarf("Brighter test dwarf", 9.1);
+    auto* cutoff = dwarf("Test dwarf at the cutoff", 10);
+    auto* gaia_only = dwarf("Test dwarf with Gaia photometry", 8);
+    gaia_only->stellar_parameters["magnitude_band"] = "Gaia G";
+
+    finalize_brown_catalog();
+    EXPECT_EQ(brighter->alienorumid, "9p Vel 1");
+    EXPECT_EQ(fainter->alienorumid, "9p Vel 2");
+    EXPECT_TRUE(cutoff->alienorumid.empty());
+    EXPECT_TRUE(gaia_only->alienorumid.empty());
 }
 
 // =====================================================================
