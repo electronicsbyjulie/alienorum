@@ -1,8 +1,11 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <fstream>
+#include <iomanip>
 #include <queue>
 #include <set>
+#include <sstream>
 #include <unordered_map>
 #include <gtest/gtest.h>
 #include "../classes/cat.h"
@@ -10,6 +13,7 @@
 #include "../classes/patch.h"
 #include "../classes/serial.h"
 #include "../loaders.h"
+#include "../housekeeping.h"
 
 using namespace alienorum;
 
@@ -279,4 +283,136 @@ TEST_F(KnownCatalogRegression, FamousStarsHaveOnePhysicalIdentityAcrossEveryCata
             for (const auto& alias : aliases[index])
                 EXPECT_EQ(find_object(alias.c_str(), true, 9e29, 0, &lookup), canonical) << alias;
     }
+}
+
+TEST_F(KnownCatalogRegression, BayerAliasesReuseAlphaCentauriAndMirfak)
+{
+    ExactStarSearchIndex lookup;
+    const int primary = find_object("Rigil Kentaurus", true, 9e29, 0, &lookup);
+    const int secondary = find_object("Toliman", true, 9e29, 0, &lookup);
+    const int mirfak = find_object("Mirfak", true, 9e29, 0, &lookup);
+    ASSERT_GE(primary, 0);
+    ASSERT_GE(secondary, 0);
+    ASSERT_GE(mirfak, 0);
+    EXPECT_NE(primary, secondary);
+    EXPECT_EQ(find_object("Alf Cen A", true, 9e29, 0, &lookup), primary);
+    EXPECT_EQ(find_object("Alf Cen B", true, 9e29, 0, &lookup), secondary);
+    EXPECT_EQ(find_object("Alf Per", true, 9e29, 0, &lookup), mirfak);
+    for (int index = 0; cels[index]; ++index)
+    {
+        if (cels[index]->deleted || cels[index]->typeclass() != class_star) continue;
+        const auto name = stellar_alias_key(cels[index]->name);
+        if (name == "ALFCENA" || name == "ALPCENA") { EXPECT_EQ(index, primary); }
+        if (name == "ALFCENB" || name == "ALPCENB") { EXPECT_EQ(index, secondary); }
+        if (name == "ALFPER" || name == "ALPPER") { EXPECT_EQ(index, mirfak); }
+    }
+}
+
+TEST_F(KnownCatalogRegression, CatalogIdentifiersAreUniqueAcrossPhysicalStars)
+{
+    std::unordered_map<uint64_t, Star*> hd, hip, hr, gaia;
+    const auto verify = [](auto& catalog, uint64_t identifier, Star* star, const char* prefix)
+    {
+        if (!identifier) return;
+        const auto found = catalog.emplace(identifier, star);
+        if (found.second) return;
+        Star* previous = found.first->second;
+        const bool distinct_components = star->multisys && star->multisys == previous->multisys
+            && star->get_component() && previous->get_component()
+            && star->get_component() != previous->get_component();
+        EXPECT_TRUE(distinct_components) << prefix << ' ' << identifier << " on "
+            << previous->name << " and " << star->name;
+    };
+    for (int index = 0; cels[index]; ++index)
+    {
+        if (cels[index]->deleted || cels[index]->typeclass() != class_star) continue;
+        auto* star = static_cast<Star*>(cels[index]);
+        verify(hd, star->HD, star, "HD");
+        verify(hip, star->HIP, star, "HIP");
+        verify(hr, star->HR, star, "HR");
+        verify(gaia, star->gaia_source_id, star, "Gaia DR3");
+    }
+}
+
+TEST_F(KnownCatalogRegression, SourceCrossIdentificationsReuseTheirCatalogStars)
+{
+    ExactStarSearchIndex lookup;
+    for (const auto& pair : {std::pair<const char*, const char*>{"HR 2986", "HD 62376"},
+        {"HR 8799", "HIP 114189"}, {"LP 933-24", "HIP 113221"},
+        {"TOI-500", "HIP 34269"}, {"TOI-5739", "HD 119056"}, {"TIC 272785018", "HD 143253"}})
+    {
+        const int canonical = find_object(pair.second, true, 9e29, 1, &lookup);
+        ASSERT_GE(canonical, 0) << pair.second;
+        EXPECT_EQ(find_object(pair.first, true, 9e29, 1, &lookup), canonical) << pair.first;
+        for (int index : lookup.candidates(pair.first))
+        {
+            if (cels[index]->deleted || cels[index]->typeclass() != class_star) continue;
+            if (identity_key(cels[index]->name) == identity_key(pair.first))
+            {
+                EXPECT_EQ(index, canonical) << pair.first;
+            }
+        }
+    }
+}
+
+TEST_F(KnownCatalogRegression, BakedCatalogKeepsOneStarPerVerifiedCrossIdentification)
+{
+    ExactStarSearchIndex lookup;
+    const int dwarf = find_object("WD0208+396", true, 9e29, 1, &lookup);
+    ASSERT_GE(dwarf, 0);
+    EXPECT_EQ(find_object("GJ 1042", true, 9e29, 1, &lookup), dwarf);
+    const int host = find_object("HD 19467", true, 9e29, 1, &lookup);
+    ASSERT_GE(host, 0);
+    const int companion = find_object("HD 19467 B", true, 9e29, 1, &lookup);
+    ASSERT_GE(companion, 0);
+    ASSERT_NE(companion, host);
+    ASSERT_NE(cels[companion]->orbit, nullptr);
+    EXPECT_EQ(cels[companion]->orbit->center, cels[host]);
+    const std::string prefix = "# Duplicate star ";
+    std::ifstream source("starname.dat");
+    ASSERT_TRUE(source);
+    std::set<std::string> retired_names;
+    for (std::string line; std::getline(source, line);)
+    {
+        if (line.compare(0, prefix.size(), prefix)) continue;
+        std::istringstream fields(line.substr(prefix.size()));
+        std::string obsolete, canonical;
+        ASSERT_TRUE(fields >> std::quoted(obsolete) >> std::quoted(canonical)) << line;
+        retired_names.insert(obsolete);
+        const int canonical_index = find_object(canonical.c_str(), true, 9e29, 1, &lookup);
+        ASSERT_GE(canonical_index, 0) << canonical;
+        EXPECT_EQ(find_object(obsolete.c_str(), true, 9e29, 1, &lookup), canonical_index) << obsolete;
+    }
+    EXPECT_GE(retired_names.size(), 48u);
+    for (int index = 0; cels[index]; ++index)
+    {
+        if (cels[index]->deleted || cels[index]->typeclass() != class_star) continue;
+        EXPECT_FALSE(retired_names.count(cels[index]->name)) << cels[index]->name;
+    }
+}
+
+TEST_F(KnownCatalogRegression, Live82EridaniContainsExactlyTheConfirmedCatalogOrbits)
+{
+    set_center_objects();
+    const int host_index = find_object("HD 20794", true, 9e29, 0);
+    ASSERT_GE(host_index, 0);
+    const auto* host = static_cast<Star*>(cels[host_index]);
+    ASSERT_EQ(host->pl_indices.size(), 3u);
+    std::vector<double> periods;
+    for (int index = 0; cels[index]; ++index)
+    {
+        const auto* object = cels[index];
+        if (!object->deleted && object->typeclass() == class_planet && object->orbit && object->orbit->center == host)
+        {
+            periods.push_back(object->orbit->period / oneday);
+            EXPECT_FALSE(static_cast<const Planet*>(object)->catalog_candidate);
+        }
+    }
+    std::sort(periods.begin(), periods.end());
+    ASSERT_EQ(periods.size(), 3u);
+    EXPECT_NEAR(periods[0], 18.314, .1);
+    EXPECT_NEAR(periods[1], 89.68, .2);
+    EXPECT_NEAR(periods[2], 647.6, 4);
+    for (const char* extra : {"82 Eri e", "82 Eri f", "82 Eri g", "82 Eri h"})
+        EXPECT_LT(find_object(extra, false, 9e29, 0), 0) << extra;
 }

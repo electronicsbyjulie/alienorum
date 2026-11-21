@@ -1399,13 +1399,12 @@ bool Map::load_from_jpeg(std::string filename, bool as_bump, double bump_scale, 
 
 bool Map::load_from_png(std::string filename, bool as_bump, double bump_scale, double bump_offset)
 {
-    const double decode_scale = bump_scale == 0 ? 1 : bump_scale;
     if (!as_bump)
     {
         surface_materials.clear();
         procedurally_generated = false;
     }
-    std::cout << "Loading " << filename << " as " << (as_bump ? "texture" : "bump") << "..." << std::endl;
+    std::cout << "Loading " << filename << " as " << (as_bump ? "bump" : "texture") << "..." << std::endl;
     std::this_thread::sleep_for(std::chrono::milliseconds((int)frand(13,29)));
     mtx.lock();
     png_structp png_ptr;
@@ -1499,7 +1498,13 @@ bool Map::load_from_png(std::string filename, bool as_bump, double bump_scale, d
     }
     mtx.unlock();
 
-    int bytes_per_pixel = png_get_channels(png_ptr, info_ptr) * (png_get_bit_depth(png_ptr, info_ptr) / 8);
+    const int bit_depth = png_get_bit_depth(png_ptr, info_ptr);
+    const int channels = png_get_channels(png_ptr, info_ptr);
+    const int bytes_per_pixel = channels * (bit_depth / 8);
+    const bool gray16 = bit_depth == 16 && png_get_color_type(png_ptr, info_ptr) == PNG_COLOR_TYPE_GRAY;
+    const bool native_scale = std::isnan(bump_scale);
+    if (native_scale) bump_scale = gray16 ? 65535 : 20000;
+    const double decode_scale = bump_scale == 0 ? 1 : bump_scale;
 
     png_bytepp row_pointers = png_get_rows(png_ptr, info_ptr);
 
@@ -1552,8 +1557,13 @@ bool Map::load_from_png(std::string filename, bool as_bump, double bump_scale, d
     // remapped into bump_data (sized for the surface map) only after the full image is in.
     unsigned long iter_w = as_bump ? bump_src_w : image_width;
     unsigned long iter_h = as_bump ? bump_src_h : image_height;
+    const auto pixel_at = [&](unsigned long x, unsigned long y)
+    {
+        if (upside_down) return &row_pointers[iter_h - 1 - y][(iter_w - 1 - x) * bytes_per_pixel];
+        return &row_pointers[y][x * bytes_per_pixel];
+    };
 
-    if (bytes_per_pixel == 3 || bytes_per_pixel == 4)
+    if (bit_depth == 8 && (channels == 3 || channels == 4))
     {
         // RGB or RGBA
         unsigned long x, y, i=0;
@@ -1561,9 +1571,7 @@ bool Map::load_from_png(std::string filename, bool as_bump, double bump_scale, d
         {
             for (x=0; x<iter_w; x++)
             {
-                png_bytep pixel;
-                if (upside_down) pixel = &(row_pointers[iter_h-1-y][(iter_w-1-x) * bytes_per_pixel]);
-                else pixel = &(row_pointers[y][x * bytes_per_pixel]);
+                const auto pixel = pixel_at(x, y);
 
                 if (as_bump)
                 {
@@ -1588,21 +1596,34 @@ bool Map::load_from_png(std::string filename, bool as_bump, double bump_scale, d
         png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
         fclose(fp);
     }
-    else if (bytes_per_pixel == 1)
+    else if (bytes_per_pixel == 1 || gray16)
     {
-        // Grayscale.
+        // With an explicit scale, a texture reused as relief follows its displayed luminance.
+        bool texture_luminance = gray16 && as_bump && !native_scale && !bump_resample && has_rgb_data();
+        for (unsigned long y = 0; y < iter_h && texture_luminance; ++y)
+        {
+            for (unsigned long x = 0; x < iter_w; ++x)
+            {
+                const auto value = pixel_at(x, y)[0];
+                const auto index = y * iter_w + x;
+                if (red_data[index] == value && green_data[index] == value && blue_data[index] == value) continue;
+                texture_luminance = false;
+                break;
+            }
+        }
+        const bool full_precision = gray16 && !texture_luminance;
         unsigned long x, y, i=0;
         for (y=0; y<iter_h; y++)
         {
             for (x=0; x<iter_w; x++)
             {
-                png_bytep pixel;
-                if (upside_down) pixel = &(row_pointers[iter_h-1-y][(iter_w-1-x) * bytes_per_pixel]);
-                else pixel = &(row_pointers[y][x * bytes_per_pixel]);
+                const auto pixel = pixel_at(x, y);
 
                 if (as_bump)
                 {
-                    double val = decode_scale * (pixel[0] / 255.0 - 0.5) + bump_offset;
+                    const double value = full_precision ? ((static_cast<unsigned int>(pixel[0]) << 8) | pixel[1]) / 65535.0
+                        : pixel[0] / 255.0;
+                    const double val = decode_scale * (value - 0.5) + bump_offset;
                     if (bump_resample) bump_src_data[i] = val;
                     else bump_data[i] = val;
                 }
@@ -1919,7 +1940,8 @@ void alienorum::Map::resample_bump_data(unsigned int new_resolution)
     double lacunarity = 2.9, gain = 0.9, noise_scale = 2.9;
 
 
-    long x, y, iy, iy1, iynew, xo, yo, xo1, yo1;
+    unsigned long x, y;
+    long iy, iy1, iynew, xo, yo, xo1, yo1;
     double oldx, oldy, iox, iox1, ioy, ioy1, b;
     double bump_scale = mcel
         ? ( (mcel->typeclass() == class_planet || mcel->typeclass() == class_moon)
@@ -3613,9 +3635,10 @@ void Map::generate_rocky_map(CelestialObject *cel)
         double albedo_value, grain_value, border_noise;
 
         double province_pos, province_t, rmult, gmult, bmult;
-        double edge_dist, mottle_strength, ms, invms, mottle_noise, hue_noise;
+        double edge_dist, mottle_strength, mottle_noise, hue_noise;
         unsigned int x, y;
-        int idx, province_idx, neighbor_province_idx, mottled_idx;
+        unsigned long idx;
+        int province_idx, neighbor_province_idx;
         const LocalClimate annual_climate = p->local_climate();
         const double salinity = p->ocean_chemistry().at("salinity_g_kg").get<double>();
         const double freezing = seawater_freezing_k(salinity, pressure);
@@ -3743,7 +3766,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
         double border_roughness = p->cel_frand(1.3, 2.9);                               // how jagged the border itself is
         double border_noise_scale = province_scale * p->cel_frand(3.5, 7.0);
         double mottle_zone = p->cel_frand(0.25, 0.4);                                   // how far the speckling reaches into each province; 1 = whole planet.
-        unsigned int dither_seed = (unsigned int)cel->cel_rand();                       // per-planet salt for the per-pixel mottle hash
+        cel->cel_rand(); // Keep the texture generator's random sequence stable.
         double hue_scale = province_scale * p->cel_frand(2.0, 4.0);                     // sub-regions within a single province
         double hue_amount = p->cel_frand(0.1, 0.3);                                     // subtle warm/cool wobble, green left alone
         double province_variability = p->cel_frand(0.25, 0.65);
@@ -4132,7 +4155,7 @@ void alienorum::Map::generate_lava_map(CelestialObject *cel, bool is_night)
         LavaFissures lava_fissures(static_cast<std::uint32_t>(cel->rnd_seed));
 
         // Fill in glowing hot lava.
-        int x, y, y1, idx;
+        unsigned long x, y, y1, idx;
         double height;
         RGB3 rgb;
         for (y = 0; y < image_height; y++)
@@ -5395,7 +5418,7 @@ void alienorum::Map::generate_ring_map(CelestialObject *cel, int res, double rir
     generating_fic_texture = false;
 
     RGB3 rgb, xrgb;
-    int x, y, idx;
+    unsigned long x, y, idx;
     int inx = rir * image_width;
 
     double red = cel->cel_frand(15, 60), dred = 0, oe = 1, doe = 0;

@@ -1748,7 +1748,7 @@ int draw_sphere(CelestialObject* cel, double arad)
     // the sky blend inside it. Starting from full daylight is the neutral choice: it is what a
     // body with no light center already gets, and it keeps the cap the same colour as the disc it
     // sits on rather than whatever was on the stack.
-    double equatorial_radius, vtheta, cos_theta, cos_vtheta, is_day = 1, is_night = 0;
+    double equatorial_radius, vtheta, cos_theta, is_day = 1, is_night = 0;
     if (dwh)
         equatorial_radius = pow(((Moon*)cel)->depth * ((Moon*)cel)->width, 0.5) * .5;
     else
@@ -2019,6 +2019,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                             tdlon.begin() + row_start, lon) - tdlon.begin();
                         if (m > previous_start && tdvalid[l-1] && m < row_start && tdvalid[m] && tdvalid[m-1])
                         {
+                            double cos_vtheta = 1;
                             if (self_luminous)
                             {
                                 // Quadratic law, identical to the GPU shader: pow(mu, 1/3) that
@@ -4772,9 +4773,6 @@ void draw_system_view()
                 {
                     const char *dispname = m->name;
                     int disph = dispcy * 2;
-                    ImFont *font = global_font;
-                    double lfontsz = global_font_size;
-
                     ImVec2 lsz = ImGui::CalcTextSize(dispname);
                     int dy = m->drawny+moonrad+1;
                     if (m->drawny < disph && dy > disph-lsz.y) dy = disph-lsz.y;
@@ -4787,7 +4785,7 @@ void draw_system_view()
                     llbl.text = dispname;
                     labels2draw.push_back(llbl);
                     #else
-                    ImGui::GetBackgroundDrawList()->AddText(font, lfontsz, ImVec2(m->drawnx - lsz.x/2, dy),
+                    ImGui::GetBackgroundDrawList()->AddText(global_font, global_font_size, ImVec2(m->drawnx - lsz.x/2, dy),
                         rgba_apply_redlight(Color::ensure_wcag_contrast(
                             (i == selected) ? global_style.selected_color : global_style.objlbl_color, whtbkgd, 4.5, -1, true)),
                         dispname);
@@ -4933,9 +4931,6 @@ void sc_draw_object(CelestialObject *obj, CelestialObject *cel)
         if (show_labels)
         {
             const char *dispname = obj->name;
-            ImFont *font = global_font;
-            std::string str;
-            double lfontsz = global_font_size;
             ImVec2 sz = ImGui::CalcTextSize(dispname);
             #if cache_labels
             DrawLabel llbl;
@@ -4946,7 +4941,7 @@ void sc_draw_object(CelestialObject *obj, CelestialObject *cel)
             llbl.text = dispname;
             labels2draw.push_back(llbl);
             #else
-            ImGui::GetBackgroundDrawList()->AddText(font, lfontsz, ImVec2(obj->drawnx - sz.x/2, obj->drawny+bloomrad+1),
+            ImGui::GetBackgroundDrawList()->AddText(global_font, global_font_size, ImVec2(obj->drawnx - sz.x/2, obj->drawny+bloomrad+1),
                 rgba_apply_redlight(Color::ensure_wcag_contrast(
                     (i == selected) ? global_style.selected_color : global_style.objlbl_color, whtbkgd, 4.5, -1, true)),
                 dispname);

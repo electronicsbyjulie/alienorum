@@ -702,3 +702,98 @@ TX Piscium                223075 117245
 
 55 Cnc B                                   324 B
 GJ 22 AC                           2552    22 AC
+
+# BEGIN CATALOG ALIASES
+# SIMBAD cross-identifications for exoplanet host names in the stellar catalog
+Alf Cen A                 128620  71683
+Alf Cen B                 128621  71681
+Alf Per                    20902  15863
+BD+01 299                          7794
+BD+24 4329                       104329
+BD+24 4592                       110894
+BD+26 1888                        44387
+BD+45 564                         10245
+BD+55 362                          7441
+BD+63 974                 101365  56933
+CD-24 407                          4417
+G 204-39                          87938
+GD 356                                           GJ 1205
+GD 66                                            WD0517+307
+GJ 523                            66954
+HS 0209+0832                                     WD0209+085
+HR 2562                    50571  32775
+HR 2986                    62376  37514
+HR 3016                    62991  37803
+HR 3549                    76346  43620
+HR 8799                   218396 114189
+LP 933-24                        113221
+LSPM J0055+5948                                  WD0052+595
+NLTT 5306                                        WD0132+145
+TIC 272785018             143253  77949
+TIC 297788376             192384  99673
+TIC 75964951              166757  89033
+TOI-139                          110692
+TOI-2194                  188474  98130
+TOI-4303                   30894  22414
+TOI-4307                   36767  25351
+TOI-500                           34269
+TOI-5739                  119056  66730
+TOI-5807                  196216 101511
+TOI-5997                          85850
+TOI-6098                   65272  38729
+WD 0141-675                                      GJ 3112
+WD 0806-661                                      GJ 3483
+WD 1202-232                                      WDJ120526.67-233312.14
+WD 2105-82                                       WDJ211316.85-814912.88
+# END CATALOG ALIASES
+
+# Detached catalog entries matched by SIMBAD identifiers and astrometry
+# Duplicate star "GJ 1027" "WD0101+048"
+# Duplicate star "GJ 1042" "WD0208+396"
+# Duplicate star "GJ 1052" "WD0243-026"
+# Duplicate star "GJ 1086" "WD0548-001"
+# Duplicate star "GJ 1087" "WD0553+053"
+# Duplicate star "GJ 1112" "WD0827+328"
+# Duplicate star "GJ 1117" "WD0856+331"
+# Duplicate star "GJ 1140" "WD1055-072"
+# Duplicate star "GJ 1178" "WD1344+106"
+# Duplicate star "GJ 1199" "WD1609+135"
+# Duplicate star "GJ 1201" "WD1625+093"
+# Duplicate star "GJ 1273" "WD2246+223"
+# Duplicate star "GJ 1275" "WD2248+293"
+# Duplicate star "GJ 1276" "WD2251-070"
+# Duplicate star "GJ 151" "WD0341+182"
+# Duplicate star "GJ 2012" "WD0038-226"
+# Duplicate star "GJ 2077" "WD0959+149"
+# Duplicate star "GJ 2095" "WD1236-495"
+# Duplicate star "GJ 2135" "WD1821-131"
+# Duplicate star "GJ 261" "WD0659-063"
+# Duplicate star "GJ 3016" "WD0011-134"
+# Duplicate star "GJ 3064" "WD0053-117"
+# Duplicate star "GJ 3144" "WD0213+396"
+# Duplicate star "GJ 3162" "WD0230-144"
+# Duplicate star "GJ 3182" "WD0245+541"
+# Duplicate star "GJ 3223" "WD0322-019"
+# Duplicate star "GJ 3259" "WD0357+081"
+# Duplicate star "GJ 3288" "WD0423+044"
+# Duplicate star "GJ 3306" "WD0435-088"
+# Duplicate star "GJ 339.1" "WD0912+536"
+# Duplicate star "GJ 3392" "WD0618+067"
+# Duplicate star "GJ 3410" "WD0644+025"
+# Duplicate star "GJ 3420" "WD0657+320"
+# Duplicate star "GJ 3614" "WD1036-204"
+# Duplicate star "GJ 3866" "WD1444-174"
+# Duplicate star "GJ 4072" "WD1840+042"
+# Duplicate star "GJ 4133" "WD2002-110"
+# Duplicate star "GJ 4166" "WD2048+263"
+# Duplicate star "GJ 4344" "WD2333-165"
+# Duplicate star "GJ 4355" "WD2336-079"
+# Duplicate star "GJ 4365" "WD2347+292"
+# Duplicate star "GJ 492" "WD1257+037"
+# Duplicate star "GJ 755.1" "WD1919+145"
+# Duplicate star "GJ 772" "WD1953-011"
+# Duplicate star "GJ 895.2" "WD2326+049"
+# Duplicate star "GJ 91.3" "WD0213+427"
+# Duplicate star "GJ 915" "WD2359-434"
+# The orbiting row carries the joint imaging and radial-velocity solution
+# Duplicate star "HD 19467B" "HD 19467 B"

@@ -786,7 +786,7 @@ namespace
     json read_part(const fs::path& path, const std::string& generation, Repairs& repairs)
     {
         std::string failure;
-        for (const std::string suffix : {std::string(), std::string(".bak")})
+        for (const std::string& suffix : {std::string(), std::string(".bak")})
         {
             try
             {
@@ -810,7 +810,7 @@ namespace
                     const fs::path catalog = companion(path.parent_path(), descriptor.at("file"));
                     json stars;
                     bool found = false;
-                    for (const std::string catalog_suffix : {std::string(), std::string(".bak")})
+                    for (const std::string& catalog_suffix : {std::string(), std::string(".bak")})
                     {
                         try
                         {
@@ -940,7 +940,8 @@ bool Serialization::finish_region_saves()
     return region_writer.finish_with([]() { region_capture->assist(); });
 }
 
-bool Serialization::load_file(const std::string& filename, CelestialObject** objects, unsigned int max, bool as_user_added)
+bool Serialization::load_file(const std::string& filename, CelestialObject** objects, unsigned int max,
+    bool as_user_added, bool use_published_orbits)
 {
     finish_file_saves();
     fs::path path = fs::absolute(fs::u8path(filename));
@@ -949,7 +950,7 @@ bool Serialization::load_file(const std::string& filename, CelestialObject** obj
     Repairs chosen_repairs;
     std::string failure;
     bool complete = false;
-    for (const std::string suffix : {std::string(), std::string(".bak")})
+    for (const std::string& suffix : {std::string(), std::string(".bak")})
     {
         try
         {
@@ -985,7 +986,7 @@ bool Serialization::load_file(const std::string& filename, CelestialObject** obj
         std::cerr << "Universe import failed: " << failure << std::endl;
         return false;
     }
-    if (!load_document(std::move(records), objects, max, as_user_added)) return false;
+    if (!load_document(std::move(records), objects, max, as_user_added, use_published_orbits)) return false;
     std::lock_guard<std::mutex> lock(repair_mutex);
     if (path.extension() != ".bak")
         for (const auto& [destination, source] : chosen_repairs) recovered_files[path.parent_path()][destination] = source;

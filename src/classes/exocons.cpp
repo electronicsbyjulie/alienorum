@@ -340,15 +340,6 @@ namespace alienorum
         return "UMa";
     }
 
-    static bool is_named_cons_member(Star* s)
-    {
-        if (!s)
-        {
-            return false;
-        }
-        return (s->Bayer[0] != 0 || s->Flamsteed[0] != 0);
-    }
-
     double ExoConsGenerator::calculate_sky_coverage(const std::vector<Point>& lined_star_dirs, int num_samples)
     {
         if (lined_star_dirs.empty() || num_samples <= 0)

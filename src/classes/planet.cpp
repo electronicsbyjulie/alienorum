@@ -1642,7 +1642,7 @@ void Planet::update_surface_phases()
     if (!dynamic_surface_ice) return;
     active_surface_worlds.erase(std::remove_if(active_surface_worlds.begin(), active_surface_worlds.end(), [](const auto& entry)
     {
-        return !cels || entry.index >= ncelobjs || cels[entry.index] != entry.world;
+        return !cels || entry.index >= static_cast<unsigned int>(ncelobjs) || cels[entry.index] != entry.world;
     }), active_surface_worlds.end());
     static size_t cursor = 0;
     const auto started = std::chrono::steady_clock::now();

@@ -320,6 +320,12 @@ static int find_object_impl(const char* search_term, bool os, double ml, int lev
     if (n > 2 && search_term[n-2] == ' '
         && ((search_term[n-1] >= 'A' && search_term[n-1] <= 'Z') || (search_term[n-1] >= 'a' && search_term[n-1] <= 'z')))
         match_comp = search_term[n-1];
+    else if ((is_hd || is_hip) && n > 2 && search_term[n - 1] >= 'A' && search_term[n - 1] <= 'Z')
+    {
+        const char* number = search_term + skip_ws(search_term, is_hd ? 2 : 3);
+        if (std::all_of(number, search_term + n - 1, [](unsigned char c) { return std::isdigit(c); }))
+            match_comp = search_term[n - 1];
+    }
 
     if (is_hd && is_hd <= MAX_HD && hdcache && hdcache[is_hd] && (os || (match_comp < 'a')))   // if comp is lower case and a star is not required, we might be looking for a planet.
     {
@@ -658,6 +664,14 @@ static int find_object_impl(const char* search_term, bool os, double ml, int lev
 int find_object(const char *term, bool stars, double limit, int distance, const ExactStarSearchIndex *index)
 {
     const auto aliases = stellar_alias_matches(term);
+    // The exoplanet catalogs spell Alpha as Alf. Match the catalog's Bayer keys.
+    std::string bayer_term;
+    if (aliases.empty() && !strncasecmp(term, "alf", 3) && (std::isspace(static_cast<unsigned char>(term[3]))
+        || std::isdigit(static_cast<unsigned char>(term[3]))))
+    {
+        bayer_term = std::string("Alp") + (term + 3);
+        if (looks_like_Bayer(bayer_term.c_str())) term = bayer_term.c_str();
+    }
     // Published system letters are not internal companion slots.
     if (aliases.size() == 1 && aliases.front()->stellar_system.is_object())
     {
@@ -1741,7 +1755,7 @@ bool Serialization::load_all(std::fstream& fs, CelestialObject **cels, unsigned 
     }
 }
 
-bool Serialization::load_document(json allobj, CelestialObject **cels, unsigned int max, bool aua)
+bool Serialization::load_document(json allobj, CelestialObject **cels, unsigned int max, bool aua, bool use_published_orbits)
 {
     try
     {
@@ -1783,6 +1797,7 @@ bool Serialization::load_document(json allobj, CelestialObject **cels, unsigned 
         for (unsigned int i = 0; i < count; ++i) existing_indices[cels[i]] = i;
         const SavedOrbitIdentityIndex orbit_identities(cels, count);
         std::set<std::string> imported_fictional_ids;
+        std::set<std::string> excluded_orbit_names;
         std::set<CelestialObject*> replacements;
         unsigned int additions = 0;
 
@@ -1816,10 +1831,40 @@ bool Serialization::load_document(json allobj, CelestialObject **cels, unsigned 
             entry.parsed->origname = original;
             entry.parsed->origcenname = center_name;
             const auto match = identities.find(Identity(cls, original, center_name));
-            entry.target = match == identities.end() ? entry.parsed.get() : match->second;
-            if (match == identities.end() && (cls == class_planet || cls == class_moon))
+            const bool published_system = use_published_orbits && cls == class_planet && entry.parsed->orbit
+                && (!entry.parsed->user_added || !static_cast<Planet*>(entry.parsed.get())->catalog_designation.empty())
+                && (CatalogReader::is_82_eridani_alias(center_name)
+                    || CatalogReader::is_82_eridani_alias(entry.parsed->orbit->center_name));
+            if (published_system)
             {
-                if (auto* existing = orbit_identities.match(cls, original, center_name)) entry.target = existing;
+                const int slot = CatalogReader::confirmed_82_eridani_orbit(*entry.parsed->orbit);
+                if (slot < 0)
+                {
+                    excluded_orbit_names.insert(stellar_alias_key(name));
+                    excluded_orbit_names.insert(stellar_alias_key(original));
+                    continue;
+                }
+                entry.target = entry.parsed.get();
+                for (unsigned int index = 0; index < count; ++index)
+                {
+                    auto* existing = cels[index];
+                    if (existing->deleted || existing->typeclass() != class_planet || !existing->orbit
+                        || !existing->orbit->center || existing->orbit->center->typeclass() != class_star) continue;
+                    const auto* planet = static_cast<Planet*>(existing);
+                    if ((planet->user_added && planet->catalog_designation.empty())
+                        || !CatalogReader::is_82_eridani_host(*static_cast<Star*>(existing->orbit->center))
+                        || CatalogReader::confirmed_82_eridani_orbit(*existing->orbit) != slot) continue;
+                    entry.target = existing;
+                    break;
+                }
+            }
+            else
+            {
+                entry.target = match == identities.end() ? entry.parsed.get() : match->second;
+                if (match == identities.end() && (cls == class_planet || cls == class_moon))
+                {
+                    if (auto* existing = orbit_identities.match(cls, original, center_name)) entry.target = existing;
+                }
             }
             if (cls == class_star)
             {
@@ -1858,6 +1903,39 @@ bool Serialization::load_document(json allobj, CelestialObject **cels, unsigned 
                 entry.data = nullptr;
             }
             pending.push_back(std::move(entry));
+        }
+        if (!excluded_orbit_names.empty())
+        {
+            const auto retain_names = [&](const CelestialObject& object)
+            {
+                excluded_orbit_names.erase(stellar_alias_key(object.name));
+                excluded_orbit_names.erase(stellar_alias_key(object.origname));
+            };
+            for (const auto& entry : pending)
+            {
+                if (entry.parsed->typeclass() == class_planet && entry.parsed->orbit
+                    && (CatalogReader::is_82_eridani_alias(entry.parsed->origcenname)
+                        || CatalogReader::is_82_eridani_alias(entry.parsed->orbit->center_name)))
+                {
+                    retain_names(*entry.parsed);
+                    if (entry.target != entry.parsed.get()) retain_names(*entry.target);
+                }
+            }
+            size_t prior_count;
+            do
+            {
+                prior_count = pending.size();
+                pending.erase(std::remove_if(pending.begin(), pending.end(), [&](const PendingRecord& entry)
+                {
+                    const auto* orbit = entry.parsed->orbit;
+                    if (!orbit || !excluded_orbit_names.count(stellar_alias_key(orbit->center_name))) return false;
+                    excluded_orbit_names.insert(stellar_alias_key(entry.parsed->name));
+                    excluded_orbit_names.insert(stellar_alias_key(entry.parsed->origname));
+                    if (entry.target == entry.parsed.get()) --additions;
+                    else replacements.erase(entry.target);
+                    return true;
+                }), pending.end());
+            } while (pending.size() < prior_count);
         }
         if (additions >= max - count) throw std::runtime_error("Universe object limit exceeded");
 

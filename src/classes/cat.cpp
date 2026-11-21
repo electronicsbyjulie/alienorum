@@ -291,7 +291,7 @@ int CatalogReader::read_Gliese_catalog(CelestialObject **cels, int max)
     char field[32];
     int num_read = 0;
     int offset, j;
-    double deg, mnt, sec, ra, dec, ep_y, pm, pmtheta, absmagn;
+    double deg, mnt, sec, ep_y, pm, pmtheta, absmagn;
     std::string build_name;
     Star *s, *A = nullptr;
 
@@ -4573,6 +4573,38 @@ bool CatalogReader::worth_searching(std::string star_name)
     return false;
 }
 
+bool CatalogReader::is_82_eridani_alias(const std::string& name)
+{
+    const auto key = stellar_alias_key(name);
+    return key == "82ERIDANI" || key == "82ERI" || key == "EERI" || key == "EERIDANI"
+        || key == "HD20794" || key == "HIP15510" || key == "HR1008"
+        || key == "GJ139" || key == "GL139" || key == "GLIESE139";
+}
+
+bool CatalogReader::is_82_eridani_host(const Star& star)
+{
+    if (star.HD == 20794 || star.HIP == 15510) return true;
+    if (star.HD || star.HIP) return false;
+    if (is_82_eridani_alias(star.name) || is_82_eridani_alias(star.Flamsteed)
+        || is_82_eridani_alias(star.Gliese)) return true;
+    return std::any_of(star.catalog_aliases.begin(), star.catalog_aliases.end(), is_82_eridani_alias);
+}
+
+int CatalogReader::confirmed_82_eridani_orbit(const Orbit& orbit)
+{
+    // Nari et al. 2025, A&A 693 A297. Catalog letters vary by provider and publication.
+    constexpr double periods[] = {18.3142, 89.68, 647.6};
+    constexpr double axes[] = {.1257, .3625, 1.3541};
+    const bool has_period = std::isfinite(orbit.period) && orbit.period > 0;
+    const double value = has_period ? orbit.period / oneday : orbit.semimajor_axis / AU;
+    for (int index = 0; index < 3; ++index)
+    {
+        const double reference = has_period ? periods[index] : axes[index];
+        if (std::abs(value - reference) <= .05 * reference) return index;
+    }
+    return -1;
+}
+
 int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
 {
     FILE *fp;
@@ -4988,13 +5020,15 @@ int CatalogReader::read_starname_dat(CelestialObject **objects)
     };
     for (int index = 0; objects[index]; ++index) index_star(index);
     std::unordered_set<Star*> assigned;
-    bool official = false;
+    bool official = false, aliases_only = false;
     int num_read = 0;
     std::string line;
     while (std::getline(input, line))
     {
         if (line.rfind("# BEGIN IAU WGSN", 0) == 0) { official = true; continue; }
         if (line.rfind("# END IAU WGSN", 0) == 0) { official = false; continue; }
+        if (line == "# BEGIN CATALOG ALIASES") { aliases_only = true; continue; }
+        if (line == "# END CATALOG ALIASES") { aliases_only = false; continue; }
         if (line.empty() || line[0] == '#') continue;
         const auto field = [&](size_t start, size_t length)
         {
@@ -5069,7 +5103,8 @@ int CatalogReader::read_starname_dat(CelestialObject **objects)
         }
         if (!star->Gliese[0] && !gliese.empty()) snprintf(star->Gliese, sizeof(star->Gliese), "%s", gliese.c_str());
         index_star(star->seqno);
-        if (assigned.count(star) || (star->has_custom_name && (!official || star->user_edited || star->user_added))) continue;
+        if (aliases_only || assigned.count(star) ||
+            (star->has_custom_name && (!official || star->user_edited || star->user_added))) continue;
         assigned.insert(star);
         if (name != star->name)
         {
@@ -6577,9 +6612,58 @@ std::string alienorum::CatalogReader::format_condensed_star_line(Star* s, bool e
     return line;
 }
 
+static void reconcile_catalog_star_copies()
+{
+    constexpr char prefix[] = "# Duplicate star ";
+    std::ifstream input("starname.dat");
+    std::vector<std::pair<std::string, std::string>> identities;
+    std::map<std::string, std::vector<Star*>, std::less<>> matches;
+    for (std::string line; std::getline(input, line);)
+    {
+        if (line.compare(0, sizeof(prefix) - 1, prefix)) continue;
+        std::istringstream fields(line.substr(sizeof(prefix) - 1));
+        std::string duplicate, canonical;
+        if (!(fields >> std::quoted(duplicate) >> std::quoted(canonical)) || duplicate == canonical) continue;
+        matches.try_emplace(duplicate);
+        matches.try_emplace(canonical);
+        identities.emplace_back(std::move(duplicate), std::move(canonical));
+    }
+    if (identities.empty()) return;
+
+    std::unordered_set<CelestialObject*> referenced;
+    for (int index = 0; cels[index]; ++index)
+    {
+        auto* object = cels[index];
+        if (object->deleted) continue;
+        if (object->orbit && object->orbit->center) referenced.insert(object->orbit->center);
+        if (object->cenobj && object->cenobj != object) referenced.insert(object->cenobj);
+        if (object->typeclass() != class_star) continue;
+        const auto match = matches.find(object->name);
+        if (match != matches.end()) match->second.push_back(static_cast<Star*>(object));
+    }
+    for (const auto& identity : identities)
+    {
+        const auto& copies = matches.at(identity.first);
+        const auto& originals = matches.at(identity.second);
+        if (copies.size() != 1 || originals.size() != 1) continue;
+        auto* copy = copies.front();
+        auto* original = originals.front();
+        if (copy->deleted || original->deleted || copy->user_added || copy->user_edited
+            || copy->orbit || copy->multisys || referenced.count(copy)
+            || copy->HD || copy->HIP || copy->HR || copy->gaia_source_id) continue;
+        for (const auto& alias : copy->catalog_aliases) original->add_catalog_alias(alias);
+        for (const auto& alias : {std::string(copy->name), copy->origname, std::string(copy->Gliese), copy->WD, copy->gaia_wd_name})
+            original->add_catalog_alias(alias);
+        if (!original->Gliese[0] && copy->Gliese[0])
+            snprintf(original->Gliese, sizeof(original->Gliese), "%s", copy->Gliese);
+        copy->deleted = true;
+    }
+}
+
 int alienorum::CatalogReader::write_condensed_star_cat(ConsBins cb)
 {
     load_brown_dwarf_supplement();
+    reconcile_catalog_star_copies();
     int i, n, written = 0;
     char c;
     std::string path = get_condensed_starcat_name();
@@ -6592,7 +6676,7 @@ int alienorum::CatalogReader::write_condensed_star_cat(ConsBins cb)
         std::unordered_set<Star*> recorded;
         const auto record = [&](Star* object)
         {
-            if (!object || object->fictional_origin.is_object() || !recorded.insert(object).second) return;
+            if (!object || object->deleted || object->fictional_origin.is_object() || !recorded.insert(object).second) return;
             write_condensed_star_cat_line(fp, object);
             ++written;
         };
@@ -6639,7 +6723,8 @@ int alienorum::CatalogReader::write_condensed_star_cat(ConsBins cb)
 
         #ifndef _WIN32
         // TODO: This command will only execute on Linux - maybe not a problem if only the author ever issues new internal catalogs.
-        system("gzip -n -f -k catalogs/soles_alienorum.dat");
+        if (system("gzip -n -f -k catalogs/soles_alienorum.dat") != 0)
+            std::cerr << "Could not compress the condensed star catalog." << std::endl;
         #endif
     }
 
@@ -6661,7 +6746,7 @@ bool alienorum::CatalogReader::bake_condensed_star_orbits()
             fprintf(fp, "# BROWN20PC1 %s\n", brown_dwarf_catalog_signature().c_str());
         for (int i = 0; cels[i]; ++i)
         {
-            if (cels[i]->typeclass() == class_star)
+            if (!cels[i]->deleted && cels[i]->typeclass() == class_star)
                 write_condensed_star_cat_line(fp, static_cast<Star*>(cels[i]));
         }
     }
@@ -7683,6 +7768,7 @@ int alienorum::CatalogReader::read_condensed_star_cat()
         state.at(14).get_to(s->sidereal_rotational_period);
     }
 
+    reconcile_catalog_star_copies();
     return num_read;
 }
 
@@ -7698,14 +7784,6 @@ void CatalogReader::read_field_onebased(const char *buffer, size_t start, int en
     int i;
     for (i=0; i<len; i++) if (!(out[i] = buffer[i+start])) break;
     out[i] = 0;
-}
-
-// libcurl write callback to append chunk data to an allocated std::string buffer
-static size_t WriteCallback(void* contents, size_t size, size_t nmemb, void* userp)
-{
-    size_t totalSize = size * nmemb;
-    static_cast<std::string*>(userp)->append(static_cast<char*>(contents), totalSize);
-    return totalSize;
 }
 
 // Minimal pipe-delimited record I/O for the exoplanet derived caches. NAN/empty
@@ -8298,7 +8376,7 @@ void CatalogReader::apply_exoplanet_metallicity(const ExoRow& row, Star* host)
 struct FixedStellarIdentifiers
 {
     int hd = 0, hip = 0;
-    std::string gliese;
+    std::string gliese, selector;
     char component = 0;
 };
 
@@ -8332,6 +8410,7 @@ static FixedStellarIdentifiers catalog_identifiers(const std::string& name)
             record.component = field(39, 1).empty() ? 0 : field(39, 1)[0];
             const auto gliese = field(40, 8);
             if (!gliese.empty()) record.gliese = "GJ " + gliese;
+            if (line.size() > 49) record.selector = trim(line.substr(49));
             stored.second[stellar_alias_key(field(0, 25))] = record;
         }
     }
@@ -8434,6 +8513,11 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
     if (!host_star && !identifiers.gliese.empty())
     {
         int index = find_object(identifiers.gliese.c_str(), true, 9e29, 0, lookup);
+        if (index >= 0) host_star = static_cast<Star*>(cels[index]);
+    }
+    if (!host_star && !identifiers.selector.empty())
+    {
+        const int index = find_object(identifiers.selector.c_str(), true, 9e29, 1, lookup);
         if (index >= 0) host_star = static_cast<Star*>(cels[index]);
     }
     if (host_star && identifiers.component)

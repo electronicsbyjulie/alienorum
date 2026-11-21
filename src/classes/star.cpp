@@ -1537,11 +1537,10 @@ bool Star::correct_main_sequence_absmag(double threshold)
                 bool next_I = (spectral_type[i + 1] == 'I');
                 if (!prev_I && !next_I)
                 {
-                    char remainder[32] = {0};
-                    strncpy(remainder, &spectral_type[i + 1], sizeof(remainder) - 1);
-                    spectral_type[i] = '\0';
-                    strncat(spectral_type, new_class, sizeof(spectral_type) - strlen(spectral_type) - 1);
-                    strncat(spectral_type, remainder, sizeof(spectral_type) - strlen(spectral_type) - 1);
+                    const std::string updated = std::string(spectral_type, i) + new_class + &spectral_type[i + 1];
+                    const size_t length = std::min(updated.size(), sizeof(spectral_type) - 1);
+                    std::memcpy(spectral_type, updated.data(), length);
+                    spectral_type[length] = '\0';
                     break;
                 }
             }

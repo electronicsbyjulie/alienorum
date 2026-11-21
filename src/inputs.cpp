@@ -753,7 +753,8 @@ void process_key_cmd_char(char c)
         if (selected >= 0) editidx = selected;
         else if (trackidx >= 0) editidx = trackidx;
         else if (whereami >= 0) editidx = whereami;
-        if (objedtwnd = (editidx >= 0))                     // assignment not comparison
+        objedtwnd = editidx >= 0;
+        if (objedtwnd)
         {
             CelestialObject *cel = cels[editidx];
             if (cel->type == star) cbo_edt_units = 1;

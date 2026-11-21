@@ -300,7 +300,7 @@ namespace alienorum
 
         bool load_from_bmp(std::string filename, bool as_bump = false, double bump_scale = 20000);
         bool load_from_jpeg(std::string filename, bool as_bump = false, double bump_scale = 20000, double bump_offset = 0);
-        bool load_from_png(std::string filename, bool as_bump = false, double bump_scale = 20000, double bump_offset = 0);
+        bool load_from_png(std::string filename, bool as_bump = false, double bump_scale = NAN, double bump_offset = 0);
         bool load_calibrated_bump(std::string filename, double bump_scale, double bump_offset);
         bool save_to_png(std::string filename, bool as_bump = false);
         void correct_colors(double rtot, double gtot, double btot);

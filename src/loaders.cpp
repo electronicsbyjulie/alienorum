@@ -873,7 +873,7 @@ bool load_universe(std::string universe_fname)          // default is on the dec
         mtx.lock();
         loading_msg = "Loading Universe file...";
         mtx.unlock();
-        if (Serialization::load_file(universe_fname, cels, MAX_CELOBJS))
+        if (Serialization::load_file(universe_fname, cels, MAX_CELOBJS, true, true))
         {
             CatalogReader::apply_local_catalog_metadata(cels);
             for (i=0; cels[i]; i++) if (cels[i]->home_world)
@@ -894,8 +894,8 @@ bool load_universe(std::string universe_fname)          // default is on the dec
                 cr.read_star_orbits_dat(cels);
                 resave_json = true;
             }
-            if (resave_json) save_universe();           // We deliberately write back to universe.json, not to the loaded file. This is by design.
             set_center_objects();
+            if (resave_json) save_universe();
             refresh_star_visibilities();
             link_astorb_with_cels();
 
@@ -1563,7 +1563,7 @@ void add_batch_satellites(std::vector<std::string> listlines)
             break;
         }
 
-        if (n < listlines.size()) strcpy(buffer, listlines[n].c_str());
+        if (static_cast<size_t>(n) < listlines.size()) strcpy(buffer, listlines[n].c_str());
         char *hashmarks = strstr(buffer, "##");
         i = hashmarks ? atoi(&hashmarks[2]) : 0;
 

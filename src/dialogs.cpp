@@ -3046,8 +3046,6 @@ void draw_system_explorer(ImGuiIO& io)
     std::vector<int> list_item_celids;
     static int item_selected_idx = 0;
     int item_highlighted_idx = -1;
-    int first_visible = -1;
-    bool selected_visible = false;
     ImGui::Text("%s", " Name                                Orbits                            Period, d       Mass, e          HZ?");
     if (ImGui::BeginListBox("##syslist", ImVec2(916, 16 * ImGui::GetTextLineHeightWithSpacing())))
     {
@@ -3941,8 +3939,8 @@ void draw_sat_window(ImGuiIO& io)
             {
                 n = item_selected_idx;
 
-                char buffer[1024];
-                if (n < listlines.size()) strcpy(buffer, listlines[n].c_str());
+                char buffer[1024] = {};
+                if (static_cast<size_t>(n) < listlines.size()) strcpy(buffer, listlines[n].c_str());
                 char *hashmarks = strstr(buffer, "##");
                 i = hashmarks ? atoi(&hashmarks[2]) : 0;
 
@@ -3982,8 +3980,8 @@ void draw_sat_window(ImGuiIO& io)
             {
                 n = item_selected_idx;
 
-                char buffer[1024];
-                if (n < listlines.size()) strcpy(buffer, listlines[n].c_str());
+                char buffer[1024] = {};
+                if (static_cast<size_t>(n) < listlines.size()) strcpy(buffer, listlines[n].c_str());
                 char *hashmarks = strstr(buffer, "##");
                 i = hashmarks ? atoi(&hashmarks[2]) : 0;
 
@@ -4075,7 +4073,7 @@ void draw_favestars_window(ImGuiIO & io)
         ImGui::Text("press Ctrl+D, and it will appear in this list now and in future sessions.");
     }
 
-    int n;
+    unsigned int n;
     static unsigned int item_selected_idx = -1;
     int item_highlighted_idx = -1;
     if (ImGui::BeginListBox("##favestarlist", ImVec2(623, 13 * ImGui::GetTextLineHeightWithSpacing())))

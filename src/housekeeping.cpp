@@ -1010,11 +1010,67 @@ void compute_object_draw_coordinates()
     redo_proper_motions = false;
 }
 
+static void reconcile_82_eridani_planets()
+{
+    std::array<Planet*, 3> planets{};
+    std::unordered_set<CelestialObject*> excluded;
+    const auto prefer = [](const Planet& planet)
+    {
+        return std::make_tuple(!planet.catalog_candidate, planet.user_edited, !planet.catalog_designation.empty());
+    };
+    for (int index = 0; cels[index]; ++index)
+    {
+        auto* object = cels[index];
+        if (object->deleted || object->typeclass() != class_planet || !object->orbit || !object->orbit->center
+            || object->orbit->center->typeclass() != class_star) continue;
+        auto* planet = static_cast<Planet*>(object);
+        if (planet->user_added && planet->catalog_designation.empty()) continue;
+        if (!CatalogReader::is_82_eridani_host(*static_cast<Star*>(planet->orbit->center))) continue;
+        const int slot = CatalogReader::confirmed_82_eridani_orbit(*planet->orbit);
+        if (slot < 0) excluded.insert(planet);
+        else if (!planets[slot]) planets[slot] = planet;
+        else if (prefer(*planet) > prefer(*planets[slot]))
+        {
+            excluded.insert(planets[slot]);
+            planets[slot] = planet;
+        }
+        else excluded.insert(planet);
+    }
+    if (excluded.empty()) return;
+
+    for (int index = 0; cels[index]; ++index)
+    {
+        auto* object = cels[index];
+        if (object->deleted) continue;
+        auto* ancestor = object;
+        for (int depth = 0; ancestor && depth < 64; ++depth)
+        {
+            if (excluded.count(ancestor))
+            {
+                object->deleted = true;
+                object->onscreen = object->label_shown = false;
+                if (object->typeclass() == class_planet && num_planets > 0) --num_planets;
+                if (selected == index) selected = -1;
+                if (trackidx == index) trackidx = -1;
+                if (editidx == index) editidx = -1;
+                if (whereami == index)
+                {
+                    whereami = iamhome == index ? 0 : iamhome;
+                    view_mode = vm_spaceship;
+                }
+                break;
+            }
+            ancestor = ancestor->orbit ? ancestor->orbit->center : nullptr;
+        }
+    }
+}
+
 void set_center_objects()
 {
     mtx.lock();
     loading_msg = std::string("Checking data integrity...");
     mtx.unlock();
+    reconcile_82_eridani_planets();
 
     int i;
     first_letter_index.clear();

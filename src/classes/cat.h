@@ -61,6 +61,9 @@ namespace alienorum
         void apply_stellar_abundances(Star* host);
 
         static void apply_local_catalog_metadata(CelestialObject** objects);
+        static bool is_82_eridani_alias(const std::string& name);
+        static bool is_82_eridani_host(const Star& star);
+        static int confirmed_82_eridani_orbit(const Orbit& orbit);
 
         // Source Catalogs for Stars
         int read_Gliese_catalog(CelestialObject** cels, int max);

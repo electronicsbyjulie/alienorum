@@ -710,6 +710,34 @@ TEST_F(SerializationTest, HostAliasesAndCatalogLettersMergeRenamedPlanetsAndThei
     delete_the_universe();
 }
 
+TEST_F(SerializationTest, Published82EridaniOrbitsSurviveLegacySavesWithReusedLetters)
+{
+    Star* host = make_star("82 Eridani");
+    host->HD = 20794;
+    host->add_catalog_alias("HD 20794");
+    Planet* current = make_planet(host, "82 Eridani c", .3625 * AU);
+    current->orbit->period = 89.68 * oneday;
+    current->catalog_designation = "HD 20794 d";
+    current->display_designation = current->name;
+    json stale = current->to_json();
+    stale["!name"] = "HD 20794 c";
+    stale["!origname"] = "HD 20794 c";
+    stale["orbit"]["center_name"] = "HD 20794";
+    stale["orbit"]["period"] = 40.114;
+    json edit = current->to_json();
+    edit["!name"] = "Named 90-day planet";
+    edit["!origname"] = "HD 20794 d";
+    edit["orbit"]["center_name"] = "HD 20794";
+    for (int pass = 0; pass < 2; ++pass)
+    {
+        ASSERT_TRUE(Serialization::load_document({{"stale", stale}, {"edit", edit}}, cels, MAX_CELOBJS, true, true));
+        EXPECT_EQ(ncelobjs, 2);
+        EXPECT_EQ(find_loaded("Named 90-day planet"), current);
+        EXPECT_NEAR(current->orbit->period / oneday, 89.68, 1e-6);
+    }
+    delete_the_universe();
+}
+
 TEST_F(SerializationTest, QualifiedOriginalNamesIgnoreAChangedOrBlankHostSpelling)
 {
     Star* host = make_star("Catalog primary");
