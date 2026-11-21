@@ -36,6 +36,7 @@ namespace alienorum
         void repair_estimated_mass();
         json age_diagnostics() const;
         double estimate_age_gyr() const;
+        json luminosity_class_age_diagnostics() const;
         json fictional_origin = nullptr;           // Stable fictional identity and generation provenance.
         json catalog_frame = nullptr;                // Region identity and coordinate origin for split saves.
         json stellar_system = nullptr;               // Physical system, published label, and orbit provenance.

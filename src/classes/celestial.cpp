@@ -3669,6 +3669,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
             && (p->typeclass() == class_moon || p->mass > .02 * earth_mass);
         const bool simulated_life = p->resolve_sim_life(!p->preserve_loaded_parameters);
         const bool life_possible = habitat_possible && simulated_life;
+        const bool microbial_only = life_possible && !p->simulated_land_plants_allowed();
         // Keep palette draws stable even when the life scenario suppresses vegetation.
         if (!p->preserve_loaded_parameters && p->has_water && habitat_possible && texture_randomization_enabled()
             && !p->vegetation_r && !p->vegetation_g && !p->vegetation_b)
@@ -3853,8 +3854,13 @@ void Map::generate_rocky_map(CelestialObject *cel)
                         || p->has_water >= 1 || height_value < p->has_water;
                     const auto surface = local_surface_state(climate, nx, ny, nz, bump_data[idx], ocean, salinity, pressure);
                     T_local = surface.temperature;
-                    const double vegetation_density = !ocean && life_possible
+                    const double habitat_density = !ocean && life_possible
                         ? habitat.density(nx, ny, nz, bump_data[idx], p->veg_min_temp, p->veg_max_temp, freezing, Tboil) : 0;
+                    // Sparse microbial mats retain the palette without forming forests.
+                    const double microbial_patch = microbial_only
+                        ? .5 + .5 * sin(nx * 73 + sin(nz * 41)) * sin(ny * 67 + sin(nx * 37)) : 0;
+                    const double vegetation_density = microbial_only
+                        ? habitat_density * std::clamp((microbial_patch - .55) * 2, 0.0, .4) : habitat_density;
                     if (cel->type == waterworld || cel->type == hycean)
                     {
                         surface_materials[idx] = SurfaceMaterial::water;

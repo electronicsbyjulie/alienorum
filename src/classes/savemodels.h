@@ -127,7 +127,7 @@ namespace alienorum
         {
             if (record.contains("stellar_age") && record["stellar_age"].is_object())
                 record["stellar_age"] = select(record["stellar_age"], {"value_gyr", "lower_gyr", "upper_gyr",
-                    "limit", "estimated", "source", "uncertain"});
+                    "limit", "estimated", "source", "uncertain", "luminosity_class_duration_gyr"});
             if (record.contains("stellar_abundances"))
                 record["stellar_abundances"] = abundances(record["stellar_abundances"]);
             json* pressure = nullptr;

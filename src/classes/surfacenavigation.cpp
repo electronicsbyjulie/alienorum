@@ -187,7 +187,7 @@ double alienorum::vegetation_cover_fraction(const RGB3& ground, const RGB3& foli
 bool SurfaceSampler::tree_site_at(double latitude, double longitude)
 {
     if (!planet || !map || !map->is_complete() || !uses_rocky_map(planet->type)
-        || !planet->simulated_surface_life_allowed() || !planet->has_water
+        || !planet->simulated_land_plants_allowed() || !planet->has_water
         || !(planet->vegetation_r || planet->vegetation_g || planet->vegetation_b)) return false;
     // Tree identity follows permanent terrain, never the published frost/foliage color.
     const auto coordinate = biomes ? field.coordinates(radius, latitude, longitude, strength)

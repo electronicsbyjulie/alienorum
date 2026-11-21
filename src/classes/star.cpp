@@ -1930,6 +1930,34 @@ void Star::repair_estimated_mass()
         mass = fit.at("mass_solar").get<double>() * solar_mass;
 }
 
+json Star::luminosity_class_age_diagnostics() const
+{
+    double duration = -1;
+    if (stellar_nonnegative_value(stellar_age, "luminosity_class_duration_gyr", duration))
+        return {{"value_gyr", duration}, {"estimated", false}, {"source", "supplied_luminosity_class_duration"}};
+    const json age = age_diagnostics();
+    const double total = age.value("value_gyr", 0.0);
+    double fraction = 1;
+    const auto luminosity = neighborhood_spectrum(spectral_type).luminosity;
+    // Procedural residence-time scenarios, not measured stellar phase ages.
+    switch (luminosity)
+    {
+        case NeighborhoodLuminosity::iv_v:
+        case NeighborhoodLuminosity::iv: fraction = .05; break;
+        case NeighborhoodLuminosity::iii_iv:
+        case NeighborhoodLuminosity::iii: fraction = .02; break;
+        case NeighborhoodLuminosity::ii: fraction = .005; break;
+        case NeighborhoodLuminosity::i: fraction = .001; break;
+        case NeighborhoodLuminosity::vii: fraction = .5; break;
+        default:
+            if (is_white_dwarf()) fraction = .5;
+            else if (age.value("phase", 0) > 0) fraction = .02;
+            break;
+    }
+    return {{"value_gyr", total * fraction}, {"estimated", true},
+        {"source", "luminosity_class_fraction_scenario"}, {"age_fraction", fraction}};
+}
+
 json Star::age_diagnostics() const
 {
     double supplied_age = -1;

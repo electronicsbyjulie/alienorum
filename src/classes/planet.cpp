@@ -48,6 +48,36 @@ namespace
     }
 }
 
+double Planet::host_luminosity_class_duration_gyr() const
+{
+    const auto* host = const_cast<Planet*>(this)->get_light_center();
+    if (!host || host->typeclass() != class_star) return NAN;
+    // Preserve the observed Solar System; apply scenarios to generated worlds.
+    if (cels && host == cels[0] && !user_added) return NAN;
+    return static_cast<const Star*>(host)->luminosity_class_age_diagnostics().value("value_gyr", NAN);
+}
+
+double Planet::land_plant_threshold_gyr() const
+{
+    return 2.5 + 2.5 * life_draw(uint64_t(texture_seed()) ^ 0x706c616e7473ULL);
+}
+
+bool Planet::simulated_surface_life_allowed() const
+{
+    if (has_life) return *has_life;
+    if (has_plants.value_or(false)) return true;
+    const double duration = host_luminosity_class_duration_gyr();
+    return (!std::isfinite(duration) || duration >= 1) && has_sim_life.value_or(true);
+}
+
+bool Planet::simulated_land_plants_allowed() const
+{
+    if (has_plants) return *has_plants;
+    if (!simulated_surface_life_allowed()) return false;
+    const double duration = host_luminosity_class_duration_gyr();
+    return !std::isfinite(duration) || duration >= land_plant_threshold_gyr();
+}
+
 double Planet::surface_life_probability()
 {
     if (!orbit || !orbit->center) return 1;
@@ -83,7 +113,11 @@ double Planet::surface_life_probability()
 
 bool Planet::resolve_sim_life(bool randomize_choice)
 {
-    if (typeclass() != class_moon) return true;
+    if (has_life) return *has_life;
+    if (has_plants.value_or(false)) return true;
+    const double duration = host_luminosity_class_duration_gyr();
+    if (std::isfinite(duration) && duration < 1) return false;
+    if (typeclass() != class_moon) return has_sim_life.value_or(true);
     const auto unsuitable = [&]()
     {
         has_sim_life.reset();
@@ -2543,6 +2577,8 @@ json Planet::to_json()
 {
     if (typeclass() == class_moon) resolve_sim_life();
     json towrite = CelestialObject::to_json();
+    if (has_life) towrite["has_life"] = *has_life;
+    if (has_plants) towrite["has_plants"] = *has_plants;
     towrite["lock_system_plane"] = lock_system_plane;
     towrite["mass_evidence"] = static_cast<int>(mass_evidence);
     towrite["radius_evidence"] = static_cast<int>(radius_evidence);
@@ -2631,6 +2667,24 @@ bool Planet::from_json(const json& j)
     if (has_spectral_giant_color()) VR_color = reflected_vr_color();
     ocean_salinity_g_kg = ocean_numeric(j, "ocean_salinity_g_kg");
     has_sim_life.reset();
+    const auto authored_flag = [&](const char* key) -> std::optional<bool>
+    {
+        if (!j.contains(key)) return std::nullopt;
+        const auto& flag = j.at(key);
+        if (flag.is_boolean()) return flag.get<bool>();
+        if (flag.is_string())
+        {
+            const auto text = flag.get<std::string>();
+            if (text == "true" || text == "true?") return true;
+            if (text == "false" || text == "false?") return false;
+            double value = NAN;
+            if (parse_numeric_value(text, value) && (value == 0 || value == 1)) return value == 1;
+        }
+        if (flag.is_number() && (flag == 0 || flag == 1)) return flag == 1;
+        return std::nullopt;
+    };
+    has_life = authored_flag("has_life");
+    has_plants = authored_flag("has_plants");
     if (typeclass() == class_moon && j.contains("has_sim_life") && j["has_sim_life"].is_boolean())
         has_sim_life = j["has_sim_life"].get<bool>();
     else if (typeclass() == class_moon && j.contains("has_sim_life") && j["has_sim_life"].is_string())

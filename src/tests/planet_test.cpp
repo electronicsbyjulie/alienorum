@@ -34,6 +34,79 @@
 using namespace alienorum;
 using json = nlohmann::json;
 
+TEST_F(UniverseFixture, StellarResidenceTimeControlsMicrobialLifeAndLandPlants)
+{
+    Star* host = make_star();
+    Planet* body = make_planet(host);
+    body->user_added = true;
+    host->stellar_age = {{"value_gyr", 8}, {"luminosity_class_duration_gyr", .999}};
+    EXPECT_FALSE(body->resolve_sim_life());
+    EXPECT_FALSE(body->simulated_surface_life_allowed());
+    EXPECT_FALSE(body->simulated_land_plants_allowed());
+    host->stellar_age["luminosity_class_duration_gyr"] = 1;
+    EXPECT_TRUE(body->resolve_sim_life());
+    EXPECT_TRUE(body->simulated_surface_life_allowed());
+    EXPECT_FALSE(body->simulated_land_plants_allowed());
+    const auto original_rng = body->rng;
+    const double threshold = body->land_plant_threshold_gyr();
+    EXPECT_GE(threshold, 2.5);
+    EXPECT_LT(threshold, 5);
+    EXPECT_DOUBLE_EQ(threshold, body->land_plant_threshold_gyr());
+    EXPECT_EQ(original_rng, body->rng);
+    host->stellar_age["luminosity_class_duration_gyr"] = threshold - .000001;
+    EXPECT_FALSE(body->simulated_land_plants_allowed());
+    host->stellar_age["luminosity_class_duration_gyr"] = threshold;
+    EXPECT_TRUE(body->simulated_land_plants_allowed());
+    body->rnd_seed++;
+    EXPECT_NE(threshold, body->land_plant_threshold_gyr());
+    delete_the_universe();
+}
+
+TEST_F(UniverseFixture, AuthoredLifeFlagsOverrideYoungStarsAndSurviveCompactJson)
+{
+    Star* host = make_star();
+    Planet* body = make_planet(host);
+    body->user_added = true;
+    host->stellar_age = {{"value_gyr", .01}};
+    body->has_life = true;
+    body->has_plants = true;
+    const json saved = Serialization::output_record(body->to_json());
+    EXPECT_EQ(saved.at("has_life"), true);
+    EXPECT_EQ(saved.at("has_plants"), true);
+    Planet restored;
+    ASSERT_TRUE(restored.from_json(Serialization::expand_output_record(saved)));
+    restored.orbit->center = host;
+    EXPECT_TRUE(restored.resolve_sim_life());
+    EXPECT_TRUE(restored.simulated_land_plants_allowed());
+    restored.has_plants = false;
+    EXPECT_TRUE(restored.simulated_surface_life_allowed());
+    EXPECT_FALSE(restored.simulated_land_plants_allowed());
+    restored.has_life = false;
+    EXPECT_FALSE(restored.resolve_sim_life());
+    EXPECT_FALSE(restored.simulated_surface_life_allowed());
+    host->stellar_age["luminosity_class_duration_gyr"] = "0.25?";
+    json star_record = host->to_json();
+    SaveModels::compact(star_record);
+    EXPECT_EQ(star_record["stellar_age"]["luminosity_class_duration_gyr"], "0.25?");
+    EXPECT_DOUBLE_EQ(host->luminosity_class_age_diagnostics()["value_gyr"].get<double>(), .25);
+    delete_the_universe();
+}
+
+TEST(StellarLifeScenarioTest, GiantResidenceTimeIsSeparateFromTotalAge)
+{
+    Star host;
+    host.stellar_age = {{"value_gyr", 5}};
+    strcpy(host.spectral_type, "G2V");
+    EXPECT_DOUBLE_EQ(host.luminosity_class_age_diagnostics()["value_gyr"].get<double>(), 5);
+    strcpy(host.spectral_type, "K0III");
+    EXPECT_DOUBLE_EQ(host.luminosity_class_age_diagnostics()["value_gyr"].get<double>(), .1);
+    strcpy(host.spectral_type, "M2Iab");
+    EXPECT_DOUBLE_EQ(host.luminosity_class_age_diagnostics()["value_gyr"].get<double>(), .005);
+    EXPECT_DOUBLE_EQ(host.age_diagnostics()["value_gyr"].get<double>(), 5);
+    host.stellar_age["luminosity_class_duration_gyr"] = 0;
+    EXPECT_DOUBLE_EQ(host.luminosity_class_age_diagnostics()["value_gyr"].get<double>(), 0);
+}
+
 TEST(PlantFormTest, PositiveFiniteAcrossPressureAndGravityExtremes)
 {
     EXPECT_DOUBLE_EQ(plant_pressure_scale(1), 1);
@@ -299,6 +372,54 @@ TEST_F(MoonLifeScenarioTest, BarrenMoonsSuppressVegetationWithoutChangingTerrain
         EXPECT_EQ(body->to_json()["has_sim_life"], choice);
     }
     EXPECT_GT(living_pixels, 0);
+}
+
+TEST_F(MoonLifeScenarioTest, StellarAgeGatesTexturesAndTreesWhilePreservingTerrain)
+{
+    randomize_txgen = false;
+    auto* host = static_cast<Star*>(giant->orbit->center);
+    std::vector<float> elevations;
+    std::vector<int> colored_pixels;
+    for (double duration : {.5, 1.5, 6.0})
+    {
+        host->stellar_age = {{"value_gyr", 8}, {"luminosity_class_duration_gyr", duration}};
+        Moon* body = moon();
+        body->user_added = true;
+        body->has_sim_life = true;
+        body->preserve_loaded_parameters = true;
+        body->fictitious_map_height = 32;
+        body->vegetation_r = 50;
+        body->vegetation_g = 180;
+        body->vegetation_b = 30;
+        body->veg_min_temp = 265;
+        body->veg_max_temp = 330;
+        body->surf_map = new Map(body);
+        body->surf_map->generate_rocky_map(body);
+        ASSERT_TRUE(body->surf_map->is_complete());
+        SurfaceBiomes field(body->texture_seed());
+        SurfaceSampler surface(body, body->surf_map, field, earth_radius, 0);
+        int colored = 0, tree_sites = 0;
+        for (int row = 0; row < 32; ++row)
+        {
+            for (int column = 0; column < 64; ++column)
+            {
+                const double latitude = half_pi - (row + .5) * _pi / 32;
+                const double longitude = -_pi + (column + .5) * 2 * _pi / 64;
+                colored += body->surf_map->material_at(latitude, longitude) == SurfaceMaterial::vegetation;
+                tree_sites += surface.tree_site_at(latitude, longitude);
+            }
+        }
+        colored_pixels.push_back(colored);
+        if (duration < 2.5) EXPECT_EQ(tree_sites, 0);
+        else EXPECT_GT(tree_sites, 0);
+        std::vector<float> bump(32 * 64);
+        body->surf_map->export_bump(bump.data());
+        if (elevations.empty()) elevations = bump;
+        else EXPECT_EQ(elevations, bump);
+    }
+    EXPECT_EQ(colored_pixels[0], 0);
+    EXPECT_GT(colored_pixels[1], 0);
+    EXPECT_GT(colored_pixels[2], colored_pixels[1]);
 }
 
 TEST(TidalHeatingModelTest, IoScaleMatchesTheSynchronousSmallEccentricityLimit)

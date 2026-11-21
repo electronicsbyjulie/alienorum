@@ -7276,7 +7276,7 @@ void draw_horizon()
                     detail.basis = {float(east[a]*ca-north[a]*sa), float(east[b]*ca-north[b]*sa),
                         float(east[a]*sa+north[a]*ca), float(east[b]*sa+north[b]*ca)};
                     detail.material = ground_detail_material(p->get_surface_pressure()*inv_oneatm,
-                        p->simulated_surface_life_allowed() && (p->vegetation_r || p->vegetation_g || p->vegetation_b));
+                        p->simulated_land_plants_allowed() && (p->vegetation_r || p->vegetation_g || p->vegetation_b));
                 }
                 gpu_ground = prepare_horizon_ground_gpu(screen_w, ground_height, terrain_raster.distances(),
                     min_hz_y_at_x, base_top, terrain_mesh, gpu_haze, detail);
@@ -8691,7 +8691,7 @@ void draw_horizon()
                 const double scenery_spacing = sqrt(_pi * ROCK_MAX_DIST * ROCK_MAX_DIST / ROCK_COUNT);
                 const double crown_scale = p ? fmax(p->plant_trunk_width, p->plant_crown_size) : 0;
                 const double canopy_margin = 2 * ROCK_MAX_SIZE * crown_scale + 0.1;
-                const bool has_plants = p && p->simulated_surface_life_allowed()
+                const bool has_plants = p && p->simulated_land_plants_allowed()
                     && (p->vegetation_r || p->vegetation_g || p->vegetation_b);
                 // Reconstruct the preceding three weeks independently of frame rate or time seeks.
                 const double tree_epoch = has_plants ? floor(simnow / 3600.0) * 3600.0 : 0;
