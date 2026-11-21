@@ -242,6 +242,7 @@ namespace alienorum
 
         unsigned char *red_data = nullptr, *green_data = nullptr, *blue_data = nullptr;
         double *bump_data = nullptr;
+        std::vector<double> flat_bump_source;
         ElevationGrid calibrated_bump;
         std::vector<SurfaceMaterial> surface_materials;
         std::shared_ptr<SurfacePhase> water_phase;
@@ -317,6 +318,7 @@ namespace alienorum
             return has_rgb_data() && gen > 0;
         }
         void resample_bump_data(unsigned int new_resolution);
+        void rescale_bump(double old_scale, double old_offset, double scale, double offset);
         void _map_resample_bump_regen_rocky(CelestialObject *cel);
 
         RGB3 color_at(double latitude, double longitude);

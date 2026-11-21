@@ -110,8 +110,21 @@ static bool is_observing_object(const CelestialObject* object)
 
 static bool has_mapped_horizon(const CelestialObject* body)
 {
-    return horizon_distant_terrain && show_terrain && body && !uses_gaseous_map(body->type)
-        && body->surf_map && body->surf_map->is_complete() && body->surf_map->has_calibrated_bump();
+    if (!horizon_distant_terrain || !show_terrain || !body || uses_gaseous_map(body->type)
+        || !body->surf_map || !body->surf_map->is_complete() || !body->surf_map->has_bump_data()) return false;
+    Map* map = body->surf_map;
+    if (map->has_calibrated_bump() || body->has_real_maps) return true;
+    const double radius = body->volumetric_mean_radius;
+    if (!(radius > 0)) return false;
+    if (map->procedurally_generated && radius < 100000) return true;
+    const double step = std::min(1.0 / radius, .001);
+    const double north = std::min(half_pi, viewer_lat + step);
+    const double south = std::max(-half_pi, viewer_lat - step);
+    const double east_step = step / std::max(.001, fabs(cos(viewer_lat)));
+    const double dy = map->elevation_at_bilinear(north, viewer_lon) - map->elevation_at_bilinear(south, viewer_lon);
+    const double dx = map->elevation_at_bilinear(viewer_lat, viewer_lon + east_step)
+        - map->elevation_at_bilinear(viewer_lat, viewer_lon - east_step);
+    return hypot(dx, dy) > 2 * step * radius * tan(4.0 * fiftyseventh);
 }
 
 static bool exclude_observing_object(CelestialObject *object)
@@ -788,7 +801,7 @@ static void collect_eclipse_casters(SphereImpostorInput &in, CelestialObject *ce
 {
     in.num_casters = 0;
     in.light_angular_radius = 0;
-    if (!lightcen || lightcen == cel || eclipse_candidates.empty()) return;
+    if (!lightcen || lightcen == cel) return;
 
     Point to_light = view_mode == vm_system
         ? lightcen->location.local_position - cel->location.local_position
@@ -798,6 +811,8 @@ static void collect_eclipse_casters(SphereImpostorInput &in, CelestialObject *ce
     if (d_light <= 0 || r_light <= 0) return;
 
     double light_ang = asin(fmin(1.0, r_light / d_light));
+    in.light_angular_radius = light_ang;
+    if (eclipse_candidates.empty()) return;
     Point lhat = to_light * (1.0 / d_light);
 
     // Selected casters, kept sorted by `score` (see below) so that when more than
@@ -899,7 +914,6 @@ static void collect_eclipse_casters(SphereImpostorInput &in, CelestialObject *ce
         }
     }
     in.num_casters = n;
-    if (n) in.light_angular_radius = light_ang;
 }
 
 // ---- Atmospheric color -----------------------------------------------------------------
@@ -1186,37 +1200,9 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
     // bodies (Earth, Moon, Io) use surf_map. Matches the CPU path's own priority.
     Map *day_map = cel->get_day_map();
 
-    // Bump mapping (see sphere_impostor.cpp's fragment shader for the actual perturbation) --
-    // matches the CPU path's own gate for whether bump data is worth reading at all
-    // (visuals.cpp's CPU polygon loop: "bs = (cls==class_planet||cls==class_moon) ?
-    // estimate_bump_scale() : 0", then only calls elevation_at() if map && bs).
-    //
-    // bump_strength is divided by the object's own estimate_bump_scale() -- the same value
-    // that was multiplied in when bump_data was first loaded (see Map::load_from_jpeg/_png's
-    // "as_bump" branch), i.e. the actual amplitude convention this specific object's elevation
-    // data was baked with -- rather than by its physical radius. A version of this that divided
-    // by radius alone left estimate_bump_scale()'s *other* factor -- surface_pressure, via
-    // "0.001*radius*(surface_pressure?log(surface_pressure):1)/log(20)" -- completely
-    // uncancelled: an atmosphere-bearing world like Earth gets a characteristic elevation range
-    // roughly 11x its radius-only share compared to an airless one like the Moon, by that
-    // formula alone, so identical strength read as tastefully craggy on the Moon (tuned against
-    // it) but overdone on Earth/Mars.
-    //
-    // Switching straight to "divide by bump_scale" fixed *that* but broke the Moon instead, for
-    // a units reason: bump_scale itself (~580m for the Moon) is roughly 3000x smaller than
-    // radius (~1.74e6m), so the same kBumpStrength constant divided by the much smaller number
-    // came out ~3000x stronger overall -- bug: a fuzzy, cauliflower-like noise blanketing the
-    // *entire* disc, not just a rough terminator. kBumpStrength itself has to be rescaled to
-    // compensate, calibrated so an airless body lands at the exact same absolute strength the
-    // radius-normalized version did (since for an airless body, surface_pressure is 0 and
-    // estimate_bump_scale() reduces to exactly 0.001*radius/log(20) -- i.e.
-    // bump_scale/radius==0.001/log(20) for *any* airless body, independent of its actual size,
-    // which is what makes a single fixed rescale factor work here at all). Atmosphere-bearing
-    // bodies then land proportionally below that fixed point, by exactly how much bigger their
-    // own bump_scale/radius ratio is -- which was the actual goal.
-    bool bump_eligible = (cls == class_planet || cls == class_moon) && day_map && day_map->has_bump_data();
-    double bump_scale = bump_eligible ? ((Planet*)cel)->estimate_bump_scale() : 0.0;
-    const double kBumpStrength = 4.0 * 0.001 / log(20.0);
+    Map* bump_map = cel->surf_map ? cel->surf_map : day_map;
+    const bool bump_eligible = (cls == class_planet || cls == class_moon)
+        && bump_map && bump_map->has_bump_data();
 
     // Lighting: matches the CPU path's own Lambertian day/night blend (see the "self_luminous"/
     // "daylight" logic further down in this file, in the CPU polygon-shading loop).
@@ -1270,8 +1256,8 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
     in.day_map_texture = gputex_for(day_map);
     Map *night_map = cel->get_night_map();
     in.night_map_texture = gputex_for(night_map);
-    in.bump_map_texture = bump_eligible ? gputex_bump_for(cel->surf_map ? cel->surf_map : day_map) : 0;
-    in.bump_strength = (bump_eligible && in.bump_map_texture && bump_scale > 0) ? (kBumpStrength / bump_scale) : 0.0;
+    in.bump_map_texture = bump_eligible ? gputex_bump_for(bump_map) : 0;
+    in.bump_strength = in.bump_map_texture && bounding_r > 0 ? 1.0 / bounding_r : 0.0;
     in.fallback_color = solid_color;
     in.light_dir[0] = light_dir.x; in.light_dir[1] = light_dir.y; in.light_dir[2] = light_dir.z;
     in.daylight_tint[0] = daylight.red; in.daylight_tint[1] = daylight.green; in.daylight_tint[2] = daylight.blue;
@@ -1762,7 +1748,7 @@ int draw_sphere(CelestialObject* cel, double arad)
     // the sky blend inside it. Starting from full daylight is the neutral choice: it is what a
     // body with no light center already gets, and it keeps the cap the same colour as the disc it
     // sits on rather than whatever was on the stack.
-    double equatorial_radius, theta, vtheta, cos_theta, cos_vtheta, is_day = 1, is_night = 0;
+    double equatorial_radius, vtheta, cos_theta, cos_vtheta, is_day = 1, is_night = 0;
     if (dwh)
         equatorial_radius = pow(((Moon*)cel)->depth * ((Moon*)cel)->width, 0.5) * .5;
     else
@@ -1850,13 +1836,17 @@ int draw_sphere(CelestialObject* cel, double arad)
     if (map && !map->is_complete()) map = nullptr;
     if (nmap && !nmap->is_complete()) nmap = nullptr;
     double night_illum = nmap ? 0 : starlight;
+    CelestialObject *lightcen = cel->get_light_center();
+    bool self_luminous = (lightcen == cel);
+    const Point source_offset = lightcen ? lightcen->location.local_position - cel->location.local_position : Point();
+    const double source_distance = source_offset.magnitude();
+    const Point source_direction = source_distance > 0 ? source_offset * (1 / source_distance) : Point();
+    const double solar_sine = source_distance > 0 ? std::min(1.0, lightcen->get_equatorial_radius() / source_distance) : 0;
     Color base_color = cls == class_star
         ? Color::color_from_star(4.2, (Star*)cel, cel->BV_color)
         : Color::color_from_planet(4.2, cel);
     RGB3 rgb = Color::rgb_from_color(base_color, -1), nrgb = {0,0,0};
     Point cursor, land;
-    CelestialObject *lightcen = cel->get_light_center();
-    bool self_luminous = (lightcen == cel);
     ImU32 imcol;
 
     double cpu_limb_a = 0, cpu_limb_b = 0;
@@ -2039,17 +2029,20 @@ int draw_sphere(CelestialObject* cel, double arad)
                             }
                             else
                             {
-                                // theta = fmod(find_3D_angle(land, lightcen->location.local_position, cel->location.local_position), _pi);
-
                                 // Shade based on the normal of the 3D coordinates of the polygon vertices instead of angle to sun and cel center.
                                 Point normal = compute_normal(land, tdland[l-1], tdland[m]) + compute_normal(tdland[l-1], tdland[m-1], tdland[m]);
-                                theta = fmod(find_3D_angle(cel->location.local_position - normal, lightcen->location.local_position, cel->location.local_position), _pi);
-                                if (fabs(theta) < half_pi)
+                                const Point radial = land - cel->location.local_position;
+                                const auto dot = [](const Point& a, const Point& b)
                                 {
-                                    cos_theta = cos(theta);
-                                    is_day = fmin(1, pow(cos_theta, 1.0/3.0) + night_illum);
-                                }
-                                else is_day = night_illum;
+                                    return a.x*b.x + a.y*b.y + a.z*b.z;
+                                };
+                                if (dot(normal, radial) < 0) normal = normal * -1;
+                                const double radius = radial.magnitude(), normal_length = normal.magnitude();
+                                cos_theta = radius > 0 ? dot(radial, source_direction) / radius : 0;
+                                const double incidence = normal_length > 0 ? dot(normal, source_direction) / normal_length : cos_theta;
+                                const double sun = terrain_solar_exposure(cos_theta,
+                                    elevation / fmax(1.0, radius - elevation), solar_sine);
+                                is_day = fmin(1.0, std::cbrt(fmax(0.0, incidence)) * sun + night_illum);
                             }
 
                             ImVec2 points[4];
@@ -4525,24 +4518,31 @@ void draw_system_view()
             position.y - text.y * 0.5), outline, "?");
     };
 
-    double padding = dispcy/20, selrad = 0;
+    const double padding = dispcy / 20;
+    double selrad = 0, selected_scale = 1;
     int num_stars = 0;
     for (i=0; i<n; i++) if (lsyscache[i]->typeclass() == class_star) num_stars++;
+    if (!num_stars) return;
+    const double title_bottom = ImGui::GetFontSize() + 10;
+    const double row_height = std::max(0.0, (dispcy * 2 - title_bottom) / num_stars);
+    ImFont* row_font = global_font ? global_font : ImGui::GetFont();
+    const double label_height = lbl_localsys ? std::min(global_font_size, row_height / 3) : 0.0;
+    const double row_radius = std::max(0.0, (row_height - label_height - 8) * .5);
+    if (row_radius <= 0) return;
 
     for (i=0; i<num_stars; i++)
     {
         if (lsyscache[i]->deleted) continue;
-        selrad = 0;
         Star *s = (Star*)lsyscache[i];          // Since stars get listed first, we don't have to check the type class.
         if (!(s->volumetric_mean_radius > 0) || !std::isfinite(s->volumetric_mean_radius))
         {
             s->estimate_radius();
         }
-        s->drawnx = -dispcx/29;
-        s->drawny = dispcy + (2.0 * i - num_stars + 1) * (dispcy / num_stars);
+        s->drawnx = std::max(-dispcx / 29.0, -row_radius * .4);
+        s->drawny = title_bottom + (i + .5) * row_height - label_height * .5;
 
         // dry run - find planetary system scaling
-        double sdrad = display_radius(s, solar_radius, dispcy/std::max(2, num_stars), 20.0);
+        double sdrad = std::min(row_radius, display_radius(s, solar_radius, dispcy/std::max(2, num_stars), 20.0));
         double cursor = s->drawnx + sdrad + padding;
         static FrameScratch<int> planet_centers_scratch, planet_radii_scratch;
         std::vector<int> local_plcenx, local_plxrad;
@@ -4562,7 +4562,7 @@ void draw_system_view()
             if (!p->counts_for_host_statistics()) continue;
             if (!p->orbit || p->orbit->center != s) continue;
             p->drawny = s->drawny;
-            double pdrad = display_radius(p, earth_radius, dispcx/10, 20.0);
+            double pdrad = std::min(row_radius, display_radius(p, earth_radius, dispcx/10, 10.0));
             double pdradr = (p->ring_radius) ? (pdrad*2) : pdrad;
             p->drawnx = cursor + pdradr;
             plcenx.push_back(p->drawnx);
@@ -4606,9 +4606,12 @@ void draw_system_view()
         }
 
         // actual draw with scaling applied
-        sdrad = display_radius(s, solar_radius, dispcy/std::max(2, num_stars), 20.0) * curscale;
-        draw_system_object(s, sdrad);
-        if (s->seqno == selected) selrad = sdrad;
+        sdrad *= curscale;
+        if (s->seqno == selected)
+        {
+            selrad = sdrad;
+            selected_scale = curscale;
+        }
         if (selected == s->seqno)
         {
             ImGui::GetBackgroundDrawList()->AddCircle(ImVec2(s->drawnx, s->drawny), sdrad+2, rgba_apply_redlight(global_style.selected_color), 0, 2);
@@ -4619,10 +4622,10 @@ void draw_system_view()
             const char *dispname = s->name;
             if (s->local_name.size()) dispname = s->local_name.c_str();
             int disph = dispcy * 2;
-            ImFont *font = global_font;
-            double lfontsz = global_font_size;
+            ImFont *font = row_font;
+            double lfontsz = label_height;
 
-            ImVec2 lsz = ImGui::CalcTextSize(dispname);
+            ImVec2 lsz = font->CalcTextSizeA(lfontsz, FLT_MAX, 0, dispname);
             int dy = s->drawny+sdrad+1;
             if (s->drawny < disph && dy > disph-lsz.y) dy = disph-lsz.y;
             #if cache_labels
@@ -4631,14 +4634,14 @@ void draw_system_view()
             llbl.fontsz = lfontsz;
             llbl.pos = ImVec2(fmax(0, s->drawnx - lsz.x/2), dy);
             llbl.color = Color::ensure_wcag_contrast(
-                    (i == selected) ? global_style.selected_color : global_style.objlbl_color, whtbkgd, 4.5, -1, true);
+                    (s->seqno == selected) ? global_style.selected_color : global_style.objlbl_color, whtbkgd, 4.5, -1, true);
             llbl.text = dispname;
             labels2draw.push_back(llbl);
 
             #else
             ImGui::GetBackgroundDrawList()->AddText(font, lfontsz, ImVec2(fmax(0, s->drawnx - lsz.x/2), dy),
                 rgba_apply_redlight(Color::ensure_wcag_contrast(
-                    (i == selected) ? global_style.selected_color : global_style.objlbl_color, whtbkgd, 4.5, -1, true)),
+                    (s->seqno == selected) ? global_style.selected_color : global_style.objlbl_color, whtbkgd, 4.5, -1, true)),
                 dispname);
             #endif
         }
@@ -4653,13 +4656,14 @@ void draw_system_view()
             if (!p->orbit || p->orbit->center != s) continue;
             if (!p->counts_for_host_statistics()) continue;
             p->drawny = s->drawny;
-            double pdrad = (display_radius(p, earth_radius, dispcx/10, 10.0)) * curscale;
+            double pdrad = std::min(row_radius, display_radius(p, earth_radius, dispcx/10, 10.0)) * curscale;
             double pdradr = (p->ring_radius) ? (pdrad*2) : pdrad;
             p->drawnx = cursor + pdradr;
             draw_system_object(p, pdrad);
             if (p->seqno == selected || (selected > 0 && cels[selected] && cels[selected]->orbit && cels[selected]->orbit->center == p))
             {
                 selrad = pdrad;
+                selected_scale = curscale;
             }
             if (selected == p->seqno)
             {
@@ -4672,26 +4676,26 @@ void draw_system_view()
             {
                 const char *dispname = p->name;
                 int disph = dispcy * 2;
-                ImFont *font = global_font;
-                double lfontsz = global_font_size;
+                ImFont *font = row_font;
+                double lfontsz = label_height;
 
-                ImVec2 lsz = ImGui::CalcTextSize(dispname);
+                ImVec2 lsz = font->CalcTextSizeA(lfontsz, FLT_MAX, 0, dispname);
                 int dy = p->drawny+pdrad+1;
                 if (p->drawny < disph && dy > disph-lsz.y) dy = disph-lsz.y;
                 #if cache_labels
                 DrawLabel llbl;
-                llbl.font = global_font;
+                llbl.font = font;
                 llbl.pos = ImVec2(p->drawnx - lsz.x/2, dy);
                 llbl.color = Color::ensure_wcag_contrast(
-                        (i == selected) ? global_style.selected_color : global_style.objlbl_color, whtbkgd, 4.5, -1, true);
+                        (p->seqno == selected) ? global_style.selected_color : global_style.objlbl_color, whtbkgd, 4.5, -1, true);
                 llbl.text = dispname;
                 labels2draw.push_back(llbl);
 
-                if (p->is_in_con_HZ())
+                if (p->is_in_con_HZ() && dy + 2 * lsz.y + 5 <= title_bottom + (i + 1) * row_height)
                 {
                     std::string hz = "Habitable Zone";
                     llbl.pos.y += lsz.y + 5;
-                    lsz = ImGui::CalcTextSize(hz.c_str());
+                    lsz = font->CalcTextSizeA(lfontsz, FLT_MAX, 0, hz.c_str());
                     llbl.pos.x = p->drawnx - lsz.x/2;
                     llbl.color = Color::ensure_wcag_contrast(IM_COL32(0, 255, 0, 128), whtbkgd, 4.5, -1, true);
                     llbl.text = hz;
@@ -4701,46 +4705,23 @@ void draw_system_view()
                 #else
                 ImGui::GetBackgroundDrawList()->AddText(font, lfontsz, ImVec2(p->drawnx - lsz.x/2, dy),
                     rgba_apply_redlight(Color::ensure_wcag_contrast(
-                        (i == selected) ? global_style.selected_color : global_style.objlbl_color, whtbkgd, 4.5, -1, true)),
+                        (p->seqno == selected) ? global_style.selected_color : global_style.objlbl_color, whtbkgd, 4.5, -1, true)),
                     dispname);
                 #endif
             }
         }
 
         draw_system_object(s, sdrad);
+    }
 
-        if (selected >= 0 && selrad)
+    if (selected >= 0 && selrad)
+    {
+        const double curscale = selected_scale;
+        if (CelestialObject* csel = cels[selected])
         {
-            ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0,0), ImVec2(dispcx*2,dispcy*2), IM_COL32(0,0,0,128));
-            CelestialObject *csel = cels[selected];
+            ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0,title_bottom), ImVec2(dispcx*2,dispcy*2), IM_COL32(0,0,0,128));
             while (csel->typeclass() == class_moon && csel->orbit) csel = csel->orbit->center;
             draw_system_object(csel, selrad);
-            if (lbl_localsys)
-            {
-                const char *dispname = csel->name;
-                int disph = dispcy * 2;
-                ImFont *font = global_font;
-                double lfontsz = global_font_size;
-
-                ImVec2 lsz = ImGui::CalcTextSize(dispname);
-                int dy = csel->drawny+selrad+1;
-                if (csel->drawny < disph && dy > disph-lsz.y) dy = disph-lsz.y;
-                #if cache_labels
-                DrawLabel llbl;
-                llbl.font = global_font;
-                llbl.pos = ImVec2(csel->drawnx - lsz.x/2, dy);
-                llbl.color = Color::ensure_wcag_contrast(
-                        (i == selected) ? global_style.selected_color : global_style.objlbl_color, whtbkgd, 4.5, -1, true);
-                llbl.text = dispname;
-                labels2draw.push_back(llbl);
-
-                #else
-                ImGui::GetBackgroundDrawList()->AddText(font, lfontsz, ImVec2(csel->drawnx - lsz.x/2, dy),
-                    rgba_apply_redlight(Color::ensure_wcag_contrast(
-                        (i == selected) ? global_style.selected_color : global_style.objlbl_color, whtbkgd, 4.5, -1, true)),
-                    dispname);
-                #endif
-            }
 
             // Moons.
             double moonx = csel->drawnx;
@@ -5096,7 +5077,7 @@ void draw_sunclock()
     // geography through.
     const double sclk_umbra_floor = 0.12;
 
-    double equatorial_radius, theta, cos_theta, is_day = 1, is_night = 0;
+    double equatorial_radius, cos_theta, is_day = 1, is_night = 0;
     if (dwh)
         equatorial_radius = pow(((Moon*)cel)->depth * ((Moon*)cel)->width, 0.5) * .5;
     else
@@ -5203,35 +5184,34 @@ void draw_sunclock()
                 if (self_luminous) { is_day = 1; is_night = 0; }
                 else
                 {
-                    theta = fmod(find_3D_angle(land, lightcen->location.local_position, cel->location.local_position), _pi);
-                    if (fabs(theta) < half_pi)
+                    const Point radial = land - cel->location.local_position;
+                    const double radius = radial.magnitude();
+                    const TerrainVector axes = {sclk_in.body_axes[0], sclk_in.body_axes[1], sclk_in.body_axes[2]};
+                    const auto dot_light = [&](const TerrainVector& vector)
                     {
-                        cos_theta = cos(theta);
-                        is_day = fmin(1, pow(cos_theta, 1.0/3.0));
-                        is_night = 0;
-                        #if sunclock_terrain_lighting
-                        if (bump_map && bump_map->has_bump_data())
-                        {
-                            const TerrainVector axes = {sclk_in.body_axes[0], sclk_in.body_axes[1], sclk_in.body_axes[2]};
-                            const auto normal = terrain_normal(lon, lat, axes,
-                                2 * _pi / std::max(1ul, bump_map->get_width()), _pi / std::max(1ul, bump_map->get_height()),
-                                [&](double latitude, double longitude) { return bump_map->elevation_at_bilinear(latitude, longitude); });
-                            Point normal_point(normal[0], normal[1], normal[2]);
-                            normal_point = rotate3D(normal_point, center, yaxis, -cel->timeofday());
-                            normal_point = rotate3D(normal_point, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
-                            const double surface_cosine = normal_point.x * sclk_in.light_dir[0]
-                                + normal_point.y * sclk_in.light_dir[1] + normal_point.z * sclk_in.light_dir[2];
-                            is_day = fmin(1.0, is_day * terrain_light_ratio(surface_cosine, cos_theta));
-                        }
-                        #endif
-
-                    }
-                    // TODO: Twilight
-                    else
+                        Point point(vector[0], vector[1], vector[2]);
+                        point = rotate3D(point, center, yaxis, -cel->timeofday());
+                        point = rotate3D(point, center, cel->location.equatorial_plane.v, -cel->location.equatorial_plane.a);
+                        return point.x * sclk_in.light_dir[0] + point.y * sclk_in.light_dir[1]
+                            + point.z * sclk_in.light_dir[2];
+                    };
+                    const bool valid_axes = axes[0] > 0 && axes[1] > 0 && axes[2] > 0;
+                    cos_theta = valid_axes ? dot_light(terrain_unit({-sin(lon) * cos(lat) / axes[0],
+                        sin(lat) / axes[1], cos(lon) * cos(lat) / axes[2]})) : 0;
+                    double surface_cosine = cos_theta, relative_height = 0;
+                    #if sunclock_terrain_lighting
+                    if (bump_map && bump_map->has_bump_data() && valid_axes)
                     {
-                        is_day = 0;
-                        is_night = 1;
+                        const auto normal = terrain_normal(lon, lat, axes,
+                            2 * _pi / std::max(1ul, bump_map->get_width()), _pi / std::max(1ul, bump_map->get_height()),
+                            [&](double latitude, double longitude) { return bump_map->elevation_at_bilinear(latitude, longitude); });
+                        surface_cosine = dot_light(normal);
+                        relative_height = elevation / fmax(1.0, radius - elevation);
                     }
+                    #endif
+                    const double solar_sine = d_light > 0 ? std::min(1.0, sc_light_r / d_light) : 0;
+                    is_day = std::cbrt(fmax(0.0, surface_cosine)) * terrain_solar_exposure(cos_theta, relative_height, solar_sine);
+                    is_night = cos_theta <= 0 ? (1 - is_day) * terrain_night_light_ratio(surface_cosine, cos_theta) : 0;
 
                     // The eclipse itself, asked per point of the map rather than per world, which is
                     // the whole reason it comes out as a moving spot with a soft rim instead of a
@@ -5274,9 +5254,9 @@ void draw_sunclock()
 
                 if (is_night)
                 {
-                    rgb.r += nrgb.r * is_night;
-                    rgb.g += nrgb.g * is_night;
-                    rgb.b += nrgb.b * is_night;
+                    rgb.r = fmin(255, rgb.r + nrgb.r * is_night);
+                    rgb.g = fmin(255, rgb.g + nrgb.g * is_night);
+                    rgb.b = fmin(255, rgb.b + nrgb.b * is_night);
                 }
 
                 ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(dx, dy), ImVec2(dx+step, dy+step),
@@ -6026,6 +6006,7 @@ void draw_horizon()
             return shared_surface ? surface_context.curvature : surface_refraction.curvature;
         };
         const bool calibrated_skyline = !ocean_world && has_mapped_horizon(cel);
+        const DistantSkyline* mapped_skyline = nullptr;
         // A synthetic surface extended to the reference horizon would fill mapped valleys.
         const bool terrain_mesh = show_terrain && surface_biomes
             && !ocean_world && cel->type != lavaworld && !calibrated_skyline;
@@ -6100,6 +6081,8 @@ void draw_horizon()
             const double y = (dispcy - screen_y) / surface_focal();
             const double north = surface_cos_altitude() - y * surface_sin_altitude();
             const double up = y * surface_cos_altitude() + surface_sin_altitude();
+            if (mapped_skyline)
+                return mapped_skyline->distance(azimuth + atan2(x, north), atan2(up, hypot(x, north)));
             const double slope = -up / fmax(1e-12, hypot(x, north));
             const double curvature = surface_curvature();
             const double discriminant = slope * slope - 4.0 * curvature * surface_eye;
@@ -6351,10 +6334,11 @@ void draw_horizon()
             static DistantSkyline distant_skyline;
             distant_skyline.update(cel->surf_map, local_surface_revision, whereami,
                 viewer_lat, viewer_lon, surface_radius, surface_eye, surface_refraction.curvature,
-                skyline_elevation, horizon_distant_terrain_lighting != 0, calibrated_skyline);
-            if (horizon_distant_terrain_lighting) lit_distant_skyline = &distant_skyline;
+                skyline_elevation, horizon_distant_terrain_lighting && !calibrated_skyline, calibrated_skyline);
+            if (horizon_distant_terrain_lighting && !calibrated_skyline) lit_distant_skyline = &distant_skyline;
             if (calibrated_skyline)
             {
+                mapped_skyline = &distant_skyline;
                 const auto below_skyline = [&](double screen_x, double screen_y)
                 {
                     const double x = (screen_x - dispcx) / surface_focal();
@@ -6475,14 +6459,14 @@ void draw_horizon()
 
             hz_fy = hz_y;
         }
-        else if (full_ground_view)
+        else if (full_ground_view && !mapped_skyline)
         {
             if (!veiled_uniform_ground)
             {
                 ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, 0), ImVec2(dispcx * 2, dispcy * 2), terraincol);
             }
         }
-        else if (!veiled_uniform_ground)
+        else if (!veiled_uniform_ground && !mapped_skyline)
         {
             int prior_horizon = -1;
             for (j = 0; j <= hznodes; j++)
@@ -6652,8 +6636,21 @@ void draw_horizon()
             auto mesh_view = std::make_tuple(viewer_lat, viewer_lon, surface_eye, surface_lift);
             static decltype(mesh_view) saved_mesh_view;
             static bool mesh_valid = false;
-            if (!mesh_valid || saved_mesh_key != mesh_key || saved_mesh_view != mesh_view)
+            static double mesh_build_ms = 0;
+            const double walk_north = surface_radius * (viewer_lat - std::get<0>(saved_mesh_view));
+            const double walk_east = surface_radius * cos(viewer_lat)
+                * std::remainder(viewer_lon - std::get<1>(saved_mesh_view), 2 * _pi);
+            // Retain the sampled mesh within a short walk and translate its projection.
+            // Its first ring is already well outside this small observer displacement.
+            const bool translate_mesh = horizon_motion_ground_sampling && !horizon_terrain_cpu_reference
+                && mesh_build_ms > std::max(35.0, horizon_ground_motion_budget_ms)
+                && std::get<2>(mesh_view) == std::get<2>(saved_mesh_view)
+                && std::get<3>(mesh_view) == std::get<3>(saved_mesh_view)
+                && fabs(viewer_lat) < half_pi - .001
+                && hypot(walk_north, walk_east) < std::min(12.0, relief_start * .02);
+            if (!mesh_valid || saved_mesh_key != mesh_key || (saved_mesh_view != mesh_view && !translate_mesh))
             {
+                const auto mesh_started = std::chrono::steady_clock::now();
                 static PerlinNoise relief_noise;
                 static int relief_world = -2;
                 if (relief_world != whereami)
@@ -6908,11 +6905,19 @@ void draw_horizon()
                 saved_mesh_key = mesh_key;
                 saved_mesh_view = mesh_view;
                 mesh_valid = true;
+                mesh_build_ms = std::chrono::duration<double, std::milli>(
+                    std::chrono::steady_clock::now() - mesh_started).count();
                 if (horizon_fast_path(1)) ++mesh_epoch;
             }
 
+            const bool shifted_mesh = mesh_view != saved_mesh_view;
+            const double east_shift = shifted_mesh ? walk_east : 0;
+            const double north_shift = shifted_mesh ? walk_north : 0;
+            const double sine_yaw = sin(azimuth), cosine_yaw = cos(azimuth);
+            const double shift_x = east_shift * cosine_yaw - north_shift * sine_yaw;
+            const double shift_z = east_shift * sine_yaw + north_shift * cosine_yaw;
             using ProjectionKey = decltype(std::make_tuple(mesh_epoch, azimuth, altitude,
-                zoom, dispcx, dispcy, shared_surface, horizon_terrain_cpu_reference,
+                zoom, dispcx, dispcy, east_shift, north_shift, shared_surface, horizon_terrain_cpu_reference,
                 performance_enabled(22), performance_enabled(24), performance_enabled(25), performance_enabled(26),
                 bool(horizon_gpu_terrain_rasterization), horizon_terrain_gpu_reference));
             static std::optional<ProjectionKey> saved_projected_terrain_key;
@@ -6920,7 +6925,7 @@ void draw_horizon()
             std::optional<ProjectionKey> projected_terrain_key;
             if (retain_projection)
             {
-                projected_terrain_key.emplace(mesh_epoch, azimuth, altitude, zoom, dispcx, dispcy, shared_surface,
+                projected_terrain_key.emplace(mesh_epoch, azimuth, altitude, zoom, dispcx, dispcy, east_shift, north_shift, shared_surface,
                     horizon_terrain_cpu_reference, performance_enabled(22), performance_enabled(24),
                     performance_enabled(25), performance_enabled(26), bool(horizon_gpu_terrain_rasterization), horizon_terrain_gpu_reference);
             }
@@ -6941,10 +6946,12 @@ void draw_horizon()
                     {
                         const HorizonTerrainVertex &source = mesh[vertex];
                         const double bearing = source.bearing - azimuth;
-                        const double x = source.distance * sin(bearing);
-                        const double north = source.distance * cos(bearing);
+                        const double x = source.distance * sin(bearing) - shift_x;
+                        const double north = source.distance * cos(bearing) - shift_z;
+                        const double distance = shifted_mesh ? hypot(x, north) : source.distance;
                         double up;
-                        if ((performance_enabled(25) && !horizon_terrain_cpu_reference)) up = terrain_up[vertex];
+                        if (shifted_mesh) up = source.elevation - surface_eye - surface_curvature() * distance * distance;
+                        else if ((performance_enabled(25) && !horizon_terrain_cpu_reference)) up = terrain_up[vertex];
                         else
                         {
                             const double refraction = surface_bending * source.distance * source.distance;
@@ -6958,7 +6965,7 @@ void draw_horizon()
                             target.x = dispcx + x / depth * zoom * dispcx;
                             target.y = dispcy - (up * cos_alt - north * sin_alt) / depth * zoom * dispcx;
                             target.inverse_depth = 1.0 / depth;
-                            target.distance_over_depth = source.distance / depth;
+                            target.distance_over_depth = distance / depth;
                         }
                     }
                 }
@@ -6976,10 +6983,11 @@ void draw_horizon()
                         {
                             const size_t vertex = row * terrain_columns + column;
                             const HorizonTerrainVertex &source = mesh[vertex];
-                            const double x = source.distance * sine;
-                            const double north = source.distance * cosine;
+                            const double x = source.distance * sine - shift_x;
+                            const double north = source.distance * cosine - shift_z;
                             double up;
-                            if ((performance_enabled(25) && !horizon_terrain_cpu_reference)) up = terrain_up[vertex];
+                            if (shifted_mesh) up = source.elevation - surface_eye - surface_curvature() * (x*x + north*north);
+                            else if ((performance_enabled(25) && !horizon_terrain_cpu_reference)) up = terrain_up[vertex];
                             else
                             {
                                 const double refraction = surface_bending * source.distance * source.distance;
@@ -7008,7 +7016,9 @@ void draw_horizon()
                                 target.x = dispcx + camera[0] / depth * zoom * dispcx;
                                 target.y = dispcy - camera[1] / depth * zoom * dispcx;
                                 target.inverse_depth = 1.0 / depth;
-                                target.distance_over_depth = mesh[vertex].distance / depth;
+                                const double north = (camera[2] * cos_alt - camera[1] * sin_alt);
+                                const double distance = shifted_mesh ? hypot(camera[0], north) : mesh[vertex].distance;
+                                target.distance_over_depth = distance / depth;
                             }
                         }
                     }
@@ -7023,7 +7033,7 @@ void draw_horizon()
                 if (gpu_raster) triangles.reserve((terrain_rows - 1) * terrain_columns * 6);
                 static std::vector<unsigned char> adaptive_cells;
                 const bool adaptive = performance_enabled(26) && !horizon_terrain_cpu_reference
-                    && performance_enabled(22) && !gpu_raster;
+                    && performance_enabled(22) && !gpu_raster && !shifted_mesh;
                 if (adaptive)
                 {
                     adaptive_cells.assign((terrain_rows - 1) * terrain_columns, 0);
@@ -7209,7 +7219,7 @@ void draw_horizon()
 
         const bool ground_detail_active = TEXTURED_GROUND && !horizon_ground_detail_reference
             && p && !gaseous && cel->type != lavaworld && map && map->is_complete();
-        const bool draw_mapped_ground = !faded && (paint_biomes || haze.active() || ground_detail_active)
+        const bool draw_mapped_ground = !mapped_skyline && !faded && (paint_biomes || haze.active() || ground_detail_active)
             && (!bounded_ground || first_ground < ground_height);
         if (draw_mapped_ground)
         {
@@ -7287,8 +7297,9 @@ void draw_horizon()
             precipitation_stats.ground_setup_milliseconds = std::chrono::duration<double, std::milli>(
                 ground_paint_start - ground_setup_start).count();
             RGB3 uniform_source;
-            const double source_reach = terrain_mesh ? std::max(surface_range,
-                fmin(fmax(60000.0, surface_range * 8.0), surface_radius * .15)) : surface_range;
+            const double source_reach = mapped_skyline ? std::min(2000000.0, surface_radius * .5)
+                : terrain_mesh ? std::max(surface_range,
+                    fmin(fmax(60000.0, surface_range * 8.0), surface_radius * .15)) : surface_range;
             const bool uniform_lit_source = horizon_fast_path(2) && gpu_ground && paint_biomes
                 && map->color_within_cap(viewer_lat, viewer_lon,
                     source_reach / surface_radius + (surface_biomes ? biome_angle : 0) + 1e-8, uniform_source, true);
@@ -7349,6 +7360,7 @@ void draw_horizon()
             ground_inputs.push_back(surface_water);
             ground_inputs.push_back(shore_displacement);
             ground_inputs.push_back(double(local_phase_revision));
+            ground_inputs.push_back(calibrated_skyline);
             auto sample_inputs = ground_inputs;
             // These fields describe shading only. Pixel coordinates and source colors
             // remain valid while the scene is relit.
@@ -7385,28 +7397,31 @@ void draw_horizon()
             // retain exact positions because the north/east basis turns rapidly.
             // A shoreline can be anywhere in the visible footprint, even when
             // the observer's immediate surroundings are uniform.
-            SurfaceSampler::Sample boundary_sample;
             const double reuse_reach = surface_water ? source_reach + 2.0 : 100.0;
-            const bool clear_of_boundary = !paint_biomes
-                || surface.uniform_sample(viewer_lat, viewer_lon, reuse_reach / surface_radius + 1e-10, boundary_sample);
             // An unchanged observer can reuse the exact painting even at a color
             // or material boundary. Certify a neighborhood only after actual travel.
-            const bool position_reusable = (latitude_step == 0 && longitude_step == 0)
-                || (!calibrated_skyline && clear_of_boundary && travel < std::min(2.0, surface_radius * .001)
-                    && fabs(viewer_lat) < half_pi - .001);
-            int ground_stride = 1;
-            if (horizon_motion_ground_sampling && gpu_ground && paint_biomes && !surface_water && ground_cache_valid
-                && std::get<0>(ground_key) == std::get<0>(saved_ground_key)
-                && std::get<1>(ground_key) == std::get<1>(saved_ground_key)
-                && full_ground_paint_ms > horizon_ground_motion_budget_ms)
+            bool position_reusable = latitude_step == 0 && longitude_step == 0;
+            if (!position_reusable && !calibrated_skyline && travel < std::min(2.0, surface_radius * .001)
+                && fabs(viewer_lat) < half_pi - .001)
             {
-                const auto& old = std::get<2>(saved_ground_key);
-                const auto& current = std::get<2>(ground_key);
-                if (old.size() == current.size() && old[3] == 1 && old[13] == current[13] && old[14] == current[14]
-                    && (!position_reusable || old[10] != current[10] || old[11] != current[11] || old[12] != current[12]))
-                    ground_stride = 2;
+                SurfaceSampler::Sample boundary_sample;
+                position_reusable = !paint_biomes || surface.uniform_sample(viewer_lat, viewer_lon,
+                    reuse_reach / surface_radius + 1e-10, boundary_sample);
             }
-            if (gpu_ground && paint_biomes && !surface_water && !horizon_terrain_cpu_reference)
+            int ground_stride = 1;
+            const bool same_ground = ground_cache_valid
+                && std::get<0>(ground_key) == std::get<0>(saved_ground_key)
+                && std::get<1>(ground_key) == std::get<1>(saved_ground_key);
+            const auto& old_view = std::get<2>(saved_ground_key);
+            const auto& new_view = std::get<2>(ground_key);
+            const bool view_moving = same_ground && old_view.size() == new_view.size()
+                && old_view[3] == 1 && old_view[13] == new_view[13] && old_view[14] == new_view[14]
+                && (!position_reusable || old_view[10] != new_view[10] || old_view[11] != new_view[11] || old_view[12] != new_view[12]);
+            if (horizon_motion_ground_sampling && gpu_ground && paint_biomes && !surface_water && view_moving
+                && full_ground_paint_ms > horizon_ground_motion_budget_ms)
+                ground_stride = 2;
+            if (gpu_ground && paint_biomes && !horizon_terrain_cpu_reference
+                && (!surface_water || view_moving))
                 ground_stride = std::max(ground_stride, horizon_quality.ground_stride());
             std::get<2>(ground_key).back() = ground_stride;
             struct GroundPreviewTile
@@ -7467,6 +7482,7 @@ void draw_horizon()
             };
             const auto gpu_tile_color = [&](int left, int top, int right, int bottom, RGB3 &color, bool nearby = false)
             {
+                if (mapped_skyline) return false;
                 double near_distance = surface_range, far_distance = nearby ? 0 : surface_range;
                 if (terrain_mesh)
                 {
@@ -7541,19 +7557,19 @@ void draw_horizon()
             };
             const auto ground_color = [&](double x, double y)
             {
-                if (terrain_mesh && !std::isfinite(visible_distance(x, y)))
+                const double distance = visible_distance(x, y);
+                if (terrain_mesh && !std::isfinite(distance))
                 {
                     return static_cast<ImU32>(0);
                 }
                 ImU32 color = unveiled_terraincol;
                 if (paint_biomes)
                 {
-                    const auto coord = ground_coord(x, y);
+                    const auto coord = ground_coord_at_depth(x, y, distance);
                     const RGB3 sample = surface_sample(coord.first, coord.second);
                     remember_channels(sample);
                     color = lit_surface_color(sample);
                 }
-                const double distance = visible_distance(x, y);
                 return pressure_haze_color(haze, color, std::isfinite(distance) ? distance : surface_range);
             };
             const auto ground_pixel_color = [&](int x, int y)
@@ -7855,8 +7871,113 @@ void draw_horizon()
                 full_ground_paint_ms = precipitation_stats.ground_paint_milliseconds;
         }
 
+        if (mapped_skyline)
+        {
+            ImDrawList* ground = ImGui::GetBackgroundDrawList();
+            const auto* source = cel->get_light_center();
+            Point local_light = source ? source->location.local_position - cel->location.local_position : Point();
+            const double light_length = local_light.magnitude();
+            if (light_length > 0)
+            {
+                local_light = rotate3D(local_light * (1 / light_length), center,
+                    cel->location.equatorial_plane.v, cel->location.equatorial_plane.a);
+                local_light = rotate3D(local_light, center, yaxis, cel->timeofday());
+            }
+            const double focal = surface_focal();
+            const double sine = surface_sin_altitude(), cosine = surface_cos_altitude();
+            const auto cache_key = std::make_tuple(map, local_surface_revision, whereami, viewer_lat, viewer_lon,
+                surface_eye, surface_radius, surface_curvature(), azimuth, altitude, zoom, dispcx, dispcy,
+                std::round(local_light.x * 1000), std::round(local_light.y * 1000), std::round(local_light.z * 1000),
+                ground_light, haze.extinction, haze.light, redlight_mode, horizon_quality.ground_stride(), shore_displacement);
+            static std::optional<std::decay_t<decltype(cache_key)>> last_paint;
+            struct ReliefTile { ImVec2 low, high; ImU32 color; };
+            static std::vector<ReliefTile> relief_tiles;
+            static std::vector<double> relief_columns;
+            if (last_paint != cache_key)
+            {
+                relief_tiles.clear();
+                const auto sightline = [&](double x, double y)
+                {
+                    const double east = (x - dispcx) / focal;
+                    const double vertical = (dispcy - y) / focal;
+                    const double north = cosine - vertical * sine;
+                    const double up = vertical * cosine + sine;
+                    return std::make_pair(azimuth + atan2(east, north), up / fmax(1e-12, hypot(east, north)));
+                };
+                const TerrainVector axes{surface_radius, surface_radius, surface_radius};
+                const double normal_step = std::clamp(1.0 / surface_radius, 1e-7, .005);
+                const auto color_at = [&](const std::pair<double, double>& ray)
+                {
+                    const double distance = mapped_skyline->distance_at_slope(ray.first, ray.second);
+                    if (!std::isfinite(distance)) return ImU32(0);
+                    const auto [lat, lon] = surface_coord(distance, ray.first);
+                    const RGB3 sample = surface_sample(lat, lon);
+                    const auto normal = terrain_normal(lon, lat, axes, normal_step, normal_step, skyline_elevation);
+                    const double slope_light = normal[0] * local_light.x + normal[1] * local_light.y
+                        + normal[2] * local_light.z;
+                    const double brightness = light_length > 0 ? .24 + .76 * sqrt(fmax(0.0, slope_light)) : 1;
+                    const auto channel = [&](unsigned char value, int index)
+                    {
+                        return std::clamp(int(value * ground_light[index] * brightness), 0, 255);
+                    };
+                    return pressure_haze_color(haze, rgba_apply_redlight(IM_COL32(channel(sample.r, 0),
+                        channel(sample.g, 1), channel(sample.b, 2), 255)), distance);
+                };
+                const auto hits_terrain = [&](double x, double y)
+                {
+                    const auto [bearing, slope] = sightline(x, y);
+                    return mapped_skyline->covers_slope(bearing, slope);
+                };
+                // Shade each surface tile at the first terrain hit. Resolve mixed sky
+                // and ground tiles at pixel centers to preserve the skyline.
+                const int tile = 4 * horizon_quality.ground_stride();
+                relief_columns.assign(screen_w, ground_height);
+                for (int y = 0; y < ground_height; y += tile)
+                {
+                    const int bottom = std::min(ground_height, y + tile);
+                    int start = 0;
+                    ImU32 previous = 0;
+                    const auto run = [&](int x, ImU32 color)
+                    {
+                        if (color == previous) return;
+                        if (previous) relief_tiles.push_back({ImVec2(start, y), ImVec2(x, bottom), previous});
+                        start = x;
+                        previous = color;
+                    };
+                    for (int x = 0; x < screen_w; x += tile)
+                    {
+                        const int right = std::min(screen_w, x + tile);
+                        const auto ray = sightline((x + right) * .5, (y + bottom) * .5);
+                        const bool hit = mapped_skyline->covers_slope(ray.first, ray.second);
+                        bool mixed = hits_terrain(x + .5, y + .5) != hit || hits_terrain(right - .5, y + .5) != hit
+                            || hits_terrain(x + .5, bottom - .5) != hit || hits_terrain(right - .5, bottom - .5) != hit;
+                        if (!mixed)
+                        {
+                            run(x, hit ? color_at(ray) : 0);
+                            if (hit) for (int column = x; column < right; ++column)
+                                relief_columns[column] = std::min(relief_columns[column], double(y));
+                            continue;
+                        }
+                        run(x, 0);
+                        for (int column = x; column < right; ++column)
+                            for (int row = y; row < bottom; ++row)
+                            {
+                                const ImU32 color = color_at(sightline(column + .5, row + .5));
+                                if (!color) continue;
+                                relief_tiles.push_back({ImVec2(column, row), ImVec2(column + 1, row + 1), color});
+                                relief_columns[column] = std::min(relief_columns[column], double(row));
+                            }
+                    }
+                    run(screen_w, 0);
+                }
+                last_paint = cache_key;
+            }
+            min_hz_y_at_x = relief_columns;
+            for (const auto& tile : relief_tiles) ground->AddRectFilled(tile.low, tile.high, tile.color);
+            if (!min_hz_y_at_x.empty()) min_hz_y = *std::min_element(min_hz_y_at_x.begin(), min_hz_y_at_x.end());
+        }
         #if horizon_distant_terrain_lighting
-        if (lit_distant_skyline && !full_ground_view)
+        if (lit_distant_skyline && !mapped_skyline && !full_ground_view)
         {
             auto* source = cel->get_light_center();
             const Point light_point = source
@@ -7905,7 +8026,7 @@ void draw_horizon()
         }
         #endif
 
-        const bool draw_water_waves = draw_mapped_ground && surface_water && screen_w > 0;
+        const bool draw_water_waves = (draw_mapped_ground || mapped_skyline) && surface_water && screen_w > 0;
         bool certified_dry = false;
         if (horizon_fast_path(6) && draw_water_waves && surface_radius > 0)
         {
@@ -8449,6 +8570,7 @@ void draw_horizon()
             if (show_terrain)
             {
                 const double foreground_range = terrain_mesh ? std::min(surface_range, relief_start) : surface_range;
+                const double local_elevation = mapped_skyline ? skyline_elevation(viewer_lat, viewer_lon) : 0;
                 #if lavaworld_crust_fissures
                 if (show_terrain)
                 {
@@ -8792,7 +8914,8 @@ void draw_horizon()
                     const double bound_height = ROCK_MAX_SIZE * (p ? fabs(p->plant_trunk_height)
                         + fabs(crown_scale * p->plant_crown_oblateness) : 1);
                     const auto& visible_scenery = scenery_cache.visible(azimuth, altitude,
-                        -h_eye - bound_drop - bound_height, bound_height + bound_drop, scenery_cpu_reference || !performance_enabled(39), false);
+                        -h_eye - bound_drop - bound_height, bound_height + bound_drop,
+                        mapped_skyline || scenery_cpu_reference || !performance_enabled(39), false);
 
                     // Sedentary lifeforms when is_vegetation is true, otherwise surface rocks.
                     for (size_t index : visible_scenery)
@@ -8821,8 +8944,21 @@ void draw_horizon()
                         {
                             continue;
                         }
+                        double arc_distance = dist_m;
+                        if (R_planet < 100 * object_range)
+                        {
+                            const double lat_sine = sin((object.latitude - viewer_lat) * .5);
+                            const double lon_sine = sin((object.longitude - viewer_lon) * .5);
+                            const double half_chord = lat_sine * lat_sine + surface_cos_latitude()
+                                * cos(object.latitude) * lon_sine * lon_sine;
+                            if (half_chord >= .5) continue;
+                            arc_distance = 2 * R_planet * asin(sqrt(std::max(0.0, half_chord)));
+                        }
+                        if (!mapped_skyline && !dittrsa && arc_distance > s_horizon) continue;
 
                         double rock_size = scenery_size(rhash, ROCK_MIN_SIZE, ROCK_MAX_SIZE);
+                        const double ground_rise = mapped_skyline
+                            ? skyline_elevation(object.latitude, object.longitude) - local_elevation : 0;
 
                         double rw = (rock_size / dist_m) * dispcx * zoom;
                         double rh = rw * rock_aspect;
@@ -8851,8 +8987,8 @@ void draw_horizon()
                         {
                             double canopy_h_m = rock_size * p->plant_trunk_height;
                             double curv_drop = (dist_m * dist_m) / (2.0 * R_planet);
-                            double y_base_world = -h_eye - curv_drop;
-                            double y_crown_world = canopy_h_m - h_eye - curv_drop;
+                            double y_base_world = ground_rise - h_eye - curv_drop;
+                            double y_crown_world = canopy_h_m + y_base_world;
 
                             if (s_horizon > 0.0)
                             {
@@ -8936,7 +9072,7 @@ void draw_horizon()
                                 continue;
                             }
 
-                            double delta = atan(h_eye / dist_m) + (dist_m / (2.0 * R_planet));
+                            double delta = atan((h_eye - ground_rise) / dist_m) + (dist_m / (2.0 * R_planet));
                             if (s_horizon > 0.0)
                             {
                                 delta -= scenery_bending * dist_m;
@@ -8982,10 +9118,10 @@ void draw_horizon()
                             continue;
                         }
 
-                        // Project scenery onto the base surface even when hills rise behind it.
-                        if (!dittrsa && base_valid && (!std::isfinite(base_distance(sx, sy))
-                            || (calibrated_skyline && sx >= 0 && sx < screen_w
-                                && sy < min_hz_y_at_x[static_cast<int>(sx)])))
+                        // Compare against the first surface hit along a ray through the top of the object.
+                        const double foreground = visible_distance(crown_sx, min_y);
+                        if (!dittrsa && (foreground + std::max(rock_size, arc_distance * .025) < arc_distance
+                            || (!mapped_skyline && base_valid && !std::isfinite(base_distance(sx, sy)))))
                         {
                             continue;
                         }
@@ -9000,6 +9136,7 @@ void draw_horizon()
                         rocks[num_rocks].crown_hidden = false;
                         rocks[num_rocks].dist = sort_dist;
                         rocks[num_rocks].ground_dist = dist_m;
+                        rocks[num_rocks].ground_rise = ground_rise;
                         rocks[num_rocks].theta = theta_world;
                         rocks[num_rocks].screen_x = sx;
                         rocks[num_rocks].screen_y = sy;
@@ -9143,7 +9280,7 @@ void draw_horizon()
                             double z_base_horiz = u_rock * sin_az + v_rock * cos_az;
 
                             double curv_drop_rock = (rk.ground_dist * rk.ground_dist) / (2.0 * R_planet);
-                            double y_base_world = -h_eye - curv_drop_rock;
+                            double y_base_world = rk.ground_rise - h_eye - curv_drop_rock;
                             if (s_horizon > 0.0)
                             {
                                 y_base_world += scenery_bending * rk.ground_dist * rk.ground_dist;
@@ -9157,7 +9294,7 @@ void draw_horizon()
 
                             double dist_tip = sqrt(u_tip * u_tip + v_tip * v_tip);
                             double curv_drop_tip = (dist_tip * dist_tip) / (2.0 * R_planet);
-                            double y_tip_world = -h_eye - curv_drop_tip;
+                            double y_tip_world = rk.ground_rise - h_eye - curv_drop_tip;
                             if (s_horizon > 0.0)
                             {
                                 y_tip_world += scenery_bending * dist_tip * dist_tip;
@@ -9288,7 +9425,7 @@ void draw_horizon()
                         if (gpu_plants) flush_scenery_gpu();
                         PlantMeshInstance plant;
                         const double angle = rk.theta - azimuth;
-                        double base_height = -h_eye - rk.ground_dist * rk.ground_dist / (2 * R_planet);
+                        double base_height = rk.ground_rise - h_eye - rk.ground_dist * rk.ground_dist / (2 * R_planet);
                         if (s_horizon > 0) base_height += scenery_bending * rk.ground_dist * rk.ground_dist;
                         plant.base = ImVec4(rk.ground_dist * sin(angle), base_height,
                             rk.ground_dist * cos(angle), rk.size * p->plant_trunk_height);
@@ -10753,6 +10890,8 @@ bool draw_cloudy_sky()
     in.revision = cel->cloud_map->gen;
     in.refraction = refraction;
     in.sample_overhead = show_terrain && p->has_water >= 0.05 && p->type != lavaworld;
+    // Overhead precipitation varies on cloud scales. Reuse the probe within a ten-metre walk.
+    in.overhead_reuse_distance = static_cast<float>(10.0 / scale);
     in.resolution_scale = horizon_quality.cloud_scale();
     if (queue_cloud_sky_gpu(in))
     {

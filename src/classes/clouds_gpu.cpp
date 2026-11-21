@@ -1199,14 +1199,12 @@ void main()
     {
         const auto start = std::chrono::steady_clock::now();
         const int columns = (width + 31) / 32, rows = (height + 31) / 32;
-        const int stride = (int)s_cells.size() + 1;
         GLint max_texture = 0;
         glGetIntegerv(GL_MAX_TEXTURE_SIZE, &max_texture);
         if (rows * columns > max_texture)
         {
             return false;
         }
-        std::vector<float> tiles((size_t)stride * columns * rows, 0.0f);
         const Vec3 eye =
         {
             p.camera[12] * p.world[0], p.camera[13] * p.world[0], p.camera[14] * p.world[0]
@@ -1234,10 +1232,21 @@ void main()
         }
         std::vector<size_t> order(s_cells.size());
         std::iota(order.begin(), order.end(), 0);
+        if (p.geometry_mode == CloudGeometryMode::accelerated)
+        {
+            // The fragment shader ignores centers beyond ten cloud units.
+            const double tolerance = 1e-4 + p.world[1] * 2e-6;
+            order.erase(std::remove_if(order.begin(), order.end(), [&](size_t cluster)
+            {
+                return cluster_cones[cluster].distance > 10 + tolerance;
+            }), order.end());
+        }
         std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b)
         {
             return cluster_cones[a].distance < cluster_cones[b].distance;
         });
+        const int stride = static_cast<int>(order.size()) + 1;
+        std::vector<float> tiles(static_cast<size_t>(stride) * columns * rows, 0.0f);
         unsigned int total = 0, maximum = 0;
         for (int ty = 0; ty < rows; ++ty)
         {
@@ -1461,7 +1470,7 @@ void main()
         return s_rain_cover;
     }
 
-    static void sample_rain_cover(const CloudSkyGpuParams &p)
+    static void sample_rain_cover(const CloudSkyGpuParams &p, double reuse_distance)
     {
         s_stats.overhead_cpu_ms = 0;
         const auto started = std::chrono::steady_clock::now();
@@ -1478,12 +1487,18 @@ void main()
             return;
         }
         if (s_rain_cached && p.texture == s_rain_params.texture && p.revision == s_rain_params.revision
-            && std::memcmp(p.camera + 4, s_rain_params.camera + 4, 12 * sizeof(float)) == 0
-            && std::memcmp(p.world, s_rain_params.world, 4 * sizeof(float)) == 0
             && p.light[2] == s_rain_params.light[2]
             && p.light[8] == s_rain_params.light[8] && p.light[9] == s_rain_params.light[9])
         {
-            return;
+            const bool same_pose = std::memcmp(p.camera + 4, s_rain_params.camera + 4, 12 * sizeof(float)) == 0
+                && std::memcmp(p.world, s_rain_params.world, 4 * sizeof(float)) == 0;
+            const Vec3 eye = {p.camera[12] * p.world[0], p.camera[13] * p.world[0], p.camera[14] * p.world[0]};
+            const Vec3 previous_eye = {s_rain_params.camera[12] * s_rain_params.world[0],
+                s_rain_params.camera[13] * s_rain_params.world[0], s_rain_params.camera[14] * s_rain_params.world[0]};
+            const Vec3 shift = difference(eye, previous_eye);
+            if (same_pose || (reuse_distance > 0 && p.world[1] == s_rain_params.world[1]
+                && (p.world[2] > 0) == (s_rain_params.world[2] > 0) && dot3(shift, shift) < reuse_distance * reuse_distance))
+                return;
         }
         GLint framebuffer, viewport[4], program, vao, buffer, active, textures[2], pack_row;
         GLfloat clear[4];
@@ -1606,6 +1621,7 @@ void main()
             }
             s_inverse_valid = true;
             s_cache_valid = false;
+            s_rain_cached = false;
             if (!s_refraction)
             {
                 glGenTextures(1, &s_refraction);
@@ -1638,11 +1654,12 @@ void main()
         p->resolution_scale = in.resolution_scale;
         if (in.sample_overhead)
         {
-            sample_rain_cover(*p);
+            sample_rain_cover(*p, in.overhead_reuse_distance);
         }
         else
         {
             s_rain_cover = CloudRainCover();
+            s_rain_cached = false;
             s_rain_cached = false;
             s_stats.overhead_cpu_ms = 0;
         }

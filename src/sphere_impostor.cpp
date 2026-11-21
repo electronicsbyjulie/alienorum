@@ -26,6 +26,8 @@
 // (the day-map sampler's texture unit).
 #include "imgui/backends/imgui_impl_opengl3_loader.h"
 
+#include "classes/terrainlighting.h"
+
 using namespace alienorum;
 
 namespace alienorum
@@ -262,6 +264,8 @@ namespace alienorum
         // A zero shell thickness means no atmosphere.
         "uniform mat4 uAtm;\n"
         "const float PI = 3.14159265358979;\n"
+        ALIENORUM_TERRAIN_SOLAR_GLSL
+        ALIENORUM_TERRAIN_NORMAL_GLSL
         //
         // ---- Tunables ---------------------------------------------------------------------
         //
@@ -346,6 +350,11 @@ namespace alienorum
         "        c = mix(c, rounded, dark);\n"
         "    }\n"
         "    return c;\n"
+        "}\n"
+        "bool has_shadow_caster()\n"
+        "{\n"
+        "    return uRing[1].x > 0.0 || (vBumpLimb.w > 0.0 &&\n"
+        "        max(max(uCasters[0].w, uCasters[1].w), max(uCasters[2].w, uCasters[3].w)) > 0.0);\n"
         "}\n"
         "void calc_shadow(vec3 pos, out float shadow, out float umbraAmt, out vec3 umbraTint)\n"
         "{\n"
@@ -519,7 +528,7 @@ namespace alienorum
         "        float airShadow = (sunElev > -0.35) ? 1.0 : 0.0;\n"
         "        float airUmbraAmt = 0.0;\n"
         "        vec3 airUmbraTint = vec3(0.0);\n"
-        "        if (vFlags.x < 0.5 && sunElev > -0.35 && (vBumpLimb.w > 0.0 || uRing[1].x > 0.0))\n"
+        "        if (vFlags.x < 0.5 && sunElev > -0.35 && has_shadow_caster())\n"
         "        {\n"
         "            calc_shadow(airPos, airShadow, airUmbraAmt, airUmbraTint);\n"
         "        }\n"
@@ -579,40 +588,19 @@ namespace alienorum
         "        dUVdy.x += 1.0;\n"
         "    }\n"
         "\n"
-        "    // Derive slopes along spherical tangent arcs. Texture v increases south,\n"
-        "    // so interpreting a v difference as a northward slope reverses the light.\n"
-        "    // Arc sampling also accounts for latitude without a singular 1/cos(lat).\n"
-        "    if (vHasBumpTex > 0.5)\n"
+        "    float relative_height = 0.0;\n"
+        "    if (vHasBumpTex > 0.5 && vBumpLimb.x > 0.0 && vFlags.x < 0.5)\n"
         "    {\n"
-        "        vec2 texSize = textureSize(uBumpMap, 0);\n"
-        "        float cl = length(hitLocal.xz);\n"
-        "        vec3 tLonLocal = cl > 1e-4 ? vec3(-hitLocal.z, 0.0, hitLocal.x) / cl : vec3(1.0, 0.0, 0.0);\n"
-        "        vec3 tLatLocal = normalize(cross(tLonLocal, hitLocal));\n"
-        "        float footprint = max(length(dFdx(hitLocal)), length(dFdy(hitLocal)));\n"
-        "        float stepArc = max(PI / texSize.y, min(0.05, footprint));\n"
-        "        vec3 directions[4] = vec3[4](\n"
-        "            normalize(hitLocal + stepArc * tLonLocal), normalize(hitLocal - stepArc * tLonLocal),\n"
-        "            normalize(hitLocal + stepArc * tLatLocal), normalize(hitLocal - stepArc * tLatLocal));\n"
-        "        float heights[4];\n"
-        "        for (int j = 0; j < 4; ++j)\n"
-        "        {\n"
-        "            vec3 direction = directions[j];\n"
-        "            vec2 bumpUV = vec2((atan(-direction.x, direction.z) + PI) / (2.0 * PI),\n"
-        "                0.5 - asin(clamp(direction.y, -1.0, 1.0)) / PI);\n"
-        "            heights[j] = textureGrad(uBumpMap, bumpUV, dUVdx, dUVdy).r;\n"
-        "        }\n"
-        "        float slopeU = (heights[0] - heights[1]) * vBumpLimb.x / (2.0 * atan(stepArc));\n"
-        "        float slopeV = (heights[2] - heights[3]) * vBumpLimb.x / (2.0 * atan(stepArc));\n"
-        "        vec3 tLon = normalize(vec3(dot(vBasisX, tLonLocal), dot(vBasisY, tLonLocal), dot(basisZ, tLonLocal)));\n"
-        "        vec3 tLat = normalize(vec3(dot(vBasisX, tLatLocal), dot(vBasisY, tLatLocal), dot(basisZ, tLatLocal)));\n"
-        "        vec3 perturb = slopeU * tLon + slopeV * tLat;\n"
-        "        float perturbLen = length(perturb);\n"
-        "        const float kMaxTilt = 1.5;\n"
-        "        if (perturbLen > kMaxTilt) perturb *= kMaxTilt / perturbLen;\n"
-        "        n = normalize(n - perturb);\n"
+        "        float radius_scale = max(vRadii.x, max(vRadii.y, vRadii.z)) * vBumpLimb.x;\n"
+        "        vec3 body_axes = vRadii / radius_scale;\n"
+        "        float height = textureGrad(uBumpMap, uv, dUVdx, dUVdy).r;\n"
+        "        relative_height = height / max(1.0, length(hitLocal * body_axes));\n"
+        "        vec3 local_normal = terrain_normal(lon, lat, body_axes, dUVdx, dUVdy);\n"
+        "        n = normalize(vec3(dot(vBasisX, local_normal), dot(vBasisY, local_normal), dot(basisZ, local_normal)));\n"
         "    }\n"
         "    float costerm = (vFlags.x > 0.5) ? dot(n, -normalize(dir)) : dot(n, vLightDir);\n"
         "    float mu = max(costerm, 0.0);\n"
+        "    float sunlight = terrain_solar_exposure(dot(airNormal, vLightDir), relative_height, sin(vBumpLimb.w));\n"
         "\n"
         // Eclipses. Each caster hides some fraction of the light source's disc as seen from
         // *this* surface point specifically -- not from the object's center -- which is the whole
@@ -633,7 +621,7 @@ namespace alienorum
         "    float shadow = 1.0;\n"
         "    float umbraAmt = 0.0;\n"
         "    vec3 umbraTint = vec3(0.0);\n"
-        "    if (vFlags.x < 0.5 && (mu > 0.0 || (atmRel > 0.0 && costerm > -0.05)) && (vBumpLimb.w > 0.0 || uRing[1].x > 0.0))\n"
+        "    if (vFlags.x < 0.5 && sunlight > 0.0 && (mu > 0.0 || (atmRel > 0.0 && costerm > -0.05)) && has_shadow_caster())\n"
         "    {\n"
         "        vec3 surfLocal = hitLocal * vRadii;\n"
         "        vec3 surf = vec3(dot(vBasisX, surfLocal), dot(vBasisY, surfLocal), dot(basisZ, surfLocal));\n"
@@ -653,7 +641,7 @@ namespace alienorum
         "    }\n"
         "    else\n"
         "    {\n"
-        "        isDay = clamp(pow(mu, 1.0/3.0)*shadow + vFlags.y, 0.0, 1.0);\n"
+        "        isDay = clamp(pow(mu, 1.0/3.0)*sunlight*shadow + vFlags.y, 0.0, 1.0);\n"
         "    }\n"
         "\n"
         // albedo kept separate from baseColor -- the surface's own color, before the light
@@ -742,7 +730,7 @@ namespace alienorum
         "        float airShadow = (sunElev > -0.35) ? 1.0 : 0.0;\n"
         "        float airUmbraAmt = 0.0;\n"
         "        vec3 airUmbraTint = vec3(0.0);\n"
-        "        if (vFlags.x < 0.5 && sunElev > -0.35 && (vBumpLimb.w > 0.0 || uRing[1].x > 0.0))\n"
+        "        if (vFlags.x < 0.5 && sunElev > -0.35 && has_shadow_caster())\n"
         "        {\n"
         "            calc_shadow(airPos, airShadow, airUmbraAmt, airUmbraTint);\n"
         "        }\n"
@@ -1322,11 +1310,9 @@ void main()
         std::copy(in.wd_limb, in.wd_limb + 16, p->wd_limb);
 
         // Eclipse casters, scaled by the same 1/d as the center and radii above so the shader
-        // can compare them against a surface point directly. Columns past num_casters stay zero
-        // (SphereImpostorParams is value-initialized), which is how the shader knows to skip
-        // them. light_ang is left at 0 when there is nothing to cast a shadow, which is what
-        // makes the per-pixel eclipse test cost nothing at all on the ordinary draw.
-        p->light_ang = 0.0f;
+        // can compare them against a surface point directly. Zero-radius columns
+        // indicate absent casters. The solar radius also sets the terminator width.
+        p->light_ang = (float)in.light_angular_radius;
         int ncast = std::max(0, std::min(in.num_casters, max_eclipse_casters));
         for (int i = 0; i < ncast; i++)
         {
@@ -1335,7 +1321,6 @@ void main()
             p->casters[i*4 + 1] = (float)(in.casters[i].dy / d);
             p->casters[i*4 + 2] = (float)(in.casters[i].dz / d);
             p->casters[i*4 + 3] = (float)(in.casters[i].r / d);
-            p->light_ang = (float)in.light_angular_radius;
         }
 
         // The planet's own rings shadowing it -- same 1/d scaling, same "0 means absent"

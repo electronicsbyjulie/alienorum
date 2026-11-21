@@ -99,6 +99,7 @@ void identify_object_under_cursor(ImGuiIO& io)
     bool lsysonly = (view_mode == vm_system);
     int cursor_source = -1;
     double cursor_distance_squared = 0;
+    int cursor_priority = -1;
 
     if (trackidx >= 0)
     {
@@ -109,7 +110,10 @@ void identify_object_under_cursor(ImGuiIO& io)
         i = index;
         if ((i == whereami) && (view_mode != vm_system)) continue;
         if (cels[i]->deleted) continue;
-        if (lsysonly && cels[i]->cenobj != mycenobj) continue;
+        if (lsysonly && (cels[i] != mycenobj && cels[i]->cenobj != mycenobj)) continue;
+        const auto cls = cels[i]->typeclass();
+        const int priority = cls == class_moon ? 3 : cls == class_planet ? 2 : cls == class_star ? 1 : 0;
+        if (lsysonly && (!priority || cels[i]->drawnxmin >= cels[i]->drawnxmax)) continue;
 
         if ((abs(io.MousePos.x - cels[i]->drawnx) < threshold
             && abs(io.MousePos.y - cels[i]->drawny) < threshold)
@@ -128,19 +132,23 @@ void identify_object_under_cursor(ImGuiIO& io)
 
             const double dx = io.MousePos.x - cels[i]->drawnx, dy = io.MousePos.y - cels[i]->drawny;
             const double distance_squared = dx * dx + dy * dy;
-            const int target = system_target(i);
+            const int target = lsysonly ? i : system_target(i);
             const bool resolved_siblings = cursor_source >= 0 && target != is_an_obj_under_cursor &&
                 cels[i]->type == star && cels[cursor_source]->type == star &&
                 static_cast<Star*>(cels[i])->multisys &&
                 static_cast<Star*>(cels[i])->multisys == static_cast<Star*>(cels[cursor_source])->multisys;
-            if (resolved_siblings ? distance_squared < cursor_distance_squared : lmag < obj_magn_under_cursor)
+            const bool preferred = lsysonly
+                ? priority > cursor_priority || (priority == cursor_priority && distance_squared < cursor_distance_squared)
+                : resolved_siblings ? distance_squared < cursor_distance_squared : lmag < obj_magn_under_cursor;
+            if (preferred)
             {
                 is_an_obj_under_cursor = target;
                 obj_magn_under_cursor = lmag;
                 cursor_source = i;
+                cursor_priority = priority;
                 cursor_distance_squared = distance_squared;
 
-                if (is_an_obj_under_cursor == selected && distance_squared == 0) break;
+                if (!lsysonly && is_an_obj_under_cursor == selected && distance_squared == 0) break;
                 if (is_click && !dragged)
                 {
                     selected = is_an_obj_under_cursor;

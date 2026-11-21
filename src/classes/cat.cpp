@@ -7909,6 +7909,7 @@ ExoRow CatalogReader::exorow_from_json(const json& source, bool* ok)
     };
 
     r.companion_aliases = gets("alt_target_name");
+    r.catalog_candidate = exoplanet_status_key(gets("planet_status")) == "candidate";
     r.hd_name  = gets("hd_name");
     r.hip_name = gets("hip_name");
 
@@ -8062,6 +8063,7 @@ void CatalogReader::exorow_write_line(FILE* fp, const ExoRow& row)
     for (double value : {row.st_age, row.st_ageerr1, row.st_ageerr2, row.st_agelim}) write_exo_double(fp, value);
 
     write_exo_string(fp, row.companion_aliases);
+    write_exo_double(fp, row.catalog_candidate ? 1 : 0);
     fputc('\n', fp);
 }
 
@@ -8137,6 +8139,7 @@ bool CatalogReader::exorow_read_line(FILE* fp, ExoRow& row)
     row.st_ageerr2 = read_exo_double(cursor);
     row.st_agelim = read_exo_double(cursor);
     row.companion_aliases = read_exo_string(cursor);
+    row.catalog_candidate = read_exo_double(cursor) == 1;
 
     return true;
 }
@@ -8716,9 +8719,34 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_st
 bool CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, std::map<int, std::vector<int>>& planet_celids, unsigned int& result, ExactStarSearchIndex* lookup)
 {
     alienorum::CatalogLock catalog_lock(catalog_mutex);
+    const double jupiter_masses = std::isfinite(row.pl_bmassj) ? row.pl_bmassj : row.pl_bmasse / exo_jupiter_to_earth_mass;
+    Star* detached_planet = nullptr;
+    if (jupiter_masses >= 1 && jupiter_masses < 13 && lookup)
+    {
+        // A cold companion can have entered the stellar census before its orbit
+        // and mass were identified. Retire that duplicate after adding the planet.
+        std::string compact = row.pl_name;
+        compact.erase(std::remove(compact.begin(), compact.end(), ' '), compact.end());
+        for (const std::string& name : {row.pl_name, compact})
+        {
+            for (const int index : lookup->candidates(name.c_str()))
+            {
+                if (cels[index] == host_star || cels[index]->typeclass() != class_star) continue;
+                auto* companion = static_cast<Star*>(cels[index]);
+                if (!companion->orbit && !companion->user_added && !companion->user_edited
+                    && stellar_regime(companion) == regime_substellar
+                    && exoplanet_status_key(companion->name) == exoplanet_status_key(row.pl_name))
+                {
+                    detached_planet = companion;
+                    break;
+                }
+            }
+            if (detached_planet) break;
+        }
+    }
     // Exact body aliases can identify a stellar companion already loaded by another catalog.
     // The import-wide index keeps this independent of the size of the stellar catalog.
-    if (!row.companion_aliases.empty())
+    if (!detached_planet && !row.companion_aliases.empty())
     {
         std::unique_ptr<ExactStarSearchIndex> local_lookup;
         if (!lookup)
@@ -8731,7 +8759,8 @@ bool CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, s
         while (std::getline(aliases, alias, '#'))
         {
             const int index = find_object(trim(alias).c_str(), true, 9e29, 0, lookup);
-            if (index < 0 || !cels[index] || cels[index] == host_star) continue;
+            if (index < 0 || !cels[index] || cels[index] == host_star
+                || stellar_regime(cels[index]) != regime_substellar) continue;
             Star* companion = static_cast<Star*>(cels[index]);
             companion->add_catalog_alias(row.pl_name);
             companion->add_catalog_alias(alias);
@@ -8747,6 +8776,7 @@ bool CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, s
     // 2. Instantiate and fill target Planet properties
     Planet* new_planet = new Planet();
     new_planet->catalog_designation = row.pl_name;
+    new_planet->catalog_candidate = row.catalog_candidate;
     snprintf(new_planet->name, sizeof(new_planet->name), "%s", row.pl_name.c_str());
     new_planet->cenobj = (host_star && host_star->cenobj) ? host_star->cenobj : host_star;
 
@@ -8949,6 +8979,7 @@ bool CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, s
 
     // Append planet object to global array
     append_cel(new_planet);
+    if (detached_planet) detached_planet->deleted = true;
     result++;
 
     planet_celids[host_star->seqno].push_back(new_planet->seqno);
@@ -9630,6 +9661,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
     };
     const char* derived_cache = stars_only ? "catalogs/exoplanets_stars.dat" : "catalogs/exoplanets_planets.dat";
     const char* position_catalog = "catalogs/exoplanet_host_positions.dat";
+    const char* supplement_catalog = "catalogs/exoplanet_supplement.json";
     const auto host_positions = read_exoplanet_host_positions(position_catalog);
 
     std::stringstream lmss;
@@ -9729,7 +9761,10 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
         std::ifstream cache_header(derived_cache);
         std::string version;
         std::getline(cache_header, version);
-        derived_cache_valid = version == "# EXO_TRANSIT7";
+        derived_cache_valid = version == "# EXO_TRANSIT8"
+            || (version == "# EXO_TRANSIT7" && !file_exists(supplement_catalog));
+        if (derived_cache_valid && file_exists(supplement_catalog))
+            derived_cache_valid = fs::last_write_time(derived_cache) >= fs::last_write_time(supplement_catalog);
 
     }
 
@@ -10310,18 +10345,25 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
     }
     if (planets_array.empty())
     {
-        std::fstream fs(exocache, std::ios::in);
-        if (!fs)
+        std::ifstream combined(exocache);
+        if (combined) planets_array = json::parse(combined, nullptr, false);
+        if (!planets_array.is_array() || planets_array.empty())
         {
-            return 0;
+            planets_array = json::array();
+            for (const char* path : {eu_cache, nasa_cache})
+            {
+                std::ifstream input(path);
+                if (!input) continue;
+                json provider = json::parse(input, nullptr, false);
+                if (!valid_source(provider)) continue;
+                for (auto& row : provider)
+                    if (accept_exoplanet_source(row, path == nasa_cache)) planets_array.push_back(std::move(row));
+            }
         }
-        fs >> planets_array;
         normalize_uncertain_numbers(planets_array);
-        fs.close();
         size_t prev_size = planets_array.size();
         planets_array.erase(std::remove_if(planets_array.begin(), planets_array.end(), [](json& row)
         {
-            // Purge old EU entries from the persisted unified JSON as well.
             return !accept_exoplanet_source(row, row.value("source_catalog", "") == "NASA");
         }), planets_array.end());
         dedup_planets(planets_array);
@@ -10332,6 +10374,33 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
             {
                 out_fs << planets_array.dump(4);
                 out_fs.close();
+            }
+        }
+    }
+
+    if (std::ifstream input{supplement_catalog}; input)
+    {
+        const json supplement = json::parse(input, nullptr, false);
+        if (supplement.is_array())
+        {
+            std::set<std::string> present;
+            for (const auto& row : planets_array)
+            {
+                present.insert(exoplanet_status_key(row.value("pl_name", "")));
+                const auto aliases = exoplanet_alias_keys(row);
+                present.insert(aliases.begin(), aliases.end());
+            }
+            for (const auto& row : supplement)
+            {
+                if (!row.is_object()) continue;
+                const std::string identity = exoplanet_status_key(row.value("pl_name", ""));
+                const auto aliases = exoplanet_alias_keys(row);
+                if (!identity.empty() && !rejections.excludes(row)
+                    && std::none_of(aliases.begin(), aliases.end(), [&](const auto& alias) { return present.count(alias); }))
+                {
+                    planets_array.push_back(row);
+                    present.insert(aliases.begin(), aliases.end());
+                }
             }
         }
     }
@@ -10362,7 +10431,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
     if (cachefp)
     {
         setvbuf(cachefp, cache_io_buf, _IOFBF, sizeof(cache_io_buf));
-        fputs("# EXO_TRANSIT7\n", cachefp);
+        fputs("# EXO_TRANSIT8\n", cachefp);
     }
 
     int rows_written = 0;

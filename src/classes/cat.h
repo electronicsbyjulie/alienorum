@@ -31,6 +31,7 @@ namespace alienorum
     {
         std::string pl_name, hostname, hd_name, hip_name, st_spectype;
         std::string companion_aliases;
+        bool catalog_candidate = false;
         double sy_dist=NAN, ra=NAN, dec=NAN, st_lum=NAN, sy_vmag=NAN, st_teff=NAN;
         double st_mass=NAN, st_rad=NAN, st_rotp=NAN;
         double st_age=NAN, st_ageerr1=NAN, st_ageerr2=NAN, st_agelim=NAN;

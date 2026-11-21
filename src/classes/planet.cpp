@@ -1597,10 +1597,29 @@ void Planet::set_explicit_mass(double value)
 
 void Planet::set_explicit_radius(double value)
 {
+    const double old_radius = volumetric_mean_radius;
+    const double old_scale = m_bump_scale;
+    const double old_offset = bump_offset;
     volumetric_mean_radius = value;
     radius_estimate_supplied = false;
     radius_evidence = std::isfinite(value) && value > 0 ? PlanetMeasurement::observed : PlanetMeasurement::unknown;
     radius_error_upper = radius_error_lower = NAN;
+    if (old_radius > 0 && std::isfinite(old_radius) && value > 0 && std::isfinite(value) && old_radius != value)
+    {
+        const double ratio = value / old_radius;
+        if (std::isfinite(bump_height)) bump_height *= ratio;
+        bump_offset *= ratio;
+        m_bump_scale = estimate_bump_scale();
+        if (surf_map) surf_map->rescale_bump(old_scale, old_offset, m_bump_scale, bump_offset);
+    }
+}
+
+void Planet::set_bump_height(double value)
+{
+    if (!std::isfinite(value) || value < 0) return;
+    const double old_scale = m_bump_scale;
+    bump_height = m_bump_scale = value;
+    if (surf_map) surf_map->rescale_bump(old_scale, bump_offset, value, bump_offset);
 }
 
 void Planet::estimate_radius()
@@ -2623,6 +2642,7 @@ json Planet::to_json()
     }
     towrite["transiting"] = transiting;
     if (!catalog_designation.empty()) towrite["catalog_designation"] = catalog_designation;
+    if (catalog_candidate) towrite["catalog_candidate"] = true;
     if (!display_designation.empty()) towrite["display_designation"] = display_designation;
     if (std::isfinite(inclination_error_upper)) towrite["inclination_error_upper"] = inclination_error_upper * fiftyseven;
     if (std::isfinite(inclination_error_lower)) towrite["inclination_error_lower"] = inclination_error_lower * fiftyseven;
@@ -2720,6 +2740,7 @@ bool Planet::from_json(const json& j)
     cloud_map_url = j.value("cloud_map_url", std::string());
     static_clouds = j.value("static_clouds", true);
     catalog_designation.clear();
+    catalog_candidate = false;
     display_designation.clear();
     delete atm;
     atm = nullptr;
@@ -2826,6 +2847,7 @@ bool Planet::from_json(const json& j)
     surface_water_model = j.contains("surface_water_model") && j["surface_water_model"].is_object()
         ? j["surface_water_model"] : json(nullptr);
     try { j.at("catalog_designation").get_to(catalog_designation); } catch (...) { ; }
+    catalog_candidate = j.value("catalog_candidate", false);
     try { j.at("display_designation").get_to(display_designation); } catch (...) { ; }
     try { j.at("vegetation_r").get_to(vegetation_r); } catch (...) { ; }
     try { j.at("vegetation_g").get_to(vegetation_g); } catch (...) { ; }

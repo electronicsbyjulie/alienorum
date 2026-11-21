@@ -6097,6 +6097,63 @@ TEST_F(CatalogParsingTest, BrownCompanionAliasDoesNotCreateAPlanetAcrossCache)
     }
 }
 
+TEST_F(CatalogParsingTest, PlanetAliasesDoNotConsumeProximaBAndImagedPlanetReplacesDetachedDuplicate)
+{
+    make_star("Alpha Centauri");
+    auto* proxima = make_star("Proxima Centauri", .1221 * solar_mass);
+    auto* coconuts = make_star("COCONUTS-2 A", .4 * solar_mass);
+    auto* detached = make_star("COCONUTS-2b", .04 * solar_mass);
+    detached->temperature = 492;
+    strcpy(detached->spectral_type, "T9");
+    ExactStarSearchIndex lookup;
+    TestCatalogReader reader;
+    std::map<int, std::vector<int>> planets;
+    unsigned int count = 0;
+    bool valid = false;
+    const auto b = reader.exorow_from_json({{"pl_name", "Proxima Centauri b"}, {"hostname", proxima->name},
+        {"alt_target_name", "alpha Cen C b#GL 551 C b#HIP 70890 b"}, {"pl_orbper", 11.18465},
+        {"pl_msinie", 1.055}}, &valid);
+    ASSERT_TRUE(valid);
+    EXPECT_TRUE(reader.add_exoplanet_from_row(b, proxima, planets, count, &lookup));
+    const auto cold = reader.exorow_from_json({{"pl_name", "COCONUTS-2 b"}, {"hostname", coconuts->name},
+        {"pl_bmassj", 7.5}, {"pl_radj", 1.122}, {"pl_orbsmax", 7506}}, &valid);
+    ASSERT_TRUE(valid);
+    ASSERT_TRUE(reader.add_exoplanet_from_row(cold, coconuts, planets, count, &lookup));
+    EXPECT_TRUE(detached->deleted);
+    const int planet = planets.at(coconuts->seqno).front();
+    EXPECT_EQ(cels[planet]->orbit->center, coconuts);
+    reader.apply_exoplanet_names(planets, &lookup);
+    EXPECT_STREQ(cels[planet]->name, "COCONUTS-2 A b");
+    EXPECT_EQ(find_object("COCONUTS-2 b"), planet);
+}
+
+TEST_F(CatalogParsingTest, CandidateStatusSurvivesPlanetCacheAndUniverseSave)
+{
+    auto* host = make_star("Proxima Centauri", .1221 * solar_mass);
+    TestCatalogReader reader;
+    bool valid = false;
+    const auto input = reader.exorow_from_json({{"pl_name", "Proxima Centauri c"}, {"hostname", host->name},
+        {"planet_status", "Candidate"}, {"pl_orbper", 1900}, {"pl_msinie", 5.8}}, &valid);
+    ASSERT_TRUE(valid);
+    FILE* file = std::tmpfile();
+    ASSERT_NE(file, nullptr);
+    reader.exorow_write_line(file, input);
+    rewind(file);
+    ExoRow row;
+    const bool read = reader.exorow_read_line(file, row);
+    fclose(file);
+    ASSERT_TRUE(read);
+    EXPECT_TRUE(row.catalog_candidate);
+    std::map<int, std::vector<int>> planets;
+    unsigned int count = 0;
+    ASSERT_TRUE(reader.add_exoplanet_from_row(row, host, planets, count));
+    auto* planet = static_cast<Planet*>(cels[planets.at(host->seqno).front()]);
+    EXPECT_TRUE(planet->catalog_candidate);
+    Planet restored;
+    ASSERT_TRUE(restored.from_json(planet->to_json()));
+    EXPECT_TRUE(restored.catalog_candidate);
+}
+
 TEST_F(CatalogParsingTest, MissingMDwarfColorUsesSubtypeWhileMeasuredZeroSurvivesBaking)
 {
     struct Writer : CatalogReader

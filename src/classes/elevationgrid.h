@@ -21,6 +21,11 @@ namespace alienorum
     public:
         bool empty() const { return values.empty(); }
         void clear() { values.clear(); width = height = 0; }
+        void calibrate(double height_span, double zero_offset)
+        {
+            span = height_span;
+            offset = zero_offset;
+        }
 
         bool load(const std::string& filename, double height_span, double zero_offset, bool inverted = false)
         {

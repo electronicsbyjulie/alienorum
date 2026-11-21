@@ -1353,6 +1353,27 @@ TEST(MapTest, SkylineElevationWrapsAndClamps)
     EXPECT_DOUBLE_EQ(empty.elevation_at_bilinear(0.0, 0.0), 0.0);
 }
 
+TEST(MapTest, PlanetRadiusAndBumpHeightEditsRescaleTheLoadedTerrain)
+{
+    Planet world;
+    world.volumetric_mean_radius = 10000;
+    world.bump_height = world.m_bump_scale = 800;
+    world.bump_offset = 100;
+    world.surf_map = new SkylineElevationMap();
+    const auto elevation = [&]() { return world.surf_map->elevation_at_bilinear(_pi / 4, -3 * _pi / 4); };
+    EXPECT_DOUBLE_EQ(elevation(), 250);
+    const auto generation = world.surf_map->gen;
+    world.set_explicit_radius(1000);
+    EXPECT_DOUBLE_EQ(world.bump_height, 80);
+    EXPECT_DOUBLE_EQ(world.bump_offset, 10);
+    EXPECT_DOUBLE_EQ(elevation(), 25);
+    EXPECT_NE(world.surf_map->gen, generation);
+    world.set_bump_height(0);
+    EXPECT_DOUBLE_EQ(elevation(), 10);
+    world.set_bump_height(160);
+    EXPECT_DOUBLE_EQ(elevation(), 40);
+}
+
 // =====================================================================
 // Global / Helper Tests
 // =====================================================================

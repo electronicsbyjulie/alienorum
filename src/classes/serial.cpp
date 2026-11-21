@@ -312,7 +312,7 @@ static int find_object_impl(const char* search_term, bool os, double ml, int lev
 
     uint32_t is_hd  = ((search_term[0]&0x5f) == 'H' && (search_term[1]&0x5f) == 'D') ? atoi(&search_term[2]) : 0,
         is_hip = ((search_term[0]&0x5f) == 'H' && (search_term[1]&0x5f) == 'I' && (search_term[2]&0x5f) == 'P') ? atoi(&search_term[3]) : 0;
-    int result = -1;
+    int result = -1, catalog_planet = -1;
     const char *match_cons = nullptr;
     char match_comp = 0;
     n = strlen(search_term);
@@ -448,6 +448,12 @@ static int find_object_impl(const char* search_term, bool os, double ml, int lev
             result = i;
             break;
         }
+        if (!os && catalog_planet < 0 && cels[i]->typeclass() == class_planet)
+        {
+            const auto* planet = static_cast<const Planet*>(cels[i]);
+            if (!planet->catalog_designation.empty() && !strcasecmp(planet->catalog_designation.c_str(), search_term))
+                catalog_planet = i;
+        }
         if (cels[i]->typeclass() == class_star)
         {
             for (const std::string& alias : {s->local_name, std::string(s->Bayer), std::string(s->Flamsteed)})
@@ -488,6 +494,7 @@ static int find_object_impl(const char* search_term, bool os, double ml, int lev
             }
         }
     }
+    if (result < 0 && catalog_planet >= 0) return catalog_planet;
     if (is_gliese)
     {
         return result;

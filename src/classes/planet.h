@@ -115,6 +115,7 @@ namespace alienorum
         bool lock_type = false;
         std::string cloud_map_url;
         std::string catalog_designation;
+        bool catalog_candidate = false;
         std::string display_designation;
         bool static_clouds = true;
         int vegetation_r=0, vegetation_g=0, vegetation_b=0;
@@ -144,6 +145,7 @@ namespace alienorum
         double est_current_local_temp(double lat, double lon);
         void set_explicit_mass(double value);
         void set_explicit_radius(double value);
+        void set_bump_height(double value);
         void estimate_radius();                             // if mass known
         void estimate_rotation();                           // if not known, e.g. exoplanets
         double viewer_reflectance_magnitude(CelestialLocation seen_from, double phase = -1, double sourceabsmagn = -1e9, double sourcedist = 0);

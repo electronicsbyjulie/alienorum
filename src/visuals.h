@@ -125,6 +125,7 @@ struct RockInstance
     bool crown_hidden;
     double dist;
     double ground_dist;
+    double ground_rise;
     double theta;
     double screen_x;
     double screen_y;

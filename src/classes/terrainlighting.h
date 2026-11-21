@@ -66,4 +66,53 @@ namespace alienorum
         return (ambient + (1 - ambient) * std::max(0.0, surface_cosine))
             / (ambient + (1 - ambient) * std::max(0.0, radial_cosine));
     }
+
+    inline double terrain_night_light_ratio(double surface_cosine, double radial_cosine)
+    {
+        return std::clamp(1.0 + .65 * (surface_cosine - radial_cosine), .55, 1.25);
+    }
+
+    inline double terrain_solar_exposure(double horizon_cosine, double relative_height, double solar_radius_sine)
+    {
+        const double h = std::max(0.0, relative_height);
+        const double elevation = horizon_cosine + std::sqrt(h * (2 + h)) / (1 + h);
+        if (!(solar_radius_sine > 0)) return elevation > 0 ? 1.0 : 0.0;
+        const double visible = std::clamp(.5 + .5 * elevation / solar_radius_sine, 0.0, 1.0);
+        return visible * visible * (3 - 2 * visible);
+    }
 }
+
+#define ALIENORUM_TERRAIN_SOLAR_GLSL \
+    "float terrain_solar_exposure(float horizon_cosine, float relative_height, float solar_radius_sine)\n" \
+    "{\n" \
+    "    float h = max(0.0, relative_height);\n" \
+    "    float elevation = horizon_cosine + sqrt(h * (2.0 + h)) / (1.0 + h);\n" \
+    "    return solar_radius_sine > 0.0 ? smoothstep(-solar_radius_sine, solar_radius_sine, elevation) : step(1e-9, elevation);\n" \
+    "}\n"
+
+#define ALIENORUM_TERRAIN_NORMAL_GLSL \
+    "vec3 terrain_position(float lon, float lat, vec3 axes, vec2 dx, vec2 dy)\n" \
+    "{\n" \
+    "    vec3 direction = vec3(-sin(lon) * cos(lat), sin(lat), cos(lon) * cos(lat));\n" \
+    "    vec3 position = direction * axes;\n" \
+    "    vec2 uv = vec2(fract(lon / (2.0 * PI) + 0.5), 0.5 - lat / PI);\n" \
+    "    float height = textureGrad(uBumpMap, uv, dx, dy).r;\n" \
+    "    float radius = length(position);\n" \
+    "    return radius > 0.0 ? position * ((radius + height) / radius) : position;\n" \
+    "}\n" \
+    "\n" \
+    "vec3 terrain_normal(float lon, float lat, vec3 axes, vec2 dx, vec2 dy)\n" \
+    "{\n" \
+    "    vec3 fallback = normalize(vec3(-sin(lon) * cos(lat), sin(lat), cos(lon) * cos(lat)) / axes);\n" \
+    "    if (abs(cos(lat)) < 0.0001) return fallback;\n" \
+    "    vec2 tex_size = vec2(textureSize(uBumpMap, 0));\n" \
+    "    float dl = (2.0 * PI) / tex_size.x;\n" \
+    "    float dp = PI / tex_size.y;\n" \
+    "    vec3 east = terrain_position(lon + dl, lat, axes, dx, dy);\n" \
+    "    vec3 west = terrain_position(lon - dl, lat, axes, dx, dy);\n" \
+    "    vec3 north = terrain_position(lon, min((0.5 * PI), lat + dp), axes, dx, dy);\n" \
+    "    vec3 south = terrain_position(lon, max(-(0.5 * PI), lat - dp), axes, dx, dy);\n" \
+    "    vec3 normal = normalize(cross(north - south, east - west));\n" \
+    "    return dot(normal, fallback) < 0.0 ? -normal : normal;\n" \
+    "}\n" \
+    "\n"

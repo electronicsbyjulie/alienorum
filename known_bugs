@@ -1,17 +1,9 @@
 
-In vm_horizon mode, when the sky is cloudy and there are rocks or trees in the view, something that was added to improve performance actually worsened it; the frame rate is acceptable (not great but acceptable) until panning or walking, at which point the frame rate drops dismally low, to less than 1 fps. Turning off both clouds and terrain produces only a slight frame rate improvement.
+[x] Downhill views now render the visible valley or crater floor and the opposite slope. Verified with an airless valley rendering test and the small-world rock occlusion test.
 
-In system view, if a planet is drawn near the host star and it has several moons, any attempt to click on the first 1 or 2 moons sometimes impinges on the host star's rectangle and selects the star instead. The hover+selection rectangle is a design choice for performance reasons, so in system view the moons' rectangles should get priority over the planets, which should get priority over the stars.
+[x] Restored Proxima b, added Proxima c as a candidate, and linked COCONUTS-2 b to COCONUTS-2 A. Exoplanet.eu remains an import source. Verified the app can find Proxima b, c and d and COCONUTS-2 b by their published names after rebuilding the caches.
 
-On sufficiently small moons and planets, rocks located past the horizon are visible through solid ground when they should be hidden.
+[x] Selected planets in system view now draw one name label. Verified by counting the labels queued for the selected planet.
 
-In system view, stars in multi-star systems sometimes overlap, confusing each other's labels and obscuring the "system view for" label at the top of the screen.
-
-Are the four listed components of the Rigel system really different ages? Check this on the internet and, if necessary, adjust the age estimation to account for multi systems that form together.
-
-Editing an object to make it smaller does not change the bump height. Subsequently editing the bump height does not update the bump scale LIKE I FUCKING ASKED YOU TO! Consequently, in vm_horizon mode, craters on a normal sized moon can irreversibly become deep wells once said moon is made smaller.
-
-In sun clock mode, let's make sure we apply normal-based shading to the night side too, not just the day side.
-
-When climbing up the side of a steep hill, such as inside the rim of a crater, when looking back make sure the downhill side is visible, e.g. the crater center, without obscuring it with a flat local horizon that wouldn't be there in real life.
+[x] The disc and sun clock use the same terrain sunlight rule. Elevated terrain can catch sunlight near the terminator, while terrain deeper in night receives ambient or night-map light. Pandora at JD 2461366.142 was the reported example. Verified with terrain exposure, crater lighting, and sun-clock rendering tests.
 

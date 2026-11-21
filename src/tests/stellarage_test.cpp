@@ -8,6 +8,7 @@
 #include "../classes/star.h"
 #include "../classes/cat.h"
 #include "../classes/savemodels.h"
+#include "../loaders.h"
 #include "universe_fixture.h"
 
 using namespace alienorum;
@@ -193,4 +194,45 @@ TEST_F(UniverseFixture, BetelgeuseUsesObservedHrPositionThroughCatalogueLoading)
     EXPECT_EQ(age.at("luminosity_basis"), "supplied_evolution_observation");
     EXPECT_NEAR(age.at("log_luminosity_solar").get<double>(), 5.10, .001);
     delete_the_universe();
+}
+
+TEST_F(UniverseFixture, RigelSharesThePublishedSystemAgeAcrossItsOrbitHierarchy)
+{
+    Star::load_main_seq_dat();
+    read_cons_lines();
+    CatalogReader reader;
+    ASSERT_GT(reader.read_condensed_star_cat(), 0);
+    ASSERT_GT(reader.read_star_orbits_dat(cels), 0);
+    int components = 0;
+    for (int i = 0; cels[i]; ++i)
+    {
+        if (cels[i]->typeclass() != class_star) continue;
+        auto* star = static_cast<Star*>(cels[i]);
+        if (star->HIP != 24436 && strncmp(star->name, "Bet Ori ", 8) != 0) continue;
+        ++components;
+        const auto age = star->age_diagnostics();
+        EXPECT_DOUBLE_EQ(age.at("value_gyr").get<double>(), .008) << star->name;
+        EXPECT_DOUBLE_EQ(age.at("lower_gyr").get<double>(), .007);
+        EXPECT_DOUBLE_EQ(age.at("upper_gyr").get<double>(), .009);
+        if (star->HIP != 24436) EXPECT_EQ(age.at("source"), "coeval_stellar_system");
+    }
+    EXPECT_EQ(components, 4);
+    delete_the_universe();
+}
+
+TEST(StellarAgeCalibrationTest, OrbitCompanionsUseThePrimaryEstimateAndHonorAuthoredAges)
+{
+    Star primary, secondary, tertiary;
+    primary.fictional_origin = {{"age_gyr", .02}};
+    secondary.orbit = new Orbit();
+    secondary.orbit->center = &primary;
+    tertiary.orbit = new Orbit();
+    tertiary.orbit->center = &secondary;
+    EXPECT_DOUBLE_EQ(secondary.estimate_age_gyr(), .02);
+    EXPECT_DOUBLE_EQ(tertiary.estimate_age_gyr(), .02);
+    secondary.stellar_age = {{"value_gyr", .03}};
+    EXPECT_DOUBLE_EQ(secondary.estimate_age_gyr(), .03);
+    EXPECT_DOUBLE_EQ(tertiary.estimate_age_gyr(), .03);
+    tertiary.stellar_age = {{"value_gyr", 0.0}};
+    EXPECT_DOUBLE_EQ(tertiary.estimate_age_gyr(), 0);
 }

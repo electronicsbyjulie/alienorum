@@ -46,6 +46,8 @@
 #include "../classes/localsurfacetile.h"
 #include "../classes/horizonbackground.h"
 #include "../classes/horizonquality.h"
+#include "../classes/distantskyline.h"
+#include "../classes/terrainlighting.h"
 #include "../classes/framescratch.h"
 #include "../horizon_ground_gpu.h"
 #include "../classes/grounddetail.h"
@@ -4218,6 +4220,32 @@ TEST_F(RenderingRegressionTest, WaterHasNoRocksOrPlants)
     EXPECT_EQ(scenery_vertices, 0);
 }
 
+TEST_F(RenderingRegressionTest, RocksBeyondTheHorizonOfASmallWorldAreHidden)
+{
+    auto* world = surface();
+    world->volumetric_mean_radius = 300;
+    world->has_water = 0;
+    set(show_clouds, false);
+    set(viewer_eye_height, .01);
+    set(altitude, -.2);
+    set(zoom, 4.0);
+    const double radius = world->get_equatorial_radius();
+    const double spacing = sqrt(_pi * ROCK_MAX_DIST * ROCK_MAX_DIST / ROCK_COUNT);
+    const auto candidates = surface_scenery(radius, 0, 0, ROCK_MAX_DIST, spacing, world->seqno);
+    ASSERT_FALSE(candidates.empty());
+    const auto nearest = std::min_element(candidates.begin(), candidates.end(), [](const auto& a, const auto& b)
+    {
+        return hypot(a.east, a.north) < hypot(b.east, b.north);
+    });
+    ASSERT_GT(hypot(nearest->east, nearest->north), sqrt(2 * radius * viewer_eye_height));
+    set(azimuth, atan2(nearest->east, nearest->north));
+    const ImU32 soil = sunlit_test_surface_color(world, 160, 120, 80);
+    const auto vertices = scenery();
+    ASSERT_FALSE(vertices.empty());
+    for (const auto& vertex : vertices)
+        if (vertex.col >> IM_COL32_A_SHIFT == 255) EXPECT_EQ(vertex.col, soil);
+}
+
 TEST_F(RenderingRegressionTest, BlueVegetationDoesNotTurnIdenticalOceanColorsIntoPlants)
 {
     Planet *world = surface(true);
@@ -5297,6 +5325,213 @@ TEST_F(RenderingRegressionTest, SystemViewKeepsAPlanetVisibleWhenItsHostRadiusIs
     ImGui::NewFrame();
 }
 
+TEST_F(RenderingRegressionTest, SystemViewUsesSeparateRowsForLargeStars)
+{
+    system_bloom.assign(4, 10.0);
+    set(bloomrad_cache, system_bloom.data());
+    auto* primary = make_star("Primary");
+    primary->cenobj = primary;
+    std::vector<CelestialObject*> stars{primary};
+    for (const char* name : {"Secondary", "Tertiary", "Fourth"})
+    {
+        auto* member = make_star(name);
+        member->cenobj = primary;
+        stars.push_back(member);
+    }
+    for (auto* member : stars)
+    {
+        member->volumetric_mean_radius = 100 * solar_radius;
+        member->looked_for_maps = true;
+    }
+    set(lsyscache, stars);
+    set(view_mode, vm_system);
+    set(selected, -1);
+    set(lbl_localsys, true);
+    draw_system_view();
+    double previous_bottom = ImGui::GetFontSize() + 10;
+    for (const auto* member : stars)
+    {
+        EXPECT_GE(member->drawnymin, previous_bottom);
+        previous_bottom = member->drawnymax;
+    }
+    EXPECT_LE(previous_bottom, dispcy * 2);
+}
+
+TEST_F(RenderingRegressionTest, SystemViewSelectsMoonThenPlanetAcrossOverlappingRectangles)
+{
+    auto* star = make_star();
+    star->cenobj = star;
+    auto* planet = make_planet(star);
+    auto* moon = new Moon();
+    moon->cenobj = star;
+    moon->orbit = new Orbit();
+    moon->orbit->center = planet;
+    append_cel(moon);
+    set(mycenobj, static_cast<CelestialObject*>(star));
+    set(view_mode, vm_system);
+    set(selected, star->seqno);
+    set(trackidx, -1);
+    set(dragged, false);
+    set(is_click, true);
+    surface_magnitudes = {-20, -10, 8};
+    set(vmag_cache, surface_magnitudes.data());
+    invalidate_frame_objects();
+    for (auto* object : {static_cast<CelestialObject*>(star), static_cast<CelestialObject*>(planet),
+        static_cast<CelestialObject*>(moon)})
+    {
+        object->drawnx = object->drawny = 20;
+        object->drawnxmin = object->drawnymin = 10;
+        object->drawnxmax = object->drawnymax = 30;
+    }
+    auto& io = ImGui::GetIO();
+    io.MousePos = ImVec2(20, 20);
+    identify_object_under_cursor(io);
+    EXPECT_EQ(is_an_obj_under_cursor, moon->seqno);
+    EXPECT_EQ(selected, moon->seqno);
+    moon->drawnxmin = moon->drawnxmax;
+    identify_object_under_cursor(io);
+    EXPECT_EQ(is_an_obj_under_cursor, planet->seqno);
+    EXPECT_EQ(selected, planet->seqno);
+}
+
+TEST(DistantSkylineTest, DownhillRaysReachTheValleyFloorAndTheOppositeWall)
+{
+    constexpr double radius = 10000;
+    const auto terrain = [](double latitude, double)
+    {
+        const double north = latitude * radius;
+        if (north < 0) return 0.0;
+        if (north < 40) return -north;
+        if (north < 120) return -40.0;
+        return std::min(10.0, -40 + (north - 120) * .5);
+    };
+    DistantSkyline skyline;
+    skyline.update(&skyline, 1, 0, 0, 0, radius, 2, .5 / radius, terrain, false, true);
+    EXPECT_NEAR(skyline.distance(0, atan(-.5)), 85, 13);
+    EXPECT_GT(skyline.distance(0, atan(-.18)), 120);
+    EXPECT_TRUE(std::isinf(skyline.distance(0, atan(.5))));
+    EXPECT_LT(skyline.distance(_pi, atan(-.5)), 7);
+}
+
+TEST_F(RenderingRegressionTest, AirlessDownhillViewPaintsTheValleyFloor)
+{
+    class ValleyMap : public Map
+    {
+    public:
+        ValleyMap()
+        {
+            image_height = 256;
+            image_width = 512;
+            allocated = image_height * image_width;
+            lat_scale = image_height / _pi;
+            lon_scale = image_width / (2 * _pi);
+            red_data = new unsigned char[allocated];
+            green_data = new unsigned char[allocated];
+            blue_data = new unsigned char[allocated];
+            bump_data = new double[allocated];
+            procedurally_generated = true;
+            for (size_t row = 0; row < image_height; ++row)
+            {
+                const double north = (half_pi - row / lat_scale) * 1000;
+                const double elevation = north < -20 ? 10 : north < 40 ? -north * .5
+                    : north < 130 ? -20 : std::min(12.0, -20 + (north - 130) * .55);
+                for (size_t col = 0; col < image_width; ++col)
+                {
+                    const size_t i = row * image_width + col;
+                    const bool floor = north >= 39 && north <= 143;
+                    bump_data[i] = elevation;
+                    red_data[i] = floor ? 220 : 35;
+                    green_data[i] = floor ? 20 : 120;
+                    blue_data[i] = floor ? 20 : 35;
+                }
+            }
+            touch_gen();
+        }
+    };
+    auto* world = surface();
+    world->volumetric_mean_radius = 1000;
+    delete world->surf_map;
+    world->surf_map = new ValleyMap();
+    set(altitude, -.12);
+    set(show_clouds, false);
+    find_horizon();
+    draw_horizon();
+    const auto pixels = render();
+    int sky = 0, downhill = 0;
+    for (size_t i = 0; i < pixels.size(); i += 4)
+    {
+        sky += pixels[i + 3] == 0;
+        downhill += pixels[i] > 40 && pixels[i] > 3 * pixels[i + 1] && pixels[i] > 3 * pixels[i + 2];
+    }
+    EXPECT_GT(sky, 1000);
+    EXPECT_GT(downhill, 400);
+}
+
+TEST_F(RenderingRegressionTest, SelectedSystemPlanetQueuesOneNameLabel)
+{
+    auto* star = make_star("Primary");
+    star->cenobj = star;
+    star->looked_for_maps = true;
+    auto* planet = make_planet(star, "Selected planet");
+    planet->looked_for_maps = true;
+    planet->surf_map = new SceneryTestMap();
+    system_bloom.assign(2, 10.0);
+    set(bloomrad_cache, system_bloom.data());
+    set(lsyscache, std::vector<CelestialObject*>{star, planet});
+    set(view_mode, vm_system);
+    set(selected, planet->seqno);
+    set(lbl_localsys, true);
+    labels2draw.clear();
+    draw_system_view();
+    EXPECT_EQ(std::count_if(labels2draw.begin(), labels2draw.end(), [&](const auto& label)
+    {
+        return label.text == planet->name;
+    }), 1);
+    labels2draw.clear();
+}
+
+TEST(TerrainTerminatorTest, ReliefSeesTheSunOnlyNearTheTerminator)
+{
+    const double sun = .0005;
+    EXPECT_DOUBLE_EQ(terrain_solar_exposure(-.1, .0005, sun), 0);
+    EXPECT_DOUBLE_EQ(terrain_solar_exposure(-.015, .0005, sun), 1);
+    EXPECT_DOUBLE_EQ(terrain_solar_exposure(-.015, 0, sun), 0);
+    EXPECT_DOUBLE_EQ(terrain_solar_exposure(0, 0, sun), .5);
+}
+
+TEST_F(RenderingRegressionTest, SunClockTerrainNormalsShadeTheDarkHemisphere)
+{
+    auto* world = surface();
+    delete world->surf_map;
+    world->surf_map = new CraterLightingMap(128, false);
+    world->surf_map->rescale_bump(1, 0, 1000000, 0);
+    SunClockGpuInput input{};
+    input.sclk_scale = .35 / dispcx;
+    input.azimuth = _pi;
+    input.zoom = 1;
+    input.light_dir[2] = 1;
+    input.bump_map_texture = gputex_bump_for(world->surf_map);
+    ASSERT_NE(input.bump_map_texture, 0u);
+    for (int i = 0; i < 3; ++i)
+    {
+        input.body_axes[i] = 150000;
+        input.fallback_color[i] = .7;
+        input.daylight_tint[i] = 1;
+    }
+    for (int i = 0; i < 4; ++i) input.rot_matrix[i * 5] = 1;
+    const auto capture = [&](bool shading)
+    {
+        input.terrain_lighting = shading;
+        EXPECT_TRUE(queue_sunclock_gpu(input, dispcx, dispcy));
+        const auto pixels = render();
+        ImGui::NewFrame();
+        return pixels;
+    };
+    const auto flat = capture(false);
+    const auto shaded = capture(true);
+    EXPECT_GT(image_difference(flat, shaded), 0);
+}
+
 TEST_F(RenderingRegressionTest, ObjectLabelsFollowTheirObjectDepthAcrossAnOpaqueDisc)
 {
     Star *disc = make_star("Foreground Disc");
@@ -6047,6 +6282,38 @@ TEST_F(RenderingRegressionTest, PanningHazyCoastPreservesDetailedGroundPixels)
     EXPECT_FALSE(precipitation_stats.ground_cache_hit);
     #endif
     SDL_SetWindowSize(window, 192, 108);
+}
+
+TEST_F(RenderingRegressionTest, CloudyCoastReducesGroundWorkInMotionAndRecoversAtRest)
+{
+    struct ResetQuality
+    {
+        ~ResetQuality() { update_horizon_quality(0); }
+    } reset;
+    update_horizon_quality(0);
+    auto* world = surface(true);
+    delete world->surf_map;
+    world->surf_map = new CoastalTestMap(true, true);
+    world->cloud_map = new UniformCloudTestMap(153);
+    set(horizon_ground_gpu_reference, false);
+    set(show_clouds, true);
+    const auto capture = [&]()
+    {
+        freeze_surface_time();
+        find_horizon();
+        EXPECT_TRUE(draw_cloudy_sky());
+        draw_horizon();
+        render();
+        ImGui::NewFrame();
+        return precipitation_stats.ground_sample_stride;
+    };
+    EXPECT_EQ(capture(), 1);
+    for (int frame = 0; frame < 10; ++frame) update_horizon_quality(.12);
+    azimuth += .15;
+    EXPECT_EQ(capture(), 4);
+    viewer_lat += 4 / world->get_equatorial_radius();
+    EXPECT_EQ(capture(), 4);
+    EXPECT_EQ(capture(), 1);
 }
 
 TEST_F(RenderingRegressionTest, RingOuterEdgeDoesNotLeakIntoTheInnerGap)

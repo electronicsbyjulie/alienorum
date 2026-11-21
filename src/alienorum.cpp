@@ -710,15 +710,6 @@ int main (int argc, char** argv)
                             : IM_COL32(255,255,255,255)),
                     toplbl.c_str());
             }
-            else if (view_mode == vm_system && mycenobj)
-            {
-                std::string toplbl = std::string("System view for ") + std::string(mycenobj->name);
-                ImGui::GetBackgroundDrawList()->AddText(ImVec2(5,5),
-                        rgba_apply_redlight(whtbkgd
-                            ? IM_COL32(0,0,0,255)
-                            : IM_COL32(255,255,255,255)),
-                    toplbl.c_str());
-            }
             else if (view_mode == vm_sunclock)
             {
                 std::string toplbl = std::string("Sun clock for ") + std::string(cels[whereami]->name);
@@ -783,6 +774,16 @@ int main (int argc, char** argv)
                     }
                 }
                 draw_cached_labels();
+                if (view_mode == vm_system && mycenobj)
+                {
+                    const std::string title = std::string("System view for ") + mycenobj->name;
+                    ImDrawList* draw = ImGui::GetBackgroundDrawList();
+                    const ImU32 background = whtbkgd ? IM_COL32_WHITE : IM_COL32_BLACK;
+                    const ImU32 foreground = whtbkgd ? IM_COL32_BLACK : IM_COL32_WHITE;
+                    draw->AddRectFilled(ImVec2(0, 0), ImVec2(dispcx * 2, ImGui::GetFontSize() + 10),
+                        rgba_apply_redlight(background));
+                    draw->AddText(ImVec2(5, 5), rgba_apply_redlight(foreground), title.c_str());
+                }
             }
 
             publish_regenerated_clouds();

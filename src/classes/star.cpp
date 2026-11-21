@@ -2025,23 +2025,37 @@ json Star::age_diagnostics() const
             return {{"value_gyr", age}, {"estimated", true}, {"source", "stellar_formation_scenario"}};
     }
     std::set<const Star*> ancestors{this};
+    const Star* oldest_ancestor = nullptr;
+    bool cyclic = false;
+    const auto coeval_age = [](const Star& primary, const json& anchor)
+    {
+        json result = {{"value_gyr", anchor.at("value_gyr")}, {"source", "coeval_stellar_system"},
+            {"system_age_source", anchor.value("source", "supplied_system_age")},
+            {"system_age_star", primary.name}, {"estimated", true}};
+        for (const char* field : {"lower_gyr", "upper_gyr", "limit"})
+            if (anchor.contains(field)) result[field] = anchor.at(field);
+        return result;
+    };
     const CelestialObject* parent = orbit ? orbit->center : nullptr;
     while (parent && parent->typeclass() == class_star)
     {
         const Star* primary = static_cast<const Star*>(parent);
-        if (!ancestors.insert(primary).second) break;
+        if (!ancestors.insert(primary).second)
+        {
+            cyclic = true;
+            break;
+        }
         double value = -1;
         if (stellar_nonnegative_value(primary->stellar_age, "value_gyr", value))
         {
-            json result = primary->stellar_age;
-            result["value_gyr"] = value;
-            result["system_age_source"] = result.value("source", "supplied_system_age");
-            result["source"] = "coeval_stellar_system";
-            result["estimated"] = true;
-            return result;
+            json anchor = primary->stellar_age;
+            anchor["value_gyr"] = value;
+            return coeval_age(*primary, anchor);
         }
+        oldest_ancestor = primary;
         parent = primary->orbit ? primary->orbit->center : nullptr;
     }
+    if (oldest_ancestor && !cyclic) return coeval_age(*oldest_ancestor, oldest_ancestor->age_diagnostics());
     const json evolution = evolution_diagnostics();
     const double stellar_mass = evolution.contains("initial_mass_solar") ? evolution.at("initial_mass_solar").get<double>()
         : mass > 0 && std::isfinite(mass) ? mass / solar_mass : 1;

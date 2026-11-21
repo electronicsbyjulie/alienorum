@@ -879,6 +879,8 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
 
             objname = cels[i]->name;
             ImGui::Text("%s", objname.c_str());
+            if (cls == class_planet && static_cast<Planet*>(cels[i])->catalog_candidate)
+                ImGui::TextUnformatted("Exoplanet candidate");
             if (cels[i]->has_eumetsat_clouds())
             {
                 ImGui::TextWrapped("Clouds: Contains modified EUMETSAT data. See: https://github.com/matteason/live-cloud-maps");
@@ -1538,6 +1540,7 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::Text("%s", "Radius");
             ImGui::SameLine(col3);
             ImGui::SetNextItemWidth(txtwid);
+            ImGui::BeginDisabled((tc == class_planet || tc == class_moon) && texture_loads_pending.load() != 0);
             if (ImGui::InputDouble("##edtvmrad", &edit_radius, 0, 0, "%.6f"))
             {
                 if (tc == class_planet || tc == class_moon)
@@ -1560,6 +1563,7 @@ void draw_objedit_window(ImGuiIO& io)
                 }
                 else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
             }
+            ImGui::EndDisabled();
 
             ImGui::SameLine();
             ImGui::SetNextItemWidth(txtwid/2.5);
@@ -1729,16 +1733,18 @@ void draw_objedit_window(ImGuiIO& io)
                 ImGui::SameLine(col2);
                 ImGui::Text("%s", "Bump Height");
                 auto* body = static_cast<Planet*>(cel);
-                double edit_bump_height = body->bump_height;
-                if (isnan(edit_bump_height)) edit_bump_height = fmin(65535, body->volumetric_mean_radius * 0.1);
+                double edit_bump_height = body->estimate_bump_scale();
                 ImGui::SameLine(col3);
                 ImGui::SetNextItemWidth(txtwid);
-                if (ImGui::InputDouble("##edtbh", &edit_bump_height, 0, 0, "%.1f"))
+                ImGui::BeginDisabled(texture_loads_pending.load() != 0);
+                if (ImGui::InputDouble("##edtbh", &edit_bump_height, 0, 0, "%.1f")
+                    && std::isfinite(edit_bump_height) && edit_bump_height >= 0)
                 {
-                    body->bump_height = edit_bump_height;
-                    body->m_bump_scale = body->estimate_bump_scale();
+                    body->set_bump_height(edit_bump_height);
                     body->user_edited = true;
+                    viewchanged = true;
                 }
+                ImGui::EndDisabled();
                 ImGui::SameLine();
                 ImGui::Text("%s", "m");
             }

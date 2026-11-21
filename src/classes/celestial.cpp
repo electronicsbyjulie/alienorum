@@ -1245,6 +1245,7 @@ namespace
 
 bool Map::load_from_jpeg(std::string filename, bool as_bump, double bump_scale, double bump_offset)
 {
+    const double decode_scale = bump_scale == 0 ? 1 : bump_scale;
     if (!as_bump)
     {
         surface_materials.clear();
@@ -1358,7 +1359,7 @@ bool Map::load_from_jpeg(std::string filename, bool as_bump, double bump_scale, 
                         + 0.002196 * jpeg_image_buffer[0][i+1]
                         + 0.000588 * jpeg_image_buffer[0][i+2])
                     : (   0.003921 * jpeg_image_buffer[0][i]);   // 1/255, matching the RGB weights' sum
-                double val = bump_scale * (lum - 0.5) + bump_offset;
+                double val = decode_scale * (lum - 0.5) + bump_offset;
                 if (bump_resample) bump_src_data[j] = val;
                 else bump_data[j] = val;
             }
@@ -1386,13 +1387,19 @@ bool Map::load_from_jpeg(std::string filename, bool as_bump, double bump_scale, 
         resample_equirect(bump_src_data, bump_src_w, bump_src_h, bump_data, image_width, image_height);
     }
 
-    if (as_bump) calibrated_bump.clear();
-    touch_gen();
+    if (as_bump)
+    {
+        flat_bump_source.clear();
+        calibrated_bump.clear();
+    }
+    if (as_bump && bump_scale == 0) rescale_bump(decode_scale, bump_offset, 0, bump_offset);
+    else touch_gen();
     return true;
 }
 
 bool Map::load_from_png(std::string filename, bool as_bump, double bump_scale, double bump_offset)
 {
+    const double decode_scale = bump_scale == 0 ? 1 : bump_scale;
     if (!as_bump)
     {
         surface_materials.clear();
@@ -1561,7 +1568,7 @@ bool Map::load_from_png(std::string filename, bool as_bump, double bump_scale, d
                 if (as_bump)
                 {
                     // Allow false color bump maps using the visual luminance as the elevation for better granularity
-                    double val = bump_scale *
+                    double val = decode_scale *
                             (( 0.001137 * pixel[0]
                              + 0.002196 * pixel[1]
                              + 0.000588 * pixel[2])
@@ -1595,7 +1602,7 @@ bool Map::load_from_png(std::string filename, bool as_bump, double bump_scale, d
 
                 if (as_bump)
                 {
-                    double val = bump_scale * (pixel[0] / 255.0 - 0.5) + bump_offset;
+                    double val = decode_scale * (pixel[0] / 255.0 - 0.5) + bump_offset;
                     if (bump_resample) bump_src_data[i] = val;
                     else bump_data[i] = val;
                 }
@@ -1623,8 +1630,13 @@ bool Map::load_from_png(std::string filename, bool as_bump, double bump_scale, d
         resample_equirect(bump_src_data, bump_src_w, bump_src_h, bump_data, image_width, image_height);
     }
 
-    if (as_bump) calibrated_bump.clear();
-    touch_gen();
+    if (as_bump)
+    {
+        flat_bump_source.clear();
+        calibrated_bump.clear();
+    }
+    if (as_bump && bump_scale == 0) rescale_bump(decode_scale, bump_offset, 0, bump_offset);
+    else touch_gen();
     return true;
 }
 
@@ -1643,9 +1655,45 @@ bool Map::load_calibrated_bump(std::string filename, double bump_scale, double b
     }
     delete[] bump_data;
     bump_data = shading.release();
+    flat_bump_source.clear();
     calibrated_bump = std::move(decoded);
     touch_gen();
     return true;
+}
+
+void Map::rescale_bump(double old_scale, double old_offset, double scale, double offset)
+{
+    if (!has_bump_data() || (old_scale == scale && old_offset == offset)) return;
+    const size_t pixels = image_width * image_height;
+    if (!calibrated_bump.empty())
+    {
+        calibrated_bump.calibrate(scale, offset);
+        if (old_scale == 0 && scale > 0)
+        {
+            for (unsigned long y = 0; y < image_height; ++y)
+                for (unsigned long x = 0; x < image_width; ++x)
+                    bump_data[y * image_width + x] = calibrated_bump.sample(half_pi - y / lat_scale, x / lon_scale - _pi);
+            touch_gen();
+            return;
+        }
+    }
+    else if (scale == 0 && old_scale > 0)
+    {
+        flat_bump_source.resize(pixels);
+        for (size_t i = 0; i < pixels; ++i)
+            flat_bump_source[i] = (bump_data[i] - old_offset) / old_scale;
+    }
+    if (scale > 0 && flat_bump_source.size() == pixels)
+    {
+        for (size_t i = 0; i < pixels; ++i) bump_data[i] = offset + scale * flat_bump_source[i];
+        std::vector<double>().swap(flat_bump_source);
+    }
+    else
+    {
+        const double ratio = old_scale > 0 ? scale / old_scale : 0;
+        for (size_t i = 0; i < pixels; ++i) bump_data[i] = offset + ratio * (bump_data[i] - old_offset);
+    }
+    touch_gen();
 }
 
 bool Map::save_to_png(std::string filename, bool as_bump)
@@ -1740,13 +1788,15 @@ bool Map::save_to_png(std::string filename, bool as_bump)
 
     double bump_scale = 1;
     double bump_max = -1e209, bump_min = 1e209;
+    const size_t pixels = image_width * image_height;
+    const double* bump_pixels = flat_bump_source.size() == pixels ? flat_bump_source.data() : bump_data;
     if (as_bump)
     {
-        for (unsigned long i=0; i<allocated; i++)
+        for (size_t i = 0; i < pixels; ++i)
         {
-            if (!std::isfinite(bump_data[i])) continue;
-            if (bump_data[i] > bump_max) bump_max = bump_data[i];
-            if (bump_data[i] < bump_min) bump_min = bump_data[i];
+            if (!std::isfinite(bump_pixels[i])) continue;
+            bump_max = std::max(bump_max, bump_pixels[i]);
+            bump_min = std::min(bump_min, bump_pixels[i]);
         }
 
         bump_scale = bump_max > bump_min ? 255.0 / (bump_max - bump_min) : 0;
@@ -1763,8 +1813,8 @@ bool Map::save_to_png(std::string filename, bool as_bump)
             size_t rx = x*3;
             if (as_bump)
             {
-                const double value = bump_scale > 0 && std::isfinite(bump_data[iy + x])
-                    ? std::clamp((bump_data[iy + x] - bump_min) * bump_scale, 0.0, 255.0) : 128;
+                const double value = bump_scale > 0 && std::isfinite(bump_pixels[iy + x])
+                    ? std::clamp((bump_pixels[iy + x] - bump_min) * bump_scale, 0.0, 255.0) : 128;
                 buffer[ry + rx] = buffer[ry + rx + 1] = buffer[ry + rx + 2] = value;
             }
             else
@@ -1857,6 +1907,12 @@ void alienorum::Map::resample_bump_data(unsigned int new_resolution)
     image_width = image_height * 2;
     long toalloc = image_height * image_width;
     bump_data = new double[toalloc];
+    if (flat_bump_source.size() == static_cast<size_t>(old_width * old_height))
+    {
+        std::vector<double> source(toalloc);
+        resample_equirect(flat_bump_source, old_width, old_height, source.data(), image_width, image_height);
+        flat_bump_source.swap(source);
+    }
     // std::cout << "Resample bump data from " << allocated << " to " << toalloc << std::endl;
 
     int octaves = 5;
@@ -5392,7 +5448,11 @@ void alienorum::Map::_map_resample_bump_regen_rocky(CelestialObject *cel)
 void alienorum::Map::mark_for_map_regen(CelestialObject *cel, bool discard_bump)
 {
     if (abort_load.load()) return;
-    if (discard_bump) calibrated_bump.clear();
+    if (discard_bump)
+    {
+        calibrated_bump.clear();
+        flat_bump_source.clear();
+    }
     if (discard_bump && bump_data)
     {
         double *old_bump = bump_data;
