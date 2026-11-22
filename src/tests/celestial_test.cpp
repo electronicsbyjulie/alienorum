@@ -2233,6 +2233,33 @@ TEST(OrbitLocationTest, ACircularOrbitComesBackToWhereItStarted)
         << "a whole period later it is back where it began";
 }
 
+TEST(OrbitLocationTest, VisualBinaryUsesEastOfNorthAndRecedesAtTheAscendingNode)
+{
+    Star primary;
+    primary.location.system_center = Point(0, 0, 10 * parsec);
+    Star companion;
+    companion.volumetric_mean_radius = solar_radius;
+    companion.lock_system_plane = true;
+    companion.orbit = new Orbit();
+    Orbit& orbit = *companion.orbit;
+    orbit.center = &primary;
+    orbit.semimajor_axis = AU;
+    orbit.period = oneyear;
+    orbit.epoch = J2000;
+    orbit.heliocentric_inclination = _pi / 2;
+    orbit.heliocentric_node = _pi / 2;
+
+    companion.update_location(J2000_TIME_T);
+    EXPECT_LT((companion.location.local_position - Point(-AU, 0, 0)).magnitude(), AU * 1e-8);
+    companion.update_location(J2000_TIME_T + oneyear / 4);
+    EXPECT_LT((companion.location.local_position - Point(0, 0, AU)).magnitude(), AU * 1e-6);
+
+    companion.known_poles = true;
+    orbit.heliocentric_inclination = orbit.heliocentric_node = 0;
+    companion.update_location(J2000_TIME_T);
+    EXPECT_LT((companion.location.local_position - Point(0, AU, 0)).magnitude(), AU * 1e-8);
+}
+
 TEST(OrbitLocationTest, AnEccentricOrbitIsNearestAtPeriapsis)
 {
     CelestialObject sun;

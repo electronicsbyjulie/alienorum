@@ -104,7 +104,7 @@ def update(html, current, as_of):
         end = current.index("\n", current.index(END, start))
         current = current[end + 1:]
     rows = records(html, as_of)
-    header = (f"{BEGIN} — official catalog as of {as_of.isoformat()}\n"
+    header = (f"{BEGIN} - official catalog as of {as_of.isoformat()}\n"
         f"# Source: {SOURCE}\n"
         f"# Source SHA256: {hashlib.sha256(html.encode()).hexdigest()}\n"
         "# Excludes NameExoWorlds/NEWC campaigns. Legacy/project records follow unchanged.\n"

@@ -1272,7 +1272,29 @@ void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
     double y = (                      sinw * sini) * x_plane + (                      cosw * sini) * y_plane;
     double z = ( cosO * cosw - sinO * sinw * cosi) * x_plane + (-cosO * sinw - sinO * cosw * cosi) * y_plane;
 
-    if (typeclass() != class_star || (!orbit->heliocentric_inclination && !orbit->heliocentric_node))
+    const bool sky_orbit = !crp && _class == class_star && lock_system_plane &&
+        (known_poles || orbit->heliocentric_inclination || orbit->heliocentric_node);
+    Point sky_position;
+    if (sky_orbit)
+    {
+        // Visual binary elements measure the node east from north in the plane of the sky.
+        // The published node refers to the catalog sightline, fixed as the system moves.
+        const double ra = orbit->center->right_ascension;
+        const double dec = orbit->center->declination;
+        const Point away = Point::from_ra_dec(ra, dec, 1);
+        const Point east(-cos(ra), 0, -sin(ra));
+        const Point north(sin(ra) * sin(dec), cos(dec), -cos(ra) * sin(dec));
+        const double omega = orbit->heliocentric_node + node_adjustment;
+        const double inclination = orbit->heliocentric_inclination;
+        const Point along_node = north * cos(omega) + east * sin(omega);
+        const Point across_node = east * cos(omega) - north * sin(omega);
+        const Point along_motion = across_node * cos(inclination) + away * sin(inclination);
+        sky_position = along_node * (x_plane * cosw - y_plane * sinw)
+            + along_motion * (x_plane * sinw + y_plane * cosw);
+        if (!location.orbital_plane.a && !location.orbital_plane.v.magnitude())
+            location.orbital_plane = location.local_system_plane;
+    }
+    else if (_class != class_star || (!orbit->heliocentric_inclination && !orbit->heliocentric_node))
     {
         Point orbit_pole = yaxis;
         orbit_pole = rotate3D(orbit_pole, center, Point(sinO, 0, -cosO), I);
@@ -1328,7 +1350,8 @@ void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
     assert(!std::isnan(x) && !std::isnan(y) && !std::isnan(z));
 
     Point result;
-    if (crp) result = rotate3D(Point(x,y,z), center, crp->v, -crp->a);
+    if (sky_orbit) result = sky_position;
+    else if (crp) result = rotate3D(Point(x,y,z), center, crp->v, -crp->a);
     else result = rotate3D(Point(x,y,z), center, location.local_system_plane.v, -location.local_system_plane.a);
 
     location.local_position = result + orbit->center->location.local_position;

@@ -5363,24 +5363,25 @@ TEST_F(CatalogParsingTest, CondensedStarCatalogLoadsWithBlankAlienorumIds)
             // Reconstructed companions and remnants can lack an observed visual magnitude.
             if (s->apparent_magnitude >= 99)
             {
-                EXPECT_DOUBLE_EQ(s->apparent_magnitude, 1e29);
-                EXPECT_TRUE(std::isfinite(s->absolute_magnitude));
+                EXPECT_DOUBLE_EQ(s->apparent_magnitude, 1e29) << s->name;
+                EXPECT_TRUE(std::isfinite(s->absolute_magnitude)) << s->name;
                 continue;
             }
             if (s->alienorumid.empty())
             {
                 blank_count++;
-                if (!s->orbit && !s->variability_period && s->apparent_magnitude > 0.0)
+                if (!s->orbit && catalog_id_primary(*s) == s && !s->variability_period && s->apparent_magnitude > 0.0)
                 {
-                    EXPECT_GE(s->apparent_magnitude, 10.0 - 0.001);
+                    EXPECT_GE(s->apparent_magnitude, 10.0 - 0.001) << s->name;
                 }
             }
             else
             {
                 populated_count++;
-                if (!s->orbit && !s->variability_period)
+                if (!s->orbit && catalog_id_primary(*s) == s && !s->variability_period)
                 {
-                    EXPECT_LT(s->apparent_magnitude, 10.0 + 0.001);
+                    EXPECT_LT(s->apparent_magnitude, 10.0 + 0.001)
+                        << s->name << " (Alienorum ID " << s->alienorumid << ")";
                 }
             }
         }
@@ -5407,22 +5408,112 @@ TEST_F(CatalogParsingTest, CondensedStarCatalogLoadsWithBlankAlienorumIds)
     ASSERT_NE(atlas, nullptr);
     ASSERT_NE(atlas_b, nullptr);
 
-    // Visiting Atlas in simulation must keep its Scorpius system plane locked
+    ASSERT_NE(atlas_b->orbit, nullptr);
+    EXPECT_EQ(atlas_b->orbit->center, atlas);
+    ASSERT_NE(atlas->multisys, nullptr);
+    EXPECT_EQ(atlas->multisys->get_member('B'), atlas_b);
+    EXPECT_EQ(atlas->multisys->num_members(), 2);
+    int close_companions = 0;
+    for (int i = 0; cels[i]; ++i)
+    {
+        const auto* object = cels[i];
+        if (!object->deleted && object->typeclass() == class_star && object->orbit &&
+            object->orbit->center == atlas && object->orbit->semimajor_axis < 10 * AU)
+        {
+            ++close_companions;
+        }
+    }
+    EXPECT_EQ(close_companions, 1);
+    EXPECT_NEAR(atlas->distance / parsec, 136.2, 0.1);
+    EXPECT_NEAR(atlas_b->orbit->period / oneday, 290.9919, 0.0001);
+
     mycenobj = atlas;
     whereami = atlas->seqno;
-    atlas->update_location(simnow);
-    atlas_b->update_location(simnow);
 
     EXPECT_TRUE(atlas->lock_system_plane);
     EXPECT_TRUE(atlas->lock_equatorial_plane);
     EXPECT_TRUE(atlas_b->lock_system_plane);
     EXPECT_TRUE(atlas_b->lock_equatorial_plane);
 
-    // In Atlas's viewer plane, 27 Tau B's declination must be 0
-    here = atlas->location;
-    double b_dec = atlas_b->Decl_as_radians(here);
-    EXPECT_NEAR(b_dec, 0.0, 1e-6);
+    // Mark III and NPOI measurements, Zwahlen et al. (2004), table 1.
+    const double measurements[][3] =
+    {
+        {2448561.8206, 10.24, 331.61},
+        {2450787.8002, 13.60, 147.06},
+        {2451877.7793, 13.01, 167.71}
+    };
+    const CelestialLocation observer;
+    for (const auto& [jd, separation_mas, angle_deg] : measurements)
+    {
+        const double seconds = J2000_TIME_T + (jd - J2000) * oneday;
+        atlas->update_location(seconds);
+        atlas_b->update_location(seconds);
+        const double declination = atlas->Decl_as_radians(observer);
+        const double north = atlas_b->Decl_as_radians(observer) - declination;
+        const double east = std::remainder(atlas_b->RA_as_radians(observer, 0)
+            - atlas->RA_as_radians(observer, 0), 2 * _pi) * cos(declination);
+        EXPECT_NEAR(hypot(east, north) * fiftyseven * 3600000, separation_mas, 0.6) << jd;
+        EXPECT_NEAR(std::remainder(atan2(east, north) * fiftyseven - angle_deg, 360), 0, 3) << jd;
+    }
+    for (int step = 0; step < 12; ++step)
+    {
+        const double seconds = J2000_TIME_T + step * atlas_b->orbit->period / 12;
+        atlas->update_location(seconds);
+        atlas_b->update_location(seconds);
+        here = atlas->location;
+        here.equatorial_plane = atlas->location.orbital_plane;
+        EXPECT_NEAR(atlas_b->Decl_as_radians(here), 0.0, 1e-6) << step;
+    }
 
+    delete_the_universe();
+}
+
+TEST_F(UniverseFixture, CondensedCatalogNumbersBrightPrimariesAndLinksComponents)
+{
+    CatalogReader reader;
+    ASSERT_GT(reader.read_condensed_star_cat(), 100000);
+    EXPECT_EQ(static_cast<Star*>(cels[0])->alienorumid, "-26");
+    std::set<std::string> ids;
+    const std::map<std::string, std::string> known_siblings
+    {
+        {"GJ   499 C", "GJ 499 A"},
+        {"GJ   570 D", "GJ 570 A"},
+        {"GJ   576 B", "GJ 576"},
+        {"HD93359 D", "232 G. Car"}
+    };
+    std::set<std::string> seen_siblings;
+    for (int i = 1; cels[i]; ++i)
+    {
+        if (cels[i]->deleted || cels[i]->typeclass() != class_star) continue;
+        auto* star = static_cast<Star*>(cels[i]);
+        SCOPED_TRACE(std::string(star->name) + " HIP " + std::to_string(star->HIP));
+        if (!star->alienorumid.empty()) EXPECT_TRUE(ids.insert(star->alienorumid).second) << star->alienorumid;
+        const char slot = star->get_component();
+        if (const auto expected = known_siblings.find(star->name); expected != known_siblings.end())
+        {
+            seen_siblings.insert(star->name);
+            EXPECT_GT(slot, 'A');
+            Star* primary = catalog_id_primary(*star);
+            EXPECT_EQ(std::string(primary->name), expected->second);
+            EXPECT_EQ(slot, expected->first.back());
+        }
+        if (slot > 'A')
+        {
+            Star* primary = star->multisys->get_member('A');
+            EXPECT_NE(primary, nullptr);
+            if (!primary) continue;
+            EXPECT_FALSE(primary->deleted);
+            EXPECT_EQ(primary->multisys, star->multisys);
+            if (star->orbit && star->orbit->center && star->orbit->center->typeclass() == class_star)
+                EXPECT_EQ(static_cast<Star*>(star->orbit->center)->multisys, primary->multisys);
+            EXPECT_EQ(star->alienorumid, primary->alienorumid.empty() ? "" : primary->alienorumid + " " + slot);
+        }
+        else if (std::isfinite(star->apparent_magnitude) && star->apparent_magnitude < 10)
+        {
+            EXPECT_FALSE(star->alienorumid.empty()) << star->apparent_magnitude;
+        }
+    }
+    EXPECT_EQ(seen_siblings.size(), known_siblings.size());
     delete_the_universe();
 }
 

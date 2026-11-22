@@ -123,6 +123,7 @@ void identify_object_under_cursor(ImGuiIO& io)
     int cursor_source = -1;
     double cursor_distance_squared = 0;
     int cursor_priority = -1;
+    bool cursor_disc = false;
 
     if (trackidx >= 0)
     {
@@ -138,13 +139,20 @@ void identify_object_under_cursor(ImGuiIO& io)
         const int priority = cls == class_moon ? 3 : cls == class_planet ? 2 : cls == class_star ? 1 : 0;
         if (lsysonly && (!priority || cels[i]->drawnxmin >= cels[i]->drawnxmax)) continue;
 
-        if ((abs(io.MousePos.x - cels[i]->drawnx) < threshold
-            && abs(io.MousePos.y - cels[i]->drawny) < threshold)
-            ||
-            (   cels[i]->drawnxmin < cels[i]->drawnxmax
-                && io.MousePos.x > cels[i]->drawnxmin && io.MousePos.x < cels[i]->drawnxmax
-                && io.MousePos.y > cels[i]->drawnymin && io.MousePos.y < cels[i]->drawnymax)
-            )
+        const bool hit_bounds = cels[i]->drawnxmin < cels[i]->drawnxmax
+            && io.MousePos.x > cels[i]->drawnxmin && io.MousePos.x < cels[i]->drawnxmax
+            && io.MousePos.y > cels[i]->drawnymin && io.MousePos.y < cels[i]->drawnymax;
+        bool disc_hit = false;
+        if (hit_bounds && priority > 0)
+        {
+            const double x = (2 * io.MousePos.x - cels[i]->drawnxmin - cels[i]->drawnxmax)
+                / (cels[i]->drawnxmax - cels[i]->drawnxmin);
+            const double y = (2 * io.MousePos.y - cels[i]->drawnymin - cels[i]->drawnymax)
+                / (cels[i]->drawnymax - cels[i]->drawnymin);
+            disc_hit = x * x + y * y <= 1;
+        }
+        if (hit_bounds || (abs(io.MousePos.x - cels[i]->drawnx) < threshold
+            && abs(io.MousePos.y - cels[i]->drawny) < threshold))
         {
             // Prioritize by brightness.
             double lmag = vmag_cache[i];
@@ -152,34 +160,43 @@ void identify_object_under_cursor(ImGuiIO& io)
             // Prioritize stars, planets, etc over galaxies.
             if (cels[i]->type == galaxy) lmag += 6;
             else if (cels[i]->label_shown) lmag -= 5;               // Prioritize labeled objects.
+            if (std::isnan(lmag)) lmag = INFINITY;
 
             const double dx = io.MousePos.x - cels[i]->drawnx, dy = io.MousePos.y - cels[i]->drawny;
             const double distance_squared = dx * dx + dy * dy;
-            const int target = lsysonly ? i : system_target(i);
+            const int target = lsysonly || disc_hit ? i : system_target(i);
             const bool resolved_siblings = cursor_source >= 0 && target != is_an_obj_under_cursor &&
                 cels[i]->type == star && cels[cursor_source]->type == star &&
                 static_cast<Star*>(cels[i])->multisys &&
                 static_cast<Star*>(cels[i])->multisys == static_cast<Star*>(cels[cursor_source])->multisys;
-            const bool preferred = lsysonly
-                ? priority > cursor_priority || (priority == cursor_priority && distance_squared < cursor_distance_squared)
-                : resolved_siblings ? distance_squared < cursor_distance_squared : lmag < obj_magn_under_cursor;
+            bool preferred = cursor_source < 0;
+            if (lsysonly)
+                preferred = priority > cursor_priority ||
+                    (priority == cursor_priority && distance_squared < cursor_distance_squared);
+            else if (cursor_source >= 0)
+            {
+                if (disc_hit != cursor_disc) preferred = disc_hit;
+                else if (resolved_siblings) preferred = distance_squared < cursor_distance_squared;
+                else preferred = lmag < obj_magn_under_cursor ||
+                    (lmag == obj_magn_under_cursor && distance_squared < cursor_distance_squared);
+            }
             if (preferred)
             {
                 is_an_obj_under_cursor = target;
                 obj_magn_under_cursor = lmag;
                 cursor_source = i;
                 cursor_priority = priority;
+                cursor_disc = disc_hit;
                 cursor_distance_squared = distance_squared;
-
-                if (!lsysonly && is_an_obj_under_cursor == selected && distance_squared == 0) break;
-                if (is_click && !dragged)
-                {
-                    selected = is_an_obj_under_cursor;
-                    selected_this_turn = true;
-                    selected_locale = nullptr;
-                }
             }
         }
+    }
+
+    if (cursor_source >= 0 && is_click && !dragged)
+    {
+        selected = is_an_obj_under_cursor;
+        selected_this_turn = true;
+        selected_locale = nullptr;
     }
 
     if (is_an_obj_under_cursor < 0)

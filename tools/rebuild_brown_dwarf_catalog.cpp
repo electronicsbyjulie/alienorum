@@ -14,6 +14,33 @@ using namespace alienorum;
 
 int main(int argc, char** argv)
 {
+    if (argc == 3 && std::string(argv[1]) == "--repair-ids")
+    {
+        cels = new CelestialObject*[MAX_CELOBJS]();
+        Star::load_main_seq_dat();
+        read_cons_lines();
+        CatalogReader reader;
+        if (!reader.read_cons_boundaries() || !reader.read_condensed_star_cat()) return 1;
+        std::vector<std::pair<Star*, std::string>> original_ids;
+        for (int i = 1; cels[i]; ++i)
+        {
+            if (cels[i]->deleted || cels[i]->typeclass() != class_star) continue;
+            auto* star = static_cast<Star*>(cels[i]);
+            original_ids.emplace_back(star, star->alienorumid);
+        }
+        repair_missing_catalog_ids();
+        std::ofstream crosswalk(argv[2]);
+        if (!crosswalk) return 1;
+        crosswalk << "Star\tHD\tHIP\tOld ID\tNew ID\n";
+        for (const auto& [star, original] : original_ids)
+        {
+            if (original != star->alienorumid)
+                crosswalk << star->name << '\t' << star->HD << '\t' << star->HIP << '\t'
+                    << original << '\t' << star->alienorumid << '\n';
+        }
+        crosswalk.close();
+        return crosswalk && reader.bake_condensed_star_orbits() ? 0 : 1;
+    }
     if (argc == 2 && std::string(argv[1]) == "--bake-orbits")
     {
         cels = new CelestialObject*[MAX_CELOBJS]();

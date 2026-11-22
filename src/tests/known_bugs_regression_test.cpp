@@ -208,6 +208,55 @@ TEST_F(KnownCatalogRegression, TeegardenAndProximaShareTheVisibleDwarfCategory)
     }
 }
 
+TEST_F(KnownCatalogRegression, SessionChecklistStarsResolveInUserSearch)
+{
+    for (const char* query : {
+        "Proxima Centauri", "Rigil Kentaurus", "Toliman", "TOI-3835", "WD0743-336",
+        "WD0512+326", "HIP 85605", "WISE J0855-0714", "Atlas", "3b Tau 2 B",
+        "Xi Ursae Majoris", "HD93359 D", "Proxima b", "8r Lep 12", "6w Pup 7",
+        "9r Com 7 C", "5o Lib 4 D", "9o Vir 204 B", "WD0204-306", "WD0325+263",
+        "WD0858-220", "WD0509+168", "WD2159-754", "HIP 86961", "HIP 86963",
+        "Epsilon Ceti", "Kappa Fornacis", "HD 254229", "HD 198477", "GJ 3331 A",
+        "GJ 3728 B", "G 123-45", "G 194-47", "VHS 1256-1257", "2MASS J0213+3648"})
+    {
+        const auto result = search_objects(query);
+        EXPECT_TRUE(result.exact && !result.matches.empty()) << query;
+    }
+}
+
+TEST_F(KnownCatalogRegression, NearbyDistancesUseAuditedAstrometryAndTheVisualOrbit)
+{
+    const auto find_star = [](const char* name) -> Star*
+    {
+        const int id = find_object(name, true, 9e29, 1);
+        return id < 0 ? nullptr : static_cast<Star*>(cels[id]);
+    };
+    for (const auto& [name, expected_pc] : std::map<std::string, double>{
+        {"TOI-3835", 504.711}, {"WD0743-336", 15.21}, {"WD0512+326", 81.59},
+        {"WD0204-306", 29.25}, {"WD0325+263", 75.68}, {"WD0858-220", 73.79},
+        {"HIP 85605", 548.85}, {"HIP 86961", 14.15}})
+    {
+        const Star* object = find_star(name.c_str());
+        ASSERT_NE(object, nullptr) << name;
+        EXPECT_NEAR(object->distance / parsec, expected_pc, 0.05) << name;
+    }
+    Star* alpha = find_star("Rigil Kentaurus");
+    Star* toliman = find_star("Toliman");
+    Star* proxima = find_star("Proxima Centauri");
+    ASSERT_NE(alpha, nullptr);
+    ASSERT_NE(toliman, nullptr);
+    ASSERT_NE(proxima, nullptr);
+    alpha->update_location(J2000_TIME_T);
+    toliman->update_location(J2000_TIME_T);
+    proxima->update_location(J2000_TIME_T);
+    CelestialLocation sun;
+    const double proxima_distance = sun.distance_to(proxima->location) / light_year;
+    EXPECT_NEAR(proxima_distance, 4.24, 0.015);
+    EXPECT_LT(proxima_distance, sun.distance_to(alpha->location) / light_year);
+    EXPECT_LT(proxima_distance, sun.distance_to(toliman->location) / light_year);
+    EXPECT_NEAR(proxima->location.distance_to(alpha->location) / AU, 12947, 260);
+}
+
 TEST_F(KnownCatalogRegression, FamousStarsHaveOnePhysicalIdentityAcrossEveryCatalogAlias)
 {
     const std::vector<std::vector<std::string>> families =

@@ -967,9 +967,9 @@ double Star::temperature_from_BV(double BV)
 
 // Mass-radius relationship for degenerate matter, in its simple analytical form:
 //     R/R(Sun) = 0.0126 * (M/M(Sun))^(-1/3) * sqrt(1 - (M/M_Chandrasekhar)^(4/3))
-// Verified against Sirius B (M = 1.02 M(Sun)): 5,290 km calculated vs. 5,850 km measured—a 10%
-// discrepancy. More than sufficient for a rendering radius—without which a white dwarf has no
-// usable radius and its disk is never resolved—but not for asteroseismology.
+// Verified against Sirius B (M = 1.02 M(Sun)): 5,290 km calculated vs. 5,850 km measured-a 10%
+// discrepancy. More than sufficient for a rendering radius-without which a white dwarf has no
+// usable radius and its disk is never resolved-but not for asteroseismology.
 double Star::degenerate_radius(double mass_grams)
 {
     const double chandrasekhar = 1.44;
@@ -1093,7 +1093,7 @@ alienorum::stellar_regime_t alienorum::stellar_regime(CelestialObject *cel)
     }
 
     // Radius alone would be misleading for brown dwarfs: an L0 yields ~0.009 R_Sun using this
-    // formula—firmly in white dwarf territory—because M_V ignores the infrared, where the
+    // formula-firmly in white dwarf territory-because M_V ignores the infrared, where the
     // object emits the bulk of its flux. Temperature is therefore the deciding factor, as the
     // two populations are distinct in practice (catalogued white dwarfs: 10,000 to 170,000 K).
     if (implied_radius > 0 && implied_radius < 0.05 && T > 4000.0) return regime_degenerate;
@@ -1127,7 +1127,7 @@ void alienorum::Star::load_main_seq_dat()
             if (buffer[0] == '#') continue;
             //           1111111111222222222233333333334444444444
             // 01234567890123456789012345678901234567890123456789
-            // O3V     59      13.43   660693  45900   −0.330
+            // O3V     59      13.43   660693  45900   -0.330
             buffer[15] = buffer[23] = buffer[31] = buffer[39] = 0;
             msq_mass[i] = atof(&buffer[8]);
             msq_rad[i] = atof(&buffer[16]);

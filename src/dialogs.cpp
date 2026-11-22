@@ -236,7 +236,7 @@ static bool in_local_standard_dst_window(DST_Rule rule, const struct tm &std_loc
     }
 }
 
-// EU/UK: window is defined against UTC, not local standard time — also used
+// EU/UK: window is defined against UTC, not local standard time - also used
 // as a best-effort approximation for decree-based zones with no fixed
 // formula (Beirut, Jerusalem, Cairo).
 static bool in_eu_uk_dst_window(const struct tm &utc_time)
@@ -3442,9 +3442,11 @@ void draw_stellar_neighborhood(ImGuiIO &io)
                 if (l < 36) line << std::string(36-l, ' ');
 
                 r = cels[i]->tmprel.magnitude();
-                if (r || neighborhood_order == NeighborhoodOrder::brightest)
+                const CelestialObject* observer = whereami >= 0 ? cels[whereami] : nullptr;
+                m = s != observer && r >= (observer ? observer->volumetric_mean_radius : 0)
+                    ? s->viewer_magnitude(here) : NAN;
+                if (std::isfinite(m))
                 {
-                    m = cels[i]->viewer_magnitude(here);
                     line << setprecision(4) << ((m>=0) ? "+" : "-") << string_format("%05.2f", fabs(m));
                 }
                 else line << "-";

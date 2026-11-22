@@ -1891,6 +1891,33 @@ namespace
         double ra = NAN, dec = NAN;
     };
 
+    double corrected_wd_parallax(const std::string& name, double arcseconds)
+    {
+        // The legacy catalog lists 575 mas for van Biesbroeck 3.
+        // Holberg et al. (2016), table 1, give 65.74 mas.
+        if (name == "WD0743-336" && arcseconds > 0.5) return 0.06574;
+        // Gaia DR3 180702438220219904 is the visible companion HD 33959 C.
+        if (name == "WD0512+326") return 0.01225648;
+        // Gaia DR3 5020119579868434944 and the LP 356-87 component of LDS 1146.
+        if (name == "WD0204-306") return 0.0341906;
+        if (name == "WD0325+263") return 0.0132132;
+        // Gaia DR3 matches to the legacy J2000 positions of LP 845-8 and KUV 05097+1649.
+        if (name == "WD0858-220") return 0.01355176;
+        if (name == "WD0509+168") return 0.0004672763;
+        // CNS5 5453, Gaia DR3 6358158435541361792.
+        if (name == "WD2159-754") return 0.0525934;
+        return arcseconds;
+    }
+
+    double corrected_wd_visual_magnitude(const std::string& name, double visual)
+    {
+        // The bright legacy measurements belong to the neighboring red stars.
+        if (name == "WD0204-306" && visual < 15) return 16.18;
+        if (name == "WD0325+263" && visual < 15) return 17.20;
+        if (name == "WD0858-220" && visual < 16) return 18.37;
+        return visual;
+    }
+
     struct WdGaiaRow
     {
         std::string name;
@@ -2237,7 +2264,8 @@ int alienorum::CatalogReader::read_WD_catalog(CelestialObject **objects, int max
         {
             r.temperature.offer(temperature, 2);
         }
-        const double plx = wd_number(line, 200, 206), error = wd_number(line, 207, 210);
+        const double plx = corrected_wd_parallax(id, wd_number(line, 200, 206));
+        const double error = wd_number(line, 207, 210);
         if (plx > 0)
         {
             r.parallax.offer(plx, error > 0 ? 1 + plx * 1000 / error : 0);
@@ -2565,6 +2593,7 @@ int alienorum::CatalogReader::read_WD_catalog(CelestialObject **objects, int max
                 continue;
             }
         }
+        r.visual.value = corrected_wd_visual_magnitude(r.id, r.visual.value);
         double distance = s && s->distance > 0 ? s->distance : NAN;
         if (!std::isfinite(distance) && r.parallax.value > 0)
         {
@@ -5474,6 +5503,38 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels, int first_host)
     numfails = 0;
 
     ExactStarSearchIndex orbit_lookup(first_host);
+    if (!first_host)
+    {
+        for (int index = 0; cels[index]; ++index)
+        {
+            if (cels[index]->typeclass() != class_star) continue;
+            auto* star = static_cast<Star*>(cels[index]);
+            double arcseconds;
+            // Alpha Centauri AB reference distance, Kervella et al. (2017), table 2.
+            if (star->HD == 128620) arcseconds = 0.74717;
+            // Atlas orbital parallax, Torres et al. (2025), table 6.
+            else if (star->HIP == 17847) arcseconds = 0.007340;
+            // Gaia parallaxes replacing erroneous Hipparcos solutions.
+            else if (star->HIP == 85605) arcseconds = 0.001822;
+            else if (star->HIP == 86961) arcseconds = 0.0706792;
+            else if (star->HIP == 86963) arcseconds = 0.0707335;
+            // Merle et al. (2024), Sect. 2.5, obtain an orbital parallax of 37 mas.
+            else if (star->HIP == 12390 || !strcmp(star->Gliese, "GJ 105.4 B")) arcseconds = 0.037;
+            // CNS5 609, 1562, 5267, 1288 and 3064.
+            else if (star->HIP == 11072) arcseconds = 0.04291175;
+            else if (star->HIP == 29810) arcseconds = 0.04481;
+            else if (star->HIP == 105585) arcseconds = 0.03024;
+            else if (!strcmp(star->Gliese, "GJ 3331 A")) arcseconds = 0.05046194;
+            else if (!strcmp(star->Gliese, "GJ 3728 B")) arcseconds = 0.05154694;
+            else continue;
+            star->distance = parsec / arcseconds;
+            star->parallax = arcseconds * fiftyseventh / 3600;
+            star->distance_known = true;
+            if (std::isfinite(star->apparent_magnitude) && std::abs(star->apparent_magnitude) < 99)
+                star->absolute_magnitude = star->apparent_magnitude - 5 * log10(star->distance / (10 * parsec));
+            star->update_location(simnow);
+        }
+    }
 
     while (fgets(buffer, 1020, fp))
     {
@@ -5586,8 +5647,10 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels, int first_host)
             continue;
         }
 
-        Rotation new_orbital_plane = system_plane_from_incl_and_node(inclination, ascending_node,
-                                     A->location.system_center - cels[0]->location.system_center);
+        const Point sightline = bdystr[0] == '('
+            ? A->location.system_center - cels[0]->location.system_center
+            : Point::from_ra_dec(A->right_ascension, A->declination, 1);
+        Rotation new_orbital_plane = system_plane_from_incl_and_node(inclination, ascending_node, sightline);
         {
             if (!A->lock_system_plane)
             {
@@ -5655,7 +5718,12 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels, int first_host)
             }
         }
 
-        if (s && s != A && s->distance > 0 && A->distance > 0)
+        if (s == A)
+        {
+            ++numfails;
+            continue;
+        }
+        if (s && s->distance > 0 && A->distance > 0)
         {
             Point primary_direction = Point::from_ra_dec(A->right_ascension, A->declination, 1);
             Point member_direction = Point::from_ra_dec(s->right_ascension, s->declination, 1);
@@ -5812,13 +5880,12 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels, int first_host)
             }
             if (!has_visual_magnitude) estimate_catalog_absolute_magnitude(*s, false, msun > 0);
         }
-        else if (!s || s == A)
+        else if (!s)
         {
             if (showfails) std::cerr << "FAILED to orbit " << bdyname << " around " << cenname << ": member not found and insufficient data to construct new." << std::endl;
             numfails++;
             continue;
         }
-
         if (!s->orbit) s->orbit = new Orbit();
         s->orbit->center = A;
         s->orbit->heliocentric_inclination = inclination;
@@ -5856,6 +5923,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels, int first_host)
                 s->origname = display;
             }
         }
+        if (!s->orbit) continue;
 
         read_field_onebased(buffer, 49, 63, field);
         str = numeric_text(field);
@@ -5868,8 +5936,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels, int first_host)
         if (f && s->orbit) s->orbit->period = f;
 
         read_field_onebased(buffer, 89, 99, field);
-        f = atof(field) * fiftyseventh;
-        if (f && s->orbit) s->orbit->arg_periapsis = f;
+        if (parse_numeric_value(field, f)) s->orbit->arg_periapsis = f * fiftyseventh;
 
         read_field_onebased(buffer, 101, 111, field);
         str = numeric_text(field);
@@ -5883,21 +5950,20 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels, int first_host)
         if (f && s->orbit) s->orbit->semimajor_axis = f;
 
         read_field_onebased(buffer, 113, 123, field);
-        f = atof(field);
-        if (f && s->orbit) s->orbit->eccentricity = f;
+        if (parse_numeric_value(field, f)) s->orbit->eccentricity = f;
 
         read_field_onebased(buffer, 125, 143, field);
-        f = atof(field) * fiftyseventh;
-        if (f && s->orbit) s->orbit->mean_anomaly = f;
+        if (parse_numeric_value(field, f)) s->orbit->mean_anomaly = f * fiftyseventh;
 
         read_field_onebased(buffer, 145, 160, field);
         str = trim(field);
-        l = str.size();
-        if (l)
+        if (str.rfind("JD", 0) == 0)
         {
-            if (str.c_str()[0] == 'J' && str.c_str()[1] == 'D') f = atof(&field[2]);
-            else f = (atof(field)-2000) * (oneyear / oneday) + J2000;
-            if (f && s->orbit) s->orbit->epoch = f;
+            if (parse_numeric_value(str.substr(2), f)) s->orbit->epoch = f;
+        }
+        else if (parse_numeric_value(str, f))
+        {
+            s->orbit->epoch = (f - 2000) * (oneyear / oneday) + J2000;
         }
 
         {
@@ -6399,7 +6465,7 @@ static std::string star_orbits_signature()
         hash ^= static_cast<unsigned char>(c);
         hash *= 1099511628211ULL;
     }
-    return "systems4-" + std::to_string(hash);
+    return "systems5-" + std::to_string(hash);
 }
 
 static std::string baked_star_link_key(const json& key)
@@ -6603,6 +6669,10 @@ std::string alienorum::CatalogReader::format_condensed_star_line(Star* s, bool e
                 s->orbit->epoch, s->orbit->heliocentric_inclination, s->orbit->heliocentric_node,
                 s->orbit->inclination, s->orbit->ascending_node});
             if (s->orbit->photocentric_semimajor_axis) state[15].push_back(s->orbit->photocentric_semimajor_axis);
+        }
+        else if (Star* primary = catalog_id_primary(*s); primary != s)
+        {
+            state.push_back(link_key(primary));
         }
         std::ostringstream extra;
         extra << " ORB1 " << std::quoted(state.dump());
@@ -7539,6 +7609,26 @@ int alienorum::CatalogReader::read_condensed_star_cat()
         double absolute = 0;
         s->absolute_magnitude = parse_numeric_value(field, absolute) && std::isfinite(absolute) && fabs(absolute) < 99
             ? absolute : 1e29;
+        const double old_plx = s->parallax * 3600 * fiftyseven;
+        const double corrected_plx = corrected_wd_parallax(s->WD, old_plx);
+        const double corrected_visual = corrected_wd_visual_magnitude(s->WD, s->apparent_magnitude);
+        if (corrected_plx > 0 && std::abs(corrected_plx - old_plx) > 1e-5)
+        {
+            s->distance = parsec / corrected_plx;
+            s->parallax = corrected_plx * fiftyseventh / 3600;
+            s->distance_known = true;
+            s->absolute_magnitude = 1e29;
+            s->update_location(simnow);
+        }
+        if (corrected_visual > s->apparent_magnitude)
+        {
+            if (!(corrected_plx > 0) && std::abs(s->absolute_magnitude) < 99)
+            {
+                s->distance = CelestialObject::distance_from_magnitudes(corrected_visual, s->absolute_magnitude);
+                s->update_location(simnow);
+            }
+            s->apparent_magnitude = corrected_visual;
+        }
         if (s->absolute_magnitude >= 99 && std::isfinite(s->apparent_magnitude)
             && s->apparent_magnitude >= -40 && s->apparent_magnitude < 99
             && std::isfinite(s->distance) && s->distance > 0)
@@ -7782,8 +7872,30 @@ int alienorum::CatalogReader::read_condensed_star_cat()
 
     // Restore baked states last: the legacy reconstruction above infers planes and
     // would otherwise overwrite measured rotation axes and disk orientations.
-    for (auto& [s, state] : orbit_states)
+    std::vector<std::pair<int, Star*>> restoration_order;
+    restoration_order.reserve(orbit_states.size());
+    for (const auto& [star, state] : orbit_states)
     {
+        int depth = 0;
+        auto current = orbit_states.find(star);
+        while (current != orbit_states.end() && depth < 26)
+        {
+            Star* parent = find_saved_star(current->second.at(1));
+            if (!parent || parent == star || parent == current->first) break;
+            ++depth;
+            current = orbit_states.find(parent);
+        }
+        restoration_order.emplace_back(depth, star);
+    }
+    std::sort(restoration_order.begin(), restoration_order.end(), [](const auto& a, const auto& b)
+    {
+        return std::tie(a.first, a.second->seqno) < std::tie(b.first, b.second->seqno);
+    });
+    // Attach parents first so a nested companion retains its saved slot.
+    for (const auto& entry : restoration_order)
+    {
+        Star* s = entry.second;
+        const auto& state = orbit_states.at(s);
         if (!baked_star_link_key(state.at(1)).empty())
         {
             Star* saved_center = find_saved_star(state.at(1));
@@ -7852,6 +7964,32 @@ int alienorum::CatalogReader::read_condensed_star_cat()
         state.at(12).get_to(s->rot_heliocen_incl);
         state.at(13).get_to(s->rot_heliocen_node);
         state.at(14).get_to(s->sidereal_rotational_period);
+    }
+
+    // A known component can share a primary without a published orbit.
+    for (const auto& [star, state] : orbit_states)
+    {
+        if (star->orbit || catalog_id_primary(*star) != star) continue;
+        Star* primary = nullptr;
+        char slot = state.at(2).get<int>();
+        if (state.size() > 17) primary = find_saved_star(state.at(17));
+        else if (star->stellar_parameters.is_object() &&
+            star->stellar_parameters.contains("catalog_primary"))
+        {
+            const auto& id = star->alienorumid;
+            if (id.size() < 3 || id.back() < 'B' || id.back() > 'Z' || id[id.size() - 2] != ' ') continue;
+            const auto match = id_to_star.find(std::string_view(id).substr(0, id.size() - 2));
+            if (match != id_to_star.end() && stellar_alias_key(match->second->name) ==
+                stellar_alias_key(star->stellar_parameters.value("catalog_primary", "")))
+            {
+                primary = match->second;
+                slot = id.back();
+            }
+        }
+        if (!primary || primary == star || primary->deleted || slot < 'B' || slot > 'Z' ||
+            catalog_id_primary(*primary) != primary) continue;
+        if (!primary->multisys) (new StarMulti())->add_member(primary, 'A');
+        if (!primary->multisys->get_member(slot)) primary->multisys->add_member(star, slot);
     }
 
     reconcile_catalog_star_copies();
@@ -8571,11 +8709,33 @@ Star* CatalogReader::resolve_saved_host(const std::string& name, unsigned int ma
     return nullptr;
 }
 
-Star* CatalogReader::resolve_or_create_exostar(const ExoRow& row, bool loaded_starsonly, bool* was_new,
+Star* CatalogReader::resolve_or_create_exostar(const ExoRow& source, bool loaded_starsonly, bool* was_new,
     ExactStarSearchIndex *lookup)
 {
     alienorum::CatalogLock catalog_lock(catalog_mutex);
     *was_new = false;
+    const ExoRow* astrometry = &source;
+    ExoRow corrected;
+    double audited_distance = NAN;
+    // TIC 330795142 and Gaia DR3 695958184271386624.
+    if (source.hostname == "TOI-3835" && !(source.sy_dist > 1)) audited_distance = 504.711;
+    // Gaia astrometry in CNS5 3103, 2227 and 3191, respectively.
+    else if (source.hostname == "G 123-45") audited_distance = 1000 / 84.233427;
+    else if (source.hostname == "G 194-47") audited_distance = 1000 / 55.744292;
+    else if (source.hostname == "VHS 1256-1257 (AB)") audited_distance = 21.14;
+    if (std::isfinite(audited_distance) || source.hostname == "2MASS J0213+3648")
+    {
+        corrected = source;
+        if (std::isfinite(audited_distance)) corrected.sy_dist = audited_distance;
+        else
+        {
+            // The abbreviated 2MASS name denotes J02132062+3648506 (Deacon et al. 2017).
+            corrected.ra = 33.3359167;
+            corrected.dec = 36.8140556;
+        }
+        astrometry = &corrected;
+    }
+    const ExoRow& row = *astrometry;
     std::string hostname = row.hostname;
     // Resolve identities through source identifiers and the shared catalog index.
     Star* host_star = nullptr;

@@ -1,5 +1,6 @@
 #include <array>
 #include <cmath>
+#include <set>
 #include <vector>
 #include <sstream>
 #include "alienorumid.h"
@@ -91,7 +92,7 @@ void Constellation::build_constellation_perimeter()
 }
 
 // Helper algorithm to determine if a celestial point lies within a constellation polygon.
-// Implemented using a robust spherical winding‑number technique.
+// Implemented using a robust spherical winding-number technique.
 // Robust spherical polygon inclusion test using angle summation (winding number).
 // Returns true if the point (s_ra, s_decl) lies inside the polygon defined by bounds.
 bool might_star_be_maybe_in_constellation(double s_ra, double s_decl, const std::vector<ConsBoundary>& bounds)
@@ -380,6 +381,18 @@ void alienorum::assign_purple_catalog_ids()
     }
 }
 
+static void assign_catalog_component_ids(Star& primary, bool include_blank)
+{
+    if (!primary.multisys || primary.get_component() != 'A') return;
+    for (char slot = 'B'; slot <= 'Z'; ++slot)
+    {
+        auto* member = primary.multisys->get_member(slot);
+        if (!member || member->deleted || member->multisys != primary.multisys ||
+            (!include_blank && member->alienorumid.empty())) continue;
+        member->alienorumid = primary.alienorumid.empty() ? "" : primary.alienorumid + " " + slot;
+    }
+}
+
 static void number_catalog_id_bin(const std::string& prefix, const std::vector<Star*>& stars, bool assign_companions)
 {
     for (size_t i = 0; i < stars.size(); ++i)
@@ -388,14 +401,7 @@ static void number_catalog_id_bin(const std::string& prefix, const std::vector<S
         star->alienorumid = prefix;
         if (!prefix.empty() && (prefix.front() == 'V' || stars.size() > 1))
             star->alienorumid += " " + std::to_string(i + 1);
-        if (!star->multisys) continue;
-        for (char slot = 'B'; slot <= 'Z'; ++slot)
-        {
-            auto* member = star->multisys->get_member(slot);
-            if (!member || member->deleted || (!assign_companions && member->alienorumid.empty())) continue;
-            if (brown_catalog_component(*member) && member->apparent_magnitude >= 99) continue;
-            member->alienorumid = star->alienorumid.empty() ? "" : star->alienorumid + " " + slot;
-        }
+        assign_catalog_component_ids(*star, assign_companions);
     }
 }
 
@@ -403,6 +409,71 @@ static bool catalog_ra_order(const Star* a, const Star* b)
 {
     if (a->right_ascension != b->right_ascension) return a->right_ascension < b->right_ascension;
     return strcmp(a->name, b->name) < 0;
+}
+
+Star* catalog_id_primary(Star& star)
+{
+    if (star.get_component() > 'A')
+    {
+        Star* primary = star.multisys->get_member('A');
+        if (primary && !primary->deleted) return primary;
+    }
+    return &star;
+}
+
+static bool catalog_id_variable(const Star& star)
+{
+    return star.variability_period && !star.is_eclipsing_binary &&
+        fabs(star.maxmag - star.minmag) > .5;
+}
+
+static void sort_catalog_id_bin(std::vector<Star*>& stars, bool variable)
+{
+    std::sort(stars.begin(), stars.end(), [variable](const Star* a, const Star* b)
+    {
+        if (!variable && a->apparent_magnitude != b->apparent_magnitude)
+            return a->apparent_magnitude < b->apparent_magnitude;
+        return catalog_ra_order(a, b);
+    });
+}
+
+void repair_missing_catalog_ids()
+{
+    std::map<std::string, std::vector<Star*>> bins;
+    std::set<std::string> changed;
+    for (int i = 1; cels[i]; ++i)
+    {
+        if (cels[i]->deleted || cels[i]->typeclass() != class_star) continue;
+        auto* star = static_cast<Star*>(cels[i]);
+        if (catalog_id_primary(*star) != star) continue;
+        const auto& id = star->alienorumid;
+        if (valid_alienorum_id(id) && !(id.back() >= 'B' && id.back() <= 'Z' && id[id.size() - 2] == ' '))
+        {
+            bins[id.substr(0, id.find(' ', id.find(' ') + 1))].push_back(star);
+            continue;
+        }
+        // A suffix without a live primary is a stale component designation.
+        star->alienorumid.clear();
+        const double magnitude = star->apparent_magnitude;
+        if (!std::isfinite(magnitude) || magnitude <= -31 || magnitude >= alienorum_magnitude_limit) continue;
+        auto* cons = alienorum_id_constellation(star);
+        if (!cons) continue;
+        const std::string prefix = (catalog_id_variable(*star) ? "V" : std::to_string(static_cast<int>(magnitude)))
+            + std::string(1, get_color_code_from_temp(star->estimate_temperature())) + " " + cons->abbrev;
+        bins[prefix].push_back(star);
+        changed.insert(prefix);
+    }
+    for (const auto& prefix : changed)
+    {
+        auto& stars = bins.at(prefix);
+        sort_catalog_id_bin(stars, prefix.front() == 'V');
+        number_catalog_id_bin(prefix, stars, true);
+    }
+    for (int i = 1; cels[i]; ++i)
+    {
+        if (!cels[i]->deleted && cels[i]->typeclass() == class_star)
+            assign_catalog_component_ids(*static_cast<Star*>(cels[i]), true);
+    }
 }
 
 void repair_legacy_alienorum_id_sequences()
@@ -450,23 +521,20 @@ ConsBins fill_alienorum_ids()
         if (cels[i]->deleted || cels[i]->typeclass() != class_star) continue;
         auto* star = static_cast<Star*>(cels[i]);
         if (star->declination >= _pi) star->declination -= _pi * 2;
-        if (star->get_component() > 'A') continue;
+        if (catalog_id_primary(*star) != star) continue;
         if (star->seqno == 0)
         {
             if (is_catalog_sun(*star)) star->alienorumid = "-26";
             continue;
         }
-        if (purple_catalog_id(star->alienorumid)
-            || (star->alienorumid.empty() && (brown_catalog_candidate(*star)
-                || brown_catalog_component(*star)))) continue;
+        if (purple_catalog_id(star->alienorumid)) continue;
 
         auto* cons = alienorum_id_constellation(star);
         if (!cons) continue;
         const double magnitude = star->apparent_magnitude;
         int bin = std::isfinite(magnitude) && magnitude > -31 && magnitude < 51
             ? static_cast<int>(magnitude) : 20;
-        if (bin < alienorum_magnitude_limit && star->variability_period && !star->is_eclipsing_binary
-            && fabs(star->maxmag - star->minmag) > .5) bin = variable_bin;
+        if (bin < alienorum_magnitude_limit && catalog_id_variable(*star)) bin = variable_bin;
         bins[cons][bin][get_color_code_from_temp(star->estimate_temperature())].push_back(star);
     }
 
@@ -492,12 +560,7 @@ ConsBins fill_alienorum_ids()
                     }
                     continue;
                 }
-                std::sort(stars.begin(), stars.end(), [&](const Star* a, const Star* b)
-                {
-                    if (!variable && a->apparent_magnitude != b->apparent_magnitude)
-                        return a->apparent_magnitude < b->apparent_magnitude;
-                    return catalog_ra_order(a, b);
-                });
+                sort_catalog_id_bin(stars, variable);
                 const std::string prefix = (variable ? "V" : std::to_string(magnitude))
                     + std::string(1, color) + " " + cons->abbrev;
                 number_catalog_id_bin(prefix, stars, true);

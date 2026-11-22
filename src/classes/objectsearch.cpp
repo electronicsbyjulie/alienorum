@@ -216,15 +216,41 @@ std::string alienorum::object_search_key(const std::string& text)
     if (text.empty()) return "";
     std::string key;
     key.reserve(text.size());
-    for (unsigned char ch : text)
+    for (size_t i = 0; i < text.size(); ++i)
     {
+        const unsigned char ch = text[i];
         if (std::isspace(ch)) continue;
+        // Catalog designations are often pasted from typeset listings.
+        if (i + 2 < text.size() && ch == 0xe2)
+        {
+            const auto middle = static_cast<unsigned char>(text[i + 1]);
+            const auto last = static_cast<unsigned char>(text[i + 2]);
+            if ((middle == 0x80 && last >= 0x90 && last <= 0x94) ||
+                (middle == 0x88 && last == 0x92))
+            {
+                key += '-';
+                i += 2;
+                continue;
+            }
+            if (middle == 0x80 && last == 0xaf)
+            {
+                i += 2;
+                continue;
+            }
+        }
+        if (ch == 0xc2 && i + 1 < text.size() && static_cast<unsigned char>(text[i + 1]) == 0xa0)
+        {
+            ++i;
+            continue;
+        }
         key += ch >= 'A' && ch <= 'Z' ? ch + ('a' - 'A') : ch;
     }
     // Accept the host's common shorthand without conflating numbered planet suffixes.
     if (key == "trappist") key = "trappist-1";
     else if (key.size() > 8 && key.compare(0, 8, "trappist") == 0
         && std::isdigit(static_cast<unsigned char>(key[8]))) key.insert(8, "-");
+    if (key.size() > 3 && key.compare(0, 3, "vhs") == 0 &&
+        std::isdigit(static_cast<unsigned char>(key[3]))) key.insert(3, "j");
     // These catalog spellings share one namespace; Wolf and Woolley remain separate.
     if (key.size() > 6 && key.compare(0, 6, "gliese") == 0
         && std::isdigit(static_cast<unsigned char>(key[6]))) key.replace(0, 6, "gj");

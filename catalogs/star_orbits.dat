@@ -8,7 +8,11 @@ HD128620                HD128621                2.5170e+9       205.073     079.
 # B rotation: Dumusque 2014, https://arxiv.org/abs/1409.3593; inclination 45 (+9/-19) deg to the line of sight, period 36.66 (+0.28/-0.30) d.
 # Rotation node is assumed equal to the A/B orbital node; it is not a measured stellar position angle.
 HD128621                (stellar rotation)      36.66d          205.073?    045
-HD128620                Proxima Cen             1.73e+13        126         107.6       072.3       1.3e+15     .50         0                   300000                                          0.1221      0.1542      0.00005      2992
+# Proxima: osculating elements from the ICRS astrometry and velocities in Kervella et al. (2017), table 2.
+HD128620                Proxima Cen             546127y         14.4494     69.6036     40.9579     8643.34AU   .497979     179.9361            1991.25         M5.5V                           0.1221      0.1542      0.00005      2992
+
+# Atlas Aa1/Aa2 relative orbit: Torres et al. (2025), table 6, doi:10.3847/1538-4357/adf224.
+HD23850                 27 Tau B                290.9919d       334.202     107.863     335.697     1.768AU     .23565      0                   JD2450585.988
 
 # https://doi.org/10.48550/arXiv.2501.09058
 GJ14                    (cometary disk)                         005         064

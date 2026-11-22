@@ -1590,6 +1590,49 @@ TEST_F(RenderingRegressionTest, StellarNeighborhoodSortsDistancesAndRetainsCatal
     neighb_celr.clear();
 }
 
+TEST_F(RenderingRegressionTest, StellarNeighborhoodShowsDashesForUnavailableAndLocalMagnitudes)
+{
+    extern NeighborhoodType neighborhood_type;
+    extern NeighborhoodOrder neighborhood_order;
+    extern bool onlyplt, onlyhz, onlyknp;
+    extern int neighbly, lneighbly;
+    Star* observer = make_star("Observer star");
+    observer->volumetric_mean_radius = solar_radius;
+    observer->absolute_magnitude = 4;
+    const auto place = [&](const char* name, double distance, double magnitude)
+    {
+        Star* object = make_star(name);
+        object->tmprel = Point(0, 0, distance);
+        object->location.local_position = object->tmprel;
+        object->absolute_magnitude = magnitude;
+    };
+    place("Inside observer radius", solar_radius / 2, 4);
+    place("Unavailable magnitude", parsec, 1e29);
+    place("Finite magnitude", 2 * parsec, 5);
+    set(here, CelestialLocation());
+    set(whereami, observer->seqno);
+    set(mycenobj, static_cast<CelestialObject*>(observer));
+    set(last_neighb_cen, static_cast<CelestialObject*>(nullptr));
+    set(neighborhood, true);
+    set(neighborhood_order, NeighborhoodOrder::nearest);
+    set(neighborhood_type, NeighborhoodType::all);
+    set(onlyplt, false);
+    set(onlyhz, false);
+    set(onlyknp, false);
+    set(neighbly, 25);
+    set(lneighbly, -1);
+    ImGui::GetIO().DisplaySize = ImVec2(1024, 768);
+    ImGui::SetNextWindowPos(ImVec2(0, 0));
+    ImGui::SetNextWindowSize(ImVec2(950, 650));
+    ImGui::LogToBuffer();
+    draw_stellar_neighborhood(ImGui::GetIO());
+    const std::string rows = ImGui::GetCurrentContext()->LogBuffer.c_str();
+    ImGui::LogFinish();
+    for (const std::string name : {"Observer star", "Inside observer radius", "Unavailable magnitude"})
+        EXPECT_NE(rows.find(name + std::string(36 - name.size(), ' ') + "- "), std::string::npos) << name;
+    EXPECT_NE(rows.find("Finite magnitude                    +01.51"), std::string::npos);
+}
+
 TEST_F(RenderingRegressionTest, StellarNeighborhoodClippingPreservesFilteredSelectionAndScrolling)
 {
     extern bool onlyplt, onlyhz, onlyknp;
@@ -9254,6 +9297,58 @@ TEST_F(RenderingRegressionTest, OrbitCandidatesRefreshEachProjectionAndFallBackB
     verify();
     invalidate_frame_objects();
     EXPECT_EQ(frame_orbit_candidates(), frame_object_candidates());
+}
+
+TEST_F(RenderingRegressionTest, VisibleCompanionDiscWinsHoverAndClickOverABrightPoint)
+{
+    Star* observer = make_star("Atlas");
+    Star* point = make_star("Bright background star");
+    Star* disc = make_star("27 Tau B");
+    disc->make_companion_of(observer, 'B');
+    point->is_faved = disc->is_faved = true;
+    point->location.local_position = Point(0, 0, light_year);
+    disc->orbit->semimajor_axis = 1.768 * AU;
+    disc->orbit->period = 291 * oneday;
+    set(mycenobj, static_cast<CelestialObject*>(observer));
+    set(whereami, observer->seqno);
+    set(trackidx, -1);
+    set(selected, point->seqno);
+    set(is_click, false);
+    set(dragged, false);
+    surface_magnitudes.assign(ncelobjs, 0);
+    surface_radii.assign(ncelobjs, 0);
+    system_bloom.assign(ncelobjs, 0);
+    set(vmag_cache, surface_magnitudes.data());
+    set(angular_radius, surface_radii.data());
+    set(bloomrad_cache, system_bloom.data());
+    compute_object_draw_coordinates();
+    disc->drawnx = 96;
+    disc->drawny = 54;
+    disc->drawnxmin = 66;
+    disc->drawnxmax = 126;
+    disc->drawnymin = 24;
+    disc->drawnymax = 84;
+    auto& io = ImGui::GetIO();
+    for (const double magnitude : {INFINITY, 10.0f})
+    {
+        surface_magnitudes[disc->seqno] = magnitude;
+        surface_magnitudes[point->seqno] = -10;
+        point->drawnx = 110;
+        point->drawny = 61;
+        io.MousePos = ImVec2(point->drawnx, point->drawny);
+        is_click = false;
+        identify_object_under_cursor(io);
+        EXPECT_EQ(is_an_obj_under_cursor, disc->seqno);
+        selected = point->seqno;
+        is_click = true;
+        identify_object_under_cursor(io);
+        EXPECT_EQ(selected, disc->seqno);
+    }
+    point->drawnx = 123;
+    point->drawny = 81;
+    io.MousePos = ImVec2(point->drawnx, point->drawny);
+    identify_object_under_cursor(io);
+    EXPECT_EQ(selected, point->seqno);
 }
 
 TEST_F(RenderingRegressionTest, IndexedPickingMatchesOriginalPriorityAcrossPublishedLabelsAndEdges)
