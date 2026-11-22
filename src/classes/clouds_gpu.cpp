@@ -1013,9 +1013,15 @@ void main()
         const double fx = p.camera[2], fy = p.camera[3];
         const double angle_tolerance = .1 * std::min(2 * std::fabs(fx) / width, 2 * std::fabs(fy) / height)
             / (1 + fx * fx + fy * fy);
+        // Convert a fraction of a cloud-buffer pixel to observer displacement,
+        // using the closest possible cloud distance and the actual buffer scale.
+        const double cloud_distance = p.world[2] / std::max(1e-12, double(p.world[0]) + p.world[1]);
+        const double cloud_scale = std::min(double(s_cache_width) / width, double(s_cache_height) / height);
+        const double basis_tolerance = p.world[0] > 0 && cloud_distance > 0
+            ? angle_tolerance * cloud_distance / (2 * p.world[0] * cloud_scale) : 0;
         for (int i = 0; i < 16; ++i)
         {
-            const double camera_tolerance = i < 2 ? angle_tolerance : 0;
+            const double camera_tolerance = i < 2 ? angle_tolerance : i >= 4 && i <= 14 ? basis_tolerance : 0;
             if (std::fabs(p.camera[i] - s_cached_params.camera[i]) > camera_tolerance) return false;
             // Airlight and filtered stellar tint drift with the simulation clock.
             // Compare against the last rendered image so small changes accumulate.

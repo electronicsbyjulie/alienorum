@@ -77,7 +77,9 @@ namespace
         names.push_back(std::move(key));
     }
 
-    std::vector<std::string> identities(CelestialObject& object)
+    using ConstellationIndex = std::unordered_map<std::string, const Constellation*>;
+
+    std::vector<std::string> identities(CelestialObject& object, const ConstellationIndex& constellation_index)
     {
         std::vector<std::string> names;
         add_identity(names, object.name);
@@ -105,21 +107,41 @@ namespace
             // Include full Greek names and numbered Bayer forms even if the stored label is abbreviated.
             const int letter = star.BayerGrkno >= 100 ? (star.BayerGrkno - 100) / 10 : star.BayerGrkno;
             const std::string number = star.BayerGrkno >= 100 ? std::to_string(star.BayerGrkno % 10) : "";
-            for (const auto& constellation : constellations)
+            if (letter >= 0 || star.FlamsteedNo > 0)
             {
-                if (letter < 0 && star.FlamsteedNo <= 0 && star.GouldNo <= 0) break;
-                if (object_search_key(star.constellation) != object_search_key(constellation.abbrev)) continue;
-                for (const auto& suffix : {constellation.abbrev, constellation.name})
+                const auto match = constellation_index.find(object_search_key(star.constellation));
+                if (match != constellation_index.end())
                 {
-                    if (letter >= 0 && letter < 24)
+                    const auto* constellation = match->second;
+                    for (const auto& suffix : {constellation->abbrev, constellation->name})
                     {
-                        add_designation(Greek_letter[letter] + number + suffix);
-                        add_designation(Greek_letter[letter].substr(0, 3) + number + suffix);
+                        if (letter >= 0 && letter < 24)
+                        {
+                            add_designation(Greek_letter[letter] + number + suffix);
+                            add_designation(Greek_letter[letter].substr(0, 3) + number + suffix);
+                        }
+                        if (star.FlamsteedNo > 0) add_designation(std::to_string(star.FlamsteedNo) + suffix);
                     }
-                    if (star.FlamsteedNo > 0) add_designation(std::to_string(star.FlamsteedNo) + suffix);
-                    if (star.GouldNo > 0) add_designation(std::to_string(star.GouldNo) + "G." + suffix);
                 }
-                break;
+            }
+            if (star.GouldNo > 0)
+            {
+                const std::string abbreviation = star.Gouldcons[0] ? star.Gouldcons : star.constellation;
+                const std::string gould = std::to_string(star.GouldNo);
+                const auto add_gould = [&](const std::string& suffix)
+                {
+                    if (suffix.empty()) return;
+                    add_designation(gould + "G." + suffix);
+                    add_designation(gould + "G" + suffix);
+                    add_designation(gould + suffix);
+                };
+                add_gould(abbreviation);
+                const auto match = constellation_index.find(object_search_key(abbreviation));
+                if (match != constellation_index.end())
+                {
+                    add_gould(match->second->genitive);
+                    add_gould(match->second->name);
+                }
             }
         }
         if (object.typeclass() == class_planet || object.typeclass() == class_moon)
@@ -138,7 +160,8 @@ namespace
                 && suffix && designation.size() > 1
                 && designation.back() >= 'b' && designation.back() <= 'z')
             {
-                for (const auto& host : identities(*object.orbit->center)) add_identity(names, host + designation.back());
+                for (const auto& host : identities(*object.orbit->center, constellation_index))
+                    add_identity(names, host + designation.back());
             }
         }
         return names;
@@ -237,6 +260,9 @@ ObjectSearchResponse alienorum::search_objects(const std::string& query, size_t 
     if (key.empty()) return response;
     std::lock_guard<std::recursive_mutex> lock(catalog_mutex);
     if (!cels) { response.state = ObjectSearchState::absent; return response; }
+    ConstellationIndex constellation_names;
+    for (const auto& constellation : constellations)
+        constellation_names.emplace(object_search_key(constellation.abbrev), &constellation);
     // Build a fresh, owned snapshot per submission. Renames and alias changes are
     // reflected immediately without mutation hooks or a stale persistent index.
     struct Record { int index; std::vector<std::string> names; };
@@ -246,7 +272,7 @@ ObjectSearchResponse alienorum::search_objects(const std::string& query, size_t 
     for (int i = 0; i < ncelobjs; ++i)
     {
         if (!cels[i] || cels[i]->deleted) continue;
-        auto names = identities(*cels[i]);
+        auto names = identities(*cels[i], constellation_names);
         for (const auto& name : names)
         {
             const bool primary = name == object_search_key(cels[i]->name);

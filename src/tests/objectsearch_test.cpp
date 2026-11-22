@@ -3,6 +3,7 @@
 #include <iostream>
 #include "universe_fixture.h"
 #include "../classes/objectsearch.h"
+#include "../classes/cons.h"
 #include "../classes/moon.h"
 #include "../classes/galaxy.h"
 #include "../inputs.h"
@@ -97,6 +98,40 @@ TEST_F(ObjectSearchTest, ExactNamesAndCatalogAliasesIgnoreCaseAndWhitespace)
         EXPECT_EQ(suggestion.matches.front().index, star->seqno);
         EXPECT_EQ(suggestion.matches.front().distance, 1) << query;
     }
+}
+
+TEST_F(ObjectSearchTest, InteractiveGouldDesignationsUseTheCatalogConstellation)
+{
+    struct RestoreConstellations
+    {
+        std::vector<Constellation> saved = std::move(constellations);
+        ~RestoreConstellations() { constellations = std::move(saved); }
+    } restore;
+    auto& cetus = constellations.emplace_back();
+    cetus.abbrev = "Cet";
+    cetus.name = "Cetus";
+    cetus.genitive = "Ceti";
+    auto* gould = make_star("Catalog variable");
+    gould->GouldNo = 36;
+    strcpy(gould->Gouldcons, "Cet");
+    strcpy(gould->constellation, "Ori");
+    auto* flamsteed = make_star("Flamsteed star");
+    flamsteed->FlamsteedNo = 36;
+    strcpy(flamsteed->constellation, "Cet");
+
+    for (const char* query : {"36 G. Ceti", "36 G. Cet", "36 G Cet", "36g cet"})
+    {
+        submit(query);
+        EXPECT_FALSE(lookfor_notfound) << query;
+        EXPECT_FALSE(object_search_results_open()) << query;
+        EXPECT_EQ(selected, gould->seqno) << query;
+    }
+    const auto bare = search_objects("36 cet");
+    EXPECT_TRUE(bare.exact);
+    ASSERT_EQ(bare.total, 2u);
+    EXPECT_NE(bare.matches[0].address, bare.matches[1].address);
+    submit("36 cet");
+    EXPECT_TRUE(object_search_results_open());
 }
 
 TEST_F(ObjectSearchTest, ExactAmbiguityCountsObjectsBeforeTheDisplayLimit)

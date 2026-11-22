@@ -107,7 +107,7 @@ This project uses an internal star catalog, Soles Alienorum, literally "alien su
 
 The colors are b for blue, c cyan, w white, y yellow, o orange, r red, and p purple. Brown dwarfs are called purple in this system because their actual colors range from pink to deep violet, due to sodium and potassium in their atmospheres that absorb most of the stars' light, letting through wavelengths that we see as purplish.
 
-Variable stars have V instead of a magnitude number, since they can't always be neatly categorized by magnitude. A good example is Mira, Vr Cet 14, 
+Variable stars have V instead of a magnitude number, since they can't always be neatly categorized by magnitude. A good example is Mira, Vr Cet 2, where the sequence number is ordered by right ascension instead of by magnitude. Vr Cet 1 is a faint naked eye star also known as 36 G. Ceti.
 
 The Sun has an AlienorumID, unlike most star catalogs that either omit it or just call it Sun. In Soles Alienorum its ID is simply -26. No other object in our sky has a magnitude anywhere near -26 (if it did, the Earth would cook), so no color letter is necessary, and the Sun is not a member of any constellation from Earth's point of view.
 

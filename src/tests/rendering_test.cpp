@@ -3031,6 +3031,20 @@ TEST_F(RenderingRegressionTest, CloudCacheReusesSubpixelAirlightAndTintChanges)
     EXPECT_EQ(cloud_sky_gpu_stats().image_builds, first.image_builds + 2);
 }
 
+TEST_F(RenderingRegressionTest, CloudImageCacheReusesSubpixelWalkingAndRefreshesAsTravelAccumulates)
+{
+    CloudTestView view;
+    const auto baseline = clouds(153, .5, 1.0, view);
+    const auto initial = cloud_sky_gpu_stats();
+    view.longitude = 4e-7;
+    EXPECT_EQ(clouds(153, .5, 1.0, view), baseline);
+    EXPECT_EQ(cloud_sky_gpu_stats().image_hits, initial.image_hits + 1);
+    EXPECT_EQ(cloud_sky_gpu_stats().image_builds, initial.image_builds);
+    view.longitude = 1e-4;
+    clouds(153, .5, 1.0, view);
+    EXPECT_EQ(cloud_sky_gpu_stats().image_builds, initial.image_builds + 1);
+}
+
 TEST_F(RenderingRegressionTest, DISABLED_DenseAtmosphereCloudTimings)
 {
     auto* world = surface(true);
@@ -6496,6 +6510,19 @@ TEST_F(RenderingRegressionTest, CloudyCoastFirstPaintRefinesToTheReferenceImage)
     EXPECT_TRUE(precipitation_stats.ground_cache_hit);
     EXPECT_EQ(image_difference(expected, refined, 1), 0);
     std::cout << "Cloudy coast ground paint " << exact_ms << " ms exact, " << preview_ms << " ms initial preview.\n";
+
+    horizon_ground_motion_budget_ms = 1e6;
+    for (int step = 0; step < 5; ++step)
+    {
+        viewer_lat += .25 / world->volumetric_mean_radius;
+        capture();
+        EXPECT_STREQ(precipitation_stats.ground_cache_reason, "walking preview") << step;
+    }
+    for (int frame = 0; frame < 9 && !precipitation_stats.ground_cache_hit; ++frame)
+        refined = capture();
+    EXPECT_TRUE(precipitation_stats.ground_cache_hit);
+    horizon_ground_gpu_reference = true;
+    EXPECT_EQ(image_difference(capture(), refined, 1), 0);
     SDL_SetWindowSize(window, 192, 108);
 }
 
@@ -8401,6 +8428,42 @@ TEST_F(RenderingRegressionTest, SlowHorizonFramesReduceWaveWorkAndRebuildCachedG
     const auto restored = paint();
     EXPECT_EQ(restored.geometry_builds, 1u);
     EXPECT_EQ(restored.uniform_water_points, full.uniform_water_points);
+}
+
+TEST_F(RenderingRegressionTest, HeldWalkingKeyKeepsWaveBoundsWithinThePaddedSurface)
+{
+    auto* world = surface(true);
+    delete world->surf_map;
+    world->surf_map = new BlueBiomeTestMap(SurfaceMaterial::water);
+    set(show_terrain, false);
+    set(altitude, -.4);
+    set(horizon_ground_motion_budget_ms, 20.0);
+    const auto paint = [&]()
+    {
+        freeze_surface_time();
+        ImGui::GetCurrentContext()->Time = 50;
+        find_horizon();
+        draw_horizon();
+        auto image = render();
+        ImGui::NewFrame();
+        return image;
+    };
+    ImGui::GetIO().AddKeyEvent(ImGuiKey_Home, true);
+    paint();
+    ASSERT_TRUE(ImGui::IsKeyDown(ImGuiKey_Home));
+    paint();
+    EXPECT_EQ(horizon_water_stats().bounds_builds, 1u);
+    viewer_lat += .25 / world->volumetric_mean_radius;
+    const auto retained = paint();
+    EXPECT_EQ(horizon_water_stats().bounds_builds, 0u);
+    set(water_cpu_reference, true);
+    EXPECT_EQ(image_difference(paint(), retained), 0);
+    water_cpu_reference = false;
+    viewer_lat += 10 / world->volumetric_mean_radius;
+    paint();
+    EXPECT_EQ(horizon_water_stats().bounds_builds, 1u);
+    ImGui::GetIO().AddKeyEvent(ImGuiKey_Home, false);
+    paint();
 }
 
 TEST_F(RenderingRegressionTest, GlintColorCachePreservesPhotometricAndWhiteDwarfEdits)

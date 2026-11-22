@@ -6071,6 +6071,7 @@ void draw_horizon()
     if (view_mode == vm_horizon && whereami >= 0)
     {
         int i, j, j1, l;
+        const bool walking_input = ImGui::IsKeyDown(ImGuiKey_Home) || ImGui::IsKeyDown(ImGuiKey_End);
         CelestialObject *cel = cels[whereami];
         if (!cel) return;
         cel_obj_class cls = cel->typeclass();
@@ -6871,8 +6872,9 @@ void draw_horizon()
                 * std::remainder(viewer_lon - std::get<1>(saved_mesh_view), 2 * _pi);
             // Retain the sampled mesh within a short walk and translate its projection.
             // Its first ring is already well outside this small observer displacement.
+            const bool walking_mesh = walking_input && std::isfinite(horizon_ground_motion_budget_ms);
             const bool translate_mesh = horizon_motion_ground_sampling && !horizon_terrain_cpu_reference
-                && mesh_build_ms > std::max(35.0, horizon_ground_motion_budget_ms)
+                && (walking_mesh || mesh_build_ms > std::max(35.0, horizon_ground_motion_budget_ms))
                 && std::get<2>(mesh_view) == std::get<2>(saved_mesh_view)
                 && std::get<3>(mesh_view) == std::get<3>(saved_mesh_view)
                 && fabs(viewer_lat) < half_pi - .001
@@ -7140,8 +7142,16 @@ void draw_horizon()
             }
 
             const bool shifted_mesh = mesh_view != saved_mesh_view;
-            const double east_shift = shifted_mesh ? walk_east : 0;
-            const double north_shift = shifted_mesh ? walk_north : 0;
+            // Far terrain starts at relief_start. During walking, retain the
+            // depth raster across motion smaller than its projected pixel size.
+            const double projection_step = walking_mesh && shifted_mesh
+                ? relief_start / std::max(1.0, surface_focal()) : 0;
+            const auto projected_shift = [&](double shift)
+            {
+                return projection_step > 0 ? std::round(shift / projection_step) * projection_step : shift;
+            };
+            const double east_shift = shifted_mesh ? projected_shift(walk_east) : 0;
+            const double north_shift = shifted_mesh ? projected_shift(walk_north) : 0;
             const double sine_yaw = sin(azimuth), cosine_yaw = cos(azimuth);
             const double shift_x = east_shift * cosine_yaw - north_shift * sine_yaw;
             const double shift_z = east_shift * sine_yaw + north_shift * cosine_yaw;
@@ -7671,14 +7681,19 @@ void draw_horizon()
             const double walk_distance = surface_radius * hypot(viewer_lat - std::get<3>(previous_position),
                 cos(viewer_lat) * std::remainder(viewer_lon - std::get<4>(previous_position), 2 * _pi));
             const bool walking = std::get<0>(previous_position) == cel && std::get<1>(previous_position) == map
-                && std::get<2>(previous_position) == std::get<2>(position) && walk_distance > 0 && walk_distance <= 5;
+                && std::get<2>(previous_position) == std::get<2>(position) && walk_distance > 0
+                && (walk_distance <= 5 || walking_input);
             previous_position = position;
             const bool preview_allowed = horizon_motion_ground_sampling && gpu_ground && retain_samples
                 && !uniform_lit_source && !horizon_terrain_cpu_reference;
-            const bool cold_preview = !same_ground && preview_tiles.empty() && std::isfinite(horizon_ground_motion_budget_ms)
-                && screen_w >= 800 && ground_height >= 450;
-            const bool moving_preview = walking && !position_reusable
-                && (full_ground_paint_ms > horizon_ground_motion_budget_ms || horizon_quality.ground_stride() > 1);
+            const bool use_motion_budget = std::isfinite(horizon_ground_motion_budget_ms);
+            const bool large_view = screen_w >= 800 && ground_height >= 450;
+            const bool cold_preview = !same_ground && preview_tiles.empty() && use_motion_budget && large_view;
+            // A preview can finish without a single full-paint timing. A wide,
+            // mixed wet surface still uses the preview while the viewer walks.
+            const bool moving_preview = walking && !position_reusable && use_motion_budget
+                && ((surface_water && large_view) || full_ground_paint_ms > horizon_ground_motion_budget_ms
+                    || horizon_quality.ground_stride() > 1);
             const bool start_preview = preview_allowed && (cold_preview || moving_preview);
             const bool continue_preview = preview_allowed && !walking && !preview_tiles.empty()
                 && preview_latitude == viewer_lat && preview_longitude == viewer_lon && preview_key == ground_key;
@@ -8549,15 +8564,22 @@ void draw_horizon()
                 wave_valid = true;
             }
 
-            auto bounds_key = std::make_tuple(viewer_lat, viewer_lon, map, local_surface_revision,
+            auto bounds_key = std::make_tuple(map, local_surface_revision,
                 map && map->is_complete(), generating_fic_texture, water_favorable, surface_biomes,
                 p && p->simulated_surface_life_allowed(), ocean_world, p ? p->has_water : 0.0f, cel->type, terrain_mesh, shore_displacement,
                 p ? p->vegetation_r : 0, p ? p->vegetation_g : 0, p ? p->vegetation_b : 0, water_cpu_reference, bool(PERF_P052_WAVES && performance_enabled(52)));
             static decltype(bounds_key) saved_bounds_key;
+            static double bounds_latitude = NAN, bounds_longitude = NAN, bounds_padding = 0;
             static std::vector<double> saved_wave_horizon;
             static bool wave_bounds_active = false;
             static unsigned int saved_clipped = 0, saved_land = 0;
+            const double walking_padding = walking_input && horizon_motion_ground_sampling
+                && std::isfinite(horizon_ground_motion_budget_ms) ? 4.0 / surface_radius : 0;
+            // The local wave frame can rotate about both geographic axes.
+            const double bounds_travel = fabs(viewer_lat - bounds_latitude)
+                + fabs(std::remainder(viewer_lon - bounds_longitude, 2 * _pi));
             const bool rebuild_bounds = geometry_changed || water_cpu_reference || bounds_key != saved_bounds_key
+                || bounds_padding != walking_padding || !(bounds_travel <= bounds_padding)
                 || saved_wave_horizon.size() != static_cast<size_t>(screen_w)
                 || !std::equal(saved_wave_horizon.begin(), saved_wave_horizon.end(), min_hz_y_at_x.begin());
             if (rebuild_bounds)
@@ -8572,7 +8594,7 @@ void draw_horizon()
                 SurfaceSampler::Sample footprint;
                 wave_bounds_active = PERF_P052_WAVES && performance_enabled(52)
                     && (PERF_P052_BOUNDARY || surface.uniform_sample(viewer_lat, viewer_lon,
-                        maximum_distance / surface_radius + 1e-10, footprint));
+                        maximum_distance / surface_radius + walking_padding + 1e-10, footprint));
                 const bool certify_land = wave_bounds_active && !water_cpu_reference && maximum_distance <= 1e6
                     && maximum_distance <= _pi * surface_radius;
                 for (auto& row : wave_rows)
@@ -8635,7 +8657,8 @@ void draw_horizon()
                             if (certain && high - low < half_pi)
                             {
                                 const auto middle = surface_coord(maximum_distance * .5, azimuth + (low + high) * .5);
-                                const double angle = maximum_distance * (.5 + (high - low) * .5) / surface_radius + 1e-10;
+                                const double angle = maximum_distance * (.5 + (high - low) * .5) / surface_radius
+                                    + walking_padding + 1e-10;
                                 uniform = surface.uniform_sample(middle.first, middle.second, angle, value);
                                 land = uniform && !value.water;
                             }
@@ -8648,6 +8671,9 @@ void draw_horizon()
                     }
                 }
                 saved_bounds_key = bounds_key;
+                bounds_latitude = viewer_lat;
+                bounds_longitude = viewer_lon;
+                bounds_padding = walking_padding;
                 saved_wave_horizon = min_hz_y_at_x;
             }
             water_stats.clipped_points = saved_clipped;

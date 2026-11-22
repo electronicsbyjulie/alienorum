@@ -1,5 +1,15 @@
 
 Mira is listed as Vr Cet 14, but there are no stars given AlienorumIDs Vr Cet 1 thru 13 except for Vr Cet 3 a.k.a. 36 G. Cet. Also there's no 6r Cet 3 because a variable got in the way of the bin. So the existing AlienorumID numbers are untrustworthy after all - thanks a fuckin lot. Variable stars will get a sequence number according to their right ascension, meaning 36 G Ceti will be Vr Cet 1 and Mira will be Vr Cet 2. Neither will block a star from having an ID like 6r Cet 3. Make this a general rule - do NOT code specifically for these two stars. Mira and 36 G. Ceti are good references for a regression test.
 
+Fixed in the generator and in the reader for older catalogs. Variables are numbered by increasing right ascension within each color and constellation. Numeric bins close the gaps left by variables and retain brightness ordering. The regression checks 36 G. Ceti, Mira, and `6r Cet 3`.
+
 Something is drastically slowing the frame rate when panning or walking near a shore that has plants and clouds. Even just switching to horizon view produces a noticeable delay preparing the initial horizon frame. Proxima has a planet where this slowdown can be easily observed. Do a performance audit of the terrain and cloud render for vm_horizon and see if something is not being cached properly or if a cache is paradoxically slowing the render. - THIS IS NOT FIXED something still unacceptably slows the frame rate when walking.
+
+Still open. On Proxima b, median CPU preparation for 24 walking frames fell from 53.5 to 49.4 ms. The median time between frames in the software-rendered virtual display was 337 ms before and 341 ms after. The shoreline regression verifies that the view returns to full detail after walking stops. Desktop frame rate remains unverified.
+
+Searching 36 G. Ceti, 36 G. Cet, 36 G Cet, 36g cet, and 36 cet all turned up no results. The search box must accept Gould numbers too.
+
+Fixed. The search box uses the constellation in the Gould record and accepts all five spellings above. If a bare query matches both a Gould and a Flamsteed designation, it lists both stars. The full-catalog and interactive search tests passed.
+
+Regression corrected during the pass. The first ID format check rejected the Sun's reserved `-26`. The catalog test now covers that exception.
 

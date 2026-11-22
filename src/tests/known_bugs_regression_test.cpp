@@ -10,6 +10,7 @@
 #include <unordered_map>
 #include <gtest/gtest.h>
 #include "../classes/alienorumid.h"
+#include "../classes/objectsearch.h"
 #include "../classes/browncatalog.h"
 #include "../classes/cat.h"
 #include "../classes/neighborhoodfilter.h"
@@ -464,6 +465,21 @@ TEST_F(KnownCatalogRegression, CetusVariablesUseRightAscensionAndLeaveNumericRan
         std::sort(ranks.begin(), ranks.end());
         ASSERT_GE(ranks.size(), 2u);
         for (size_t index = 0; index < ranks.size(); ++index) EXPECT_EQ(ranks[index], index + 1) << prefix;
+    }
+}
+
+TEST_F(KnownCatalogRegression, SearchBoxFindsPublishedGouldNames)
+{
+    const int target = find_object("Vr Cet 1", true, 9e29, 1);
+    ASSERT_GE(target, 0);
+    for (const char* query : {"36 G. Ceti", "36 G. Cet", "36 G Cet", "36g cet", "36 cet"})
+    {
+        const auto result = search_objects(query);
+        EXPECT_TRUE(result.exact) << query;
+        EXPECT_TRUE(std::any_of(result.matches.begin(), result.matches.end(), [target](const auto& match)
+        {
+            return match.index == target;
+        })) << query;
     }
 }
 
