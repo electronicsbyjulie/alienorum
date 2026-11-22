@@ -5,7 +5,7 @@
 #include <future>
 #include <iostream>
 #include <set>
-#include <curl/curl.h>
+#include "catalog_transfer.h"
 #include "cat.h"
 #include "numeric.h"
 #include "exoplanetstatus.h"
@@ -127,15 +127,11 @@ namespace
 bool CatalogReader::fetch_stellar_catalog_json(const std::string& url, const std::string& form, json& result)
 {
     if (abort_load || radio_silence) return false;
-    CURL* curl = curl_easy_init();
+    CURL* curl = create_catalog_transfer(url.c_str());
     if (!curl) return false;
     std::string response;
-    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-    curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1L);
     curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 15L);
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 90L);
-    curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
     if (!form.empty()) curl_easy_setopt(curl, CURLOPT_POSTFIELDS, form.c_str());
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, +[](char* bytes, size_t size, size_t count, void* context) -> size_t
@@ -145,11 +141,6 @@ bool CatalogReader::fetch_stellar_catalog_json(const std::string& url, const std
         if (length > 128 * 1024 * 1024 || output->size() > 128 * 1024 * 1024 - length) return 0;
         output->append(bytes, length);
         return length;
-    });
-    curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
-    curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, +[](void*, curl_off_t, curl_off_t, curl_off_t, curl_off_t) -> int
-    {
-        return abort_load ? 1 : 0;
     });
     const CURLcode status = curl_easy_perform(curl);
     curl_easy_cleanup(curl);

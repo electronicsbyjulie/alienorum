@@ -141,8 +141,8 @@ int main (int argc, char** argv)
     std::cout << "nice: " << _nice << std::endl;
     #endif
 
-    establish_project_root();
-    firstrun = !file_exists((std::string("catalogs") + _FILESLASH + std::string("astorb") + _FILESLASH + std::string("astorb.dat")).c_str());
+    if (!look_for_catalogs()) return -1;
+    firstrun = !file_exists(".startup-complete");
 
     std::time_t now = std::time(nullptr);
     struct tm *loc_time = std::localtime(&now);
@@ -383,8 +383,6 @@ int main (int argc, char** argv)
         return 1;
     }
 
-    if (!look_for_catalogs()) return -1;
-    if (file_exists("nonet")) radio_silence = true;
     SDL_Surface* icon = IMG_Load("assets" _FILESLASH "icon48.png");
     if (icon)
     {
@@ -655,11 +653,10 @@ int main (int argc, char** argv)
                 | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings))
             {
                 ImGui::SetWindowPos(ImVec2(left,splash_top));
-                ImGui::SetWindowSize(ImVec2(aspect_width+16, splash_height+(firstrun ? 75 : 35) + ImGui::GetTextLineHeightWithSpacing()));
+                ImGui::SetWindowSize(ImVec2(aspect_width+16, splash_height+35 + (1 + firstrun) * ImGui::GetTextLineHeightWithSpacing()));
                 if (firstrun)
                 {
-                    ImGui::Text("Please be patient, Alienorum is running for the first time. After");
-                    ImGui::Text("downloading data, the application will load faster going forward.");
+                    ImGui::TextUnformatted("First launch. Catalog downloads may take a while.");
                 }
                 ImGui::Text("%s", lloadmsg);
                 if (default_universe_load_pending()) ImGui::TextUnformatted("universe.json queued for loading...");

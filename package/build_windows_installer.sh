@@ -29,6 +29,7 @@ if [ ! -x vcpkg/vcpkg ]; then
 fi
 
 VCPKG_TRIPLET=x64-mingw-static
+export VCPKG_MAX_CONCURRENCY=2
 
 # Every payload entry must exist and come from Git; generated caches and local
 # working files cannot enter the installer through directory-wide copies.
@@ -59,7 +60,7 @@ fi
 gzip -dc catalogs/soles_alienorum.dat.gz > catalogs/soles_alienorum.dat.tmp
 mv catalogs/soles_alienorum.dat.tmp catalogs/soles_alienorum.dat
 
-cmake -B build-win \
+nice -n 10 cmake -B build-win \
     -DCMAKE_TOOLCHAIN_FILE=vcpkg/scripts/buildsystems/vcpkg.cmake \
     -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="$(pwd)/cmake/toolchain-mingw64.cmake" \
     -DVCPKG_TARGET_TRIPLET="$VCPKG_TRIPLET" \
@@ -67,9 +68,9 @@ cmake -B build-win \
     -DVCPKG_HOST_TRIPLET=x64-linux \
     -DCMAKE_BUILD_TYPE=Release
 
-cmake --build build-win --config Release -j"$(nproc)"
+nice -n 10 cmake --build build-win --config Release --parallel 2
 
-(cd build-win && cpack -G NSIS)
+(cd build-win && nice -n 10 cpack -G NSIS)
 
 mkdir -p package
 mv build-win/Alienorum-*-win64.exe package/ 2>/dev/null || mv build-win/*.exe package/

@@ -101,7 +101,7 @@ endif
 
 ifeq ($(OS), Windows_NT)
     ECHO_MESSAGE = "Building for Windows in MinGW..."
-    LIBS += -lgdi32 -lopengl32 -limm32 `pkg-config --static --libs sdl2`
+    LIBS += -lgdi32 -lopengl32 -limm32 -lshell32 `pkg-config --static --libs sdl2`
     CPPFLAGS += `pkg-config --cflags sdl2`
     CFLAGS = $(CPPFLAGS)
 endif

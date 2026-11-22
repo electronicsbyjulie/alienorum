@@ -1,34 +1,35 @@
 # stars
-Gliese          catalog.dat.gz              ftp://cdsarc.cds.unistra.fr/cats/V/70A/catalog.dat.gz
-CNS5            cns5.dat                    ftp://cdsarc.u-strasbg.fr/cats/J/A+A/670/A19/cns5.dat
-Uranometria     catalog.dat                 ftp://cdsarc.cds.unistra.fr/cats/V/135A/catalog.dat
-BSC             catalog.gz                  ftp://cdsarc.cds.unistra.fr/cats/V/50/catalog.gz
-Hipparcos       hip_main.dat                ftp://cdsarc.cds.unistra.fr/cats/I/239/hip_main.dat
-Hipparcos       h_dm_com.dat.gz             ftp://cdsarc.cds.unistra.fr/cats/I/239/h_dm_com.dat.gz
-Hipparcos       hip_dm_o.dat.gz             ftp://cdsarc.cds.unistra.fr/cats/I/239/hip_dm_o.dat.gz
-Hipparcos       hip_va_1.dat.gz             ftp://cdsarc.cds.unistra.fr/cats/I/239/hip_va_1.dat.gz
-GAIA            catalog.dat.gz              https://cdsarc.cds.unistra.fr/ftp/J/ApJS/254/42/catalog.dat.gz
-GCVS            gcvs_cat.dat.gz             ftp://cdsarc.cds.unistra.fr/cats/B/gcvs/gcvs_cat.dat.gz
-GCVS            crossid.dat.gz              ftp://cdsarc.cds.unistra.fr/cats/B/gcvs/crossid.dat
+# The CfA mirror serves general catalogs over HTTPS. NAOJ serves the journal tables over HTTP.
+Gliese          catalog.dat.gz              https://vizier.cfa.harvard.edu/ftp/cats/V/70A/catalog.dat.gz
+CNS5            cns5.dat                    http://vizier.nao.ac.jp/vizier/ftp/cats/J/A+A/670/A19/cns5.dat
+Uranometria     catalog.dat                 https://vizier.cfa.harvard.edu/ftp/cats/V/135A/catalog.dat
+BSC             catalog.gz                  https://vizier.cfa.harvard.edu/ftp/cats/V/50/catalog.gz
+Hipparcos       hip_main.dat                https://vizier.cfa.harvard.edu/ftp/cats/I/239/hip_main.dat
+Hipparcos       h_dm_com.dat.gz             https://vizier.cfa.harvard.edu/ftp/cats/I/239/h_dm_com.dat.gz
+Hipparcos       hip_dm_o.dat.gz             https://vizier.cfa.harvard.edu/ftp/cats/I/239/hip_dm_o.dat.gz
+Hipparcos       hip_va_1.dat.gz             https://vizier.cfa.harvard.edu/ftp/cats/I/239/hip_va_1.dat.gz
+GAIA            catalog.dat.gz              http://vizier.nao.ac.jp/vizier/ftp/cats/J/ApJS/254/42/catalog.dat.gz
+GCVS            gcvs_cat.dat.gz             https://vizier.cfa.harvard.edu/ftp/cats/B/gcvs/gcvs_cat.dat.gz
+GCVS            crossid.dat.gz              https://vizier.cfa.harvard.edu/ftp/cats/B/gcvs/crossid.dat
 # Wright et al. (2011), J/ApJ/743/48: rotation periods, with exact HD/HIP/GJ identities.
-StellarRotation catalog.dat                 https://cdsarc.cds.unistra.fr/ftp/J/ApJ/743/48/catalog.dat
-StellarRotation refs.dat                    https://cdsarc.cds.unistra.fr/ftp/J/ApJ/743/48/refs.dat
-GOSSS           main.dat                    ftp://cdsarc.cds.unistra.fr/cats/III/274/main.dat
-WD              catalog.dat.gz              https://cdsarc.cds.unistra.fr/ftp/B/wd/catalog.dat.gz
-WD              names.dat.gz                https://cdsarc.cds.unistra.fr/ftp/B/wd/names.dat.gz
+StellarRotation catalog.dat                 http://vizier.nao.ac.jp/vizier/ftp/cats/J/ApJ/743/48/catalog.dat
+StellarRotation refs.dat                    http://vizier.nao.ac.jp/vizier/ftp/cats/J/ApJ/743/48/refs.dat
+GOSSS           main.dat                    https://vizier.cfa.harvard.edu/ftp/cats/III/274/main.dat
+WD              catalog.dat.gz              https://vizier.cfa.harvard.edu/ftp/cats/B/wd/catalog.dat.gz
+WD              names.dat.gz                https://vizier.cfa.harvard.edu/ftp/cats/B/wd/names.dat.gz
 
 # multi star systems
-CCDM            ccdm.dat.gz                 ftp://cdsarc.cds.unistra.fr/cats/I/274/ccdm.dat.gz
-SB9             main.dat                    ftp://cdsarc.cds.unistra.fr/cats/B/sb9/main.dat
-SB9             orbits.dat                  ftp://cdsarc.cds.unistra.fr/cats/B/sb9/orbits.dat
+CCDM            ccdm.dat.gz                 https://vizier.cfa.harvard.edu/ftp/cats/I/274/ccdm.dat.gz
+SB9             main.dat                    https://vizier.cfa.harvard.edu/ftp/cats/B/sb9/main.dat
+SB9             orbits.dat                  https://vizier.cfa.harvard.edu/ftp/cats/B/sb9/orbits.dat
 
 ################ Do not remove this line; it divides always-load cats from only load if no internal cat. ################
 
 # galaxies
 #REGALADE        regalade.dat.gz             ftp://cdsarc.cds.unistra.fr/cats/J/A+A/706/A284/regalade.dat.gz
-RC3             rc3.gz                      ftp://cdsarc.cds.unistra.fr/cats/VII/155/rc3.gz
-UNGC            table1.dat                  ftp://cdsarc.cds.unistra.fr/cats/J/AJ/145/101/table1.dat
-UNGC            table2.dat                  ftp://cdsarc.cds.unistra.fr/cats/J/AJ/145/101/table2.dat
+RC3             rc3.gz                      https://vizier.cfa.harvard.edu/ftp/cats/VII/155/rc3.gz
+UNGC            table1.dat                  http://vizier.nao.ac.jp/vizier/ftp/cats/J/AJ/145/101/table1.dat
+UNGC            table2.dat                  http://vizier.nao.ac.jp/vizier/ftp/cats/J/AJ/145/101/table2.dat
 #GALEX           table1.dat                  ftp://cdsarc.cds.unistra.fr/cats/J/ApJS/173/185/table1.dat
 #GALEX           table5.dat                  ftp://cdsarc.cds.unistra.fr/cats/J/ApJS/173/185/table5.dat
 
@@ -36,11 +37,11 @@ UNGC            table2.dat                  ftp://cdsarc.cds.unistra.fr/cats/J/A
 # the user will be invited to download the catalog manually.
 
 # solar system objects
-astorb          astorb.dat.gz               ftp://cdsarc.cds.unistra.fr/cats/B/astorb/astorb.dat.gz
-comets          comets.dat                  ftp://cdsarc.cds.unistra.fr/cats/B/comets/comets.dat
+astorb          astorb.dat.gz               https://ftp.lowell.edu/pub/elgb/astorb.dat.gz
+comets          comets.dat                  https://vizier.cfa.harvard.edu/ftp/cats/B/comets/comets.dat
 
 # constellation boundaries
-CBD             bound_20.dat.gz             ftp://cdsarc.cds.unistra.fr/cats/VI/49/bound_20.dat.gz
+CBD             bound_20.dat.gz             https://vizier.cfa.harvard.edu/ftp/cats/VI/49/bound_20.dat.gz
 
 # Complete list of auto-downloadable catalogs from VizieR:
 # https://vizier.cds.unistra.fr/vizier/cats/U.htx

@@ -6,6 +6,7 @@ obj
 maps
 catalogs
 imgui.ini
+/.startup-complete
 vcpkg
 vcpkg_installed
 package/release-maps

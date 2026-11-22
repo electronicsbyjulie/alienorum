@@ -12,11 +12,12 @@
 #include <mutex>
 #include <map>
 #include <ctime>
-#include <curl/curl.h>
+#include "catalog_transfer.h"
 #include <archive.h>
 #include <archive_entry.h>
 #include <stdexcept>
 #include "misc.h"
+#include "../background_file.h"
 using namespace alienorum;
 
 // IMPORTANT: Any global variable defined here must also be extern declared in misc.h.
@@ -692,109 +693,78 @@ std::time_t file_age(const char *fname)
     }
 }
 
+CURL* create_catalog_transfer(const char* url)
+{
+    struct CurlRuntime
+    {
+        const CURLcode status = curl_global_init(CURL_GLOBAL_DEFAULT);
+        ~CurlRuntime() { if (status == CURLE_OK) curl_global_cleanup(); }
+    };
+    static const CurlRuntime runtime;
+    if (runtime.status != CURLE_OK) return nullptr;
+
+    CURL* curl = curl_easy_init();
+    if (!curl) return nullptr;
+    curl_easy_setopt(curl, CURLOPT_URL, url);
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "Alienorum (https://github.com/electronicsbyjulie/alienorum)");
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+    curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 5L);
+    curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1L);
+    curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 10L);
+    curl_easy_setopt(curl, CURLOPT_LOW_SPEED_LIMIT, 1L);
+    curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, 30L);
+    curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
+    curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, +[](void*, curl_off_t, curl_off_t, curl_off_t, curl_off_t) -> int
+    {
+        return abort_load ? 1 : 0;
+    });
+    return curl;
+}
+
 bool download_file(std::string URL, std::string save_path)
 {
-    if (radio_silence)
+    if (radio_silence || abort_load) return false;
+    char transfer_error[CURL_ERROR_SIZE]{};
+    const std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> transfer(create_catalog_transfer(URL.c_str()), curl_easy_cleanup);
+    if (!transfer)
     {
+        std::cerr << "Could not initialize the download for " << URL << std::endl;
         return false;
     }
-    curlpp::init();
+    CURL* curl = transfer.get();
+    curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, transfer_error);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 600L);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, +[](char* data, size_t size, size_t count, void* context) -> size_t
+    {
+        const size_t length = size * count;
+        auto& output = *static_cast<std::ofstream*>(context);
+        output.write(data, length);
+        return output ? length : 0;
+    });
+
     std::cout << "Download to " << save_path << " from " << URL << std::endl;
-
-    std::string temp_path = save_path + ".tmp";
-
-    try
+    const char* failure = "Could not write the download to disk";
+    const bool saved = publish_file(std::filesystem::path(save_path), [&](std::ofstream& output)
     {
-        std::string buffer;
-        curlpp::Easy easy;
-        curlpp::List header{"User-Agent: Alienorum (https://github.com/electronicsbyjulie/alienorum)"};
-
-        bool is_ftp = (strncmp(URL.c_str(), "ftp://", 6) == 0);
-        if (is_ftp)
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &output);
+        const CURLcode status = curl_easy_perform(curl);
+        if (status != CURLE_OK)
         {
-            // Set target URL using the correct 2-argument signature
-            easy.setOpt(CURLOPT_URL, URL.c_str());
-
-            // Credentials and configuration flags
-            easy.setOpt(CURLOPT_USERNAME, "anonymous");
-            easy.setOpt(CURLOPT_PASSWORD, "[email protected]");
-
-            // Crucial: Re-enable passive mode to get past firewalls
-            curl_easy_setopt(easy.getHandle(), static_cast<CURLoption>(10085), 1L);           // CURLOPT_FTP_USE_PASV
-
-            // Write directly into your string buffer using basic functional callbacks
-            easy.setOpt(CURLOPT_WRITEDATA, &buffer);
-            easy.setOpt(CURLOPT_WRITEFUNCTION, curlpp::write::toString);
-        }
-        else
-        {
-            easy.setOpt(CURLOPT_URL, URL.c_str());
-            easy.setOpt(CURLOPT_HTTPHEADER, header.getHandle());
-            easy.setOpt(CURLOPT_WRITEDATA, &buffer);
-            easy.setOpt(CURLOPT_WRITEFUNCTION, curlpp::write::toString);
-        }
-
-        easy.setOpt(CURLOPT_CONNECTTIMEOUT, 10L);
-        easy.setOpt(CURLOPT_TIMEOUT, 30L);
-
-        easy.perform();
-
-        if (!is_ftp)
-        {
-            long response_code = 0;
-            curl_easy_getinfo(easy.getHandle(), CURLINFO_RESPONSE_CODE, &response_code);
-            if (response_code < 200 || response_code >= 300)
-            {
-                curlpp::cleanup();
-                std::cerr << "FAILED to download " << URL << ": HTTP response code " << response_code << std::endl << std::flush;
-                return false;
-            }
-        }
-
-        if (buffer.empty())
-        {
-            curlpp::cleanup();
-            std::cerr << "FAILED to download " << URL << ": empty response" << std::endl << std::flush;
+            failure = transfer_error[0] ? transfer_error : curl_easy_strerror(status);
             return false;
         }
-
-        std::ofstream fs(temp_path.c_str(), std::ios::out | std::ios::binary);
-        if (!fs)
+        const char* content_type = nullptr;
+        curl_easy_getinfo(curl, CURLINFO_CONTENT_TYPE, &content_type);
+        if (output.tellp() == 0 || (content_type && !strncasecmp(content_type, "text/html", 9)))
         {
-            curlpp::cleanup();
-            std::cerr << "FAILED to write " << temp_path << std::endl << std::flush;
+            failure = "Server returned an empty file or a web page";
             return false;
         }
-
-        fs.write(buffer.data(), buffer.size());
-        fs.close();
-        if (fs.fail())
-        {
-            std::remove(temp_path.c_str());
-            curlpp::cleanup();
-            std::cerr << "FAILED to complete writing " << temp_path << std::endl << std::flush;
-            return false;
-        }
-
-        std::remove(save_path.c_str());
-        if (std::rename(temp_path.c_str(), save_path.c_str()) != 0)
-        {
-            std::remove(temp_path.c_str());
-            curlpp::cleanup();
-            std::cerr << "FAILED to rename " << temp_path << " to " << save_path << std::endl << std::flush;
-            return false;
-        }
-    }
-    catch (const curlpp::Exception& e)
-    {
-        std::remove(temp_path.c_str());
-        curlpp::cleanup();
-        std::cerr << "FAILED to download " << URL << ": " << e.what() << std::endl << std::flush;
-        return false;
-    }
-
-    curlpp::cleanup();
-    return true;
+        return !abort_load && output.good();
+    });
+    if (!saved && !abort_load) std::cerr << "Download failed for " << URL << " (" << failure << ")." << std::endl;
+    return saved;
 }
 
 bool check_and_download_clouds(const std::string& URL, const std::string& save_path, bool static_clouds)

@@ -148,6 +148,7 @@ elseif(WIN32)
 		$<IF:$<TARGET_EXISTS:SDL2_image::SDL2_image>,SDL2_image::SDL2_image,SDL2_image::SDL2_image-static>
 		OpenGL::GL
 		gdi32
+		shell32
 		winmm
     )
 endif()
@@ -178,6 +179,7 @@ if(WIN32)
     # including the stellar evolution, cool-giant reflection, and calibrated planetary elevation grids.
     # Do not install whole source directories: they contain development artifacts.
     set(runtime_manifest "${CMAKE_SOURCE_DIR}/package/runtime_files.txt")
+    install(FILES "${runtime_manifest}" DESTINATION . RENAME installed-runtime.txt)
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${runtime_manifest}")
     file(STRINGS "${runtime_manifest}" runtime_files)
     foreach(runtime_file IN LISTS runtime_files)
@@ -198,6 +200,7 @@ if(WIN32)
 	set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
 	set(CPACK_PACKAGE_INSTALL_DIRECTORY "Alienorum")
 	set(CPACK_PACKAGE_EXECUTABLES "alienorum" "Alienorum")
+	set(CPACK_NSIS_EXECUTABLES_DIRECTORY ".")
 	set(CPACK_NSIS_DISPLAY_NAME "Alienorum")
 	set(CPACK_NSIS_PACKAGE_NAME "Alienorum")
 	set(CPACK_NSIS_INSTALLED_ICON_NAME "alienorum.exe")
@@ -206,11 +209,5 @@ if(WIN32)
 	set(CPACK_NSIS_MUI_UNIICON "${CMAKE_SOURCE_DIR}/assets/icon48.ico")
 	set(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL ON)
 	set(CPACK_NSIS_MODIFY_PATH OFF)
-	# The exe is installed to the package root (not a bin/ subfolder) specifically so
-	# NSIS's default Start Menu shortcut -- whose working directory defaults to the
-	# target executable's own folder -- lands on $INSTDIR, where catalogs/assets/maps
-	# also live. The app resolves all its data paths relative to its working directory
-	# (see look_for_catalogs() in loaders.cpp), so this keeps it finding its data without
-	# any source changes.
 	include(CPack)
 endif()

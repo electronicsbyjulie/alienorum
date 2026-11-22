@@ -3,6 +3,7 @@
 #include "../catalog_lock_trace.h"
 #include "numeric.h"
 #include "exoplanetstatus.h"
+#include "catalog_transfer.h"
 
 #include <string>
 #include <vector>
@@ -150,8 +151,8 @@ std::vector<std::string> CatalogReader::find_catalogs(std::string path)
 void CatalogReader::download_catalogs(bool hih)
 {
     bool separator_yet = false;
-    std::string path = "catalogs" _FILESLASH "urls.dat", cmd;
-    FILE* fp = fopen(path.c_str(), "rb");
+    const std::string path = "catalogs" _FILESLASH "urls.dat";
+    const std::unique_ptr<FILE, decltype(&fclose)> fp(fopen(path.c_str(), "rb"), fclose);
     if (!fp)
     {
         std::cerr << "File not found " << path << std::endl;
@@ -161,8 +162,7 @@ void CatalogReader::download_catalogs(bool hih)
     char buffer[1024], *catname = nullptr, *url = nullptr;
     std::string destfname = "";
     int i, j, l;
-    bool frist = true;
-    while (fgets(buffer, 1020, fp))
+    while (!abort_load && fgets(buffer, 1020, fp.get()))
     {
         if (buffer[0] == '#')
         {
@@ -196,32 +196,25 @@ void CatalogReader::download_catalogs(bool hih)
         for (; buffer[l] && buffer[l] > ' '; l++);
         buffer[l] = 0;
 
-        // If the destination folder exists, assume we already have the catalog.
-        fs::path p = destdir.c_str();
-        if (!fs::exists(p))
+        fs::path dest_unzipped(destfname);
+        if (dest_unzipped.extension() == ".gz") dest_unzipped.replace_extension();
+        if (!fs::exists(destfname) && !fs::exists(dest_unzipped))
         {
-            // Create the dest folder.
-            fs::create_directories(destdir);
-        }
-
-        l = destfname.size();
-        std::string dest_unzipped = destfname;
-        if (!strcmp(dest_unzipped.substr(l-3).c_str(), ".gz")) dest_unzipped = dest_unzipped.substr(0, l-3);
-        if (!fs::exists(destfname) && !fs::exists(dest_unzipped.c_str()))
-        {
-            if (frist)
+            if (radio_silence) continue;
+            std::error_code error;
+            fs::create_directories(destdir, error);
+            if (error)
             {
-                mtx.lock();
-                loading_msg = "Downloading catalogs...";
-                mtx.unlock();
-                std::cout << loading_msg << std::endl;
+                std::cerr << "Could not create " << destdir << " (" << error.message() << ")." << std::endl;
+                continue;
+            }
+            {
+                std::lock_guard<std::mutex> lock(mtx);
+                loading_msg = std::string("Downloading ") + catname + " catalog...";
             }
 
             std::cout << "Download " << catname << " as " << destfname << " from " << url << " and unzip to " << dest_unzipped << std::endl;
-            // throw 0xbadc0de;
-
-            // Download the (possibly gzipped) file.
-            download_file(url, destfname);
+            if (!download_file(url, destfname)) continue;
         }
 
         // Any .gz files in the destination folder, unzip them.
@@ -237,7 +230,7 @@ void CatalogReader::download_catalogs(bool hih)
                 std::string entry_path = destdir + _FSSTR + entry_name;
                 extract_archive(entry_path.c_str());
             }
-            else if (!strcmp(".gz", &entry_name.c_str()[j]))
+            else if (j >= 0 && !strcmp(".gz", &entry_name.c_str()[j]))
             {
                 std::string decompressed_name = entry_name.substr(0, entry_name.size()-3);
                 std::string entry_path = destdir + _FSSTR + entry_name;
@@ -2035,7 +2028,7 @@ namespace
             "-out.max=unlimited&Plx=%3E0";
         const std::string temporary = path + ".tmp";
         FILE *output = fopen(temporary.c_str(), "wb");
-        CURL *curl = curl_easy_init();
+        CURL *curl = create_catalog_transfer(url);
         if (!output || !curl)
         {
             if (output)
@@ -2049,20 +2042,11 @@ namespace
             return WdGaiaIndex();
         }
         std::cout << "Downloading Gaia white dwarf astrometry..." << std::endl;
-        curl_easy_setopt(curl, CURLOPT_URL, url);
-        curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-        curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1L);
-        curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 10L);
         curl_easy_setopt(curl, CURLOPT_TIMEOUT, 600L);
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, output);
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, +[](char *data, size_t size, size_t count, void *context) -> size_t
         {
             return fwrite(data, size, count, static_cast<FILE*>(context)) * size;
-        });
-        curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
-        curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, +[](void *, curl_off_t, curl_off_t, curl_off_t, curl_off_t) -> int
-        {
-            return abort_load ? 1 : 0;
         });
         const CURLcode result = curl_easy_perform(curl);
         const bool written = fclose(output) == 0;
@@ -10195,8 +10179,8 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
                              "mass+as+pl_bmassj,mass_sin_i+as+pl_msinij,radius+as+pl_radj,"
                              "ra,dec,star_distance+as+sy_dist,mag_v+as+sy_vmag,"
                              "star_mass+as+st_mass,star_radius+as+st_rad,star_teff+as+st_teff,star_spec_type+as+st_spectype,"
-                             "star_metallicity+as+st_met,'[Fe/H]'+as+st_metratio+"
-                             "from+exoplanet.epn_core+where+publication_status='Published+in+a+refereed+paper'+order+by+target_name+asc";
+                             "star_metallicity+as+st_met,%27%5BFe%2FH%5D%27+as+st_metratio+"
+                             "from+exoplanet.epn_core+where+publication_status=%27Published+in+a+refereed+paper%27+order+by+target_name+asc";
 
         if (!radio_silence && !recent_source(eu_cache) && !fetch_tap(eu_url, readBufferEU))
         {

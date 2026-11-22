@@ -3,6 +3,7 @@
 #include "performance_options.h"
 #include "classes/cloudclimate.h"
 #include "classes/texturegeneration.h"
+#include "background_file.h"
 
 #include "loaders.h"
 #include "housekeeping.h"
@@ -18,6 +19,11 @@
 #include <memory>
 #include <future>
 #include <optional>
+#include <stdexcept>
+#include <system_error>
+#ifdef _WIN32
+#include <shlobj.h>
+#endif
 
 using namespace alienorum;
 
@@ -817,16 +823,121 @@ void save_textures(CelestialObject* cel)
     }
 }
 
+namespace
+{
+#ifdef _WIN32
+    namespace fs = std::filesystem;
+
+    json file_stamp(const fs::path& path)
+    {
+        return {fs::file_size(path), fs::last_write_time(path).time_since_epoch().count()};
+    }
+
+    fs::path prepare_installed_workspace(const fs::path& source)
+    {
+        wchar_t local_app_data[MAX_PATH];
+        if (FAILED(SHGetFolderPathW(nullptr, CSIDL_LOCAL_APPDATA | CSIDL_FLAG_CREATE,
+            nullptr, SHGFP_TYPE_CURRENT, local_app_data)))
+        {
+            throw std::runtime_error("Could not locate Local AppData.");
+        }
+
+        const fs::path workspace = fs::path(local_app_data) / "Alienorum";
+        fs::create_directories(workspace);
+        const HANDLE handle = CreateFileW((workspace / "installed-runtime.lock").c_str(),
+            GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_ALWAYS, 0, nullptr);
+        if (handle == INVALID_HANDLE_VALUE) throw std::runtime_error("Could not open the setup lock.");
+        const std::unique_ptr<void, decltype(&CloseHandle)> lock(handle, CloseHandle);
+        OVERLAPPED region{};
+        if (!LockFileEx(handle, LOCKFILE_EXCLUSIVE_LOCK, 0, 1, 0, &region))
+            throw std::runtime_error("Could not lock the local data folder for setup.");
+
+        const fs::path state_path = workspace / "installed-runtime.json";
+        json installed;
+        {
+            std::ifstream state(state_path);
+            if (state) installed = json::parse(state, nullptr, false);
+        }
+        if (!installed.is_object()) installed = json::object();
+
+        std::ifstream manifest(source / "installed-runtime.txt");
+        if (!manifest) throw std::runtime_error("Could not open the installed data list.");
+        const fs::path temporary = workspace / "installed-runtime.tmp";
+        bool changed = false;
+        for (std::string entry; std::getline(manifest, entry);)
+        {
+            if (entry.empty() || entry.front() == '#') continue;
+            const fs::path relative = fs::u8path(entry);
+            const fs::path bundled = source / relative;
+            const fs::path local = workspace / relative;
+            const json stamp = file_stamp(bundled);
+            const auto previous = installed.find(entry);
+            if (fs::exists(local))
+            {
+                if (previous != installed.end() && *previous == stamp) continue;
+
+                // Refresh bundled catalogs on upgrade. Preserve edits to maps and other assets.
+                if (*relative.begin() != "catalogs")
+                {
+                    const json current = file_stamp(local);
+                    if (current != stamp && (previous == installed.end() || current != *previous)) continue;
+                }
+            }
+
+            fs::create_directories(local.parent_path());
+            if (fs::exists(temporary)) fs::permissions(temporary, fs::perms::owner_write, fs::perm_options::add);
+            fs::copy_file(bundled, temporary, fs::copy_options::overwrite_existing);
+            fs::permissions(temporary, fs::perms::owner_write, fs::perm_options::add);
+            fs::last_write_time(temporary, fs::last_write_time(bundled));
+            if (!MoveFileExW(temporary.c_str(), local.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+                throw std::system_error(GetLastError(), std::system_category(), entry);
+            installed[entry] = stamp;
+            changed = true;
+        }
+        if (!manifest.eof()) throw std::runtime_error("Could not finish reading the installed data list.");
+        if (changed && !publish_file(state_path, [&](std::ofstream& output)
+            {
+                output << installed.dump();
+                return output.good();
+            }))
+        {
+            throw std::runtime_error("Could not record the installed data files.");
+        }
+        return workspace;
+    }
+#endif
+}
+
 bool establish_project_root()
 {
     namespace fs = std::filesystem;
     std::vector<fs::path> candidates;
 
-    if (const char *home = std::getenv("ALIENORUM_HOME")) candidates.push_back(home);
+    if (const char *home = SDL_getenv("ALIENORUM_HOME")) candidates.push_back(fs::u8path(home));
     if (char *base = SDL_GetBasePath())
     {
-        candidates.push_back(base);
+        const fs::path executable_dir = fs::u8path(base);
         SDL_free(base);
+#ifdef _WIN32
+        // The manifest identifies an installed copy. Source builds keep their project layout.
+        if (candidates.empty() && fs::exists(executable_dir / "installed-runtime.txt"))
+        {
+            try
+            {
+                static const fs::path workspace = prepare_installed_workspace(executable_dir);
+                fs::current_path(workspace);
+                return true;
+            }
+            catch (const std::exception& error)
+            {
+                const std::string message = std::string("Could not prepare local Alienorum data.\n") + error.what();
+                std::cerr << message << std::endl;
+                SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Alienorum", message.c_str(), nullptr);
+                return false;
+            }
+        }
+#endif
+        candidates.push_back(executable_dir);
     }
     candidates.push_back(fs::current_path());
 
@@ -1682,8 +1793,6 @@ void load_stuff()
     {
         viewer_lat = 32.5425   * fiftyseventh;              // Babylon, site of some of the earliest attested astronomical knowledge.
         viewer_lon = 44.421111 * fiftyseventh;
-
-        noexo = true;                       // Default to a faster first startup by skipping exoplanet catalogs.
     }
 
     if (load_aborted()) return;
@@ -1691,13 +1800,6 @@ void load_stuff()
     loading_msg = "Reading constellations...";
     mtx.unlock();
     read_cons_lines();
-
-    if (load_aborted()) return;
-    mtx.lock();
-    loading_msg = "Reading constellation boundaries...";
-    mtx.unlock();
-    CatalogReader cr;
-    cr.read_cons_boundaries();
 
     if (load_aborted()) return;
     mtx.lock();
@@ -1711,6 +1813,12 @@ void load_stuff()
     {
         return;
     }
+
+    mtx.lock();
+    loading_msg = "Reading constellation boundaries...";
+    mtx.unlock();
+    CatalogReader cr;
+    cr.read_cons_boundaries();
 
     std::string ihcfn = cr.get_condensed_starcat_name();
     if (!file_exists(ihcfn.c_str()))
@@ -1776,6 +1884,16 @@ void load_stuff()
     // white/gray.
     for (int i=0; cels[i]; i++)
         if (cels[i]->type == galaxy) cels[i]->BV_color = -bv_correction;
+
+    if (load_aborted()) return;
+    if (firstrun && !publish_file(".startup-complete", [](std::ofstream& output)
+        {
+            output << "Alienorum\n";
+            return output.good();
+        }))
+    {
+        std::cerr << "Could not record the completed startup." << std::endl;
+    }
 
     mtx.lock();
     loading_msg = "Done!";
@@ -1872,11 +1990,11 @@ bool save_user_json()
 {
     try
     {
-        json j;
-
-        std::fstream fsi("user.json", std::ios::in);
-        fsi >> j;
-        fsi.close();
+        json j = json::object();
+        {
+            std::ifstream input("user.json");
+            if (input) input >> j;
+        }
 
         j["Latitude"] = viewer_lat * fiftyseven;
         j["Longitude"] = viewer_lon * fiftyseven;
@@ -1900,11 +2018,11 @@ bool save_user_json()
             j["SetSound"] = set_sound_path;
         }
 
-        std::fstream fso("user.json", std::ios::out);
-        fso << j.dump(4);
-        fso.close();
-
-        return true;
+        return publish_file("user.json", [&](std::ofstream& output)
+        {
+            output << j.dump(4);
+            return output.good();
+        });
     }
     catch (...)
     {
