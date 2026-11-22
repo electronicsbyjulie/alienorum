@@ -24,7 +24,7 @@ namespace alienorum
             return key == "pl_name" || key == "hostname" || key == "alt_target_name"
                 || key == "alternate_names" || key == "catalog_aliases" || key == "source_measurements"
                 || key == "planet_status" || key == "koi_disposition" || key == "disposition"
-                || key == "tfopwg_disp" || key == "k2c_disp"
+                || key == "tfopwg_disp" || key == "k2c_disp" || key == "pl_controv_flag"
                 || (include_orbits && (key == "source_catalog" || key == "pl_orbper"
                     || key == "ra" || key == "dec" || key == "sy_dist"));
         }, false);
@@ -44,6 +44,22 @@ namespace alienorum
         if (result.rfind("gj", 0) == 0) result.replace(0, 2, "gl");
         if (result.rfind("alpha", 0) == 0) result.replace(0, 5, "alf");
         return result;
+    }
+
+    inline bool tentative_exoplanet_status(const nlohmann::json& row)
+    {
+        const auto controversial = row.find("pl_controv_flag");
+        if (controversial != row.end() && (*controversial == 1 || *controversial == true ||
+            *controversial == "1")) return true;
+        for (const char* field : {"planet_status", "koi_disposition", "disposition", "tfopwg_disp", "k2c_disp"})
+        {
+            const auto value = row.find(field);
+            if (value == row.end() || !value->is_string()) continue;
+            const auto key = exoplanet_status_key(value->get_ref<const std::string&>());
+            if (key == "candidate" || key == "unconfirmed" || key == "controversial" ||
+                key == "planetarycandidate" || key == "pc") return true;
+        }
+        return false;
     }
 
     inline bool rejected_exoplanet_status(const nlohmann::json& row)
@@ -301,7 +317,7 @@ namespace alienorum
             if (values.size() != header.size()) return nullptr;
             nlohmann::json row = {{"pl_name", values[name]}, {"planet_status", values[status]},
                 {"alt_target_name", aliases < values.size() ? values[aliases] : ""}, {"source_catalog", "EU"}};
-            if (exoplanet_status_key(values[status]) == "candidate")
+            if (tentative_exoplanet_status(row))
             {
                 for (const auto& [column, key] : numeric_fields)
                 {

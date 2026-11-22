@@ -839,7 +839,7 @@ namespace
     }
 }
 
-std::string Serialization::filename_part(const std::string& text)
+static std::string transliterate_latin(const std::string& text, bool filename)
 {
     // Latin letters with accents, including precomposed and combining spellings.
     static const std::vector<std::pair<std::u32string, std::string>> latin =
@@ -852,12 +852,13 @@ std::string Serialization::filename_part(const std::string& text)
         {U"ÑŃŅŇŊ", "N"}, {U"ñńņňŋ", "n"}, {U"ÒÓÔÕÖØŌŎŐǑ", "O"}, {U"òóôõöøōŏőǒ", "o"},
         {U"ŔŖŘ", "R"}, {U"ŕŗř", "r"}, {U"ŚŜŞŠȘ", "S"}, {U"śŝşšș", "s"},
         {U"ŢŤŦȚ", "T"}, {U"ţťŧț", "t"}, {U"ÙÚÛÜŨŪŬŮŰŲǓ", "U"}, {U"ùúûüũūŭůűųǔ", "u"},
-        {U"Ŵ", "W"}, {U"ŵ", "w"}, {U"ÝŶŸ", "Y"}, {U"ýÿŷ", "y"}, {U"ŹŻŽ", "Z"}, {U"źżž", "z"},
+        {U"Ŵ", "W"}, {U"ŵ", "w"}, {U"ÝŶŸỸ", "Y"}, {U"ýÿŷỹ", "y"}, {U"ŹŻŽ", "Z"}, {U"źżž", "z"},
         {U"ÆǼ", "AE"}, {U"æǽ", "ae"}, {U"Œ", "OE"}, {U"œ", "oe"}, {U"ß", "ss"}, {U"Þ", "Th"}, {U"þ", "th"}
     };
     std::string result;
     for (size_t i = 0; i < text.size();)
     {
+        const size_t start = i;
         const unsigned char first = text[i++];
         char32_t code = first;
         int continuation = 0;
@@ -871,7 +872,8 @@ std::string Serialization::filename_part(const std::string& text)
                 throw std::runtime_error("Invalid UTF-8 filename");
             code = (code << 6) | (static_cast<unsigned char>(text[i++]) & 0x3f);
         }
-        if ((code >= U'A' && code <= U'Z') || (code >= U'a' && code <= U'z') || (code >= U'0' && code <= U'9')
+        if (!filename && code < 0x80) result += static_cast<char>(code);
+        else if ((code >= U'A' && code <= U'Z') || (code >= U'a' && code <= U'z') || (code >= U'0' && code <= U'9')
             || code == U'-' || code == U'_') result += static_cast<char>(code);
         else if (code >= 0x300 && code <= 0x36f) continue;
         else if (code >= 0x80)
@@ -884,7 +886,8 @@ std::string Serialization::filename_part(const std::string& text)
                 mapped = true;
                 break;
             }
-            if (!mapped)
+            if (!mapped && !filename) result.append(text, start, i - start);
+            else if (!mapped)
             {
                 std::ostringstream escaped;
                 escaped << 'U' << std::hex << static_cast<uint32_t>(code);
@@ -892,7 +895,18 @@ std::string Serialization::filename_part(const std::string& text)
             }
         }
     }
-    return result.empty() ? "Unnamed" : result;
+    return filename && result.empty() ? "Unnamed" : result;
+}
+
+std::string Serialization::filename_part(const std::string& text)
+{
+    return transliterate_latin(text, true);
+}
+
+std::string Serialization::plain_search_text(const std::string& text)
+{
+    try { return transliterate_latin(text, false); }
+    catch (const std::runtime_error&) { return text; }
 }
 
 bool Serialization::save_region_files(const std::string& path, CelestialObject** objects, bool only_edited, bool background, bool show_progress)

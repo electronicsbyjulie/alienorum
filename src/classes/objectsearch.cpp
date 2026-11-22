@@ -2,6 +2,7 @@
 #include "planet.h"
 #include "star.h"
 #include "cons.h"
+#include "serial.h"
 #include "../globals.h"
 #include <algorithm>
 #include <cctype>
@@ -211,9 +212,10 @@ namespace
     }
 }
 
-std::string alienorum::object_search_key(const std::string& text)
+std::string alienorum::object_search_key(const std::string& input)
 {
-    if (text.empty()) return "";
+    if (input.empty()) return "";
+    const auto text = Serialization::plain_search_text(input);
     std::string key;
     key.reserve(text.size());
     for (size_t i = 0; i < text.size(); ++i)

@@ -4242,7 +4242,7 @@ void draw_objects()
     if (show_orbits && show_localsys) for (int index : frame_orbit_candidates())
     {
         i = index;
-        if (cels[i]->deleted) continue;
+        if (cels[i]->deleted || !object_passes_exoplanet_filter(cels[i])) continue;
         if (!cels[i]->orbit) continue;
         if (cels[i]->cenobj != mycenobj && (whereami<0 || cels[i]->orbit->center != cels[whereami])) continue;
         if (cels[i]->orbit->center == mycenobj && cels[i]->mass < lmasslim) continue;
@@ -4324,7 +4324,7 @@ void draw_objects()
     for (pass=0; pass<=1; pass++) for (int index : frame_draw_candidates())
     {
         i = index;
-        if (cels[i]->deleted) continue;
+        if (cels[i]->deleted || !object_passes_exoplanet_filter(cels[i])) continue;
         if (!planetary_system_is_active(cels[i])) continue;
         cels[i]->drawnxmin = cels[i]->drawnxmax = cels[i]->drawnymin = cels[i]->drawnymax = -1e9;
         if (exclude_observing_object(cels[i])) continue;
@@ -4560,7 +4560,7 @@ void draw_system_view()
 
         for (j=num_stars; j<n; j++)
         {
-            if (lsyscache[j]->deleted) continue;
+            if (lsyscache[j]->deleted || !object_passes_exoplanet_filter(lsyscache[j])) continue;
             cel_obj_class cls = lsyscache[j]->typeclass();
             if (cls != class_planet) continue;
 
@@ -4654,7 +4654,7 @@ void draw_system_view()
 
         for (j=num_stars; j<n; j++)             // Stars always get listed first, so we can easily skip ahead to the planets.
         {
-            if (lsyscache[j]->deleted) continue;
+            if (lsyscache[j]->deleted || !object_passes_exoplanet_filter(lsyscache[j])) continue;
             cel_obj_class cls = lsyscache[j]->typeclass();
             if (cls != class_planet) continue;
 
@@ -4739,7 +4739,7 @@ void draw_system_view()
             int num_moons = 0;
             for (j=num_stars; j<n; j++)
             {
-                if (lsyscache[j]->deleted) continue;
+                if (lsyscache[j]->deleted || !object_passes_exoplanet_filter(lsyscache[j])) continue;
                 if (lsyscache[j]->typeclass() == class_moon)
                 {
                     Moon *m = (Moon*)lsyscache[j];
@@ -4753,7 +4753,7 @@ void draw_system_view()
 
             for (j=num_stars; j<n; j++)
             {
-                if (lsyscache[j]->deleted) continue;
+                if (lsyscache[j]->deleted || !object_passes_exoplanet_filter(lsyscache[j])) continue;
                 cel_obj_class cls = lsyscache[j]->typeclass();
                 if (cls != class_moon) continue;
 

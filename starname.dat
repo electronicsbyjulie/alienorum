@@ -798,3 +798,67 @@ WD 2105-82                                       WDJ211316.85-814912.88
 # The orbiting row carries the joint imaging and radial-velocity solution
 # Duplicate star "HD 19467B" "HD 19467 B"
 # Duplicate star "AB Dor C" "AB Dor Ca"
+
+# Parallax records give a catalog identifier and parallax in milliarcseconds.
+# HST binary astrometry, Benedict et al. 2016, Table 7.
+#@parallax HIP 1242 | 166.6
+#@parallax GJ 1005 | 166.6
+#@parallax GJ 1005 A | 166.6
+#@parallax GJ 1005 B | 166.6
+#@parallax GJ 1005 AB | 166.6
+# Gaia DR3 3902874650601954816.
+#@parallax GJ 473 | 223.4775
+#@parallax GJ 473 A | 223.4775
+#@parallax GJ 473 B | 223.4775
+#@parallax Wolf 424 | 223.4775
+#@parallax Wolf 424 A | 223.4775
+#@parallax Wolf 424 B | 223.4775
+
+# Gaia DR3 parallaxes replace discrepant Hipparcos solutions.
+# Gaia source 5161453209685041792.
+#@parallax HIP 15689 | 1.9862
+# Gaia source 5818211845935267200.
+#@parallax HIP 82725 | 0.41445734053
+# Hipparcos I/239 erratum confirms a scattered-light detection.
+#@spurious HIP 114110
+# Gaia source 6228695236338166528. The companion has a separate Gaia solution.
+#@parallax HIP 72509 | 48.2280999752
+# The unresolved Gliese 229 entry is duplicated by the resolved companion system.
+# Duplicate star "Gl 229 B" "GJ 229 B"
+# Unresolved inner components share the distance of the wide companion GJ 643.
+# Gaia DR3 source 4339465360510320128.
+#@parallax GJ 644 A | 153.8754
+#@parallax GJ 644 B | 153.8754
+#@parallax GJ 644 S | 153.8754
+# VB 8 has its own Gaia DR3 solution, source 4339417394313320192.
+#@parallax VB 8 | 153.9659
+#@parallax GJ 644 C | 153.9659
+# GJ 65 system distance from Gaia EDR3, Kervella et al. 2022.
+#@parallax GJ 65 A | 371.92
+#@parallax GJ 65 B | 371.92
+#@parallax BL Ceti | 371.92
+#@parallax UV Ceti | 371.92
+# HST absolute parallaxes, MNRAS 537, 419-435, Table 2 (2025).
+#@parallax WISE J1639-6847 | 212.67
+#@parallax WISE J0350-5658 | 182.86
+#@parallax WISEPA J1541-2250 | 172.28
+# Gaia DR2 resolved B parallax, adopted for the GJ 1245 system in AJ 161, 172 (2021).
+#@parallax GJ 1245 A | 214.52
+#@parallax GJ 1245 B | 214.52
+#@parallax GJ 1245 C | 214.52
+# US Naval Observatory infrared astrometry, Vrba et al. 2026.
+#@parallax 2MASSI J0937+2931 | 167.19
+# Gaia DR3 resolved primary parallax for EI Cancri (Silverstein et al., Table 1).
+#@parallax GJ 1116 A | 194.1443
+#@parallax GJ 1116 B | 194.1443
+# The detached T6 entry is the same physical companion as the orbiting Bb.
+# Duplicate star "GJ   845 B C" "epsilon Ind Bb"
+# Verified SIMBAD identities also apply to exoplanet host names.
+# Duplicate star "YZ Cet" "YZ Ceti"
+# Duplicate star "AX Mic" "GJ 825"
+# Duplicate star "GJ 9066" "GJ 83.1"
+# RECONS catalog cross-identifications for Ross 614 and Stein 2051.
+# Duplicate star "GJ 234 A" "HIP30920"
+# Duplicate star "GJ 234 B" "Ross 614 B"
+# Duplicate star "GJ 169.1 A" "HIP21088"
+# Duplicate star "GJ 169.1 B" "HIP21088 B"

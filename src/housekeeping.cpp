@@ -528,6 +528,23 @@ const std::vector<int>& frame_pick_candidates()
     return view_mode == vm_system || is_surface_map_view(view_mode) ? frame_objects().all : candidates;
 }
 
+bool show_tentative_exoplanets = false;
+
+bool object_passes_exoplanet_filter(const CelestialObject* object)
+{
+    if (show_tentative_exoplanets) return true;
+    for (auto current = object; current;)
+    {
+        const auto cls = current->typeclass();
+        if (cls == class_planet && static_cast<const Planet*>(current)->catalog_candidate) return false;
+        if (cls == class_star || !current->orbit) break;
+        const auto* parent = current->orbit->center;
+        if (parent == current || parent == object) break;
+        current = parent;
+    }
+    return true;
+}
+
 bool planetary_system_is_active(const CelestialObject* cel)
 {
     const cel_obj_class cls = cel->typeclass();

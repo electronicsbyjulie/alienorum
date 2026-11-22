@@ -11257,3 +11257,238 @@ TEST_F(RenderingRegressionTest, CraterWallsFollowOppositeLightsAtTheEquatorAndPo
         }
     }
 }
+
+TEST_F(RenderingRegressionTest, TentativePlanetFilterHidesAnEntireOrbitalBranch)
+{
+    auto* sun = make_star("Filter test host");
+    auto* confirmed = make_planet(sun, "Confirmed planet");
+    auto* tentative = make_planet(sun, "Tentative planet");
+    tentative->catalog_candidate = true;
+    auto* moon = new Moon;
+    moon->orbit = new Orbit;
+    moon->orbit->center = tentative;
+    append_cel(moon);
+    set(show_tentative_exoplanets, true);
+    EXPECT_TRUE(object_passes_exoplanet_filter(tentative));
+    EXPECT_TRUE(object_passes_exoplanet_filter(moon));
+
+    ImGui::GetIO().AddKeyEvent(ImGuiMod_Shift, true);
+    ImGui::GetIO().AddKeyEvent(ImGuiKey_F11, true);
+    ImGui::EndFrame();
+    ImGui::NewFrame();
+    process_keyboard_commands(ImGui::GetIO());
+    EXPECT_TRUE(object_passes_exoplanet_filter(sun));
+    EXPECT_TRUE(object_passes_exoplanet_filter(confirmed));
+    EXPECT_FALSE(object_passes_exoplanet_filter(tentative));
+    EXPECT_FALSE(object_passes_exoplanet_filter(moon));
+    ImGui::GetIO().AddKeyEvent(ImGuiKey_F11, false);
+    ImGui::GetIO().AddKeyEvent(ImGuiMod_Shift, false);
+}
+
+TEST_F(RenderingRegressionTest, BrightObjectPhotometryAuditMeasuresDotsDiscsAndGlare)
+{
+    // Nominal V magnitudes at maximum Venus brightness and full lunar phase.
+    // Solar irradiance scales with the inverse square of heliocentric distance.
+    // For planets seen from the Sun, use geometric albedo at zero phase.
+    struct PlanetAtMeanDistance
+    {
+        const char* name;
+        double au, radius_km, geometric_albedo;
+    };
+    constexpr PlanetAtMeanDistance planets[] =
+    {
+        {"Mercury", .387, 2440, .142}, {"Venus", .723, 6052, .689},
+        {"Earth", 1, 6371, .434}, {"Mars", 1.524, 3390, .170},
+        {"Jupiter", 5.203, 69911, .538}, {"Saturn", 9.537, 58232, .499},
+        {"Uranus", 19.19, 25362, .488}, {"Neptune", 30.07, 24622, .442}
+    };
+    struct Case
+    {
+        std::string name;
+        double magnitude, angle, bv;
+        CelestialObject* object;
+    };
+    auto* sun = make_star("Sun");
+    sun->volumetric_mean_radius = solar_radius;
+    sun->looked_for_maps = true;
+    auto* moon = new Moon;
+    strcpy(moon->name, "Full Moon");
+    moon->type = rocky;
+    moon->volumetric_mean_radius = 1737400;
+    moon->looked_for_maps = true;
+    moon->orbit = new Orbit;
+    moon->orbit->center = sun;
+    moon->amt_lit = 1;
+    append_cel(moon);
+    std::vector<Case> cases{{"Moon from Earth (full)", -12.7, asin(1737400.0 / 384400000), .91, moon}};
+    for (const auto& entry : planets)
+    {
+        auto* planet = make_planet(sun, entry.name, entry.au * AU);
+        planet->volumetric_mean_radius = entry.radius_km * 1000;
+        planet->looked_for_maps = true;
+        planet->amt_lit = 1;
+        const double angular_size = asin(planet->volumetric_mean_radius / (entry.au * AU));
+        const double flux_ratio = entry.geometric_albedo * std::pow(angular_size / entry.au, 2);
+        cases.push_back({std::string(entry.name) + " from Sun",
+            -26.74 - 2.5 * std::log10(flux_ratio), angular_size, .75, planet});
+        cases.push_back({std::string("Sun from ") + entry.name,
+            -26.74 + 5 * std::log10(entry.au), asin(solar_radius / (entry.au * AU)), .65, sun});
+        if (std::string(entry.name) == "Venus")
+            cases.push_back({"Venus from Earth (bright)", -4.7, .000095, .82, planet});
+    }
+    for (const auto& [name, magnitude, bv] : std::vector<std::tuple<const char*, double, double>>
+        {{"Sirius", -1.46, .00}, {"Vega", .03, .00}, {"Betelgeuse", .50, 1.85},
+         {"Deneb", 1.25, .09}, {"Epsilon Eridani", 3.73, .88}, {"Alcyone", 2.87, -.09},
+         {"TX Piscium", 5.10, 2.70}})
+        cases.push_back({std::string(name) + " from Earth", magnitude, 0, bv, make_star(name)});
+
+    const int width = 1280, height = 960;
+    SDL_SetWindowSize(window, width, height);
+    render_width = width;
+    render_height = height;
+    auto& io = ImGui::GetIO();
+    ImGui::EndFrame();
+    io.DisplaySize = ImVec2(width, height);
+    set(dispcx, width / 2.0);
+    set(dispcy, height / 2.0);
+    set(zoom, 8.0);
+    set(show_localsys, true);
+    set(mycenobj, static_cast<CelestialObject*>(sun));
+    set(selected, -1);
+    set(whereami, -1);
+    set(here, CelestialLocation());
+    set(global_brightness, 1.0);
+    set(sky_mag_shift, 0.0);
+    surface_magnitudes.assign(ncelobjs, 0);
+    surface_radii.assign(ncelobjs, 0);
+    system_bloom.assign(ncelobjs, 0);
+    set(vmag_cache, surface_magnitudes.data());
+    set(angular_radius, surface_radii.data());
+    set(bloomrad_cache, system_bloom.data());
+    auto discs = std::make_unique<bool[]>(ncelobjs);
+    set(discinstead, discs.get());
+
+    std::cout << "PHOTOMETRY mode, object, V, projected radius, flare, painted pixels, linear luminance\\n";
+    std::array<double, 256> linear{};
+    for (size_t i = 0; i < linear.size(); ++i)
+    {
+        const double srgb = i / 255.0;
+        linear[i] = srgb <= .04045 ? srgb / 12.92 : std::pow((srgb + .055) / 1.055, 2.4);
+    }
+    for (const bool pretty : {false, true})
+    {
+        fancy_star_col = pretty;
+        for (const auto& entry : cases)
+        {
+            ImGui::NewFrame();
+            auto* object = entry.object;
+            const int index = object->seqno;
+            object->drawnx = dispcx;
+            object->drawny = dispcy;
+            object->BV_color = entry.bv;
+            const double distance = entry.angle > 0 ? object->volumetric_mean_radius / sin(entry.angle) : parsec;
+            object->viewrel = object->tmprel = object->location.local_position = Point(0, 0, distance);
+            if (object != sun) sun->location.local_position = Point(0, 0, -AU);
+            surface_magnitudes[index] = entry.magnitude;
+            surface_radii[index] = entry.angle;
+            draw_single_object(index);
+            const auto pixels = render();
+            size_t painted = 0;
+            double luminance = 0;
+            for (size_t i = 0; i < pixels.size(); i += 4)
+            {
+                painted += pixels[i] || pixels[i + 1] || pixels[i + 2];
+                luminance += .2126 * linear[pixels[i]] + .7152 * linear[pixels[i + 1]] + .0722 * linear[pixels[i + 2]];
+            }
+            std::cout << "PHOTOMETRY " << (pretty ? "pretty" : "realistic") << ", " << entry.name << ", "
+                << entry.magnitude << ", " << entry.angle * zoom * dispcx << ", " << flare << ", "
+                << painted << ", " << luminance << '\n';
+            EXPECT_LE(flare, max_flare) << entry.name;
+            if (entry.magnitude <= 6.5)
+            {
+                EXPECT_GT(luminance, 0) << entry.name;
+            }
+            else
+            {
+                EXPECT_EQ(luminance, 0) << entry.name;
+            }
+        }
+    }
+    ImGui::NewFrame();
+    SDL_SetWindowSize(window, 192, 108);
+}
+
+
+TEST_F(RenderingRegressionTest, KeyboardCommandsUsePrintableKeysWithoutTruncatingUnicode)
+{
+    make_star("Primary");
+    make_star("Secondary");
+    set(global_brightness, 1.0);
+    set(trackidx, -1);
+    set(velocity, Point());
+    auto& io = ImGui::GetIO();
+    io.AddInputCharacter(0x162);
+    ImGui::EndFrame();
+    ImGui::NewFrame();
+    process_keyboard_commands(io);
+    EXPECT_DOUBLE_EQ(global_brightness, 1);
+
+    io.AddInputCharacter('b');
+    ImGui::EndFrame();
+    ImGui::NewFrame();
+    process_keyboard_commands(io);
+    EXPECT_DOUBLE_EQ(global_brightness, 1.1);
+
+    io.AddKeyEvent(ImGuiKey_LeftArrow, true);
+    ImGui::EndFrame();
+    ImGui::NewFrame();
+    process_keyboard_commands(io);
+    EXPECT_LT(azimuth, 0);
+    io.AddKeyEvent(ImGuiKey_LeftArrow, false);
+}
+
+TEST_F(RenderingRegressionTest, OriginalNamedKeysStillControlMovementAndDeletion)
+{
+    auto* host = make_star("Primary");
+    auto* world = make_planet(host, "Test world");
+    auto* object = make_planet(host, "User object");
+    object->user_added = true;
+    world->volumetric_mean_radius = earth_radius;
+    set(trackidx, -1);
+    set(velocity, Point());
+    set(frame_dur, 0.1);
+    set(viewer_lat, 0.0);
+    set(viewer_lon, 0.0);
+    set(save_viewer_latlon, false);
+    set(viewchanged, false);
+    auto& io = ImGui::GetIO();
+    const auto press = [&](ImGuiKey key)
+    {
+        io.AddKeyEvent(key, true);
+        ImGui::EndFrame();
+        ImGui::NewFrame();
+        process_keyboard_commands(io);
+        io.AddKeyEvent(key, false);
+        ImGui::EndFrame();
+        ImGui::NewFrame();
+    };
+
+    press(ImGuiKey_LeftArrow);
+    EXPECT_LT(azimuth, 0);
+    press(ImGuiKey_RightArrow);
+    EXPECT_DOUBLE_EQ(azimuth, 0);
+    press(ImGuiKey_UpArrow);
+    EXPECT_GT(altitude, 0);
+    press(ImGuiKey_DownArrow);
+    EXPECT_DOUBLE_EQ(altitude, 0);
+
+    set(view_mode, vm_horizon);
+    set(whereami, world->seqno);
+    press(ImGuiKey_Home);
+    EXPECT_LT(viewer_lat, 0);
+    press(ImGuiKey_End);
+    EXPECT_DOUBLE_EQ(viewer_lat, 0);
+    set(selected, object->seqno);
+    press(ImGuiKey_Delete);
+    EXPECT_TRUE(object->deleted);
+}

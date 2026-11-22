@@ -104,6 +104,14 @@ void center_tracked()
     viewchanged = true;
 }
 
+static void toggle_tentative_exoplanets()
+{
+    show_tentative_exoplanets = !show_tentative_exoplanets;
+    if (selected >= 0 && !object_passes_exoplanet_filter(cels[selected])) selected = -1;
+    if (trackidx >= 0 && !object_passes_exoplanet_filter(cels[trackidx])) trackidx = -1;
+    viewchanged = true;
+}
+
 void identify_object_under_cursor(ImGuiIO& io)
 {
     if (view_mode != vm_system && trackidx >= 0 && trackidx == whereami) trackidx = -1;
@@ -133,7 +141,7 @@ void identify_object_under_cursor(ImGuiIO& io)
     {
         i = index;
         if ((i == whereami) && (view_mode != vm_system)) continue;
-        if (cels[i]->deleted) continue;
+        if (cels[i]->deleted || !object_passes_exoplanet_filter(cels[i])) continue;
         if (lsysonly && (cels[i] != mycenobj && cels[i]->cenobj != mycenobj)) continue;
         const auto cls = cels[i]->typeclass();
         const int priority = cls == class_moon ? 3 : cls == class_planet ? 2 : cls == class_star ? 1 : 0;
@@ -526,6 +534,11 @@ void show_menu()
             if (ImGui::MenuItem("Pretty Star Colors", "Ctrl+J", fancy_star_col)) { process_key_cmd_ctrl_char('j'); menu_clicked = true; }
             if (ImGui::MenuItem("Red Light Mode", "Shift+R", redlight_mode)) { process_key_cmd_char('R'); menu_clicked = true; }
             if (ImGui::MenuItem("White Background Mode", "Shift+W", whtbkgd)) { process_key_cmd_char('W'); menu_clicked = true; }
+            if (ImGui::MenuItem("Unconfirmed and Controversial Planets", "Shift+F11", show_tentative_exoplanets))
+            {
+                toggle_tentative_exoplanets();
+                menu_clicked = true;
+            }
             if (ImGui::MenuItem("Fullscreen", "F11", fullscreen)) { process_key_F11(); menu_clicked = true; }
             ImGui::Separator();
             if (ImGui::MenuItem(vmtext[0], "&", view_mode == vm_spaceship)) { process_key_cmd_char('&'); menu_clicked = true; }
@@ -1311,6 +1324,7 @@ void process_keyboard_commands(ImGuiIO& io)
     if (ImGui::IsKeyPressed(ImGuiKey_F8)) process_key_F8();
     if (ImGui::IsKeyPressed(ImGuiKey_F9)) process_key_F9();
     if (ImGui::IsKeyPressed(ImGuiKey_F10)) process_key_F10();
+    if (io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_F11, false)) toggle_tentative_exoplanets();
     if (ImGui::IsKeyPressed(ImGuiKey_F12, false)) process_key_F12();
     if (editing || object_search_list_focused()) return;
 
@@ -1320,11 +1334,12 @@ void process_keyboard_commands(ImGuiIO& io)
         timeout_ms = 5;
         ImWchar c = io.InputQueueCharacters[i];
         if (keyprobe) std::cout << "Key press: " << c << std::endl;         // Output the ASCII value.
-        process_key_cmd_char(c);
+        if (c >= 32 && c <= 126) process_key_cmd_char(static_cast<char>(c));
     }
 
     steering_rate = _pi/16/zoom;
     walk_speed = 4 * frame_dur;                              // a fast run
+    // Navigation and editing keys are accepted separately from printable shortcuts.
     if (ImGui::IsKeyDown(ImGuiKey_LeftArrow)) process_key_arrowleft();
     if (ImGui::IsKeyDown(ImGuiKey_RightArrow)) process_key_arrowright();
     if (ImGui::IsKeyDown(ImGuiKey_UpArrow)) process_key_arrowup();

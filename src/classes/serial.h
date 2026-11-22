@@ -56,6 +56,7 @@ namespace alienorum
             static bool load_document(json document, CelestialObject** objects, unsigned int max,
                 bool as_user_added = true, bool use_published_orbits = false);
             static std::string filename_part(const std::string& text);
+            static std::string plain_search_text(const std::string& text);
             static bool save_all(std::fstream &fs, CelestialObject **cels, bool only_edited = false);
             static bool load_all(std::fstream &fs, CelestialObject **cels, unsigned int max, bool as_user_added = true);
     };

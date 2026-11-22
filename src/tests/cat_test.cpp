@@ -6765,3 +6765,49 @@ TEST_F(CatalogParsingTest, BrownDwarfPhotometryPreservesTheSourceBand)
     EXPECT_EQ(star->stellar_parameters["magnitude_band"], "Johnson V");
     EXPECT_FALSE(star->apparent_magnitude_estimated);
 }
+
+
+TEST(ExoplanetDispositionRegression, ProviderStatusesDistinguishTentativeAndRefuted)
+{
+    for (const char* status : {"Candidate", "Unconfirmed", "Controversial"})
+    {
+        EXPECT_TRUE(tentative_exoplanet_status({{"planet_status", status}}));
+        EXPECT_FALSE(rejected_exoplanet_status({{"planet_status", status}}));
+    }
+    EXPECT_TRUE(tentative_exoplanet_status({{"pl_controv_flag", 1}, {"planet_status", "Confirmed"}}));
+    EXPECT_TRUE(tentative_exoplanet_status({{"tfopwg_disp", "PC"}}));
+    EXPECT_FALSE(tentative_exoplanet_status({{"planet_status", "Confirmed"}}));
+    EXPECT_TRUE(rejected_exoplanet_status({{"planet_status", "Refuted"}}));
+
+    const auto rows = parse_eu_planet_status("name,planet_status,star_name,orbital_period\n"
+        "Example b,Controversial,Example,31\nExample c,Unconfirmed,Example,70\n");
+    ASSERT_EQ(rows.size(), 2u);
+    EXPECT_EQ(rows[0]["pl_orbper"], 31);
+    EXPECT_EQ(rows[1]["pl_orbper"], 70);
+}
+
+TEST_F(StellarRotationTest, CatalogEnvironmentAppliesToAnArbitraryPlanetDesignation)
+{
+    std::ofstream("exoname.dat") <<
+        "#@environment Test System b | "
+        R"({"surface_type":"rocky","surface_pressure_pa":0,"pressure_model":{"status":"estimated","basis":"test catalog"}})"
+        "\n";
+    auto* host = make_star("Test System");
+    host->distance = 10 * parsec;
+    ExoRow row;
+    row.hostname = "Test System";
+    row.pl_name = "Test System b";
+    row.pl_orbper = 13;
+    row.pl_bmasse = 1;
+    row.pl_rade = 1;
+    TestCatalogReader reader;
+    std::map<int, std::vector<int>> planets;
+    unsigned int count = 0;
+    ASSERT_TRUE(reader.add_exoplanet_from_row(row, host, planets, count));
+    auto* planet = static_cast<Planet*>(cels[planets.at(host->seqno).front()]);
+    ASSERT_NE(planet->atm, nullptr);
+    EXPECT_EQ(planet->type, rocky);
+    EXPECT_DOUBLE_EQ(planet->get_surface_pressure(), 0);
+    EXPECT_FALSE(planet->atm->pressure_supplied);
+    EXPECT_EQ(planet->atm->pressure_model.value("basis", ""), "test catalog");
+}

@@ -1,3 +1,4 @@
+#include "../classes/objectsearch.h"
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -2901,4 +2902,14 @@ TEST_F(FindObjectTest, StrictIndexedMissesDoNotScaleWithTheWholeCatalog)
     std::cout << "Strict alias lookup, 3000 stars / 100 misses: scan " << reference
         << " ms; indexed " << indexed << " ms" << std::endl;
     delete_the_universe();
+}
+
+
+TEST(ObjectSearchKeyboardRegression, AccentFoldingPreservesKeyboardPunctuationAndBayerLetters)
+{
+    EXPECT_EQ(object_search_key(u8"Ægir"), object_search_key("AEgir"));
+    EXPECT_EQ(object_search_key(u8"Ditsö̀"), object_search_key("Ditso"));
+    EXPECT_EQ(object_search_key(u8"Naqaỹa"), object_search_key("Naqaya"));
+    EXPECT_EQ(object_search_key(u8"é+ö-1"), "e+o-1");
+    EXPECT_NE(object_search_key(u8"ν Ori"), object_search_key("NU Ori"));
 }

@@ -78,6 +78,8 @@ After downloading finishes, the application will load a selection of stars from 
 
 To access the menu system, press F1. Every menu command has a keyboard shortcut. For certain functions such as spaceflight, you will definitely want to memorize the keyboard shortcuts since accessing everything through a menu is by nature not fast enough to effectively control the app while zooming past planets.
 
+Shortcuts use printable US-keyboard characters, function keys, or the named keys Left Arrow, Right Arrow, Up Arrow, Down Arrow, Home, End, and Delete. The menu shows which shortcuts use Shift, Ctrl, or Alt.
+
 
 ## Spaceflight
 

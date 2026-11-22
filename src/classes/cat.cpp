@@ -6725,10 +6725,49 @@ static void reconcile_catalog_star_copies()
             if (match != matches.end()) match->second.push_back(star);
         }
     }
+    std::map<Star*, Star*> candidate_group_members;
+    for (const auto& [alias, canonical] : identities)
+    {
+        const auto& copies = matches.at(alias);
+        const auto& originals = matches.at(canonical);
+        if (copies.size() != 1 || originals.size() != 1) continue;
+        auto* copy = copies.front();
+        auto* original = originals.front();
+        if (!copy->multisys || !original->multisys || copy->multisys == original->multisys ||
+            copy->get_component() != original->get_component() || copy->HD || copy->HIP || copy->HR ||
+            copy->gaia_source_id || copy->deleted || original->deleted ||
+            copy->user_added || copy->user_edited || original->user_added || original->user_edited) continue;
+        candidate_group_members.emplace(copy, original);
+    }
+
+    std::set<Star*> duplicate_group_members;
+    for (const auto& [copy, original] : candidate_group_members)
+    {
+        bool complete = true;
+        for (char slot = 'A'; slot <= 'Z'; ++slot)
+        {
+            auto* member = copy->multisys->get_member(slot);
+            if (!member) continue;
+            const auto counterpart = candidate_group_members.find(member);
+            if (counterpart == candidate_group_members.end() ||
+                counterpart->second != original->multisys->get_member(slot))
+            {
+                complete = false;
+                break;
+            }
+        }
+        if (complete) duplicate_group_members.insert(copy);
+    }
     for (const auto& identity : identities)
     {
         const auto& copies = matches.at(identity.first);
         const auto& originals = matches.at(identity.second);
+        if (copies.empty() && originals.size() == 1 && !originals.front()->deleted)
+        {
+            // Register verified aliases before the exoplanet pass can create another host.
+            originals.front()->add_catalog_alias(identity.first);
+            continue;
+        }
         if (copies.size() != 1 || originals.size() > 1) continue;
         auto* copy = copies.front();
         if (copy->deleted || copy->user_added || copy->user_edited) continue;
@@ -6751,7 +6790,18 @@ static void reconcile_catalog_star_copies()
         auto* original = originals.front();
         if (original->deleted || original->user_added || original->user_edited ||
             copy->HD || copy->HIP || copy->HR || copy->gaia_source_id) continue;
-        if (copy->orbit || copy->multisys || referenced.count(copy))
+        if (duplicate_group_members.count(copy) && candidate_group_members.at(copy) == original)
+        {
+            // Keep the canonical group's authorship and orbital hierarchy.
+            copy->multisys->remove_member(copy);
+            for (int index = 0; cels[index]; ++index)
+            {
+                auto* object = cels[index];
+                if (object->cenobj == copy) object->cenobj = original;
+                if (object->orbit && object->orbit->center == copy) object->orbit->center = original;
+            }
+        }
+        else if (copy->orbit || copy->multisys || referenced.count(copy))
         {
             // A verified resolved component can replace the old combined-light entry.
             const char slot = copy->get_component();
@@ -7203,6 +7253,62 @@ int alienorum::CatalogReader::apply_gaia_astrometry(CelestialObject** cels)
 std::string alienorum::CatalogReader::get_condensed_starcat_name()
 {
     return "catalogs" _FILESLASH "soles_alienorum.dat";
+}
+
+struct StellarAstrometryOverrides
+{
+    std::map<std::string, double> parallaxes;
+    std::set<std::string> spurious;
+};
+
+static StellarAstrometryOverrides read_stellar_astrometry_overrides()
+{
+    StellarAstrometryOverrides values;
+    std::ifstream input("starname.dat");
+    constexpr std::string_view prefix = "#@parallax ";
+    constexpr std::string_view spurious_prefix = "#@spurious ";
+    for (std::string line; std::getline(input, line);)
+    {
+        if (line.compare(0, spurious_prefix.size(), spurious_prefix) == 0)
+        {
+            values.spurious.insert(stellar_alias_key(line.substr(spurious_prefix.size())));
+            continue;
+        }
+        if (line.compare(0, prefix.size(), prefix) != 0) continue;
+        const auto separator = line.find('|', prefix.size());
+        if (separator == std::string::npos) continue;
+        double milliarcseconds = 0;
+        if (!parse_numeric_value(trim(line.substr(separator + 1).c_str()), milliarcseconds) ||
+            !std::isfinite(milliarcseconds) || milliarcseconds <= 0) continue;
+        const auto identity = stellar_alias_key(line.substr(prefix.size(), separator - prefix.size()));
+        if (!identity.empty()) values.parallaxes.emplace(identity, milliarcseconds);
+    }
+    return values;
+}
+
+static void apply_stellar_astrometry_override(Star& object, const StellarAstrometryOverrides& overrides)
+{
+    const auto hip = object.HIP > 0 ? "HIP" + std::to_string(object.HIP) : "";
+    const auto designation = stellar_alias_key(object.name);
+    if (overrides.spurious.count(hip) || overrides.spurious.count(designation))
+    {
+        object.deleted = true;
+        return;
+    }
+    const auto& values = overrides.parallaxes;
+    if (values.empty()) return;
+    auto found = values.find(hip);
+    if (found == values.end()) found = values.find(stellar_alias_key(object.Gliese));
+    if (found == values.end()) found = values.find(designation);
+    if (found == values.end()) return;
+    const double parallax_mas = found->second;
+    const double distance = 1000 * parsec / parallax_mas;
+    if (object.distance > 0 && std::isfinite(object.distance) &&
+        std::isfinite(object.absolute_magnitude) && std::abs(object.absolute_magnitude) < 99)
+        object.absolute_magnitude -= 5 * std::log10(distance / object.distance);
+    object.parallax = parallax_mas * fiftyseventh / 3600000;
+    object.distance = distance;
+    object.distance_known = true;
 }
 
 int alienorum::CatalogReader::read_condensed_star_cat()
@@ -7992,6 +8098,8 @@ int alienorum::CatalogReader::read_condensed_star_cat()
         if (!primary->multisys->get_member(slot)) primary->multisys->add_member(star, slot);
     }
 
+    const auto astrometry_overrides = read_stellar_astrometry_overrides();
+    for (auto* star : catalog_stars) apply_stellar_astrometry_override(*star, astrometry_overrides);
     reconcile_catalog_star_copies();
     if (!current_id_sequences) repair_legacy_alienorum_id_sequences();
     std::unordered_set<std::string> unauthored_orbit_magnitudes;
@@ -8218,6 +8326,12 @@ namespace
     }
 }
 
+static std::string normalized_exoplanet_designation(std::string value)
+{
+    std::replace(value.begin(), value.end(), '\t', ' ');
+    return value;
+}
+
 ExoRow CatalogReader::exorow_from_json(const json& source, bool* ok)
 {
     json row = source;
@@ -8244,8 +8358,8 @@ ExoRow CatalogReader::exorow_from_json(const json& source, bool* ok)
         return r;
     }
 
-    r.pl_name = it_pl->get<std::string>();
-    r.hostname = it_host->get<std::string>();
+    r.pl_name = normalized_exoplanet_designation(it_pl->get<std::string>());
+    r.hostname = normalized_exoplanet_designation(it_host->get<std::string>());
 
     auto gets = [&row](const char* key) -> std::string
     {
@@ -8254,7 +8368,7 @@ ExoRow CatalogReader::exorow_from_json(const json& source, bool* ok)
     };
 
     r.companion_aliases = gets("alt_target_name");
-    r.catalog_candidate = exoplanet_status_key(gets("planet_status")) == "candidate";
+    r.catalog_candidate = tentative_exoplanet_status(row);
     r.hd_name  = gets("hd_name");
     r.hip_name = gets("hip_name");
 
@@ -8427,8 +8541,8 @@ bool CatalogReader::exorow_read_line(FILE* fp, ExoRow& row)
     if (eol) *eol = 0;
 
     char* cursor = buffer;
-    row.pl_name     = read_exo_string(cursor);
-    row.hostname    = read_exo_string(cursor);
+    row.pl_name     = normalized_exoplanet_designation(read_exo_string(cursor));
+    row.hostname    = normalized_exoplanet_designation(read_exo_string(cursor));
     row.hd_name     = read_exo_string(cursor);
     row.hip_name    = read_exo_string(cursor);
     row.st_spectype = read_exo_string(cursor);
@@ -9089,6 +9203,49 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& source, bool loaded
     return host_star;
 }
 
+void CatalogReader::apply_exoplanet_environment(Planet& planet, const std::string& designation)
+{
+    if (!exoplanet_environments_loaded)
+    {
+        exoplanet_environments_loaded = true;
+        std::ifstream input("exoname.dat");
+        constexpr std::string_view prefix = "#@environment ";
+        for (std::string line; std::getline(input, line);)
+        {
+            if (line.compare(0, prefix.size(), prefix) != 0) continue;
+            const auto separator = line.find('|', prefix.size());
+            if (separator == std::string::npos) continue;
+            auto record = json::parse(line.substr(separator + 1), nullptr, false);
+            if (!record.is_object()) continue;
+            const auto key = exoplanet_status_key(trim(line.substr(prefix.size(), separator - prefix.size()).c_str()));
+            if (!key.empty()) exoplanet_environments.emplace(key, std::move(record));
+        }
+    }
+    const auto found = exoplanet_environments.find(exoplanet_status_key(designation));
+    if (found == exoplanet_environments.end()) return;
+    const auto& record = found->second;
+    for (const char* key : {"bulk_composition", "atmosphere_observations"})
+    {
+        const auto evidence = record.find(key);
+        if (evidence != record.end() && evidence->is_object()) planet.classification_evidence[key] = *evidence;
+    }
+    const auto pressure = record.find("surface_pressure_pa");
+    const auto model = record.find("pressure_model");
+    if (pressure == record.end() || !pressure->is_number() || model == record.end() || !model->is_object()) return;
+    const double pascals = pressure->get<double>();
+    if (!std::isfinite(pascals) || pascals < 0) return;
+    if (record.value("surface_type", json()) == "rocky")
+    {
+        planet.type = rocky;
+        planet.lock_type = true;
+    }
+    auto* atmosphere = planet.ensure_atmosphere();
+    atmosphere->surface_pressure = pascals;
+    atmosphere->ensure_composition();
+    atmosphere->pressure_model = *model;
+    atmosphere->pressure_model["lock_pressure"] = true;
+}
+
 bool CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, std::map<int, std::vector<int>>& planet_celids, unsigned int& result, ExactStarSearchIndex* lookup)
 {
     alienorum::CatalogLock catalog_lock(catalog_mutex);
@@ -9349,6 +9506,7 @@ bool CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, s
     new_planet->radius_estimate_supplied = pl_radknown && new_planet->radius_evidence == PlanetMeasurement::estimated;
     new_planet->classify(new_planet->is_in_con_HZ(), (pl_massknown || pl_msini_known) && pl_radknown);
 
+    apply_exoplanet_environment(*new_planet, row.pl_name);
     new_planet->estimate_albedo_and_absmagn();
     new_planet->set_color_from_type(new_planet->is_in_con_HZ());
     new_planet->estimate_rotation();
@@ -9424,6 +9582,10 @@ void CatalogReader::merge_exoplanet_solution(json& destination, const json& sour
             destination[field.key()] = field.value();
     }
     const auto disposition = source.find("planet_status");
+    if (source.value("pl_controv_flag", json()) == 1 ||
+        (disposition != source.end() && disposition->is_string() &&
+            exoplanet_status_key(disposition->get_ref<const std::string&>()) == "controversial"))
+        destination["pl_controv_flag"] = 1;
     if (disposition != source.end() && disposition->is_string()
         && exoplanet_status_key(disposition->get_ref<const std::string&>()) == "confirmed")
         destination["planet_status"] = *disposition;
@@ -10101,7 +10263,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
     for (const auto& source : std::vector<std::pair<std::string, std::string>>
         {
             {"catalogs/exoplanet_rejections_nasa.json", "https://exoplanetarchive.ipac.caltech.edu/docs/removed_targets.html"},
-            {"catalogs/exoplanet_rejections_eu.json", "https://exoplanet.eu/catalog/csv/?query_f=planet_status%3D%22retracted%22+or+planet_status%3D%22false+positive%22+or+planet_status%3D%22candidate%22"}
+            {"catalogs/exoplanet_rejections_eu.json", "https://exoplanet.eu/catalog/csv/?query_f=planet_status%3D%22retracted%22+or+planet_status%3D%22false+positive%22+or+planet_status%3D%22candidate%22+or+planet_status%3D%22unconfirmed%22+or+planet_status%3D%22controversial%22"}
         })
     {
         std::ifstream input(source.first);
@@ -10141,7 +10303,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
             for (auto& row : statuses)
             {
                 bool valid = false;
-                if (exoplanet_status_key(row.value("planet_status", "")) == "candidate")
+                if (tentative_exoplanet_status(row))
                     exorow_from_json(row, &valid);
                 if (valid) eu_candidates.push_back(std::move(row));
             }
@@ -10321,7 +10483,7 @@ unsigned int CatalogReader::load_exoplanets_from_tap(bool stars_only)
 
         // 1. Fetch NASA Data
         std::string nasa_url = "https://exoplanetarchive.ipac.caltech.edu/TAP/sync?maxrec=20000&query="
-                               "select+pl_name,hostname,hd_name,hip_name,tran_flag,discoverymethod,pl_orbper,pl_orbsmax,pl_orbeccen,pl_orbincl,pl_orbinclerr1,pl_orbinclerr2,pl_orblper,pl_orbtper,pl_tranmid,"
+                               "select+pl_name,hostname,hd_name,hip_name,pl_controv_flag,tran_flag,discoverymethod,pl_orbper,pl_orbsmax,pl_orbeccen,pl_orbincl,pl_orbinclerr1,pl_orbinclerr2,pl_orblper,pl_orbtper,pl_tranmid,"
                                "pl_bmasse,pl_bmasseerr1,pl_bmasseerr2,pl_bmasselim,pl_bmassj,pl_bmassjerr1,pl_bmassjerr2,pl_bmassprov,"
                                "pl_msinij,pl_msinie,pl_rade,pl_radeerr1,pl_radeerr2,pl_radelim,pl_radj,pl_radjerr1,pl_radjerr2,pl_trueobliq,"
                                "st_mass,st_rad,sy_dist,ra,dec,sy_vmag,st_spectype,st_teff,st_lum,st_rotp,st_age,st_ageerr1,st_ageerr2,st_agelim,st_met,st_meterr1,st_meterr2,st_metlim,st_metratio+"

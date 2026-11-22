@@ -3080,7 +3080,7 @@ void draw_system_explorer(ImGuiIO& io)
         for (i=0; i<nlsc; i++)
         {
             cel = lsyscache[i];
-            if (cel->deleted) continue;
+            if (cel->deleted || !object_passes_exoplanet_filter(cel)) continue;
         #endif
             s = (cel->typeclass() == class_star) ? (Star*)cel : nullptr;
             if (view_mode == vm_system && cel->seqno == selected) item_selected_idx = j;

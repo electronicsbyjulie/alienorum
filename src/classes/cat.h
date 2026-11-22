@@ -140,6 +140,9 @@ namespace alienorum
         bool add_exoplanet_from_row(const ExoRow& row, Star* host_star, std::map<int, std::vector<int>>& planet_celids, unsigned int& result, ExactStarSearchIndex* lookup = nullptr);
 
     private:
+        void apply_exoplanet_environment(Planet& planet, const std::string& designation);
+        bool exoplanet_environments_loaded = false;
+        std::map<std::string, json> exoplanet_environments;
         bool abundance_catalogs_loaded = false;
         std::vector<json> abundance_catalogs;
         std::map<std::string, std::vector<std::pair<size_t, size_t>>> abundance_lookup;

@@ -448,7 +448,10 @@ void alienorum::Planet::setup_atm_ring_props()
 
 void alienorum::Planet::apply_cosmic_shoreline()
 {
-    if (atm && atm->pressure_supplied) return;
+    if (atm && (atm->pressure_supplied ||
+        (atm->pressure_model.is_object() &&
+            (atm->pressure_model.value("lock_pressure", json()) == true ||
+             atm->pressure_model.value("basis", "") == "airless_surface_observation_scenario")))) return;
     CelestialObject *plc = get_light_center();
     if (plc
         && (user_added || plc->seqno)                                          // Real solar system objects are already known to have/not have an atmosphere.
@@ -976,7 +979,13 @@ void Planet::classify(bool HZ, bool mnrk, bool ck)
     const double minimum_density = std::isfinite(minimum_mass)
         ? minimum_mass / sphere_volume(volumetric_mean_radius) * 1e-6 : NAN;
     const double density_constraint = measured_radius && valid_mass ? density : NAN;
-    classification_evidence = json::object();
+    json published_evidence = json::object();
+    for (const char* key : {"bulk_composition", "atmosphere_observations"})
+    {
+        if (classification_evidence.contains(key))
+            published_evidence[key] = std::move(classification_evidence[key]);
+    }
+    classification_evidence = std::move(published_evidence);
     classification_evidence["mass_evidence"] = static_cast<int>(mass_evidence);
     classification_evidence["radius_evidence"] = static_cast<int>(radius_evidence);
     classification_evidence["density_g_cm3"] = std::isfinite(density) ? json(density) : json(nullptr);

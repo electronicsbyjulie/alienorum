@@ -18,6 +18,7 @@
 #include "../classes/serial.h"
 #include "../loaders.h"
 #include "../housekeeping.h"
+#include "../dialogs.h"
 
 using namespace alienorum;
 
@@ -641,4 +642,190 @@ TEST_F(KnownCatalogRegression, PurpleIdentifiersPreserveStellarRanksAndSourcePho
     EXPECT_TRUE(brown->alienorumid.empty());
     EXPECT_TRUE(companion->alienorumid.empty());
     for (const auto& [star, previous] : published) EXPECT_EQ(star->alienorumid, previous) << star->name;
+}
+
+TEST_F(KnownCatalogRegression, DefaultNeighborhoodAgreesWithPublishedNearestStars)
+{
+    struct ReferenceStar
+    {
+        const char* name;
+        double light_years, ra_degrees, dec_degrees;
+    };
+    // Distances and J2000 coordinates from the nearest-star table, through 20 light-years.
+    // https://en.wikipedia.org/w/index.php?title=List_of_nearest_stars&oldid=1386991042
+    constexpr ReferenceStar reference[] =
+    {
+#include "data/nearest_stars_reference.inc"
+    };
+
+    const CelestialLocation saved_viewer = here;
+    const int saved_observer = whereami;
+    auto* saved_center = mycenobj;
+    here = CelestialLocation();
+    here.local_position = Point(AU, 0, 0);
+    whereami = -1;
+    mycenobj = nullptr;
+    last_neighb_cen = nullptr;
+    for (int i = 0; i < ncelobjs; ++i)
+    {
+        if (cels[i]->typeclass() != class_star || cels[i]->deleted) continue;
+        auto* star = static_cast<Star*>(cels[i]);
+        if (i == 0 && std::strcmp(star->name, "Sun") == 0) star->tmprel = Point() - here.local_position;
+        else if (star->distance > 0 && star->distance <= 26 * light_year)
+        {
+            star->update_location(J2000_TIME_T);
+            auto relative = star->location - here;
+            star->tmprel = Point(relative);
+        }
+        else star->tmprel = Point(INFINITY, 0, 0);
+    }
+
+    auto* context = ImGui::CreateContext();
+    auto& io = ImGui::GetIO();
+    io.IniFilename = nullptr;
+    io.DisplaySize = ImVec2(1024, 768);
+    io.Fonts->Build();
+    ImGui::NewFrame();
+    ImGui::SetNextWindowPos(ImVec2(0, 0));
+    ImGui::SetNextWindowSize(ImVec2(950, 650));
+    draw_stellar_neighborhood(io);
+    ImGui::EndFrame();
+    ImGui::DestroyContext(context);
+    here = saved_viewer;
+    whereami = saved_observer;
+    mycenobj = saved_center;
+
+    extern std::vector<int> neighb_celids;
+    extern std::vector<double> neighb_celr;
+    ASSERT_EQ(neighb_celids.size(), neighb_celr.size());
+    const double radians = std::acos(-1.0) / 180;
+    std::set<size_t> matched_rows;
+    std::vector<std::pair<size_t, const ReferenceStar*>> matches;
+    for (const auto& entry : reference)
+    {
+        const auto direction = Point::from_ra_dec(entry.ra_degrees * radians, entry.dec_degrees * radians, 1);
+        size_t match = neighb_celids.size();
+        double nearest = 0.35 * radians;
+        for (size_t row = 0; row < neighb_celids.size(); ++row)
+        {
+            if (matched_rows.count(row)) continue;
+            const auto* object = cels[neighb_celids[row]];
+            const auto catalog_direction = Point::from_ra_dec(object->right_ascension, object->declination, 1);
+            const double distance = neighb_celr[row];
+            if (!std::isfinite(distance) || distance <= 0) continue;
+            const double offset = std::min((direction - catalog_direction).magnitude(),
+                (direction - object->tmprel * (1 / distance)).magnitude());
+            if (offset < nearest)
+            {
+                nearest = offset;
+                match = row;
+            }
+        }
+        EXPECT_LT(match, neighb_celids.size()) << "Missing " << entry.name;
+        if (match == neighb_celids.size()) continue;
+        matched_rows.insert(match);
+        matches.emplace_back(match, &entry);
+        EXPECT_NEAR(neighb_celr[match] / light_year, entry.light_years, 0.12)
+            << entry.name << " matched to " << cels[neighb_celids[match]]->name;
+    }
+    std::sort(matches.begin(), matches.end());
+    const ReferenceStar* farthest = nullptr;
+    for (const auto& [row, entry] : matches)
+    {
+        if (farthest)
+        {
+            EXPECT_GE(entry->light_years + 0.12, farthest->light_years)
+                << entry->name << " follows " << farthest->name;
+        }
+        if (!farthest || entry->light_years > farthest->light_years) farthest = entry;
+    }
+    for (size_t row = 0; row < neighb_celids.size(); ++row)
+    {
+        if (neighb_celr[row] < 20 * light_year && std::strcmp(cels[neighb_celids[row]]->name, "Sun") != 0)
+        {
+            EXPECT_TRUE(matched_rows.count(row)) << "Extra " << cels[neighb_celids[row]]->name
+                << " at " << neighb_celr[row] / light_year << " light-years";
+        }
+    }
+}
+
+TEST_F(KnownCatalogRegression, CatalogSearchNamesUseKeyboardCharactersOrDocumentedExceptions)
+{
+    std::set<std::string> source_names;
+    for (const auto& [path, first, width] : std::vector<std::tuple<const char*, size_t, size_t>>{
+        {"exoname.dat", 40, 23}, {"starname.dat", 0, 25}})
+    {
+        std::ifstream names(path);
+        ASSERT_TRUE(names) << path;
+        for (std::string line; std::getline(names, line);)
+        {
+            if (line.empty() || line.front() == '#' || line.size() <= first) continue;
+            source_names.insert(trim(line.substr(first, width).c_str()));
+        }
+    }
+    const std::regex greek_letter(u8"^(α|β|γ|δ|ε|ζ|η|θ|ι|κ|λ|μ|ν|ξ|ο|π|ρ|σ|τ|υ|φ|χ|ψ|ω)[0-9]?[ ]*[A-Za-z][ -~]*$");
+    const auto check = [&](const std::string& value)
+    {
+        if (std::all_of(value.begin(), value.end(), [](unsigned char ch) { return ch >= 32 && ch <= 126; })) return;
+        const size_t last_space = value.rfind(' ');
+        const bool component = last_space != std::string::npos && last_space + 2 == value.size()
+            && value.back() >= 'A' && value.back() <= 'Z';
+        if (source_names.count(value) || (component && source_names.count(value.substr(0, last_space))))
+        {
+            const auto key = object_search_key(value);
+            EXPECT_FALSE(key.empty()) << value;
+            EXPECT_TRUE(std::all_of(key.begin(), key.end(), [](unsigned char ch) { return ch >= 32 && ch <= 126; })) << value;
+        }
+        else
+        {
+            EXPECT_TRUE(std::regex_match(value, greek_letter)) << value;
+        }
+    };
+    for (int i = 0; i < ncelobjs; ++i)
+    {
+        if (cels[i]->deleted) continue;
+        const auto& object = *cels[i];
+        check(object.name);
+        check(object.origname);
+        if (object.typeclass() == class_star)
+        {
+            const auto& star = static_cast<const Star&>(object);
+            for (const auto& value : {star.local_name, std::string(star.Bayer), std::string(star.Flamsteed),
+                std::string(star.Gliese), star.alienorumid, star.WD, star.gaia_wd_name, star.CCDM}) check(value);
+            for (const auto& value : star.catalog_aliases) check(value);
+        }
+        else if (object.typeclass() == class_planet || object.typeclass() == class_moon)
+        {
+            const auto& planet = static_cast<const Planet&>(object);
+            check(planet.catalog_designation);
+            check(planet.display_designation);
+        }
+    }
+}
+
+TEST_F(KnownCatalogRegression, TrappistInnerWorldsUseTheObservedAirlessScenario)
+{
+    for (char letter = 'b'; letter <= 'h'; ++letter)
+    {
+        const auto name = std::string("TRAPPIST-1 ") + letter;
+        const int index = find_object(name.c_str(), false, 9e29, 0);
+        ASSERT_GE(index, 0) << name;
+        ASSERT_EQ(cels[index]->typeclass(), class_planet) << name;
+        auto* planet = static_cast<Planet*>(cels[index]);
+        EXPECT_TRUE(planet->classification_evidence.contains("bulk_composition")) << name;
+        if (letter <= 'd')
+        {
+            ASSERT_NE(planet->atm, nullptr) << name;
+            EXPECT_EQ(planet->type, rocky) << name;
+            EXPECT_EQ(planet->get_surface_pressure(), 0) << name;
+            EXPECT_FALSE(planet->atm->pressure_supplied) << name;
+            EXPECT_EQ(planet->atm->pressure_model.value("basis", ""), "airless_surface_observation_scenario") << name;
+        }
+        else
+        {
+            ASSERT_TRUE(planet->classification_evidence.contains("atmosphere_observations")) << name;
+            EXPECT_EQ(planet->classification_evidence["atmosphere_observations"].value("composition_status", ""),
+                "unconstrained") << name;
+        }
+    }
 }
