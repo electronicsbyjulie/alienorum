@@ -5948,6 +5948,7 @@ static void apply_body_metadata(CelestialObject* body, const json& record)
     body->map_inverted = record.value("map_inverted", body->map_inverted);
     body->orbit_center_codes = record.value("orbit_center_codes", body->orbit_center_codes);
     body->known_poles = record.value("known_poles", body->known_poles);
+    if (const auto model = record.find("RotationModel"); model != record.end()) body->set_rotation_model(*model);
     if (body->typeclass() == class_planet || body->typeclass() == class_moon)
     {
         auto* planet = static_cast<Planet*>(body);
@@ -6036,6 +6037,7 @@ static void apply_stellar_surface_metadata(Star* body, const json& record)
         if (body->orbit) body->orbit->epoch = body->epoch;
     }
     catch (...) { ; }
+    if (body->has_rotation_model()) return;
     try
     {
         const double ra = record.at("NorthPoleRA").get<double>() * fiftyseventh;
@@ -6361,6 +6363,7 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
                 std::string oscname = std::string(p->orbit->center->name) + std::string(".") + std::string(p->name);
                 if (p->orbit && p->orbit->center) p->orbit->read_osc_elements(oscname);
             }
+            if (p->has_rotation_model()) p->timeofday();
             p->sync_host_statistics();
         }
         catch (...)

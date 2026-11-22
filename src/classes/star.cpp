@@ -596,6 +596,7 @@ void Star::update_location(double tmnow)
         }
     }
 
+    update_rotation_model();
     if (variability_period && !is_eclipsing_binary)
     {
         // tmnow already includes the light travel time.

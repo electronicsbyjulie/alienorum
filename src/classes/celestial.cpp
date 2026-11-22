@@ -251,8 +251,191 @@ double alienorum::CelestialObject::get_horizon_distance()
     return tmprel.magnitude() - volumetric_mean_radius * cos(get_horizon_angle());
 }
 
+struct alienorum::BodyRotationModel
+{
+    json source;
+    // Pole coefficients are in degrees per Julian century and W is in degrees per day.
+    std::array<double, 3> pole_ra, pole_dec, meridian, texture_meridian{};
+    // Each row holds three phase coefficients, then amplitudes for RA, declination and W.
+    std::vector<std::array<double, 6>> terms;
+    // Julian dates paired with continuous west longitude in the texture's rotation system.
+    std::vector<std::array<double, 2>> drift;
+    bool civil_time = false;
+    double legacy_longitude_offset = 0;
+    double feature_longitude = 0, future_drift = 0, nominal_light_time = 0;
+    double observed_at = NAN, light_time = 0;
+    double evaluated_at = NAN, evaluated_light_time = 0, texture_phase = 0;
+    Rotation reference_plane, equatorial_plane;
+    Point prime_meridian;
+};
+
+namespace
+{
+    double utc_to_tt_seconds(double jd)
+    {
+        // Effective dates from the NAIF leap-seconds kernel. Before 1972 this uses 10 s for TAI-UTC.
+        constexpr double leap_dates[] = {2441499.5, 2441683.5, 2442048.5, 2442413.5, 2442778.5,
+            2443144.5, 2443509.5, 2443874.5, 2444239.5, 2444786.5, 2445151.5, 2445516.5,
+            2446247.5, 2447161.5, 2447892.5, 2448257.5, 2448804.5, 2449169.5, 2449534.5,
+            2450083.5, 2450630.5, 2451179.5, 2453736.5, 2454832.5, 2456109.5, 2457204.5, 2457754.5};
+        return 42.184 + (std::upper_bound(std::begin(leap_dates), std::end(leap_dates), jd) - std::begin(leap_dates));
+    }
+
+    double rotation_polynomial(const std::array<double, 3>& coefficients, double time)
+    {
+        return coefficients[0] + time * (coefficients[1] + time * coefficients[2]);
+    }
+
+    double feature_drift(const BodyRotationModel& model, double jd)
+    {
+        const auto& points = model.drift;
+        auto after = std::upper_bound(points.begin(), points.end(), jd,
+            [](double date, const auto& point) { return date < point[0]; });
+        if (after == points.begin()) return points.front()[1];
+        const auto& before = *(after - 1);
+        if (after == points.end()) return before[1] + (jd - before[0]) * model.future_drift;
+        return before[1] + (jd - before[0]) * ((*after)[1] - before[1]) / ((*after)[0] - before[0]);
+    }
+}
+
+bool CelestialObject::set_rotation_model(const json& record)
+{
+    if (manual_rotation) return false;
+    auto model = std::make_shared<BodyRotationModel>();
+    const auto finite = [](const auto& values)
+    {
+        return std::all_of(values.begin(), values.end(), [](double value) { return std::isfinite(value); });
+    };
+    try
+    {
+        record.at("pole_ra").get_to(model->pole_ra);
+        record.at("pole_dec").get_to(model->pole_dec);
+        record.at("meridian").get_to(model->meridian);
+        model->civil_time = record.value("civil_time", false);
+        model->legacy_longitude_offset = record.value("legacy_longitude_offset", 0.0) * fiftyseventh;
+        if (auto terms = record.find("terms"); terms != record.end()) terms->get_to(model->terms);
+        if (auto texture = record.find("texture"); texture != record.end())
+        {
+            texture->at("meridian").get_to(model->texture_meridian);
+            texture->at("drift").get_to(model->drift);
+            model->feature_longitude = texture->at("feature_longitude").get<double>();
+            model->future_drift = texture->value("future_drift", 0.0);
+            model->nominal_light_time = texture->value("nominal_light_time", 0.0);
+            const auto unordered_date = [](const auto& a, const auto& b) { return a[0] >= b[0]; };
+            if (model->drift.empty() || !finite(model->texture_meridian)
+                || !std::all_of(model->drift.begin(), model->drift.end(), finite)
+                || std::adjacent_find(model->drift.begin(), model->drift.end(), unordered_date) != model->drift.end()
+                || !std::isfinite(model->feature_longitude) || !std::isfinite(model->future_drift)
+                || !std::isfinite(model->nominal_light_time) || model->nominal_light_time < 0) return false;
+        }
+    }
+    catch (const json::exception&)
+    {
+        return false;
+    }
+    if (!finite(model->pole_ra) || !finite(model->pole_dec) || !finite(model->meridian)
+        || !std::isfinite(model->legacy_longitude_offset)
+        || !std::all_of(model->terms.begin(), model->terms.end(), finite)) return false;
+    model->source = record;
+    rotation_model = std::move(model);
+    lock_equatorial_plane = known_poles = true;
+    update_rotation_model();
+    return true;
+}
+
+void CelestialObject::use_manual_rotation()
+{
+    if (rotation_model)
+    {
+        rotation_model.reset();
+        manual_rotation = true;
+    }
+}
+
+void CelestialObject::set_texture_light_time(double seconds)
+{
+    if (rotation_model && !rotation_model->drift.empty() && std::isfinite(seconds) && seconds >= 0)
+    {
+        rotation_model->observed_at = simnow;
+        rotation_model->light_time = seconds;
+    }
+}
+
+void CelestialObject::update_rotation_model()
+{
+    if (!rotation_model) return;
+    auto& model = *rotation_model;
+    const auto& plane = location.local_system_plane;
+    const double delay = model.observed_at == simnow ? model.light_time : model.nominal_light_time;
+    if (model.evaluated_at != simnow || model.evaluated_light_time != delay
+        || model.reference_plane.a != plane.a || !(model.reference_plane.v == plane.v))
+    {
+        // The simulation clock starts at midnight UTC. IAU polynomials start at noon TDB.
+        // TT approximates TDB to milliseconds for evaluating these polynomials.
+        const double elapsed = (simnow - J2000_TIME_T) / oneday;
+        const double tt = model.civil_time ? 0.0 : utc_to_tt_seconds(J2000 + elapsed) / oneday;
+        constexpr double orientation_epoch = 2451545.0;
+        const double days = (J2000 - orientation_epoch) + elapsed + tt;
+        const double centuries = days / 36525;
+        double ra = rotation_polynomial(model.pole_ra, centuries);
+        double dec = rotation_polynomial(model.pole_dec, centuries);
+        double meridian = rotation_polynomial(model.meridian, days);
+        for (const auto& term : model.terms)
+        {
+            const double angle = std::remainder(term[0] + centuries * (term[1] + centuries * term[2]), 360.0) * fiftyseventh;
+            const double sine = std::sin(angle);
+            ra += term[3] * sine;
+            dec += term[4] * std::cos(angle);
+            meridian += term[5] * sine;
+        }
+
+        // IAU angles use the ICRF equator. Solar System orbits use the local J2000 ecliptic.
+        const auto in_scene = [&](const Point& icrf)
+        {
+            const Point ecliptic = rotate3D(icrf, center, ICRF_to_ecliptic.v, ICRF_to_ecliptic.a);
+            return rotate3D(ecliptic, center, plane.v, -plane.a);
+        };
+        const Point pole = in_scene(Point::from_ra_dec(ra * fiftyseventh, dec * fiftyseventh, 1));
+        const Point node = in_scene(Point::from_ra_dec((ra + 90) * fiftyseventh, 0, 1));
+        model.equatorial_plane = align_points_3d(pole, yaxis, center);
+        model.prime_meridian = rotate3D(node, center, pole, -std::remainder(meridian, 360.0) * fiftyseventh);
+        const Point equatorial_node = rotate3D(node, center, model.equatorial_plane.v, model.equatorial_plane.a);
+        const double node_angle = std::atan2(-equatorial_node.x, equatorial_node.z);
+        if (!model.drift.empty())
+        {
+            const double emission_days = days - delay / oneday;
+            const double west_longitude = feature_drift(model, J2000 + elapsed - delay / oneday);
+            meridian = rotation_polynomial(model.texture_meridian, emission_days) - west_longitude - model.feature_longitude;
+        }
+        const double phase = std::remainder(node_angle + std::remainder(meridian, 360.0) * fiftyseventh, 2 * _pi);
+        model.texture_phase = phase < 0 ? phase + 2 * _pi : phase;
+        model.reference_plane = plane;
+        model.evaluated_at = simnow;
+        model.evaluated_light_time = delay;
+    }
+    location.equatorial_plane = model.equatorial_plane;
+}
+
+Point CelestialObject::prime_meridian_direction()
+{
+    if (rotation_model)
+    {
+        update_rotation_model();
+        return rotation_model->prime_meridian;
+    }
+    const Point equatorial = Point::from_ra_dec(timeofday(), 0, 1);
+    return rotate3D(equatorial, center, location.equatorial_plane.v, -location.equatorial_plane.a);
+}
+
 double alienorum::CelestialObject::timeofday()
 {
+    if (rotation_model)
+    {
+        update_rotation_model();
+        double phase = std::fmod(rotation_model->texture_phase
+            - (lon_J2000_offset - rotation_model->legacy_longitude_offset), 2 * _pi);
+        return phase < 0 ? phase + 2 * _pi : phase;
+    }
     if (!orbit || !is_tidal_locked())
     {
         double rads_sec = sidereal_rotational_period ? ((_pi * 2) / sidereal_rotational_period) : 0;
@@ -290,8 +473,9 @@ double alienorum::CelestialObject::local_solar_time(double lon)
         return -1.0;
     }
 
+    const double rotation_phase = timeofday();
     Point star_eq = rotate3D(star_rel, center, location.equatorial_plane.v, location.equatorial_plane.a);
-    Point star_body = rotate3D(star_eq, center, yaxis, timeofday());
+    Point star_body = rotate3D(star_eq, center, yaxis, rotation_phase);
     double star_lon = find_angle(star_body.z, -star_body.x);
     double H = lon - star_lon;
     double solar_angle = std::fmod(H + _pi, _pi * 2);
@@ -788,6 +972,8 @@ json CelestialObject::to_json()
     towrite["obliquity"] = obliquity * fiftyseven;
     towrite["location"] = location.to_json();
     towrite["lon_J2000_offset"] = lon_J2000_offset*fiftyseven;
+    if (rotation_model) towrite["rotation_model"] = rotation_model->source;
+    if (manual_rotation) towrite["manual_rotation"] = true;
     towrite["mass"] = mass;
 
     // want these to alphabetize to the top.
@@ -915,6 +1101,9 @@ bool CelestialObject::from_json(const json& j)
     // TODO: Convert the char[] fields back to std::strings.
 
     estimated_poles = true;
+    rotation_model.reset();
+    manual_rotation = j.value("manual_rotation", false);
+    if (const auto model = j.find("rotation_model"); model != j.end()) set_rotation_model(*model);
 
     return true;
 }
@@ -1108,6 +1297,7 @@ void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
     pole = rotate3D(pole, center, Point(sin(equinox_eff), 0, -cos(equinox_eff)), -obliquity);
     pole = rotate3D(pole, center, location.orbital_plane.v, -location.orbital_plane.a);
     if (!lock_equatorial_plane) location.equatorial_plane = align_points_3d(pole, yaxis, center);
+    update_rotation_model();
 
     Point orb_pole = rotate3D(yaxis, center, location.orbital_plane.v, -location.orbital_plane.a);
     Point eq_pole  = rotate3D(yaxis, center, location.equatorial_plane.v, -location.equatorial_plane.a);

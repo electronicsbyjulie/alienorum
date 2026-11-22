@@ -667,6 +667,7 @@ bool compute_object_location(CelestialObject* cel, bool* relative_valid)
             }
         }
         mark_relative(false);
+        cel->set_texture_light_time(light_travel_time);
         ((Planet*)cel)->update_location(simnow - light_travel_time);
         break;
 

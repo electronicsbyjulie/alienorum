@@ -2,9 +2,11 @@
 #include "../catalog_lock_trace.h"
 #include <thread>
 #include <cstring>
+#include <functional>
 #include <iostream>
 #include <sstream>
 #include <gtest/gtest.h>
+#include "../classes/cat.h"
 #include "../classes/star.h"
 #include "../housekeeping.h"
 #include "../inputs.h"
@@ -652,6 +654,520 @@ TEST_F(HousekeepingTest, SurfaceObserverRefreshesWalkingRotationShapeAndBodyFram
     moon->height *= 2;
     set_viewer_surface_location(true);
     EXPECT_GT(here.distance_to(first), 100);
+}
+
+TEST_F(HousekeepingTest, GreenwichSunIsNearDailyAltitudeExtremes)
+{
+    CandidateFrameRestore frame_restore;
+    struct ObserverRestore
+    {
+        std::function<void()> clear_universe;
+        double latitude = viewer_lat, longitude = viewer_lon, eye_height = viewer_eye_height;
+        double epoch = simnow, julian_date = JDnow, north = npaz, correction = azimuth_correction;
+        bool changed = viewchanged, offline = radio_silence;
+        CelestialLocation pole = npdummy.location;
+        ~ObserverRestore()
+        {
+            clear_universe();
+            viewer_lat = latitude;
+            viewer_lon = longitude;
+            viewer_eye_height = eye_height;
+            simnow = epoch;
+            JDnow = julian_date;
+            npaz = north;
+            azimuth_correction = correction;
+            viewchanged = changed;
+            radio_silence = offline;
+            npdummy.location = pole;
+        }
+    } observer_restore{[this]() { delete_the_universe(); }};
+
+    radio_silence = true;
+    Star* sun = make_star("Sun");
+    sun->distance = 0;
+    sun->cenobj = sun;
+    CatalogReader reader;
+    ASSERT_GT(reader.read_local_planets(cels, MAX_CELOBJS, sun), 0);
+    const int earth_index = find_object("Earth");
+    ASSERT_GT(earth_index, 0);
+    ASSERT_EQ(cels[earth_index]->typeclass(), class_planet);
+    auto* earth = static_cast<Planet*>(cels[earth_index]);
+    ASSERT_NE(earth->orbit, nullptr);
+    ASSERT_EQ(earth->orbit->center, sun);
+
+    whereami = earth_index;
+    view_mode = vm_horizon;
+    viewer_lat = 51.477 * fiftyseventh;
+    viewer_lon = 0;
+    viewer_eye_height = 1.75;
+    const auto solar_altitude = [&](double jd)
+    {
+        JDnow = jd;
+        simnow = J2000_TIME_T + (jd - J2000) * oneday;
+        earth->update_location(simnow);
+        set_viewer_location_and_plane();
+        return sun->Decl_as_radians_refracted(here) * fiftyseven;
+    };
+
+    constexpr int samples_per_day = 144;
+    constexpr double tolerance_degrees = 1.0;
+    for (const double jd : {2451544.5, 2461242.0})
+    {
+        const double midnight = std::floor(jd - 0.5) + 0.5;
+        const bool at_midnight = jd == midnight;
+        SCOPED_TRACE(at_midnight ? "JD 2451544.5 (midnight)" : "JD 2461242.0 (noon)");
+        const double target = solar_altitude(jd);
+        double daily_min = target, daily_max = target;
+        for (int sample = 0; sample < samples_per_day; ++sample)
+        {
+            const double angle = solar_altitude(midnight + double(sample) / samples_per_day);
+            ASSERT_TRUE(std::isfinite(angle));
+            daily_min = std::min(daily_min, angle);
+            daily_max = std::max(daily_max, angle);
+        }
+        EXPECT_LT(daily_min, 0.0);
+        EXPECT_GT(daily_max, 0.0);
+        if (at_midnight) EXPECT_LT(target, 0.0);
+        else EXPECT_GT(target, 0.0);
+        EXPECT_NEAR(target, at_midnight ? daily_min : daily_max, tolerance_degrees);
+    }
+}
+
+TEST_F(HousekeepingTest, MarsSunMatchesMissionSitesAndPrimeMeridian)
+{
+    CandidateFrameRestore frame_restore;
+    struct ObserverRestore
+    {
+        std::function<void()> clear_universe;
+        double latitude = viewer_lat, longitude = viewer_lon, eye_height = viewer_eye_height;
+        double epoch = simnow, julian_date = JDnow, north = npaz, correction = azimuth_correction;
+        bool changed = viewchanged, offline = radio_silence;
+        CelestialLocation pole = npdummy.location;
+        ~ObserverRestore()
+        {
+            clear_universe();
+            viewer_lat = latitude;
+            viewer_lon = longitude;
+            viewer_eye_height = eye_height;
+            simnow = epoch;
+            JDnow = julian_date;
+            npaz = north;
+            azimuth_correction = correction;
+            viewchanged = changed;
+            radio_silence = offline;
+            npdummy.location = pole;
+        }
+    } observer_restore{[this]() { delete_the_universe(); }};
+
+    radio_silence = true;
+    Star* sun = make_star("Sun");
+    sun->distance = 0;
+    sun->cenobj = sun;
+    CatalogReader reader;
+    ASSERT_GT(reader.read_local_planets(cels, MAX_CELOBJS, sun), 0);
+    const int mars_index = find_object("Mars");
+    ASSERT_GT(mars_index, 0);
+    ASSERT_EQ(cels[mars_index]->typeclass(), class_planet);
+    auto* mars = static_cast<Planet*>(cels[mars_index]);
+    ASSERT_NE(mars->orbit, nullptr);
+    ASSERT_EQ(mars->orbit->center, sun);
+
+    // Freeze both snapshots in UTC so repeated runs exercise the same Mars clock readings.
+    // The orbital period is from https://nssdc.gsfc.nasa.gov/planetary/factsheet/marsfact.html.
+    constexpr double snapshot_jd = 2461367.0420833333;
+    constexpr double sol_in_earth_days = 1.0274912517;
+    constexpr double sidereal_year_in_earth_days = 686.980;
+    const struct
+    {
+        const char* utc;
+        double jd;
+    } snapshots[] =
+    {
+        {"2026-11-22T13:00:36Z", snapshot_jd},
+        {"2027-11-01T13:05:59.622Z", snapshot_jd + (sol_in_earth_days + sidereal_year_in_earth_days) / 2}
+    };
+
+    // Mission coordinates are from https://marsti.me/ and Airy-0 is at 5.07 degrees south
+    // on the prime meridian (https://planetarynames.wr.usgs.gov/Feature/115).
+    // The geometric altitudes and north-through-east azimuths use NASA Mars24 steps B through D
+    // with TT minus UTC of 69.184 seconds (https://www.giss.nasa.gov/tools/mars24/help/algorithm.html).
+    const struct
+    {
+        const char* name;
+        double latitude, longitude_west;
+        struct { double altitude, azimuth; } reference[2];
+    } sites[] =
+    {
+        {"Zhurong",        25.048,  250.076,  {{-24.760,  63.833}, {-68.630, 359.497}}},
+        {"Ingenuity",      18.4372, 282.5493, {{-52.733,  40.445}, {-54.820, 290.828}}},
+        {"Perseverance",   18.4447, 282.5492, {{-52.728,  40.439}, {-54.817, 290.838}}},
+        {"InSight",         4.5024, 224.3766, {{ -7.253,  78.605}, {-64.537,  89.102}}},
+        {"Curiosity",      -4.5985, 222.5583, {{ -7.171,  79.780}, {-61.464, 106.419}}},
+        {"MTC (Airy-0)",   -5.07,     0,     {{-36.389, 279.551}, { 20.329, 267.947}}}
+    };
+
+    whereami = mars_index;
+    view_mode = vm_horizon;
+    viewer_eye_height = 1.75;
+    constexpr double tolerance_degrees = 1.0;
+    for (size_t index = 0; index < std::size(snapshots); ++index)
+    {
+        const auto& snapshot = snapshots[index];
+        JDnow = snapshot.jd;
+        simnow = J2000_TIME_T + (JDnow - J2000) * oneday;
+        mars->update_location(simnow);
+        for (const auto& site : sites)
+        {
+            viewer_lat = site.latitude * fiftyseventh;
+            viewer_lon = std::remainder(-site.longitude_west, 360.0) * fiftyseventh;
+            set_viewer_location_and_plane();
+            const double altitude_degrees = sun->Decl_as_radians(here) * fiftyseven;
+            const double north_offset = npdummy.RA_as_radians(here, 0) - sun->RA_as_radians(here, 0);
+            const double azimuth_degrees = std::fmod(north_offset * fiftyseven + 360.0, 360.0);
+            const auto& reference = site.reference[index];
+            SCOPED_TRACE(::testing::Message() << site.name << " at " << snapshot.utc
+                << ", altitude " << altitude_degrees << " versus " << reference.altitude
+                << ", azimuth " << azimuth_degrees << " versus " << reference.azimuth);
+            EXPECT_NEAR(altitude_degrees, reference.altitude, tolerance_degrees);
+            EXPECT_NEAR(std::remainder(azimuth_degrees - reference.azimuth, 360.0), 0.0, tolerance_degrees);
+        }
+    }
+}
+
+TEST_F(HousekeepingTest, LunarPrimeMeridianFacesEarthThroughTwoLunations)
+{
+    CandidateFrameRestore frame_restore;
+    struct ObserverRestore
+    {
+        std::function<void()> clear_universe;
+        double latitude = viewer_lat, longitude = viewer_lon, eye_height = viewer_eye_height;
+        double epoch = simnow, julian_date = JDnow, north = npaz, correction = azimuth_correction;
+        bool changed = viewchanged, offline = radio_silence;
+        CelestialLocation pole = npdummy.location;
+        ~ObserverRestore()
+        {
+            clear_universe();
+            viewer_lat = latitude;
+            viewer_lon = longitude;
+            viewer_eye_height = eye_height;
+            simnow = epoch;
+            JDnow = julian_date;
+            npaz = north;
+            azimuth_correction = correction;
+            viewchanged = changed;
+            radio_silence = offline;
+            npdummy.location = pole;
+        }
+    } observer_restore{[this]() { delete_the_universe(); }};
+
+    radio_silence = true;
+    Star* sun = make_star("Sun");
+    sun->distance = 0;
+    sun->cenobj = sun;
+    CatalogReader reader;
+    ASSERT_GT(reader.read_local_planets(cels, MAX_CELOBJS, sun), 0);
+    const int earth_index = find_object("Earth");
+    ASSERT_GT(earth_index, 0);
+    ASSERT_EQ(cels[earth_index]->typeclass(), class_planet);
+    auto* earth = static_cast<Planet*>(cels[earth_index]);
+    ASSERT_NE(earth->orbit, nullptr);
+    ASSERT_EQ(earth->orbit->center, sun);
+    ASSERT_GT(reader.read_local_planets(cels, MAX_CELOBJS, earth), 0);
+    const int moon_index = find_object("Moon");
+    ASSERT_GT(moon_index, 0);
+    ASSERT_EQ(cels[moon_index]->typeclass(), class_moon);
+    auto* moon = static_cast<Moon*>(cels[moon_index]);
+    ASSERT_NE(moon->orbit, nullptr);
+    ASSERT_EQ(moon->orbit->center, earth);
+    ASSERT_EQ(moon->get_light_center(), sun);
+
+    // The final samples use the next New Moons from NASA's phase tables.
+    // https://eclipse.gsfc.nasa.gov/phase/phases1901.html
+    // https://eclipse.gsfc.nasa.gov/phase/phase2001gmt.html
+    const struct
+    {
+        const char* label;
+        double start_jd, end_jd;
+    } lunations[] =
+    {
+        {"lunation_1979", 2443931.20493, 2443960.624305556},
+        {"lunation_2017", 2457987.26852, 2458016.729166667}
+    };
+
+    // Rounded geocentric libration limits from JPL D-32296, figure 2-8.
+    // https://ssd.jpl.nasa.gov/doc/lunar_cmd_2005_jpl_d32296.pdf
+    constexpr double longitude_limit_degrees = 8.2;
+    constexpr double latitude_limit_degrees = 7.0;
+    constexpr double mean_offset_limit_degrees = 2.0;
+    constexpr double new_moon_illuminated_limit = 0.001;
+    constexpr int intervals = 10;
+    whereami = moon_index;
+    view_mode = vm_horizon;
+    viewer_lat = viewer_lon = 0;
+    viewer_eye_height = 1.75;
+
+    for (const auto& lunation : lunations)
+    {
+        SCOPED_TRACE(lunation.label);
+        Point mean_direction;
+        double max_longitude = 0, max_latitude = 0, starting_illumination = 0;
+        for (int sample = 0; sample <= intervals; ++sample)
+        {
+            JDnow = lunation.start_jd + (lunation.end_jd - lunation.start_jd) * sample / intervals;
+            simnow = J2000_TIME_T + (JDnow - J2000) * oneday;
+            SCOPED_TRACE(std::string("JD ") + std::to_string(JDnow));
+            earth->update_location(simnow);
+            moon->update_location(simnow);
+            set_viewer_location_and_plane();
+
+            // At latitude and longitude zero, the horizon axes are east, up, and north.
+            // Use the center-to-center ray to measure geocentric libration.
+            const Point moon_to_earth = earth->location.local_position - moon->location.local_position;
+            const Point direction = rotate3D(to_viewer_plane(moon_to_earth), center, yaxis, -azimuth_correction);
+            const double distance = direction.magnitude();
+            ASSERT_TRUE(std::isfinite(distance) && distance > 0);
+            const double longitude = std::atan2(direction.x, direction.y) * fiftyseven;
+            const double latitude = std::atan2(direction.z, std::hypot(direction.x, direction.y)) * fiftyseven;
+            max_longitude = std::max(max_longitude, std::abs(longitude));
+            max_latitude = std::max(max_latitude, std::abs(latitude));
+            EXPECT_LE(std::abs(longitude), longitude_limit_degrees) << "Sub-Earth longitude " << longitude;
+            EXPECT_LE(std::abs(latitude), latitude_limit_degrees) << "Sub-Earth latitude " << latitude;
+
+            // Half-weight the endpoints when averaging the ten equal intervals.
+            const double weight = (sample == 0 || sample == intervals) ? 0.5 : 1.0;
+            mean_direction += direction * (weight / distance);
+            if (sample == 0)
+            {
+                moon->viewer_reflectance_magnitude(earth->location);
+                starting_illumination = moon->amt_lit;
+                EXPECT_GE(starting_illumination, 0.0);
+                EXPECT_LE(starting_illumination, new_moon_illuminated_limit);
+            }
+        }
+        const double mean_offset = std::atan2(std::hypot(mean_direction.x, mean_direction.z), mean_direction.y) * fiftyseven;
+        EXPECT_LE(mean_offset, mean_offset_limit_degrees);
+        const std::string label = lunation.label;
+        RecordProperty(label + "_mean_offset_degrees", std::to_string(mean_offset));
+        RecordProperty(label + "_max_longitude_degrees", std::to_string(max_longitude));
+        RecordProperty(label + "_max_latitude_degrees", std::to_string(max_latitude));
+        RecordProperty(label + "_starting_illuminated_percent", std::to_string(starting_illumination * 100));
+    }
+}
+
+TEST_F(HousekeepingTest, JupiterGreatRedSpotFacesEarthAtTransits)
+{
+    CandidateFrameRestore frame_restore;
+    struct TransitRestore
+    {
+        std::function<void()> clear_universe;
+        double epoch = simnow, julian_date = JDnow, correction = azimuth_correction;
+        bool offline = radio_silence;
+        ~TransitRestore()
+        {
+            clear_universe();
+            simnow = epoch;
+            JDnow = julian_date;
+            azimuth_correction = correction;
+            radio_silence = offline;
+        }
+    } transit_restore{[this]() { delete_the_universe(); }};
+
+    radio_silence = true;
+    Star* sun = make_star("Sun");
+    sun->distance = 0;
+    sun->cenobj = sun;
+    CatalogReader reader;
+    ASSERT_GT(reader.read_local_planets(cels, MAX_CELOBJS, sun), 0);
+    const int earth_index = find_object("Earth"), jupiter_index = find_object("Jupiter");
+    ASSERT_GT(earth_index, 0);
+    ASSERT_GT(jupiter_index, 0);
+    ASSERT_EQ(cels[earth_index]->typeclass(), class_planet);
+    ASSERT_EQ(cels[jupiter_index]->typeclass(), class_planet);
+    auto* earth = static_cast<Planet*>(cels[earth_index]);
+    auto* jupiter = static_cast<Planet*>(cels[jupiter_index]);
+    ASSERT_NE(earth->orbit, nullptr);
+    ASSERT_NE(jupiter->orbit, nullptr);
+    ASSERT_EQ(earth->orbit->center, sun);
+    ASSERT_EQ(jupiter->orbit->center, sun);
+
+    // The 2026 transit was first in the default list at 13:21:05 UTC that day.
+    // https://tools.davidastro.com/en/tools/jupiter-grs-transit-calculator
+    // The 1979 central-meridian separation and following transit are from the IMCCE JGRS ephemeris.
+    // https://ssp.imcce.fr/webservices/vo-tools/jgrs/
+    const struct
+    {
+        const char* label;
+        const char* utc;
+        double jd, offset;
+    } transits[] =
+    {
+        {"spot_1979",    "1979-07-09T02:30:00Z",     2444063.6041666665, 117.21},
+        {"transit_1979", "1979-07-09T09:11:50.153Z", 2444063.8832193636,   0.0},
+        {"transit_2026", "2026-11-22T14:41:11.485Z", 2461367.111938484,    0.0}
+    };
+
+    constexpr double spot_longitude = 126.0;
+    constexpr double longitude_tolerance = 30.0; // Approximately the calculator's 50-minute viewing window on either side.
+    azimuth_correction = 0;
+    for (const auto& transit : transits)
+    {
+        SCOPED_TRACE(transit.utc);
+        JDnow = transit.jd;
+        simnow = J2000_TIME_T + (JDnow - J2000) * oneday;
+        earth->update_location(simnow);
+        jupiter->update_location(simnow);
+
+        // The equatorial longitude minus the spin phase is Jupiter's texture longitude.
+        const double earth_longitude = earth->RA_as_radians(jupiter->location, jupiter->timeofday()) * fiftyseven;
+        const double offset = std::remainder(spot_longitude - earth_longitude, 360.0);
+        EXPECT_NEAR(std::remainder(offset - transit.offset, 360.0), 0.0, longitude_tolerance)
+            << "Earth-facing texture longitude " << earth_longitude << ", spot offset " << offset;
+        const std::string label = transit.label;
+        RecordProperty(label + "_earth_longitude_degrees", std::to_string(earth_longitude));
+        RecordProperty(label + "_spot_offset_degrees", std::to_string(offset));
+    }
+}
+
+TEST_F(HousekeepingTest, SolarSystemPrimeMeridiansMatchTheMidnightReference)
+{
+    CandidateFrameRestore frame_restore;
+    struct RotationRestore
+    {
+        std::function<void()> clear_universe;
+        double epoch = simnow, julian_date = JDnow;
+        bool offline = radio_silence;
+        ~RotationRestore()
+        {
+            clear_universe();
+            simnow = epoch;
+            JDnow = julian_date;
+            radio_silence = offline;
+        }
+    } rotation_restore{[this]() { delete_the_universe(); }};
+
+    radio_silence = true;
+    JDnow = 2451544.5;
+    simnow = J2000_TIME_T + (JDnow - J2000) * oneday;
+    EXPECT_DOUBLE_EQ(J2000, JDnow);
+    Star* sun = make_star("Sun");
+    sun->distance = 0;
+    sun->cenobj = sun;
+    CatalogReader reader;
+    ASSERT_GT(reader.read_local_planets(cels, MAX_CELOBJS, sun), 0);
+    make_planet(sun, "Ceres")->asteroid_no = 1;
+    make_planet(sun, "Pluto")->asteroid_no = 134340;
+    ASSERT_GT(reader.read_local_planets(cels, MAX_CELOBJS, nullptr, sun), 0);
+
+    // ICRF directions of the equatorial point at longitude zero, in degrees at midnight UTC.
+    // W is measured eastward from the ICRF equator's ascending node on the body's equator.
+    // Reference: https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/pck00011.tpc
+    // Greenwich uses IERS Earth Rotation Angle with UT1 approximated by UTC.
+    // Hyperion has a bump map and a chaotic spin with no published orientation model for this date.
+    const struct
+    {
+        const char* body;
+        double ra, dec;
+    } reference[] =
+    {
+        {"Sun",         91.812684,  25.422142}, // W = 77.094337
+        {"Mercury",    340.878418, -15.297323}, // W = 326.535701
+        {"Venus",      165.097635,   7.282357}, // W = 160.939584
+        {"Earth",       99.967821,  -0.000001}, // W = 9.967812
+        {"Mars",        48.834633,   0.872896}, // W = 1.446735
+        {"Jupiter",    205.891994, -12.557789}, // System III W = 210.328695
+        {"Saturn",     124.731565,  -0.662354}, // W = 354.105364
+        {"Uranus",     242.291076,  74.314223}, // W = 94.017749
+        {"Neptune",     15.280573, -14.619687}, // W = 339.828122
+        {"Pluto",      276.410975, -82.341279}, // W = 274.555609
+        {"Ceres",       74.398155,  18.921727}, // W = 55.280726
+        {"Moon",        29.021064,  13.549092}, // W = 34.616780
+        {"Phobos",     237.436163,  -6.801766}, // W = 191.609070
+        {"Deimos",     349.586033, -33.492194}, // W = 295.079410
+        {"Io",          97.776871,  25.152582}, // W = 98.880841
+        {"Europa",     344.803642,  -6.104832}, // W = 345.446960
+        {"Ganymede",    15.455000,   7.938146}, // W = 18.665545
+        {"Callisto",   245.417716, -23.562467}, // W = 249.192201
+        {"Mimas",      304.339726,   0.589161}, // W = 173.157307
+        {"Enceladus",    5.636829,  -5.314054}, // W = 235.149226
+        {"Tethys",      42.891917,  -6.908125}, // W = 280.511630
+        {"Dione",       62.717766,  -6.009307}, // W = 291.930248
+        {"Rhea",       325.641635,  -1.885303}, // W = 196.160226
+        {"Titan",      304.827142,   0.535764}, // W = 175.313783
+        {"Iapetus",     41.331941,  -1.820822}, // W = 352.934393
+        {"Phoebe",     159.991833,  11.687441}, // W = 73.452587
+        {"Janus",      290.791698,   2.176795}, // W = 160.827484
+        {"Epimetheus", 165.402090,   3.872174}, // W = 34.612108
+        {"Charon",      96.410975,  82.341279}  // W = 94.555609
+    };
+    for (const auto& entry : reference)
+    {
+        SCOPED_TRACE(entry.body);
+        const int index = find_object(entry.body);
+        ASSERT_GE(index, 0);
+        auto* body = cels[index];
+        ASSERT_TRUE(body->has_rotation_model());
+        if (body->typeclass() == class_star) static_cast<Star*>(body)->update_location(simnow);
+        else if (body->typeclass() == class_moon) static_cast<Moon*>(body)->update_location(simnow);
+        else static_cast<Planet*>(body)->update_location(simnow);
+        const Point icrf = Point::from_ra_dec(entry.ra * fiftyseventh, entry.dec * fiftyseventh, 1);
+        const Point ecliptic = rotate3D(icrf, center, ICRF_to_ecliptic.v, ICRF_to_ecliptic.a);
+        const auto& plane = body->location.local_system_plane;
+        const Point expected = rotate3D(ecliptic, center, plane.v, -plane.a);
+        EXPECT_LE(find_3D_angle(body->prime_meridian_direction(), expected, center) * fiftyseven, 0.001);
+        if (strcmp(entry.body, "Jupiter"))
+        {
+            const Point equatorial(Point::from_ra_dec(body->timeofday(), 0, 1));
+            const auto& equator = body->location.equatorial_plane;
+            const Point surface = rotate3D(equatorial, center, equator.v, -equator.a);
+            EXPECT_LE(find_3D_angle(surface, expected, center) * fiftyseven, 0.001);
+        }
+    }
+}
+
+TEST_F(HousekeepingTest, JupiterGreatRedSpotMatchesIMCCETransitWithLightTime)
+{
+    CandidateFrameRestore frame_restore;
+    struct TransitRestore
+    {
+        std::function<void()> clear_universe;
+        double epoch = simnow, julian_date = JDnow, correction = azimuth_correction;
+        bool offline = radio_silence;
+        ~TransitRestore()
+        {
+            clear_universe();
+            simnow = epoch;
+            JDnow = julian_date;
+            azimuth_correction = correction;
+            radio_silence = offline;
+        }
+    } transit_restore{[this]() { delete_the_universe(); }};
+
+    radio_silence = true;
+    azimuth_correction = 0;
+    Star* sun = make_star("Sun");
+    sun->distance = 0;
+    sun->cenobj = sun;
+    CatalogReader reader;
+    ASSERT_GT(reader.read_local_planets(cels, MAX_CELOBJS, sun), 0);
+    const int earth_index = find_object("Earth"), jupiter_index = find_object("Jupiter");
+    ASSERT_GT(earth_index, 0);
+    ASSERT_GT(jupiter_index, 0);
+    ASSERT_EQ(cels[earth_index]->typeclass(), class_planet);
+    ASSERT_EQ(cels[jupiter_index]->typeclass(), class_planet);
+    auto* earth = static_cast<Planet*>(cels[earth_index]);
+    auto* jupiter = static_cast<Planet*>(cels[jupiter_index]);
+
+    // IMCCE JGRS geocentric transit on 2026-11-22 at 14:48:19.461 UTC.
+    // https://ssp.imcce.fr/webservices/vo-tools/jgrs/transit/2026-11-22
+    JDnow = 2461367.116891910;
+    simnow = J2000_TIME_T + (JDnow - J2000) * oneday;
+    earth->update_location(simnow);
+    jupiter->update_location(simnow);
+    const double light_time = earth->location.distance_to(jupiter->location) / speed_of_light;
+    jupiter->set_texture_light_time(light_time);
+    jupiter->update_location(simnow - light_time);
+    const double longitude = earth->RA_as_radians(jupiter->location, jupiter->timeofday()) * fiftyseven;
+    EXPECT_NEAR(std::remainder(longitude - 126.0, 360.0), 0.0, 3.0);
 }
 
 TEST_F(HousekeepingTest, RelativeVectorValidityFollowsTheFinalLocation)

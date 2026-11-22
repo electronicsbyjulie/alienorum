@@ -46,7 +46,7 @@ namespace alienorum
         double minmag = 0;                          // apparent V mag
         double maxmag = 0;                          // apparent V mag
         double variability_period = 0;              // seconds
-        double epoch_max_brightness = 2451544.5;    // JD
+        double epoch_max_brightness = J2000;        // JD
         double is_eclipsing_binary = false;
         std::string variability_type;
         json mira_pulsation = nullptr;

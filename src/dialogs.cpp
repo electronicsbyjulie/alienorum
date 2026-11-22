@@ -1679,6 +1679,7 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::SetNextItemWidth(txtwid);
             if (ImGui::InputDouble("##edteqinc", &edit_eqincl, 0, 0, "%.3f"))
             {
+                cel->use_manual_rotation();
                 cel->obliquity = edit_eqincl * fiftyseventh;
                 cel->lock_equatorial_plane = false;
                 cel->known_poles = !(tc == class_star && static_cast<Star*>(cel)->fictional_origin.is_object());
@@ -1691,6 +1692,8 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::SameLine();
             if (ImGui::Button("rnd##obliquity"))
             {
+                if (cel->has_rotation_model()) cel->lock_equatorial_plane = false;
+                cel->use_manual_rotation();
                 cel->obliquity = frand(0, frand(0, frand(0, _pi)));
                 cel->user_edited = true;
             }
@@ -1703,6 +1706,7 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::SetNextItemWidth(txtwid);
             if (ImGui::InputDouble("##edteqnox", &edit_equinox, 0, 0, "%.3f"))
             {
+                cel->use_manual_rotation();
                 cel->equinox = edit_equinox * fiftyseventh;
                 cel->lock_equatorial_plane = false;
                 cel->known_poles = !(tc == class_star && static_cast<Star*>(cel)->fictional_origin.is_object());
@@ -1715,6 +1719,8 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::SameLine();
             if (ImGui::Button("rnd##equinox"))
             {
+                if (cel->has_rotation_model()) cel->lock_equatorial_plane = false;
+                cel->use_manual_rotation();
                 cel->equinox = frand(0, _pi*2);
                 cel->user_edited = true;
             }
@@ -1725,6 +1731,7 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::SetNextItemWidth(txtwid);
             if (ImGui::InputDouble("##edtprcs", &edit_prcseq, 0, 0, "%.3f"))
             {
+                cel->use_manual_rotation();
                 cel->precession = edit_prcseq ? (_pi * 2 / (edit_prcseq * oneyear)) : 0;
                 cel->lock_equatorial_plane = false;
                 cel->user_edited = true;
@@ -1809,6 +1816,7 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::SetNextItemWidth(txtwid);
             if (ImGui::InputDouble("##edtrot", &edit_rot, 0, 0, "%.6f"))
             {
+                cel->use_manual_rotation();
                 cel->sidereal_rotational_period = edit_rot * oneday;
                 cel->user_edited = true;
                 viewchanged = true;
@@ -1822,6 +1830,7 @@ void draw_objedit_window(ImGuiIO& io)
                 ImGui::SameLine();
                 if (ImGui::Button("estimate##edit_rotation"))
                 {
+                    cel->use_manual_rotation();
                     ((Planet*)cel)->estimate_rotation();
                 }
             }
@@ -2073,6 +2082,7 @@ void draw_objedit_window(ImGuiIO& io)
                 ImGui::SameLine();
                 if (ImGui::Button("tidal##edit_period"))
                 {
+                    cel->use_manual_rotation();
                     cel->sidereal_rotational_period = cel->orbit->period;
                 }
             }

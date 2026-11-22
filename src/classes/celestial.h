@@ -24,6 +24,7 @@ namespace alienorum
     struct SurfacePhaseRect;
     struct LocalClimate;
     struct LocalSurfaceState;
+    struct BodyRotationModel;
     enum cel_obj_type
     {
         // The types are numbered by hierarchy in case of name conflicts, so that e.g. stars cannot orbit moons etc.
@@ -482,6 +483,11 @@ namespace alienorum
         double get_horizon_angle();
         double get_horizon_distance();
         double timeofday();
+        bool set_rotation_model(const json& record);
+        bool has_rotation_model() const { return static_cast<bool>(rotation_model); }
+        void use_manual_rotation();
+        Point prime_meridian_direction();
+        void set_texture_light_time(double seconds);
         double local_solar_time(double lon);
         int read_locales(std::string json_fname);
         const Locale* nearest_locale(double latitude, double longitude, double max_distance) const;
@@ -519,6 +525,9 @@ namespace alienorum
         protected:
         int read_locales_json(json from_json);
         void update_orbit_location(double tmnow, Rotation* custom_reference_plane = nullptr);
+        void update_rotation_model();
+        std::shared_ptr<BodyRotationModel> rotation_model;
+        bool manual_rotation = false;
         double _currM = 0;
         double _currTOD = 0;
 
