@@ -5,6 +5,20 @@
 - Changing or removing an existing regression test requires explicit, formal, informed developer approval before editing it. Explain the current test, the proposed change, and its effect on coverage and expected behavior; wait for the developer to explicitly approve or decline that exact change.
 - Do not weaken assertions, alter expected results, skip or disable tests, or replace fixtures to accommodate an implementation change without that approval. Fix the implementation while preserving existing regression tests.
 
+## Regression Test Coverage
+
+- For every feature, identify how it can fail and check its observable behavior, including behavior that seems obvious. Examples include a menu appearing with legible labels in the expected script, a spherical planet having a round outline when viewed from space, and a scroll bar letting the user reach the last item in a list.
+- Check affected workflows through their normal app entry points. Use independent expectations where practical so the test can catch an error shared by the underlying calculation and the UI.
+
+## When the Developer Modifies Code
+
+When the developer modifies code and asks for a review, follow these steps in order.
+
+1. Review the described changes and the diff for errors, including additions, edits, and removals.
+2. Trace each changed constant, function, and other dependency through its direct and indirect consumers all the way to the UI. Identify which behaviors each chain can affect. For example, an epoch change can affect rendered day and night even when the epoch constant itself is correct.
+3. Use those dependencies to select and run the relevant existing tests, including app-level checks for affected user-visible behavior. Report the tests run, their results, and any affected behavior that could not be verified.
+4. In the report, identify each existing regression test whose expected behavior the developer's change may intentionally supersede. Explain what the test currently protects, the exact proposed edit, and its effect on coverage. Wait for the developer's explicit approval of each change before editing or removing the test.
+
 ## Brace Style
 - **Generally use Allman style braces; NEVER use K&R style** for all multi-line code blocks, functions, control structures (`if`, `else`, `for`, `while`, `switch`, `try`, `catch`, `finally`), classes, structs, and namespaces across all languages. However, if a statement or inline function can fit on one line or is already one line, you may write it/leave it as one line, even if it contains braces.
 - Otherwise, each opening brace (`{`) and its closing counterpart (`}`) MUST always match the same level of indent.
