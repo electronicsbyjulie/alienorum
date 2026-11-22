@@ -5967,6 +5967,7 @@ static void apply_body_metadata(CelestialObject* body, const json& record)
     if (body->typeclass() == class_planet || body->typeclass() == class_moon)
     {
         auto* planet = static_cast<Planet*>(body);
+        planet->surface_map_url = record.value("DeferredSurfMap", planet->surface_map_url);
         if (!std::isfinite(planet->bond_albedo))
         {
             const auto bond = record.find("BondAlbedo");

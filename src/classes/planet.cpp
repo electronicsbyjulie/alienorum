@@ -195,6 +195,7 @@ bool alienorum::render_saved_planet(CelestialObject* object,
     copy->looked_for_maps = source->looked_for_maps;
     copy->ignore_map_files = source->ignore_map_files;
     copy->has_real_maps = source->has_real_maps;
+    copy->surface_map_url = source->surface_map_url;
     copy->cloud_map_url = source->cloud_map_url;
     copy->static_clouds = source->static_clouds;
     copy->weather_revision = source->weather_revision;

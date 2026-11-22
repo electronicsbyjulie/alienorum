@@ -498,6 +498,12 @@ void load_textures(CelestialObject* cel)
         }
 
         filename = (std::string)"maps" + _FSSTR + (std::string)cel->name + (std::string)"_surf.jpg";
+        if (ccls == class_planet || ccls == class_moon)
+        {
+            const auto& url = static_cast<Planet*>(cel)->surface_map_url;
+            if (!url.empty() && !file_exists(filename.c_str()))
+                download_file(url, filename);
+        }
         if (file_exists(filename.c_str()))
         {
             Map *map = new Map(cel);

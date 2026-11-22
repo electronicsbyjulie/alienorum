@@ -113,6 +113,7 @@ namespace alienorum
         bool ring_status_known = false;
         int asteroid_no = 0;                                // Zero if major planet or moon.
         bool lock_type = false;
+        std::string surface_map_url;
         std::string cloud_map_url;
         std::string catalog_designation;
         bool catalog_candidate = false;
