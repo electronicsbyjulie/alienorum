@@ -6310,6 +6310,130 @@ TEST_F(CatalogParsingTest, CancriTextureColorsReachNamedPlanets)
     }
 }
 
+TEST_F(CatalogParsingTest, Trappist1bRendersVolcanicReliefAndLavaFromTidalHeat)
+{
+    TestCatalogReader reader;
+    const auto close_file = [](FILE* file) { fclose(file); };
+    std::unique_ptr<FILE, decltype(close_file)> file(fopen("catalogs/exoplanets_planets.dat", "r"), close_file);
+    ASSERT_NE(file, nullptr);
+    ExoRow row;
+    while (reader.exorow_read_line(file.get(), row) && row.pl_name != "TRAPPIST-1 b") {}
+    ASSERT_EQ(row.pl_name, "TRAPPIST-1 b");
+    Star* host = make_star(row.hostname.c_str(), row.st_mass * solar_mass);
+    host->temperature = row.st_teff;
+    host->volumetric_mean_radius = row.st_rad * solar_radius;
+    host->distance = row.sy_dist * parsec;
+    snprintf(host->spectral_type, sizeof(host->spectral_type), "%s", row.st_spectype.c_str());
+    std::map<int, std::vector<int>> planets;
+    unsigned int count = 0;
+    ASSERT_TRUE(reader.add_exoplanet_from_row(row, host, planets, count));
+    Planet* world = static_cast<Planet*>(cels[planets.at(host->seqno).front()]);
+    ASSERT_EQ(world->type, rocky);
+    ASSERT_GT(world->tidal_heat_flux(), 2);
+    world->rnd_seed = 42;
+    world->preserve_loaded_parameters = true;
+    constexpr unsigned int height = 192, width = 2 * height;
+    world->fictitious_map_height = height;
+    load_textures(world);
+    ASSERT_NE(world->surf_map, nullptr);
+    ASSERT_TRUE(world->surf_map->is_complete());
+    ASSERT_TRUE(world->surf_map->procedurally_generated);
+    EXPECT_FALSE(world->has_real_maps);
+    EXPECT_EQ(world->night_map, nullptr);
+
+    const auto raster = [](Map* map)
+    {
+        const size_t pixels = map->get_width() * map->get_height();
+        std::pair<std::vector<unsigned char>, std::vector<float>> result;
+        result.first.resize(4 * pixels);
+        result.second.resize(pixels);
+        map->export_rgba(result.first.data());
+        map->export_bump(result.second.data());
+        return result;
+    };
+    const auto [active_color, active_relief] = raster(world->surf_map);
+    world->surf_map->_map_resample_bump_regen_rocky(world);
+    const auto [recolored, retained_relief] = raster(world->surf_map);
+    ASSERT_EQ(active_relief, retained_relief);
+
+    world->tidal_k2_over_q = 0;
+    EXPECT_DOUBLE_EQ(world->tidal_heat_flux(), 0);
+    world->mark_all_maps_for_regen(true);
+    load_textures(world);
+    ASSERT_TRUE(world->surf_map->is_complete());
+    const auto [quiet_color, quiet_relief] = raster(world->surf_map);
+    ASSERT_EQ(active_relief.size(), width * height);
+    ASSERT_EQ(quiet_relief.size(), active_relief.size());
+
+    // Look for bright lava in a depression inside a raised, darker shield.
+    const auto hot = [](const std::vector<unsigned char>& color, size_t pixel)
+    {
+        return color[4 * pixel] > 185 && color[4 * pixel + 1] > 65 && color[4 * pixel + 2] < 65;
+    };
+    const auto uplift = [&](size_t pixel) { return active_relief[pixel] - quiet_relief[pixel]; };
+    size_t vents = 0, quiet_pixels = 0, calderas = 0;
+    for (size_t pixel = 0; pixel < active_relief.size(); ++pixel)
+    {
+        if (active_relief[pixel] == quiet_relief[pixel]) ++quiet_pixels;
+        if (!hot(active_color, pixel) || hot(quiet_color, pixel)) continue;
+        ++vents;
+        EXPECT_TRUE(hot(recolored, pixel));
+        const auto rim = [&](size_t neighbor)
+        {
+            return uplift(neighbor) > uplift(pixel) + 250 && active_color[4 * neighbor] < 110;
+        };
+        const size_t col = pixel % width, start = pixel - col, row = pixel / width;
+        for (size_t step = 2; step <= 5; ++step)
+        {
+            const size_t west = start + (col + width - step) % width;
+            const size_t east = start + (col + step) % width;
+            const bool east_west = rim(west) && rim(east);
+            const bool north_south = row >= step && row + step < height
+                && rim(pixel - step * width) && rim(pixel + step * width);
+            if (east_west || north_south)
+            {
+                ++calderas;
+                break;
+            }
+        }
+    }
+    EXPECT_GT(vents, 5u);
+    EXPECT_GT(calderas, 2u);
+    EXPECT_GT(quiet_pixels, active_relief.size() * .90);
+}
+
+TEST_F(CatalogParsingTest, IoRetainsItsImportedSurfaceTexture)
+{
+    Moon io;
+    strcpy(io.name, "Io");
+    io.type = rocky;
+    io.volumetric_mean_radius = 1821600;
+    io.mass = 8.9319e25;
+    auto* jupiter = make_planet(static_cast<Star*>(cels[0]), "Jupiter", 5.2 * AU);
+    jupiter->mass = 1.89813e30;
+    io.orbit = new Orbit();
+    io.orbit->center = jupiter;
+    io.orbit->semimajor_axis = 421700000;
+    io.orbit->period = 1.769137786 * oneday;
+    io.orbit->eccentricity = .0041;
+    io.sidereal_rotational_period = io.orbit->period;
+    io.tidal_k2_over_q = .015;
+    ASSERT_GT(io.tidal_heat_flux(), 2);
+    Map source(&io);
+    ASSERT_TRUE(source.load_from_jpeg("maps/Io_surf.jpg"));
+    load_textures(&io);
+    ASSERT_NE(io.surf_map, nullptr);
+    ASSERT_TRUE(io.surf_map->is_complete());
+    EXPECT_TRUE(io.has_real_maps);
+    EXPECT_FALSE(io.surf_map->procedurally_generated);
+    ASSERT_EQ(io.surf_map->get_width(), source.get_width());
+    ASSERT_EQ(io.surf_map->get_height(), source.get_height());
+    std::vector<unsigned char> imported(4 * source.get_width() * source.get_height()), actual(imported.size());
+    source.export_rgba(imported.data());
+    io.surf_map->export_rgba(actual.data());
+    EXPECT_TRUE(actual == imported);
+}
+
 TEST_F(CatalogParsingTest, BarnardAndGj3323CatalogPlanetsKeepTexturePhotometryThroughRegeneration)
 {
     bv_correction = -.6244;
@@ -6324,10 +6448,11 @@ TEST_F(CatalogParsingTest, BarnardAndGj3323CatalogPlanetsKeepTexturePhotometryTh
         if (row.hostname.find("Barnard") != std::string::npos || row.pl_name == "GJ 3323 c") targets.push_back(row);
     }
     fclose(file);
-    ASSERT_EQ(targets.size(), 5u);
+    std::set<std::string> expected = {"Barnard b", "Barnard's star c", "Barnard's star d", "Barnard e", "GJ 3323 c"};
     for (const auto& target : targets)
     {
         SCOPED_TRACE(target.pl_name);
+        EXPECT_TRUE(expected.erase(target.pl_name) || target.catalog_candidate);
         Star* host = make_star(target.hostname.c_str(), target.st_mass * solar_mass);
         host->temperature = target.st_teff;
         host->volumetric_mean_radius = target.st_rad * solar_radius;
@@ -6342,7 +6467,7 @@ TEST_F(CatalogParsingTest, BarnardAndGj3323CatalogPlanetsKeepTexturePhotometryTh
         ASSERT_EQ(count, 1u);
         Planet* body = static_cast<Planet*>(cels[planets.at(host->seqno).front()]);
         ASSERT_FALSE(body->is_bv_observed);
-        ASSERT_TRUE(uses_rocky_map(body->type));
+        ASSERT_TRUE(uses_rocky_map(body->type) || (target.catalog_candidate && uses_gaseous_map(body->type)));
         body->rnd_seed = 42;
         body->fictitious_map_height = 32;
         body->preserve_loaded_parameters = true;
@@ -6371,6 +6496,7 @@ TEST_F(CatalogParsingTest, BarnardAndGj3323CatalogPlanetsKeepTexturePhotometryTh
             body->orbit->center = host;
         }
     }
+    EXPECT_TRUE(expected.empty()) << testing::PrintToString(expected);
 }
 
 TEST_F(CatalogParsingTest, CatalogMoonRetainsObservedColorAndGlareWithItsActualTexture)

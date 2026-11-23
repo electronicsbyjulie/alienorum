@@ -252,6 +252,13 @@ static double catalog_julian_epoch(double year)
     return catalog_j2000 + (year - 2000.0) * 365.25;
 }
 
+static double local_catalog_epoch(const json& record)
+{
+    const auto date = record.find("EpochJD");
+    if (date != record.end() && date->is_number()) return date->get<double>();
+    return catalog_julian_epoch(record.at("Epoch").get<double>());
+}
+
 // Assumes no other star catalogs have been loaded before Gliese,
 // since Gliese contains the Sun.
 static void set_icrs_astrometry(Star& star, double ra, double dec, double source_year,
@@ -6098,8 +6105,7 @@ static void apply_stellar_surface_metadata(Star* body, const json& record)
     }
     try
     {
-        const double epoch = record.at("Epoch").get<double>();
-        body->epoch = catalog_julian_epoch(epoch);
+        body->epoch = local_catalog_epoch(record);
         if (body->orbit) body->orbit->epoch = body->epoch;
     }
     catch (...) { ; }
@@ -6273,7 +6279,7 @@ int CatalogReader::read_local_planets(CelestialObject **cels, int max, Celestial
             try { pl.at("UBmag").get_to(p->UB_color); } catch (...) { if (createnew) p->UB_color = p->orbit->center->UB_color; }
             try { pl.at("CloudsStatic").get_to(p->static_clouds); } catch (...) { ; }
             try { pl.at("Eccentricity").get_to(p->orbit->eccentricity); } catch (...) { ; }
-            try { p->orbit->epoch = p->epoch = catalog_julian_epoch(pl.at("Epoch").get<double>()); } catch (...) { ; }
+            try { p->orbit->epoch = p->epoch = local_catalog_epoch(pl); } catch (...) { ; }
             try { double pre; pl.at("EqPrecession").get_to(pre); p->precession = pre ? (_pi * 2 / pre / oneyear) : 0; } catch (...) { ; }
             try { double pre; pl.at("NodePrecession").get_to(pre); p->orbit->prec_node = pre ? (_pi * 2 / pre / oneyear) : 0; } catch (...) { ; }
             try { double pro; pl.at("ArgPeriProcession").get_to(pro); p->orbit->proc_argperi = pro ? (_pi * 2 / pro / oneyear) : 0; } catch (...) { ; }
