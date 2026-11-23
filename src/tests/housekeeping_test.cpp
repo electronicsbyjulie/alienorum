@@ -954,6 +954,92 @@ TEST_F(HousekeepingTest, LunarPrimeMeridianFacesEarthThroughTwoLunations)
     }
 }
 
+TEST_F(HousekeepingTest, LunarPositionMatchesHorizonsBetweenEphemerisSamples)
+{
+    struct OrbitRestore
+    {
+        std::function<void()> clear_universe;
+        double epoch = simnow, julian_date = JDnow;
+        bool offline = radio_silence;
+        ~OrbitRestore()
+        {
+            clear_universe();
+            simnow = epoch;
+            JDnow = julian_date;
+            radio_silence = offline;
+        }
+    } restore{[this]() { delete_the_universe(); }};
+
+    radio_silence = true;
+    Star* sun = make_star("Sun");
+    sun->distance = 0;
+    sun->cenobj = sun;
+    auto& system_plane = sun->location.local_system_plane;
+    system_plane.v = Point(0, 0, 1);
+    system_plane.a = 0.4;
+    CatalogReader reader;
+    ASSERT_GT(reader.read_local_planets(cels, MAX_CELOBJS, sun), 0);
+    const int earth_index = find_object("Earth");
+    ASSERT_GT(earth_index, 0);
+    ASSERT_EQ(cels[earth_index]->typeclass(), class_planet);
+    auto* earth = static_cast<Planet*>(cels[earth_index]);
+    ASSERT_GT(reader.read_local_planets(cels, MAX_CELOBJS, earth), 0);
+    const int moon_index = find_object("Moon");
+    ASSERT_GT(moon_index, 0);
+    ASSERT_EQ(cels[moon_index]->typeclass(), class_moon);
+    auto* moon = static_cast<Moon*>(cels[moon_index]);
+    ASSERT_NE(moon->orbit, nullptr);
+    ASSERT_EQ(moon->orbit->center, earth);
+    ASSERT_GE(moon->orbit->num_osc, 2u);
+
+    const auto position_at = [&](double jd)
+    {
+        JDnow = jd;
+        simnow = J2000_TIME_T + (jd - J2000) * oneday;
+        earth->update_location(simnow);
+        moon->update_location(simnow);
+        const auto relative = moon->location.local_position - earth->location.local_position;
+        const auto ecliptic = rotate3D(relative, center, system_plane.v, system_plane.a);
+        return Point(ecliptic.z, -ecliptic.x, ecliptic.y) * 0.001;
+    };
+
+    // JPL Horizons geometric vectors, Earth center (399) to Moon (301), J2000 ecliptic, km.
+    // The exact queries are recorded in docs/astronomy-audit/orbit-interpolation.tsv.
+    const struct
+    {
+        double jd;
+        Point position;
+    } references[] =
+    {
+        {2422325.0, Point(279652.6391174170, 237369.7315477148, 8455.671862865434)},
+        {2451543.0, Point(-372106.2984946174, -127356.7268489019, 34820.25108696324)},
+        {2480754.0, Point(-142391.6368020591, -377986.0246835253, -27459.03515759160)}
+    };
+    for (const auto& reference : references)
+    {
+        SCOPED_TRACE(reference.jd);
+        const Point actual = position_at(reference.jd);
+        const Point expected = reference.position;
+        const double dot = actual.x * expected.x + actual.y * expected.y + actual.z * expected.z;
+        const double cosine = dot / (actual.magnitude() * expected.magnitude());
+        EXPECT_LT(std::acos(std::clamp(cosine, -1.0, 1.0)) * fiftyseven * 3600, 20);
+        EXPECT_LT(actual.distance_to(expected), 50);
+    }
+
+    // Convert the table's true anomaly and orbital radius at the first, interior, and last knots.
+    EXPECT_LT(position_at(2415020.5).distance_to(Point(24464.931732, -367508.959549, 7042.562946)), 0.001);
+    const double knot = 2480750.5;
+    const Point at_knot = position_at(knot);
+    EXPECT_LT(at_knot.distance_to(Point(-352065.113703, -179415.296293, -4942.086265)), 0.001);
+    EXPECT_LT(position_at(2488065.5).distance_to(Point(-71219.954147, 373521.754775, 30904.242976)), 0.001);
+
+    const double seconds = 5;
+    const double step = seconds / oneday;
+    const Point left_velocity = (at_knot - position_at(knot - step)) * (1 / seconds);
+    const Point right_velocity = (position_at(knot + step) - at_knot) * (1 / seconds);
+    EXPECT_LT(left_velocity.distance_to(right_velocity), 0.0001);
+}
+
 TEST_F(HousekeepingTest, JupiterGreatRedSpotFacesEarthAtTransits)
 {
     CandidateFrameRestore frame_restore;

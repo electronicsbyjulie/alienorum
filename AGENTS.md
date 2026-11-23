@@ -12,12 +12,14 @@
 
 ## When the Developer Modifies Code
 
-When the developer modifies code and asks for a review, follow these steps in order.
+When the developer modifies code or asks for a review, follow these steps in order.
 
 1. Review the described changes and the diff for errors, including additions, edits, and removals.
 2. Trace each changed constant, function, and other dependency through its direct and indirect consumers all the way to the UI. Identify which behaviors each chain can affect. For example, an epoch change can affect rendered day and night even when the epoch constant itself is correct.
 3. Use those dependencies to select and run the relevant existing tests, including app-level checks for affected user-visible behavior. Report the tests run, their results, and any affected behavior that could not be verified.
-4. In the report, identify each existing regression test whose expected behavior the developer's change may intentionally supersede. Explain what the test currently protects, the exact proposed edit, and its effect on coverage. Wait for the developer's explicit approval of each change before editing or removing the test.
+4. In the report, or in the next response, identify each existing regression test whose expected behavior the developer's change may intentionally supersede. Explain what the test currently protects, the exact proposed edit, and its effect on coverage. Wait for the developer's explicit approval of each change before editing or removing the test.
+
+Wait for the developer to finish editing before making corrections. Never remove code that is still being edited.
 
 ## Brace Style
 - **Generally use Allman style braces; NEVER use K&R style** for all multi-line code blocks, functions, control structures (`if`, `else`, `for`, `while`, `switch`, `try`, `catch`, `finally`), classes, structs, and namespaces across all languages. However, if a statement or inline function can fit on one line or is already one line, you may write it/leave it as one line, even if it contains braces.

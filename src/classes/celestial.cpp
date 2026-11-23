@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <memory>
 #include <limits>
+#include <optional>
 #include <charconv>
 #include "celestial.h"
 #include "objectsearch.h"
@@ -640,10 +641,22 @@ bool alienorum::Orbit::read_osc_elements(std::string cel_name)
     return (num_osc > 0);
 }
 
+static const OsculatingElement* osculating_bracket(const Orbit& orbit, double epoch)
+{
+    const auto* first = orbit.osculating;
+    if (!first || orbit.num_osc < 2) return nullptr;
+    const auto* end = first + orbit.num_osc;
+    if (!(epoch >= first->epoch && epoch <= (end - 1)->epoch)) return nullptr;
+
+    const auto* upper = std::upper_bound(first, end, epoch,
+        [](double date, const OsculatingElement& sample) { return date < sample.epoch; });
+    return upper == end ? end - 2 : upper - 1;
+}
+
 void alienorum::Orbit::interpolate_osculating_e(double for_epoch, double &n, double &i, double &w, double &a, double &e, double &m, double &p, double& precn, double& procarg, double& effe)
 {
-    long int h = num_osc - 1;
-    if (num_osc < 2 || for_epoch < osculating[0].epoch || for_epoch > osculating[h].epoch)
+    const auto* bracket = osculating_bracket(*this, for_epoch);
+    if (!bracket)
     {
         // If no osculating parameters, just use mean.
         n       = ascending_node;
@@ -659,10 +672,7 @@ void alienorum::Orbit::interpolate_osculating_e(double for_epoch, double &n, dou
         return;
     }
 
-    // Find a bracketing pair without reading beyond the final sample.
-    auto upper = std::upper_bound(osculating, osculating + num_osc, for_epoch,
-        [](double epoch, const OsculatingElement& sample) { return epoch < sample.epoch; });
-    long int j = upper == osculating + num_osc ? num_osc - 2 : upper - osculating - 1;
+    const auto j = bracket - osculating;
     double coeff1 = (for_epoch - osculating[j].epoch) / (osculating[j+1].epoch - osculating[j].epoch), coeff0 = 1.0 - coeff1;
     // n = coeff0 * osculating[j].ascending_node   + coeff1 * osculating[j+1].ascending_node;
     n = interpolate_angles(osculating[j].ascending_node, osculating[j+1].ascending_node, coeff1);
@@ -680,6 +690,93 @@ void alienorum::Orbit::interpolate_osculating_e(double for_epoch, double &n, dou
     if (     fabs(osculating[j].T_periapsis - T_peri_j1mp) < fabs(osculating[j].T_periapsis - T_peri_j1)) T_peri_j1 = T_peri_j1mp;
     else if (fabs(osculating[j].T_periapsis - T_peri_j1pp) < fabs(osculating[j].T_periapsis - T_peri_j1)) T_peri_j1 = T_peri_j1pp;
     effe = coeff0 * osculating[j].T_periapsis + coeff1 * T_peri_j1;
+}
+
+namespace
+{
+    struct OrbitalBasis
+    {
+        Point periapsis;
+        Point transverse;
+    };
+
+    OrbitalBasis orbital_basis(double node, double inclination, double argperi)
+    {
+        const double cos_node = std::cos(node), sin_node = std::sin(node);
+        const double cos_peri = std::cos(argperi), sin_peri = std::sin(argperi);
+        const double cos_incl = std::cos(inclination), sin_incl = std::sin(inclination);
+        return
+        {
+            Point(-sin_node * cos_peri - cos_node * sin_peri * cos_incl, sin_peri * sin_incl,
+                   cos_node * cos_peri - sin_node * sin_peri * cos_incl),
+            Point(sin_node * sin_peri - cos_node * cos_peri * cos_incl, cos_peri * sin_incl,
+                  -cos_node * sin_peri - sin_node * cos_peri * cos_incl)
+        };
+    }
+
+    struct OrbitalState
+    {
+        Point position;
+        Point velocity;
+    };
+
+    bool usable_lunar_sample(const OsculatingElement& sample)
+    {
+        return std::isfinite(sample.semimajor_axis) && sample.semimajor_axis > 0
+            && sample.eccentricity >= 0 && sample.eccentricity < 1
+            && std::isfinite(sample.period) && sample.period > 0
+            && std::isfinite(sample.mean_anomaly) && std::isfinite(sample.inclination)
+            && std::isfinite(sample.ascending_node) && std::isfinite(sample.arg_perifocus);
+    }
+
+    OrbitalState propagate_sample(const OsculatingElement& sample, const OrbitalBasis& basis, double epoch)
+    {
+        const double rate = 2 * _pi / sample.period;
+        const double eccentric = solve_Kepler(sample.mean_anomaly + rate * ((epoch - sample.epoch) * oneday),
+            sample.eccentricity);
+        const double c = std::cos(eccentric), s = std::sin(eccentric);
+        const double axis = sample.semimajor_axis;
+        const double minor_axis = axis * std::sqrt(1 - sample.eccentricity * sample.eccentricity);
+        const double eccentric_rate = rate / (1 - sample.eccentricity * c);
+        return
+        {
+            basis.periapsis * (axis * (c - sample.eccentricity)) + basis.transverse * (minor_axis * s),
+            (basis.periapsis * (-axis * s) + basis.transverse * (minor_axis * c)) * eccentric_rate
+        };
+    }
+
+    std::optional<Point> interpolate_lunar_position(const Orbit& orbit, double epoch)
+    {
+        const auto* bracket = osculating_bracket(orbit, epoch);
+        if (!bracket || !usable_lunar_sample(bracket[0]) || !usable_lunar_sample(bracket[1])) return std::nullopt;
+
+        const auto& left = bracket[0];
+        const auto& right = bracket[1];
+        const auto left_basis = orbital_basis(left.ascending_node, left.inclination, left.arg_perifocus);
+        const auto right_basis = orbital_basis(right.ascending_node, right.inclination, right.arg_perifocus);
+        if (epoch == left.epoch) return propagate_sample(left, left_basis, epoch).position;
+        if (epoch == right.epoch) return propagate_sample(right, right_basis, epoch).position;
+
+        const auto left_start = propagate_sample(left, left_basis, left.epoch);
+        const auto right_start = propagate_sample(right, right_basis, left.epoch);
+        const auto left_end = propagate_sample(left, left_basis, right.epoch);
+        const auto right_end = propagate_sample(right, right_basis, right.epoch);
+        const Point mean_position = (propagate_sample(left, left_basis, epoch).position
+            + propagate_sample(right, right_basis, epoch).position) * 0.5;
+
+        // The average of the two propagated conics follows the Moon's orbital motion.
+        // Cubic Hermite interpolation of the residual matches the position and velocity
+        // of the stored osculating state at both dates, including across adjacent intervals.
+        const double span = (right.epoch - left.epoch) * oneday;
+        const double t = (epoch - left.epoch) * oneday / span;
+        const double u = 1 - t;
+        const double blend = t * t * (1 + 2 * u);
+        const Point start_residual = (left_start.position - right_start.position) * (1 - blend)
+            + (left_start.velocity - right_start.velocity) * (span * t * u * u);
+        const Point end_residual = (right_end.position - left_end.position) * blend
+            - (right_end.velocity - left_end.velocity) * (span * t * t * u);
+        return mean_position + (start_residual + end_residual) * 0.5;
+    }
 }
 
 static void notify_orbit_statistics(CelestialObject* object)
@@ -1190,6 +1287,15 @@ void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
     }
 
     double tmnow_as_epoch = (tmnow - J2000_TIME_T)/oneday + J2000;
+    std::optional<Point> lunar_position;
+    if (_class == class_moon && orbit->num_osc >= 2
+        && !std::strcmp(name, "Moon") && !std::strcmp(orbit->center->name, "Earth"))
+    {
+        lunar_position = interpolate_lunar_position(*orbit, tmnow_as_epoch);
+        // Earth.Moon uses the Solar System's J2000 ecliptic as its reference plane.
+        if (lunar_position) crp = &orbit->center->location.local_system_plane;
+    }
+
     double N, I, W, A, e, m, P, PN, PW, EFFE;
     orbit->interpolate_osculating_e(tmnow_as_epoch, N, I, W, A, e, m, P, PN, PW, EFFE);
 
@@ -1260,17 +1366,13 @@ void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
         }
     }
 
-    // Rotate to 3D Heliocentric Coordinates
-    double cosO = std::cos(node);
-    double sinO = std::sin(node);
-    double cosw = std::cos(argperi);
-    double sinw = std::sin(argperi);
-    double cosi = std::cos(I);
-    double sini = std::sin(I);
-
-    double x = (-sinO * cosw - cosO * sinw * cosi) * x_plane + ( sinO * sinw - cosO * cosw * cosi) * y_plane;
-    double y = (                      sinw * sini) * x_plane + (                      cosw * sini) * y_plane;
-    double z = ( cosO * cosw - sinO * sinw * cosi) * x_plane + (-cosO * sinw - sinO * cosw * cosi) * y_plane;
+    Point orbit_position;
+    if (lunar_position) orbit_position = *lunar_position;
+    else
+    {
+        const auto basis = orbital_basis(node, I, argperi);
+        orbit_position = basis.periapsis * x_plane + basis.transverse * y_plane;
+    }
 
     const bool sky_orbit = !crp && _class == class_star && lock_system_plane &&
         (known_poles || orbit->heliocentric_inclination || orbit->heliocentric_node);
@@ -1289,6 +1391,7 @@ void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
         const Point along_node = north * cos(omega) + east * sin(omega);
         const Point across_node = east * cos(omega) - north * sin(omega);
         const Point along_motion = across_node * cos(inclination) + away * sin(inclination);
+        const double cosw = std::cos(argperi), sinw = std::sin(argperi);
         sky_position = along_node * (x_plane * cosw - y_plane * sinw)
             + along_motion * (x_plane * sinw + y_plane * cosw);
         if (!location.orbital_plane.a && !location.orbital_plane.v.magnitude())
@@ -1297,7 +1400,7 @@ void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
     else if (_class != class_star || (!orbit->heliocentric_inclination && !orbit->heliocentric_node))
     {
         Point orbit_pole = yaxis;
-        orbit_pole = rotate3D(orbit_pole, center, Point(sinO, 0, -cosO), I);
+        orbit_pole = rotate3D(orbit_pole, center, Point(std::sin(node), 0, -std::cos(node)), I);
         if (crp)
         {
             orbit_pole = rotate3D(orbit_pole, center, crp->v, -crp->a);
@@ -1347,12 +1450,12 @@ void CelestialObject::update_orbit_location(double tmnow, Rotation* crp)
         throw 0xbadc0de;
     }
 
-    assert(!std::isnan(x) && !std::isnan(y) && !std::isnan(z));
+    assert(!std::isnan(orbit_position.x) && !std::isnan(orbit_position.y) && !std::isnan(orbit_position.z));
 
     Point result;
     if (sky_orbit) result = sky_position;
-    else if (crp) result = rotate3D(Point(x,y,z), center, crp->v, -crp->a);
-    else result = rotate3D(Point(x,y,z), center, location.local_system_plane.v, -location.local_system_plane.a);
+    else if (crp) result = rotate3D(orbit_position, center, crp->v, -crp->a);
+    else result = rotate3D(orbit_position, center, location.local_system_plane.v, -location.local_system_plane.a);
 
     location.local_position = result + orbit->center->location.local_position;
 }

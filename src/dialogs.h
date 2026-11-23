@@ -18,6 +18,8 @@ void draw_objedit_window(ImGuiIO &io);
 void reset_closed_object_editor();
 void update_surface_edit_targets();
 void draw_system_explorer(ImGuiIO &io);
+const std::vector<int>& stellar_neighborhood_stars();
+double stellar_neighborhood_scale();
 void draw_stellar_neighborhood(ImGuiIO &io);
 void draw_loc_window(ImGuiIO &io);
 void draw_ast_window(ImGuiIO &io);

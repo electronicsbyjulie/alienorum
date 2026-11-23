@@ -80,6 +80,11 @@ void center_selected()
 {
     if (selected >= 0)
     {
+        if (view_mode == vm_model)
+        {
+            view_mode = vm_spaceship;
+            set_viewer_location_and_plane();
+        }
         if (view_mode == vm_system) view_mode = vm_spaceship;
         azimuth = cels[selected]->RA_as_radians(here,
             (whereami >= 0 && is_surface_map_view(view_mode)) ? cels[whereami]->timeofday() : 0)
@@ -94,6 +99,11 @@ void center_tracked()
 {
     if (trackidx >= 0)
     {
+        if (view_mode == vm_model)
+        {
+            view_mode = vm_spaceship;
+            set_viewer_location_and_plane();
+        }
         if (view_mode == vm_system) view_mode = vm_spaceship;
         azimuth = cels[trackidx]->RA_as_radians(here,
             (whereami >= 0 && is_surface_map_view(view_mode)) ? cels[whereami]->timeofday() : 0)
@@ -101,6 +111,21 @@ void center_tracked()
         altitude = cels[trackidx]->Decl_as_radians_refracted(here);
     }
     enforce_y_pan_limit();
+    viewchanged = true;
+}
+
+void enter_model_view()
+{
+    if (!cels || whereami < 0 || whereami >= ncelobjs || !cels[whereami] || cels[whereami]->deleted) return;
+    if (view_mode == vm_model) return;
+
+    view_mode = vm_model;
+    trackidx = -1;
+    velocity = center;
+    spin = 0;
+    zoom = 1;
+    enforce_y_pan_limit();
+    set_viewer_location_and_plane();
     viewchanged = true;
 }
 
@@ -140,8 +165,9 @@ void identify_object_under_cursor(ImGuiIO& io)
     else for (int index : frame_pick_candidates())
     {
         i = index;
-        if ((i == whereami) && (view_mode != vm_system)) continue;
+        if (i == whereami && view_mode != vm_system && view_mode != vm_model) continue;
         if (cels[i]->deleted || !object_passes_exoplanet_filter(cels[i])) continue;
+        if (view_mode == vm_model && !cels[i]->onscreen) continue;
         if (lsysonly && (cels[i] != mycenobj && cels[i]->cenobj != mycenobj)) continue;
         const auto cls = cels[i]->typeclass();
         const int priority = cls == class_moon ? 3 : cls == class_planet ? 2 : cls == class_star ? 1 : 0;
@@ -255,17 +281,20 @@ void pan_with_crosshairs(ImGuiIO& io)
     if (view_mode == vm_skymap) amount = 3;
     else if (is_surface_map_view(view_mode)) amount = 5;
     else if (view_mode == vm_system) amount = -3;
+    
+    if (view_mode == vm_model) amount *= -1;
+    else if (view_mode != vm_system) amount /= zoom;
 
     if (ImGui::IsMouseDown(2))
     {
-        pan_yaw -= 0.01 * amount * fiftyseventh * io.MouseDelta.x / zoom;
-        pan_pitch += 0.01 * amount * fiftyseventh * io.MouseDelta.y / zoom;
+        pan_yaw -= 0.01 * amount * fiftyseventh * io.MouseDelta.x;
+        pan_pitch += 0.01 * amount * fiftyseventh * io.MouseDelta.y;
         if (view_mode == vm_system) pan_pitch = std::clamp(pan_pitch, -half_pi, half_pi);
         else enforce_y_pan_limit();
         spin = 0;
         viewchanged = true;
 
-        if (view_mode != vm_system)
+        if (view_mode != vm_system && view_mode != vm_model)
         {
             ImVec2 topcen(dispcx, 0), botcen(dispcx, (int)io.DisplaySize.y-1),
                 leftcen(0, dispcy), rightcen((int)io.DisplaySize.x-1, dispcy);
@@ -275,14 +304,14 @@ void pan_with_crosshairs(ImGuiIO& io)
     }
     else if (ImGui::IsMouseDown(1))
     {
-        pan_yaw -= 0.03 * amount * fiftyseventh * io.MouseDelta.x / zoom;
-        pan_pitch += 0.03 * amount * fiftyseventh * io.MouseDelta.y / zoom;
+        pan_yaw -= 0.03 * amount * fiftyseventh * io.MouseDelta.x;
+        pan_pitch += 0.03 * amount * fiftyseventh * io.MouseDelta.y;
         if (view_mode == vm_system) pan_pitch = std::clamp(pan_pitch, -half_pi, half_pi);
         else enforce_y_pan_limit();
         spin = 0;
         viewchanged = true;
 
-        if (view_mode != vm_system)
+        if (view_mode != vm_system && view_mode != vm_model)
         {
             ImVec2 topcen(dispcx, 0), botcen(dispcx, (int)io.DisplaySize.y-1),
                 leftcen(0, dispcy), rightcen((int)io.DisplaySize.x-1, dispcy);
@@ -292,14 +321,14 @@ void pan_with_crosshairs(ImGuiIO& io)
     }
     else if (ImGui::IsMouseDown(0))
     {
-        pan_yaw -= 0.1 * amount * fiftyseventh * io.MouseDelta.x / zoom;
-        pan_pitch += 0.1 * amount * fiftyseventh * io.MouseDelta.y / zoom;
+        pan_yaw -= 0.1 * amount * fiftyseventh * io.MouseDelta.x;
+        pan_pitch += 0.1 * amount * fiftyseventh * io.MouseDelta.y;
         if (view_mode == vm_system) pan_pitch = std::clamp(pan_pitch, -half_pi, half_pi);
         else enforce_y_pan_limit();
         spin = 0;
         viewchanged = true;
 
-        if (view_mode != vm_system)
+        if (view_mode != vm_system && view_mode != vm_model)
         {
             ImVec2 topcen(dispcx, 0), botcen(dispcx, (int)io.DisplaySize.y-1),
                 leftcen(0, dispcy), rightcen((int)io.DisplaySize.x-1, dispcy);
@@ -553,6 +582,11 @@ void show_menu()
             }
             if (ImGui::MenuItem(vmtext[3], "\\", view_mode == vm_skymap)) { process_key_cmd_char('\\'); menu_clicked = true; }
             if (ImGui::MenuItem(vmtext[4], "Ctrl+V", view_mode == vm_system)) { process_key_cmd_ctrl_char('v'); menu_clicked = true; }
+            if (ImGui::MenuItem(vmtext[vm_model], ":", view_mode == vm_model, whereami >= 0))
+            {
+                enter_model_view();
+                menu_clicked = true;
+            }
             if (ImGui::BeginMenu("Viewer Plane"))
             {
                 mouse_over_menu = true;
@@ -745,9 +779,7 @@ void process_key_cmd_char(char c)
 
     // IMPORTANT: Any keyboard shortcuts added here should also be added to show_menu().
     //
-    // Three are deliberately absent from the menu and should stay that way: 'q' and 'Q'
-    // drive the dev dial, which is a development aid the end user has no use for, and
-    // ':' is a placeholder for the unimplemented vm_model view mode.
+    // The dev dial shortcuts 'q' and 'Q' are deliberately absent from the menu.
 
     find_time_steps();
 
@@ -927,6 +959,11 @@ void process_key_cmd_char(char c)
         case 'V': show_localsys = !show_localsys; viewchanged = true; break;
 
         case 'w':
+        if (view_mode == vm_model)
+        {
+            view_mode = vm_spaceship;
+            set_viewer_location_and_plane();
+        }
         if (velocity.magnitude())
         {
             velocity.scale(speed_of_light * 1.00001 / target_frame_rate);
@@ -989,6 +1026,11 @@ void process_key_cmd_char(char c)
         case '8': azimuth = _pi; viewchanged = true; break;                // look south, or away from equinox
 
         case '+':
+        if (view_mode == vm_model)
+        {
+            view_mode = vm_spaceship;
+            set_viewer_location_and_plane();
+        }
         vm = velocity.magnitude();
         vmfr = vm * target_frame_rate;
         if (vmfr > 1e100)
@@ -1047,8 +1089,22 @@ void process_key_cmd_char(char c)
         viewchanged = true;
         if (view_mode == vm_skymap || is_surface_map_view(view_mode)) altitude = 0;
         break;
-        case '*': zoom *= 1.1; global_brightness *= 1.05; viewchanged = true; scrollhold = 1; break;
-        case '/': zoom *= 0.9; if (zoom < 1) zoom = 1; else global_brightness *= 0.95; viewchanged = true; scrollhold = 1; break;
+
+        case '*':
+        zoom *= 1.1;
+        global_brightness *= 1.05;
+        viewchanged = true;
+        scrollhold = 1;
+        break;
+
+        case '/':
+        zoom *= 0.9;
+        if (zoom < 1) zoom = 1;
+        else global_brightness *= 0.95;
+        viewchanged = true;
+        scrollhold = 1;
+        break;
+
         case '^':
         satwnd = true;
         thread_check_sats();
@@ -1105,7 +1161,7 @@ void process_key_cmd_char(char c)
 
         case '&': view_mode = vm_spaceship; viewer_lat = viewer_home_lat; viewer_lon = viewer_home_lon; viewer_tz = viewer_home_tz; save_viewer_latlon = viewchanged = true; break;
         case '\\': view_mode = vm_skymap; zoom=1; altitude=0; azimuth=0; break;
-        case ':': /* view_mode = vm_model; */ break;                 // not yet implemented but want to keep the placeholder
+        case ':': enter_model_view(); break;
 
         case '[':
         {

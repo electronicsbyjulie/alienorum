@@ -634,10 +634,14 @@ void draw_status_window(ImGuiIO& io)            // the S panel
                 const bool is_selected = (n == view_mode);
                 if (ImGui::Selectable(vmtext[n], is_selected))
                 {
-                    view_mode = mode;
-                    if (view_mode == vm_system) statuswnd = false;
-                    set_viewer_location_and_plane();
-                    viewchanged = true;
+                    if (mode == vm_model) enter_model_view();
+                    else
+                    {
+                        view_mode = mode;
+                        if (view_mode == vm_system) statuswnd = false;
+                        set_viewer_location_and_plane();
+                        viewchanged = true;
+                    }
                 }
 
                 // Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
@@ -3293,22 +3297,115 @@ bool onlyplt = false, onlyhz = false, onlyknp = false;
 std::vector<int> neighb_celids;
 std::vector<double> neighb_celr;
 int neighbly = 25, lneighbly = 0, minpl = 1;
+
+static CelestialLocation neighborhood_observer()
+{
+    if (view_mode == vm_model && whereami >= 0 && whereami < ncelobjs && cels[whereami])
+        return cels[whereami]->location;
+    return here;
+}
+
+double stellar_neighborhood_scale()
+{
+    return std::max(1, neighbly) * light_year;
+}
+
+const std::vector<int>& stellar_neighborhood_stars()
+{
+    static NeighborhoodOrder last_order = NeighborhoodOrder::nearest;
+    static CelestialLocation last_viewer;
+    static double last_epoch = NAN;
+    static ViewMode last_mode = vm_spaceship;
+    static int last_count = -1;
+    static std::vector<int> filtered;
+
+    const bool model = view_mode == vm_model;
+    const auto order = model ? NeighborhoodOrder::nearest : neighborhood_order;
+    const bool brightest = order == NeighborhoodOrder::brightest;
+    const CelestialLocation observer = neighborhood_observer();
+    const bool viewer_moved = (model || brightest) && last_viewer.squared_distance_to(observer) != 0;
+    neighb_rthresh = brightest ? INFINITY : static_cast<double>(neighbly) * light_year;
+    if (last_neighb_cen != mycenobj || lneighbly != neighbly || last_order != order
+        || last_mode != view_mode || last_count != ncelobjs || viewer_moved || (model && last_epoch != simnow))
+    {
+        struct Neighbor
+        {
+            double distance, rank;
+            int index;
+        };
+        std::vector<Neighbor> neighbors;
+        double preceding_max = -INFINITY;
+        for (int i = 0; cels && i < ncelobjs; ++i)
+        {
+            auto* object = cels[i];
+            if (!object || object->deleted || object->typeclass() != class_star) continue;
+            const double distance = model ? object->location.distance_to(observer) : object->tmprel.magnitude();
+            if (distance > neighb_rthresh) continue;
+            // Legacy insertion leaves an unknown distance after the preceding maximum.
+            const double magnitude = brightest ? object->viewer_magnitude(observer) : 0;
+            const double rank = brightest ? (std::isnan(magnitude) ? INFINITY : magnitude)
+                : (std::isnan(distance) ? preceding_max : distance);
+            if (!std::isnan(distance)) preceding_max = std::max(preceding_max, distance);
+            neighbors.push_back({distance, rank, i});
+        }
+        std::stable_sort(neighbors.begin(), neighbors.end(), [](const Neighbor& a, const Neighbor& b)
+        {
+            return a.rank < b.rank;
+        });
+        neighb_celids.clear();
+        neighb_celr.clear();
+        neighb_celids.reserve(neighbors.size());
+        neighb_celr.reserve(neighbors.size());
+        for (const auto& neighbor : neighbors)
+        {
+            neighb_celids.push_back(neighbor.index);
+            neighb_celr.push_back(neighbor.distance);
+        }
+        last_neighb_cen = mycenobj;
+        lneighbly = neighbly;
+        last_order = order;
+        last_viewer = observer;
+        last_epoch = simnow;
+        last_mode = view_mode;
+        last_count = ncelobjs;
+    }
+
+    filtered.clear();
+    for (size_t row = 0; row < neighb_celids.size(); ++row)
+    {
+        const int index = neighb_celids[row];
+        auto* object = cels[index];
+        if (!object || object->deleted || object->typeclass() != class_star) continue;
+        auto* star = static_cast<Star*>(object);
+        if (!neighborhood_matches_type(*star, neighborhood_type)) continue;
+        if (onlyhz ? !star->has_hz_planets : onlyplt && star->has_planets < minpl) continue;
+        if (onlyknp && !star->known_poles) continue;
+        filtered.push_back(index);
+        if (brightest && filtered.size() == 100) break;
+    }
+    return filtered;
+}
+
 void draw_stellar_neighborhood(ImGuiIO &io)
 {
     if (!cels[1]) return;
     ImGui::Begin("Stellar Neighborhood", &neighborhood, 0);
 
+    const auto previous = std::make_tuple(neighborhood_type, neighborhood_order, onlyplt, onlyhz, onlyknp, neighbly, minpl);
     const auto type_position = std::find(neighborhood_types.begin(), neighborhood_types.end(), neighborhood_type);
     int type_choice = type_position == neighborhood_types.end() ? 3 : static_cast<int>(type_position - neighborhood_types.begin());
     ImGui::SetNextItemWidth(155);
     ImGui::Combo("##neighborhood_type", &type_choice, neighborhood_type_labels);
     neighborhood_type = neighborhood_types[type_choice];
     ImGui::SameLine();
-    int order_choice = static_cast<int>(neighborhood_order);
-    ImGui::SetNextItemWidth(110);
-    ImGui::Combo("##neighborhood_order", &order_choice, "Nearest\0Brightest\0");
-    neighborhood_order = static_cast<NeighborhoodOrder>(order_choice);
-    ImGui::SameLine();
+    if (view_mode != vm_model)
+    {
+        int order_choice = static_cast<int>(neighborhood_order);
+        ImGui::SetNextItemWidth(110);
+        ImGui::Combo("##neighborhood_order", &order_choice, "Nearest\0Brightest\0");
+        neighborhood_order = static_cast<NeighborhoodOrder>(order_choice);
+        ImGui::SameLine();
+    }
     ImGui::Checkbox("Planets##neighb_must_have_planets", &onlyplt);
     if (!onlyplt) onlyhz = false;
     if (minpl < 1) minpl = 1;
@@ -3325,7 +3422,7 @@ void draw_stellar_neighborhood(ImGuiIO &io)
 
     ImGui::SameLine();
     ImGui::Checkbox("Known Poles##", &onlyknp);
-    if (neighborhood_order == NeighborhoodOrder::nearest)
+    if (view_mode == vm_model || neighborhood_order == NeighborhoodOrder::nearest)
     {
         ImGui::SameLine();
         ImGui::Text("Cutoff:");
@@ -3336,115 +3433,41 @@ void draw_stellar_neighborhood(ImGuiIO &io)
         ImGui::Text("l.y.");
     }
 
-    neighb_rthresh = neighborhood_order == NeighborhoodOrder::nearest ? (double)neighbly * light_year : INFINITY;
+    if (previous != std::tie(neighborhood_type, neighborhood_order, onlyplt, onlyhz, onlyknp, neighbly, minpl))
+        viewchanged = true;
 
-    int i, j, l, n;
-    double r, m;
-    static int item_selected_idx = 0;
-    int item_highlighted_idx = -1;
-    int first_visible = -1;
-    bool selected_visible = false;
+    static int selected_neighbor = -1;
+    if (neighb_celids.empty()) selected_neighbor = -1;
+    const auto& stars = stellar_neighborhood_stars();
+    const CelestialLocation vantage = neighborhood_observer();
+    auto selected_row = std::find(stars.begin(), stars.end(), selected_neighbor);
+    if (selected_row == stars.end())
+    {
+        selected_row = stars.begin();
+        selected_neighbor = stars.empty() ? -1 : *selected_row;
+    }
     ImGui::Text("%s", " Name                                Mag.      Sp. Type     Pl./HZ   Distance");
     if (ImGui::BeginListBox("##neighblist", ImVec2(802, 16 * ImGui::GetTextLineHeightWithSpacing())))
     {
-        j = 0;
-        static NeighborhoodOrder last_order = NeighborhoodOrder::nearest;
-        static CelestialLocation last_viewer;
-        const bool viewer_moved = neighborhood_order == NeighborhoodOrder::brightest && last_viewer.squared_distance_to(here) != 0;
-        if (last_neighb_cen != mycenobj || lneighbly != neighbly || last_order != neighborhood_order || viewer_moved)
-        {
-            const int selected_id = item_selected_idx >= 0 && item_selected_idx < static_cast<int>(neighb_celids.size())
-                ? neighb_celids[item_selected_idx] : -1;
-            neighb_celids.clear();
-            neighb_celr.clear();
-            struct Neighbor
-            {
-                double distance, rank;
-                int index;
-            };
-            std::vector<Neighbor> neighbors;
-            double preceding_max = -INFINITY;
-            for (i=0; cels[i]; i++)
-            {
-                if (cels[i]->deleted) continue;
-                cel_obj_class cls = cels[i]->typeclass();
-                if (cls != class_star) continue;
-                r = cels[i]->tmprel.magnitude();
-                if (r > neighb_rthresh) continue;
-                // Legacy insertion leaves an unknown distance after the preceding maximum.
-                const double magnitude = neighborhood_order == NeighborhoodOrder::brightest ? cels[i]->viewer_magnitude(here) : 0;
-                const double rank = neighborhood_order == NeighborhoodOrder::brightest
-                    ? (std::isnan(magnitude) ? INFINITY : magnitude) : (std::isnan(r) ? preceding_max : r);
-                if (!std::isnan(r)) preceding_max = std::max(preceding_max, r);
-                neighbors.push_back({r, rank, i});
-            }
-            std::stable_sort(neighbors.begin(), neighbors.end(), [](const Neighbor& a, const Neighbor& b)
-            {
-                return a.rank < b.rank;
-            });
-            neighb_celids.reserve(neighbors.size());
-            neighb_celr.reserve(neighbors.size());
-            for (const auto& neighbor : neighbors)
-            {
-                neighb_celr.push_back(neighbor.distance);
-                neighb_celids.push_back(neighbor.index);
-            }
-
-            item_selected_idx = -1;
-            for (size_t pos = 0; pos < neighb_celids.size(); ++pos)
-            {
-                if (neighb_celids[pos] == selected_id) item_selected_idx = static_cast<int>(pos);
-            }
-            lneighbly = neighbly;
-            last_order = neighborhood_order;
-            last_viewer = here;
-        }
-
-        n = neighb_celids.size();
-        static std::vector<int> filtered_neighbors;
-        filtered_neighbors.clear();
-        filtered_neighbors.reserve(n);
-        int selected_row = -1;
-        for (j=0; j<n; j++)
-        {
-            i = neighb_celids[j];
-            Star *s = (Star*)cels[i];
-            if (!neighborhood_matches_type(*s, neighborhood_type)) continue;
-            if (onlyhz)
-            {
-                if (!s->has_hz_planets) continue;
-            }
-            else if (onlyplt && (s->has_planets < minpl)) continue;
-            if (onlyknp && !s->known_poles) continue;
-            if (first_visible < 0) first_visible = j;
-            if (item_selected_idx == j)
-            {
-                selected_visible = true;
-                selected_row = static_cast<int>(filtered_neighbors.size());
-            }
-            filtered_neighbors.push_back(j);
-            if (neighborhood_order == NeighborhoodOrder::brightest && filtered_neighbors.size() == 100) break;
-        }
         ImGuiListClipper clipper;
-        clipper.Begin(static_cast<int>(filtered_neighbors.size()));
-        if (selected_row >= 0) clipper.IncludeItemByIndex(selected_row);
+        clipper.Begin(static_cast<int>(stars.size()));
+        if (selected_neighbor >= 0) clipper.IncludeItemByIndex(static_cast<int>(selected_row - stars.begin()));
         while (clipper.Step())
         {
             for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row)
             {
-                j = filtered_neighbors[row];
-                i = neighb_celids[j];
+                const int i = stars[row];
                 Star* s = static_cast<Star*>(cels[i]);
 
                 stringstream line;
                 line << cels[i]->name;
-                l = line.str().size();
+                int l = line.str().size();
                 if (l < 36) line << std::string(36-l, ' ');
 
-                r = cels[i]->tmprel.magnitude();
+                const double r = view_mode == vm_model ? s->location.distance_to(vantage) : s->tmprel.magnitude();
                 const CelestialObject* observer = whereami >= 0 ? cels[whereami] : nullptr;
-                m = s != observer && r >= (observer ? observer->volumetric_mean_radius : 0)
-                    ? s->viewer_magnitude(here) : NAN;
+                const double m = s != observer && r >= (observer ? observer->volumetric_mean_radius : 0)
+                    ? s->viewer_magnitude(vantage) : NAN;
                 if (std::isfinite(m))
                 {
                     line << setprecision(4) << ((m>=0) ? "+" : "-") << string_format("%05.2f", fabs(m));
@@ -3474,13 +3497,8 @@ void draw_stellar_neighborhood(ImGuiIO &io)
 
                 ImGui::PushID(i);
                 const ImVec2 row_origin = ImGui::GetCursorScreenPos();
-                bool is_selected = (item_selected_idx == j);
-                ImGuiSelectableFlags flags = (item_highlighted_idx == j) ? ImGuiSelectableFlags_Highlight : 0;
-                if (ImGui::Selectable(line.str().c_str(), is_selected, flags))
-                {
-                    item_selected_idx = j;
-                    selected_visible = true;
-                }
+                const bool is_selected = selected_neighbor == i;
+                if (ImGui::Selectable(line.str().c_str(), is_selected)) selected_neighbor = i;
 
                 // Drawing within reserved text space keeps every row on the same columns.
                 const RGB3 rgb = Color::rgb_from_color(Color::color_from_star(0, s, s->BV_color), -1);
@@ -3507,53 +3525,33 @@ void draw_stellar_neighborhood(ImGuiIO &io)
         ImGui::EndListBox();
     }
 
-    l = neighb_celids.size();
-    last_neighb_cen = mycenobj;
-
-    if (!selected_visible) item_selected_idx = first_visible;
-    ImGui::BeginDisabled(item_selected_idx < 0);
+    ImGui::BeginDisabled(selected_neighbor < 0);
     if (ImGui::Button("Select##neighbors"))
     {
-        selected = neighb_celids[item_selected_idx];
+        selected = selected_neighbor;
         viewchanged = true;
     }
     ImGui::SameLine();
     if (ImGui::Button("Find##neighbors"))
     {
-        selected = neighb_celids[item_selected_idx];
+        selected = selected_neighbor;
         center_selected();
         viewchanged = true;
     }
     ImGui::SameLine();
-    if (ImGui::Button("Go##neighbors"))
+    if (ImGui::Button("Go##neighbors") && go_to_celestial_object(selected_neighbor))
     {
-        if (neighb_celids[item_selected_idx] >= 0)
-        {
-            go_to_celestial_object(neighb_celids[item_selected_idx]);
-            viewer_locale = "";
-            set_viewer_location_and_plane();
-            selected = trackidx = -1;
-            global_brightness = default_brightness;
-            zoom = 1;
-            viewchanged = true;
-        }
+        viewer_locale = "";
+        set_viewer_location_and_plane();
+        selected = trackidx = -1;
+        global_brightness = default_brightness;
+        zoom = 1;
+        viewchanged = true;
     }
     ImGui::SameLine();
-    if (ImGui::Button("Alert on Rise##neighbors"))
-    {
-        if (neighb_celids[item_selected_idx] >= 0)
-        {
-            cels[neighb_celids[item_selected_idx]]->alert_rise = true;
-        }
-    }
+    if (ImGui::Button("Alert on Rise##neighbors")) cels[selected_neighbor]->alert_rise = true;
     ImGui::SameLine();
-    if (ImGui::Button("Alert on Set##neighbors"))
-    {
-        if (neighb_celids[item_selected_idx] >= 0)
-        {
-            cels[neighb_celids[item_selected_idx]]->alert_set = true;
-        }
-    }
+    if (ImGui::Button("Alert on Set##neighbors")) cels[selected_neighbor]->alert_set = true;
 
     ImGui::EndDisabled();
 

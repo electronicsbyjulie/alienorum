@@ -3148,6 +3148,29 @@ protected:
         return original.to_json();
     }
 
+    static void verify_texture_vr(Planet* world)
+    {
+        const Map* day_map = world->get_day_map();
+        ASSERT_NE(day_map, nullptr);
+        ASSERT_TRUE(day_map->is_complete());
+        const auto height = day_map->get_height();
+        const auto width = day_map->get_width();
+        double red = 0, green = 0;
+        for (unsigned long row = 0; row < height; ++row)
+        {
+            const double area = std::sin(_pi * (row + 0.5) / height);
+            for (unsigned long column = 0; column < width; ++column)
+            {
+                const auto pixel = day_map->surface_pixel(column, row).first;
+                red += area * std::pow(pixel.r / 255.0, default_gamma);
+                green += area * std::pow(pixel.g / 255.0, default_gamma);
+            }
+        }
+        ASSERT_GT(red, 0);
+        ASSERT_GT(green, 0);
+        EXPECT_NEAR(world->VR_color, 2.5 * std::log10(red / green) - bv_correction, 1e-12);
+    }
+
     void verify_maps(Planet* world)
     {
         world->fictitious_map_height = 32;
@@ -3158,15 +3181,19 @@ protected:
         ASSERT_NE(map, nullptr);
         ASSERT_TRUE(map->is_complete());
         EXPECT_DOUBLE_EQ(world->BV_color, world->get_day_map()->texture_bv(world));
+        verify_texture_vr(world);
         before["BV_color"] = world->BV_color;
+        before["VR_color"] = world->VR_color;
         EXPECT_EQ(world->to_json(), before);
         if (uses_rocky_map(world->type))
         {
             world->fictitious_map_height = 48;
             world->surf_map->_map_resample_bump_regen_rocky(world);
             EXPECT_EQ(world->surf_map->get_height(), 48u);
+            verify_texture_vr(world);
             before["fictitious_map_height"] = 48;
             before["BV_color"] = world->BV_color;
+            before["VR_color"] = world->VR_color;
             EXPECT_EQ(world->to_json(), before);
         }
         // Rendering caches must retain the surviving body's owner after the working copy dies.
@@ -3419,6 +3446,7 @@ TEST_F(SavedPlanetMapTest, SavedZerosAirlessWorldsAndMoonPropertiesSurviveGenera
     verify_maps(moon);
     before["fictitious_map_height"] = 48;
     before["BV_color"] = moon->BV_color;
+    before["VR_color"] = moon->VR_color;
     EXPECT_EQ(moon->to_json(), before);
 }
 

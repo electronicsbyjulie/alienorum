@@ -197,7 +197,7 @@ void set_viewer_location_and_plane()
         return;
     }
 
-    if (whereami >= 0 && cels[whereami]->typeclass() == class_satellite)
+    if (view_mode != vm_model && cels[whereami]->typeclass() == class_satellite)
     {
         view_mode = vm_spaceship;
 
@@ -215,11 +215,13 @@ void set_viewer_location_and_plane()
         }
     }
 
+    if (view_mode == vm_model) here = cels[whereami]->location;
+
     if (view_mode == vm_system)
     {
         if (mycenobj) here = mycenobj->location;
     }
-    else if (vplane_mode == vplane_local && (view_mode == vm_spaceship || view_mode == vm_skymap))
+    else if (vplane_mode == vplane_local && (view_mode == vm_spaceship || view_mode == vm_skymap || view_mode == vm_model))
     {
         // Issue #98 debug code - preserve and come back to it when more time and less sleep debt:
         // if (cels[whereami]->orbit) std::cout << cels[whereami]->orbit->center << "%" << cels[whereami]->orbit->period << std::endl;
@@ -273,6 +275,14 @@ void set_viewer_location_and_plane()
     {
         here = cels[whereami]->location;
         here.equatorial_plane = cels[inside_galaxy_idx]->location.equatorial_plane;
+    }
+
+    if (view_mode == vm_model)
+    {
+        azimuth_correction = npaz = 0;
+        // Move back along the view axis so changing either angle orbits the focus.
+        const Point offset(Cartesian2D(0, 0), 2.25 * stellar_neighborhood_scale(), azimuth, altitude, 1.0);
+        here.local_position -= to_viewer_plane(offset, -1);
     }
 }
 
@@ -434,7 +444,11 @@ namespace
                 for (int index : found->second) if (!cels[index]->deleted) state.active.insert(index);
         };
         include_system(mycenobj);
-        for (int index : {whereami, selected, trackidx, editidx})
+        if (view_mode == vm_model)
+        {
+            for (const auto& system : state.systems) include_system(system.first);
+        }
+        else for (int index : {whereami, selected, trackidx, editidx})
         {
             if (index < 0 || index >= ncelobjs || !cels[index] || cels[index]->deleted) continue;
             const auto* target = cels[index];
@@ -503,7 +517,8 @@ const std::vector<int>& frame_active_world_candidates()
 const std::vector<int>& frame_draw_candidates()
 {
     const auto& fallback = frame_object_candidates();
-    return performance_enabled(5) && frame_objects().published ? frame_objects().projected : fallback;
+    return (performance_enabled(5) || view_mode == vm_model) && frame_objects().published
+        ? frame_objects().projected : fallback;
 }
 
 const std::vector<int>& frame_orbit_candidates()
@@ -547,6 +562,7 @@ bool object_passes_exoplanet_filter(const CelestialObject* object)
 
 bool planetary_system_is_active(const CelestialObject* cel)
 {
+    if (view_mode == vm_model) return true;
     const cel_obj_class cls = cel->typeclass();
     if (cls != class_planet && cls != class_moon) return true;
     if (performance_enabled(1) && frame_matches() && cel->seqno >= 0 && cel->seqno < ncelobjs
@@ -601,7 +617,7 @@ bool compute_object_location(CelestialObject* cel, bool* relative_valid)
     cel->tmprel = Point(tmp);
     mark_relative(true);
     double viewer_distance = cel->tmprel.magnitude();
-    double light_travel_time = system_object ? 0 : viewer_distance / speed_of_light;
+    double light_travel_time = system_object || view_mode == vm_model ? 0 : viewer_distance / speed_of_light;
     double AU_zoomed_squared = AU*AU*zoom*zoom;
 
     // Nothing about this depends on cel, but the dialogs call this function on a single object
@@ -623,7 +639,8 @@ bool compute_object_location(CelestialObject* cel, bool* relative_valid)
         // ((Star*)cel), not ((Star*)cels[i]): the two are the same object -- i is cel->seqno --
         // but only the first is guaranteed a Star by the case label we are standing in, and the
         // second form is what made the identical test in draw_objects() a genuine bad cast.
-        if ((star_in_box = (i
+        if (view_mode == vm_model) star_in_box = true;
+        else if ((star_in_box = (i
             ? ((cel->cenobj == mycenobj && mycenobj)
                 || ((Star*)cel)->is_in_visible_box(Point(here))
                 || ((Star*)cel)->is_faved
@@ -636,7 +653,7 @@ bool compute_object_location(CelestialObject* cel, bool* relative_valid)
             ((Star*)cel)->tmp_vis_flag = star_in_box;
             if (!system_object && i!=selected && i!=trackidx && i!=editidx && i!=whereami && cel->cenobj!=mycenobj && !((Star*)cel)->is_faved)
             {
-                if (!star_in_box && !((Star*)cel)->is_universally_visible()
+                if (view_mode != vm_model && !star_in_box && !((Star*)cel)->is_universally_visible()
                     && (cbolbls_selected_idx != lbltype_planets  || (((Star*)cel)->has_planets < planets_lblcut) )
                     && (cbolbls_selected_idx != lbltype_planethz || !(((Star*)cel)->has_hz_planets) )
                     )
@@ -653,7 +670,7 @@ bool compute_object_location(CelestialObject* cel, bool* relative_valid)
         tmp = cel->location - here;
         cel->tmprel = Point(tmp);
         mark_relative(true);
-        if (!system_object && i > 0 && whereami >= 0 && cel->tmprel.magnitude() < cels[whereami]->volumetric_mean_radius)
+        if (!system_object && view_mode != vm_model && i > 0 && whereami >= 0 && cel->tmprel.magnitude() < cels[whereami]->volumetric_mean_radius)
         {
             cel->drawnx = cel->drawny = -1e9;
             return false;
@@ -661,7 +678,7 @@ bool compute_object_location(CelestialObject* cel, bool* relative_valid)
         break;
 
         case class_planet:
-        if (i > 0)
+        if (i > 0 && view_mode != vm_model)
         {
             if (!system_object && i!=selected && i!=trackidx && i!=editidx && i!=whereami)
             {
@@ -689,7 +706,7 @@ bool compute_object_location(CelestialObject* cel, bool* relative_valid)
         break;
 
         case class_moon:
-        if (i > 0)
+        if (i > 0 && view_mode != vm_model)
         {
             if (!system_object && i!=selected && i!=trackidx && i!=editidx && i!=whereami)
             {
@@ -879,6 +896,13 @@ void compute_object_draw_coordinates()
 
     if (!frame_matches()) prepare_frame_objects();
     refresh_eclipse_casters();
+    std::unordered_set<int> model_stars;
+    if (view_mode == vm_model)
+    {
+        const auto& stars = stellar_neighborhood_stars();
+        model_stars.insert(stars.begin(), stars.end());
+        num_stars_in_box = static_cast<int>(stars.size());
+    }
     set_viewer_location_and_plane();
     if (trackidx >= 0) center_tracked();
 
@@ -906,22 +930,29 @@ void compute_object_draw_coordinates()
         // Orbit lines can remain visible when their bodies fail later projection filters.
         if (collect_orbits && cels[i]->orbit) objects.orbits.push_back(i);
         if (!performance_enabled(2) && !planetary_system_is_active(cels[i])) continue;
-        if (isnan(cels[i]->tmprel.x)) continue;
-        
         // From inside a galaxy's disc, it won't do to merely project an ellipse. We wrap a band all the way round with draw_galaxy_band() instead,
         // and this is where it decides. The margin lets the band take over a little sooner, when the galaxy fills most of the view.
-        if ((performance_enabled(8) ? objects.classes[i] : cels[i]->typeclass()) == class_galaxy)
+        const auto cls = performance_enabled(8) ? objects.classes[i] : cels[i]->typeclass();
+        if (cls == class_galaxy)
         {
             double gr = cels[i]->distance * ((Galaxy*)cels[i])->angular_diameter * 0.5;
             if (gr > 0 && cels[i]->tmprel.squared_magnitude() < gr * gr * 1.44)
                 inside_galaxy_idx = i;
         }
 
-        if ((i == whereami) && (view_mode != vm_system)) continue;
+        if (view_mode == vm_model)
+        {
+            const auto* host = cels[i]->get_light_center();
+            if (!host || !model_stars.count(host->seqno)) continue;
+            CelestialLocation relative = cels[i]->location - here;
+            cels[i]->tmprel = Point(relative);
+        }
+        else if (i == whereami && view_mode != vm_system) continue;
+        if (isnan(cels[i]->tmprel.x)) continue;
         
         // A galaxy's cenobj is itself. Galaxies get their own visibility test further down, on apparent magnitude, the same way
         // a star out of its visible box would.
-        if ((performance_enabled(8) ? objects.classes[i] : cels[i]->typeclass()) == class_star)
+        if (view_mode != vm_model && cls == class_star)
         {
             Star* cels_i_star = ((Star*)cels[i]);
 
@@ -942,7 +973,7 @@ void compute_object_draw_coordinates()
         Point rel = cels[i]->tmprel;
         double relm = rel.magnitude();
 
-        if (cels[i]->orbit
+        if (view_mode != vm_model && cels[i]->orbit
             && relm > 1e4 * cels[i]->orbit->semimajor_axis * cels[i]->orbit->semimajor_axis * zoom * zoom)
         {
             angular_radius[i] = std::asin(std::clamp(cels[i]->volumetric_mean_radius / fmax(relm, 1e-29), 0.0, 1.0));
@@ -955,15 +986,14 @@ void compute_object_draw_coordinates()
 
         rel = to_viewer_plane(rel);
 
-        cel_obj_class icls = (performance_enabled(8) ? objects.classes[i] : cels[i]->typeclass());
-        if (icls == class_planet || icls == class_moon)
+        if (cls == class_planet || cls == class_moon)
         {
             vmag_cache[i] = ((Planet*)cels[i])->viewer_reflectance_magnitude(here);
 
             double lit = eclipse_illumination(cels[i]);
             if (lit < 1.0) vmag_cache[i] -= log(lit) * invlogmagnbase;
         }
-        else if (icls == class_comet) vmag_cache[i] = ((Comet*)cels[i])->viewer_comet_magnitude(here);
+        else if (cls == class_comet) vmag_cache[i] = ((Comet*)cels[i])->viewer_comet_magnitude(here);
         else vmag_cache[i] = cels[i]->viewer_magnitude(here);
 
         if (!(vmag_cache[i] > -1.5)) objects.bright.push_back(i);

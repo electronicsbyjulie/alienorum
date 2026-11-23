@@ -5427,6 +5427,341 @@ TEST_F(RenderingRegressionTest, RainProbeMatchesVisibleCumulusAndClearGapsIndepe
     EXPECT_TRUE(cloud_rain_cover().permits_rain());
 }
 
+TEST_F(RenderingRegressionTest, ModelViewPansAroundItsFocusAndDrawsNearbyStars)
+{
+    extern int neighbly;
+    set(neighbly, 15);
+    set(here, CelestialLocation());
+    set(vplane_mode, vplane_ICRF);
+    set(mycenobj, nullptr);
+    set(trackidx, -1);
+    set(selected, -1);
+    set(is_click, false);
+    set(velocity, center);
+    set(spin, 0.0);
+    set(redo_proper_motions, true);
+    set(show_localsys, true);
+    set(show_labels, true);
+    set(lbl_localsys, true);
+    set(lbllsys_mass_lim, 0.0);
+    set(show_orbits, false);
+    set(cbolbls_selected_idx, lbltype_brightest);
+    set(appmagn_lblcut, 6.0);
+    set(global_brightness, 1.0);
+    set(sky_mag_shift, 0.0);
+
+    const auto add_star = [&](const char* name, const Point& position)
+    {
+        Star* star = make_star(name);
+        star->has_fictional_motion = true;
+        star->location.system_center = star->fictional_epoch_position = position * light_year;
+        star->absolute_magnitude = 2;
+        star->cenobj = star;
+        return star;
+    };
+    add_star("Catalog origin", Point(0, 0, 0));
+    Star* focus = add_star("Model focus", Point(40, 0, 0));
+    Star* nearby = add_star("Nearby star", Point(47, 0, 5));
+    Star* distant = add_star("Distant star", Point(40, 0, 20));
+    Planet* faint = make_planet(focus, "Faint planet");
+    surface_magnitudes.assign(ncelobjs, 999);
+    surface_radii.assign(ncelobjs, 0);
+    system_bloom.assign(ncelobjs, 0);
+    auto discs = std::make_unique<bool[]>(ncelobjs);
+    set(vmag_cache, surface_magnitudes.data());
+    set(angular_radius, surface_radii.data());
+    set(bloomrad_cache, system_bloom.data());
+    set(discinstead, discs.get());
+    whereami = focus->seqno;
+
+    process_key_cmd_char(':');
+    ASSERT_EQ(view_mode, vm_model);
+    compute_object_draw_coordinates();
+    draw_objects();
+    EXPECT_NEAR(focus->drawnx, dispcx, .001);
+    EXPECT_NEAR(focus->drawny, dispcy, .001);
+    EXPECT_GT(nearby->drawnx, dispcx + 10);
+    EXPECT_NEAR(nearby->drawny, dispcy, .001);
+    EXPECT_TRUE(focus->onscreen);
+    EXPECT_TRUE(nearby->onscreen);
+    EXPECT_TRUE(nearby->label_shown);
+    EXPECT_FALSE(distant->onscreen);
+    EXPECT_FALSE(faint->onscreen);
+    EXPECT_FALSE(faint->label_shown);
+    const float old_x = nearby->drawnx;
+    const auto before = render();
+
+    ImGui::NewFrame();
+    ImGuiIO& io = ImGui::GetIO();
+    io.MouseDown[0] = true;
+    io.MouseDelta = ImVec2(240, 180);
+    pan_with_crosshairs(io);
+    io.MouseDown[0] = false;
+    compute_object_draw_coordinates();
+    draw_objects();
+    EXPECT_EQ(whereami, focus->seqno);
+    EXPECT_NEAR(focus->drawnx, dispcx, .001);
+    EXPECT_NEAR(focus->drawny, dispcy, .001);
+    EXPECT_GT(std::abs(nearby->drawnx - old_x), 1);
+    EXPECT_GT(std::abs(nearby->drawny - dispcy), 1);
+    EXPECT_TRUE(nearby->label_shown);
+    EXPECT_FALSE(distant->onscreen);
+    io.MousePos = ImVec2(nearby->drawnx, nearby->drawny);
+    identify_object_under_cursor(io);
+    EXPECT_EQ(is_an_obj_under_cursor, nearby->seqno);
+    EXPECT_NE(render(), before);
+
+    ImGui::NewFrame();
+    process_key_cmd_char('&');
+    compute_object_draw_coordinates();
+    EXPECT_EQ(view_mode, vm_spaceship);
+    EXPECT_EQ(here.distance_to(focus->location), 0);
+    EXPECT_FALSE(focus->onscreen);
+}
+
+TEST_F(RenderingRegressionTest, ModelViewOrbitNearHalfBrightensAsTheCameraTilts)
+{
+    extern int neighbly;
+    extern bool onlyplt, onlyhz, onlyknp;
+    extern NeighborhoodType neighborhood_type;
+    set(neighbly, 15);
+    set(onlyplt, false);
+    set(onlyhz, false);
+    set(onlyknp, false);
+    set(neighborhood_type, NeighborhoodType::all);
+    set(here, CelestialLocation());
+    set(vplane_mode, vplane_ICRF);
+    set(mycenobj, nullptr);
+    set(trackidx, -1);
+    set(velocity, center);
+    set(spin, 0.0);
+    set(simnow, double(J2000_TIME_T));
+    set(redo_proper_motions, true);
+    set(show_localsys, true);
+    set(show_orbits, false);
+    set(lbllsys_mass_lim, 0.0);
+    set(whtbkgd, false);
+    set(redlight_mode, false);
+    const ImU32 orbit_color = IM_COL32(40, 220, 120, 96);
+    set(global_style.selected_orbit_color, orbit_color);
+
+    auto* host = make_star("Orbit focus");
+    host->has_fictional_motion = true;
+    host->cenobj = host;
+    auto* planet = make_planet(host, "Orbiting planet", 11 * light_year);
+    whereami = host->seqno;
+    set(selected, planet->seqno);
+    surface_magnitudes.assign(ncelobjs, 999);
+    surface_radii.assign(ncelobjs, 0);
+    system_bloom.assign(ncelobjs, 0);
+    auto discs = std::make_unique<bool[]>(ncelobjs);
+    set(vmag_cache, surface_magnitudes.data());
+    set(angular_radius, surface_radii.data());
+    set(bloomrad_cache, system_bloom.data());
+    set(discinstead, discs.get());
+
+    process_key_cmd_char(':');
+    process_key_cmd_char('O');
+    ASSERT_EQ(view_mode, vm_model);
+    ASSERT_TRUE(show_orbits);
+
+    const auto orbit_opacity = [&](double pitch)
+    {
+        altitude = pitch;
+        compute_object_draw_coordinates();
+        draw_objects();
+        ImU32 upper = 0, lower = 0;
+        for (const auto& vertex : ImGui::GetBackgroundDrawList()->VtxBuffer)
+        {
+            if ((vertex.col & ~IM_COL32_A_MASK) != (orbit_color & ~IM_COL32_A_MASK)) continue;
+            const ImU32 alpha = vertex.col >> IM_COL32_A_SHIFT;
+            if (vertex.pos.y < dispcy - 6) upper = std::max(upper, alpha);
+            if (vertex.pos.y > dispcy + 6) lower = std::max(lower, alpha);
+        }
+        ImGui::EndFrame();
+        ImGui::NewFrame();
+        return std::make_pair(upper, lower);
+    };
+    EXPECT_EQ(orbit_opacity(_pi / 4), (std::make_pair<ImU32, ImU32>(96, 72)));
+    EXPECT_EQ(orbit_opacity(-_pi / 4), (std::make_pair<ImU32, ImU32>(72, 96)));
+    EXPECT_EQ(orbit_opacity(half_pi), (std::make_pair<ImU32, ImU32>(96, 96)));
+
+    process_key_cmd_char('O');
+    EXPECT_EQ(orbit_opacity(_pi / 4), (std::make_pair<ImU32, ImU32>(0, 0)));
+}
+
+TEST_F(RenderingRegressionTest, ModelViewShowsFaintObjectsAtFivePixelsOfSeparation)
+{
+    extern int neighbly;
+    set(neighbly, 15);
+    set(here, CelestialLocation());
+    set(vplane_mode, vplane_ICRF);
+    set(mycenobj, nullptr);
+    set(trackidx, -1);
+    set(selected, -1);
+    set(is_click, false);
+    set(velocity, center);
+    set(spin, 0.0);
+    set(simnow, double(J2000_TIME_T));
+    set(redo_proper_motions, true);
+    set(show_localsys, true);
+    set(show_orbits, false);
+    set(global_brightness, 0.01);
+    set(sky_mag_shift, 0.0);
+
+    const auto add_star = [&](const char* name, Point position, double magnitude)
+    {
+        auto* star = make_star(name);
+        star->has_fictional_motion = true;
+        star->location.system_center = star->fictional_epoch_position = position * light_year;
+        star->absolute_magnitude = magnitude;
+        star->cenobj = star;
+        return star;
+    };
+    Star* focus = add_star("Model focus", Point(0, 0, 0), 2);
+    Star* host = add_star("Faint host", Point(7, 3, 4), 24);
+    Star* distant = add_star("Distant star", Point(1, 0, 16), -2);
+    Planet* close = make_planet(host, "Close companion", 1.9 * light_year);
+    close->orbit->ascending_node = half_pi;
+    Planet* wide = make_planet(host, "Wide companion", 2.1 * light_year);
+    wide->orbit->ascending_node = -half_pi;
+
+    surface_magnitudes.assign(ncelobjs, 999);
+    surface_radii.assign(ncelobjs, 0);
+    system_bloom.assign(ncelobjs, 0);
+    auto discs = std::make_unique<bool[]>(ncelobjs);
+    set(vmag_cache, surface_magnitudes.data());
+    set(angular_radius, surface_radii.data());
+    set(bloomrad_cache, system_bloom.data());
+    set(discinstead, discs.get());
+    whereami = focus->seqno;
+
+    process_key_cmd_char(':');
+    compute_object_draw_coordinates();
+    draw_objects();
+    const auto separation = [host](const CelestialObject* object)
+    {
+        return std::hypot(object->drawnx - host->drawnx, object->drawny - host->drawny);
+    };
+    EXPECT_GT(vmag_cache[host->seqno], normal_best_mag_limit);
+    EXPECT_GT(vmag_cache[wide->seqno], normal_best_mag_limit);
+    EXPECT_LT(separation(close), 5);
+    EXPECT_GE(separation(wide), 5);
+    EXPECT_TRUE(host->onscreen);
+    EXPECT_TRUE(wide->onscreen);
+    EXPECT_TRUE(wide->label_shown);
+    EXPECT_FALSE(close->onscreen);
+    EXPECT_FALSE(close->label_shown);
+    EXPECT_FALSE(distant->onscreen);
+    ImGuiIO& io = ImGui::GetIO();
+    io.MousePos = ImVec2(wide->drawnx, wide->drawny);
+    identify_object_under_cursor(io);
+    EXPECT_EQ(is_an_obj_under_cursor, wide->seqno);
+
+    ImGui::EndFrame();
+    ImGui::NewFrame();
+    process_key_cmd_char('*');
+    compute_object_draw_coordinates();
+    draw_objects();
+    EXPECT_GE(separation(close), 5);
+    EXPECT_TRUE(close->onscreen);
+}
+
+TEST_F(RenderingRegressionTest, ModelViewUsesNeighborhoodFiltersAndCutoffScale)
+{
+    extern NeighborhoodType neighborhood_type;
+    extern NeighborhoodOrder neighborhood_order;
+    extern bool onlyplt, onlyhz, onlyknp;
+    extern int neighbly, lneighbly;
+    set(neighborhood_type, NeighborhoodType::all);
+    set(neighborhood_order, NeighborhoodOrder::nearest);
+    set(onlyplt, false);
+    set(onlyhz, false);
+    set(onlyknp, true);
+    set(neighbly, 12);
+    set(lneighbly, -1);
+    set(neighborhood, false);
+    set(last_neighb_cen, nullptr);
+    set(here, CelestialLocation());
+    set(vplane_mode, vplane_ICRF);
+    set(mycenobj, nullptr);
+    set(trackidx, -1);
+    set(selected, -1);
+    set(velocity, center);
+    set(spin, 0.0);
+    set(simnow, double(J2000_TIME_T));
+    set(redo_proper_motions, true);
+    set(show_localsys, true);
+    set(show_orbits, false);
+
+    const auto add_star = [&](const char* name, Point position, bool known_pole)
+    {
+        auto* star = make_star(name);
+        star->has_fictional_motion = true;
+        star->location.system_center = star->fictional_epoch_position = position * light_year;
+        star->cenobj = star;
+        star->known_poles = known_pole;
+        return star;
+    };
+    auto* focus = add_star("Focus", Point(0, 0, 0), false);
+    auto* included = add_star("Known pole", Point(4, 0, 2), true);
+    auto* excluded = add_star("Unknown pole", Point(-4, 0, 2), false);
+    auto* farther = add_star("Farther known pole", Point(0, 0, 18), true);
+    auto* included_planet = make_planet(included, "Included planet", 9 * light_year);
+    included_planet->orbit->ascending_node = -half_pi;
+    auto* excluded_planet = make_planet(excluded, "Excluded planet", 4 * light_year);
+    excluded_planet->orbit->ascending_node = half_pi;
+
+    surface_magnitudes.assign(ncelobjs, 999);
+    surface_radii.assign(ncelobjs, 0);
+    system_bloom.assign(ncelobjs, 0);
+    auto discs = std::make_unique<bool[]>(ncelobjs);
+    set(vmag_cache, surface_magnitudes.data());
+    set(angular_radius, surface_radii.data());
+    set(bloomrad_cache, system_bloom.data());
+    set(discinstead, discs.get());
+    whereami = focus->seqno;
+
+    process_key_cmd_char(':');
+    ASSERT_EQ(view_mode, vm_model);
+    const auto draw = [&]()
+    {
+        compute_object_draw_coordinates();
+        draw_objects();
+    };
+    draw();
+    EXPECT_EQ(stellar_neighborhood_stars(), (std::vector<int>{included->seqno}));
+    EXPECT_TRUE(included->onscreen);
+    EXPECT_TRUE(included_planet->onscreen);
+    EXPECT_GT(included_planet->location.distance_to(focus->location), 12 * light_year);
+    EXPECT_FALSE(focus->onscreen);
+    EXPECT_FALSE(excluded->onscreen);
+    EXPECT_FALSE(excluded_planet->onscreen);
+    EXPECT_FALSE(farther->onscreen);
+    const double initial_offset = here.distance_to(focus->location);
+    const float initial_x = included->drawnx;
+
+    neighbly = 24;
+    draw();
+    EXPECT_EQ(stellar_neighborhood_stars(), (std::vector<int>{included->seqno, farther->seqno}));
+    EXPECT_TRUE(farther->onscreen);
+    EXPECT_NEAR(here.distance_to(focus->location) / initial_offset, 2, 1e-9);
+    EXPECT_LT(included->drawnx, initial_x);
+
+    process_key_cmd_char('*');
+    draw();
+    EXPECT_TRUE(farther->onscreen);
+    EXPECT_NEAR(here.distance_to(focus->location) / initial_offset, 2, 1e-9);
+
+    neighborhood_order = NeighborhoodOrder::brightest;
+    neighbly = 12;
+    draw();
+    EXPECT_EQ(stellar_neighborhood_stars(), (std::vector<int>{included->seqno}));
+    EXPECT_FALSE(farther->onscreen);
+    EXPECT_FALSE(excluded->onscreen);
+    EXPECT_NEAR(here.distance_to(focus->location) / initial_offset, 1, 1e-9);
+}
+
 TEST_F(RenderingRegressionTest, SystemViewKeepsAPlanetVisibleWhenItsHostRadiusIsUnknown)
 {
     system_bloom.assign(2, 10.0);
@@ -5515,6 +5850,107 @@ TEST_F(RenderingRegressionTest, SystemViewUsesSeparateRowsForLargeStars)
         previous_bottom = member->drawnymax;
     }
     EXPECT_LE(previous_bottom, dispcy * 2);
+}
+
+TEST_F(RenderingRegressionTest, SystemViewUsesNormalizedStellarTextures)
+{
+    auto* star = make_star("System star");
+    star->cenobj = star;
+    star->looked_for_maps = true;
+    star->surf_map = new SceneryTestMap();
+    star->apparent_magnitude = -27;
+    star->absolute_magnitude = 12;
+    set(lsyscache, std::vector<CelestialObject*>{star});
+    set(view_mode, vm_system);
+    set(selected, -1);
+    set(lbl_localsys, false);
+    set(whtbkgd, false);
+    set(redlight_mode, false);
+    set(global_brightness, 1.0);
+    surface_magnitudes.assign(1, -27);
+    system_bloom.assign(1, 0);
+    set(vmag_cache, surface_magnitudes.data());
+    set(bloomrad_cache, system_bloom.data());
+
+    const auto capture = [&]()
+    {
+        draw_objects();
+        auto pixels = render();
+        ImGui::NewFrame();
+        return pixels;
+    };
+    const auto reference = capture();
+    ASSERT_TRUE(star->onscreen);
+    const int disc_edge = std::ceil(star->drawnxmax);
+    ASSERT_GT(disc_edge, 12);
+    const int row = static_cast<int>(star->drawny);
+    const auto band = [&](const std::vector<unsigned char>& pixels, int left, int right)
+    {
+        int sum = 0;
+        for (int y = row - 12; y <= row + 12; ++y)
+        {
+            for (int x = left; x < right; ++x)
+            {
+                const int index = ((render_height - 1 - y) * render_width + x) * 4;
+                sum += pixels[index] + pixels[index + 1] + pixels[index + 2];
+            }
+        }
+        return sum;
+    };
+    EXPECT_GT(band(reference, 4, 12), 0);
+    EXPECT_EQ(band(reference, disc_edge + 3, render_width), 0);
+
+    star->absolute_magnitude = 4.83;
+    EXPECT_EQ(capture(), reference);
+    star->apparent_magnitude = 20;
+    surface_magnitudes[0] = 20;
+    EXPECT_EQ(capture(), reference);
+
+    star->absolute_magnitude = -10;
+    EXPECT_EQ(capture(), reference);
+    star->absolute_magnitude = -25;
+    EXPECT_EQ(capture(), reference);
+}
+
+TEST_F(RenderingRegressionTest, SystemViewKeepsClearSpaceOutsideStellarDiscs)
+{
+    auto* star = make_star("System star");
+    star->cenobj = star;
+    star->looked_for_maps = true;
+    star->absolute_magnitude = -10;
+    set(lsyscache, std::vector<CelestialObject*>{star});
+    set(view_mode, vm_system);
+    set(selected, -1);
+    set(lbl_localsys, false);
+    set(whtbkgd, false);
+    set(redlight_mode, false);
+    set(npointedstar, 4);
+    system_bloom.assign(1, 0);
+    set(bloomrad_cache, system_bloom.data());
+
+    draw_objects();
+    ASSERT_TRUE(star->onscreen);
+    const auto pixels = render();
+    const auto sample = [&](int x, int y)
+    {
+        int brightness = 0;
+        for (int dy = -1; dy <= 1; ++dy)
+        {
+            for (int dx = -1; dx <= 1; ++dx)
+            {
+                const int index = ((render_height - 1 - (y + dy)) * render_width + x + dx) * 4;
+                brightness += pixels[index] + pixels[index + 1] + pixels[index + 2];
+            }
+        }
+        return brightness;
+    };
+    const int x = std::lround(star->drawnx);
+    const int y = std::lround(star->drawny);
+    const int diagonal = std::lround((star->drawnxmax - star->drawnx) * .9);
+    EXPECT_EQ(sample(std::lround(star->drawnxmax) + 6, y), 0);
+    EXPECT_EQ(sample(x + diagonal, y - diagonal), 0);
+    EXPECT_EQ(sample(x + diagonal, y + diagonal), 0);
+    ImGui::NewFrame();
 }
 
 TEST_F(RenderingRegressionTest, SystemViewSelectsMoonThenPlanetAcrossOverlappingRectangles)
@@ -7006,6 +7442,55 @@ TEST_F(RenderingRegressionTest, SkyGradientFollowsZoomAndViewingAltitude)
     altitude = -half_pi;
     draw_sky_gradient();
     EXPECT_TRUE(sky_grad.empty());
+}
+
+TEST_F(RenderingRegressionTest, SurfaceStarsRemainVisibleThroughATraceAtmosphere)
+{
+    Planet* world = surface();
+    world->overcast = false;
+    set(here, CelestialLocation());
+    set(altitude, .25);
+    set(global_brightness, 1.0);
+    set(whtbkgd, false);
+    set(show_labels, false);
+    set(show_orbits, false);
+    set(show_localsys, true);
+    set(selected, -1);
+    set(sky_mag_shift, 0.0);
+    set(sky_grad, std::map<int, RGB3>{});
+
+    Star* star = make_star("Star above the horizon");
+    star->cenobj = star;
+    star->tmp_vis_flag = true;
+    star->location.local_position = star->viewrel = star->tmprel = Point(0, .25 * light_year, light_year);
+    const Cartesian2D position(star->viewrel, azimuth, altitude, zoom);
+    star->drawnx = dispcx * (1 + position.x);
+    star->drawny = dispcy + dispcx * position.y;
+    double magnitudes[] = {999, 999, 999, 2};
+    double radii[4] = {}, blooms[4] = {};
+    bool discs[4] = {};
+    set(vmag_cache, static_cast<double*>(magnitudes));
+    set(angular_radius, static_cast<double*>(radii));
+    set(bloomrad_cache, static_cast<double*>(blooms));
+    set(discinstead, static_cast<bool*>(discs));
+
+    const auto draw = [&](double pressure)
+    {
+        world->ensure_atmosphere()->surface_pressure = pressure;
+        star->onscreen = false;
+        draw_sky_gradient();
+        draw_objects();
+        ImGui::EndFrame();
+        ImGui::NewFrame();
+        return star->onscreen;
+    };
+    EXPECT_FALSE(draw(oneatm));
+    EXPECT_LT(sky_mag_shift, -8);
+    EXPECT_TRUE(draw(3.34e-179));
+    EXPECT_NEAR(sky_mag_shift, 0, 1e-6);
+    EXPECT_FALSE(draw(oneatm));
+    EXPECT_TRUE(draw(0));
+    EXPECT_DOUBLE_EQ(sky_mag_shift, 0);
 }
 
 TEST_F(RenderingRegressionTest, DiscScatteringIncludesMoonsAndPreservesGiantAndClearSkiesDiscs)

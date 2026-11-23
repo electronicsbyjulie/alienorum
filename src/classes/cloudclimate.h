@@ -182,10 +182,13 @@ namespace alienorum
             const double column = model.pressure_pa / gravity;
             const double settling = std::clamp(std::sqrt(9.80665 / gravity), 0.2, 3.0)
                 * model.pressure_pa / (model.pressure_pa + 1000);
+            // The upper atmosphere's radiative floor follows stellar forcing. A hot patch
+            // of ground warms the parcel at launch, while the same floor applies aloft.
+            const double skin_temperature = std::max(30.0, equilibrium * 0.72);
             for (size_t bin = 0; bin < model.layers.size(); ++bin)
             {
                 const double surface = model.surface_k * (0.55 + 0.70 * bin / (model.layers.size() - 1));
-                const double skin = std::min(surface, std::max(30.0, equilibrium * 0.72 * surface / model.surface_k));
+                const double skin = std::min(surface, skin_temperature);
                 double temperature = surface, dominant = 0;
                 CloudLayer& layer = model.layers[bin];
                 const auto add = [&](double tau, CloudCondensate species, double fraction, double convective)

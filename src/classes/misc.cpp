@@ -40,7 +40,7 @@ std::string default_theme = "Perseus";
 std::string viewer_theme = default_theme;
 std::mutex mtx;
 std::vector<DrawLabel> labels2draw;
-const char* vmtext[NUM_VIEWMODES] = { "Spaceship", "Planetfall", "Sun Clock", "Celestial Atlas", "Solar System", "Bump Map", "Thermal" };
+const char* vmtext[NUM_VIEWMODES] = { "Spaceship", "Planetfall", "Sun Clock", "Celestial Atlas", "Solar System", "Bump Map", "Thermal", "3D Model" };
 const char* vptext[NUM_VPLANES] = { "Local", "ICRF", "Ecliptic", "Galactic" };
 ViewerPlaneMode vplane_mode = vplane_local;
 ViewMode view_mode = vm_spaceship;

@@ -104,7 +104,7 @@ static bool projected_position_available(float x, float y)
 
 static bool is_observing_object(const CelestialObject* object)
 {
-    return view_mode != vm_system && cels && whereami >= 0 && whereami < ncelobjs
+    return view_mode != vm_system && view_mode != vm_model && cels && whereami >= 0 && whereami < ncelobjs
         && object == cels[whereami];
 }
 
@@ -142,7 +142,7 @@ static bool label_screen_position(const CelestialObject* object, double& x, doub
     x = object->drawnx;
     y = object->drawny;
     if (std::isfinite(x) && std::isfinite(y) && x > -1e8 && y > -1e8) return true;
-    if (view_mode == vm_system || !object->tmprel.squared_magnitude()) return false;
+    if (view_mode == vm_system || view_mode == vm_model || !object->tmprel.squared_magnitude()) return false;
     Point rel = to_viewer_plane(object->tmprel);
     if (view_mode == vm_horizon && whereami > 0 && uses_rocky_map(cels[whereami]->type)
         && static_cast<Planet*>(cels[whereami])->get_surface_pressure()) rel = refract_true_point(rel);
@@ -194,11 +194,20 @@ Star* stellar_display_target(Star* component)
     return target;
 }
 
+static bool model_object_resolved(CelestialObject* object)
+{
+    const auto* parent = object->orbit ? object->orbit->center : nullptr;
+    if (parent && !parent->deleted && !label_pair_resolved(object, parent).value_or(true)) return false;
+    if (object->typeclass() != class_star) return true;
+    auto* star = static_cast<Star*>(object);
+    return stellar_display_target(star) == star;
+}
+
 void draw_ra_dec_lines()
 {
     ImGuiIO& io = ImGui::GetIO();
     if (!cels[1]) return;
-    if (view_mode == vm_system) return;
+    if (view_mode == vm_system || view_mode == vm_model) return;
     bool airy_rock = view_mode == vm_horizon && whereami > 0 && uses_rocky_map(cels[whereami]->type) && ((Planet*)cels[whereami])->get_surface_pressure();
 
     int i, j;
@@ -2390,9 +2399,14 @@ static void draw_radial_glow(ImVec2 c, double r_in, double r_out, RGB3 rgb,
 // left is a smooth core glow frayed by fine radiating streaks.
 void draw_flare(double flare, Color col, double vmag, double disc_px)
 {
+
     if (whtbkgd)
     {
         if (flare > 53.81) flare = 53.81;               // ogranichit' blik v meste oshibki
+    }
+    if (view_mode == vm_model)
+    {
+        if (flare > 29) flare = 29;
     }
 
     // An object viewed from zero distance (e.g. the Sun as seen from the Sun) makes
@@ -2412,17 +2426,6 @@ void draw_flare(double flare, Color col, double vmag, double disc_px)
     rgb.b = (int)(col.blue * divisor);
     if (whtbkgd) rgb.invert_luminance();
 
-    // Four rays around magnitude -10 and dimmer, when zoomed, filling in to a full circle if too bright.
-    double fill = (vmag > -10.0) ? 0.0 : fmin(1.0, (-10.0 - vmag) / 16.0);
-
-    // Glare scatters into a haze either because the source is overwhelmingly bright or
-    // because its disc is resolved enough that it stops behaving like a point. Brightness
-    // is what dominates: the Sun hazes over even when its disc is only a few pixels wide.
-    // Ramps in smoothly from magnitude -1 so Venus and Jupiter pick up a slight haze while
-    // the Moon and Sun saturate it.
-    double glare = fmax(0.0, -1.0 - vmag);
-    double haze = fmin(1.0, fmax(disc_px / 12.0, 1.0 - exp(-glare / 7.0)));
-
     double base_len = (max_bloomrad * 1.5 + flare * 1.1);
     const double extent = std::max(0.0, disc_px) * 1.2 + base_len * 1.5;
     const ImVec2 screen = ImGui::GetIO().DisplaySize;
@@ -2437,6 +2440,17 @@ void draw_flare(double flare, Color col, double vmag, double disc_px)
         ImVec2 tip(xycoord.x + dx*to_r, xycoord.y + dy*to_r);
         ImGui::GetBackgroundDrawList()->AddTriangleFilled(base_a, base_b, tip, c);
     };
+
+    // Four rays around magnitude -10 and dimmer, when zoomed, filling in to a full circle if too bright.
+    double fill = (vmag > -10.0) ? 0.0 : fmin(1.0, (-10.0 - vmag) / 16.0);
+
+    // Glare scatters into a haze either because the source is overwhelmingly bright or
+    // because its disc is resolved enough that it stops behaving like a point. Brightness
+    // is what dominates: the Sun hazes over even when its disc is only a few pixels wide.
+    // Ramps in smoothly from magnitude -1 so Venus and Jupiter pick up a slight haze while
+    // the Moon and Sun saturate it.
+    double glare = fmax(0.0, -1.0 - vmag);
+    double haze = fmin(1.0, fmax(disc_px / 12.0, 1.0 - exp(-glare / 7.0)));
 
     if (haze > 0.01)
     {
@@ -2469,7 +2483,7 @@ void draw_flare(double flare, Color col, double vmag, double disc_px)
     // and so does a resolved disc, so they fade in with zoom and out with haze.
     double zf = 0.1 + 0.9 * fmin(1.0, log(fmax(1.0, zoom)) / log(24.0));
     double spike_str = pow(1.0 - haze * 0.9, 1.6) * zf;
-    if (spike_str > 0.02)
+    if (spike_str > 0.02 && view_mode != vm_model)
     {
         const int nslots = npointedstar * floor(25/npointedstar), primod = nslots / npointedstar, nlayers = 5;
 
@@ -3515,12 +3529,12 @@ bool draw_single_object(int i)
             goto labels_step;
         }
         // Too small, too faint, or off screen: fall through to the point path below.
-        if (i != inside_galaxy_idx) goto dot_instead;
+        if (i != inside_galaxy_idx || view_mode == vm_model) goto dot_instead;
     }
     else if (cls == class_satellite)
     {
         if (!show_sats || !cels[i]->orbit || !cels[i]->orbit->center) return false;
-        if ((cels[i]->tmprel.magnitude() > cels[i]->orbit->semimajor_axis*zoom*6)
+        if (view_mode != vm_model && (cels[i]->tmprel.magnitude() > cels[i]->orbit->semimajor_axis*zoom*6)
             && (angular_radius[i] < 0.01*fiftyseventh)
             )
         {
@@ -3528,12 +3542,13 @@ bool draw_single_object(int i)
             return false;
         }
 
-        double line_of_sight = cels[i]->orbit->center->location.local_position.get_distance_to_line(
-            cels[i]->location.local_position, cels[i]->get_light_center()->location.local_position);
+        const auto* light = cels[i]->get_light_center();
+        const bool in_shadow = light && cels[i]->orbit->center->location.local_position.get_distance_to_line(
+            cels[i]->location.local_position, light->location.local_position) < cels[i]->volumetric_mean_radius;
 
         ImU32 satcol = (i == selected)
             ? rgba_apply_redlight(global_style.selected_color)
-            : ((line_of_sight < cels[i]->volumetric_mean_radius)
+            : (in_shadow
                 ? rgba_apply_redlight(IM_COL32(128,  96,  64, 255))
                 : (whtbkgd
                     ? rgba_apply_redlight(IM_COL32(  0,   0,   0, 255))
@@ -3553,6 +3568,7 @@ bool draw_single_object(int i)
             ImGui::GetBackgroundDrawList()->AddCircleFilled(xycoord, 1, satcol);
             bloomrad_cache[i] = bloomrad = 1;
         }
+        if (view_mode == vm_model) cels[i]->onscreen = true;
     }
     else if (cls == class_comet)
     {
@@ -3598,6 +3614,7 @@ bool draw_single_object(int i)
         }
         discinstead[i] = false;
         if (!cels[1]) return false;
+        if (view_mode == vm_model && !cel->onscreen) goto dot_instead;
 
         if (selected == i)
         {
@@ -3609,6 +3626,8 @@ bool draw_single_object(int i)
     {
         dot_instead:
         discinstead[i] = false;
+
+        if (view_mode == vm_model) appmag = fmin(3, appmag-5);
 
         Color col = cls == class_star
             ? Color::color_from_star(appmag, (Star*)cels[i], cels[i]->BV_color + atm_yellowing)
@@ -3634,7 +3653,8 @@ bool draw_single_object(int i)
             }
         }
 
-        brght = pow(magnbase, -appmag) * global_brightness * 50;
+        const double point_brightness = view_mode == vm_model ? fmax(1, global_brightness) : global_brightness;
+        brght = pow(magnbase, -appmag) * point_brightness * 50;
         double circ, lbrght, lpxval, tosub, softmod = 1.0 - bloom_softness;
         // if (i == 1075) std::cout << i << ":" << cels[i]->name << ": " << brght << std::endl;
         bool first = true;
@@ -3707,10 +3727,11 @@ bool draw_single_object(int i)
 
 
     labels_step:
+    if (view_mode == vm_model && !cels[i]->onscreen && i != selected) return true;
     Star *s = cls == class_star ? static_cast<Star*>(cels[i]) : nullptr;
     Star *label_star = stellar_display_target(s);
     const bool resolved_companion = s && label_star == s && s->get_component() > 'A';
-    bool add_label = false;
+    bool add_label = view_mode == vm_model && lbl_localsys && cls != class_star;
     if ( (show_labels && s && (!cels[i]->orbit || resolved_companion) &&
             ((!cbolbls_selected_idx && appmag <= appmagn_lblcut)
             || (cbolbls_selected_idx == lbltype_intrinsic && cels[i]->absolute_magnitude <= absmagn_lblcut)
@@ -3890,7 +3911,7 @@ void draw_galaxy_band()
     {
         return;
     }
-    if (view_mode == vm_system)
+    if (view_mode == vm_system || view_mode == vm_model)
     {
         return;
     }
@@ -4196,6 +4217,43 @@ void draw_galaxy_band()
     list->PopTexture();
 }
 
+static constexpr int orbit_segments = 81;
+
+struct ModelOrbitSample
+{
+    Cartesian2D screen;
+    double depth;
+};
+
+static void draw_model_orbit(const std::array<ModelOrbitSample, orbit_segments + 1>& samples,
+    ImU32 color, ImGuiIO& io)
+{
+    double nearest = INFINITY, farthest = -INFINITY;
+    for (const auto& sample : samples)
+    {
+        if (!std::isfinite(sample.depth)) continue;
+        nearest = std::min(nearest, sample.depth);
+        farthest = std::max(farthest, sample.depth);
+    }
+    const double span = farthest - nearest;
+    const double depth_precision = 8 * std::numeric_limits<double>::epsilon() * std::max(fabs(nearest), fabs(farthest));
+    const bool has_depth = span > depth_precision;
+    // The midpoint of the projected depth range passes through the ellipse's center.
+    const double middle = nearest + span * 0.5;
+    const ImU32 far_alpha = (color >> IM_COL32_A_SHIFT) * 3 / 4;
+    const ImU32 far_color = (color & ~IM_COL32_A_MASK) | (far_alpha << IM_COL32_A_SHIFT);
+
+    for (size_t j = 1; j < samples.size(); ++j)
+    {
+        const auto& a = samples[j - 1];
+        const auto& b = samples[j];
+        if (!projected_position_available(a.screen.x, a.screen.y)
+            || !projected_position_available(b.screen.x, b.screen.y)) continue;
+        const bool far_side = has_depth && (a.depth + b.depth) * 0.5 > middle;
+        wrapped_line(ImVec2(a.screen.x, a.screen.y), ImVec2(b.screen.x, b.screen.y), far_side ? far_color : color, io);
+    }
+}
+
 void draw_objects()
 {
     if (!ncelobjs) return;
@@ -4211,7 +4269,7 @@ void draw_objects()
 
     int i, j, n, pass;
     double step, dispw = dispcx*2, disph = dispcy*2;
-    double orbseg = 81;
+    const bool model_view = view_mode == vm_model;
     lmasslim = lbllsys_mass_lim*1000;
     static FrameScratch<std::pair<double, CelestialObject*>> layered_scratch;
     std::vector<std::pair<double, CelestialObject*>> local_layered;
@@ -4239,11 +4297,15 @@ void draw_objects()
     // and is settled before any of this runs. See refresh_eclipse_casters() near draw_sphere_gpu().
 
     // Orbits
+    std::array<ModelOrbitSample, orbit_segments + 1> model_orbit;
+    const Point view_forward = model_view && show_orbits
+        ? Point(Cartesian2D(), 1, azimuth + azimuth_correction, altitude, 1) : Point();
     if (show_orbits && show_localsys) for (int index : frame_orbit_candidates())
     {
         i = index;
         if (cels[i]->deleted || !object_passes_exoplanet_filter(cels[i])) continue;
         if (!cels[i]->orbit) continue;
+        if (model_view && !projected_position_available(cels[i]->drawnx, cels[i]->drawny)) continue;
         if (cels[i]->cenobj != mycenobj && (whereami<0 || cels[i]->orbit->center != cels[whereami])) continue;
         if (cels[i]->orbit->center == mycenobj && cels[i]->mass < lmasslim) continue;
 
@@ -4264,22 +4326,14 @@ void draw_objects()
         // hundred and twenty years of the comet's path rather than pretend to draw a curve that
         // in truth runs to infinity at both ends.
         step = cels[i]->orbit->period
-            ? (cels[i]->orbit->period / orbseg)
-            : (120 * oneyear / orbseg);
+            ? (cels[i]->orbit->period / orbit_segments)
+            : (120 * oneyear / orbit_segments);
 
         double viewer_distance = cels[i]->tmprel.magnitude();
-        double light_travel_time = viewer_distance / speed_of_light;
+        double light_travel_time = model_view ? 0 : viewer_distance / speed_of_light;
 
-        Cartesian2D lastcart;
-        try
-        {
-            lastcart = Cartesian2D(cels[i]->drawnx, cels[i]->drawny);
-        }
-        catch(...)
-        {
-            lastcart.x = lastcart.y = -1e9;
-        }
-        for (j=-4; j<=orbseg; j++)
+        Cartesian2D lastcart(cels[i]->drawnx, cels[i]->drawny);
+        for (j = model_view ? 0 : -4; j <= orbit_segments; ++j)
         {
             if (is_star)
                 ((Star*)cels[i])->update_location(simnow + step*j - light_travel_time);
@@ -4304,7 +4358,7 @@ void draw_objects()
 
                 double dx1 = cart.x, dy1 = cart.y, dx2 = lastcart.x, dy2 = lastcart.y;
 
-                if (lastcart.x >= -200 && lastcart.y >= -200 && cart.x >= -200 && cart.y >= -200)
+                if (!model_view && lastcart.x >= -200 && lastcart.y >= -200 && cart.x >= -200 && cart.y >= -200)
                     wrapped_line(ImVec2(dx1, dy1), ImVec2(dx2, dy2), imcol, io);
             }
             catch (...)
@@ -4312,9 +4366,15 @@ void draw_objects()
                 cart.x = cart.y = -1e9;
             }
 
-            lastcart = cart;
+            if (model_view)
+            {
+                const double depth = rel.x * view_forward.x + rel.y * view_forward.y + rel.z * view_forward.z;
+                model_orbit[j] = {cart, depth};
+            }
+            else lastcart = cart;
         }
         cels[i]->location = was;
+        if (model_view) draw_model_orbit(model_orbit, imcol, io);
     }
 
     // Grid and backdrop labels belong behind celestial objects.
@@ -4328,6 +4388,8 @@ void draw_objects()
         if (!planetary_system_is_active(cels[i])) continue;
         cels[i]->drawnxmin = cels[i]->drawnxmax = cels[i]->drawnymin = cels[i]->drawnymax = -1e9;
         if (exclude_observing_object(cels[i])) continue;
+        if (view_mode == vm_model && (!projected_position_available(cels[i]->drawnx, cels[i]->drawny)
+            || !model_object_resolved(cels[i]))) continue;
 
         if (!pass && fabs(bloomrad_cache[i]) > 3) continue;
         else if (pass && fabs(bloomrad_cache[i]) <= 3) continue;
@@ -4419,7 +4481,7 @@ void draw_objects()
             appmag = vmag_cache[i] - sky_mag_shift;
 
             Star *istar = (cels[i]->typeclass() == class_star) ? (Star*)cels[i] : nullptr;
-            if (istar)
+            if (istar && view_mode != vm_model)
             {
                 if (appmag > mag_limit_adjusted && i
                     && (!istar->is_universally_visible())
@@ -4467,10 +4529,10 @@ void draw_system_view()
     };
     const auto draw_system_object = [](CelestialObject *object, double radius)
     {
+        const auto cls = object->typeclass();
         if (object->volumetric_mean_radius > 0 && std::isfinite(object->volumetric_mean_radius))
         {
             const int drawn_radius = draw_sphere(object, radius);
-            const auto cls = object->typeclass();
             if (drawn_radius > 0 && (cls == class_planet || cls == class_moon))
             {
                 Map* texture = object->get_day_map();
@@ -10352,20 +10414,17 @@ void draw_horizon()
 void draw_sky_gradient()
 {
     sky_grad.clear();
+    sky_mag_shift = 0;
     if (whtbkgd) return;
     // See find_horizon(): this is only ever called in horizon mode, which does not by itself
     // guarantee there is a world underfoot.
     if (whereami < 0 || !cels[whereami]) return;
-    if (!dragging && (cels[whereami]->typeclass() == class_planet || cels[whereami]->typeclass() == class_moon))
+    if (cels[whereami]->typeclass() == class_planet || cels[whereami]->typeclass() == class_moon)
     {
         Planet *p = (Planet*)cels[whereami];
         if (uses_gaseous_map(p->type)) return;
-        if (p->get_surface_pressure())
+        if (const double pressure = p->get_surface_pressure(); pressure > 0)
         {
-            double particulates = p->get_particulates();
-            double Rayleigh = 1.0 - particulates;
-            const Color pcol = atmospheric_material_color(p);
-
             float city_lights = 0;
             if (cels[whereami]->night_map)
             {
@@ -10373,11 +10432,16 @@ void draw_sky_gradient()
                 if (rgb.r > 0.7*rgb.b) city_lights = rgb.r;
             }
 
-            double skylight = fmin(1, atmospheric_daylight() + starlight + 0.00125 * city_lights);
-            sky_mag_shift = skylight * -10;
+            const double skylight = fmin(1, atmospheric_daylight() + starlight + 0.00125 * city_lights);
+            const bool mineral = show_terrain && lavaworld_mineral_sky && p->type == lavaworld;
+            const double a = p->overcast ? 1.0 : fmin(1, mineral
+                ? pow(pressure, 0.08) * 0.82 + 0.20 : pow(pressure, 0.1) * skylight);
+            // A nearly transparent atmosphere contributes very little glare, even with a bright Sun.
+            sky_mag_shift = -10 * fmin(skylight, a);
+            if (dragging) return;
 
-            double r, g, b, a;
-            if (show_terrain && lavaworld_mineral_sky && p->type == lavaworld)
+            double r, g, b;
+            if (mineral)
             {
                 // Scorched bronze / burnt amber mineral vapor sky
                 // Rich in vaporized silicates (SiO, SiO2, Na, K, Fe, Mg, TiO)
@@ -10385,18 +10449,15 @@ void draw_sky_gradient()
                 r = fmin(1.0, 0.84 * skylight + 0.24);
                 g = fmin(1.0, 0.44 * skylight + 0.09);
                 b = fmin(1.0, 0.16 * skylight + 0.02);
-                a = fmin(1.0, pow(p->get_surface_pressure(), 0.08) * 0.82 + 0.20);
             }
             else
             {
+                const double particulates = p->get_particulates();
+                const double Rayleigh = 1.0 - particulates;
+                const Color pcol = atmospheric_material_color(p);
                 r = fmin(1, (Rayleigh * 0.37 + particulates * pcol.red  ) * skylight);
                 g = fmin(1, (Rayleigh * 0.58 + particulates * pcol.green) * skylight);
                 b = fmin(1, (Rayleigh * 0.81 + particulates * pcol.blue ) * skylight);
-                a = fmin(1, pow(p->get_surface_pressure(), 0.1) * skylight);
-            }
-            if (p->overcast)
-            {
-                a = 1;
             }
 
             double redden = 0, sunset_r = 0, sunset_g = 0, sunset_b = 0;
@@ -10427,7 +10488,6 @@ void draw_sky_gradient()
             const double dip = radius > 0 ? acos(radius / (radius + fmax(.01, viewer_eye_height))) : 0;
             const double horizon_angle = p->atmospheric_horizon_lift() - dip;
             const bool mapped_horizon = has_mapped_horizon(p);
-            const bool mineral = show_terrain && lavaworld_mineral_sky && p->type == lavaworld;
             if (!mineral)
             {
                 r *= sky_light.red; g *= sky_light.green; b *= sky_light.blue;
@@ -10463,7 +10523,7 @@ void draw_sky_gradient()
 void draw_cons_lines()
 {
     if (!cels[1]) return;
-    if (view_mode == vm_system) return;
+    if (view_mode == vm_system || view_mode == vm_model) return;
 
     int i, l, m, n;
     ImGuiIO& io = ImGui::GetIO();
