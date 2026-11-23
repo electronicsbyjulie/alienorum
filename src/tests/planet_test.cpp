@@ -477,6 +477,63 @@ TEST_F(TidalHeatingTest, MoonUsesItsPlanetAndAddsFluxBeforeAtmosphericWarming)
     EXPECT_DOUBLE_EQ(moon.estimate_surface_temperature(), 180);
 }
 
+TEST_F(TidalHeatingTest, GeneratedRockyWorldUsesHeatForTallShieldsAndWideLavaFlows)
+{
+    auto* host = make_star("Test primary", .2 * solar_mass);
+    auto* world = make_planet(host, "Uncatalogued rocky world", .018 * AU);
+    world->orbit->eccentricity = .015;
+    world->sidereal_rotational_period = world->orbit->period;
+    world->ensure_atmosphere()->surface_pressure = 0;
+    world->atm->pressure_supplied = true;
+    world->has_water = 0;
+    world->has_water_supplied = true;
+    world->BV_color = .9;
+    world->rnd_seed = 42;
+    world->fictitious_map_height = 192;
+    world->preserve_loaded_parameters = true;
+    ASSERT_TRUE(world->surface_geology.is_null());
+    ASSERT_GT(world->tidal_heat_flux(), 10);
+
+    const auto volcanic_coverage = [](const Map& map)
+    {
+        const auto width = map.get_width(), height = map.get_height();
+        std::vector<unsigned char> rgba(4 * width * height);
+        map.export_rgba(rgba.data());
+        double area = 0, dark = 0, hot = 0;
+        for (size_t row = 0; row < height; ++row)
+        {
+            const double weight = std::sin(_pi * (row + .5) / height);
+            for (size_t col = 0; col < width; ++col)
+            {
+                const auto* pixel = &rgba[4 * (row * width + col)];
+                area += weight;
+                if (std::max({pixel[0], pixel[1], pixel[2]}) < 65) dark += weight;
+                if (pixel[0] > 185 && pixel[1] > 65 && pixel[2] < 65) hot += weight;
+            }
+        }
+        return std::pair(dark / area, hot / area);
+    };
+
+    load_textures(world);
+    ASSERT_NE(world->surf_map, nullptr);
+    ASSERT_TRUE(world->surf_map->is_complete());
+    const auto [active_dark, active_hot] = volcanic_coverage(*world->surf_map);
+    const double active_peak = world->surf_map->bump_elevation_range()[1];
+    EXPECT_GT(active_hot, 0);
+    EXPECT_LT(active_hot, .005);
+
+    world->tidal_k2_over_q = 0;
+    world->mark_all_maps_for_regen(true);
+    load_textures(world);
+    ASSERT_NE(world->surf_map, nullptr);
+    ASSERT_TRUE(world->surf_map->is_complete());
+    const auto [quiet_dark, quiet_hot] = volcanic_coverage(*world->surf_map);
+    const double quiet_peak = world->surf_map->bump_elevation_range()[1];
+    EXPECT_GT(active_peak - quiet_peak, 2500);
+    EXPECT_GT(active_dark - quiet_dark, .01);
+    EXPECT_EQ(quiet_hot, 0);
+}
+
 TEST_F(TidalHeatingTest, DissipationInputsRetainEstimatesAndExplicitZeroAcrossJson)
 {
     auto* world = make_planet(make_star(), "Warm orbit", .02 * AU);
