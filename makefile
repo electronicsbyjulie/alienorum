@@ -48,7 +48,8 @@ TESTS_SRC = $(TESTS_DIR)/stellarage_test.cpp $(TESTS_DIR)/giantreflectance_test.
 			$(TESTS_DIR)/planet_test.cpp $(TESTS_DIR)/moon_test.cpp $(TESTS_DIR)/comet_test.cpp \
 			$(TESTS_DIR)/satellite_test.cpp $(TESTS_DIR)/cons_test.cpp \
 			$(TESTS_DIR)/serial_test.cpp $(TESTS_DIR)/universe_catalog_test.cpp $(TESTS_DIR)/misc_test.cpp $(TESTS_DIR)/cat_test.cpp \
-			$(TESTS_DIR)/housekeeping_test.cpp $(TESTS_DIR)/io_performance_test.cpp $(TESTS_DIR)/sound_test.cpp $(TESTS_DIR)/rendering_test.cpp
+			$(TESTS_DIR)/housekeeping_test.cpp $(TESTS_DIR)/io_performance_test.cpp $(TESTS_DIR)/sound_test.cpp $(TESTS_DIR)/rendering_test.cpp \
+			$(TESTS_DIR)/keyboard_shortcuts_test.cpp
 
 BIN = bin
 OBJ = obj

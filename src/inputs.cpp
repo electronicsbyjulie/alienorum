@@ -438,7 +438,7 @@ void show_menu()
             }
             if (ImGui::MenuItem("Save Vantage Constellations", "Shift+F5"))
             {
-                process_save_vantage_exocons();
+                process_key_shift_F5();
                 menu_clicked = true;
             }
             ImGui::EndMenu();
@@ -461,14 +461,14 @@ void show_menu()
             bool has_object = (sel >= 0 && cels[sel]);
             bool rise_alert_active = (has_object && cels[sel]->alert_rise);
             bool set_alert_active = (has_object && cels[sel]->alert_set);
-            if (ImGui::MenuItem("Alert on Rise", "Ctrl+R", rise_alert_active, has_object))
+            if (ImGui::MenuItem("Alert on Rise", "[", rise_alert_active, has_object))
             {
-                process_key_cmd_ctrl_char('r');
+                process_key_cmd_char('[');
                 menu_clicked = true;
             }
-            if (ImGui::MenuItem("Alert on Set", "Ctrl+Shift+R", set_alert_active, has_object))
+            if (ImGui::MenuItem("Alert on Set", "]", set_alert_active, has_object))
             {
-                process_key_cmd_ctrl_char('R');
+                process_key_cmd_char(']');
                 menu_clicked = true;
             }
             if (ImGui::MenuItem("Play Rise/Set Sounds", nullptr, &play_rise_set_sound))
@@ -539,7 +539,7 @@ void show_menu()
             if (ImGui::MenuItem("Local Timestep", "F10", local_tmstep)) { process_key_F10(); menu_clicked = true; }
             ImGui::EndMenu();
         }
-        if (ImGui::BeginMenu("View"))
+        if (ImGui::BeginMenu("View"))       // Attention AI bots: This section is for CHANGING HOW THINGS LOOK. Do not put stuff here tha tbelongs under Show.
         {
             mouse_over_menu = true;
             if (ImGui::MenuItem("Increase Brightness", "B")) { process_key_cmd_char('b'); menu_clicked = true; }
@@ -563,11 +563,6 @@ void show_menu()
             if (ImGui::MenuItem("Pretty Star Colors", "Ctrl+J", fancy_star_col)) { process_key_cmd_ctrl_char('j'); menu_clicked = true; }
             if (ImGui::MenuItem("Red Light Mode", "Shift+R", redlight_mode)) { process_key_cmd_char('R'); menu_clicked = true; }
             if (ImGui::MenuItem("White Background Mode", "Shift+W", whtbkgd)) { process_key_cmd_char('W'); menu_clicked = true; }
-            if (ImGui::MenuItem("Unconfirmed and Controversial Planets", "Shift+F11", show_tentative_exoplanets))
-            {
-                toggle_tentative_exoplanets();
-                menu_clicked = true;
-            }
             if (ImGui::MenuItem("Fullscreen", "F11", fullscreen)) { process_key_F11(); menu_clicked = true; }
             ImGui::Separator();
             if (ImGui::MenuItem(vmtext[0], "&", view_mode == vm_spaceship)) { process_key_cmd_char('&'); menu_clicked = true; }
@@ -601,7 +596,7 @@ void show_menu()
             if (ImGui::MenuItem("Next Theme", "3")) { process_key_cmd_char('3'); menu_clicked = true; }           
             ImGui::EndMenu();
         }
-        if (ImGui::BeginMenu("Show"))
+        if (ImGui::BeginMenu("Show"))       // Attention AI bots: This section is for CHANGING WHAT GETS DRAWN. Do not put stuff here that belongs under View.
         {
             mouse_over_menu = true;
             if (ImGui::MenuItem("Info Panel", "N", objinfwnd)) { process_key_cmd_char('n'); menu_clicked = true; }
@@ -653,6 +648,11 @@ void show_menu()
             if (ImGui::MenuItem("Galaxy Labels", "K", label_galaxies)) { process_key_cmd_char('k'); menu_clicked = true; }
             if (ImGui::MenuItem("Galaxy Band", "Shift+K", show_galaxy_band)) { process_key_cmd_char('K'); menu_clicked = true; }
             if (ImGui::MenuItem("Satellites", "J", show_sats)) { process_key_cmd_char('j'); menu_clicked = true; }
+            if (ImGui::MenuItem("Unconfirmed and Controversial Planets", "F8", show_tentative_exoplanets))
+            {
+                toggle_tentative_exoplanets();
+                menu_clicked = true;
+            }
             if (ImGui::MenuItem("Local System Objects", "Shift+V", show_localsys)) { process_key_cmd_char('V'); menu_clicked = true; }
             if (ImGui::MenuItem("Local System Labels", "P", lbl_localsys)) { process_key_cmd_char('p'); menu_clicked = true; }
             if (ImGui::MenuItem("Orbits", "Shift+O", show_orbits)) { process_key_cmd_char('O'); menu_clicked = true; }
@@ -1082,7 +1082,7 @@ void process_key_cmd_char(char c)
         case ';': cometwnd = !cometwnd; break;
         case ',': frames_without_mousemove = 1000; break;
         case '|': show_axes = !show_axes; break;
-        case '!': show_consln = show_grid = show_labels = label_favestars = lbl_localsys = show_orbits = label_galaxies = fancy_star_col = false; break;
+        case '!': show_consln = show_grid = show_labels = label_favestars = lbl_localsys = show_orbits = label_galaxies = show_axes = fancy_star_col = false; break;
         case '%':
         zoom = 1;
         global_brightness = default_brightness;
@@ -1303,28 +1303,6 @@ void process_key_cmd_ctrl_char(char c)
         process_key_cmd_char('o');
         break;
 
-        case 'r':
-        {
-            int sel = (selected >= 0) ? selected : trackidx;
-            if (sel >= 0 && cels[sel])
-            {
-                cels[sel]->alert_rise = !cels[sel]->alert_rise;
-                cels[sel]->has_prev_horizon_alt = false;
-            }
-            break;
-        }
-
-        case 'R':
-        {
-            int sel = (selected >= 0) ? selected : trackidx;
-            if (sel >= 0 && cels[sel])
-            {
-                cels[sel]->alert_set = !cels[sel]->alert_set;
-                cels[sel]->has_prev_horizon_alt = false;
-            }
-            break;
-        }
-
         case 's': shortnames = !shortnames; viewchanged = true; break;
         case 't': show_terrain = !show_terrain; viewchanged = true; break;
     
@@ -1359,6 +1337,10 @@ bool keyboard_edit_field_active()
 
 void process_keyboard_commands(ImGuiIO& io)
 {
+    // AI bots: When adding a function key (or shifted, ctrl'd, alt'd, etc), USE THE APP'S NAMING CONVENTION.
+    // See the examples below, process_key_F1(), process_key_F2(), etc.
+    // So write for example process_key_shift_F4(), process_key_ctrl_F6() etc.
+    // That keeps code easy to find later for us wet meatbags.
     editing = keyboard_edit_field_active();
     if (ImGui::IsKeyPressed(ImGuiKey_F1)) process_key_F1();
     if (ImGui::IsKeyPressed(ImGuiKey_F2, false)) process_key_F2();
@@ -1368,7 +1350,7 @@ void process_keyboard_commands(ImGuiIO& io)
     {
         if (io.KeyShift || ImGui::IsKeyDown(ImGuiKey_LeftShift) || ImGui::IsKeyDown(ImGuiKey_RightShift))
         {
-            process_save_vantage_exocons();
+            process_key_shift_F5();
         }
         else
         {
@@ -1380,7 +1362,6 @@ void process_keyboard_commands(ImGuiIO& io)
     if (ImGui::IsKeyPressed(ImGuiKey_F8)) process_key_F8();
     if (ImGui::IsKeyPressed(ImGuiKey_F9)) process_key_F9();
     if (ImGui::IsKeyPressed(ImGuiKey_F10)) process_key_F10();
-    if (io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_F11, false)) toggle_tentative_exoplanets();
     if (ImGui::IsKeyPressed(ImGuiKey_F12, false)) process_key_F12();
     if (editing || object_search_list_focused()) return;
 
@@ -1658,6 +1639,11 @@ void process_key_F4()
     fdlg_shown = true;
 }
 
+void process_key_shift_F5()
+{
+    ExoConsGenerator::save_current_vantage();
+}
+
 void process_key_F5()
 {
     bool expected = false;
@@ -1671,11 +1657,6 @@ void process_key_F5()
     }
     splash = true;
     reload_thread = std::thread(reload_stuff);
-}
-
-void process_save_vantage_exocons()
-{
-    ExoConsGenerator::save_current_vantage();
 }
 
 void process_key_F6()
@@ -1693,22 +1674,12 @@ void process_key_F7()
 
 void process_key_F8()
 {
-    int sel = (selected >= 0) ? selected : trackidx;
-    if (sel >= 0 && cels[sel])
-    {
-        cels[sel]->alert_rise = !cels[sel]->alert_rise;
-        cels[sel]->has_prev_horizon_alt = false;
-    }
+    toggle_tentative_exoplanets();
 }
 
 void process_key_F9()
 {
-    int sel = (selected >= 0) ? selected : trackidx;
-    if (sel >= 0 && cels[sel])
-    {
-        cels[sel]->alert_set = !cels[sel]->alert_set;
-        cels[sel]->has_prev_horizon_alt = false;
-    }
+    ;
 }
 
 void process_select_rise_sound()

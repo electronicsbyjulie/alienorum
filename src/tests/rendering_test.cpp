@@ -11757,8 +11757,7 @@ TEST_F(RenderingRegressionTest, TentativePlanetFilterHidesAnEntireOrbitalBranch)
     EXPECT_TRUE(object_passes_exoplanet_filter(tentative));
     EXPECT_TRUE(object_passes_exoplanet_filter(moon));
 
-    ImGui::GetIO().AddKeyEvent(ImGuiMod_Shift, true);
-    ImGui::GetIO().AddKeyEvent(ImGuiKey_F11, true);
+    ImGui::GetIO().AddKeyEvent(ImGuiKey_F8, true);
     ImGui::EndFrame();
     ImGui::NewFrame();
     process_keyboard_commands(ImGui::GetIO());
@@ -11766,8 +11765,7 @@ TEST_F(RenderingRegressionTest, TentativePlanetFilterHidesAnEntireOrbitalBranch)
     EXPECT_TRUE(object_passes_exoplanet_filter(confirmed));
     EXPECT_FALSE(object_passes_exoplanet_filter(tentative));
     EXPECT_FALSE(object_passes_exoplanet_filter(moon));
-    ImGui::GetIO().AddKeyEvent(ImGuiKey_F11, false);
-    ImGui::GetIO().AddKeyEvent(ImGuiMod_Shift, false);
+    ImGui::GetIO().AddKeyEvent(ImGuiKey_F8, false);
 }
 
 TEST_F(RenderingRegressionTest, BrightObjectPhotometryAuditMeasuresDotsDiscsAndGlare)
