@@ -3845,7 +3845,7 @@ namespace
         double raised_fraction = 0, basalt = 0, lava = 0;
     };
 
-    std::vector<Volcano> tidal_volcanoes(const Planet& planet, double bump_scale)
+    std::vector<Volcano> tidal_volcanoes(const Planet& planet, double bump_scale, bool volcanic_plains)
     {
         const double flux = planet.tidal_heat_flux();
         const double radius = planet.volumetric_mean_radius;
@@ -3871,20 +3871,23 @@ namespace
             // Broad shields with a shallow flank and a collapsed summit.
             const double base_radius = std::min(radius * (.027 + .029 * unit(rng)), 330000.0);
             const double height_m = base_radius * (.013 + .013 * unit(rng));
-            sites.push_back({x, y, z, radius / base_radius,
-                bump_scale > 0 ? std::min(.62, height_m / bump_scale) : 0,
-                2 * _pi * unit(rng)});
+            double height = bump_scale > 0 ? height_m / bump_scale : 0;
+            if (!volcanic_plains) height = std::min(.62, height);
+            sites.push_back({x, y, z, radius / base_radius, height, 2 * _pi * unit(rng)});
         }
         return sites;
     }
 
-    VolcanicTerrain sample_volcanoes(const std::vector<Volcano>& sites, double x, double y, double z)
+    VolcanicTerrain sample_volcanoes(const std::vector<Volcano>& sites, double x, double y, double z,
+        bool volcanic_plains)
     {
+        VolcanicTerrain terrain;
+        const double reach_squared = volcanic_plains ? 6.25 : 1;
         for (const Volcano& site : sites)
         {
             const double distance_squared = 2 * (1 - (x * site.x + y * site.y + z * site.z));
             const double r_squared = distance_squared * site.inverse_radius * site.inverse_radius;
-            if (r_squared >= 1) continue;
+            if (r_squared >= reach_squared) continue;
             const double r = std::sqrt(std::max(0.0, r_squared));
             const double flank = 1 - TerrainContours::smooth(0, 1, r);
             const double caldera = 1 - TerrainContours::smooth(.12, .33, r);
@@ -3893,12 +3896,25 @@ namespace
             const double east = site.x * y - site.y * x;
             const double north = z - site.z * (1 - .5 * distance_squared);
             const double angle = std::atan2(east, north) + site.flow_phase;
-            const double flow_edge = .74 + .14 * std::cos(4 * angle) + .08 * std::sin(7 * angle + 5 * r);
-            const double basalt = .78 * (1 - TerrainContours::smooth(flow_edge - .30, flow_edge, r));
-            const double lava = 1 - TerrainContours::smooth(.08, .20, r);
-            return {site.height * (flank - .78 * caldera), basalt, lava};
+            double flow_edge = .74 + .14 * std::cos(4 * angle) + .08 * std::sin(7 * angle + 5 * r);
+            double fade_width = .30;
+            if (volcanic_plains)
+            {
+                // Curving, uneven flow lobes run out across the plains beyond the shield.
+                const double bearing = angle + .26 * r + .17 * std::sin(3 * angle + 2 * r);
+                const double main_flow = .5 + .5 * std::cos(2 * bearing);
+                flow_edge = 1.00 + 1.22 * main_flow * main_flow + .23 * std::sin(5 * angle - 4 * r);
+                fade_width = .24;
+            }
+            const double basalt = .78 * (1 - TerrainContours::smooth(flow_edge - fade_width, flow_edge, r));
+            const double lava = 1 - TerrainContours::smooth(.08, volcanic_plains ? .25 : .20, r);
+            const double relief = site.height * (flank - .78 * caldera);
+            if (!volcanic_plains) return {relief, basalt, lava};
+            terrain.raised_fraction = std::max(terrain.raised_fraction, relief);
+            terrain.basalt = std::max(terrain.basalt, basalt);
+            terrain.lava = std::max(terrain.lava, lava);
         }
-        return {};
+        return terrain;
     }
 
     unsigned char volcanic_pigment(unsigned char ground, int basalt, int lava, const VolcanicTerrain& terrain)
@@ -3915,6 +3931,8 @@ void Map::generate_rocky_map(CelestialObject *cel)
     if (render_saved_planet(cel, [this](CelestialObject* working) { generate_rocky_map(working); })) return;
     const double input_bv = cel->BV_color;
     Planet *p = (Planet*)cel;
+    const bool volcanic_plains = p->surface_geology.is_object()
+        && p->surface_geology.value("model", json()) == "fresh_ultramafic_volcanic_plains";
     bool want_overcast_sky = p->preserve_loaded_parameters && p->overcast;
     assert(cel->typeclass() == class_planet || cel->typeclass() == class_moon);
     std::this_thread::sleep_for(std::chrono::milliseconds((int)frand(13,29)));
@@ -4015,7 +4033,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
         inv_lon_scale = 1.0 / lon_scale;
         bump_scale = p->m_bump_scale = p->estimate_bump_scale();
         inv_bump_scale = 1.0 / bump_scale;
-        const auto volcanoes = tidal_volcanoes(*p, bump_scale);
+        const auto volcanoes = tidal_volcanoes(*p, bump_scale, volcanic_plains);
         std::cout << "Allocated " << allocated << " pixels for fictitious rocky " << cel->name << " map." << std::endl;
 
         double inv_h2o_level = 0, phi, theta, u, v, nx, ny, nz, height_value, r_weight, T_local, sh;
@@ -4109,7 +4127,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
                         const double sx = ring * std::cos(angle), sy = ring * std::sin(angle);
                         const auto sample = terrain_sample(sx, sy, z, true);
                         height = contours.height(sample.detail, sample.field)
-                            + sample_volcanoes(volcanoes, sx, sy, z).raised_fraction;
+                            + sample_volcanoes(volcanoes, sx, sy, z, volcanic_plains).raised_fraction;
                     }
                     else
                     {
@@ -4231,12 +4249,12 @@ void Map::generate_rocky_map(CelestialObject *cel)
                 const double wx = sample.wx, wy = sample.wy, wz = sample.wz;
                 const double roughness_mask = sample.roughness;
                 const double local_gain = gain * (.3 + .7 * roughness_mask);
-                const auto volcano = sample_volcanoes(volcanoes, nx, ny, nz);
-                height_value = create_bump ? std::clamp(contours.height(sample.detail, sample.field)
-                    + volcano.raised_fraction, 0.0, 1.0)
-                    : fmin(1.0, fmax(0.0, (inv_bump_scale * bump_data[idx] + 0.5)));
-
-                if (create_bump) bump_data[idx] = bump_scale * (height_value - 0.5);
+                const auto volcano = sample_volcanoes(volcanoes, nx, ny, nz, volcanic_plains);
+                const double height = create_bump ? contours.height(sample.detail, sample.field) + volcano.raised_fraction
+                    : inv_bump_scale * bump_data[idx] + .5;
+                height_value = create_bump ? std::clamp(height, 0.0, 1.0) : fmin(1.0, fmax(0.0, height));
+                // Shield relief in meters can extend above the background terrain's range.
+                if (create_bump) bump_data[idx] = bump_scale * ((volcanic_plains ? height : height_value) - .5);
 
                 // Tie albedo directly into the warped coordinate space
                 albedo_value = fBm(wx * (province_scale / scale) + 5.2, wy * (province_scale / scale) + 1.3, wz * (province_scale / scale) + 2.7,
@@ -4400,6 +4418,17 @@ void Map::generate_rocky_map(CelestialObject *cel)
                     blue_data[idx] = (unsigned char)(fmin(255, rgb.b * bmult * r_weight + badd));
                 }
 
+                if (volcanic_plains && surface_materials[idx] == SurfaceMaterial::ground)
+                {
+                    const double deposits = fBm(5.3 * nx + 2 * border_noise + 19.7, 5.3 * ny + 2 * grain_value + 63.2,
+                        5.3 * nz + 48.1, 4, 2.2, .53);
+                    const double plains = TerrainContours::smooth(.30, .54, deposits);
+                    const double stone = 117 - 37 * plains + 26 * (std::clamp(grain_value, 0.0, 1.0) - .5);
+                    red_data[idx] = static_cast<unsigned char>(stone + 2);
+                    green_data[idx] = static_cast<unsigned char>(stone + 3);
+                    blue_data[idx] = static_cast<unsigned char>(stone - 9);
+                }
+
                 if (volcano.basalt > 0 && (surface_materials[idx] == SurfaceMaterial::ground
                     || surface_materials[idx] == SurfaceMaterial::vegetation))
                 {
@@ -4433,7 +4462,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
 
     mtx.unlock();
     generating_fic_texture = false;
-    if (create_bump) stamp_craters(cel, bump_scale);
+    if (create_bump && !volcanic_plains) stamp_craters(cel, bump_scale);
     calibrate_texture_bv(cel, input_bv);
     procedurally_generated = true;
     touch_gen();

@@ -1894,6 +1894,8 @@ bool Serialization::load_document(json allobj, CelestialObject **cels, unsigned 
                         data["catalog_designation"] = planet->catalog_designation;
                     if (!data.contains("display_designation") && !planet->display_designation.empty())
                         data["display_designation"] = planet->display_designation;
+                    if (!data.contains("surface_geology") && planet->surface_geology.is_object())
+                        data["surface_geology"] = planet->surface_geology;
                 }
                 entry.data = std::move(data);
             }

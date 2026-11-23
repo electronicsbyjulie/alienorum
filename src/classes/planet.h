@@ -127,6 +127,7 @@ namespace alienorum
         float has_water = 0;
         bool has_water_supplied = false;
         json surface_water_model = nullptr;
+        json surface_geology = nullptr;
         bool raincheck = false;
 
         void setup_atm_ring_props();

@@ -9235,6 +9235,8 @@ void CatalogReader::apply_exoplanet_environment(Planet& planet, const std::strin
         const auto evidence = record.find(key);
         if (evidence != record.end() && evidence->is_object()) planet.classification_evidence[key] = *evidence;
     }
+    const auto geology = record.find("surface_geology");
+    if (geology != record.end() && geology->is_object()) planet.surface_geology = *geology;
     const auto pressure = record.find("surface_pressure_pa");
     const auto model = record.find("pressure_model");
     if (pressure == record.end() || !pressure->is_number() || model == record.end() || !model->is_object()) return;

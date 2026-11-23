@@ -2792,6 +2792,7 @@ json Planet::to_json()
     towrite["has_water"] = has_water;
     towrite["has_water_supplied"] = has_water_supplied;
     if (surface_water_model.is_object()) towrite["surface_water_model"] = surface_water_model;
+    if (surface_geology.is_object()) towrite["surface_geology"] = surface_geology;
     if (std::isfinite(ocean_salinity_g_kg)) towrite["ocean_salinity_g_kg"] = ocean_salinity_g_kg;
     if (typeclass() == class_moon && has_sim_life) towrite["has_sim_life"] = *has_sim_life;
     if (std::isfinite(tidal_k2_over_q)) towrite["tidal_k2_over_q"] = tidal_k2_over_q;
@@ -2946,6 +2947,7 @@ bool Planet::from_json(const json& j)
     radius_error_lower = optional_number("radius_error_lower");
     classification_evidence = j.contains("classification_evidence") && j["classification_evidence"].is_object()
         ? j["classification_evidence"] : json(nullptr);
+    surface_geology = j.value("surface_geology", json(nullptr));
     try { j.at("albedo").get_to(albedo); } catch (...) { ; }
     bond_albedo = optional_number("bond_albedo");
     if (bond_albedo < 0 || bond_albedo > 1) bond_albedo = NAN;

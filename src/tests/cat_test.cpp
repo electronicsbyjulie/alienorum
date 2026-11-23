@@ -6402,6 +6402,64 @@ TEST_F(CatalogParsingTest, Trappist1bRendersVolcanicReliefAndLavaFromTidalHeat)
     EXPECT_GT(quiet_pixels, active_relief.size() * .90);
 }
 
+TEST_F(CatalogParsingTest, Trappist1bHasDarkVolcanicPlainsAndTallShieldsAfterReload)
+{
+    Star* host = make_star("TRAPPIST-1", .08 * solar_mass);
+    host->temperature = 2560;
+    host->volumetric_mean_radius = .117 * solar_radius;
+    ExoRow row;
+    row.pl_name = "TRAPPIST-1 b";
+    row.hostname = host->name;
+    row.pl_bmasse = 1.374;
+    row.pl_bmassprov = "Mass";
+    row.pl_rade = 1.116;
+    row.radius_observed = true;
+    row.pl_orbper = 1.510826;
+    row.pl_orbeccen = .00622;
+    row.pl_orbsmax = .01154;
+    TestCatalogReader reader;
+    std::map<int, std::vector<int>> planets;
+    unsigned int count = 0;
+    ASSERT_TRUE(reader.add_exoplanet_from_row(row, host, planets, count));
+    Planet* world = static_cast<Planet*>(cels[planets.at(host->seqno).front()]);
+    ASSERT_TRUE(world->surface_geology.is_object());
+    const auto saved = world->to_json();
+    const auto readable = Serialization::expand_output_record(Serialization::output_record(saved));
+    EXPECT_EQ(readable.at("surface_geology"), world->surface_geology);
+    const auto compact = Serialization::compact_document({{"world", saved}});
+    const auto restored = Serialization::expand_document(compact);
+    EXPECT_EQ(restored.at("world").at("surface_geology"), world->surface_geology);
+    ASSERT_TRUE(world->from_json(restored.at("world")));
+    world->orbit->center = host;
+    world->rnd_seed = 42;
+    world->fictitious_map_height = 192;
+    load_textures(world);
+    const Map* map = world->surf_map;
+    ASSERT_NE(map, nullptr);
+    ASSERT_TRUE(map->is_complete());
+    EXPECT_DOUBLE_EQ(world->get_surface_pressure(), 0);
+
+    const auto width = map->get_width(), height = map->get_height();
+    std::vector<unsigned char> pixels(width * height * 4);
+    map->export_rgba(pixels.data());
+    double area = 0, dark_area = 0, hot_area = 0;
+    for (size_t row = 0; row < height; ++row)
+    {
+        const double weight = std::sin(_pi * (row + .5) / height);
+        for (size_t col = 0; col < width; ++col)
+        {
+            const auto* rgb = &pixels[4 * (row * width + col)];
+            area += weight;
+            if (std::max({rgb[0], rgb[1], rgb[2]}) < 112) dark_area += weight;
+            if (rgb[0] > 185 && rgb[1] > 65 && rgb[2] < 65) hot_area += weight;
+        }
+    }
+    EXPECT_GT(dark_area / area, .70);
+    EXPECT_GT(hot_area, 0);
+    EXPECT_LT(hot_area / area, .005);
+    EXPECT_GT(map->bump_elevation_range()[1], 3500);
+}
+
 TEST_F(CatalogParsingTest, IoRetainsItsImportedSurfaceTexture)
 {
     Moon io;
