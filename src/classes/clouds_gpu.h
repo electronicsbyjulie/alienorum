@@ -23,6 +23,8 @@ namespace alienorum
         unsigned int geometry_builds = 0;
         unsigned int image_builds = 0;
         unsigned int image_hits = 0;
+        unsigned int edge_builds = 0;
+        int layer_width = 0, layer_height = 0;
         unsigned int clusters = 0;
         unsigned int max_tile_clusters = 0;
         double mean_tile_clusters = 0;
@@ -41,6 +43,7 @@ namespace alienorum
         bool sample_overhead = false;
         float overhead_reuse_distance = 0;
         float resolution_scale = 1;
+        bool resolve_edges = false;
     };
 
     struct CloudRainCover

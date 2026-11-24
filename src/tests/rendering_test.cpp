@@ -6945,6 +6945,132 @@ TEST_F(RenderingRegressionTest, CloudyCoastReducesGroundWorkInMotionAndRecoversA
     EXPECT_EQ(capture(), 1);
 }
 
+TEST_F(RenderingRegressionTest, CloudyCoastRetainsSharpCloudEdgesAndRefinesGroundAfterMotion)
+{
+    struct ResetQuality
+    {
+        ~ResetQuality() { update_horizon_quality(0); }
+    } reset;
+    update_horizon_quality(0);
+    auto* world = surface(true);
+    delete world->surf_map;
+    world->surf_map = new CoastalTestMap(true, true);
+    world->cloud_map = new UniformCloudTestMap(153);
+    set(show_clouds, true);
+    set(horizon_ground_gpu_reference, false);
+    set(horizon_ground_motion_budget_ms, 20.0);
+    set(altitude, -.15);
+    render_width = 800;
+    render_height = 450;
+    SDL_SetWindowSize(window, render_width, render_height);
+    set(dispcx, 400.0);
+    set(dispcy, 225.0);
+    ImGui::EndFrame();
+    ImGui::GetIO().DisplaySize = ImVec2(render_width, render_height);
+    ImGui::NewFrame();
+    const auto paint = [&]()
+    {
+        freeze_surface_time();
+        find_horizon();
+        EXPECT_TRUE(draw_cloudy_sky());
+        draw_horizon();
+        auto pixels = render();
+        ImGui::NewFrame();
+        return pixels;
+    };
+    paint();
+    const int still_width = cloud_sky_gpu_stats().layer_width;
+    ASSERT_EQ(still_width, 320);
+    update_horizon_quality(.05);
+    dragging = true;
+    azimuth += .15;
+    paint();
+    EXPECT_LT(cloud_sky_gpu_stats().layer_width, still_width);
+    EXPECT_EQ(precipitation_stats.ground_sample_stride, 2);
+    EXPECT_STREQ(precipitation_stats.ground_cache_reason, "panning preview");
+    viewer_lat += .5 / world->get_equatorial_radius();
+    paint();
+    EXPECT_LT(cloud_sky_gpu_stats().layer_width, still_width);
+    EXPECT_EQ(precipitation_stats.ground_sample_stride, 2);
+    const auto moving_clouds = cloud_sky_gpu_stats();
+    dragging = false;
+    auto still = paint();
+    EXPECT_EQ(cloud_sky_gpu_stats().edge_builds, moving_clouds.edge_builds);
+    EXPECT_EQ(cloud_sky_gpu_stats().layer_width, moving_clouds.layer_width);
+    EXPECT_EQ(precipitation_stats.ground_sample_stride, 1);
+    EXPECT_STREQ(precipitation_stats.ground_cache_reason, "refining");
+    EXPECT_FALSE(precipitation_stats.ground_cache_hit);
+    for (int frame = 0; frame < 100 && !precipitation_stats.ground_cache_hit; ++frame)
+        still = paint();
+    EXPECT_TRUE(precipitation_stats.ground_cache_hit);
+    update_horizon_quality(0);
+    horizon_ground_motion_budget_ms = std::numeric_limits<double>::infinity();
+    world->surf_map->touch_gen();
+    EXPECT_EQ(paint(), still);
+    world->cloud_map->touch_gen();
+    paint();
+    EXPECT_EQ(cloud_sky_gpu_stats().layer_width, still_width);
+    SDL_SetWindowSize(window, 192, 108);
+}
+
+TEST_F(RenderingRegressionTest, CloudOpacityEdgesResolveAtOutputResolution)
+{
+    glGenTextures(1, &cloud_texture);
+    glBindTexture(GL_TEXTURE_2D, cloud_texture);
+    const unsigned char texels[8] = {0, 0, 0, 255, 255, 255, 255, 255};
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 2, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, texels);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    std::array<float, 1025> refraction;
+    for (size_t i = 0; i < refraction.size(); ++i)
+        refraction[i] = -half_pi + i * _pi / 1024;
+    CloudSkyGpuInput input = {};
+    input.texture = cloud_texture;
+    input.revision = cloud_epoch * 1024;
+    input.refraction = refraction.data();
+    input.camera[1] = .035f;
+    input.camera[2] = 1;
+    input.camera[3] = float(render_height) / render_width;
+    input.camera[5] = input.camera[10] = input.camera[12] = 1;
+    input.world[0] = 1000;
+    input.world[1] = 1001;
+    input.world[2] = 2001;
+    input.light[0] = 1;
+    const auto paint = [&](float scale, bool edges)
+    {
+        input.resolution_scale = scale;
+        input.resolve_edges = edges;
+        ImGui::GetBackgroundDrawList()->AddCallback([](const ImDrawList*, const ImDrawCmd*)
+        {
+            // The test map has a hard texel boundary.
+            const auto bind_sampler = reinterpret_cast<void (APIENTRY *)(GLuint, GLuint)>(SDL_GL_GetProcAddress("glBindSampler"));
+            if (bind_sampler) bind_sampler(0, 0);
+        }, nullptr);
+        EXPECT_TRUE(queue_cloud_sky_gpu(input));
+        auto pixels = render();
+        ImGui::NewFrame();
+        return pixels;
+    };
+    const auto native = paint(2.5f, false);
+    const auto scaled = paint(.5f, false);
+    const auto prior_builds = cloud_sky_gpu_stats().edge_builds;
+    const auto refined = paint(.5f, true);
+    ASSERT_EQ(cloud_sky_gpu_stats().edge_builds, prior_builds + 1);
+    EXPECT_EQ(cloud_sky_gpu_stats().layer_width, 39);
+    const int row = render_height / 2, edge = render_width / 2;
+    int resampled_pixels = 0;
+    for (int x : {edge - 2, edge - 1, edge, edge + 1})
+    {
+        const auto alpha = 4 * (row * render_width + x) + 3;
+        EXPECT_EQ(native[alpha], x < edge ? 0 : 255);
+        resampled_pixels += scaled[alpha] != native[alpha];
+        EXPECT_EQ(refined[alpha], native[alpha]);
+    }
+    EXPECT_GT(resampled_pixels, 0);
+    EXPECT_EQ(paint(.5f, true), refined);
+    EXPECT_EQ(cloud_sky_gpu_stats().edge_builds, prior_builds + 1);
+}
+
 TEST_F(RenderingRegressionTest, CloudyCoastFirstPaintRefinesToTheReferenceImage)
 {
     update_horizon_quality(0);

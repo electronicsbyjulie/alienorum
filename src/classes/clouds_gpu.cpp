@@ -37,6 +37,8 @@ uniform sampler2D uCloudMap;
 uniform sampler2D uRefraction;
 uniform sampler2D uGeometry;
 uniform sampler2D uTiles;
+uniform sampler2D uLayer;
+uniform bool uResolveEdges;
 uniform int uTileColumns;
 const float PI = 3.141592653589793;
 const float HALF_PI = 1.570796326794897;
@@ -188,14 +190,7 @@ void main()
 #ifdef CLOUD_RAIN_PROBE
     ray = vec3(0.0, 1.0, 0.0);
 #endif
-    float h = atan(ray.y, length(ray.xz));
     float apparent_y = ray.y;
-    // The inverse curve is cached as a linear texture: one fetch per pixel.
-    float true_h = texture(uRefraction, vec2((h + HALF_PI) / PI * (1024.0 / 1025.0)
-        + 0.5 / 1025.0, 0.5)).r;
-    float horizontal = length(ray.xz);
-    ray.xz *= cos(true_h) / max(horizontal, 1e-8);
-    ray.y = sin(true_h);
     float observer = uWorld[0].x;
     float shell = uWorld[0].y;
     float delta = uWorld[0].z;
@@ -207,6 +202,13 @@ void main()
     {
         discard;
     }
+    float horizontal = length(ray.xz);
+    float h = atan(ray.y, horizontal);
+    // The inverse curve is cached as a linear texture: one fetch per pixel.
+    float true_h = texture(uRefraction, vec2((h + HALF_PI) / PI * (1024.0 / 1025.0)
+        + 0.5 / 1025.0, 0.5)).r;
+    ray.xz *= cos(true_h) / max(horizontal, 1e-8);
+    ray.y = sin(true_h);
     float along = observer * ray.y;
     float discriminant = along * along + delta;
     if (discriminant < 0.0 || (delta < 0.0 && along >= 0.0))
@@ -232,7 +234,6 @@ void main()
     vec3 up = uCamera[3].xyz;
     vec3 direction = east * ray.x + north * ray.z + up * ray.y;
     vec3 hit = up * observer + distance * direction;
-    vec3 normal = normalize(hit);
     float lat = atan(hit.z, length(hit.xy));
     float lon = atan(hit.y, hit.x);
     vec2 uv = vec2(lon / TWO_PI + 0.5, 0.5 - lat / PI);
@@ -240,11 +241,32 @@ void main()
     vec2 gy = dFdy(uv);
     gx.x -= round(gx.x);
     gy.x -= round(gy.x);
+    // Derivatives are measured in output pixels, independent of cache resolution.
+    float footprint = max(length(dFdx(hit)) * uWorld[1].x, length(dFdy(hit)) * uWorld[1].y);
+    vec2 layer_uv = vXY * 0.5 + 0.5;
+    if (uResolveEdges)
+    {
+        // Examine the four texels contributing to the upscaled layer. Resolve
+        // strong changes in opacity with the native pixel's own ray.
+        ivec2 size = textureSize(uLayer, 0);
+        ivec2 low = ivec2(floor(layer_uv * vec2(size) - 0.5));
+        ivec2 last = size - 1;
+        float a = texelFetch(uLayer, clamp(low, ivec2(0), last), 0).a;
+        float b = texelFetch(uLayer, clamp(low + ivec2(1, 0), ivec2(0), last), 0).a;
+        float c = texelFetch(uLayer, clamp(low + ivec2(0, 1), ivec2(0), last), 0).a;
+        float d = texelFetch(uLayer, clamp(low + ivec2(1, 1), ivec2(0), last), 0).a;
+        float least = min(min(a, b), min(c, d));
+        float most = max(max(a, b), max(c, d));
+        if (most - least < 0.20)
+        {
+            FragColor = texture(uLayer, layer_uv);
+            return;
+        }
+    }
+    vec3 normal = normalize(hit);
     vec3 rgb = textureGrad(uCloudMap, uv + uLight[2].xy, gx, gy).rgb;
     float coverage = clamp(dot(rgb, vec3(0.29, 0.53, 0.18)), 0.0, 1.0);
     float deck = uLight[0].z > 0.5 ? 1.0 : smoothstep(0.70, 0.90, coverage);
-    // Derivatives are measured in output pixels, independent of cache resolution.
-    float footprint = max(length(dFdx(hit)) * uWorld[1].x, length(dFdy(hit)) * uWorld[1].y);
     float unresolved = smoothstep(0.025, 0.16, footprint);
     float blend = deck + (1.0 - deck) * unresolved;
     float alpha = mix(coverage, 1.0, deck);
@@ -296,7 +318,8 @@ void main()
 #endif
 #ifndef CLOUD_REFERENCE
         // Every cluster occurs once per tile and is accepted as a whole.
-        ivec2 tile = ivec2(gl_FragCoord.xy - uWorld[1].zw) / 32;
+        vec2 tile_pixel = uResolveEdges ? layer_uv * vec2(textureSize(uLayer, 0)) : gl_FragCoord.xy - uWorld[1].zw;
+        ivec2 tile = ivec2(tile_pixel) / 32;
         int tile_row = tile.y * uTileColumns + tile.x;
         int count = int(texelFetch(uTiles, ivec2(0, tile_row), 0).r);
         for (int candidate = 1; candidate <= count; ++candidate)
@@ -530,6 +553,7 @@ void main()
         unsigned int revision;
         CloudGeometryMode geometry_mode;
         float resolution_scale;
+        bool resolve_edges;
     };
     static CloudSkyGpuParams s_pool[4];
     static int s_pool_index = 0;
@@ -545,6 +569,7 @@ void main()
     static GLint s_uCameraLoc = -1, s_uWorldLoc = -1, s_uLightLoc = -1;
     static GLint s_uCloudMapLoc = -1, s_uRefractionLoc = -1;
     static GLint s_uTileColumnsLoc = -1;
+    static GLint s_uResolveEdgesLoc = -1;
     struct CloudProgramLocations
     {
         GLint camera = -1, world = -1, light = -1;
@@ -577,6 +602,9 @@ void main()
     static constexpr GLenum kColorAttachment = 0x8CE0;
     static constexpr GLenum kFramebufferComplete = 0x8CD5;
     static GLuint s_composite = 0, s_cache_texture = 0, s_cache_framebuffer = 0;
+    static GLuint s_edge_texture = 0;
+    static int s_edge_width = 0, s_edge_height = 0;
+    static bool s_edges_cached = false;
     static GLint s_composite_pos = -1, s_composite_xy = -1;
     static int s_cache_width = 0, s_cache_height = 0;
     static int s_output_width = 0, s_output_height = 0;
@@ -814,12 +842,14 @@ void main()
         s_uCloudMapLoc   = glGetUniformLocation(s_program, "uCloudMap");
         s_uRefractionLoc = glGetUniformLocation(s_program, "uRefraction");
         s_uTileColumnsLoc = glGetUniformLocation(s_program, "uTileColumns");
+        s_uResolveEdgesLoc = glGetUniformLocation(s_program, "uResolveEdges");
 
         glUseProgram(s_program);
         glUniform1i(s_uCloudMapLoc, 0);
         glUniform1i(s_uRefractionLoc, 1);
         glUniform1i(glGetUniformLocation(s_program, "uGeometry"), 2);
         glUniform1i(glGetUniformLocation(s_program, "uTiles"), 3);
+        glUniform1i(glGetUniformLocation(s_program, "uLayer"), 4);
 
         glGenVertexArrays(1, &s_vao);
         glGenBuffers(1, &s_vbo);
@@ -1004,14 +1034,16 @@ void main()
     {
         if (!s_cache_valid || width != s_output_width || height != s_output_height
             || p.texture != s_cached_params.texture || p.revision != s_cached_params.revision
-            || p.geometry_mode != s_cached_params.geometry_mode)
+            || p.geometry_mode != s_cached_params.geometry_mode || p.resolve_edges != s_cached_params.resolve_edges)
         {
             return false;
         }
         // Slow tracking can move by far less than a pixel between frames. Bound
         // the angular reuse error at the most magnified part of the perspective view.
         const double fx = p.camera[2], fy = p.camera[3];
-        const double angle_tolerance = .1 * std::min(2 * std::fabs(fx) / width, 2 * std::fabs(fy) / height)
+        const double pixels = p.resolve_edges && (p.resolution_scale < 1 || s_cached_params.resolution_scale < 1)
+            ? .25 : .1;
+        const double angle_tolerance = pixels * std::min(2 * std::fabs(fx) / width, 2 * std::fabs(fy) / height)
             / (1 + fx * fx + fy * fy);
         // Convert a fraction of a cloud-buffer pixel to observer displacement,
         // using the closest possible cloud distance and the actual buffer scale.
@@ -1326,6 +1358,15 @@ void main()
         return true;
     }
 
+    static void resize_cloud_layer(int width, int height)
+    {
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    }
+
     static bool prepare_cache(int width, int height, float resolution_scale)
     {
         if (!s_composite || !s_gen_framebuffers || !s_bind_framebuffer
@@ -1350,15 +1391,35 @@ void main()
             s_cache_valid = false;
             s_cache_width = cw;
             s_cache_height = ch;
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, cw, ch, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+            resize_cloud_layer(cw, ch);
         }
         s_bind_framebuffer(kFramebuffer, s_cache_framebuffer);
         s_framebuffer_texture(kFramebuffer, kColorAttachment, GL_TEXTURE_2D, s_cache_texture, 0);
         return s_check_framebuffer(kFramebuffer) == kFramebufferComplete;
+    }
+
+    static bool resolve_cloud_edges(const CloudSkyGpuParams& p, int width, int height, float* world)
+    {
+        if (!s_edge_texture) glGenTextures(1, &s_edge_texture);
+        glActiveTexture(GL_TEXTURE0 + 4);
+        if (s_edge_width != width || s_edge_height != height)
+        {
+            glBindTexture(GL_TEXTURE_2D, s_edge_texture);
+            resize_cloud_layer(width, height);
+            s_edge_width = width;
+            s_edge_height = height;
+        }
+        glBindTexture(GL_TEXTURE_2D, s_cache_texture);
+        s_framebuffer_texture(kFramebuffer, kColorAttachment, GL_TEXTURE_2D, s_edge_texture, 0);
+        if (s_check_framebuffer(kFramebuffer) != kFramebufferComplete) return false;
+        glViewport(0, 0, width, height);
+        glClear(GL_COLOR_BUFFER_BIT);
+        world[4] = world[5] = 1;
+        glUniformMatrix4fv(s_uWorldLoc, 1, GL_FALSE, world);
+        glUniform1i(s_uResolveEdgesLoc, GL_TRUE);
+        draw_quad(p, s_aPosLoc, s_aXYLoc);
+        ++s_stats.edge_builds;
+        return true;
     }
 
     static void render_cloud_sky_gpu(const ImDrawList*, const ImDrawCmd *cmd)
@@ -1378,11 +1439,18 @@ void main()
         // Offscreen geometry and cloud caches cover their whole attachments.
         // The final screen pass restores the command's scissor test below.
         glDisable(GL_SCISSOR_TEST);
-        const bool cached = prepare_cache(viewport[2], viewport[3], p.resolution_scale);
-        if (!cached || !cache_matches(p, viewport[2], viewport[3]))
+        const bool same_image = cache_matches(p, viewport[2], viewport[3]);
+        // The cached outline already uses screen pixels. Restore interior detail
+        // on the next ordinary redraw instead of rebuilding on the stop frame.
+        const bool retain_interior = same_image && s_edges_cached && p.resolution_scale > s_cached_params.resolution_scale;
+        const float scale = retain_interior ? s_cached_params.resolution_scale : p.resolution_scale;
+        const bool cached = prepare_cache(viewport[2], viewport[3], scale);
+        if (!cached || !same_image || !s_cache_valid)
         {
             const int render_width = cached ? s_cache_width : viewport[2];
             const int render_height = cached ? s_cache_height : viewport[3];
+            s_stats.layer_width = render_width;
+            s_stats.layer_height = render_height;
             const bool geometry = prepare_geometry(p) && prepare_tiles(p, render_width, render_height);
             s_stats.geometry_cached = geometry;
             ++s_stats.image_builds;
@@ -1418,6 +1486,7 @@ void main()
             if (geometry)
             {
                 glUniform1i(s_uTileColumnsLoc, (render_width + 31) / 32);
+                glUniform1i(s_uResolveEdgesLoc, GL_FALSE);
             }
             glUniformMatrix4fv(geometry ? s_uCameraLoc : s_reference_locations.camera, 1, GL_FALSE, p.camera);
             glUniformMatrix4fv(geometry ? s_uWorldLoc : s_reference_locations.world, 1, GL_FALSE, world);
@@ -1433,6 +1502,9 @@ void main()
             CloudTimer *timer = begin_cloud_timer(1);
             draw_quad(p, geometry ? s_aPosLoc : s_reference_locations.position,
                 geometry ? s_aXYLoc : s_reference_locations.xy);
+            s_edges_cached = cached && geometry && p.resolve_edges && p.light[2] < .5f
+                && (render_width < viewport[2] || render_height < viewport[3])
+                && resolve_cloud_edges(p, viewport[2], viewport[3], world);
             end_cloud_timer(timer);
             if (cached)
             {
@@ -1456,7 +1528,7 @@ void main()
             glEnable(GL_SCISSOR_TEST);
             glUseProgram(s_composite);
             glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_2D, s_cache_texture);
+            glBindTexture(GL_TEXTURE_2D, s_edges_cached ? s_edge_texture : s_cache_texture);
             CloudTimer *timer = begin_cloud_timer(2);
             draw_quad(p, s_composite_pos, s_composite_xy);
             end_cloud_timer(timer);
@@ -1466,6 +1538,8 @@ void main()
         glActiveTexture(GL_TEXTURE0 + 2);
         glBindTexture(GL_TEXTURE_2D, 0);
         glActiveTexture(GL_TEXTURE0 + 3);
+        glBindTexture(GL_TEXTURE_2D, 0);
+        glActiveTexture(GL_TEXTURE0 + 4);
         glBindTexture(GL_TEXTURE_2D, 0);
         glActiveTexture(GL_TEXTURE0);
         glBindVertexArray(0);
@@ -1660,6 +1734,7 @@ void main()
         p->revision = in.revision;
         p->geometry_mode = in.geometry_mode;
         p->resolution_scale = in.resolution_scale;
+        p->resolve_edges = in.resolve_edges;
         if (in.sample_overhead)
         {
             sample_rain_cover(*p, in.overhead_reuse_distance);
