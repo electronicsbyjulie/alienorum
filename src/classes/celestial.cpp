@@ -4354,11 +4354,11 @@ void Map::generate_rocky_map(CelestialObject *cel)
                     T_local = surface.temperature;
                     const double habitat_density = !ocean && life_possible
                         ? habitat.density(nx, ny, nz, bump_data[idx], p->veg_min_temp, p->veg_max_temp, freezing, Tboil) : 0;
-                    // Sparse microbial mats retain the palette without forming forests.
-                    const double microbial_patch = microbial_only
-                        ? .5 + .5 * sin(nx * 73 + sin(nz * 41)) * sin(ny * 67 + sin(nx * 37)) : 0;
+                    // Sample irregular patches on the sphere so mats taper across their edges.
+                    const double microbial_patch = microbial_only && habitat_density > 0
+                        ? surface_noise(12 * nx + 17.3, 12 * ny + 31.7, 12 * nz + 11.9, 3, 2.1, .55) : 0;
                     const double vegetation_density = microbial_only
-                        ? habitat_density * std::clamp((microbial_patch - .55) * 2, 0.0, .4) : habitat_density;
+                        ? .4 * habitat_density * TerrainContours::smooth(.53, .71, microbial_patch) : habitat_density;
                     if (cel->type == waterworld || cel->type == hycean)
                     {
                         surface_materials[idx] = SurfaceMaterial::water;
@@ -4408,9 +4408,10 @@ void Map::generate_rocky_map(CelestialObject *cel)
                     }
                     if (surface_materials[idx] == SurfaceMaterial::vegetation && !surface.vegetation_active)
                     {
-                        red_data[idx] = .35 * red_data[idx] + .65 * 105;
-                        green_data[idx] = .35 * green_data[idx] + .65 * 85;
-                        blue_data[idx] = .35 * blue_data[idx] + .65 * 60;
+                        const double blend = .65 * (microbial_only ? vegetation_density / .4 : 1);
+                        red_data[idx] = (1 - blend) * red_data[idx] + blend * 105;
+                        green_data[idx] = (1 - blend) * green_data[idx] + blend * 85;
+                        blue_data[idx] = (1 - blend) * blue_data[idx] + blend * 60;
                     }
                     const double frost = surface.ice;
                     if (ocean && (surface.frozen_surface || frost >= .5)) surface_materials[idx] = SurfaceMaterial::ice;
