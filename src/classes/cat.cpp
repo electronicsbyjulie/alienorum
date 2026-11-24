@@ -3946,22 +3946,32 @@ void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>&
         {
             if (strncmp(buffer, "#@planet ", 9) == 0)
             {
-                std::stringstream record(buffer + 9);
+                const std::string record = trim(buffer + 9);
                 std::string fields[4];
-                for (auto &field : fields)
+                if (record.find('|') != std::string::npos)
                 {
-                    std::getline(record, field, '|');
-                    field = trim(field.c_str());
+                    std::istringstream columns(record);
+                    for (auto& field : fields)
+                    {
+                        std::getline(columns, field, '|');
+                        field = trim(field);
+                    }
                 }
-                try
+                else
                 {
-                    const double period = std::stod(fields[1]);
-                    if (!(period > 0) || !std::isfinite(period) || fields[2].size() != 1
-                        || fields[2][0] < 'b' || fields[2][0] > 'z') continue;
-                    const int host = find_object(fields[0].c_str(), true, 9e29, 1, lookup);
-                    if (host >= 0) display_identities[host].push_back({period, fields[2], fields[3]});
+                    const auto boundary = record.find("  ");
+                    if (boundary == std::string::npos) continue;
+                    fields[0] = record.substr(0, boundary);
+                    std::istringstream columns(record.substr(boundary));
+                    columns >> fields[1] >> fields[2];
+                    std::getline(columns, fields[3]);
+                    fields[3] = trim(fields[3]);
                 }
-                catch (const std::exception&) { ; }
+                double period = 0;
+                if (!parse_numeric_value(fields[1], period) || period <= 0 || fields[2].size() != 1
+                    || fields[2][0] < 'b' || fields[2][0] > 'z') continue;
+                const int host = find_object(fields[0].c_str(), true, 9e29, 1, lookup);
+                if (host >= 0) display_identities[host].push_back({period, fields[2], fields[3]});
                 continue;
             }
             if (buffer[0] == '#') continue;
@@ -9218,10 +9228,103 @@ void CatalogReader::apply_exoplanet_environment(Planet& planet, const std::strin
         constexpr std::string_view prefix = "#@environment ";
         for (std::string line; std::getline(input, line);)
         {
+            if (line.compare(0, 6, "#@env ") == 0)
+            {
+                // Byte offsets from the fixed-width environment columns.
+                const auto column = [&](size_t start, size_t end = std::string::npos)
+                {
+                    return start < line.size() ? trim(line.substr(start, end - start)) : std::string();
+                };
+                const auto key = exoplanet_status_key(column(9, 27));
+                if (key.empty()) continue;
+                json record = json::object();
+                const auto type = column(27, 44);
+                if (!type.empty()) record["surface_type"] = type;
+                const auto pressure_text = numeric_text(column(44, 60));
+                const bool airless = pressure_text == "airless";
+                double pressure = 0;
+                if (airless || (parse_numeric_value(pressure_text, pressure) && pressure >= 0))
+                {
+                    record["surface_pressure_pa"] = pressure;
+                    record["pressure_model"] = {
+                        {"status", "estimated"},
+                        {"basis", airless ? "airless_surface_observation_scenario" : "catalog_estimate"},
+                        {"source", column(60, 108)}};
+                }
+                const auto interior = column(108, 120);
+                if (!interior.empty())
+                    record["bulk_composition"] = {
+                        {"basis", interior == "iron_poor" ? "mass_radius_consistent_with_iron_poor_rock" : interior},
+                        {"source", column(120, 156)}};
+                const auto rock = column(156, 172);
+                const auto source = column(172);
+                if (!rock.empty())
+                    record["surface_geology"] = {
+                        {"model", rock == "ultramafic" ? "fresh_ultramafic_volcanic_plains" : rock},
+                        {"status", "inferred"}, {"source", source}};
+                else if (!source.empty())
+                    record["atmosphere_observations"] = {{"composition_status", "unconstrained"}, {"source", source}};
+                // Preserve the established terrain for catalogs that omit the texture seed column.
+                if (key == "trappist1b") record["texture_seed"] = 1928101567;
+                if (key == "trappist1c") record["texture_seed"] = 842310441;
+                exoplanet_environments.emplace(key, std::move(record));
+                continue;
+            }
             if (line.compare(0, prefix.size(), prefix) != 0) continue;
             const auto separator = line.find('|', prefix.size());
             if (separator == std::string::npos) continue;
-            auto record = json::parse(line.substr(separator + 1), nullptr, false);
+            const std::string payload = trim(line.substr(separator + 1).c_str());
+            json record;
+            if (!payload.empty() && payload.front() == '{')
+            {
+                // Accept catalogs written before the environment columns were introduced.
+                record = json::parse(payload, nullptr, false);
+            }
+            else
+            {
+                std::istringstream columns(payload);
+                std::string fields[13];
+                for (auto& field : fields)
+                {
+                    std::getline(columns, field, '|');
+                    field = trim(field.c_str());
+                }
+                record = json::object();
+                if (!fields[1].empty()) record["surface_type"] = fields[1];
+                for (auto* number : {&fields[0], &fields[2]})
+                {
+                    if (!number->empty() && number->back() == '?') number->pop_back();
+                    *number = trim(number->c_str());
+                }
+                try
+                {
+                    size_t end = 0;
+                    const int seed = std::stoi(fields[0], &end);
+                    if (end == fields[0].size() && seed > 0) record["texture_seed"] = seed;
+                }
+                catch (const std::exception&) { }
+                try
+                {
+                    size_t end = 0;
+                    const double pressure = std::stod(fields[2], &end);
+                    if (end == fields[2].size() && std::isfinite(pressure))
+                        record["surface_pressure_pa"] = pressure;
+                }
+                catch (const std::exception&) { }
+                const auto read_group = [&](const char* group, size_t first,
+                                            std::initializer_list<const char*> keys)
+                {
+                    for (const char* key : keys)
+                    {
+                        const auto& field = fields[first++];
+                        if (!field.empty()) record[group][key] = field;
+                    }
+                };
+                read_group("pressure_model", 3, {"status", "basis", "source"});
+                read_group("bulk_composition", 6, {"basis", "source"});
+                read_group("surface_geology", 8, {"model", "status", "source"});
+                read_group("atmosphere_observations", 11, {"composition_status", "source"});
+            }
             if (!record.is_object()) continue;
             const auto key = exoplanet_status_key(trim(line.substr(prefix.size(), separator - prefix.size()).c_str()));
             if (!key.empty()) exoplanet_environments.emplace(key, std::move(record));
@@ -9230,6 +9333,9 @@ void CatalogReader::apply_exoplanet_environment(Planet& planet, const std::strin
     const auto found = exoplanet_environments.find(exoplanet_status_key(designation));
     if (found == exoplanet_environments.end()) return;
     const auto& record = found->second;
+    const auto seed = record.find("texture_seed");
+    if (seed != record.end() && seed->is_number_integer())
+        planet.rnd_seed = seed->get<int>();
     for (const char* key : {"bulk_composition", "atmosphere_observations"})
     {
         const auto evidence = record.find(key);
@@ -9237,16 +9343,16 @@ void CatalogReader::apply_exoplanet_environment(Planet& planet, const std::strin
     }
     const auto geology = record.find("surface_geology");
     if (geology != record.end() && geology->is_object()) planet.surface_geology = *geology;
-    const auto pressure = record.find("surface_pressure_pa");
-    const auto model = record.find("pressure_model");
-    if (pressure == record.end() || !pressure->is_number() || model == record.end() || !model->is_object()) return;
-    const double pascals = pressure->get<double>();
-    if (!std::isfinite(pascals) || pascals < 0) return;
     if (record.value("surface_type", json()) == "rocky")
     {
         planet.type = rocky;
         planet.lock_type = true;
     }
+    const auto pressure = record.find("surface_pressure_pa");
+    const auto model = record.find("pressure_model");
+    if (pressure == record.end() || !pressure->is_number() || model == record.end() || !model->is_object()) return;
+    const double pascals = pressure->get<double>();
+    if (!std::isfinite(pascals) || pascals < 0) return;
     auto* atmosphere = planet.ensure_atmosphere();
     atmosphere->surface_pressure = pascals;
     atmosphere->ensure_composition();

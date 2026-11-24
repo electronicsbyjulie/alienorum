@@ -1,13 +1,13 @@
 # Designation                           Name                    Type                    TempK           Incl        Node        Incl. to star   B-V color   Albedo
-# Period-based display identities: host | period in days (5% tolerance) | display letter | proper name.
+# Period-based display identities: host   period in days (5% tolerance)   display letter   proper name.
 # These records identify physical planets independently of a source's letter convention.
-#@planet HD 20794 | 89.7 | c |
-#@planet HD 20794 | 648 | d |
+#@planet HD 20794         89.7      c  
+#@planet HD 20794        648        d  
 # Mu Arae names and orbital order: https://en.wikipedia.org/wiki/Mu_Arae (2026-10-23).
-#@planet HD 160691 | 9.64 | c | Dulcinea
-#@planet HD 160691 | 308 | d | Rocinante
-#@planet HD 160691 | 645 | b | Quijote
-#@planet HD 160691 | 4019 | e | Sancho
+#@planet HD 160691         9.64     c   Dulcinea
+#@planet HD 160691       308        d   Rocinante
+#@planet HD 160691       645        b   Quijote
+#@planet HD 160691      4019        e   Sancho
 55 Cnc Ae                               Janssen                 lavaworld               3771
 55 Cnc Ab                               Galileo                 hot_jupiter
 55 Cnc Ac                               Brahe                   gas_giant
@@ -282,11 +282,11 @@ HD116434                                Matza
 #   HATS-72 = Zembra; L 168-9 = Danfeng; LHS 3844 = Batsũ̀; LTT 9779 = Uúba; WASP-19 = Wattle; WASP-43 = Gnomon;
 #   WASP-63 = Kosjenka; WASP-69 = Wouri; WASP-121 = Dilmun; WASP-166 = Filetdor; WD 0806-661 = Maru
 
-# Environment entries use the catalog planet designation followed by a JSON record.
-#@environment TRAPPIST-1 b | {"bulk_composition":{"basis":"Measured mass and radius are consistent with an iron-poor rocky interior","source":"https://doi.org/10.3847/PSJ/abd022"},"surface_geology":{"model":"fresh_ultramafic_volcanic_plains","status":"inferred","source":"https://doi.org/10.1038/s41550-026-02806-9","interpretation":"Fresh low-reflectance rock is favored. Volcanic resurfacing is a geological scenario."},"surface_type":"rocky","surface_pressure_pa":0,"pressure_model":{"status":"estimated","basis":"airless_surface_observation_scenario","source":"https://doi.org/10.1038/s41550-026-02806-9","interpretation":"Bare rock is favored by the thermal phase curve"}}
-#@environment TRAPPIST-1 c | {"bulk_composition":{"basis":"Measured mass and radius are consistent with an iron-poor rocky interior","source":"https://doi.org/10.3847/PSJ/abd022"},"surface_type":"rocky","surface_pressure_pa":0,"pressure_model":{"status":"estimated","basis":"airless_surface_observation_scenario","source":"https://doi.org/10.1038/s41550-026-02806-9","interpretation":"Bare rock and a tenuous oxygen-rich atmosphere are consistent with the data"}}
-#@environment TRAPPIST-1 d | {"bulk_composition":{"basis":"Measured mass and radius are consistent with an iron-poor rocky interior","source":"https://doi.org/10.3847/PSJ/abd022"},"surface_type":"rocky","surface_pressure_pa":0,"pressure_model":{"status":"estimated","basis":"airless_surface_observation_scenario","source":"https://arxiv.org/abs/2508.08416","interpretation":"An airless surface is consistent with data that also allow thin air or high aerosols"}}
-#@environment TRAPPIST-1 e | {"bulk_composition":{"basis":"Measured mass and radius are consistent with an iron-poor rocky interior","source":"https://doi.org/10.3847/PSJ/abd022"},"atmosphere_observations":{"source":"https://arxiv.org/abs/2512.07695","interpretation":"Stellar contamination limits the current atmospheric interpretation","composition_status":"unconstrained"}}
-#@environment TRAPPIST-1 f | {"bulk_composition":{"basis":"Measured mass and radius are consistent with an iron-poor rocky interior","source":"https://doi.org/10.3847/PSJ/abd022"},"atmosphere_observations":{"source":"https://arxiv.org/abs/2608.17207","interpretation":"The measured spectrum disfavors a thick hydrogen-helium atmosphere","composition_status":"unconstrained"}}
-#@environment TRAPPIST-1 g | {"bulk_composition":{"basis":"Measured mass and radius are consistent with an iron-poor rocky interior","source":"https://doi.org/10.3847/PSJ/abd022"},"atmosphere_observations":{"source":"https://doi.org/10.1038/s41550-017-0374-z","interpretation":"The measured spectrum leaves even a clear hydrogen-dominated atmosphere open","composition_status":"unconstrained"}}
-#@environment TRAPPIST-1 h | {"bulk_composition":{"basis":"Measured mass and radius are consistent with an iron-poor rocky interior","source":"https://doi.org/10.3847/PSJ/abd022"},"atmosphere_observations":{"source":"https://doi.org/10.1051/0004-6361/202142603","interpretation":"A featureless spectrum allows heavy air, opaque aerosols, or an airless surface","composition_status":"unconstrained"}}
+#@envcol designation       surface_type     pressure Pa     pressure_ref                                    geology_mdl geology_ref                         rock_type       ref
+#@env    TRAPPIST-1 b      rocky            airless         https://doi.org/10.1038/s41550-026-02806-9      iron_poor   https://doi.org/10.3847/PSJ/abd022  ultramafic      https://doi.org/10.1038/s41550-026-02806-9     
+#@env    TRAPPIST-1 c      rocky            airless         https://doi.org/10.1038/s41550-026-02806-9      iron_poor   https://doi.org/10.3847/PSJ/abd022              
+#@env    TRAPPIST-1 d      rocky            airless         https://arxiv.org/abs/2508.08416                iron_poor   https://doi.org/10.3847/PSJ/abd022              
+#@env    TRAPPIST-1 e                                                                                       iron_poor   https://doi.org/10.3847/PSJ/abd022                  https://arxiv.org/abs/2512.07695
+#@env    TRAPPIST-1 f                                                                                       iron_poor   https://doi.org/10.3847/PSJ/abd022                  https://arxiv.org/abs/2608.17207
+#@env    TRAPPIST-1 g                                                                                       iron_poor   https://doi.org/10.3847/PSJ/abd022                  https://doi.org/10.1038/s41550-017-0374-z
+#@env    TRAPPIST-1 h                                                                                       iron_poor   https://doi.org/10.3847/PSJ/abd022                  https://doi.org/10.1051/0004-6361/202142603

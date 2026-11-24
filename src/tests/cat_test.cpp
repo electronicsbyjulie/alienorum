@@ -6460,6 +6460,44 @@ TEST_F(CatalogParsingTest, Trappist1bHasDarkVolcanicPlainsAndTallShieldsAfterRel
     EXPECT_GT(map->bump_elevation_range()[1], 3500);
 }
 
+TEST_F(CatalogParsingTest, TrappistInnerPlanetsUseDistinctCatalogTextureSeeds)
+{
+    TestCatalogReader reader;
+    const auto close_file = [](FILE* file) { fclose(file); };
+    std::unique_ptr<FILE, decltype(close_file)> file(fopen("catalogs/exoplanets_planets.dat", "r"), close_file);
+    ASSERT_NE(file, nullptr);
+    auto* host = make_star("TRAPPIST-1", .089 * solar_mass);
+    host->temperature = 2560;
+    host->volumetric_mean_radius = .119 * solar_radius;
+    std::map<int, std::vector<int>> planets;
+    unsigned int count = 0;
+    std::map<std::string, Planet*> worlds;
+    ExoRow row;
+    while (worlds.size() < 2 && reader.exorow_read_line(file.get(), row))
+    {
+        if (row.pl_name != "TRAPPIST-1 b" && row.pl_name != "TRAPPIST-1 c") continue;
+        if (worlds.count(row.pl_name)) continue;
+        ASSERT_TRUE(reader.add_exoplanet_from_row(row, host, planets, count));
+        worlds.emplace(row.pl_name, static_cast<Planet*>(cels[planets.at(host->seqno).back()]));
+    }
+    ASSERT_EQ(worlds.size(), 2u);
+    auto* b = worlds.at("TRAPPIST-1 b");
+    auto* c = worlds.at("TRAPPIST-1 c");
+    EXPECT_GT(b->rnd_seed, 0);
+    EXPECT_GT(c->rnd_seed, 0);
+    EXPECT_NE(b->texture_seed(), c->texture_seed());
+    for (auto* world : {b, c})
+    {
+        EXPECT_EQ(world->type, rocky);
+        EXPECT_DOUBLE_EQ(world->get_surface_pressure(), 0);
+        world->fictitious_map_height = 192;
+        load_textures(world);
+        ASSERT_NE(world->surf_map, nullptr);
+        EXPECT_TRUE(world->surf_map->is_complete());
+        EXPECT_TRUE(world->surf_map->procedurally_generated);
+    }
+}
+
 TEST_F(CatalogParsingTest, IoRetainsItsImportedSurfaceTexture)
 {
     Moon io;

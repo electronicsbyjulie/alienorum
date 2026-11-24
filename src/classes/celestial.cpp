@@ -4076,6 +4076,15 @@ void Map::generate_rocky_map(CelestialObject *cel)
         const Point contour_offset(61 * TerrainContours::variation(cel->rnd_seed ^ 0x68e31da4U),
             61 * TerrainContours::variation(cel->rnd_seed ^ 0xb5297a4dU),
             61 * TerrainContours::variation(cel->rnd_seed ^ 0x1b56c4e9U));
+        const Point surface_offset(
+            59 * TerrainContours::variation(cel->rnd_seed ^ 0x9e3779b9U),
+            59 * TerrainContours::variation(cel->rnd_seed ^ 0x85ebca6bU),
+            59 * TerrainContours::variation(cel->rnd_seed ^ 0xc2b2ae35U));
+        const auto surface_noise = [&](double x, double y, double z, int octaves, double lacunarity, double gain)
+        {
+            return fBm(x + surface_offset.x, y + surface_offset.y, z + surface_offset.z,
+                octaves, lacunarity, gain);
+        };
         struct TerrainSample
         {
             double wx, wy, wz, field, roughness, detail;
@@ -4083,13 +4092,13 @@ void Map::generate_rocky_map(CelestialObject *cel)
         const auto terrain_sample = [&](double sx, double sy, double sz, bool with_detail)
         {
             TerrainSample sample;
-            sample.wx = sx * scale + (fBm(sx * warp_scale + 12.3, sy * warp_scale + 4.1, sz * warp_scale + 9.8, 3, lacunarity, .5) - .5) * warp_strength;
-            sample.wy = sy * scale + (fBm(sx * warp_scale + 3.1, sy * warp_scale + 19.2, sz * warp_scale + 2.4, 3, lacunarity, .5) - .5) * warp_strength;
-            sample.wz = sz * scale + (fBm(sx * warp_scale + 8.5, sy * warp_scale + 7.7, sz * warp_scale + 14.6, 3, lacunarity, .5) - .5) * warp_strength;
+            sample.wx = sx * scale + (surface_noise(sx * warp_scale + 12.3, sy * warp_scale + 4.1, sz * warp_scale + 9.8, 3, lacunarity, .5) - .5) * warp_strength;
+            sample.wy = sy * scale + (surface_noise(sx * warp_scale + 3.1, sy * warp_scale + 19.2, sz * warp_scale + 2.4, 3, lacunarity, .5) - .5) * warp_strength;
+            sample.wz = sz * scale + (surface_noise(sx * warp_scale + 8.5, sy * warp_scale + 7.7, sz * warp_scale + 14.6, 3, lacunarity, .5) - .5) * warp_strength;
             sample.field = fBm(sample.wx * .58 + contour_offset.x, sample.wy * .58 + contour_offset.y,
                 sample.wz * .58 + contour_offset.z, 3, lacunarity, .5);
             sample.roughness = contours.upland(sample.field);
-            sample.detail = with_detail ? fBm(sample.wx, sample.wy, sample.wz, octaves,
+            sample.detail = with_detail ? surface_noise(sample.wx, sample.wy, sample.wz, octaves,
                 lacunarity, gain * (.3 + .7 * sample.roughness)) : .5;
             return sample;
         };
@@ -4265,18 +4274,18 @@ void Map::generate_rocky_map(CelestialObject *cel)
                 if (create_bump) bump_data[idx] = bump_scale * (height - .5);
 
                 // Tie albedo directly into the warped coordinate space
-                albedo_value = fBm(wx * (province_scale / scale) + 5.2, wy * (province_scale / scale) + 1.3, wz * (province_scale / scale) + 2.7,
+                albedo_value = surface_noise(wx * (province_scale / scale) + 5.2, wy * (province_scale / scale) + 1.3, wz * (province_scale / scale) + 2.7,
                     4, lacunarity, local_gain);
 
                 if (enable_provinces)
                 {
                     // Apply warped coordinates and mask the high-frequency ridges
                     // Use standard fBm. ridged_fBm mathematically generates veins/marrow.
-                    grain_value = fBm(wx * 14.0 + 91.7, wy * 14.0 + 43.1, wz * 14.0 + 17.9,
+                    grain_value = surface_noise(wx * 14.0 + 91.7, wy * 14.0 + 43.1, wz * 14.0 + 17.9,
                         4, lacunarity, local_gain);
                     grain_value = (grain_value - 0.5) * roughness_mask + 0.5; 
                     r_weight = fmin(1.0, fmax(0.0, 0.55 + 0.9 * (grain_value - 0.5)));
-                    border_noise = fBm(nx * border_noise_scale + 61.4, ny * border_noise_scale + 8.8, nz * border_noise_scale + 29.6,
+                    border_noise = surface_noise(nx * border_noise_scale + 61.4, ny * border_noise_scale + 8.8, nz * border_noise_scale + 29.6,
                         3, lacunarity, gain);
 
                     const double independent = std::clamp((albedo_value - .5) * 2.2 + .5, 0.0, 1.0);
@@ -4300,7 +4309,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
                     double mottle_scale = scale * cel->cel_frand(60, 90); 
                     
                     // Evaluate in 3D space with arbitrary offsets to prevent correlation
-                    mottle_noise = fBm(wx * mottle_scale + 11.1, wy * mottle_scale + 22.2, wz * mottle_scale + 33.3, 
+                    mottle_noise = surface_noise(wx * mottle_scale + 11.1, wy * mottle_scale + 22.2, wz * mottle_scale + 33.3, 
                                        3, lacunarity, local_gain);
 
                     // Map mottle_strength [0..1] to an offset of [-0.75 .. 0.0]
@@ -4321,7 +4330,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
                     gmult = blend1 * province_gmult[province_idx] + blend_factor * province_gmult[neighbor_province_idx];
                     bmult = blend1 * province_bmult[province_idx] + blend_factor * province_bmult[neighbor_province_idx];
 
-                    hue_noise = fBm(nx * hue_scale + 71.2, ny * hue_scale + 34.9, nz * hue_scale + 6.1,
+                    hue_noise = surface_noise(nx * hue_scale + 71.2, ny * hue_scale + 34.9, nz * hue_scale + 6.1,
                         3, lacunarity, gain);
                     double hue_t = 2.0 * (hue_noise - 0.5);
                     rmult *= (1.0 + hue_amount * hue_t);
@@ -4329,11 +4338,11 @@ void Map::generate_rocky_map(CelestialObject *cel)
                 }
                 else
                 {
-                    grain_value = fBm(wx * 14.0 + 91.7, wy * 14.0 + 43.1, wz * 14.0 + 17.9,
+                    grain_value = surface_noise(wx * 14.0 + 91.7, wy * 14.0 + 43.1, wz * 14.0 + 17.9,
                         4, lacunarity, local_gain);
                     grain_value = (grain_value - 0.5) * roughness_mask + 0.5; 
                     r_weight = fmin(1.0, fmax(0.0, 0.55 + 0.9 * (grain_value - 0.5)));
-                    border_noise = fBm(nx * border_noise_scale + 61.4, ny * border_noise_scale + 8.8, nz * border_noise_scale + 27.6,
+                    border_noise = surface_noise(nx * border_noise_scale + 61.4, ny * border_noise_scale + 8.8, nz * border_noise_scale + 27.6,
                         3, lacunarity, gain);
                 }
 
@@ -4428,7 +4437,7 @@ void Map::generate_rocky_map(CelestialObject *cel)
 
                 if ((fresh_ultramafic || resurfacing > 0) && surface_materials[idx] == SurfaceMaterial::ground)
                 {
-                    const double deposits = fBm(5.3 * nx + 2 * border_noise + 19.7, 5.3 * ny + 2 * grain_value + 63.2,
+                    const double deposits = surface_noise(5.3 * nx + 2 * border_noise + 19.7, 5.3 * ny + 2 * grain_value + 63.2,
                         5.3 * nz + 48.1, 4, 2.2, .53);
                     const double plains = TerrainContours::smooth(.30, .54, deposits);
                     const double stone = 117 - 37 * plains + 26 * (std::clamp(grain_value, 0.0, 1.0) - .5);
