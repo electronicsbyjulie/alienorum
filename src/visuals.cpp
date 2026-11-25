@@ -7687,7 +7687,6 @@ void draw_horizon()
                 same_lighting = true;
                 ground_inputs[16] = ground_inputs[21] = 0;
             }
-            ground_inputs.push_back(dev_dial);
             // Ground bearings already use the observer's local north. The
             // celestial-frame correction rotates the sky, not this painting.
             ground_inputs.push_back(surface_uniform_reference);
@@ -7932,10 +7931,9 @@ void draw_horizon()
                 }
                 return pressure_haze_color(haze, color, std::isfinite(distance) ? distance : surface_range);
             };
-            const auto ground_pixel_color = [&](int x, int y)
+            const size_t pixel_count = static_cast<size_t>(screen_w) * ground_height;
+            const auto sample_ground_pixel = [&](int x, int y) -> const GroundPixel&
             {
-                if (!retain_samples) return ground_color(x + 0.5, y + 0.5);
-                const size_t pixel_count = static_cast<size_t>(screen_w) * ground_height;
                 if (ground_pixels.size() != pixel_count) ground_pixels.resize(pixel_count);
                 auto& pixel = ground_pixels[static_cast<size_t>(y) * screen_w + x];
                 if (pixel.generation != ground_pixel_generation)
@@ -7951,10 +7949,62 @@ void draw_horizon()
                         ++precipitation_stats.ground_pixel_samples;
                     }
                 }
+                return pixel;
+            };
+            const bool soften_water = surface_water && retain_samples && ground_stride == 1 && shore_stride == 1;
+            constexpr int blur_radius = 6;
+            const auto filtered_water_color = [&](int x, int y, const GroundPixel& pixel)
+            {
+                const auto& color = pixel.color;
+                if (!pixel.water) return color;
+                // Approximate scattering with a sparse screen-space filter of
+                // cached samples. Keep material tags and the silhouette exact.
+                constexpr int half_radius = blur_radius / 2;
+                constexpr int taps[][3] =
+                {
+                    {-blur_radius, 0, 1}, {blur_radius, 0, 1}, {0, -blur_radius, 1}, {0, blur_radius, 1},
+                    {-half_radius, -half_radius, 2}, {half_radius, -half_radius, 2},
+                    {-half_radius, half_radius, 2}, {half_radius, half_radius, 2}
+                };
+                int red = 4 * color.r, green = 4 * color.g, blue = 4 * color.b, weight = 4;
+                for (const auto& tap : taps)
+                {
+                    const int nx = x + tap[0], ny = y + tap[1];
+                    if (nx < 0 || nx >= screen_w || ny < 0 || ny >= ground_height
+                        || ny + 0.5 < min_hz_y_at_x[nx]) continue;
+                    const auto& neighbor = sample_ground_pixel(nx, ny);
+                    if ((terrain_mesh && !std::isfinite(neighbor.depth)) || !neighbor.water) continue;
+                    red += tap[2] * neighbor.color.r;
+                    green += tap[2] * neighbor.color.g;
+                    blue += tap[2] * neighbor.color.b;
+                    weight += tap[2];
+                }
+                return RGB3((red + weight / 2) / weight, (green + weight / 2) / weight, (blue + weight / 2) / weight);
+            };
+            const auto ground_pixel_color = [&](int x, int y)
+            {
+                if (!retain_samples) return ground_color(x + 0.5, y + 0.5);
+                const auto& pixel = sample_ground_pixel(x, y);
                 if (terrain_mesh && !std::isfinite(pixel.depth)) return static_cast<ImU32>(0);
-                remember_channels(pixel.color);
-                return pressure_haze_color(haze, shade_ground(pixel.color),
+                const RGB3 color = soften_water ? filtered_water_color(x, y, pixel) : pixel.color;
+                remember_channels(color);
+                return pressure_haze_color(haze, shade_ground(color),
                     std::isfinite(pixel.depth) ? pixel.depth : surface_range);
+            };
+            const auto tile_has_water_blend = [&](int left, int top, int right, int bottom)
+            {
+                for (int y = top; y < bottom; ++y)
+                {
+                    for (int x = left; x < right; ++x)
+                    {
+                        if (y + 0.5 < min_hz_y_at_x[x]) continue;
+                        const auto& pixel = sample_ground_pixel(x, y);
+                        if ((terrain_mesh && !std::isfinite(pixel.depth)) || !pixel.water) continue;
+                        const RGB3 blended = filtered_water_color(x, y, pixel);
+                        if (blended.r != pixel.color.r || blended.g != pixel.color.g || blended.b != pixel.color.b) return true;
+                    }
+                }
+                return false;
             };
             const auto sampled_gpu_tile = [&](int left, int top, int right, int bottom)
             {
@@ -8002,7 +8052,10 @@ void draw_horizon()
                 if (pixel_sampling)
                 {
                     RGB3 tile_color;
-                    if (gpu_ground && gpu_tile_color(left, top, right, bottom, tile_color, surface_water))
+                    // A uniform tile also covers the filter taps at its edges.
+                    const int padding = soften_water ? blur_radius : 0;
+                    if (gpu_ground && gpu_tile_color(std::max(0, left - padding), std::max(0, top - padding),
+                        std::min(screen_w, right + padding), std::min(ground_height, bottom + padding), tile_color, surface_water))
                     {
                         remember_channels(tile_color);
                         gpu_rectangles.push_back({left, top, right, bottom,
@@ -8018,6 +8071,14 @@ void draw_horizon()
                         self(self, mid_x, top, right, mid_y);
                         self(self, left, mid_y, mid_x, bottom);
                         self(self, mid_x, mid_y, right, bottom);
+                        return;
+                    }
+                    // Land and sky around a uniform tile can defeat the padded
+                    // check without contributing any color to the water filter.
+                    if (gpu_ground && soften_water && gpu_tile_color(left, top, right, bottom, tile_color, true)
+                        && !tile_has_water_blend(left, top, right, bottom))
+                    {
+                        gpu_rectangles.push_back({left, top, right, bottom, shade_ground(tile_color)});
                         return;
                     }
                     const double distant_shore_start = terrain_mesh ? std::min(120.0, relief_start) : 120.0;
@@ -8163,9 +8224,10 @@ void draw_horizon()
                 {
                     for (const auto& rectangle : saved_cpu_rectangles)
                         ground->AddRectFilled(rectangle.low, rectangle.high, rectangle.color);
-                    const size_t end = std::min(preview_tiles.size(),
-                        refined_tiles + std::max<size_t>(1, (preview_tiles.size() * 15 + 99) / 100));
-                    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(8);
+                    const double rate = 20;
+                    const auto batch = static_cast<size_t>(std::ceil(preview_tiles.size() * 15.0 * rate / 100.0));
+                    const size_t end = std::min(preview_tiles.size(), refined_tiles + batch);
+                    const auto deadline = std::chrono::steady_clock::now() + std::chrono::duration<double, std::milli>(8 * rate);
                     for (; refined_tiles < end; ++refined_tiles)
                     {
                         const auto& tile = preview_tiles[refined_tiles];
@@ -9282,13 +9344,13 @@ void draw_horizon()
                     p ? p->veg_min_temp : 0.0, p ? p->veg_max_temp : 0.0, tree_epoch);
                 static decltype(scenery_key) saved_scenery_key;
                 static bool scenery_valid = false;
-                static std::vector<bool> plant, water, canopy_clear;
+                static std::vector<bool> plant, bare_of_scenery, canopy_clear;
                 static std::vector<RGB3> scenery_colors;
                 static std::vector<TreeAppearance> tree_appearances;
                 if (!scenery_valid || saved_scenery_key != scenery_key)
                 {
                     plant.assign(scenery.size(), false);
-                    water.assign(scenery.size(), false);
+                    bare_of_scenery.assign(scenery.size(), false);
                     scenery_colors.resize(scenery.size());
                     tree_appearances.assign(scenery.size(), {});
                     static FrameScratch<double> canopy_scratch;
@@ -9300,18 +9362,23 @@ void draw_horizon()
                     {
                         scenery_cache.project(index);
                         const auto &object = scenery[index];
+                        if (map && map->active_caldera_at(object.latitude, object.longitude))
+                        {
+                            bare_of_scenery[index] = true;
+                            continue;
+                        }
                         if (performance_enabled(31))
                         {
                             const auto sample = surface.sample(object.latitude, object.longitude);
-                            water[index] = sample.water;
+                            bare_of_scenery[index] = sample.water;
                             scenery_colors[index] = sample.color;
                         }
                         else
                         {
-                            water[index] = surface.water_at(object.latitude, object.longitude);
+                            bare_of_scenery[index] = surface.water_at(object.latitude, object.longitude);
                             scenery_colors[index] = surface.color_at(object.latitude, object.longitude);
                         }
-                        if (water[index] || !has_plants) continue;
+                        if (bare_of_scenery[index] || !has_plants) continue;
                         const double density = surface.tree_density_at(object.latitude, object.longitude);
                         const double draw = (scenery_hash(object.id ^ 0x7665676574617465ULL) >> 11) * 0x1.0p-53;
                         plant[index] = draw < density;
@@ -9360,7 +9427,7 @@ void draw_horizon()
                     // Sedentary lifeforms when is_vegetation is true, otherwise surface rocks.
                     for (size_t index : visible_scenery)
                     {
-                        if (water[index] || !canopy_clear[index])
+                        if (bare_of_scenery[index] || !canopy_clear[index])
                         {
                             continue;
                         }
@@ -11300,7 +11367,6 @@ bool draw_cloudy_sky()
     in.light[1] = (float)lighting.body;
     in.light[2] = p->overcast ? 1.0f : 0.0f;
     in.light[3] = redlight_mode ? 1.0f : 0.0f;
-    in.light[4] = (float)dev_dial;                  // Leave this here in case we find other constants to adjust at a later date.
 
     if (sun_obj && sun_obj->typeclass() == class_star)
     {

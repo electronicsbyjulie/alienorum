@@ -1572,6 +1572,7 @@ bool Map::load_from_jpeg(std::string filename, bool as_bump, double bump_scale, 
     if (!as_bump)
     {
         surface_materials.clear();
+        active_caldera_floor.clear();
         procedurally_generated = false;
     }
     std::cout << "Loading " << filename << " as " << (as_bump ? "texture" : "bump") << "..." << std::endl;
@@ -1725,6 +1726,7 @@ bool Map::load_from_png(std::string filename, bool as_bump, double bump_scale, d
     if (!as_bump)
     {
         surface_materials.clear();
+        active_caldera_floor.clear();
         procedurally_generated = false;
     }
     std::cout << "Loading " << filename << " as " << (as_bump ? "bump" : "texture") << "..." << std::endl;
@@ -2237,6 +2239,13 @@ unsigned int Map::idx_of(double lat, double lon)
     if (y1 > last_row) y1 = last_row;
 
     return (unsigned int)(y1 * image_width + x0);
+}
+
+bool Map::active_caldera_at(double latitude, double longitude)
+{
+    if (generating_fic_texture || !is_complete() || active_caldera_floor.empty()) return false;
+    const auto index = idx_of(latitude, longitude);
+    return index < active_caldera_floor.size() && active_caldera_floor[index];
 }
 
 void alienorum::Map::resample_bump_data(unsigned int new_resolution)
@@ -3862,7 +3871,9 @@ namespace
 void Map::paint_volcanic_surface(const std::vector<volcanism::Vent>& vents, double radius_m, double flux)
 {
     lava_emission.reset();
+    active_caldera_floor.clear();
     if (vents.empty()) return;
+    active_caldera_floor.resize(allocated);
     using namespace volcanism;
     const double pixel = _pi / image_height;
     const auto visit = [&](Point center, double arc, const auto& paint)
@@ -3967,6 +3978,7 @@ void Map::paint_volcanic_surface(const std::vector<volcanism::Vent>& vents, doub
             const double island = terrace * TerrainContours::smooth(.35, .85, vent.age);
             const double floor = 21 + 27 * vent.age + 51 * island;
             deposit(i, land.floor, floor + 3, floor + 1, floor);
+            if (land.floor > .5) active_caldera_floor[i] = vent.hot_weight > 0;
         });
     }
     if (weights == 0) return;
@@ -4656,6 +4668,7 @@ void alienorum::Map::generate_lava_map(CelestialObject *cel, bool is_night)
     {
         generating_fic_texture = true;
         gen = 0;
+        active_caldera_floor.clear();
         Planet *p = (Planet*)cel;
         cel->randomize();
 

@@ -10,6 +10,10 @@
 - For every feature, identify how it can fail and check its observable behavior, including behavior that seems obvious. Examples include a menu appearing with legible labels in the expected script, a spherical planet having a round outline when viewed from space, and a scroll bar letting the user reach the last item in a list.
 - Check affected workflows through their normal app entry points. Use independent expectations where practical so the test can catch an error shared by the underlying calculation and the UI.
 
+## Dev dial
+
+The developer might ask you to connect the dev dial to a value that may require adjustment. NEVER NEVER NEVER NEVER NEVER NEVER NEVER NEVER NEVER NEVER NEVER NEVER CLAMP THE DEV DIAL.
+
 ## When the Developer Modifies Code
 
 When the developer modifies code or asks for a review, follow these steps in order.

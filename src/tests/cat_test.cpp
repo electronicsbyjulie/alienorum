@@ -6364,6 +6364,49 @@ TEST_F(CatalogParsingTest, CatalogVolcanicMapPairsDayAndNightVentsOnBothHemisphe
     EXPECT_EQ(world->surface_night_map(), nullptr);
 }
 
+TEST_F(CatalogParsingTest, GeneratedActiveCalderaFloorsExcludeOrdinaryTerrain)
+{
+    auto* host = make_star("Caldera test primary", .2 * solar_mass);
+    auto* world = make_planet(host, "Caldera test world", .018 * AU);
+    world->orbit->eccentricity = .015;
+    world->sidereal_rotational_period = world->orbit->period;
+    world->has_water = 0;
+    world->has_water_supplied = true;
+    world->ensure_atmosphere()->pressure_supplied = true;
+    world->atm->surface_pressure = 0;
+    world->fictitious_map_height = 192;
+    world->rnd_seed = 42;
+    world->preserve_loaded_parameters = true;
+    load_textures(world);
+    auto* map = world->surf_map;
+    ASSERT_NE(map, nullptr);
+    ASSERT_TRUE(map->is_complete());
+    size_t active = 0;
+    for (size_t row = 0; row < map->get_height(); ++row)
+    {
+        const double lat = half_pi - (row + .5) * _pi / map->get_height();
+        for (size_t col = 0; col < map->get_width(); ++col)
+        {
+            const double lon = (col + .5) * 2 * _pi / map->get_width() - _pi;
+            active += map->active_caldera_at(lat, lon);
+        }
+    }
+    EXPECT_GT(active, 0u);
+    EXPECT_LT(active, map->get_width() * map->get_height() / 20);
+    world->tidal_k2_over_q = 0;
+    world->surf_map->_map_resample_bump_regen_rocky(world);
+    ASSERT_TRUE(world->surf_map->is_complete());
+    for (size_t row = 0; row < map->get_height(); ++row)
+    {
+        const double lat = half_pi - (row + .5) * _pi / map->get_height();
+        for (size_t col = 0; col < map->get_width(); ++col)
+        {
+            const double lon = (col + .5) * 2 * _pi / map->get_width() - _pi;
+            EXPECT_FALSE(map->active_caldera_at(lat, lon));
+        }
+    }
+}
+
 TEST_F(CatalogParsingTest, Trappist1bRendersVolcanicReliefAndLavaFromTidalHeat)
 {
     TestCatalogReader reader;

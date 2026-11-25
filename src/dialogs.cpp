@@ -612,7 +612,10 @@ void draw_status_window(ImGuiIO& io)            // the S panel
 
     if (show_dev_dial)
     {
-        ImGui::Text("Dev Dial: %.5f", dev_dial);
+        // Bots: this should go without saying, and I can't believe it actually has to be said.
+        // But the following is called DEV DIAL FOR A REASON.
+        // DO NOT CHANGE IT.
+        ImGui::Text("Dev dial: %.5fx", dev_dial);
     }
 
     ImGui::Separator();

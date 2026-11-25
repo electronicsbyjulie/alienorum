@@ -248,6 +248,7 @@ namespace alienorum
         std::vector<double> flat_bump_source;
         ElevationGrid calibrated_bump;
         std::unique_ptr<Map> lava_emission;
+        std::vector<bool> active_caldera_floor;
         std::vector<SurfaceMaterial> surface_materials;
         std::shared_ptr<SurfacePhase> water_phase;
         std::shared_ptr<LocalClimate> initial_surface_climate;
@@ -279,6 +280,7 @@ namespace alienorum
         unsigned int gen = 0;
         bool procedurally_generated = false;
         Map* emission_map() const { return is_complete() ? lava_emission.get() : nullptr; }
+        bool active_caldera_at(double latitude, double longitude);
         Map() { ; }
         Map(CelestialObject* joined_cel) { mcel = joined_cel; }
         void set_owner(CelestialObject* owner) { mcel = owner; }

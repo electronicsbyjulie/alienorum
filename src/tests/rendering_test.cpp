@@ -10,6 +10,7 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <sstream>
 #include <gtest/gtest.h>
 #include "../globals.h"
 #include "../fictionalstars_ui.h"
@@ -262,6 +263,24 @@ class CoastalTestMap : public Map
             red_data[index] = color.r;
             green_data[index] = color.g;
             blue_data[index] = color.b;
+        }
+        touch_gen();
+    }
+};
+
+class WaterDepthEdgeTestMap : public CoastalTestMap
+{
+    public:
+    explicit WaterDepthEdgeTestMap(SurfaceMaterial east)
+        : CoastalTestMap(true, true)
+    {
+        for (unsigned long index = 0; index < allocated; ++index)
+        {
+            const bool west = index % image_width == 0;
+            red_data[index] = west ? 16 : 112;
+            green_data[index] = west ? 42 : 150;
+            blue_data[index] = west ? 100 : 164;
+            surface_materials[index] = west ? SurfaceMaterial::water : east;
         }
         touch_gen();
     }
@@ -902,6 +921,63 @@ TEST_F(RenderingRegressionTest, LocalCloudCoverRelightsSceneryWithoutMovingTrees
     ASSERT_EQ(restored.size(), clear.size());
     for (size_t index = 0; index < clear.size(); ++index)
         EXPECT_EQ(restored[index].col, clear[index].col);
+}
+
+TEST_F(RenderingRegressionTest, ActiveCalderasSuppressHorizonRocksAndPlants)
+{
+    class CalderaTestMap : public SceneryTestMap
+    {
+        public:
+        explicit CalderaTestMap(bool plants) : SceneryTestMap(plants)
+        {
+            lon_scale = 1 / _pi;
+            lat_scale = 2 / _pi;
+            surface_materials.assign(allocated, plants ? SurfaceMaterial::vegetation : SurfaceMaterial::ground);
+        }
+
+        void set_caldera(bool active)
+        {
+            active_caldera_floor = {false, active, false, active};
+            touch_gen();
+        }
+    };
+
+    auto* world = surface(true);
+    set(viewer_lon, .5);
+    set(show_clouds, false);
+    set(scenery_gpu_reference, true);
+    world->has_water = .5;
+    world->temperature = 294;
+    world->temperature_supplied = true;
+    world->veg_min_temp = 260;
+    world->veg_max_temp = 340;
+    const auto vertex_count = [&]()
+    {
+        freeze_surface_time();
+        return scenery().size();
+    };
+    for (bool plants : {false, true})
+    {
+        delete world->surf_map;
+        auto* map = new CalderaTestMap(plants);
+        world->surf_map = map;
+        world->has_life = plants;
+        world->has_plants = plants;
+        ASSERT_EQ(world->simulated_land_plants_allowed(), plants);
+        ASSERT_EQ(map->material_at(viewer_lat, viewer_lon), plants ? SurfaceMaterial::vegetation : SurfaceMaterial::ground);
+        SurfaceBiomes field(world->texture_seed());
+        SurfaceSampler sampler(world, map, field, earth_radius, 0);
+        if (plants) ASSERT_GT(sampler.tree_density_at(viewer_lat, viewer_lon), 0);
+        const size_t solid = vertex_count();
+        map->set_caldera(true);
+        ASSERT_TRUE(map->active_caldera_at(viewer_lat, viewer_lon));
+        EXPECT_FALSE(map->active_caldera_at(viewer_lat, -.5));
+        const size_t molten = vertex_count();
+        EXPECT_GT(solid, molten);
+        EXPECT_EQ(vertex_count(), molten);
+        map->set_caldera(false);
+        EXPECT_EQ(vertex_count(), solid);
+    }
 }
 
 TEST(SceneryLightingTest, BlockedLightTracksFluxAndConservesEachColorChannel)
@@ -6865,6 +6941,122 @@ TEST_F(RenderingRegressionTest, GroundMaskUploadsRetainPixelsAndTrackDepthHorizo
     EXPECT_EQ(horizon_ground_gpu_stats().horizon_uploads, 1u);
 }
 
+TEST_F(RenderingRegressionTest, WaterDepthEdgeSoftensWithoutBlurringTheShore)
+{
+    auto* world = surface(true);
+    world->type = waterworld;
+    world->ensure_atmosphere()->surface_pressure = 0;
+    delete world->surf_map;
+    world->surf_map = new WaterDepthEdgeTestMap(SurfaceMaterial::water);
+    set(horizon_ground_gpu_reference, false);
+    set(altitude, -.75);
+    const auto capture = [&]()
+    {
+        freeze_surface_time();
+        find_horizon();
+        draw_horizon();
+        auto pixels = render();
+        ImGui::NewFrame();
+        return pixels;
+    };
+    const auto water = capture();
+    EXPECT_EQ(capture(), water);
+    auto* water_map = world->surf_map;
+    world->surf_map = new WaterDepthEdgeTestMap(SurfaceMaterial::ground);
+    delete water_map;
+    const auto shore = capture();
+    const auto red = [&](const std::vector<unsigned char>& frame, int x) { return frame[4 * x]; };
+    const int center = render_width / 2;
+    EXPECT_LT(red(water, center - 12), red(water, center + 12));
+    EXPECT_EQ(red(water, center - 12), red(shore, center - 12));
+    EXPECT_EQ(red(water, center + 12), red(shore, center + 12));
+    EXPECT_EQ(red(shore, center - 1), red(shore, center - 12));
+    EXPECT_EQ(red(shore, center), red(shore, center + 12));
+    EXPECT_GT(red(water, center - 1), red(shore, center - 1));
+    EXPECT_LT(red(water, center), red(shore, center));
+}
+
+TEST_F(RenderingRegressionTest, DevDialSpeedsUpAnActiveGroundRefinement)
+{
+    update_horizon_quality(0);
+    auto* world = surface(true);
+    world->type = waterworld;
+    world->ensure_atmosphere()->surface_pressure = 0;
+    delete world->surf_map;
+    world->surf_map = new WaterDepthEdgeTestMap(SurfaceMaterial::water);
+    set(horizon_ground_gpu_reference, false);
+    render_width = 800;
+    render_height = 450;
+    SDL_SetWindowSize(window, render_width, render_height);
+    set(dispcx, 400.0);
+    set(dispcy, 225.0);
+    ImGui::EndFrame();
+    ImGui::GetIO().DisplaySize = ImVec2(render_width, render_height);
+    ImGui::NewFrame();
+    const auto capture = [&]()
+    {
+        freeze_surface_time();
+        find_horizon();
+        draw_horizon();
+        auto pixels = render();
+        ImGui::NewFrame();
+        return pixels;
+    };
+    const auto reference = capture();
+    auto* reference_map = world->surf_map;
+    world->surf_map = new WaterDepthEdgeTestMap(SurfaceMaterial::water);
+    delete reference_map;
+    set(horizon_ground_motion_budget_ms, 20.0);
+    capture();
+    EXPECT_STREQ(precipitation_stats.ground_cache_reason, "initial preview");
+    dev_dial = .1;
+    capture();
+    EXPECT_STREQ(precipitation_stats.ground_cache_reason, "refining");
+    EXPECT_FALSE(precipitation_stats.ground_cache_hit);
+    dev_dial = 10;
+    EXPECT_EQ(capture(), reference);
+    EXPECT_STREQ(precipitation_stats.ground_cache_reason, "refining");
+    EXPECT_EQ(capture(), reference);
+    EXPECT_TRUE(precipitation_stats.ground_cache_hit);
+    SDL_SetWindowSize(window, 192, 108);
+}
+
+TEST_F(RenderingRegressionTest, ZeroDevDialHoldsTheGroundPreview)
+{
+    auto* world = surface(true);
+    world->has_water = 0;
+    delete world->surf_map;
+    world->surf_map = new MountainBandsTestMap();
+    set(horizon_ground_gpu_reference, false);
+    set(horizon_ground_motion_budget_ms, 0.0);
+    set(viewer_lat, .0003);
+    set(altitude, -.5);
+    const auto capture = [&]()
+    {
+        freeze_surface_time();
+        find_horizon();
+        draw_horizon();
+        auto pixels = render();
+        ImGui::NewFrame();
+        return pixels;
+    };
+    capture();
+    viewer_lat += 3.0 / earth_radius;
+    const auto preview = capture();
+    ASSERT_STREQ(precipitation_stats.ground_cache_reason, "walking preview");
+    dev_dial = 0;
+    for (int frame = 0; frame < 3; ++frame)
+    {
+        EXPECT_EQ(capture(), preview);
+        EXPECT_FALSE(precipitation_stats.ground_cache_hit);
+    }
+    dev_dial = std::numeric_limits<double>::max();
+    const auto full = capture();
+    EXPECT_NE(full, preview);
+    EXPECT_EQ(capture(), full);
+    EXPECT_TRUE(precipitation_stats.ground_cache_hit);
+}
+
 TEST_F(RenderingRegressionTest, WalkingGroundPreviewRefinesOverSeveralStationaryFrames)
 {
     auto* world = surface(true);
@@ -10987,6 +11179,56 @@ TEST_F(UniverseFixture, ThermalRasterMatchesLocalTemperatureEstimates)
     const auto extremes = std::minmax_element(raster.begin(), raster.end());
     EXPECT_LT(*extremes.first, *extremes.second);
     delete_the_universe();
+}
+
+TEST_F(RenderingRegressionTest, StatusPanelShowsTheNamedDevDialAndItsCurrentValue)
+{
+    make_star("Sol");
+    make_star("Status panel host");
+    set(statuswnd, true);
+    set(show_dev_dial, false);
+    set(dev_dial, 1.25);
+    set(themes, std::vector<std::string>{"Perseus"});
+    set(themes_selected_idx, 0);
+
+    ImGuiIO& io = ImGui::GetIO();
+    ImGui::EndFrame();
+    io.DisplaySize = ImVec2(800, 600);
+    ImGui::NewFrame();
+    const auto capture_status = [&]()
+    {
+        ImGui::LogToBuffer();
+        draw_status_window(io);
+        const std::string text = ImGui::GetCurrentContext()->LogBuffer.c_str();
+        ImGui::LogFinish();
+        ImGui::EndFrame();
+        ImGui::NewFrame();
+        return text;
+    };
+    const auto dial_value = [](const std::string& text) -> std::optional<double>
+    {
+        std::istringstream rows(text);
+        for (std::string line; std::getline(rows, line);)
+        {
+            const auto start = line.find_first_not_of(" \t");
+            if (start == std::string::npos || ImStrnicmp(line.c_str() + start, "Dev dial:", 9) != 0) continue;
+            const char* value = line.c_str() + start + 9;
+            char* end = nullptr;
+            const double parsed = std::strtod(value, &end);
+            if (end != value) return parsed;
+        }
+        return std::nullopt;
+    };
+
+    const auto hidden = capture_status();
+    EXPECT_NE(hidden.find("Star colors:"), std::string::npos) << hidden;
+    EXPECT_EQ(dial_value(hidden), std::nullopt) << hidden;
+    show_dev_dial = true;
+    const auto shown = capture_status();
+    EXPECT_EQ(dial_value(shown), 1.25) << shown;
+    dev_dial = 2.375;
+    const auto adjusted = capture_status();
+    EXPECT_EQ(dial_value(adjusted), 2.375) << adjusted;
 }
 
 TEST_F(RenderingRegressionTest, SurfaceMapAndPlanetfallShowTheSameLocalTemperature)

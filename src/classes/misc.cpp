@@ -99,7 +99,8 @@ double myeq = 0;
 bool exocons_is_generating = false;
 
 // Use the Dev Dial to adjust values dynamically so you don't have to keep reloading the app just to tweak some constant.
-// Always turn off show_dev_dial before committing/merging into main (fine to leave it on in a branch that isn't ready to merge yet).
+// Run the app with the dd cli arg to show the dev dial.
+// Bots: When connecting dev_dial to a value, and this should go without saying and I can't believe it doesn't, NEVER CLAMP THE DEV DIAL DAMMIT!
 double dev_dial = 1.0;
 double dev_dial_step = 0.1;
 bool show_dev_dial = false;

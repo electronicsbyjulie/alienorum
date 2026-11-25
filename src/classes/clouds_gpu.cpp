@@ -183,7 +183,6 @@ void main()
     float az = uCamera[0].x;
     float alt = uCamera[0].y;
     vec2 xy = vXY * uCamera[0].zw;
-    float dev_dial = uLight[1].x;                       // Leave this here in case we find more constants to adjust later.
     float forward = cos(alt) - xy.y * sin(alt);
     vec3 ray = normalize(vec3(xy.x * cos(az) + forward * sin(az),
         xy.y * cos(alt) + sin(alt), forward * cos(az) - xy.x * sin(az)));
