@@ -239,7 +239,11 @@ namespace alienorum
         "        col = rgb * (is_day * daylight_tint);\n"
         "    }\n"
         "\n"
-        "    if (is_night > 0.0)\n"
+        "    if (uParams2[2].w > 0.5)\n"
+        "    {\n"
+        "        col = max(col + rgb * vec3(0.20, 0.25, 0.29) * is_night, nrgb);\n"
+        "    }\n"
+        "    else if (is_night > 0.0)\n"
         "    {\n"
         "        col += nrgb * is_night;\n"
         "    }\n"
@@ -445,11 +449,11 @@ namespace alienorum
         p->params2[6] = (float)in.light_dir[2];
         p->params2[7] = (float)in.light_radius;
 
-        // Column 2: light relative position XYZ, unused
+        // Column 2: light relative position XYZ, volcanic emission
         p->params2[8]  = (float)in.light_pos_rel[0];
         p->params2[9]  = (float)in.light_pos_rel[1];
         p->params2[10] = (float)in.light_pos_rel[2];
-        p->params2[11] = 0.0f;
+        p->params2[11] = in.thermal_vents ? 1.0f : 0.0f;
 
         // Column 3: bump map view, minimum elevation, elevation span, palette segment count
         p->params2[12] = in.show_bump_map ? 1.0f : 0.0f;

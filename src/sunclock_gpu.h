@@ -39,6 +39,7 @@ namespace alienorum
         double bump_minimum = 0, bump_span = 0;
 
         bool terrain_lighting = sunclock_terrain_lighting != 0;
+        bool thermal_vents = false;
         bool self_luminous;
         bool redlight_mode;
 

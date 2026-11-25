@@ -235,6 +235,8 @@ namespace alienorum
         frost
     };
 
+    namespace volcanism { struct Vent; }
+
     class Map
     {
         protected:
@@ -245,6 +247,7 @@ namespace alienorum
         double *bump_data = nullptr;
         std::vector<double> flat_bump_source;
         ElevationGrid calibrated_bump;
+        std::unique_ptr<Map> lava_emission;
         std::vector<SurfaceMaterial> surface_materials;
         std::shared_ptr<SurfacePhase> water_phase;
         std::shared_ptr<LocalClimate> initial_surface_climate;
@@ -266,6 +269,7 @@ namespace alienorum
         std::uint32_t uniform_region(unsigned long left, unsigned long top, int level);
         bool region_matches(unsigned long left, unsigned long top, unsigned long right, unsigned long bottom,
             unsigned long tile_left, unsigned long tile_top, int level, std::uint32_t target);
+        void paint_volcanic_surface(const std::vector<volcanism::Vent>& vents, double radius_m, double flux);
         void stamp_craters(CelestialObject *cel, double bump_scale);
         void generate_surface_rings(CelestialObject *cel);
 
@@ -274,6 +278,7 @@ namespace alienorum
         public:
         unsigned int gen = 0;
         bool procedurally_generated = false;
+        Map* emission_map() const { return is_complete() ? lava_emission.get() : nullptr; }
         Map() { ; }
         Map(CelestialObject* joined_cel) { mcel = joined_cel; }
         void set_owner(CelestialObject* owner) { mcel = owner; }
@@ -474,6 +479,7 @@ namespace alienorum
         virtual ~CelestialObject();
         Map* get_day_map();
         void update_texture_color();
+        Map* surface_night_map() const;
         Map* get_night_map();
         CelestialLocation location;
         bool lock_equatorial_plane = false, lock_system_plane = false;

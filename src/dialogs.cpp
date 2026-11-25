@@ -1295,7 +1295,9 @@ void draw_addcel_window(ImGuiIO& io)
     }
 
     if (cboceltyp_selected_idx == 7)
-        ImGui::Text("Note: Use this to add custom or fictitious objects.\nTo add real satellites (such as ISS, GPS, Iridium,\nHubble, etc.) use the ^ command instead.");
+        ImGui::Text("Note: Use this to add custom or fictitious objects.\n"
+                    "To add real satellites orbiting Earth (such as ISS,\n"
+                    "GPS, Iridium, Hubble, etc.) use the ^ command instead.");
 
     if (ImGui::Button("Go"))
     {
@@ -2954,7 +2956,7 @@ void draw_objedit_window(ImGuiIO& io)
             Map *celmaps[3];
             celmaps[0] = cel->surf_map;
             celmaps[1] = cel->cloud_map;
-            celmaps[2] = cel->night_map;
+            celmaps[2] = cel->surface_night_map();
 
             const char *maptabs[3] = { "Surface", "Clouds", "Night" };
 

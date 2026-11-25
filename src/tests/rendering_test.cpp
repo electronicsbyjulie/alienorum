@@ -1283,6 +1283,64 @@ TEST_F(RenderingRegressionTest, SunclockKeepsTerrainLightingWithTransparentCloud
     EXPECT_GT(image_difference(capture(), terrain), 0);
 }
 
+TEST_F(RenderingRegressionTest, RockySunclockShowsLocalizedEmissionInFullDarkness)
+{
+    auto* host = make_star("Test primary", .2 * solar_mass);
+    auto* world = make_planet(host, "Tidal rock", .018 * AU);
+    world->orbit->eccentricity = .015;
+    world->sidereal_rotational_period = world->orbit->period;
+    world->has_water = 0;
+    world->has_water_supplied = true;
+    world->ensure_atmosphere()->pressure_supplied = true;
+    world->atm->surface_pressure = 0;
+    world->fictitious_map_height = 192;
+    world->rnd_seed = 42;
+    world->preserve_loaded_parameters = true;
+    set(show_clouds, false);
+    load_textures(world);
+    Map* emission = world->get_night_map();
+    ASSERT_NE(emission, nullptr);
+    const auto w = emission->get_width(), h = emission->get_height();
+    std::vector<unsigned char> rgba(w * h * 4);
+    emission->export_rgba(rgba.data());
+    size_t hot = 0;
+    for (size_t i = w * h / 4; i < 3 * w * h / 4; ++i)
+        if (rgba[4*i] > rgba[4*hot]) hot = i;
+    ASSERT_GT(rgba[4*hot], 190);
+    set(view_mode, vm_sunclock);
+    set(whereami, world->seqno);
+    set(selected_locale, static_cast<Locale*>(nullptr));
+    set(zoom, 12.);
+    set(azimuth, 2 * _pi * ((hot % w + .5) / w - .5));
+    set(altitude, _pi * (.5 - (hot / w + .5) / h));
+    world->location.local_position = Point();
+    world->location.equatorial_plane.a = 0;
+    const Point normal(-std::sin(azimuth) * std::cos(altitude), std::sin(altitude),
+        std::cos(azimuth) * std::cos(altitude));
+    host->location.local_position = rotate3D(normal, center, yaxis, -world->timeofday()) * -AU;
+    const auto capture = [&]()
+    {
+        freeze_surface_time();
+        draw_sunclock();
+        auto frame = render();
+        ImGui::NewFrame();
+        return frame;
+    };
+    const auto lit = capture();
+    world->night_map = new UniformCloudTestMap(0);
+    const auto cold = capture();
+    int glowing = 0, dark = 0;
+    for (int y = 20; y < render_height - 20; ++y)
+        for (int x = 30; x < render_width - 30; ++x)
+        {
+            const size_t index = 4 * (y * render_width + x);
+            if (lit[index] > 130 && lit[index] > 1.8 * lit[index+1] && cold[index] < 45) ++glowing;
+            if (lit[index] < 45 && cold[index] < 45) ++dark;
+        }
+    EXPECT_GT(glowing, 3);
+    EXPECT_GT(dark, glowing);
+}
+
 TEST_F(RenderingRegressionTest, LavaSunclockDayStaysBrighterThanNightUnderStellarTint)
 {
     Planet *world = make_planet(make_star(), "Lava sunclock test", 0.02 * AU);

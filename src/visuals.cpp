@@ -5101,7 +5101,8 @@ static void draw_sunclock_surface(CelestialObject *cel)
     if (cel->night_map && cel->surf_map) cel->night_map->update_night_phase(cel->surf_map);
     // Without a night texture, dim the combined surface and clouds together.
     // A synthetic cloud-only night map would hide the surface behind black.
-    Map *nmap = cel->night_map ? (hide_cloud_deck ? cel->night_map : cel->get_night_map()) : nullptr;
+    Map *surface_night = cel->surface_night_map();
+    Map *nmap = surface_night ? (hide_cloud_deck ? surface_night : cel->get_night_map()) : nullptr;
     Point land;
     bool dwh = false;
 
@@ -5139,6 +5140,7 @@ static void draw_sunclock_surface(CelestialObject *cel)
 
     sclk_in.day_map_texture = map ? gputex_for(map) : 0;
     sclk_in.night_map_texture = nmap ? gputex_for(nmap) : 0;
+    sclk_in.thermal_vents = nmap && nmap == surface_night && !cel->night_map;
     sclk_in.bump_map_texture = gputex_bump_for(bump_map);
 
     sclk_in.fallback_color[0] = prgb.r / 255.0;
@@ -5275,7 +5277,7 @@ static void draw_sunclock_surface(CelestialObject *cel)
                 if (map) rgb = map->color_at(lat, lon);
                 else rgb = prgb;
 
-                if (nmap)
+                if (nmap && !sclk_in.thermal_vents)
                 {
                     nrgb = nmap->color_at(lat, lon);
                 }
@@ -5304,6 +5306,14 @@ static void draw_sunclock_surface(CelestialObject *cel)
                     rgb.r = fmin(255, rgb.r + nrgb.r * is_night);
                     rgb.g = fmin(255, rgb.g + nrgb.g * is_night);
                     rgb.b = fmin(255, rgb.b + nrgb.b * is_night);
+                }
+
+                if (sclk_in.thermal_vents)
+                {
+                    const RGB3 glow = nmap->color_at(lat, lon);
+                    rgb.r = std::max(rgb.r, glow.r);
+                    rgb.g = std::max(rgb.g, glow.g);
+                    rgb.b = std::max(rgb.b, glow.b);
                 }
 
                 ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(dx, dy), ImVec2(dx+step, dy+step),

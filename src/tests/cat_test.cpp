@@ -6310,6 +6310,60 @@ TEST_F(CatalogParsingTest, CancriTextureColorsReachNamedPlanets)
     }
 }
 
+TEST_F(CatalogParsingTest, CatalogVolcanicMapPairsDayAndNightVentsOnBothHemispheres)
+{
+    TestCatalogReader reader;
+    const auto close_file = [](FILE* file) { fclose(file); };
+    std::unique_ptr<FILE, decltype(close_file)> file(fopen("catalogs/exoplanets_planets.dat", "r"), close_file);
+    ASSERT_NE(file, nullptr);
+    ExoRow row;
+    while (reader.exorow_read_line(file.get(), row) && row.pl_name != "TRAPPIST-1 b") {}
+    ASSERT_EQ(row.pl_name, "TRAPPIST-1 b");
+    Star* host = make_star(row.hostname.c_str(), row.st_mass * solar_mass);
+    host->temperature = row.st_teff;
+    host->volumetric_mean_radius = row.st_rad * solar_radius;
+    host->distance = row.sy_dist * parsec;
+    std::map<int, std::vector<int>> planets;
+    unsigned int count = 0;
+    ASSERT_TRUE(reader.add_exoplanet_from_row(row, host, planets, count));
+    Planet* world = static_cast<Planet*>(cels[planets.at(host->seqno).front()]);
+    const char* folder = std::getenv("ALIENORUM_VOLCANIC_ARTIFACTS");
+    world->fictitious_map_height = folder ? 768 : 192;
+    load_textures(world);
+    Map* day = world->surf_map;
+    Map* night = world->surface_night_map();
+    ASSERT_NE(day, nullptr);
+    ASSERT_NE(night, nullptr);
+    ASSERT_EQ(day->get_width(), night->get_width());
+    ASSERT_EQ(day->get_height(), night->get_height());
+    if (folder)
+    {
+        EXPECT_TRUE(day->save_to_png(std::string(folder) + "/surface.png"));
+        EXPECT_TRUE(night->save_to_png(std::string(folder) + "/emission.png"));
+    }
+    const size_t width = day->get_width(), height = day->get_height();
+    std::vector<unsigned char> sunlight(width * height * 4), darkness(sunlight.size());
+    day->export_rgba(sunlight.data());
+    night->export_rgba(darkness.data());
+    std::array<int, 2> vents{};
+    size_t cold = 0;
+    for (size_t i = 0; i < width * height; ++i)
+    {
+        if (!darkness[4*i]) ++cold;
+        if (darkness[4*i] < 190) continue;
+        EXPECT_GT(sunlight[4*i], 165);
+        EXPECT_LT(darkness[4*i+2], darkness[4*i+1]);
+        ++vents[(i % width) >= width / 2];
+    }
+    EXPECT_GT(vents[0], 0);
+    EXPECT_GT(vents[1], 0);
+    EXPECT_GT(cold, width * height * .85);
+    world->tidal_k2_over_q = 0;
+    world->mark_all_maps_for_regen(true);
+    load_textures(world);
+    EXPECT_EQ(world->surface_night_map(), nullptr);
+}
+
 TEST_F(CatalogParsingTest, Trappist1bRendersVolcanicReliefAndLavaFromTidalHeat)
 {
     TestCatalogReader reader;

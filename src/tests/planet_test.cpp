@@ -22,6 +22,7 @@
 #include "../classes/savemodels.h"
 #include "../classes/thermalclimate.h"
 #include "../classes/tidalheat.h"
+#include "../classes/volcanicterrain.h"
 #include "../classes/habitablezone.h"
 #include "../classes/watercoverage.h"
 #include "../classes/surfacephase.h"
@@ -438,6 +439,111 @@ TEST(TidalHeatingModelTest, IoScaleMatchesTheSynchronousSmallEccentricityLimit)
     EXPECT_DOUBLE_EQ(tidal_surface_heat_flux(parent, radius, axis, 1, motion, motion, .015), 0);
     EXPECT_GT(tidal_surface_heat_flux(parent, radius, axis, .6, motion, motion, .015), flux * 10000);
     EXPECT_GT(tidal_surface_heat_flux(parent, radius, axis, eccentricity, motion, 0, .015), 0);
+}
+
+TEST(TidalHeatingModelTest, EjectaFootprintsCrossTheSeamAndCoverEachPolarTexelOnce)
+{
+    constexpr int w = 128, h = 64;
+    for (Point center : {Point(1,0,0), Point(0,0,1)})
+    {
+        std::array<int, w*h> hits{};
+        volcanism::visit_cap(center, .14, w, h, [&](size_t i, Point) { ++hits[i]; });
+        for (int y = 0; y < h; ++y)
+            for (int x = 0; x < w; ++x)
+            {
+                const double colatitude = _pi * y / h, longitude = 2 * _pi * x / w;
+                const double cosine = center.x * std::sin(colatitude) * std::cos(longitude)
+                    + center.z * std::cos(colatitude);
+                EXPECT_EQ(hits[y*w+x], cosine >= std::cos(.14));
+            }
+    }
+}
+
+TEST(TidalHeatingModelTest, FloodBasaltPondsBelowARidgeAndCrossesTheMapSeam)
+{
+    using namespace volcanism;
+    const Vent vent{Frame(Point(std::cos(.035), -std::sin(.035), 0)),
+        .035, 4200, .65, .22, 4.8, 0, .6, .012, 0, false, true};
+    constexpr int rows = 128, cols = 2 * rows;
+    const auto units = flood_provinces({vent}, rows, earth_radius, 100,
+        [](Point p) { return p.y > .045 ? 8000.0 : 0.; }, [](Point) { return .5; });
+    size_t east = 0, west = 0;
+    for (int y = 0; y < rows; ++y)
+        for (int x = 0; x < cols; ++x)
+        {
+            if (units[y*cols+x].opacity == 0) continue;
+            const double latitude = half_pi - (y+.5) * _pi / rows;
+            const double longitude = (x+.5) * _pi / rows;
+            EXPECT_LE(std::cos(latitude) * std::sin(longitude), .045);
+            if (x < rows) ++east;
+            else ++west;
+        }
+    EXPECT_GT(east, 0u);
+    EXPECT_GT(west, 0u);
+}
+
+TEST(TidalHeatingModelTest, OldFlowFieldsHaveBroadMixedMarginsAroundDarkInteriors)
+{
+    using namespace volcanism;
+    const Vent vent{Frame(Point(1,0,0)), .02, 3000, .6, .2, 5, .4, .7, 0, 0, false, true};
+    const auto field = flood_provinces({vent}, 256, earth_radius, 100,
+        [](Point) { return 0.; }, [](Point) { return .5; });
+    int mixed = 0, interior = 0;
+    for (const auto& cell : field)
+    {
+        if (cell.opacity > .06 && cell.opacity < .50) ++mixed;
+        if (cell.opacity > .60) ++interior;
+    }
+    EXPECT_GT(interior, 10);
+    EXPECT_GT(mixed, interior / 2);
+}
+
+TEST(TidalHeatingModelTest, OppositeTerrainSlopesReverseLavaRunout)
+{
+    using namespace volcanism;
+    const Vent vent{Frame(Point(1,0,0)), .035, 4200, .65, .22, .8, 1.1, .6, .012, 0};
+    for (double sign : {-1., 1.})
+    {
+        int segments = 0;
+        const auto height = [sign](Point p) { return sign * p.y * 20000; };
+        route_flows(vent, earth_radius, height, [&](Point a, Point b, double width, double, int)
+        {
+            EXPECT_LT(sign * b.y, sign * a.y);
+            EXPECT_GT(width, 0);
+            ++segments;
+        });
+        EXPECT_GT(segments, 10);
+    }
+    int flat_segments = 0;
+    route_flows(vent, earth_radius, [](Point) { return 250.; },
+        [&](Point, Point, double, double, int) { ++flat_segments; });
+    EXPECT_EQ(flat_segments, 0);
+}
+
+TEST(TidalHeatingModelTest, SulfurDioxideFalloutTracksCondensationAndInventory)
+{
+    EXPECT_TRUE(volcanism::retains_so2_frost(108, .001));
+    EXPECT_FALSE(volcanism::retains_so2_frost(145, .001));
+    EXPECT_FALSE(volcanism::retains_so2_frost(108, 0));
+    EXPECT_FALSE(volcanism::retains_so2_frost(490, .001));
+}
+
+TEST(TidalHeatingModelTest, GravityContractsBallisticDepositsOnTheSameVentPopulation)
+{
+    using namespace volcanism;
+    const auto moon = make_vents(41, earth_radius, 2, .8, 0);
+    const auto planet = make_vents(41, earth_radius, 10, .8, 0);
+    const auto air = make_vents(41, earth_radius, 10, .8, oneatm);
+    ASSERT_EQ(moon.size(), planet.size());
+    ASSERT_EQ(air.size(), planet.size());
+    int counted = 0;
+    for (size_t i = 0; i < moon.size(); ++i)
+    {
+        EXPECT_DOUBLE_EQ(air[i].fallout, 0);
+        EXPECT_NEAR(moon[i].fallout, 5 * planet[i].fallout, 1e-10);
+        if (moon[i].fallout > 0) ++counted;
+    }
+    EXPECT_GT(counted, 10);
 }
 
 class TidalHeatingTest : public UniverseFixture {};

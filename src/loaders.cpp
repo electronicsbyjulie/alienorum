@@ -806,10 +806,10 @@ void save_textures(CelestialObject* cel)
         mapfname = std::string("maps") + _FSSTR + std::string(cel->name) + std::string("_clouds.png");
         cel->cloud_map->save_to_png(mapfname);
     }
-    if (cel->night_map)
+    if (Map* night = cel->surface_night_map())
     {
         mapfname = std::string("maps") + _FSSTR + std::string(cel->name) + std::string("_night.png");
-        cel->night_map->save_to_png(mapfname);
+        night->save_to_png(mapfname);
     }
     if (cel->ring_map)
     {
