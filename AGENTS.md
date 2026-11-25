@@ -12,7 +12,7 @@
 
 ## Dev dial
 
-The developer might ask you to connect the dev dial to a value that may require adjustment. NEVER NEVER NEVER NEVER NEVER NEVER NEVER NEVER NEVER NEVER NEVER NEVER CLAMP THE DEV DIAL.
+The developer might ask you to connect the dev dial to a value that may require adjustment. NEVER NEVER NEVER NEVER NEVER NEVER NEVER NEVER NEVER NEVER NEVER NEVER CLAMP THE DEV DIAL. Do not create a regression test for temporary dev dial wiring.
 
 ## When the Developer Modifies Code
 

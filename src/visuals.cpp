@@ -7520,6 +7520,7 @@ void draw_horizon()
         #endif
 
         const int ground_height = static_cast<int>(dispcy * 2.0);
+        constexpr int refinement_rate = 20;
         const double top_north = surface_cos_altitude() - dispcy / surface_focal() * surface_sin_altitude();
         const double bottom_north = surface_cos_altitude() + dispcy / surface_focal() * surface_sin_altitude();
         const bool bounded_ground = performance_enabled(29) && !horizon_terrain_cpu_reference
@@ -8224,10 +8225,9 @@ void draw_horizon()
                 {
                     for (const auto& rectangle : saved_cpu_rectangles)
                         ground->AddRectFilled(rectangle.low, rectangle.high, rectangle.color);
-                    const double rate = 20;
-                    const auto batch = static_cast<size_t>(std::ceil(preview_tiles.size() * 15.0 * rate / 100.0));
+                    const auto batch = static_cast<size_t>(std::ceil(preview_tiles.size() * 15.0 * refinement_rate / 100.0));
                     const size_t end = std::min(preview_tiles.size(), refined_tiles + batch);
-                    const auto deadline = std::chrono::steady_clock::now() + std::chrono::duration<double, std::milli>(8 * rate);
+                    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(8 * refinement_rate);
                     for (; refined_tiles < end; ++refined_tiles)
                     {
                         const auto& tile = preview_tiles[refined_tiles];
@@ -8315,7 +8315,7 @@ void draw_horizon()
             const int motion_stride = horizon_mapped_terrain_always_per_pixel ? 1 : 4 * horizon_quality.ground_stride();
             const auto view_key = std::make_tuple(cel, map, local_surface_revision, whereami, viewer_lat, viewer_lon,
                 surface_eye, surface_radius, surface_curvature(), azimuth, altitude, zoom, dispcx, dispcy,
-                screen_w, ground_height, motion_stride, shore_displacement, redlight_mode);
+                screen_w, ground_height, shore_displacement, redlight_mode);
             const auto lighting_key = std::make_tuple(
                 std::round(terrain_light.x * 1000), std::round(terrain_light.y * 1000), std::round(terrain_light.z * 1000),
                 direct_flux, ambient_flux, solar_sine, instellation_scale, source_tint,
@@ -8333,7 +8333,6 @@ void draw_horizon()
             static int previous_frame = -1;
             static std::chrono::steady_clock::time_point last_motion;
             static ReliefPaint visible, pending;
-            static std::vector<ReliefPaint> coarser_passes;
             const int frame = ImGui::GetFrameCount();
             const bool view_changed = previous_view != view_key || (frame != previous_frame && frame != previous_frame + 1);
             previous_view = view_key;
@@ -8422,45 +8421,36 @@ void draw_horizon()
             if (settling)
             {
                 pending.stride = 0;
-                coarser_passes.clear();
                 if (view_changed || visible.stride != motion_stride || visible.shading_key != lighting_key)
                 {
                     begin_paint(visible, motion_stride);
                     paint_rows(visible, std::chrono::steady_clock::time_point::max());
                 }
             }
-            else if (horizon_quality.should_undo_terrain_refinement() && !coarser_passes.empty())
-            {
-                std::swap(visible, coarser_passes.back());
-                coarser_passes.pop_back();
-                pending.stride = 0;
-            }
             else
             {
                 // Keep displaying the completed pass until the next one covers the entire view.
                 // A moving camera discards the partial pass and immediately repaints at the motion stride.
-                const bool can_refine = horizon_quality.can_refine_terrain();
-                const auto deadline = std::chrono::steady_clock::now()
-                    + std::chrono::milliseconds(can_refine ? 12 : 2);
-                if (!can_refine && pending.stride < visible.stride && visible.shading_key != lighting_key)
-                    pending.stride = 0;
                 if (pending.stride == 0)
                 {
-                    const int target_stride = can_refine ? std::max(1, visible.stride / 2) : visible.stride;
+                    const int target_stride = std::max(1, visible.stride / 2);
                     if (target_stride < visible.stride || visible.shading_key != lighting_key)
                         begin_paint(pending, target_stride);
                 }
-                if (pending.stride != 0 && (can_refine || pending.stride == visible.stride))
+                if (pending.stride != 0)
                 {
+                    const bool refining = pending.stride < visible.stride;
+                    const auto deadline = std::chrono::steady_clock::now()
+                        + std::chrono::milliseconds(refining ? 12 * refinement_rate : 2);
                     paint_rows(pending, deadline);
                     if (pending.next_row == ground_height)
                     {
-                        if (pending.stride < visible.stride) coarser_passes.push_back(std::move(visible));
                         std::swap(visible, pending);
                         pending.stride = 0;
                     }
                 }
             }
+            precipitation_stats.ground_sample_stride = visible.stride;
             min_hz_y_at_x = visible.columns;
             for (const auto& tile : visible.tiles) ground->AddRectFilled(tile.low, tile.high, tile.color);
             if (!min_hz_y_at_x.empty()) min_hz_y = *std::min_element(min_hz_y_at_x.begin(), min_hz_y_at_x.end());

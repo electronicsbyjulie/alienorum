@@ -4238,6 +4238,105 @@ TEST_F(RenderingRegressionTest, HorizonGroundUsesSlopeLightingBeyondTheTerminato
     EXPECT_GT(toward_source, away_from_source + 5);
 }
 
+TEST_F(RenderingRegressionTest, EarthShoreFromPhoenixRefinesAfterPanningAtLowFrameRate)
+{
+    struct ResetQuality
+    {
+        ~ResetQuality() { update_horizon_quality(0); }
+    } reset;
+    update_horizon_quality(0);
+    auto* earth = surface(true);
+    earth->has_water = .79;
+    earth->has_real_maps = true;
+    earth->sidereal_rotational_period = 86164.1;
+    delete earth->surf_map;
+    earth->surf_map = new Map(earth);
+    ASSERT_TRUE(earth->surf_map->load_from_jpeg("maps/Earth_surf.jpg"));
+    ASSERT_TRUE(earth->surf_map->load_from_png("maps/Earth_bump.png", true, earth->estimate_bump_scale()));
+    set(viewer_lat, 33.448 * fiftyseventh);
+    set(viewer_lon, -112.073 * fiftyseventh);
+    set(azimuth, 230 * fiftyseventh);
+    set(altitude, .12);
+    set(show_clouds, false);
+    set(viewer_locale, viewer_locale);
+    set(selected_locale, selected_locale);
+    set(is_a_locale_under_cursor, is_a_locale_under_cursor);
+    set(velocity, velocity);
+    set(save_viewer_latlon, save_viewer_latlon);
+    set(viewchanged, viewchanged);
+    set(here, here);
+    set(npdummy.location, npdummy.location);
+    set(npaz, npaz);
+    ASSERT_TRUE(process_find_shore());
+    EXPECT_NEAR(viewer_lat * fiftyseven, 31.782, .05);
+    EXPECT_NEAR(viewer_lon * fiftyseven, -113.625, .05);
+
+    const auto capture = [&]()
+    {
+        update_horizon_quality(.19);
+        freeze_surface_time();
+        find_horizon();
+        draw_horizon();
+        auto pixels = render();
+        ImGui::NewFrame();
+        return pixels;
+    };
+    capture();
+    dragging = true;
+    azimuth = 270 * fiftyseventh;
+    const auto moving = capture();
+    EXPECT_GT(precipitation_stats.ground_sample_stride, 1);
+    dragging = false;
+    SDL_Delay(12);
+    auto still = capture();
+    for (int frame = 0; frame < 12 && precipitation_stats.ground_sample_stride != 1; ++frame)
+        still = capture();
+    EXPECT_EQ(precipitation_stats.ground_sample_stride, 1);
+    EXPECT_NE(moving, still);
+    EXPECT_EQ(capture(), still);
+    EXPECT_EQ(precipitation_stats.ground_sample_stride, 1);
+}
+
+TEST_F(RenderingRegressionTest, DryMappedReliefRefinesAfterPanningAtLowFrameRate)
+{
+    struct ResetQuality
+    {
+        ~ResetQuality() { update_horizon_quality(0); }
+    } reset;
+    update_horizon_quality(0);
+    auto* world = surface();
+    world->has_real_maps = true;
+    delete world->surf_map;
+    world->surf_map = new BumpySceneryTestMap();
+    const auto capture = [&]()
+    {
+        update_horizon_quality(.19);
+        freeze_surface_time();
+        find_horizon();
+        draw_horizon();
+        render();
+        ImGui::NewFrame();
+        return precipitation_stats.ground_sample_stride;
+    };
+    capture();
+    dragging = true;
+    azimuth += .3;
+    const int coarse = capture();
+    EXPECT_GT(coarse, 1);
+    dragging = false;
+    SDL_Delay(12);
+    int stride = capture();
+    EXPECT_LE(stride, coarse);
+    for (int frame = 0; frame < 12 && stride != 1; ++frame)
+    {
+        const int next = capture();
+        EXPECT_LE(next, stride);
+        stride = next;
+    }
+    EXPECT_EQ(stride, 1);
+    EXPECT_EQ(capture(), 1);
+}
+
 TEST_F(RenderingRegressionTest, HorizonObserverUsesMappedElevationAndSeesBelowLevelFromSummit)
 {
     Planet* world = surface();
@@ -6974,87 +7073,6 @@ TEST_F(RenderingRegressionTest, WaterDepthEdgeSoftensWithoutBlurringTheShore)
     EXPECT_EQ(red(shore, center), red(shore, center + 12));
     EXPECT_GT(red(water, center - 1), red(shore, center - 1));
     EXPECT_LT(red(water, center), red(shore, center));
-}
-
-TEST_F(RenderingRegressionTest, DevDialSpeedsUpAnActiveGroundRefinement)
-{
-    update_horizon_quality(0);
-    auto* world = surface(true);
-    world->type = waterworld;
-    world->ensure_atmosphere()->surface_pressure = 0;
-    delete world->surf_map;
-    world->surf_map = new WaterDepthEdgeTestMap(SurfaceMaterial::water);
-    set(horizon_ground_gpu_reference, false);
-    render_width = 800;
-    render_height = 450;
-    SDL_SetWindowSize(window, render_width, render_height);
-    set(dispcx, 400.0);
-    set(dispcy, 225.0);
-    ImGui::EndFrame();
-    ImGui::GetIO().DisplaySize = ImVec2(render_width, render_height);
-    ImGui::NewFrame();
-    const auto capture = [&]()
-    {
-        freeze_surface_time();
-        find_horizon();
-        draw_horizon();
-        auto pixels = render();
-        ImGui::NewFrame();
-        return pixels;
-    };
-    const auto reference = capture();
-    auto* reference_map = world->surf_map;
-    world->surf_map = new WaterDepthEdgeTestMap(SurfaceMaterial::water);
-    delete reference_map;
-    set(horizon_ground_motion_budget_ms, 20.0);
-    capture();
-    EXPECT_STREQ(precipitation_stats.ground_cache_reason, "initial preview");
-    dev_dial = .1;
-    capture();
-    EXPECT_STREQ(precipitation_stats.ground_cache_reason, "refining");
-    EXPECT_FALSE(precipitation_stats.ground_cache_hit);
-    dev_dial = 10;
-    EXPECT_EQ(capture(), reference);
-    EXPECT_STREQ(precipitation_stats.ground_cache_reason, "refining");
-    EXPECT_EQ(capture(), reference);
-    EXPECT_TRUE(precipitation_stats.ground_cache_hit);
-    SDL_SetWindowSize(window, 192, 108);
-}
-
-TEST_F(RenderingRegressionTest, ZeroDevDialHoldsTheGroundPreview)
-{
-    auto* world = surface(true);
-    world->has_water = 0;
-    delete world->surf_map;
-    world->surf_map = new MountainBandsTestMap();
-    set(horizon_ground_gpu_reference, false);
-    set(horizon_ground_motion_budget_ms, 0.0);
-    set(viewer_lat, .0003);
-    set(altitude, -.5);
-    const auto capture = [&]()
-    {
-        freeze_surface_time();
-        find_horizon();
-        draw_horizon();
-        auto pixels = render();
-        ImGui::NewFrame();
-        return pixels;
-    };
-    capture();
-    viewer_lat += 3.0 / earth_radius;
-    const auto preview = capture();
-    ASSERT_STREQ(precipitation_stats.ground_cache_reason, "walking preview");
-    dev_dial = 0;
-    for (int frame = 0; frame < 3; ++frame)
-    {
-        EXPECT_EQ(capture(), preview);
-        EXPECT_FALSE(precipitation_stats.ground_cache_hit);
-    }
-    dev_dial = std::numeric_limits<double>::max();
-    const auto full = capture();
-    EXPECT_NE(full, preview);
-    EXPECT_EQ(capture(), full);
-    EXPECT_TRUE(precipitation_stats.ground_cache_hit);
 }
 
 TEST_F(RenderingRegressionTest, WalkingGroundPreviewRefinesOverSeveralStationaryFrames)
