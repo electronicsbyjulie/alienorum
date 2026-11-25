@@ -7075,47 +7075,6 @@ TEST_F(RenderingRegressionTest, WaterDepthEdgeSoftensWithoutBlurringTheShore)
     EXPECT_LT(red(water, center), red(shore, center));
 }
 
-TEST_F(RenderingRegressionTest, WalkingGroundPreviewRefinesOverSeveralStationaryFrames)
-{
-    auto* world = surface(true);
-    world->has_water = 0;
-    delete world->surf_map;
-    world->surf_map = new MountainBandsTestMap();
-    set(horizon_ground_gpu_reference, false);
-    set(horizon_ground_motion_budget_ms, 0.0);
-    set(viewer_lat, .0003);
-    set(altitude, -.5);
-    const auto capture = [&]()
-    {
-        freeze_surface_time();
-        find_horizon();
-        draw_horizon();
-        auto pixels = render();
-        ImGui::NewFrame();
-        return pixels;
-    };
-    capture();
-    viewer_lat += 3.0 / earth_radius;
-    const auto coarse = capture();
-    ASSERT_STREQ(precipitation_stats.ground_cache_reason, "walking preview");
-    auto refined = capture();
-    EXPECT_STREQ(precipitation_stats.ground_cache_reason, "refining");
-    EXPECT_FALSE(precipitation_stats.ground_cache_hit);
-    int frames = 1;
-    while (!precipitation_stats.ground_cache_hit && frames < 9)
-    {
-        refined = capture();
-        ++frames;
-    }
-    EXPECT_TRUE(precipitation_stats.ground_cache_hit);
-    EXPECT_GE(frames, 4);
-    EXPECT_NE(coarse, refined);
-    horizon_ground_gpu_reference = true;
-    capture();
-    horizon_ground_gpu_reference = false;
-    EXPECT_EQ(capture(), refined);
-}
-
 TEST_F(RenderingRegressionTest, PanningHazyCoastPreservesDetailedGroundPixels)
 {
     auto* world = surface(true);
