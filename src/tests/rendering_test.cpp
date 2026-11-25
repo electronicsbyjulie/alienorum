@@ -4238,6 +4238,139 @@ TEST_F(RenderingRegressionTest, HorizonGroundUsesSlopeLightingBeyondTheTerminato
     EXPECT_GT(toward_source, away_from_source + 5);
 }
 
+TEST_F(RenderingRegressionTest, LunarRegolithIsMutedAndDistantStarlightStaysDim)
+{
+    auto* parent = surface();
+    parent->home_world = true;
+    auto* moon = new Moon();
+    strcpy(moon->name, "Moon");
+    moon->volumetric_mean_radius = 1737400;
+    moon->orbit = new Orbit();
+    moon->orbit->center = parent;
+    moon->orbit->semimajor_axis = 4e8;
+    moon->looked_for_maps = moon->has_real_maps = true;
+    moon->surf_map = new Map(moon);
+    append_cel(moon);
+    ASSERT_TRUE(moon->surf_map->load_from_png("maps/Moon_surf.png"));
+    surface_magnitudes.assign(ncelobjs, 999);
+    vmag_cache = surface_magnitudes.data();
+    whereami = moon->seqno;
+    set(viewer_lat, -43.5 * fiftyseventh);
+    set(viewer_lon, -11.438 * fiftyseventh);
+    set(show_terrain, false);
+    set(show_clouds, false);
+    const auto sample_ground = [&]()
+    {
+        freeze_surface_time();
+        find_horizon();
+        draw_horizon();
+        const auto pixels = render();
+        ImGui::NewFrame();
+        const size_t pixel = 4 * (render_width + render_width / 2);
+        EXPECT_EQ(pixels[pixel + 3], 255);
+        return RGB3(pixels[pixel], pixels[pixel + 1], pixels[pixel + 2]);
+    };
+    const auto daylight = sample_ground();
+    EXPECT_GT(daylight.r, 75);
+    EXPECT_LT(daylight.r, 160);
+    EXPECT_GE(daylight.r, daylight.g);
+    EXPECT_GE(daylight.g, daylight.b);
+
+    parent->home_world = false;
+    parent->orbit->semimajor_axis = 30 * AU;
+    luminous_flux = 0;
+    const auto night = sample_ground();
+    EXPECT_GT(night.r, 0);
+    EXPECT_LT(night.r, 15);
+    EXPECT_LT(night.g, 15);
+    EXPECT_LT(night.b, 15);
+}
+
+TEST_F(RenderingRegressionTest, AirlessPlanetDaylightBalancesNearAndDistantOrbits)
+{
+    auto* world = surface();
+    auto* star = world->get_light_center();
+    star->absolute_magnitude = 4.85;
+    set(here, CelestialLocation());
+    set(global_brightness, 1.0);
+    set(show_terrain, false);
+    set(show_clouds, false);
+    const auto capture_ground = [&](double distance_au, bool sun_above)
+    {
+        world->orbit->semimajor_axis = distance_au * AU;
+        star->location.local_position = Point(0, (sun_above ? 1 : -1) * distance_au * AU, 0);
+        star->tmprel = star->location.local_position;
+        luminous_flux = sun_above ? 3.8e10 / (distance_au * distance_au) : 0;
+        freeze_surface_time();
+        find_horizon();
+        draw_horizon();
+        const auto pixels = render();
+        ImGui::NewFrame();
+        const size_t pixel = 4 * (render_width + render_width / 2);
+        EXPECT_EQ(pixels[pixel + 3], 255);
+        return pixels[pixel];
+    };
+    const auto inner_day = capture_ground(.25, true);
+    EXPECT_GE(inner_day, 75);
+    EXPECT_LE(inner_day, 90);
+    EXPECT_NEAR(capture_ground(30, true), inner_day, 1);
+    const auto outer_night = capture_ground(30, false);
+    EXPECT_GT(outer_night, 0);
+    EXPECT_LT(outer_night, 8);
+    EXPECT_EQ(capture_ground(.25, false), outer_night);
+}
+
+TEST_F(RenderingRegressionTest, AirlessMoonInterpolatesCoarseTerrainShading)
+{
+    class GradientMap : public CraterLightingMap
+    {
+    public:
+        GradientMap() : CraterLightingMap(128, false, true)
+        {
+            procedurally_generated = true;
+            for (size_t i = 0; i < allocated; ++i)
+            {
+                const auto shade = static_cast<unsigned char>(128 + 90 * sin(.4 * (i % image_width)));
+                red_data[i] = green_data[i] = blue_data[i] = shade;
+            }
+        }
+    };
+    auto* parent = surface();
+    parent->get_light_center()->absolute_magnitude = 30;
+    auto* moon = new Moon();
+    strcpy(moon->name, "Mapped moon");
+    moon->volumetric_mean_radius = 80;
+    moon->orbit = new Orbit();
+    moon->orbit->center = parent;
+    moon->orbit->semimajor_axis = 4e8;
+    moon->looked_for_maps = true;
+    moon->surf_map = new GradientMap();
+    append_cel(moon);
+    surface_magnitudes.assign(ncelobjs, 999);
+    vmag_cache = surface_magnitudes.data();
+    whereami = moon->seqno;
+    set(show_clouds, false);
+    freeze_surface_time();
+    find_horizon();
+    draw_horizon();
+    const int stride = precipitation_stats.ground_sample_stride;
+    EXPECT_GT(stride, 1);
+    const auto& vertices = ImGui::GetBackgroundDrawList()->VtxBuffer;
+    bool gradient = false;
+    for (int i = 0; i + 3 < vertices.Size; ++i)
+    {
+        if (vertices[i + 1].pos.x - vertices[i].pos.x == stride && vertices[i + 1].pos.y == vertices[i].pos.y
+            && vertices[i + 2].pos.y - vertices[i].pos.y == stride && vertices[i].col != vertices[i + 1].col)
+            gradient = true;
+    }
+    EXPECT_TRUE(gradient);
+    const auto pixels = render();
+    const int x = render_width / 2;
+    EXPECT_EQ(pixels[4 * x + 3], 255);
+    EXPECT_EQ(pixels[4 * ((render_height - 1) * render_width + x) + 3], 0);
+    ImGui::NewFrame();
+}
+
 TEST_F(RenderingRegressionTest, EarthShoreFromPhoenixRefinesAfterPanningAtLowFrameRate)
 {
     struct ResetQuality
