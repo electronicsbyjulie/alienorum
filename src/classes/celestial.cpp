@@ -5143,7 +5143,7 @@ void Map::generate_gas_giant_map(CelestialObject *cel)
     const double jet_shear = tidal_locked_to_star ? 2.9e5 / cel->sidereal_rotational_period : 0;
     GiantClouds clouds(cel->rnd_seed, {double(rgb.r), double(rgb.g), double(rgb.b)}, num_bands,
         variability, style, add_storm, (.5 - stormlat) * _pi, stormlon * 2 * _pi,
-        band_colors, jet_shear);
+        band_colors, jet_shear, cel->oblateness);
     const double angular_pixel = _pi / image_height;
     for (unsigned long y = 0; y < image_height; ++y)
     {

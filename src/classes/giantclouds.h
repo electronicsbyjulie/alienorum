@@ -17,6 +17,11 @@ namespace alienorum
     class GiantClouds
     {
         static constexpr double pi = 3.14159265358979323846;
+        static constexpr int band_latitude_steps = 256;
+        struct BandLatitude
+        {
+            double latitude, sine;
+        };
         struct Vortex
         {
             double longitude, latitude, width, height, twist;
@@ -29,6 +34,41 @@ namespace alienorum
         std::vector<std::array<double, 3>> palette;
         double jet_shear;
         GiantCloudStyle style;
+        std::vector<BandLatitude> band_latitudes;
+
+        void prepare_band_latitudes(double oblateness)
+        {
+            if (!(oblateness > 0 && oblateness < 1)) return;
+            const double polar_ratio = 1 - oblateness;
+            const double step = (pi * .5) / band_latitude_steps;
+            band_latitudes.resize(band_latitude_steps + 1);
+            for (int row = 1; row <= band_latitude_steps; ++row)
+            {
+                const double u = (row - .5) * step;
+                const double cosine = std::cos(u);
+                const double metric = std::hypot(polar_ratio * cosine, std::sin(u));
+                // The map uses parametric latitude u. On the spheroid, ds/du = a * metric
+                // and cos(geodetic latitude) = polar_ratio * cos(u) / metric. Integrate
+                // the Rhines band density along that meridian, holding spin and wind fixed.
+                const double latitude_rate = std::sqrt(polar_ratio / metric);
+                const auto& previous = band_latitudes[row - 1];
+                band_latitudes[row] = {previous.latitude + step * latitude_rate,
+                    previous.sine + step * latitude_rate * polar_ratio * cosine / metric};
+            }
+        }
+
+        BandLatitude band_latitude(double latitude, double sine) const
+        {
+            if (band_latitudes.empty()) return {latitude, sine};
+            const double position = std::min(std::abs(latitude) * (band_latitude_steps / (pi * .5)),
+                double(band_latitude_steps));
+            const int row = std::min(int(position), band_latitude_steps - 1);
+            const double fraction = position - row;
+            const auto& first = band_latitudes[row];
+            const auto& second = band_latitudes[row + 1];
+            return {std::copysign(first.latitude + fraction * (second.latitude - first.latitude), latitude),
+                std::copysign(first.sine + fraction * (second.sine - first.sine), latitude)};
+        }
 
         static double smooth(double low, double high, double value)
         {
@@ -56,7 +96,8 @@ namespace alienorum
     public:
         GiantClouds(uint32_t seed, std::array<double, 3> color, int bands, double contrast,
             GiantCloudStyle mode, bool major, double storm_latitude = -.3, double storm_longitude = pi,
-            const std::vector<std::array<double, 3>>& band_colors = {}, double equatorial_shear = 0)
+            const std::vector<std::array<double, 3>>& band_colors = {}, double equatorial_shear = 0,
+            double oblateness = 0)
             : noise(seed ^ 0x434c4f55u), base(color), frequency(std::max(3, bands) * 1.3),
               phase(0), strength(std::clamp(contrast * 2.4, 0.0, 1.0)),
               palette(band_colors), jet_shear(equatorial_shear), style(mode)
@@ -68,6 +109,7 @@ namespace alienorum
             };
             phase = draw(-.3, .3);
             if (mode == GiantCloudStyle::clear) return;
+            if (mode != GiantCloudStyle::synchronous) prepare_band_latitudes(oblateness);
             if (palette.empty())
             {
                 // Standalone callers use the same channel multipliers as the original generator.
@@ -154,8 +196,9 @@ namespace alienorum
             double x = ring * std::cos(longitude), y = ring * std::sin(longitude), z = std::sin(latitude);
             const double broad = noise.noise(x * 3.2 + 17, y * 3.2 - 9, z * 3.2 + 4);
             const double cross = noise.noise(x * 4.7 - 3, y * 4.7 + 21, z * 4.7 + 11);
+            const auto bands = band_latitude(latitude, z);
             // Latitude-dependent shear elongates tracers along the zonal jets.
-            const double shear = .12 * std::sin(z * frequency + phase);
+            const double shear = .12 * std::sin(bands.sine * frequency + phase);
             const double c = std::cos(shear), s = std::sin(shear);
             const double qx = (x * c - y * s) * 12 + broad * 1.8;
             const double qy = (x * s + y * c) * 12 + cross * 1.8;
@@ -166,10 +209,10 @@ namespace alienorum
                 qy * 2.2 + broad * 2.8, qz * 2.2 + cross * 2.8, 3, footprint * 2.2);
             const double fine_weight = 1 - smooth(.18, .65, footprint * 4);
             const double grain = noise.noise(qx * 7, qy * 7, qz * 7) * fine_weight;
-            const double band_phase = z * frequency + phase + broad * 1.4 + folds * 1.2;
+            const double band_phase = bands.sine * frequency + phase + broad * 1.4 + folds * 1.2;
             const double belt = smooth(.18, .8, .5 - .5 * std::cos(band_phase));
             const double boundary = 4 * belt * (1 - belt);
-            const double filament = std::sin(folds * 26 + threads * 11 + z * frequency * 3);
+            const double filament = std::sin(folds * 26 + threads * 11 + bands.sine * frequency * 3);
             const double billow = smooth(-.18, .35, folds + threads * .7);
             const double condensate = std::clamp((1 - belt) * .85 + billow * .3
                 + threads * .3, 0.0, 1.0);
@@ -186,7 +229,7 @@ namespace alienorum
             // Interpolate the original many-color palette through the advected
             // band field. Fine structure changes brightness without adding a new hue.
             const double band_position = style == GiantCloudStyle::synchronous
-                ? (pi * .5 - latitude) / pi : std::abs(latitude) / (pi * .5);
+                ? (pi * .5 - latitude) / pi : std::abs(bands.latitude) / (pi * .5);
             double coordinate = std::fmod(band_position * palette.size() + broad * 1.3
                 + folds * .8 + threads * .3, double(palette.size()));
             if (coordinate < 0) coordinate += palette.size();

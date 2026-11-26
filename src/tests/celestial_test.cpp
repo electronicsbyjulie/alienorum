@@ -3493,6 +3493,56 @@ TEST_F(ShoreNavigationTest, PlanetTexturesIgnoreBrightnessGammaAndRedlight)
     }
 }
 
+TEST_F(ShoreNavigationTest, UpdatingGiantCloudTexturesUsesTheCurrentOblateness)
+{
+    Planet* planet = make_planet(make_star(), "Oblate cloud bands regression");
+    planet->type = gas_giant;
+    planet->mass = 1.9e27;
+    planet->volumetric_mean_radius = 7e7;
+    planet->sidereal_rotational_period = oneday * .4;
+    planet->albedo = .4;
+    planet->BV_color = .8;
+    planet->is_bv_observed = true;
+    planet->rnd_seed = 7421;
+    planet->preserve_loaded_parameters = true;
+    planet->fictitious_map_height = 128;
+    planet->oblateness = 0;
+    planet->ignore_map_files = true;
+
+    const auto pixels = [&]() -> std::vector<unsigned char>
+    {
+        spawn_texture_load(planet);
+        wait_for_texture_tasks();
+        Map* map = planet->get_day_map();
+        if (!map || !map->is_complete() || map != planet->cloud_map) return {};
+        std::vector<unsigned char> colors(map->get_width() * map->get_height() * 4);
+        map->export_rgba(colors.data());
+        return colors;
+    };
+    const auto spherical = pixels();
+    constexpr int height = 128, row_bytes = height * 2 * 4;
+    ASSERT_EQ(spherical.size(), height * row_bytes);
+
+    planet->oblateness = .30;
+    planet->mark_all_maps_for_regen();
+    const auto oblate = pixels();
+    ASSERT_EQ(oblate.size(), spherical.size());
+    const auto row_difference = [&](int first, int last)
+    {
+        double sum = 0;
+        for (int i = first * row_bytes; i < last * row_bytes; ++i)
+            sum += std::abs(int(spherical[i]) - int(oblate[i]));
+        return sum / ((last - first) * row_bytes);
+    };
+    // At the equator the shorter radius and tighter physical spacing cancel in
+    // texture coordinates. The same pattern shifts farther at higher latitudes.
+    EXPECT_GT(row_difference(14, 40), row_difference(60, 68) + 1);
+
+    planet->oblateness = 0;
+    planet->mark_all_maps_for_regen();
+    EXPECT_EQ(pixels(), spherical);
+}
+
 TEST_F(ShoreNavigationTest, SolarTypeSpotCoresAreLocalizedInLatitudeAndLongitude)
 {
     auto* sun = make_star("Spotted solar analogue");
