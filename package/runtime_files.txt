@@ -22,6 +22,7 @@ catalogs/WD_hydrogen_grid.dat
 catalogs/WD_limb_profiles.dat
 catalogs/brown_dwarf_colors.txt
 catalogs/brown_dwarfs_20pc.json
+catalogs/nearby_components.json
 catalogs/ultracool_dwarfs.json
 catalogs/asteroids.json
 catalogs/exoplanet_host_positions.dat

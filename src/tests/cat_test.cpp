@@ -7251,3 +7251,78 @@ TEST_F(StellarRotationTest, SscConvertsHorizontalAndVerticalRingStripsToTheSameP
         }
     }
 }
+
+TEST_F(CatalogParsingTest, AlternatePlanetDesignationReusesItsCatalogHost)
+{
+    Star* host = make_star("Existing census star");
+    strcpy(host->Gliese, "GJ 9876");
+    ExactStarSearchIndex lookup;
+    TestCatalogReader reader;
+    ExoRow row;
+    row.hostname = "Survey host";
+    row.pl_name = "Survey host b";
+    row.companion_aliases = "Gl 9876 b";
+    row.ra = 10;
+    row.dec = 20;
+    row.sy_dist = 10;
+    bool added = true;
+    EXPECT_EQ(reader.resolve_or_create_exostar(row, true, &added, &lookup), host);
+    EXPECT_FALSE(added);
+    EXPECT_EQ(ncelobjs, 2);
+
+    row.hostname = "Other survey host";
+    row.pl_name = "Other survey host c";
+    const auto* other = reader.resolve_or_create_exostar(row, true, &added, &lookup);
+    EXPECT_NE(other, host);
+    EXPECT_TRUE(added);
+    EXPECT_EQ(ncelobjs, 3);
+
+    row.hostname = "Ambiguous survey host";
+    row.pl_name = "Ambiguous survey host b";
+    row.companion_aliases = "Gl 9876 b#Other survey host b";
+    const auto* ambiguous = reader.resolve_or_create_exostar(row, true, &added, &lookup);
+    EXPECT_NE(ambiguous, host);
+    EXPECT_NE(ambiguous, other);
+    EXPECT_TRUE(added);
+    EXPECT_EQ(ncelobjs, 4);
+    delete_the_universe();
+}
+
+TEST_F(StellarRotationTest, NearbyComponentsFillAnIdentifiedSystemWithoutDuplicatingAliases)
+{
+    Star* primary = make_star("Existing primary");
+    strcpy(primary->Gliese, "GJ 9901 A");
+    primary->distance = 5 * parsec;
+    primary->parallax = fiftyseventh / (5 * 3600);
+    primary->distance_known = true;
+    Star* existing = make_star("Existing companion");
+    existing->add_catalog_alias("First resolved companion");
+
+    const auto component = [](const char* id, json aliases)
+    {
+        return json{{"id", id}, {"aliases", std::move(aliases)}, {"ra", 51.0}, {"dec", -34.0},
+                    {"year", 2000.0}, {"parallax", 198.0}, {"parallax_error", 3.0},
+                    {"parallax_source", "FROM:GJ9901A"}, {"class", "LM"}, {"spectrum", "M6"}, {"visual", 13.0}};
+    };
+    const json supplement = {{"source", "synthetic source"}, {"systems", {
+        {"GJ 9901", json::array({component("GJ 9901 A", json::array()),
+                                component("GJ 9901 B", json::array({"First resolved companion"})),
+                                component("GJ 9901 C", json::array())})},
+        {"GJ 9902", json::array({component("GJ 9902 A", json::array()),
+                                component("GJ 9902 B", json::array())})}
+    }}};
+    std::ofstream("catalogs/nearby_components.json") << supplement;
+    std::ofstream("catalogs/star_orbits.dat") << "# Empty orbit data\n";
+    CatalogReader reader;
+    ASSERT_TRUE(reader.bake_condensed_star_orbits());
+    delete_the_universe();
+    ASSERT_EQ(reader.read_condensed_star_cat(), 4);
+    const int added = find_object("GJ 9901 C", true, 9e29, 0);
+    ASSERT_GE(added, 0);
+    const auto* companion = static_cast<const Star*>(cels[added]);
+    EXPECT_NEAR(companion->distance / parsec, 5, 1e-4);
+    EXPECT_NEAR(companion->right_ascension * fiftyseven, 51, 1e-9);
+    EXPECT_NEAR(companion->declination * fiftyseven, -34, 1e-9);
+    EXPECT_EQ(companion->stellar_parameters.at("source_parallax_mas"), 198.0);
+    EXPECT_LT(find_object("GJ 9902 B", true, 9e29, 0), 0);
+}

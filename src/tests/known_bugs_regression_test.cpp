@@ -650,6 +650,7 @@ TEST_F(KnownCatalogRegression, DefaultNeighborhoodAgreesWithPublishedNearestStar
     {
         const char* name;
         double light_years, ra_degrees, dec_degrees;
+        bool confirmed = true;
     };
     // Distances and J2000 coordinates from the nearest-star table, through 20 light-years.
     // https://en.wikipedia.org/w/index.php?title=List_of_nearest_stars&oldid=1386991042
@@ -701,12 +702,34 @@ TEST_F(KnownCatalogRegression, DefaultNeighborhoodAgreesWithPublishedNearestStar
     const double radians = std::acos(-1.0) / 180;
     std::set<size_t> matched_rows;
     std::vector<std::pair<size_t, const ReferenceStar*>> matches;
+    const auto matches_identity = [&](const ReferenceStar& entry, size_t row)
+    {
+        const auto* star = static_cast<const Star*>(cels[neighb_celids[row]]);
+        const auto key = identity_key(entry.name);
+        if (identity_key(star->name) == key || identity_key(star->Gliese) == key) return true;
+        return std::any_of(star->catalog_aliases.begin(), star->catalog_aliases.end(),
+            [&](const std::string& alias) { return identity_key(alias) == key; });
+    };
+    std::map<const ReferenceStar*, size_t> identified;
+    for (const auto& entry : reference)
+    {
+        for (size_t row = 0; row < neighb_celids.size(); ++row)
+        {
+            if (matched_rows.count(row) || !matches_identity(entry, row)) continue;
+            identified.emplace(&entry, row);
+            matched_rows.insert(row);
+            break;
+        }
+    }
     for (const auto& entry : reference)
     {
         const auto direction = Point::from_ra_dec(entry.ra_degrees * radians, entry.dec_degrees * radians, 1);
         size_t match = neighb_celids.size();
         double nearest = 0.35 * radians;
-        for (size_t row = 0; row < neighb_celids.size(); ++row)
+        const auto exact = identified.find(&entry);
+        if (exact != identified.end()) match = exact->second;
+        else if (!entry.confirmed) continue;
+        else for (size_t row = 0; row < neighb_celids.size(); ++row)
         {
             if (matched_rows.count(row)) continue;
             const auto* object = cels[neighb_celids[row]];
@@ -723,6 +746,12 @@ TEST_F(KnownCatalogRegression, DefaultNeighborhoodAgreesWithPublishedNearestStar
         }
         EXPECT_LT(match, neighb_celids.size()) << "Missing " << entry.name;
         if (match == neighb_celids.size()) continue;
+        const auto* object = cels[neighb_celids[match]];
+        const auto catalog_direction = Point::from_ra_dec(object->right_ascension, object->declination, 1);
+        const double distance = neighb_celr[match];
+        ASSERT_TRUE(std::isfinite(distance) && distance > 0) << entry.name;
+        EXPECT_LT(std::min((direction - catalog_direction).magnitude(),
+            (direction - object->tmprel * (1 / distance)).magnitude()), 0.35 * radians) << entry.name;
         matched_rows.insert(match);
         matches.emplace_back(match, &entry);
         EXPECT_NEAR(neighb_celr[match] / light_year, entry.light_years, 0.12)

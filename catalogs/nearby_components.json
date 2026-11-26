@@ -1,0 +1,2714 @@
+{
+  "source": "https://gruze.org/10pc/The10pcSample_v2.csv",
+  "systems": {
+    "GJ 1005": [
+      {
+        "id": "GJ 1005 A",
+        "aliases": [
+          "G 158-50",
+          "G 158-50 A",
+          "HIP 1242"
+        ],
+        "ra": 3.86988026878801,
+        "dec": -16.1365716511738,
+        "year": 2016.0,
+        "parallax": 166.6,
+        "parallax_error": 0.3,
+        "pmra": 731.83,
+        "pmdec": -607.73,
+        "rv": -26.43,
+        "visual": 11.483,
+        "spectrum": "M4",
+        "class": "LM",
+        "parallax_source": "2016AJ....152..141B",
+        "system_source": "1998AJ....116.1440H"
+      },
+      {
+        "id": "GJ 1005 B",
+        "aliases": [
+          "G 158-50",
+          "G 158-50 B"
+        ],
+        "ra": 3.86988026878801,
+        "dec": -16.1365716511738,
+        "year": 2016.0,
+        "parallax": 166.6,
+        "parallax_error": 0.3,
+        "pmra": 731.83,
+        "pmdec": -607.73,
+        "spectrum": "M4",
+        "class": "LM",
+        "parallax_source": "FROM:G158-50A",
+        "system_source": "1998AJ....116.1440H"
+      }
+    ],
+    "GJ 105": [
+      {
+        "id": "GJ 105 A",
+        "aliases": [
+          "GJ 105 A",
+          "HD 16160 A",
+          "HIP 12114"
+        ],
+        "ra": 39.0283845065783,
+        "dec": 6.89333910757853,
+        "year": 2016.0,
+        "parallax": 138.340003809647,
+        "parallax_error": 0.31773403,
+        "pmra": 1778.58549372096,
+        "pmdec": 1477.30615947306,
+        "rv": 25.874,
+        "spectrum": "K3",
+        "class": "*",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "1995ApJ...444L.101G"
+      },
+      {
+        "id": "GJ 105 B",
+        "aliases": [
+          "BX Cet",
+          "GJ 105 B",
+          "HD 16160 B"
+        ],
+        "ra": 39.0716773332442,
+        "dec": 6.87808989817356,
+        "year": 2016.0,
+        "parallax": 138.437091035593,
+        "parallax_error": 0.041985847,
+        "pmra": 1801.67145788057,
+        "pmdec": 1450.48694652388,
+        "rv": 26.268,
+        "spectrum": "M4",
+        "class": "LM",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "1939AnTou..15...87P"
+      },
+      {
+        "id": "GJ 105 C",
+        "aliases": [
+          "GJ 105 C",
+          "HD 16160 B"
+        ],
+        "ra": 39.0283845065783,
+        "dec": 6.89333910757853,
+        "year": 2016.0,
+        "parallax": 138.340003809647,
+        "parallax_error": 0.31773403,
+        "pmra": 1778.58549372096,
+        "pmdec": 1477.30615947306,
+        "spectrum": "M7",
+        "class": "LM",
+        "parallax_source": "FROM:GJ105A",
+        "system_source": "1995ApJ...444L.101G"
+      }
+    ],
+    "GJ 1083": [
+      {
+        "id": "GJ 1083 A",
+        "aliases": [
+          "G 100-28",
+          "G 100-28 A"
+        ],
+        "ra": 85.10759540891131,
+        "dec": 24.800548287073894,
+        "year": 2016.0,
+        "parallax": 97.6,
+        "parallax_error": 2.8,
+        "pmra": 107.0,
+        "pmdec": -376.0,
+        "rv": 21.0,
+        "visual": 14.94,
+        "spectrum": "M7",
+        "class": "LM",
+        "parallax_source": "2014ApJ...784..156D",
+        "system_source": "2014AcA....64..359T"
+      },
+      {
+        "id": "GJ 1083 B",
+        "aliases": [
+          "G 100-28",
+          "G 100-28 B"
+        ],
+        "ra": 85.10759540891131,
+        "dec": 24.800548287073894,
+        "year": 2016.0,
+        "parallax": 97.6,
+        "parallax_error": 2.8,
+        "pmra": 107.0,
+        "pmdec": -376.0,
+        "spectrum": "",
+        "class": "LM",
+        "parallax_source": "FROM:G100-28A",
+        "system_source": "2014AcA....64..359T"
+      }
+    ],
+    "GJ 1116": [
+      {
+        "id": "GJ 1116 A",
+        "aliases": [
+          "EI Cnc A",
+          "G 9-38 A"
+        ],
+        "ra": 134.559189679068,
+        "dec": 19.7629598434874,
+        "year": 2016.0,
+        "parallax": 194.144309048263,
+        "parallax_error": 0.12283384,
+        "pmra": -767.060491546643,
+        "pmdec": -100.176478315671,
+        "rv": 14.0,
+        "visual": 13.93,
+        "spectrum": "M7",
+        "class": "LM",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "2001AJ....121.2189O"
+      },
+      {
+        "id": "GJ 1116 B",
+        "aliases": [
+          "EI Cnc B",
+          "G 9-38 B"
+        ],
+        "ra": 134.558691511389,
+        "dec": 19.7625788819877,
+        "year": 2016.0,
+        "parallax": 196.261926034373,
+        "parallax_error": 0.19761291,
+        "pmra": -937.132835654488,
+        "pmdec": -34.5590368877166,
+        "rv": 15.26,
+        "visual": 13.75,
+        "spectrum": "M7",
+        "class": "LM",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "2001AJ....121.2189O"
+      }
+    ],
+    "GJ 1230": [
+      {
+        "id": "GJ 1230 A",
+        "aliases": [
+          "GJ 1230 A"
+        ],
+        "ra": 280.293133688497,
+        "dec": 24.7877283627163,
+        "year": 2016.0,
+        "parallax": 100.685004266982,
+        "parallax_error": 0.021461897,
+        "pmra": 505.344316913589,
+        "pmdec": 87.0449045999264,
+        "rv": -9.0,
+        "spectrum": "M5e",
+        "class": "LM",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "1996AJ....111..365G"
+      },
+      {
+        "id": "GJ 1230 B",
+        "aliases": [
+          "GJ 1230 B"
+        ],
+        "ra": 280.293273632355,
+        "dec": 24.7890347186759,
+        "year": 2016.0,
+        "parallax": 100.555280066917,
+        "parallax_error": 0.030998288,
+        "pmra": 498.682947039807,
+        "pmdec": 57.1277249892358,
+        "rv": -11.484,
+        "visual": 14.4,
+        "spectrum": "M4.5e",
+        "class": "LM",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "1996AJ....111..365G"
+      },
+      {
+        "id": "GJ 1230 C",
+        "aliases": [
+          "GJ 1230 C"
+        ],
+        "ra": 280.293133688497,
+        "dec": 24.7877283627163,
+        "year": 2016.0,
+        "parallax": 100.685004266982,
+        "parallax_error": 0.021461897,
+        "pmra": 505.344316913589,
+        "pmdec": 87.0449045999264,
+        "spectrum": "",
+        "class": "LM",
+        "parallax_source": "FROM:GJ1230A",
+        "system_source": "1996AJ....111..365G"
+      }
+    ],
+    "GJ 1245": [
+      {
+        "id": "GJ 1245 A",
+        "aliases": [
+          "GJ 1245 A"
+        ],
+        "ra": 298.47975909341625,
+        "dec": 44.41233014260341,
+        "year": 2016.0,
+        "parallax": 213.1329,
+        "parallax_error": 0.5737,
+        "pmra": 441.562,
+        "pmdec": -434.241,
+        "rv": 3.0,
+        "visual": 13.126,
+        "spectrum": "M5.5",
+        "class": "LM",
+        "parallax_source": "2018yCat.1345....0G",
+        "system_source": "2015ApJ...800...95L"
+      },
+      {
+        "id": "GJ 1245 B",
+        "aliases": [
+          "GJ 1245 B"
+        ],
+        "ra": 298.48192590176114,
+        "dec": 44.41290615922913,
+        "year": 2016.0,
+        "parallax": 214.574503025698,
+        "parallax_error": 0.04759333,
+        "pmra": 349.363004776197,
+        "pmdec": -480.322315106861,
+        "rv": 5.43,
+        "visual": 13.99,
+        "spectrum": "M5.5",
+        "class": "LM",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "2015ApJ...800...95L"
+      },
+      {
+        "id": "GJ 1245 C",
+        "aliases": [
+          "GJ 1245 C"
+        ],
+        "ra": 298.47975909341625,
+        "dec": 44.41233014260341,
+        "year": 2016.0,
+        "parallax": 213.1329,
+        "parallax_error": 0.5737,
+        "pmra": 441.562,
+        "pmdec": -434.241,
+        "spectrum": "M8",
+        "class": "LM",
+        "parallax_source": "FROM:GJ1245A",
+        "system_source": "2015ApJ...800...95L"
+      }
+    ],
+    "GJ 15": [
+      {
+        "id": "GJ 15 A",
+        "aliases": [
+          "GJ 15 A",
+          "GX And",
+          "HD 1326 A"
+        ],
+        "ra": 4.61322625755774,
+        "dec": 44.0247867439852,
+        "year": 2016.0,
+        "parallax": 280.706821579123,
+        "parallax_error": 0.020284552,
+        "pmra": 2891.51807733678,
+        "pmdec": 411.832020366147,
+        "rv": 11.82,
+        "spectrum": "M1",
+        "class": "LM",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "1972AJ.....77..165L"
+      },
+      {
+        "id": "GJ 15 B",
+        "aliases": [
+          "GJ 15 B",
+          "GQ And",
+          "HD 1326 B"
+        ],
+        "ra": 4.62530068121755,
+        "dec": 44.0287445166436,
+        "year": 2016.0,
+        "parallax": 280.694731046025,
+        "parallax_error": 0.027839076,
+        "pmra": 2862.79642649738,
+        "pmdec": 336.431903718565,
+        "rv": 10.997,
+        "visual": 11.04,
+        "spectrum": "M3.5e",
+        "class": "LM",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "1972AJ.....77..165L"
+      }
+    ],
+    "GJ 166": [
+      {
+        "id": "GJ 166 A",
+        "aliases": [
+          "GJ 166 A",
+          "HD 26965",
+          "HIP 19849",
+          "Keid"
+        ],
+        "ra": 63.8079530060208,
+        "dec": -7.66807781501998,
+        "year": 2016.0,
+        "parallax": 199.608012418134,
+        "parallax_error": 0.12083028,
+        "pmra": -2240.08498389235,
+        "pmdec": -3421.8086201704,
+        "rv": -42.269,
+        "visual": 4.43,
+        "spectrum": "K0.5",
+        "class": "*",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "2017AJ....154..200M"
+      },
+      {
+        "id": "GJ 166 B",
+        "aliases": [
+          "GJ 166 B",
+          "HD 26976"
+        ],
+        "ra": 63.8307875243832,
+        "dec": -7.67295213540735,
+        "year": 2016.0,
+        "parallax": 199.691073272041,
+        "parallax_error": 0.05120331,
+        "pmra": -2236.16874906978,
+        "pmdec": -3338.9552892509,
+        "visual": 9.53,
+        "spectrum": "DA2.9",
+        "class": "WD",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "2017AJ....154..200M"
+      },
+      {
+        "id": "GJ 166 C",
+        "aliases": [
+          "DY Eri",
+          "GJ 166 C"
+        ],
+        "ra": 63.8296560208744,
+        "dec": -7.67090338261034,
+        "year": 2016.0,
+        "parallax": 199.451618597389,
+        "parallax_error": 0.069206245,
+        "pmra": -2247.18294261271,
+        "pmdec": -3409.82370878987,
+        "rv": -43.578,
+        "visual": 11.17,
+        "spectrum": "M4.5",
+        "class": "LM",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "2017AJ....154..200M"
+      }
+    ],
+    "GJ 169.1": [
+      {
+        "id": "GJ 169.1 A",
+        "aliases": [
+          "GJ 169.1 A",
+          "Stein 2051 A"
+        ],
+        "ra": 67.8091906283281,
+        "dec": 58.9679799715474,
+        "year": 2016.0,
+        "parallax": 181.243839012434,
+        "parallax_error": 0.049853016,
+        "pmra": 1300.36478360256,
+        "pmdec": -2046.10551889657,
+        "rv": 28.797,
+        "visual": 10.98,
+        "spectrum": "M4e",
+        "class": "LM",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "2017Sci...356.1046S"
+      },
+      {
+        "id": "GJ 169.1 B",
+        "aliases": [
+          "GJ 169.1 B",
+          "Stein 2051 B"
+        ],
+        "ra": 67.8138919746539,
+        "dec": 58.9694812051359,
+        "year": 2016.0,
+        "parallax": 181.273007491769,
+        "parallax_error": 0.02025858,
+        "pmra": 1334.77969295146,
+        "pmdec": -1947.63815054171,
+        "rv": 2.0,
+        "spectrum": "DC",
+        "class": "WD",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "2017Sci...356.1046S"
+      }
+    ],
+    "GJ 185": [
+      {
+        "id": "GJ 185 A",
+        "aliases": [
+          "HD 32450 A",
+          "HIP 23452"
+        ],
+        "ra": 75.6178310374648,
+        "dec": -21.2578783269349,
+        "year": 2016.0,
+        "parallax": 119.573743937206,
+        "parallax_error": 0.04195274,
+        "pmra": -166.877156116735,
+        "pmdec": -269.183007505226,
+        "rv": -13.272,
+        "visual": 8.317,
+        "spectrum": "M0",
+        "class": "LM",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "2001AJ....121.2189O"
+      },
+      {
+        "id": "GJ 185 B",
+        "aliases": [
+          "HD 32450 B"
+        ],
+        "ra": 75.6177659634484,
+        "dec": -21.2576392020113,
+        "year": 2016.0,
+        "parallax": 118.824965364605,
+        "parallax_error": 0.07951455,
+        "pmra": -111.655698134063,
+        "pmdec": -235.833380275441,
+        "visual": 10.6,
+        "spectrum": "",
+        "class": "LM?",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "2001AJ....121.2189O"
+      }
+    ],
+    "GJ 216": [
+      {
+        "id": "GJ 216 A",
+        "aliases": [
+          "GJ 216 A",
+          "HD 38393",
+          "HIP 27072"
+        ],
+        "ra": 86.1143912257916,
+        "dec": -22.4500233642025,
+        "year": 2016.0,
+        "parallax": 112.296028200377,
+        "parallax_error": 0.14516802,
+        "pmra": -291.756776735348,
+        "pmdec": -368.520815767024,
+        "rv": -9.199,
+        "visual": 3.6,
+        "spectrum": "F6.5",
+        "class": "*",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "2008MNRAS.389..869E"
+      },
+      {
+        "id": "GJ 216 B",
+        "aliases": [
+          "AK Lep",
+          "GJ 216 B",
+          "HD 38392"
+        ],
+        "ra": 86.1091037227166,
+        "dec": -22.4234045056417,
+        "year": 2016.0,
+        "parallax": 112.466065026138,
+        "parallax_error": 0.02246881,
+        "pmra": -304.905036604993,
+        "pmdec": -352.605730230766,
+        "rv": -9.801,
+        "visual": 6.15,
+        "spectrum": "K2.5",
+        "class": "*",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "2008MNRAS.389..869E"
+      }
+    ],
+    "GJ 22": [
+      {
+        "id": "GJ 22 A",
+        "aliases": [
+          "GJ 22 A",
+          "HIP 2552",
+          "V547 Cas"
+        ],
+        "ra": 8.14303081725879,
+        "dec": 67.2343283605825,
+        "year": 2016.0,
+        "parallax": 101.086427299129,
+        "parallax_error": 0.46074644,
+        "pmra": 1748.31894578628,
+        "pmdec": -347.589292794572,
+        "rv": -3.374,
+        "visual": 10.327,
+        "spectrum": "M2",
+        "class": "LM",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "2003A&A...406..293W"
+      },
+      {
+        "id": "GJ 22 B",
+        "aliases": [
+          "GJ 22 B",
+          "HIP 2552"
+        ],
+        "ra": 8.14284006814748,
+        "dec": 67.23327824206,
+        "year": 2016.0,
+        "parallax": 100.396602870012,
+        "parallax_error": 0.037439648,
+        "pmra": 1703.22563528357,
+        "pmdec": -250.056238546162,
+        "rv": -0.541,
+        "visual": 12.19,
+        "spectrum": "M3",
+        "class": "LM",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "2003A&A...406..293W"
+      }
+    ],
+    "GJ 229": [
+      {
+        "id": "GJ 229 A",
+        "aliases": [
+          "GJ 229 A",
+          "HD 42581",
+          "HD 42581 A",
+          "HIP 29295"
+        ],
+        "ra": 92.6435790816764,
+        "dec": -21.8678231132339,
+        "year": 2016.0,
+        "parallax": 173.573985832397,
+        "parallax_error": 0.017049566,
+        "pmra": -135.691607947904,
+        "pmdec": -719.178133954814,
+        "rv": 4.734,
+        "visual": 8.125,
+        "spectrum": "M1",
+        "class": "LM",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "1998AJ....115.2579G"
+      },
+      {
+        "id": "GJ 229 B",
+        "aliases": [
+          "GJ 229 B",
+          "HD 42581 B",
+          "HD 42581B"
+        ],
+        "ra": 92.645,
+        "dec": -21.8666666666667,
+        "year": 2000.0,
+        "parallax": 173.19,
+        "parallax_error": 1.12,
+        "pmra": -137.0,
+        "pmdec": -714.1,
+        "spectrum": "T7pec",
+        "class": "BD",
+        "parallax_source": "2012ApJ...752...56F",
+        "system_source": "1998AJ....115.2579G"
+      }
+    ],
+    "GJ 234": [
+      {
+        "id": "GJ 234 A",
+        "aliases": [
+          "HIP 30920",
+          "Ross 614 A",
+          "V577 Mon A"
+        ],
+        "ra": 97.35079477387,
+        "dec": -2.81713071812,
+        "year": 2016.0,
+        "parallax": 242.9659,
+        "parallax_error": 0.8833,
+        "pmra": 750.14,
+        "pmdec": -802.947,
+        "rv": 16.7,
+        "visual": 11.071,
+        "spectrum": "M4.5",
+        "class": "LM",
+        "parallax_source": "2018yCat.1345....0G",
+        "system_source": "2003AJ....125.1530G"
+      },
+      {
+        "id": "GJ 234 B",
+        "aliases": [
+          "Ross 614 B",
+          "V577 Mon B"
+        ],
+        "ra": 97.35079477387,
+        "dec": -2.81713071812,
+        "year": 2016.0,
+        "parallax": 242.9659,
+        "parallax_error": 0.8833,
+        "pmra": 750.14,
+        "pmdec": -802.947,
+        "visual": 14.23,
+        "spectrum": "M5.5",
+        "class": "LM",
+        "parallax_source": "FROM:Ross614A",
+        "system_source": "2003AJ....125.1530G"
+      }
+    ],
+    "GJ 244": [
+      {
+        "id": "GJ 244 A",
+        "aliases": [
+          "HD 48915 A",
+          "HIP 32349",
+          "Sirius A",
+          "alf CMa A"
+        ],
+        "ra": 101.287155333333,
+        "dec": -16.7161158611111,
+        "year": 2000.0,
+        "parallax": 379.21,
+        "parallax_error": 1.58,
+        "pmra": -546.01,
+        "pmdec": -1223.07,
+        "rv": -5.5,
+        "visual": -1.46,
+        "spectrum": "A1",
+        "class": "*",
+        "parallax_source": "2007A&A...474..653V",
+        "system_source": "1998ApJ...497..935H"
+      },
+      {
+        "id": "GJ 244 B",
+        "aliases": [
+          "HD 48915 B",
+          "Sirius B",
+          "alf CMa B"
+        ],
+        "ra": 101.286625520992,
+        "dec": -16.7209325260232,
+        "year": 2016.0,
+        "parallax": 374.489588528761,
+        "parallax_error": 0.2313347,
+        "pmra": -461.570505530133,
+        "pmdec": -914.519620901667,
+        "visual": 8.44,
+        "spectrum": "DA1.9",
+        "class": "WD",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "1998ApJ...497..935H"
+      }
+    ],
+    "GJ 250": [
+      {
+        "id": "GJ 250 A",
+        "aliases": [
+          "HD 50281",
+          "HD 50281 A",
+          "HIP 32984"
+        ],
+        "ra": 103.072784316137,
+        "dec": -5.17372829320013,
+        "year": 2016.0,
+        "parallax": 114.35472221988,
+        "parallax_error": 0.04184089,
+        "pmra": -543.690347077658,
+        "pmdec": -3.51531374204182,
+        "rv": -7.342,
+        "visual": 6.57,
+        "spectrum": "K3.5",
+        "class": "*",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "1994RMxAA..28...43P"
+      },
+      {
+        "id": "GJ 250 B",
+        "aliases": [
+          "HD 50281 Bb",
+          "HD 50281B"
+        ],
+        "ra": 103.072600958887,
+        "dec": -5.19006973623282,
+        "year": 2016.0,
+        "parallax": 114.291102186307,
+        "parallax_error": 0.02192843,
+        "pmra": -576.331063951725,
+        "pmdec": -13.0437651399077,
+        "spectrum": "",
+        "class": "LM?",
+        "parallax_source": "FROM:HD50281Ba",
+        "system_source": "2015AJ....150...50T"
+      }
+    ],
+    "GJ 257": [
+      {
+        "id": "GJ 257 A",
+        "aliases": [
+          "CD-44 3045 A",
+          "HIP 33499"
+        ],
+        "ra": 104.43732954613,
+        "dec": -44.291396054396,
+        "year": 2016.0,
+        "parallax": 124.569549321917,
+        "parallax_error": 0.049491733,
+        "pmra": -1118.07336088228,
+        "pmdec": -48.9344138822323,
+        "rv": -20.3,
+        "visual": 10.846,
+        "spectrum": "M3",
+        "class": "LM",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "2015MNRAS.449.2618W"
+      },
+      {
+        "id": "GJ 257 B",
+        "aliases": [
+          "CD-44 3045 B"
+        ],
+        "ra": 104.436471907714,
+        "dec": -44.291651313998,
+        "year": 2016.0,
+        "parallax": 124.356894545559,
+        "parallax_error": 0.039878186,
+        "pmra": -1172.18912730419,
+        "pmdec": -125.36987530414,
+        "visual": 11.29,
+        "spectrum": "M3",
+        "class": "LM",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "2015MNRAS.449.2618W"
+      }
+    ],
+    "GJ 268": [
+      {
+        "id": "GJ 268 A",
+        "aliases": [
+          "GJ 268 A",
+          "HIP 34603",
+          "QY Aur A"
+        ],
+        "ra": 107.505143404489,
+        "dec": 38.5252694196459,
+        "year": 2016.0,
+        "parallax": 165.214699433729,
+        "parallax_error": 0.06364261,
+        "pmra": -439.42044672817,
+        "pmdec": -944.793489602922,
+        "rv": 37.9,
+        "visual": 11.52,
+        "spectrum": "M5e",
+        "class": "LM",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "2012ApJ...760...55B"
+      },
+      {
+        "id": "GJ 268 B",
+        "aliases": [
+          "GJ 268 B",
+          "QY Aur B"
+        ],
+        "ra": 107.505143404489,
+        "dec": 38.5252694196459,
+        "year": 2016.0,
+        "parallax": 165.214699433729,
+        "parallax_error": 0.06364261,
+        "pmra": -439.42044672817,
+        "pmdec": -944.793489602922,
+        "spectrum": "M5e",
+        "class": "LM",
+        "parallax_source": "FROM:GJ268A",
+        "system_source": "2012ApJ...760...55B"
+      }
+    ],
+    "GJ 280": [
+      {
+        "id": "GJ 280 A",
+        "aliases": [
+          "HD 61421",
+          "HIP 37279",
+          "Procyon A",
+          "alf CMi A"
+        ],
+        "ra": 114.825497907981,
+        "dec": 5.22498755705948,
+        "year": 2000.0,
+        "parallax": 284.56,
+        "parallax_error": 1.26,
+        "pmra": -714.59,
+        "pmdec": -1036.8,
+        "rv": -3.2,
+        "visual": 0.37,
+        "spectrum": "F5.0",
+        "class": "*",
+        "parallax_source": "2007A&A...474..653V",
+        "system_source": "2015ApJ...813..106B"
+      },
+      {
+        "id": "GJ 280 B",
+        "aliases": [
+          "Procyon B",
+          "alf CMi B"
+        ],
+        "ra": 114.8245,
+        "dec": 5.2241111,
+        "year": 2000.0,
+        "parallax": 284.56,
+        "parallax_error": 1.26,
+        "pmra": -709.0,
+        "pmdec": -1024.0,
+        "visual": 10.92,
+        "spectrum": "DQZ",
+        "class": "WD",
+        "parallax_source": "FROM:alfCMiA",
+        "system_source": "2015ApJ...813..106B"
+      }
+    ],
+    "GJ 283": [
+      {
+        "id": "GJ 283 A",
+        "aliases": [
+          "GJ 283 A",
+          "LAWD 25"
+        ],
+        "ra": 115.091923376959,
+        "dec": -17.4160661155371,
+        "year": 2016.0,
+        "parallax": 109.343965650488,
+        "parallax_error": 0.018100515,
+        "pmra": 1138.68989234864,
+        "pmdec": -542.555901969444,
+        "rv": -10.0,
+        "visual": 13.061,
+        "spectrum": "DZA",
+        "class": "WD",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "2017A&A...602A..16T"
+      },
+      {
+        "id": "GJ 283 B",
+        "aliases": [
+          "GJ 283 B"
+        ],
+        "ra": 115.086082967852,
+        "dec": -17.415137719851,
+        "year": 2016.0,
+        "parallax": 109.254482460989,
+        "parallax_error": 0.03917484,
+        "pmra": 1152.24303995404,
+        "pmdec": -536.411721090886,
+        "rv": -28.811,
+        "visual": 16.696,
+        "spectrum": "M6.5e",
+        "class": "LM",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "2017A&A...602A..16T"
+      }
+    ],
+    "GJ 3192": [
+      {
+        "id": "GJ 3192 A",
+        "aliases": [
+          "BD-17 588 B",
+          "BD-17 588BC"
+        ],
+        "ra": 45.462424511757,
+        "dec": -16.5945328055105,
+        "year": 2016.0,
+        "parallax": 145.692188537753,
+        "parallax_error": 0.024446325,
+        "pmra": -369.971843350747,
+        "pmdec": -267.931311928784,
+        "rv": -5.592,
+        "visual": 10.59,
+        "spectrum": "M2.5",
+        "class": "LM",
+        "parallax_source": "FROM:BD-17588A",
+        "system_source": "2019AJ....158..152W"
+      },
+      {
+        "id": "GJ 3192 B",
+        "aliases": [
+          "BD-17 588 C",
+          "BD-17 588BC"
+        ],
+        "ra": 45.462424511757,
+        "dec": -16.5945328055105,
+        "year": 2016.0,
+        "parallax": 145.692188537753,
+        "parallax_error": 0.024446325,
+        "pmra": -369.971843350747,
+        "pmdec": -267.931311928784,
+        "spectrum": "",
+        "class": "LM?",
+        "parallax_source": "FROM:BD-17588A",
+        "system_source": "2019AJ....158..152W"
+      }
+    ],
+    "GJ 338": [
+      {
+        "id": "GJ 338 A",
+        "aliases": [
+          "GJ 338 A",
+          "HD 79210"
+        ],
+        "ra": 138.583561615224,
+        "dec": 52.6840801669126,
+        "year": 2016.0,
+        "parallax": 157.887930779239,
+        "parallax_error": 0.019652834,
+        "pmra": -1545.78745206047,
+        "pmdec": -569.052823523412,
+        "rv": 11.245,
+        "spectrum": "M0",
+        "class": "LM",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "2020A&A...637A..93G"
+      },
+      {
+        "id": "GJ 338 B",
+        "aliases": [
+          "GJ 338 B",
+          "HD 79211",
+          "HIP 120005"
+        ],
+        "ra": 138.591311796669,
+        "dec": 52.6834294418404,
+        "year": 2016.0,
+        "parallax": 157.88249112606,
+        "parallax_error": 0.021135049,
+        "pmra": -1573.0402244551,
+        "pmdec": -659.906000812353,
+        "rv": 12.104,
+        "spectrum": "M0",
+        "class": "LM",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "2020A&A...637A..93G"
+      }
+    ],
+    "GJ 34": [
+      {
+        "id": "GJ 34 A",
+        "aliases": [
+          "Achird",
+          "HD 4614 A",
+          "HIP 3821",
+          "eta Cas A"
+        ],
+        "ra": 12.2852273815244,
+        "dec": 57.8127281255901,
+        "year": 2016.0,
+        "parallax": 168.832160340194,
+        "parallax_error": 0.1663396,
+        "pmra": 1078.60916666962,
+        "pmdec": -551.133420218551,
+        "rv": 8.404,
+        "visual": 3.44,
+        "spectrum": "F9.0",
+        "class": "*",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "1998A&A...338..455F"
+      },
+      {
+        "id": "GJ 34 B",
+        "aliases": [
+          "HD 4614 B",
+          "eta Cas B"
+        ],
+        "ra": 12.2811847642153,
+        "dec": 57.8157391885541,
+        "year": 2016.0,
+        "parallax": 168.718561188259,
+        "parallax_error": 0.021581342,
+        "pmra": 1144.69339444083,
+        "pmdec": -469.667618529506,
+        "rv": 10.333,
+        "visual": 7.51,
+        "spectrum": "K7e",
+        "class": "*",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "1998A&A...338..455F"
+      }
+    ],
+    "GJ 412": [
+      {
+        "id": "GJ 412 A",
+        "aliases": [
+          "BD+44 2051",
+          "BD+44 2051 A",
+          "HIP 54211"
+        ],
+        "ra": 166.342059744275,
+        "dec": 43.5309485610846,
+        "year": 2016.0,
+        "parallax": 203.887592769695,
+        "parallax_error": 0.033240344,
+        "pmra": -4406.46917882733,
+        "pmdec": 938.526626688607,
+        "rv": 68.578,
+        "spectrum": "M1",
+        "class": "LM",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "2015MNRAS.449.2618W"
+      },
+      {
+        "id": "GJ 412 B",
+        "aliases": [
+          "BD+44 2051 B",
+          "BD+44 2051B",
+          "WX UMa"
+        ],
+        "ra": 166.352089678773,
+        "dec": 43.5259076203614,
+        "year": 2016.0,
+        "parallax": 203.832343857388,
+        "parallax_error": 0.050037432,
+        "pmra": -4339.84957844411,
+        "pmdec": 960.696130627272,
+        "rv": 69.163,
+        "visual": 14.45,
+        "spectrum": "M5.5",
+        "class": "LM",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "2015MNRAS.449.2618W"
+      }
+    ],
+    "GJ 423": [
+      {
+        "id": "GJ 423 A",
+        "aliases": [
+          "HD 98231 Ab",
+          "ksi UMa A",
+          "ksi UMa Ab"
+        ],
+        "ra": 169.54338011559,
+        "dec": 31.52641490046,
+        "year": 2016.0,
+        "parallax": 114.4867,
+        "parallax_error": 0.4316,
+        "pmra": -339.398,
+        "pmdec": -607.892,
+        "spectrum": "M3",
+        "class": "LM",
+        "parallax_source": "FROM:ksiUMaB",
+        "system_source": "1995AJ....109..332M"
+      },
+      {
+        "id": "GJ 423 B",
+        "aliases": [
+          "HD 98230 A",
+          "ksi UMa B",
+          "ksi UMa Ba"
+        ],
+        "ra": 169.54338011559,
+        "dec": 31.52641490046,
+        "year": 2016.0,
+        "parallax": 114.4867,
+        "parallax_error": 0.4316,
+        "pmra": -339.398,
+        "pmdec": -607.892,
+        "visual": 4.77,
+        "spectrum": "G2",
+        "class": "*",
+        "parallax_source": "2018yCat.1345....0G",
+        "system_source": "1803RSPT...93..339H"
+      },
+      {
+        "id": "GJ 423 D",
+        "aliases": [
+          "HD 98230 B",
+          "ksi UMa B",
+          "ksi UMa Bb"
+        ],
+        "ra": 169.54338011559,
+        "dec": 31.52641490046,
+        "year": 2016.0,
+        "parallax": 114.4867,
+        "parallax_error": 0.4316,
+        "pmra": -339.398,
+        "pmdec": -607.892,
+        "spectrum": "K2-3",
+        "class": "*",
+        "parallax_source": "FROM:ksiUMaB",
+        "system_source": "1995AJ....109..332M"
+      }
+    ],
+    "GJ 432": [
+      {
+        "id": "GJ 432 A",
+        "aliases": [
+          "HD 100623",
+          "HD 100623 A",
+          "HIP 56452"
+        ],
+        "ra": 173.619315133616,
+        "dec": -32.827684607058,
+        "year": 2016.0,
+        "parallax": 104.613288305855,
+        "parallax_error": 0.027652346,
+        "pmra": -670.230162689604,
+        "pmdec": 822.399242834712,
+        "rv": -22.021,
+        "visual": 5.98,
+        "spectrum": "K0",
+        "class": "*",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "2017A&A...602A..16T"
+      },
+      {
+        "id": "GJ 432 B",
+        "aliases": [
+          "HD 100623 B",
+          "HD 100623B"
+        ],
+        "ra": 173.623278511917,
+        "dec": -32.830317252418,
+        "year": 2016.0,
+        "parallax": 104.657035692379,
+        "parallax_error": 0.026720122,
+        "pmra": -701.802332534246,
+        "pmdec": 828.928287699144,
+        "visual": 15.0,
+        "spectrum": "DC",
+        "class": "WD",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "2017A&A...602A..16T"
+      }
+    ],
+    "GJ 442": [
+      {
+        "id": "GJ 442 A",
+        "aliases": [
+          "HD 102365",
+          "HD 102365 A",
+          "HIP 57443"
+        ],
+        "ra": 176.620520576366,
+        "dec": -40.4985651456299,
+        "year": 2016.0,
+        "parallax": 107.302433856228,
+        "parallax_error": 0.08731465,
+        "pmra": -1530.97051047993,
+        "pmdec": 403.286574863904,
+        "rv": 16.947,
+        "visual": 4.88,
+        "spectrum": "G2",
+        "class": "*",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "2010ApJS..190....1R"
+      },
+      {
+        "id": "GJ 442 B",
+        "aliases": [
+          "HD 102365 B",
+          "HD 102365B"
+        ],
+        "ra": 176.627238335016,
+        "dec": -40.4948621287064,
+        "year": 2016.0,
+        "parallax": 107.423732788016,
+        "parallax_error": 0.035096146,
+        "pmra": -1534.67874965081,
+        "pmdec": 381.396361681474,
+        "rv": 17.23,
+        "visual": 15.43,
+        "spectrum": "M4",
+        "class": "LM",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "2010ApJS..190....1R"
+      }
+    ],
+    "GJ 473": [
+      {
+        "id": "GJ 473 A",
+        "aliases": [
+          "FL Vir A",
+          "Wolf 424",
+          "Wolf 424 A"
+        ],
+        "ra": 188.314492801853,
+        "dec": 9.02209162485169,
+        "year": 2016.0,
+        "parallax": 231.118497802614,
+        "parallax_error": 0.5118605,
+        "pmra": -1795.66090246,
+        "pmdec": 217.788566561916,
+        "rv": 1.0,
+        "visual": 12.467,
+        "spectrum": "M5.5",
+        "class": "LM",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "2006MNRAS.368.1392P"
+      },
+      {
+        "id": "GJ 473 B",
+        "aliases": [
+          "FL Vir B",
+          "Wolf 424",
+          "Wolf 424 B"
+        ],
+        "ra": 188.314676775881,
+        "dec": 9.02182920833981,
+        "year": 2016.0,
+        "parallax": 223.477473824233,
+        "parallax_error": 0.46645853,
+        "pmra": -1710.46765406467,
+        "pmdec": 203.097808640446,
+        "spectrum": "M7",
+        "class": "LM",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "2006MNRAS.368.1392P"
+      }
+    ],
+    "GJ 508": [
+      {
+        "id": "GJ 508 A",
+        "aliases": [
+          "HD 115953 A",
+          "HD 115953 Aa",
+          "HIP 65026"
+        ],
+        "ra": 199.94126674775,
+        "dec": 47.77792464031,
+        "year": 2016.0,
+        "parallax": 109.9837,
+        "parallax_error": 0.8292,
+        "pmra": 226.463,
+        "pmdec": -23.813,
+        "rv": 3.09,
+        "visual": 8.54,
+        "spectrum": "M2",
+        "class": "LM",
+        "parallax_source": "2018yCat.1345....0G",
+        "system_source": "2019AJ....158..167T"
+      },
+      {
+        "id": "GJ 508 B",
+        "aliases": [
+          "HD 115953 B"
+        ],
+        "ra": 199.94126674775,
+        "dec": 47.77792464031,
+        "year": 2016.0,
+        "parallax": 109.9837,
+        "parallax_error": 0.8292,
+        "pmra": 226.463,
+        "pmdec": -23.813,
+        "spectrum": "",
+        "class": "LM?",
+        "parallax_source": "FROM:HD115953A",
+        "system_source": "2019AJ....158..167T"
+      }
+    ],
+    "GJ 53": [
+      {
+        "id": "GJ 53 A",
+        "aliases": [
+          "GJ 53 A",
+          "HD 6582 A",
+          "HIP 5336"
+        ],
+        "ra": 17.0947498612029,
+        "dec": 54.913203977559,
+        "year": 2016.0,
+        "parallax": 130.28806976927,
+        "parallax_error": 0.4347771,
+        "pmra": 3468.25139314675,
+        "pmdec": -1564.84444731177,
+        "rv": -98.1,
+        "visual": 5.17,
+        "spectrum": "G5",
+        "class": "*",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "1966AJ.....71Q.185W"
+      },
+      {
+        "id": "GJ 53 B",
+        "aliases": [
+          "GJ 53 B",
+          "HD 6582 B"
+        ],
+        "ra": 17.0947498612029,
+        "dec": 54.913203977559,
+        "year": 2016.0,
+        "parallax": 130.28806976927,
+        "parallax_error": 0.4347771,
+        "pmra": 3468.25139314675,
+        "pmdec": -1564.84444731177,
+        "spectrum": "M4?",
+        "class": "LM",
+        "parallax_source": "FROM:GJ53A",
+        "system_source": "1966AJ.....71Q.185W"
+      }
+    ],
+    "GJ 559": [
+      {
+        "id": "GJ 559 A",
+        "aliases": [
+          "HD 128620",
+          "HIP 71683",
+          "Rigil Kentaurus",
+          "alf Cen A"
+        ],
+        "ra": 219.902058331708,
+        "dec": -60.83399268831,
+        "year": 2000.0,
+        "parallax": 743.0,
+        "parallax_error": 1.3,
+        "pmra": -3679.25,
+        "pmdec": 473.67,
+        "rv": -22.39,
+        "visual": 0.01,
+        "spectrum": "G2",
+        "class": "*",
+        "parallax_source": "2016A&A...586A..90P",
+        "system_source": "2018A&A...615A.172M"
+      },
+      {
+        "id": "GJ 559 B",
+        "aliases": [
+          "HD 128621",
+          "HIP 71681",
+          "Toliman",
+          "alf Cen B"
+        ],
+        "ra": 219.896096289873,
+        "dec": -60.8375275655841,
+        "year": 2000.0,
+        "parallax": 743.0,
+        "parallax_error": 1.3,
+        "pmra": -3614.39,
+        "pmdec": 802.98,
+        "rv": -22.39,
+        "visual": 1.33,
+        "spectrum": "K1",
+        "class": "*",
+        "parallax_source": "2016A&A...586A..90P",
+        "system_source": "2018A&A...615A.172M"
+      }
+    ],
+    "GJ 566": [
+      {
+        "id": "GJ 566 A",
+        "aliases": [
+          "HD 131156 A",
+          "ksi Boo A"
+        ],
+        "ra": 222.848051473845,
+        "dec": 19.1002696400725,
+        "year": 2016.0,
+        "parallax": 148.069499452384,
+        "parallax_error": 0.13173045,
+        "pmra": 127.467875776682,
+        "pmdec": -40.5686454969442,
+        "rv": 1.95,
+        "visual": 4.675,
+        "spectrum": "G7",
+        "class": "*",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "2010ApJ...717.1279W"
+      },
+      {
+        "id": "GJ 566 B",
+        "aliases": [
+          "HD 131156 B",
+          "ksi Boo B"
+        ],
+        "ra": 222.846642665231,
+        "dec": 19.1011041079476,
+        "year": 2016.0,
+        "parallax": 148.179316789417,
+        "parallax_error": 0.054625016,
+        "pmra": 133.376045177241,
+        "pmdec": -182.059184407765,
+        "rv": 2.312,
+        "visual": 6.816,
+        "spectrum": "K5",
+        "class": "*",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "2010ApJ...717.1279W"
+      }
+    ],
+    "GJ 569": [
+      {
+        "id": "GJ 569 A",
+        "aliases": [
+          "BD+16 2708 A",
+          "CE Boo",
+          "HIP 72944"
+        ],
+        "ra": 223.62310860272,
+        "dec": 16.1005309647629,
+        "year": 2016.0,
+        "parallax": 100.524270494339,
+        "parallax_error": 0.021006696,
+        "pmra": 279.117449001282,
+        "pmdec": -117.908180540538,
+        "rv": -7.219,
+        "visual": 10.15,
+        "spectrum": "M1",
+        "class": "LM",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "1987BAAS...19.1128S"
+      },
+      {
+        "id": "GJ 569 B",
+        "aliases": [
+          "BD+16 2708 B",
+          "BD+16 2708 Ba",
+          "HIP 72944"
+        ],
+        "ra": 223.62403583764,
+        "dec": 16.10156307676,
+        "year": 2016.0,
+        "parallax": 100.524270494339,
+        "parallax_error": 0.021006696,
+        "pmra": 279.117449001282,
+        "pmdec": -117.908180540538,
+        "spectrum": "M8.5",
+        "class": "LM",
+        "parallax_source": "FROM:BD+162708A",
+        "system_source": "1987BAAS...19.1128S"
+      }
+    ],
+    "GJ 570": [
+      {
+        "id": "GJ 570 A",
+        "aliases": [
+          "GJ 570 A",
+          "HD 131977",
+          "HIP 73184",
+          "KX Lib"
+        ],
+        "ra": 224.371594273481,
+        "dec": -21.4231403962617,
+        "year": 2016.0,
+        "parallax": 169.884270282585,
+        "parallax_error": 0.06534182,
+        "pmra": 1031.47186948238,
+        "pmdec": -1723.61890293832,
+        "rv": 26.987,
+        "visual": 5.72,
+        "spectrum": "K4",
+        "class": "*",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "2000ApJ...531L..57B"
+      },
+      {
+        "id": "GJ 570 B",
+        "aliases": [
+          "GJ 570 B",
+          "HD 131976",
+          "HIP 73182"
+        ],
+        "ra": 224.365423363898,
+        "dec": -21.4188732036384,
+        "year": 2016.0,
+        "parallax": 168.77,
+        "parallax_error": 21.54,
+        "pmra": 961.78,
+        "pmdec": -1677.83,
+        "visual": 8.065,
+        "spectrum": "M1",
+        "class": "LM",
+        "parallax_source": "2007A&A...474..653V",
+        "system_source": "2000ApJ...531L..57B"
+      },
+      {
+        "id": "GJ 570 C",
+        "aliases": [
+          "GJ 570 C"
+        ],
+        "ra": 224.365423363898,
+        "dec": -21.4188732036384,
+        "year": 2016.0,
+        "parallax": 168.77,
+        "parallax_error": 21.54,
+        "pmra": 961.78,
+        "pmdec": -1677.83,
+        "spectrum": "",
+        "class": "LM?",
+        "parallax_source": "FROM:GJ570B",
+        "system_source": "2000ApJ...531L..57B"
+      },
+      {
+        "id": "GJ 570 D",
+        "aliases": [
+          "GJ 570 D"
+        ],
+        "ra": 224.312344,
+        "dec": -21.363264,
+        "year": 2000.0,
+        "parallax": 169.3,
+        "parallax_error": 1.7,
+        "pmra": 1038.08,
+        "pmdec": -1677.69,
+        "spectrum": "T7",
+        "class": "BD",
+        "parallax_source": "2012ApJ...752...56F",
+        "system_source": "2000ApJ...531L..57B"
+      }
+    ],
+    "GJ 618": [
+      {
+        "id": "GJ 618 A",
+        "aliases": [
+          "CD-37 10765 A"
+        ],
+        "ra": 245.010422084628,
+        "dec": -37.5246104467139,
+        "year": 2016.0,
+        "parallax": 117.471594175335,
+        "parallax_error": 0.029081289,
+        "pmra": -748.039366021993,
+        "pmdec": 988.103520188084,
+        "rv": 27.982,
+        "visual": 10.586,
+        "spectrum": "M3",
+        "class": "LM",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "2015MNRAS.449.2618W"
+      },
+      {
+        "id": "GJ 618 B",
+        "aliases": [
+          "CD-37 10765 B"
+        ],
+        "ra": 245.009351248454,
+        "dec": -37.5254096085465,
+        "year": 2016.0,
+        "parallax": 117.679127876141,
+        "parallax_error": 0.107052565,
+        "pmra": -681.279104023215,
+        "pmdec": 1049.95063254829,
+        "spectrum": "M5",
+        "class": "LM",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "2015MNRAS.449.2618W"
+      }
+    ],
+    "GJ 644": [
+      {
+        "id": "GJ 644 A",
+        "aliases": [
+          "GJ 644 A",
+          "HD 152751 A",
+          "HIP 82817",
+          "V1054 Oph"
+        ],
+        "ra": 253.866212216389,
+        "dec": -8.340325829268696,
+        "year": 2016.0,
+        "parallax": 153.965865199531,
+        "parallax_error": 0.057011306,
+        "pmra": -813.037505755344,
+        "pmdec": -870.609351533518,
+        "visual": 9.023,
+        "spectrum": "M3e",
+        "class": "LM",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "1999MNRAS.308..111K"
+      },
+      {
+        "id": "GJ 644 B",
+        "aliases": [
+          "GJ 644 B",
+          "GJ 644 Bb",
+          "HD 152751 Bb"
+        ],
+        "ra": 253.866212216389,
+        "dec": -8.340325829268696,
+        "year": 2016.0,
+        "parallax": 153.965865199531,
+        "parallax_error": 0.057011306,
+        "pmra": -813.037505755344,
+        "pmdec": -870.609351533518,
+        "spectrum": "",
+        "class": "LM?",
+        "parallax_source": "FROM:GJ644A",
+        "system_source": "2004A&A...424..727P"
+      },
+      {
+        "id": "GJ 644 C",
+        "aliases": [
+          "GJ 644 C",
+          "VB 8"
+        ],
+        "ra": 253.893246271489,
+        "dec": -8.39852302311483,
+        "year": 2016.0,
+        "parallax": 153.965865199531,
+        "parallax_error": 0.057011306,
+        "pmra": -813.037505755344,
+        "pmdec": -870.609351533518,
+        "rv": 14.409,
+        "visual": 16.916,
+        "spectrum": "M7",
+        "class": "LM",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "1999MNRAS.308..111K"
+      }
+    ],
+    "GJ 65": [
+      {
+        "id": "GJ 65 A",
+        "aliases": [
+          "BL Cet",
+          "G 272-61 A",
+          "G 272-61A"
+        ],
+        "ra": 24.7715542934545,
+        "dec": -17.9482998871293,
+        "year": 2016.0,
+        "parallax": 367.711896181477,
+        "parallax_error": 0.74180114,
+        "pmra": 3385.31581046507,
+        "pmdec": 544.386384561952,
+        "rv": 37.83,
+        "spectrum": "M5",
+        "class": "LM",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "1988AJ.....95.1841G"
+      },
+      {
+        "id": "GJ 65 B",
+        "aliases": [
+          "G 272-61 B",
+          "G 272-61B",
+          "UV Cet"
+        ],
+        "ra": 24.7716742082119,
+        "dec": -17.9476828600085,
+        "year": 2016.0,
+        "parallax": 373.844312268399,
+        "parallax_error": 0.50087124,
+        "pmra": 3178.6942575749,
+        "pmdec": 584.061335038516,
+        "rv": 40.29,
+        "spectrum": "M6",
+        "class": "LM",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "1988AJ.....95.1841G"
+      }
+    ],
+    "GJ 66": [
+      {
+        "id": "GJ 66 A",
+        "aliases": [
+          "GJ 66 A",
+          "HD 10361"
+        ],
+        "ra": 24.9506566237578,
+        "dec": -56.1964000662511,
+        "year": 2016.0,
+        "parallax": 122.00347235304,
+        "parallax_error": 0.03193793,
+        "pmra": 309.229825857371,
+        "pmdec": 10.815266219876,
+        "rv": 20.151,
+        "visual": 5.797,
+        "spectrum": "K2",
+        "class": "*",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "2015MNRAS.449.3160R"
+      },
+      {
+        "id": "GJ 66 B",
+        "aliases": [
+          "GJ 66 B",
+          "HD 10360"
+        ],
+        "ra": 24.9513174155062,
+        "dec": -56.1932513847667,
+        "year": 2016.0,
+        "parallax": 122.108812649359,
+        "parallax_error": 0.036529314,
+        "pmra": 262.614930346949,
+        "pmdec": 14.9613007125027,
+        "rv": 21.737,
+        "visual": 5.685,
+        "spectrum": "K2",
+        "class": "*",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "2015MNRAS.449.3160R"
+      }
+    ],
+    "GJ 661": [
+      {
+        "id": "GJ 661 A",
+        "aliases": [
+          "Furuhjelm 46 A",
+          "GJ 661",
+          "HD 155876 A",
+          "HIP 84140",
+          "Legget A"
+        ],
+        "ra": 258.034215983654,
+        "dec": 45.659059737301,
+        "year": 2016.0,
+        "parallax": 167.29,
+        "parallax_error": 5.2,
+        "pmra": 348.59,
+        "pmdec": -1624.84,
+        "rv": -30.9,
+        "visual": 9.523,
+        "spectrum": "M3",
+        "class": "LM",
+        "parallax_source": "2007A&A...474..653V",
+        "system_source": "1999A&A...341..121S"
+      },
+      {
+        "id": "GJ 661 B",
+        "aliases": [
+          "Furuhjelm 46 B",
+          "GJ 661",
+          "GJ 661 B",
+          "HD 155876 B"
+        ],
+        "ra": 258.034215983654,
+        "dec": 45.659059737301,
+        "year": 2016.0,
+        "parallax": 167.29,
+        "parallax_error": 5.2,
+        "pmra": 348.59,
+        "pmdec": -1624.84,
+        "spectrum": "",
+        "class": "LM?",
+        "parallax_source": "FROM:GJ661A",
+        "system_source": "1999A&A...341..121S"
+      }
+    ],
+    "GJ 663": [
+      {
+        "id": "GJ 663 A",
+        "aliases": [
+          "36 Oph A",
+          "Guniibuu",
+          "HD 155886"
+        ],
+        "ra": 258.835116964593,
+        "dec": -26.6078978320507,
+        "year": 2016.0,
+        "parallax": 168.13027793749,
+        "parallax_error": 0.10807573,
+        "pmra": -465.860774287322,
+        "pmdec": -1141.16769499068,
+        "rv": 0.44,
+        "visual": 5.08,
+        "spectrum": "K2",
+        "class": "*",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "1989A&A...225..369C"
+      },
+      {
+        "id": "GJ 663 B",
+        "aliases": [
+          "36 Oph B",
+          "HD 155885",
+          "HIP 84405"
+        ],
+        "ra": 258.834120178128,
+        "dec": -26.6068066153994,
+        "year": 2016.0,
+        "parallax": 168.003078856296,
+        "parallax_error": 0.13433942,
+        "pmra": -498.600199899227,
+        "pmdec": -1149.15814250218,
+        "rv": 0.264,
+        "visual": 5.03,
+        "spectrum": "K1",
+        "class": "*",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "1989A&A...225..369C"
+      }
+    ],
+    "GJ 666": [
+      {
+        "id": "GJ 666 A",
+        "aliases": [
+          "41 Ara A",
+          "HD 156274 Aa",
+          "HIP 84720"
+        ],
+        "ra": 259.772654314693,
+        "dec": -46.6357583761355,
+        "year": 2016.0,
+        "parallax": 113.751344439458,
+        "parallax_error": 0.07254689,
+        "pmra": 1029.60954419646,
+        "pmdec": 106.934966697028,
+        "rv": 25.964,
+        "visual": 5.52,
+        "spectrum": "G9",
+        "class": "*",
+        "parallax_source": "2020yCat.1350....0G"
+      },
+      {
+        "id": "GJ 666 B",
+        "aliases": [
+          "41 Ara B",
+          "41 Ara Bb",
+          "HD 156274 B"
+        ],
+        "ra": 259.768532463927,
+        "dec": -46.636359614495,
+        "year": 2016.0,
+        "parallax": 113.85521924571762,
+        "parallax_error": 0.030676328,
+        "pmra": 953.3958232269831,
+        "pmdec": 140.40564662763921,
+        "spectrum": "",
+        "class": "LM?",
+        "parallax_source": "FROM:41AraB",
+        "system_source": "2022yCat.1355....0G"
+      }
+    ],
+    "GJ 667": [
+      {
+        "id": "GJ 667 A",
+        "aliases": [
+          "GJ 667 A",
+          "HD 156384 A",
+          "HD 156384A",
+          "HIP 84709"
+        ],
+        "ra": 259.751252743774,
+        "dec": -34.9977950926841,
+        "year": 2016.0,
+        "parallax": 138.066274114933,
+        "parallax_error": 0.028331729,
+        "pmra": 1131.51707336988,
+        "pmdec": -215.568895696066,
+        "visual": 5.89,
+        "spectrum": "K3",
+        "class": "*",
+        "parallax_source": "FROM:GJ667C",
+        "system_source": "2012ApJ...751L..16A"
+      },
+      {
+        "id": "GJ 667 B",
+        "aliases": [
+          "GJ 667 B",
+          "HD 156384 B",
+          "HD 156384B"
+        ],
+        "ra": 259.751252743774,
+        "dec": -34.9977950926841,
+        "year": 2016.0,
+        "parallax": 138.066274114933,
+        "parallax_error": 0.028331729,
+        "pmra": 1131.51707336988,
+        "pmdec": -215.568895696066,
+        "visual": 7.38,
+        "spectrum": "K5",
+        "class": "*",
+        "parallax_source": "FROM:GJ667C",
+        "system_source": "2012ApJ...751L..16A"
+      },
+      {
+        "id": "GJ 667 C",
+        "aliases": [
+          "GJ 667 C",
+          "HD 156384 C",
+          "HD 156384C"
+        ],
+        "ra": 259.751252743774,
+        "dec": -34.9977950926841,
+        "year": 2016.0,
+        "parallax": 138.066274114933,
+        "parallax_error": 0.028331729,
+        "pmra": 1131.51707336988,
+        "pmdec": -215.568895696066,
+        "rv": 6.368,
+        "visual": 10.22,
+        "spectrum": "M1.5",
+        "class": "LM",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "2012ApJ...751L..16A"
+      }
+    ],
+    "GJ 695": [
+      {
+        "id": "GJ 695 A",
+        "aliases": [
+          "HD 161797 Ab",
+          "mu. Her A",
+          "mu. Her Ab"
+        ],
+        "ra": 266.60269364371,
+        "dec": 27.7138205864248,
+        "year": 2016.0,
+        "parallax": 120.397914744319,
+        "parallax_error": 0.27854753,
+        "pmra": -259.382612501146,
+        "pmdec": -671.01280608539,
+        "spectrum": "M4",
+        "class": "LM",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "2016AJ....151..169R"
+      },
+      {
+        "id": "GJ 695 B",
+        "aliases": [
+          "HD 161797 B",
+          "mu. Her B"
+        ],
+        "ra": 266.602861443243,
+        "dec": 27.7137373691317,
+        "year": 2016.0,
+        "parallax": 119.887061364252,
+        "parallax_error": 0.20551951,
+        "pmra": -413.974380289045,
+        "pmdec": -798.516300875667,
+        "rv": -16.0,
+        "spectrum": "M3.5",
+        "class": "LM",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "2014AN....335..817P"
+      },
+      {
+        "id": "GJ 695 C",
+        "aliases": [
+          "mu. Her C"
+        ],
+        "ra": 266.602861443243,
+        "dec": 27.7137373691317,
+        "year": 2016.0,
+        "parallax": 119.887061364252,
+        "parallax_error": 0.20551951,
+        "pmra": -413.974380289045,
+        "pmdec": -798.516300875667,
+        "spectrum": "",
+        "class": "LM?",
+        "parallax_source": "FROM:mu.HerB",
+        "system_source": "2014AN....335..817P"
+      }
+    ],
+    "GJ 702": [
+      {
+        "id": "GJ 702 A",
+        "aliases": [
+          "70 Oph A",
+          "HD 165341 A",
+          "HIP 88601"
+        ],
+        "ra": 271.364453818457,
+        "dec": 2.49522409591257,
+        "year": 2016.0,
+        "parallax": 195.567354559423,
+        "parallax_error": 0.19638827,
+        "pmra": 206.52500310614,
+        "pmdec": -1107.4919291638,
+        "rv": -5.8,
+        "visual": 4.03,
+        "spectrum": "K0",
+        "class": "*",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "2008A&A...482..631E"
+      },
+      {
+        "id": "GJ 702 B",
+        "aliases": [
+          "70 Oph B",
+          "HD 165341 B"
+        ],
+        "ra": 271.365911609037,
+        "dec": 2.49419875809273,
+        "year": 2016.0,
+        "parallax": 195.856331531705,
+        "parallax_error": 0.25345382,
+        "pmra": 333.292098308107,
+        "pmdec": -1068.35390955567,
+        "rv": -9.467,
+        "visual": 6.07,
+        "spectrum": "K4",
+        "class": "*",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "2008A&A...482..631E"
+      }
+    ],
+    "GJ 713": [
+      {
+        "id": "GJ 713 A",
+        "aliases": [
+          "HD 170153 A",
+          "HIP 89937",
+          "chi Dra A"
+        ],
+        "ra": 275.272033052127,
+        "dec": 72.7312778035563,
+        "year": 2016.0,
+        "parallax": 124.11,
+        "parallax_error": 0.87,
+        "pmra": 531.21,
+        "pmdec": -349.71,
+        "rv": 31.9,
+        "visual": 3.58,
+        "spectrum": "F7.0",
+        "class": "*",
+        "parallax_source": "2007A&A...474..653V",
+        "system_source": "2010AJ....139.2308F"
+      },
+      {
+        "id": "GJ 713 B",
+        "aliases": [
+          "HD 170153 B",
+          "chi Dra B"
+        ],
+        "ra": 275.272033052127,
+        "dec": 72.7312778035563,
+        "year": 2016.0,
+        "parallax": 124.11,
+        "parallax_error": 0.87,
+        "pmra": 531.21,
+        "pmdec": -349.71,
+        "spectrum": "K0",
+        "class": "*",
+        "parallax_source": "FROM:chiDraA",
+        "system_source": "2010AJ....139.2308F"
+      }
+    ],
+    "GJ 725": [
+      {
+        "id": "GJ 725 A",
+        "aliases": [
+          "HD 173739",
+          "HIP 91768"
+        ],
+        "ra": 280.683070835229,
+        "dec": 59.6383579077548,
+        "year": 2016.0,
+        "parallax": 283.840118018439,
+        "parallax_error": 0.021992655,
+        "pmra": -1311.67908255228,
+        "pmdec": 1792.32455583044,
+        "rv": -0.772,
+        "spectrum": "M3",
+        "class": "LM",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "2016MNRAS.459.3551B"
+      },
+      {
+        "id": "GJ 725 B",
+        "aliases": [
+          "HD 173740",
+          "HIP 91772"
+        ],
+        "ra": 280.683086245834,
+        "dec": 59.6351454548188,
+        "year": 2016.0,
+        "parallax": 283.837767845006,
+        "parallax_error": 0.028684631,
+        "pmra": -1400.26351675689,
+        "pmdec": 1862.52514774855,
+        "rv": 1.102,
+        "spectrum": "M3.5",
+        "class": "LM",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "2016MNRAS.459.3551B"
+      }
+    ],
+    "GJ 745": [
+      {
+        "id": "GJ 745 A",
+        "aliases": [
+          "GJ 745 A",
+          "HIP 93873",
+          "Ross 730"
+        ],
+        "ra": 286.7709107523,
+        "dec": 20.8864875178788,
+        "year": 2016.0,
+        "parallax": 113.252129800078,
+        "parallax_error": 0.029636156,
+        "pmra": -478.266936589884,
+        "pmdec": -349.087961301143,
+        "rv": 32.064,
+        "visual": 10.774,
+        "spectrum": "M2",
+        "class": "LM",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "1956AJ.....61..405E"
+      },
+      {
+        "id": "GJ 745 B",
+        "aliases": [
+          "GJ 745 B",
+          "HD 349726",
+          "HIP 93899"
+        ],
+        "ra": 286.802729640277,
+        "dec": 20.8755384014847,
+        "year": 2016.0,
+        "parallax": 113.222809176682,
+        "parallax_error": 0.0191646,
+        "pmra": -480.754141129177,
+        "pmdec": -332.49823071542,
+        "rv": 31.83,
+        "visual": 10.771,
+        "spectrum": "M2",
+        "class": "LM",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "1956AJ.....61..405E"
+      }
+    ],
+    "GJ 747": [
+      {
+        "id": "GJ 747 A",
+        "aliases": [
+          "GJ 747 A"
+        ],
+        "ra": 286.935565597892,
+        "dec": 32.5497992087119,
+        "year": 2016.0,
+        "parallax": 120.2,
+        "parallax_error": 0.2,
+        "pmra": 1232.0,
+        "pmdec": 1140.0,
+        "rv": -49.3,
+        "visual": 11.26,
+        "spectrum": "M3.5e",
+        "class": "LM",
+        "parallax_source": "2010A&ARv..18...67T",
+        "system_source": "1987A&AS...71...57B"
+      },
+      {
+        "id": "GJ 747 B",
+        "aliases": [
+          "GJ 747 B"
+        ],
+        "ra": 286.935565597892,
+        "dec": 32.5497992087119,
+        "year": 2016.0,
+        "parallax": 120.2,
+        "parallax_error": 0.2,
+        "pmra": 1232.0,
+        "pmdec": 1140.0,
+        "spectrum": "",
+        "class": "LM?",
+        "parallax_source": "FROM:GJ747A",
+        "system_source": "1987A&AS...71...57B"
+      }
+    ],
+    "GJ 752": [
+      {
+        "id": "GJ 752 A",
+        "aliases": [
+          "GJ 752 A",
+          "HD 180617",
+          "HIP 94761",
+          "V1428 Aql"
+        ],
+        "ra": 289.227651503619,
+        "dec": 5.16297630266859,
+        "year": 2016.0,
+        "parallax": 169.061505281574,
+        "parallax_error": 0.023926072,
+        "pmra": -579.080529659328,
+        "pmdec": -1332.86771635424,
+        "rv": 35.612,
+        "visual": 9.115,
+        "spectrum": "M3",
+        "class": "LM",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "2018A&A...618A.115K"
+      },
+      {
+        "id": "GJ 752 B",
+        "aliases": [
+          "GJ 752 B",
+          "vB 10"
+        ],
+        "ra": 289.237373696754,
+        "dec": 5.14437331543419,
+        "year": 2016.0,
+        "parallax": 168.953707418574,
+        "parallax_error": 0.0668329,
+        "pmra": -598.761267442191,
+        "pmdec": -1366.06349698638,
+        "rv": 35.731,
+        "visual": 17.3,
+        "spectrum": "M8",
+        "class": "LM",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "2018A&A...618A.115K"
+      }
+    ],
+    "GJ 783": [
+      {
+        "id": "GJ 783 A",
+        "aliases": [
+          "GJ 783 A",
+          "HD 191408 A",
+          "HIP 99461"
+        ],
+        "ra": 302.802269043311,
+        "dec": -36.1082165373698,
+        "year": 2016.0,
+        "parallax": 166.327204279678,
+        "parallax_error": 0.106505066,
+        "pmra": 458.881738497488,
+        "pmdec": -1576.73210986875,
+        "rv": -129.247,
+        "visual": 5.32,
+        "spectrum": "K2.5",
+        "class": "*",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "2007A&A...468..721B"
+      },
+      {
+        "id": "GJ 783 B",
+        "aliases": [
+          "GJ 783 B",
+          "HD 191408 B"
+        ],
+        "ra": 302.802269043311,
+        "dec": -36.1082165373698,
+        "year": 2016.0,
+        "parallax": 166.327204279678,
+        "parallax_error": 0.106505066,
+        "pmra": 458.881738497488,
+        "pmdec": -1576.73210986875,
+        "spectrum": "M3.5",
+        "class": "LM",
+        "parallax_source": "FROM:GJ783A",
+        "system_source": "2007A&A...468..721B"
+      }
+    ],
+    "GJ 791.2": [
+      {
+        "id": "GJ 791.2 A",
+        "aliases": [
+          "GJ 791.2 A",
+          "HU Del A"
+        ],
+        "ra": 307.45433766661,
+        "dec": 9.68950366085,
+        "year": 2016.0,
+        "parallax": 113.4,
+        "parallax_error": 0.2,
+        "pmra": 669.342,
+        "pmdec": 101.33,
+        "spectrum": "M4.5",
+        "class": "LM",
+        "parallax_source": "2016AJ....152..141B",
+        "system_source": "2016AJ....152..141B"
+      },
+      {
+        "id": "GJ 791.2 B",
+        "aliases": [
+          "GJ 791.2 B",
+          "HU Del B"
+        ],
+        "ra": 307.45433766661,
+        "dec": 9.68950366085,
+        "year": 2016.0,
+        "parallax": 113.4,
+        "parallax_error": 0.2,
+        "pmra": 669.342,
+        "pmdec": 101.33,
+        "spectrum": "",
+        "class": "LM?",
+        "parallax_source": "FROM:GJ791.2A",
+        "system_source": "2016AJ....152..141B"
+      }
+    ],
+    "GJ 799": [
+      {
+        "id": "GJ 799 A",
+        "aliases": [
+          "AT Mic",
+          "AT Mic A",
+          "HD 196982 A"
+        ],
+        "ra": 310.464334034236,
+        "dec": -32.4370367843815,
+        "year": 2016.0,
+        "parallax": 100.792106777422,
+        "parallax_error": 0.072626956,
+        "pmra": 246.928986788514,
+        "pmdec": -417.194840956503,
+        "rv": -4.064,
+        "visual": 10.36,
+        "spectrum": "M4.5",
+        "class": "LM",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "2002A&A...383..548G"
+      },
+      {
+        "id": "GJ 799 B",
+        "aliases": [
+          "AT Mic",
+          "AT Mic B",
+          "HD 196982 B"
+        ],
+        "ra": 310.464731215355,
+        "dec": -32.4375149213282,
+        "year": 2016.0,
+        "parallax": 101.972390298601,
+        "parallax_error": 0.07701546,
+        "pmra": 296.907591398836,
+        "pmdec": -301.429081128573,
+        "rv": -8.083,
+        "visual": 11.34,
+        "spectrum": "M4",
+        "class": "LM",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "2002A&A...383..548G"
+      }
+    ],
+    "GJ 820": [
+      {
+        "id": "GJ 820 A",
+        "aliases": [
+          "61 Cyg A",
+          "HD 201091",
+          "HIP 104214"
+        ],
+        "ra": 316.748479294,
+        "dec": 38.763862446498,
+        "year": 2016.0,
+        "parallax": 285.994948295781,
+        "parallax_error": 0.05989728,
+        "pmra": 4164.20869228467,
+        "pmdec": 3249.61388384858,
+        "rv": -65.82,
+        "visual": 5.21,
+        "spectrum": "K5",
+        "class": "*",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "2008A&A...488..667K"
+      },
+      {
+        "id": "GJ 820 B",
+        "aliases": [
+          "61 Cyg B",
+          "HD 201092",
+          "HIP 104217"
+        ],
+        "ra": 316.753662752556,
+        "dec": 38.7560727720568,
+        "year": 2016.0,
+        "parallax": 286.005351861648,
+        "parallax_error": 0.028940246,
+        "pmra": 4105.97642820949,
+        "pmdec": 3155.94163982735,
+        "rv": -64.248,
+        "visual": 6.03,
+        "spectrum": "K7",
+        "class": "*",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "2008A&A...488..667K"
+      }
+    ],
+    "GJ 829": [
+      {
+        "id": "GJ 829 A",
+        "aliases": [
+          "GJ 829 A",
+          "HIP 106106",
+          "Ross 775 A"
+        ],
+        "ra": 322.408079882165,
+        "dec": 17.6449778026746,
+        "year": 2016.0,
+        "parallax": 147.495777521243,
+        "parallax_error": 0.025748886,
+        "pmra": 1007.03963471621,
+        "pmdec": 378.400007153322,
+        "rv": -25.109,
+        "visual": 10.303,
+        "spectrum": "M3e",
+        "class": "LM",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "2001AJ....121.2189O"
+      },
+      {
+        "id": "GJ 829 B",
+        "aliases": [
+          "GJ 829 B",
+          "Ross 775 B"
+        ],
+        "ra": 322.408079882165,
+        "dec": 17.6449778026746,
+        "year": 2016.0,
+        "parallax": 147.495777521243,
+        "parallax_error": 0.025748886,
+        "pmra": 1007.03963471621,
+        "pmdec": 378.400007153322,
+        "spectrum": "",
+        "class": "LM?",
+        "parallax_source": "FROM:GJ829A",
+        "system_source": "2001AJ....121.2189O"
+      }
+    ],
+    "GJ 831": [
+      {
+        "id": "GJ 831 A",
+        "aliases": [
+          "BB Cap A",
+          "GJ 831 A",
+          "HIP 106255"
+        ],
+        "ra": 322.83298125885,
+        "dec": -9.7909653464,
+        "year": 2016.0,
+        "parallax": 125.3,
+        "parallax_error": 0.3,
+        "pmra": 1246.51,
+        "pmdec": -61.066,
+        "rv": -57.7,
+        "visual": 12.006,
+        "spectrum": "M4.5",
+        "class": "LM",
+        "parallax_source": "2016AJ....152..141B",
+        "system_source": "1987AJ.....93.1245M"
+      },
+      {
+        "id": "GJ 831 B",
+        "aliases": [
+          "BB Cap B",
+          "GJ 831 B"
+        ],
+        "ra": 322.83298125885,
+        "dec": -9.7909653464,
+        "year": 2016.0,
+        "parallax": 125.3,
+        "parallax_error": 0.3,
+        "pmra": 1246.51,
+        "pmdec": -61.066,
+        "spectrum": "",
+        "class": "LM?",
+        "parallax_source": "FROM:GJ831A",
+        "system_source": "1987AJ.....93.1245M"
+      }
+    ],
+    "GJ 845": [
+      {
+        "id": "GJ 845 A",
+        "aliases": [
+          "GJ 845 A",
+          "HD 209100",
+          "HIP 108870",
+          "eps Ind A"
+        ],
+        "ra": 330.872407879596,
+        "dec": -56.797254661229,
+        "year": 2016.0,
+        "parallax": 274.84314152163,
+        "parallax_error": 0.09561499,
+        "pmra": 3966.66053874841,
+        "pmdec": -2536.19198680447,
+        "rv": -40.035,
+        "visual": 4.69,
+        "spectrum": "K5",
+        "class": "*",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "2010A&A...510A..99K"
+      },
+      {
+        "id": "GJ 845 B",
+        "aliases": [
+          "GJ 845 B",
+          "eps Ind B",
+          "eps Ind Ba"
+        ],
+        "ra": 331.076452596564,
+        "dec": -56.7938120668822,
+        "year": 2016.0,
+        "parallax": 270.658032469453,
+        "parallax_error": 0.6895573,
+        "pmra": 3981.97666296105,
+        "pmdec": -2466.83181476635,
+        "visual": 24.12,
+        "spectrum": "T1",
+        "class": "BD",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "2010A&A...510A..99K"
+      },
+      {
+        "id": "GJ 845 C",
+        "aliases": [
+          "GJ 845 C",
+          "eps Ind Bb",
+          "eps Ind C"
+        ],
+        "ra": 331.076452596564,
+        "dec": -56.7938120668822,
+        "year": 2016.0,
+        "parallax": 270.658032469453,
+        "parallax_error": 0.6895573,
+        "pmra": 3981.97666296105,
+        "pmdec": -2466.83181476635,
+        "spectrum": "T6",
+        "class": "BD",
+        "parallax_source": "FROM:epsIndB",
+        "system_source": "2010A&A...510A..99K"
+      }
+    ],
+    "GJ 860": [
+      {
+        "id": "GJ 860 A",
+        "aliases": [
+          "HD 239960 A",
+          "HD 239960A",
+          "Kruger 60 A"
+        ],
+        "ra": 336.99211290561266,
+        "dec": 57.69403205293489,
+        "year": 2016.0,
+        "parallax": 249.3926,
+        "parallax_error": 0.1653,
+        "pmra": -725.227,
+        "pmdec": -223.461,
+        "rv": -24.0,
+        "visual": 11.41,
+        "spectrum": "M3",
+        "class": "LM",
+        "parallax_source": "2018yCat.1345....0G",
+        "system_source": "1951PASP...63..141V"
+      },
+      {
+        "id": "GJ 860 B",
+        "aliases": [
+          "DO Cep",
+          "HD 239960 B",
+          "HD 239960B"
+        ],
+        "ra": 336.9913860924365,
+        "dec": 57.69410078047842,
+        "year": 2016.0,
+        "parallax": 249.9668,
+        "parallax_error": 0.7414,
+        "pmra": -934.098,
+        "pmdec": -686.244,
+        "rv": -28.0,
+        "spectrum": "M4",
+        "class": "LM",
+        "parallax_source": "2018yCat.1345....0G",
+        "system_source": "1951PASP...63..141V"
+      }
+    ],
+    "GJ 866": [
+      {
+        "id": "GJ 866 A",
+        "aliases": [
+          "EZ Aqr A",
+          "GJ 866 A"
+        ],
+        "ra": 339.650693945,
+        "dec": -15.28964705186,
+        "year": 2016.0,
+        "parallax": 293.6,
+        "parallax_error": 0.9,
+        "pmra": 2314.8,
+        "pmdec": 2295.3,
+        "rv": -60.0,
+        "visual": 12.38,
+        "spectrum": "M5",
+        "class": "LM",
+        "parallax_source": "2010A&ARv..18...67T",
+        "system_source": "2000A&A...353..253W"
+      },
+      {
+        "id": "GJ 866 B",
+        "aliases": [
+          "EZ Aqr B",
+          "GJ 866 B"
+        ],
+        "ra": 339.650693945,
+        "dec": -15.28964705186,
+        "year": 2016.0,
+        "parallax": 293.6,
+        "parallax_error": 0.9,
+        "pmra": 2314.8,
+        "pmdec": 2295.3,
+        "spectrum": "",
+        "class": "LM?",
+        "parallax_source": "FROM:GJ866A",
+        "system_source": "2000A&A...353..253W"
+      },
+      {
+        "id": "GJ 866 C",
+        "aliases": [
+          "EZ Aqr C",
+          "GJ 866 C"
+        ],
+        "ra": 339.650693945,
+        "dec": -15.28964705186,
+        "year": 2016.0,
+        "parallax": 293.6,
+        "parallax_error": 0.9,
+        "pmra": 2314.8,
+        "pmdec": 2295.3,
+        "spectrum": "",
+        "class": "LM?",
+        "parallax_source": "FROM:GJ866A",
+        "system_source": "2000A&A...353..253W"
+      }
+    ],
+    "GJ 867": [
+      {
+        "id": "GJ 867 A",
+        "aliases": [
+          "FK Aqr",
+          "GJ 867 A",
+          "HD 214479",
+          "HIP 111802"
+        ],
+        "ra": 339.692027413041,
+        "dec": -20.6214867306132,
+        "year": 2016.0,
+        "parallax": 112.03437135380507,
+        "parallax_error": 0.020066965,
+        "pmra": 449.5160241916531,
+        "pmdec": -79.21061256746347,
+        "rv": -8.7,
+        "visual": 9.083,
+        "spectrum": "M2e",
+        "class": "LM",
+        "parallax_source": "2022yCat.1355....0G",
+        "system_source": "2014AJ....147...26D"
+      },
+      {
+        "id": "GJ 867 B",
+        "aliases": [
+          "FL Aqr",
+          "GJ 867 B"
+        ],
+        "ra": 339.690688150303,
+        "dec": -20.6146894462698,
+        "year": 2016.0,
+        "parallax": 112.986657816422,
+        "parallax_error": 0.038716473,
+        "pmra": 424.58978300904,
+        "pmdec": -66.9826330265807,
+        "rv": -6.1,
+        "visual": 11.49,
+        "spectrum": "M3.5",
+        "class": "LM",
+        "parallax_source": "2020yCat.1350....0G",
+        "system_source": "2014AJ....147...26D"
+      },
+      {
+        "id": "GJ 867 C",
+        "aliases": [
+          "FK Aqr",
+          "GJ 867 C"
+        ],
+        "ra": 339.692027413041,
+        "dec": -20.6214867306132,
+        "year": 2016.0,
+        "parallax": 112.03437135380507,
+        "parallax_error": 0.020066965,
+        "pmra": 449.5160241916531,
+        "pmdec": -79.21061256746347,
+        "spectrum": "",
+        "class": "LM",
+        "parallax_source": "FROM:GJ867A",
+        "system_source": "2014AJ....147...26D"
+      }
+    ]
+  }
+}

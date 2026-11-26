@@ -7327,6 +7327,145 @@ static void apply_stellar_astrometry_override(Star& object, const StellarAstrome
     object.distance_known = true;
 }
 
+static int load_nearby_catalog_components(const std::vector<Star*>& catalog_stars)
+{
+    std::ifstream input("catalogs/nearby_components.json");
+    if (!input) return 0;
+    const auto data = json::parse(input, nullptr, false);
+    if (!data.is_object() || !data.contains("systems") || !data["systems"].is_object()) return 0;
+
+    std::map<std::string, std::set<Star*>> names;
+    for (auto* star : catalog_stars)
+    {
+        if (star->deleted) continue;
+        const auto add = [&](const std::string& id)
+        {
+            if (!id.empty()) names[stellar_alias_key(id)].insert(star);
+        };
+        add(star->name);
+        add(star->Gliese);
+        if (star->HD) add("HD " + std::to_string(star->HD));
+        if (star->HIP) add("HIP " + std::to_string(star->HIP));
+        for (const auto& alias : star->catalog_aliases) add(alias);
+    }
+    int added = 0;
+    for (const auto& [system, records] : data["systems"].items())
+    {
+        if (!records.is_array() || records.size() < 2) continue;
+        const std::string system_key = stellar_alias_key(system);
+        std::map<std::string, unsigned> alias_frequency;
+        for (const auto& record : records)
+        {
+            std::set<std::string> aliases;
+            for (const auto& alias : record.at("aliases"))
+                aliases.insert(stellar_alias_key(alias.get<std::string>()));
+            for (const auto& alias : aliases) ++alias_frequency[alias];
+        }
+        const auto matching = [&](const json& record)
+        {
+            const auto exact = names.find(stellar_alias_key(record.at("id").get<std::string>()));
+            if (exact != names.end()) return exact->second;
+            std::set<Star*> candidates;
+            for (const auto& alias : record.at("aliases"))
+            {
+                const auto key = stellar_alias_key(alias.get<std::string>());
+                const auto found = names.find(key);
+                if (alias_frequency.at(key) == 1 && found != names.end())
+                    candidates.insert(found->second.begin(), found->second.end());
+            }
+            return candidates;
+        };
+        const auto primary = matching(records.front());
+        if (primary.size() > 1) continue;
+        std::set<Star*> combined;
+        for (auto it = names.lower_bound(system_key); it != names.end()
+            && it->first.compare(0, system_key.size(), system_key) == 0; ++it)
+        {
+            const auto components = it->first.substr(system_key.size());
+            if (components.empty() || (components.size() > 1 && components.front() == 'A'
+                && components.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZ") == std::string::npos))
+                combined.insert(it->second.begin(), it->second.end());
+        }
+        if (primary.empty() && combined.size() != 1) continue;
+        Star* anchor = primary.empty() ? *combined.begin() : *primary.begin();
+        // Combined-light records can coexist with separate components. Preserve an
+        // ambiguous group until its duplicate identities can be cross-matched.
+        if (!combined.empty() && (combined.size() != 1 || *combined.begin() != anchor)) continue;
+        for (size_t i = 1; i < records.size(); ++i)
+        {
+            const auto& record = records[i];
+            if (!matching(record).empty()) continue;
+            // This import fills gaps for ordinary stars. Ultracool and compact
+            // objects already have dedicated source catalogs and calibrations.
+            const std::string classification = record.at("class");
+            if (classification != "LM" && classification != "LM?" && classification != "*") continue;
+            constexpr double mas_to_radians = fiftyseventh / 3600000;
+            const double source_parallax = record.at("parallax");
+            if (!(source_parallax > 0)) continue;
+            double parallax = source_parallax;
+            const auto parallax_source = record.value("parallax_source", std::string());
+            std::string parallax_donor;
+            if (parallax_source.compare(0, 5, "FROM:") == 0)
+            {
+                const auto donor = names.find(stellar_alias_key(parallax_source.substr(5)));
+                if (donor != names.end() && donor->second.size() == 1)
+                {
+                    const Star* candidate = *donor->second.begin();
+                    const double measured = candidate->parallax / mas_to_radians;
+                    // An inherited parallax represents the donor's measurement.
+                    // Keep the source value if the catalogs disagree beyond its uncertainty.
+                    if (candidate->distance_known && measured > 0
+                        && fabs(measured - source_parallax) <= record.value("parallax_error", 0.0))
+                    {
+                        parallax = measured;
+                        parallax_donor = candidate->name;
+                    }
+                }
+            }
+            const std::string identity = record.at("id");
+            auto star = std::make_unique<Star>();
+            snprintf(star->name, sizeof(star->name), "%s", identity.c_str());
+            snprintf(star->Gliese, sizeof(star->Gliese), "%s", identity.c_str());
+            star->namelen = strlen(star->name);
+            for (const auto& alias : record.at("aliases"))
+            {
+                const auto name = alias.get<std::string>();
+                if (alias_frequency.at(stellar_alias_key(name)) == 1) star->add_catalog_alias(name);
+            }
+            const std::string spectrum = record.at("spectrum");
+            if (!spectrum.empty())
+            {
+                snprintf(star->spectral_type, sizeof(star->spectral_type), "%s", spectrum.c_str());
+                const double sequence = Star::get_mseqidx_from_sptyp(star->spectral_type);
+                star->temperature = Star::interpolate_mseq_temp(sequence);
+                star->BV_color = Star::interpolate_mseq_BV(sequence);
+                star->estimate_mass();
+                star->estimate_radius();
+            }
+            star->parallax = parallax * mas_to_radians;
+            star->distance = 1000 * parsec / parallax;
+            star->distance_known = true;
+            set_icrs_astrometry(*star, record.at("ra").get<double>() * fiftyseventh,
+                record.at("dec").get<double>() * fiftyseventh, record.at("year"),
+                record.value("pmra", 0.0) * mas_to_radians, record.value("pmdec", 0.0) * mas_to_radians);
+            star->radial_velocity = record.value("rv", 0.0) * 1000;
+            star->apparent_magnitude = record.value("visual", 1e29);
+            star->absolute_magnitude = 1e29;
+            if (record.contains("visual"))
+                star->absolute_magnitude = star->apparent_magnitude - 5 * log10(star->distance / (10 * parsec));
+            star->stellar_parameters = {{"component_source", data.at("source")},
+                {"parallax_source", parallax_source}, {"source_parallax_mas", source_parallax},
+                {"system_source", record.value("system_source", "")}, {"source_class", classification}};
+            if (!parallax_donor.empty()) star->stellar_parameters["parallax_donor"] = parallax_donor;
+            star->update_location(simnow);
+            if (!append_cel(star.get())) return added;
+            names[stellar_alias_key(identity)].insert(star.release());
+            ++added;
+        }
+    }
+    return added;
+}
+
 int alienorum::CatalogReader::read_condensed_star_cat()
 {
     condensed_star_orbits_loaded = false;
@@ -8139,7 +8278,7 @@ int alienorum::CatalogReader::read_condensed_star_cat()
         estimate_catalog_absolute_magnitude(*star, true, orbit_source_without_magnitude);
         reconcile_catalog_companion_photometry(*star);
     }
-    return num_read;
+    return num_read + load_nearby_catalog_components(catalog_stars);
 }
 
 void CatalogReader::read_field_onebased(const char *buffer, size_t start, int end, char *out)
@@ -8932,6 +9071,35 @@ Star* CatalogReader::resolve_or_create_exostar(const ExoRow& source, bool loaded
         const int existing = find_object(hostname.c_str(), true, 9e29, 0, lookup);
         if (existing >= 0 && cels[existing]->typeclass() == class_star)
             host_star = static_cast<Star*>(cels[existing]);
+    }
+    if (!host_star && !row.companion_aliases.empty())
+    {
+        // A second designation for a lettered planet also identifies its host.
+        // Binary components and numbered candidate signals have different suffixes.
+        const auto planet = trim(row.pl_name);
+        if (planet.size() > 2 && planet[planet.size() - 2] == ' '
+            && planet.back() >= 'b' && planet.back() <= 'z')
+        {
+            int match = -1;
+            bool conflicting = false;
+            std::istringstream aliases(row.companion_aliases);
+            for (std::string alias; std::getline(aliases, alias, '#');)
+            {
+                alias = trim(alias);
+                if (alias.size() <= 2 || alias[alias.size() - 2] != ' ' || alias.back() != planet.back())
+                    continue;
+                const auto host_alias = alias.substr(0, alias.size() - 2);
+                const int candidate = find_object(host_alias.c_str(), true, 9e29, 0, lookup);
+                if (candidate < 0) continue;
+                if (match >= 0 && match != candidate)
+                {
+                    conflicting = true;
+                    break;
+                }
+                match = candidate;
+            }
+            if (!conflicting && match >= 0) host_star = static_cast<Star*>(cels[match]);
+        }
     }
     if (!host_star)
     {

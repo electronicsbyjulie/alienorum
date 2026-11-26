@@ -49,4 +49,5 @@ views
 !/catalogs/
 /catalogs/*
 !/catalogs/giant_reflectance.json
+!/catalogs/nearby_components.json
 !/catalogs/giant_reflectance.txt
