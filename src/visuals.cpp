@@ -6138,6 +6138,7 @@ static bool horizon_camera_moving(const CelestialObject* cel)
     return horizon_pose_moving;
 }
 
+double shading_now = 0;
 void draw_horizon()
 {
     precipitation_stats = {};
@@ -8478,13 +8479,18 @@ void draw_horizon()
                     if (std::chrono::steady_clock::now() >= deadline) break;
                 }
             };
-            if (settling)
+            if (settling || fabs(simnow - shading_now) > 300)
             {
                 pending.stride = 0;
-                if (view_changed || visible.stride != motion_stride || visible.shading_key != lighting_key)
+                if (view_changed
+                    || visible.stride != motion_stride
+                    || visible.shading_key != lighting_key
+                    || fabs(simnow - shading_now) > 300
+                   )
                 {
                     begin_paint(visible, motion_stride);
                     paint_rows(visible, std::chrono::steady_clock::time_point::max());
+                    shading_now = simnow;
                 }
             }
             else
