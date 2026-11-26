@@ -546,11 +546,15 @@ ImU32 alienorum::Color::ensure_wcag_contrast(ImU32 input, bool white_bg, double 
         new_alpha = fmax(alpha_floor, lo);
     }
 
-    int nr = (int)round(fmax(0.0, fmin(255.0, rf*255)));
-    int ng = (int)round(fmax(0.0, fmin(255.0, gf*255)));
-    int nb = (int)round(fmax(0.0, fmin(255.0, bf*255)));
-    int na = (int)round(fmax(0.0, fmin(255.0, new_alpha*255)));
-    return (na<<24) + (nb<<16) + (ng<<8) + nr;
+    const bool raising = ratio < min_ratio;
+    const auto channel = [&](double value)
+    {
+        const double scaled = std::clamp(value * 255, 0.0, 255.0);
+        return static_cast<int>(!raising ? std::round(scaled) : white_bg ? std::floor(scaled) : std::ceil(scaled));
+    };
+    const double scaled_alpha = std::clamp(new_alpha * 255, 0.0, 255.0);
+    const int na = static_cast<int>(raising ? std::ceil(scaled_alpha) : std::floor(scaled_alpha));
+    return IM_COL32(channel(rf), channel(gf), channel(bf), na);
 }
 
 json Color::to_json()

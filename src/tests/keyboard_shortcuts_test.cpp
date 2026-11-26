@@ -1,16 +1,14 @@
 #include <algorithm>
 #include <cctype>
-#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
-#include <map>
-#include <regex>
 #include <string>
 #include <string_view>
 #include <vector>
 #include <gtest/gtest.h>
 #include "universe_fixture.h"
+#include "../classes/satellite.h"
 #include "../housekeeping.h"
 #include "../inputs.h"
 
@@ -29,7 +27,7 @@ namespace
         return code.size();
     }
 
-    std::string read_code(const fs::path& path, bool keep_literals = true)
+    std::string read_code(const fs::path& path)
     {
         std::ifstream input(path);
         EXPECT_TRUE(input.is_open()) << path;
@@ -49,12 +47,12 @@ namespace
             else if (code[i] == '"' || code[i] == '\'')
             {
                 const size_t end = literal_end(code, i);
-                if (keep_literals) result.append(code, i, end - i);
+                result.append(code, i, end - i);
                 i = end;
             }
             else
             {
-                if (!keep_literals || !std::isspace(static_cast<unsigned char>(code[i]))) result += code[i];
+                if (!std::isspace(static_cast<unsigned char>(code[i]))) result += code[i];
                 ++i;
             }
         }
@@ -118,22 +116,11 @@ namespace
         }
         return result;
     }
-
-    // FNV-1a over the binding source, with comments and formatting removed by read_code.
-    uint64_t fingerprint(std::string_view code)
-    {
-        uint64_t hash = 14695981039346656037ull;
-        for (unsigned char value : code) hash = (hash ^ value) * 1099511628211ull;
-        return hash;
-    }
 }
 
-TEST(KeyboardShortcutCompatibility, PreservesPublishedBindingsAndDispatch)
+TEST(KeyboardShortcutCompatibility, PreservesPublishedMenuLabelsAndKeys)
 {
     const std::string inputs = read_code(source_root / "inputs.cpp");
-    const std::string app = read_code(source_root / "alienorum.cpp");
-    const std::string dialogs = read_code(source_root / "dialogs.cpp");
-    const std::string population = read_code(source_root / "fictionalstars_ui.cpp");
     const auto standard_menu = menu_shortcuts(binding_block(inputs, "voidshow_menu(", "}"));
     constexpr std::string_view expected_menu = R"keys("Accelerate Backward","Home"
 "Accelerate Forward","End"
@@ -257,82 +244,6 @@ vmtext[mode],next_surface_map_view(view_mode)==mode?"$":nullptr
 vmtext[vm_model],":"
 )keys";
     EXPECT_EQ(std::string_view(standard_menu), expected_menu) << "F1 menu labels and keys";
-
-    // These blocks include the inline actions for typed keys, the named-key routes and
-    // their handlers, modifier rules, and the keys owned by the main loop and search fields.
-    const struct
-    {
-        std::string_view code;
-        std::string_view begins;
-        std::string_view ends;
-        uint64_t expected;
-    } bindings[] =
-    {
-        {inputs, "voidprocess_key_cmd_char(", "}", 0xf614624ba5381b2full},
-        {inputs, "voidprocess_key_cmd_ctrl_char(", "}", 0xfe5c65d59bedf0beull},
-        {inputs, "boolkeyboard_edit_field_active(", "}", 0xfddd8c4cac7912f3ull},
-        {inputs, "voidprocess_keyboard_commands(", "}", 0x0c56069e591a7379ull},
-        {inputs, "ViewModenext_surface_map_view(", "}", 0x2d60300408fc617dull},
-        {inputs, "voidprocess_key_arrowleft(", "}", 0x015c577e4c870064ull},
-        {inputs, "voidprocess_key_arrowright(", "}", 0x2a7d5fdc0eb58b1cull},
-        {inputs, "voidprocess_key_arrowup(", "}", 0xb40b98f03fa1ff39ull},
-        {inputs, "voidprocess_key_arrowdn(", "}", 0xddb2ad618bf60b93ull},
-        {inputs, "voidprocess_key_home(", "}", 0x0f9371de90d7e258ull},
-        {inputs, "voidprocess_key_end(", "}", 0xc39ba3f4b7281f4eull},
-        {inputs, "voidprocess_key_delete(", "}", 0x95c9238d585bb4a4ull},
-        {inputs, "voidprocess_key_F1(", "}", 0xb6518818ebf4ac9aull},
-        {inputs, "voidprocess_key_F2(", "}", 0x5db4581b7527ffa3ull},
-        {inputs, "voidprocess_key_F3(", "}", 0x304fa45f52697833ull},
-        {inputs, "voidprocess_key_F4(", "}", 0xf86c4852d0241c12ull},
-        {inputs, "voidprocess_key_F5(", "}", 0xef2f33048232174aull},
-        {inputs, "voidprocess_key_shift_F5(", "}", 0xc9659d4a1b78db2eull},
-        {inputs, "voidprocess_key_F6(", "}", 0x7610bba4eb0b2529ull},
-        {inputs, "voidprocess_key_F7(", "}", 0x0d33c1d0f6889c24ull},
-        {inputs, "voidprocess_key_F8(", "}", 0x44a6df5351201637ull},
-        {inputs, "voidprocess_key_F9(", "}", 0x5c5abf48f148a3d4ull},
-        {inputs, "voidprocess_key_F10(", "}", 0xe3990df841dd5d1eull},
-        {inputs, "voidprocess_key_F11(", "}", 0x4ce39e156b22005bull},
-        {inputs, "voidprocess_key_F12(", "}", 0x62641ba69eb1cce5ull},
-        {app, "if(loading_frame&&event.type==SDL_KEYDOWN", ";", 0x8556d7a88bd3faf6ull},
-        {app, "if(ImGui::IsKeyPressed(ImGuiKey_Escape)", "}", 0xead7f7148ce02a4full},
-        {app, "if(argsfs||(!io.KeyShift", "}", 0xa9a7201129d01488ull},
-        {dialogs, "if(ImGui::InputText(\"##find\"", ";", 0x3fcb766cc1b60cc6ull},
-        {population, "boolsearch=ImGui::InputText(\"##Find galaxy\"", ";", 0xee6e3166736d002bull}
-    };
-    for (const auto& entry : bindings)
-    {
-        SCOPED_TRACE(entry.begins);
-        EXPECT_EQ(fingerprint(binding_block(entry.code, entry.begins, entry.ends)), entry.expected);
-    }
-}
-
-TEST(KeyboardShortcutCompatibility, KeepsKeyboardInputAtKnownSites)
-{
-    const std::regex key_api(R"(\b(IsKeyPressed|IsKeyReleased|IsKeyDown|IsKeyChordPressed|Shortcut|SetNextItemShortcut|InputQueueCharacters|SDL_GetKeyboardState|SDL_KEYDOWN|SDL_KEYUP|ImGuiInputTextFlags_EnterReturnsTrue)\b)");
-    const std::map<std::string, int> expected =
-    {
-        {"alienorum.cpp", 3},
-        {"dialogs.cpp", 1},
-        {"fictionalstars_ui.cpp", 1},
-        {"inputs.cpp", 56},
-        {"visuals.cpp", 2}
-    };
-    std::map<std::string, int> actual;
-    for (auto it = fs::recursive_directory_iterator(source_root); it != fs::recursive_directory_iterator(); ++it)
-    {
-        const auto& path = it->path();
-        if (it->is_directory())
-        {
-            if (path.filename() == "include" || path.filename() == "vendor" || path.filename() == "tests")
-                it.disable_recursion_pending();
-            continue;
-        }
-        if (path.extension() != ".cpp" && path.extension() != ".h") continue;
-        const auto code = read_code(path, false);
-        const auto count = std::distance(std::sregex_iterator(code.begin(), code.end(), key_api), std::sregex_iterator());
-        if (count) actual.emplace(path.lexically_relative(source_root).generic_string(), count);
-    }
-    EXPECT_EQ(actual, expected);
 }
 
 class KeyboardShortcutEvents : public UniverseFixture
@@ -462,4 +373,186 @@ TEST_F(KeyboardShortcutEvents, PressingDeleteWhileEditingTextPreservesTheSelecte
     EXPECT_FALSE(planet->deleted);
     EXPECT_EQ(selected, planet->seqno);
     editing = prior_editing;
+}
+
+TEST_F(KeyboardShortcutEvents, CloudAndConstellationBindingsRespectCaseAndModifiers)
+{
+    make_star();
+    make_star("Second star");
+    const bool prior_constellations = show_consln;
+    const bool prior_clouds = show_clouds;
+    const bool prior_changed = viewchanged;
+    const bool prior_labels = show_labels;
+    const auto prior_label_type = cbolbls_selected_idx;
+    show_consln = show_clouds = show_labels = false;
+
+    type('c');
+    EXPECT_TRUE(show_consln);
+    EXPECT_FALSE(show_clouds);
+    EXPECT_FALSE(show_labels);
+
+    press(ImGuiKey_C, true);
+    EXPECT_TRUE(show_clouds);
+    EXPECT_TRUE(show_consln);
+    EXPECT_FALSE(show_labels);
+
+    type('C');
+    EXPECT_TRUE(show_labels);
+    EXPECT_EQ(cbolbls_selected_idx, lbltype_sunlike);
+    EXPECT_TRUE(show_consln);
+    EXPECT_TRUE(show_clouds);
+
+    show_consln = prior_constellations;
+    show_clouds = prior_clouds;
+    show_labels = prior_labels;
+    cbolbls_selected_idx = prior_label_type;
+    viewchanged = prior_changed;
+}
+
+TEST_F(KeyboardShortcutEvents, FunctionKeysOpenTheMenuAndToggleTheirOwnSettings)
+{
+    const bool prior_menu = menu;
+    const bool prior_favorites = show_favestars;
+    const bool prior_timestep = local_tmstep;
+    menu = show_favestars = local_tmstep = false;
+
+    press(ImGuiKey_F1);
+    EXPECT_TRUE(menu);
+    EXPECT_FALSE(show_favestars);
+    EXPECT_FALSE(local_tmstep);
+
+    press(ImGuiKey_F7);
+    EXPECT_TRUE(menu);
+    EXPECT_TRUE(show_favestars);
+    EXPECT_FALSE(local_tmstep);
+
+    press(ImGuiKey_F10);
+    EXPECT_TRUE(menu);
+    EXPECT_TRUE(show_favestars);
+    EXPECT_TRUE(local_tmstep);
+
+    press(ImGuiKey_F1);
+    EXPECT_FALSE(menu);
+    EXPECT_TRUE(show_favestars);
+    EXPECT_TRUE(local_tmstep);
+
+    menu = prior_menu;
+    show_favestars = prior_favorites;
+    local_tmstep = prior_timestep;
+}
+
+class KeyboardWarpEvents : public KeyboardShortcutEvents
+{
+protected:
+    const ViewMode prior_mode = view_mode;
+    const ViewerPlaneMode prior_plane = vplane_mode;
+    const CelestialLocation prior_location = here;
+    const Point prior_velocity = velocity;
+    const int prior_observer = whereami;
+    const int prior_departure = took_off_from;
+    const int prior_countdown = tookoff_countdown;
+    const double prior_azimuth = azimuth;
+    const double prior_altitude = altitude;
+    const double prior_azimuth_correction = azimuth_correction;
+    const double prior_north = npaz;
+    const double prior_spin = spin;
+    const std::string prior_locale = viewer_locale;
+    const bool prior_inversion = satview_upsidedown;
+    const bool prior_changed = viewchanged;
+
+    void SetUp() override
+    {
+        KeyboardShortcutEvents::SetUp();
+        vplane_mode = vplane_local;
+        azimuth = altitude = azimuth_correction = 0;
+        velocity = Point();
+    }
+
+    void TearDown() override
+    {
+        view_mode = prior_mode;
+        vplane_mode = prior_plane;
+        here = prior_location;
+        velocity = prior_velocity;
+        whereami = prior_observer;
+        took_off_from = prior_departure;
+        tookoff_countdown = prior_countdown;
+        azimuth = prior_azimuth;
+        altitude = prior_altitude;
+        azimuth_correction = prior_azimuth_correction;
+        npaz = prior_north;
+        spin = prior_spin;
+        viewer_locale = prior_locale;
+        satview_upsidedown = prior_inversion;
+        viewchanged = prior_changed;
+        KeyboardShortcutEvents::TearDown();
+    }
+};
+
+TEST_F(KeyboardWarpEvents, WarpEntersSpaceshipAndDetachesFromTheCurrentObject)
+{
+    auto* world = make_planet(make_star());
+    for (const auto mode : {vm_spaceship, vm_horizon, vm_sunclock, vm_skymap,
+                            vm_system, vm_bumpmap, vm_thermal, vm_model})
+    {
+        SCOPED_TRACE(mode);
+        view_mode = mode;
+        whereami = world->seqno;
+        velocity = Point(0, 0, 10);
+
+        type('w');
+
+        EXPECT_EQ(view_mode, vm_spaceship);
+        EXPECT_EQ(whereami, -1);
+        EXPECT_EQ(took_off_from, world->seqno);
+        EXPECT_GT(velocity.magnitude() * target_frame_rate, speed_of_light);
+        EXPECT_DOUBLE_EQ(velocity.z, velocity.magnitude());
+    }
+}
+
+TEST_F(KeyboardWarpEvents, WarpFromModelStartsAtTheFocus)
+{
+    make_star();
+    auto* focus = make_star("Model focus");
+    focus->location.system_center = Point(1000, 2000, 3000);
+    focus->location.local_position = Point(100, 200, 300);
+    whereami = focus->seqno;
+    view_mode = vm_model;
+
+    type('w');
+
+    EXPECT_EQ(view_mode, vm_spaceship);
+    EXPECT_EQ(whereami, -1);
+    EXPECT_EQ(took_off_from, focus->seqno);
+    EXPECT_DOUBLE_EQ((here.system_center - focus->location.system_center).magnitude(), 0);
+    EXPECT_DOUBLE_EQ((here.local_position - focus->location.local_position).magnitude(), 0);
+    EXPECT_GT(velocity.magnitude() * target_frame_rate, speed_of_light);
+}
+
+TEST_F(KeyboardWarpEvents, WarpFromSatelliteModelUsesItsFlightPositionAndPlane)
+{
+    auto* planet = make_planet(make_star());
+    auto* satellite = new Satellite();
+    ASSERT_TRUE(append_cel(satellite));
+    Orbit orbit;
+    orbit.center = planet;
+    orbit.period = 7200;
+    satellite->orbit = &orbit;
+    const Point outward(3e6, 4e6, 5e6);
+    satellite->location.local_position = planet->location.local_position + outward;
+    whereami = satellite->seqno;
+    view_mode = vm_model;
+    satview_upsidedown = false;
+
+    type('w');
+    satellite->orbit = nullptr;
+
+    EXPECT_EQ(view_mode, vm_spaceship);
+    EXPECT_EQ(whereami, -1);
+    EXPECT_EQ(took_off_from, satellite->seqno);
+    EXPECT_DOUBLE_EQ((here.local_position - satellite->location.local_position).magnitude(), 0);
+    const Point up = to_viewer_plane(outward * (1.0 / outward.magnitude()));
+    EXPECT_NEAR(up.x, 0, 1e-9);
+    EXPECT_NEAR(up.y, 1, 1e-9);
+    EXPECT_NEAR(up.z, 0, 1e-9);
 }

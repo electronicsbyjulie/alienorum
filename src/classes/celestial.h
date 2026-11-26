@@ -519,9 +519,9 @@ namespace alienorum
         std::string scaled_distance(CelestialLocation fromwhere, bool is_low_orbit_sat = false);
         void randomize();
         uint32_t texture_seed() const;
-        double density();
+        double density() const;
         double Hill_sphere_radius();
-        double Roche_limit(CelestialObject *orbiter = nullptr);
+        double Roche_limit(const CelestialObject* orbiter = nullptr) const;
         json to_json();
         bool from_json(const json& j);
         // Update retains elevations; an explicit Regenerate discards them.
@@ -543,6 +543,7 @@ namespace alienorum
         inline cel_obj_class typeclass() const { return  _class; };
         const double& curr_mean_anom = _currM;
     };
+    double sample_orbit_inclination(const CelestialObject& object, double angle, double sense);
 }
 
 extern CelestialObject **cels, *mycenobj;

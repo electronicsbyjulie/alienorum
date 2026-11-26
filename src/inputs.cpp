@@ -959,29 +959,29 @@ void process_key_cmd_char(char c)
         case 'V': show_localsys = !show_localsys; viewchanged = true; break;
 
         case 'w':
-        if (view_mode == vm_model)
         {
+            const bool leaving_model = view_mode == vm_model;
             view_mode = vm_spaceship;
-            set_viewer_location_and_plane();
+            if (leaving_model) set_viewer_location_and_plane();
+            if (velocity.magnitude())
+            {
+                velocity.scale(speed_of_light * 1.00001 / target_frame_rate);
+            }
+            else
+            {
+                velocity.x =  sin(azimuth+azimuth_correction) * cos(altitude) * speed_of_light * 1.00001 / target_frame_rate;
+                velocity.z =  cos(azimuth+azimuth_correction) * cos(altitude) * speed_of_light * 1.00001 / target_frame_rate;
+                velocity.y =  sin(altitude) * speed_of_light * 1.00001 / target_frame_rate;
+                velocity = to_viewer_plane(velocity, -1);
+            }
+            spin = 0;
+            viewchanged = true;
+            took_off_from = whereami;
+            tookoff_countdown = 5;
+            whereami = -1;
+            viewer_locale = "";
+            break;
         }
-        if (velocity.magnitude())
-        {
-            velocity.scale(speed_of_light * 1.00001 / target_frame_rate);
-        }
-        else
-        {
-            velocity.x =  sin(azimuth+azimuth_correction) * cos(altitude) * speed_of_light * 1.00001 / target_frame_rate;
-            velocity.z =  cos(azimuth+azimuth_correction) * cos(altitude) * speed_of_light * 1.00001 / target_frame_rate;
-            velocity.y =  sin(altitude) * speed_of_light * 1.00001 / target_frame_rate;
-            velocity = to_viewer_plane(velocity, -1);
-        }
-        spin = 0;
-        viewchanged = true;
-        took_off_from = whereami;
-        tookoff_countdown = 5;
-        whereami = -1;
-        viewer_locale = "";
-        break;
 
         case 'W': whtbkgd = !whtbkgd; break;
 
@@ -1542,10 +1542,10 @@ void process_key_home()
             if (ImGui::IsKeyDown(ImGuiKey_RightShift)) walk_speed *= 10;
             if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl)) walk_speed *= 100;
             if (ImGui::IsKeyDown(ImGuiKey_RightCtrl)) walk_speed *= 100;
-            double inv_circ = 1.0 / (_pi * 2 * cels[whereami]->volumetric_mean_radius);
+            const double inverse_radius = 1.0 / cels[whereami]->volumetric_mean_radius;
             double coslat = cos(viewer_lat);
-            viewer_lat -= walk_speed * inv_circ * cos(azimuth);
-            if (coslat) viewer_lon -= walk_speed * inv_circ * sin(azimuth) / coslat;
+            viewer_lat -= walk_speed * inverse_radius * cos(azimuth);
+            if (coslat) viewer_lon -= walk_speed * inverse_radius * sin(azimuth) / coslat;
             save_viewer_latlon = false;
         }
         else if ((vmag = velocity.magnitude()))                 // assignment not comparison
@@ -1572,10 +1572,10 @@ void process_key_end()
             if (ImGui::IsKeyDown(ImGuiKey_RightShift)) walk_speed *= 10;
             if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl)) walk_speed *= 100;
             if (ImGui::IsKeyDown(ImGuiKey_RightCtrl)) walk_speed *= 100;
-            double inv_circ = 1.0 / (_pi * 2 * cels[whereami]->volumetric_mean_radius);
+            const double inverse_radius = 1.0 / cels[whereami]->volumetric_mean_radius;
             double coslat = cos(viewer_lat);
-            viewer_lat += walk_speed * inv_circ * cos(azimuth);
-            if (coslat) viewer_lon += walk_speed * inv_circ * sin(azimuth) / coslat;
+            viewer_lat += walk_speed * inverse_radius * cos(azimuth);
+            if (coslat) viewer_lon += walk_speed * inverse_radius * sin(azimuth) / coslat;
             save_viewer_latlon = false;
         }
         else if ((vmag = velocity.magnitude()))                 // assignment not comparison

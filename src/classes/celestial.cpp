@@ -5972,6 +5972,7 @@ void alienorum::Map::generate_ring_map(CelestialObject *cel, int res, double rir
         else xmap = cel->ringx_map;
 
         assert(xmap);
+        procedurally_generated = xmap->procedurally_generated = true;
         cel->randomize();
 
         std::this_thread::sleep_for(std::chrono::milliseconds((int)frand(13,29)));
@@ -6139,7 +6140,7 @@ void alienorum::Map::mark_for_map_regen(CelestialObject *cel, bool discard_bump)
     }
 }
 
-double alienorum::CelestialObject::density()
+double alienorum::CelestialObject::density() const
 {
     if (!volumetric_mean_radius || !mass) return 0;
     return mass / sphere_volume(volumetric_mean_radius) * 1e-6;
@@ -6152,7 +6153,7 @@ double alienorum::CelestialObject::Hill_sphere_radius()
     return orbit->semimajor_axis * (1.0 - orbit->eccentricity) * std::cbrt(mass / (3.0 * orbit->center->mass));
 }
 
-double alienorum::CelestialObject::Roche_limit(CelestialObject* orbiter)
+double alienorum::CelestialObject::Roche_limit(const CelestialObject* orbiter) const
 {
     double primary_density = density(), orbiter_density = orbiter ? orbiter->density() : 3.35;          // Default = lunar density
     if (primary_density <= 0.0 || orbiter_density <= 0.0) return 0.0;
@@ -6165,8 +6166,36 @@ double alienorum::CelestialObject::Roche_limit(CelestialObject* orbiter)
     return constant * volumetric_mean_radius * std::cbrt(primary_density / orbiter_density);
 }
 
+double alienorum::sample_orbit_inclination(const CelestialObject& object, double angle, double sense)
+{
+    const auto* orbit = object.orbit;
+    const auto* parent = orbit ? orbit->center : nullptr;
+    switch (object.typeclass())
+    {
+        case class_moon:
+        {
+            const double roche = parent ? parent->Roche_limit(&object) : 0;
+            const double tidal_alignment = roche > 0 ? std::clamp((orbit->semimajor_axis / roche - 1) / 10, 0.0, 1.0) : 1;
+            const double inclination = std::pow(angle, 4) * .2 * half_pi * tidal_alignment;
+            return sense < .03 ? _pi - inclination : inclination;
+        }
+        case class_satellite:
+            return (angle + (sense < .1 ? 1 : 0)) * half_pi;
+        case class_planet:
+            // A phenomenological model based on the cool/hot host split in
+            // Albrecht et al. (2012), ApJ 757:18. Their angles are projected.
+            if (object.type == hot_jupiter && parent && parent->typeclass() == class_star
+                && (static_cast<const Star*>(parent)->estimate_temperature() >= 6250 || sense < .1))
+                return std::acos(1 - 2 * angle);
+            return std::pow(angle, 4) * 6 * fiftyseventh;
+        default:
+            return std::acos(1 - 2 * angle);
+    }
+}
+
 bool append_cel(CelestialObject *cel)
 {
+    if (!cel || (cel->seqno >= 0 && cel->seqno < ncelobjs && cels[cel->seqno] == cel)) return false;
     if (ncelobjs >= MAX_CELOBJS-1)
     {
         static bool complained = false;
@@ -6183,14 +6212,6 @@ bool append_cel(CelestialObject *cel)
 
     if (first_sat < 0 && cel->typeclass() == class_satellite) first_sat = ncelobjs;
     lsyscache.clear();
-
-    int j=0;
-    for (int i=ncelobjs-1; i>0; i--)
-    {
-        if (cels[i] == cel) return false;
-        j++;
-        if (j > 13) break;
-    }
 
     cels[ncelobjs] = cel;
     cel->seqno = ncelobjs;

@@ -61,8 +61,14 @@ def prepare(args):
         grid = (np.sum(weights * residual[indices], axis=1) / weights.sum(axis=1)).reshape(target.shape[:2])
     elif args.kind == "radii":
         data = np.loadtxt(args.source)
-        latitudes, longitudes = np.unique(data[:, 0]), np.unique(data[:, 1])
-        radii = data[:, 2].reshape(len(latitudes), len(longitudes)) * 1000
+        latitudes, rows = np.unique(data[:, 0], return_inverse=True)
+        longitudes, columns = np.unique(data[:, 1], return_inverse=True)
+        shape = (len(latitudes), len(longitudes))
+        cells = np.ravel_multi_index((rows, columns), shape)
+        if np.unique(cells).size != cells.size:
+            raise ValueError("Radius grid contains duplicate coordinates")
+        radii = np.full(shape, np.nan)
+        radii[rows, columns] = data[:, 2] * 1000
         lat, lon = np.meshgrid(np.radians(latitudes), np.radians(longitudes), indexing="ij")
         unit = np.stack((np.cos(lat) * np.cos(lon), np.cos(lat) * np.sin(lon), np.sin(lat)), axis=-1)
         residual, axes = fit_residual(radii, unit)
@@ -71,10 +77,13 @@ def prepare(args):
         target_lon = -180 + (np.arange(width) + .5) * 360 / width
         if args.west:
             target_lon = -target_lon
-        x = np.mod(target_lon, 360) / (longitudes[1] - longitudes[0])
-        y = (target_lat - latitudes[0]) / (latitudes[1] - latitudes[0])
+        if longitudes[-1] - longitudes[0] == 360:
+            longitudes, residual = longitudes[:-1], residual[:, :-1]
+        x = np.interp(np.mod(target_lon - longitudes[0], 360) + longitudes[0],
+                      np.r_[longitudes, longitudes[0] + 360], np.arange(len(longitudes) + 1))
+        y = np.interp(target_lat, latitudes, np.arange(len(latitudes)))
         yy, xx = np.meshgrid(y, x, indexing="ij")
-        grid = map_coordinates(residual, [yy, xx], order=1, mode="nearest")
+        grid = map_coordinates(np.c_[residual, residual[:, 0]], [yy, xx], order=1, mode="nearest")
     else:
         import rasterio
         from rasterio.warp import reproject, Resampling

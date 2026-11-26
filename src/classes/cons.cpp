@@ -3,6 +3,7 @@
 #include <set>
 #include <vector>
 #include <sstream>
+#include <fstream>
 #include "alienorumid.h"
 #include "cons.h"
 #include "serial.h"
@@ -146,6 +147,42 @@ bool might_star_be_maybe_in_constellation(double s_ra, double s_decl, const std:
 
 Constellation *identify_cons_from_coords(double RA, double Decl)
 {
+    if (!std::isfinite(RA) || !std::isfinite(Decl) || std::abs(Decl) > half_pi) return nullptr;
+    struct BoundaryStrip
+    {
+        double first_hour, last_hour, minimum_declination;
+        std::string abbreviation;
+    };
+    static const auto strips = []
+    {
+        std::vector<BoundaryStrip> result;
+        std::ifstream input("catalogs/constellation_lookup.dat");
+        for (std::string line; std::getline(input, line);)
+        {
+            BoundaryStrip row;
+            std::istringstream fields(line);
+            if (fields >> row.first_hour >> row.last_hour >> row.minimum_declination >> row.abbreviation)
+                result.push_back(std::move(row));
+        }
+        return result;
+    }();
+    if (!strips.empty())
+    {
+        constexpr double b1875 = (2433282.42345905 - 75 * 365.242198781 - 2451545.0) / 365.25;
+        double zeta, z, theta;
+        get_Earth_precession_angles(0, b1875, zeta, z, theta);
+        const Point point = apply_precession_rotation(Point::from_ra_dec(RA, Decl, 1), zeta, z, theta);
+        const double hours = std::fmod(std::atan2(-point.x, point.z) * 12 / _pi + 24, 24);
+        const double degrees = std::atan2(point.y, std::hypot(point.x, point.z)) * fiftyseven;
+        for (const auto& row : strips)
+        {
+            if (hours < row.first_hour || hours >= row.last_hour || degrees < row.minimum_declination) continue;
+            for (auto& constellation : constellations)
+                if ((constellation.vantage_name == "Sun" || is_reference_vantage(constellation.vantage_name))
+                    && !strcasecmp(constellation.abbrev.c_str(), row.abbreviation.c_str())) return &constellation;
+            break;
+        }
+    }
     Constellation* result = nullptr;
     double best = 1e29;
 

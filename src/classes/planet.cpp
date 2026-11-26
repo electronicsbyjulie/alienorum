@@ -318,8 +318,9 @@ std::vector<std::unique_ptr<Moon>> Planet::generate_fictional_moons(std::mt19937
 
         double Roche_dist = m->orbit->semimajor_axis / cel->Roche_limit(m);
         double tidal_modifier = fmin(1.0, fmax(0.0, (Roche_dist - 1.0) / 10.0));        // 0 at Roche limit for perfect tidal alignment.
-        m->orbit->inclination = pow(draw(0, 1), 4) * 0.2 * half_pi * tidal_modifier;
-        if (draw(0,1) < 0.03) m->orbit->inclination = _pi - m->orbit->inclination;
+        const double inclination_draw = draw(0, 1);
+        const double sense_draw = draw(0, 1);
+        m->orbit->inclination = sample_orbit_inclination(*m, inclination_draw, sense_draw);
         m->obliquity = pow(draw(0, 1), 10) * half_pi * tidal_modifier;
 
         if (draw(0,1) > D)
@@ -1821,6 +1822,20 @@ void Planet::estimate_radius()
     }
 }
 
+double Planet::rotational_oblateness() const
+{
+    if (!(volumetric_mean_radius > 0) || !(mass > 0) || !(sidereal_rotational_period > 0)) return 0;
+    const double spin = 2 * _pi / sidereal_rotational_period;
+    const double radius = volumetric_mean_radius;
+    const double rotational_parameter = spin * spin * radius * radius * radius / (G * mass);
+    if (!std::isfinite(rotational_parameter)) return 0;
+    // First-order hydrostatic figure. When J2 is unknown, use a representative
+    // fluid Love number for the body's bulk composition.
+    const double love_number = uses_gaseous_map(type) ? .5 : .3;
+    const double quadrupole = J2 > 0 ? J2 : love_number * rotational_parameter / 3;
+    return std::clamp(.5 * rotational_parameter + 1.5 * quadrupole, 0.0, .3);
+}
+
 void Planet::estimate_rotation()
 {
     if (!orbit || !orbit->period) return;
@@ -3163,8 +3178,9 @@ void Planet::generate_ring_parameters(bool gr)
 
     // Safety constraint: If Roche limit is somehow smaller than the planet 
     // (e.g., highly dense planet, very low density moon proxy), rings cannot form.
-    double minInnerRadius = volumetric_mean_radius * 1.1; // 10% gap from the surface/atmosphere
-    if (roche_limit_zero <= minInnerRadius)
+    const double minInnerRadius = get_equatorial_radius() * 1.1;
+    const double maxOuterRadius = roche_limit_zero * .98;
+    if (!(maxOuterRadius > minInnerRadius * 1.15))
     {
         ring_radius = 0;
         return;
@@ -3172,12 +3188,13 @@ void Planet::generate_ring_parameters(bool gr)
 
     // Generate Inner Radius
     // Favor starting relatively close to the planet
-    std::uniform_real_distribution<double> innerDist(minInnerRadius, roche_limit_zero * 0.6);
+    const double maxInnerRadius = std::max(minInnerRadius, roche_limit_zero * .6);
+    std::uniform_real_distribution<double> innerDist(minInnerRadius, maxInnerRadius);
     ring_inner_radius = innerDist(rng);
 
     // Generate Outer Radius
     // Must be larger than inner, and capped tightly by the Roche limit
-    std::uniform_real_distribution<double> outerDist(ring_inner_radius * 1.15, roche_limit_zero * 0.98);
+    std::uniform_real_distribution<double> outerDist(ring_inner_radius * 1.15, maxOuterRadius);
     ring_radius = outerDist(rng);
 
     // Generate Density/Opacity

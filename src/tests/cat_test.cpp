@@ -7326,3 +7326,52 @@ TEST_F(StellarRotationTest, NearbyComponentsFillAnIdentifiedSystemWithoutDuplica
     EXPECT_EQ(companion->stellar_parameters.at("source_parallax_mas"), 198.0);
     EXPECT_LT(find_object("GJ 9902 B", true, 9e29, 0), 0);
 }
+
+TEST_F(CatalogParsingTest, ImportedExoplanetsReceiveRotationBasedFlattening)
+{
+    Star::load_main_seq_dat();
+    auto* host = make_star("Synthetic host");
+    TestCatalogReader reader;
+    ExoRow row;
+    row.hostname = host->name;
+    row.pl_name = "Synthetic host b";
+    row.pl_orbsmax = 5;
+    row.pl_orbper = 4000;
+    row.pl_bmassj = 1;
+    row.pl_radj = 1;
+    row.radius_observed = true;
+    std::map<int, std::vector<int>> planets;
+    unsigned count = 0;
+    ASSERT_TRUE(reader.add_exoplanet_from_row(row, host, planets, count));
+    ASSERT_EQ(count, 1u);
+    ASSERT_EQ(cels[ncelobjs - 1]->typeclass(), class_planet);
+    const auto* imported = static_cast<const Planet*>(cels[ncelobjs - 1]);
+    EXPECT_GT(imported->oblateness, 0);
+    EXPECT_DOUBLE_EQ(imported->oblateness, imported->rotational_oblateness());
+    delete_the_universe();
+}
+
+TEST_F(StellarRotationTest, ImportingACompanionOrbitPreservesExistingMeasuredTemperatures)
+{
+    auto* primary = make_star("Existing primary");
+    primary->temperature = 2510;
+    auto* secondary = make_star("Existing secondary", .04 * solar_mass);
+    strcpy(secondary->spectral_type, "T6");
+    secondary->temperature = 950;
+    const json catalog = {{"systems", json::array({
+        {{"name", "Existing system"}, {"ra_deg", 71.0}, {"dec_deg", -12.0}, {"distance_pc", 5.0},
+         {"members", json::array({
+             {{"label", "A"}, {"name", "Existing primary"}},
+             {{"label", "B"}, {"name", "Existing secondary"}, {"parent", "A"},
+              {"orbit", {{"projected_au", 3.4}}}}
+         })}}
+    })}};
+    std::ofstream("catalogs/stellar_systems.json") << catalog;
+    CatalogReader reader;
+    ASSERT_EQ(reader.read_stellar_systems(cels), 2);
+    ASSERT_NE(secondary->orbit, nullptr);
+    EXPECT_EQ(secondary->orbit->center, primary);
+    EXPECT_DOUBLE_EQ(secondary->temperature, 950);
+    EXPECT_DOUBLE_EQ(primary->temperature, 2510);
+    EXPECT_STREQ(secondary->spectral_type, "T6");
+}

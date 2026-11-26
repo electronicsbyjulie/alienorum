@@ -393,7 +393,7 @@ namespace alienorum
 
         if (!horizon_tracking_active || whereami != last_whereami
             || std::fabs(viewer_lat - last_viewer_lat) > 0.01
-            || std::fabs(viewer_lon - last_viewer_lon) > 0.01)
+            || std::fabs(std::remainder(viewer_lon - last_viewer_lon, 2 * _pi)) > 0.01)
         {
             reset_horizon_tracking();
             last_whereami = whereami;

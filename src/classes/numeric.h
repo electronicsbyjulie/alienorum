@@ -30,6 +30,7 @@ namespace alienorum
     inline bool parse_numeric_value(const std::string& text, double& value, std::string* suffix = nullptr)
     {
         const std::string normalized = numeric_text(text);
+        if (normalized.find('\0') != std::string::npos) return false;
         char* end = nullptr;
         const double parsed = std::strtod(normalized.c_str(), &end);
         if (end == normalized.c_str() || !std::isfinite(parsed)) return false;

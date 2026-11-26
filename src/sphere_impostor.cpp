@@ -373,7 +373,8 @@ namespace alienorum
         "                float rr = length(pos + vLightDir*s);\n"
         "                if (rr >= uRing[0].w && rr <= uRing[1].x)\n"
         "                {\n"
-        "                    float u = clamp((rr - uRing[0].w) / (uRing[1].x - uRing[0].w), 0.0, 1.0);\n"
+        "                    float u = uRing[1].z > 0.5 ? rr / uRing[1].x\n"
+        "                        : clamp((rr - uRing[0].w) / (uRing[1].x - uRing[0].w), 0.0, 1.0);\n"
         "                    float opacity = (uRing[1].y > 0.5)\n"
         "                        ? (1.0 - pow(texture(uSphRingXMap, vec2(u, 0.5)).g, SPH_GOSSAMER))\n"
         "                        : 0.5;\n"
@@ -1334,6 +1335,7 @@ void main()
             p->ring[3] = (float)(in.ring_inner_r / d);
             p->ring[4] = (float)(in.ring_outer_r / d);
             p->ring[5] = in.ringx_map_texture ? 1.0f : 0.0f;
+            p->ring[6] = in.radial_ring_shadow ? 1.0f : 0.0f;
             p->ringx_tex = (GLuint)in.ringx_map_texture;
         }
 
@@ -1433,6 +1435,7 @@ void main()
         float rho_inner, rho_outer;      // inner_r/d, outer_r/d
         float inv_flatten;               // 1/(1-oblateness); 1 for a round occluder
         float has_ring_tex, has_ringx_tex;
+        int radial_textures;
         GLuint ring_tex, ringx_tex;
         float r, g, b, a;                // fallback color
         float tint[3];
@@ -1452,7 +1455,7 @@ void main()
     static GLint s_raRhoInnerLoc = -1, s_raRhoOuterLoc = -1, s_raInvFlattenLoc = -1;
     static GLint s_raHasRingTexLoc = -1, s_raHasRingXTexLoc = -1, s_raColorLoc = -1;
     static GLint s_raLightDirLoc = -1, s_raAmtLitLoc = -1, s_raSelfLuminousLoc = -1, s_raRedlightLoc = -1;
-    static GLint s_uRingMapLoc = -1, s_uRingXMapLoc = -1, s_uRingTintLoc = -1;
+    static GLint s_uRingMapLoc = -1, s_uRingXMapLoc = -1, s_uRingTintLoc = -1, s_uRingRadialLoc = -1;
     using RingUniform3 = void (APIENTRYP)(GLint, GLfloat, GLfloat, GLfloat);
     static RingUniform3 ring_uniform3 = nullptr;
 
@@ -1522,6 +1525,7 @@ void main()
         "uniform sampler2D uRingMap;\n"
         "uniform sampler2D uRingXMap;\n"
         "uniform vec3 uIncidentTint;\n"
+        "uniform int uRadialTextures;\n"
         // Matches gossamer_rings in misc.h (a compile-time #define there, so there's no
         // runtime value to pass down as a uniform).
         "const float GOSSAMER = 0.08;\n"
@@ -1538,7 +1542,7 @@ void main()
         "    vec3 p = dirN * s;\n"
         "    vec3 rel = p - vCenter;\n"
         "    float ringDist = length(rel);\n"
-        "    float dR = max(fwidth(ringDist), 1e-6);\n"
+        "    float dR = clamp(fwidth(ringDist), 1e-6, max(1e-6, 0.5 * (vRhoOuter - vRhoInner)));\n"
         "    float ringCoverage = clamp(min((ringDist - vRhoInner) / dR, (vRhoOuter - ringDist) / dR) + 0.5, 0.0, 1.0);\n"
         "    if (ringCoverage <= 0.0) discard;\n"
         "\n"
@@ -1579,9 +1583,12 @@ void main()
         "    // lands on the middle row, v=0.5.\n"
         "    float u = clamp((ringDist - vRhoInner) / (vRhoOuter - vRhoInner), 0.0, 1.0);\n"
         "\n"
-        "    vec3 ringColor = (vHasRingTex > 0.5) ? texture(uRingMap, vec2(u, 0.5)).rgb : vColor.rgb;\n"
+        "    float radial = clamp(float(ringDist / vRhoOuter), 0.0, 1.0);\n"
+        "    float colorU = (uRadialTextures % 2 != 0) ? radial : u;\n"
+        "    float opacityU = (uRadialTextures >= 2) ? radial : u;\n"
+        "    vec3 ringColor = (vHasRingTex > 0.5) ? texture(uRingMap, vec2(colorU, 0.5)).rgb : vColor.rgb;\n"
         "    float opacity = (vHasRingXTex > 0.5)\n"
-        "        ? (1.0 - pow(texture(uRingXMap, vec2(u, 0.5)).g, GOSSAMER))\n"
+        "        ? (1.0 - pow(texture(uRingXMap, vec2(opacityU, 0.5)).g, GOSSAMER))\n"
         "        : 0.5;\n"
         // GOSSAMER's steep exponent means the raw opacity curve above only approaches 1.0 for
         // ringx pixels essentially exactly at g=0 -- real image data (compression, anti-
@@ -1660,6 +1667,7 @@ void main()
         "uniform sampler2D uRingMap;\n"
         "uniform sampler2D uRingXMap;\n"
         "uniform vec3 uIncidentTint;\n"
+        "uniform int uRadialTextures;\n"
         "const float GOSSAMER = 0.08;\n"
         "void main()\n"
         "{\n"
@@ -1677,7 +1685,7 @@ void main()
         "    dvec3 p = dirN * s;\n"
         "    dvec3 rel = p - cen;\n"
         "    double ringDist = length(rel);\n"
-        "    float dR = max(fwidth(float(ringDist)), 1e-6);\n"
+        "    float dR = clamp(fwidth(float(ringDist)), 1e-6, max(1e-6, 0.5 * float(rhoOuter - rhoInner)));\n"
         "    float ringCoverage = clamp(min(float(ringDist - rhoInner) / dR, float(rhoOuter - ringDist) / dR) + 0.5, 0.0, 1.0);\n"
         "    if (ringCoverage <= 0.0) discard;\n"
         "\n"
@@ -1715,9 +1723,12 @@ void main()
         "\n"
         "    float u = float(clamp((ringDist - rhoInner) / (rhoOuter - rhoInner), 0.0lf, 1.0lf));\n"
         "\n"
-        "    vec3 ringColor = (vHasRingTex > 0.5) ? texture(uRingMap, vec2(u, 0.5)).rgb : vColor.rgb;\n"
+        "    float radial = clamp(float(ringDist / vRhoOuter), 0.0, 1.0);\n"
+        "    float colorU = (uRadialTextures % 2 != 0) ? radial : u;\n"
+        "    float opacityU = (uRadialTextures >= 2) ? radial : u;\n"
+        "    vec3 ringColor = (vHasRingTex > 0.5) ? texture(uRingMap, vec2(colorU, 0.5)).rgb : vColor.rgb;\n"
         "    float opacity = (vHasRingXTex > 0.5)\n"
-        "        ? (1.0 - pow(texture(uRingXMap, vec2(u, 0.5)).g, GOSSAMER))\n"
+        "        ? (1.0 - pow(texture(uRingXMap, vec2(opacityU, 0.5)).g, GOSSAMER))\n"
         "        : 0.5;\n"
         "    opacity = pow(opacity, 0.4) * ringCoverage;\n"
         "\n"
@@ -1828,6 +1839,7 @@ void main()
         s_uRingMapLoc       = glGetUniformLocation(s_ring_program, "uRingMap");
         s_uRingXMapLoc      = glGetUniformLocation(s_ring_program, "uRingXMap");
         s_uRingTintLoc      = glGetUniformLocation(s_ring_program, "uIncidentTint");
+        s_uRingRadialLoc = glGetUniformLocation(s_ring_program, "uRadialTextures");
 
         glUseProgram(s_ring_program);
         glUniform1i(s_uRingMapLoc, 0);
@@ -1919,6 +1931,7 @@ void main()
         glUseProgram(s_ring_program);
         glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
         ring_uniform3(s_uRingTintLoc, p->tint[0], p->tint[1], p->tint[2]);
+        glUniform1i(s_uRingRadialLoc, p->radial_textures);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, p->ring_tex);
         if (p->ring_tex) glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -2009,6 +2022,7 @@ void main()
         // rather than letting the occlusion test divide by zero.
         p->inv_flatten = (float)(1.0 / std::max(1e-6, 1.0 - in.oblateness));
 
+        p->radial_textures = int(in.radial_color) + 2 * int(in.radial_opacity);
         p->has_ring_tex = in.ring_map_texture ? 1.0f : 0.0f;
         p->has_ringx_tex = in.ringx_map_texture ? 1.0f : 0.0f;
         p->ring_tex = (GLuint)in.ring_map_texture;

@@ -152,6 +152,7 @@ namespace alienorum
         void set_bump_height(double value);
         void estimate_radius();                             // if mass known
         void estimate_rotation();                           // if not known, e.g. exoplanets
+        double rotational_oblateness() const;
         double viewer_reflectance_magnitude(CelestialLocation seen_from, double phase = -1, double sourceabsmagn = -1e9, double sourcedist = 0);
         double phase_brightness(double alpha);              // Fraction of the body's opposition brightness left at phase angle alpha (radians).
         double phase_slope_parameter();                     // The IAU G, governing how fast a regolith world dims off opposition.

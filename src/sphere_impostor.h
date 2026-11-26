@@ -58,6 +58,7 @@ namespace alienorum
         double ring_normal[3];
         double ring_inner_r, ring_outer_r;
         unsigned int ringx_map_texture;
+        bool radial_ring_shadow = false;
 
         double atmosphere_height;
         double atmosphere_color[3];
@@ -89,6 +90,8 @@ namespace alienorum
         double oblateness;
         unsigned int ring_map_texture;
         unsigned int ringx_map_texture;
+        bool radial_color = false;
+        bool radial_opacity = false;
         ImU32 fallback_color;
         double incident_tint[3] = {1, 1, 1};
 

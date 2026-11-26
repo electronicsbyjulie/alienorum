@@ -5714,3 +5714,53 @@ TEST_F(PlanetClassificationEvidenceTest, EveryPlanetFamilyHasADaylightMapAcrossC
         if (scenario.type == lavaworld) ASSERT_TRUE(planet->night_map && planet->night_map->is_complete());
     }
 }
+
+TEST(PlanetShapeTest, RotationAndGravityDetermineFlattening)
+{
+    Planet planet;
+    planet.type = gas_giant;
+    planet.mass = jupiter_mass;
+    planet.volumetric_mean_radius = jupiter_radius;
+    planet.sidereal_rotational_period = 10 * 3600;
+    const double fast = planet.rotational_oblateness();
+    EXPECT_GT(fast, .045);
+    EXPECT_LT(fast, .085);
+    planet.sidereal_rotational_period *= 2;
+    EXPECT_NEAR(planet.rotational_oblateness(), fast / 4, 1e-12);
+    planet.sidereal_rotational_period = 0;
+    EXPECT_EQ(planet.rotational_oblateness(), 0);
+}
+
+TEST(PlanetOrbitTest, InclinationSamplerUsesTheOrbiterAndHost)
+{
+    Planet planet;
+    Star host;
+    host.temperature = 5700;
+    planet.orbit = new Orbit();
+    planet.orbit->center = &host;
+    planet.type = gas_giant;
+    EXPECT_LT(sample_orbit_inclination(planet, .9, .25) * fiftyseven, 5);
+    planet.type = hot_jupiter;
+    EXPECT_LT(sample_orbit_inclination(planet, .9, .25) * fiftyseven, 5);
+    host.temperature = 6900;
+    EXPECT_GT(sample_orbit_inclination(planet, .9, .25), half_pi);
+
+    Satellite artificial;
+    EXPECT_LT(sample_orbit_inclination(artificial, .9, .25), half_pi);
+    EXPECT_GT(sample_orbit_inclination(artificial, .9, .05), half_pi);
+
+    Moon moon;
+    planet.mass = jupiter_mass;
+    planet.volumetric_mean_radius = jupiter_radius;
+    moon.mass = earth_mass / 100;
+    moon.volumetric_mean_radius = earth_radius / 4;
+    moon.orbit = new Orbit();
+    moon.orbit->center = &planet;
+    moon.orbit->semimajor_axis = planet.Roche_limit(&moon);
+    EXPECT_NEAR(sample_orbit_inclination(moon, .9, .25), 0, 1e-12);
+    moon.orbit->semimajor_axis *= 20;
+    const double prograde = sample_orbit_inclination(moon, .9, .25);
+    EXPECT_GT(prograde, 0);
+    EXPECT_LT(prograde * fiftyseven, 18);
+    EXPECT_NEAR(sample_orbit_inclination(moon, .9, .01), _pi - prograde, 1e-12);
+}

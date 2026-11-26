@@ -1,0 +1,25 @@
+{
+    "systems": [
+        {
+            "name": "SCR J1845-6357",
+            "ra_deg": 281.2719,
+            "dec_deg": -63.9632,
+            "distance_pc": 4.0053,
+            "members": [
+                {
+                    "label": "A",
+                    "name": "SCR J1845-6357 A"
+                },
+                {
+                    "label": "B",
+                    "name": "SCR J1845-6357 B",
+                    "parent": "A",
+                    "orbit": {
+                        "projected_au": 4.5,
+                        "source": "https://arxiv.org/abs/astro-ph/0601440"
+                    }
+                }
+            ]
+        }
+    ]
+}

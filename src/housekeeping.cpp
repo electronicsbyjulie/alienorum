@@ -197,19 +197,27 @@ void set_viewer_location_and_plane()
         return;
     }
 
-    if (view_mode != vm_model && cels[whereami]->typeclass() == class_satellite)
+    if (view_mode != vm_model && view_mode != vm_system && cels[whereami]->typeclass() == class_satellite)
     {
         view_mode = vm_spaceship;
 
-        if (vplane_mode == vplane_local && cels[whereami]->orbit->center)
+        const auto* orbit = cels[whereami]->orbit;
+        if (vplane_mode == vplane_local && orbit && orbit->center)
         {
             here = cels[whereami]->location;
             // Cancel shared coordinate origins before converting to meters.
             // Absolute galactic positions lose the precision of a satellite orbit.
-            CelestialLocation relative = cels[whereami]->location - cels[whereami]->orbit->center->location;
-            Point zenith(relative);
+            CelestialLocation relative = cels[whereami]->location - orbit->center->location;
+            const Point outward(relative);
+            Point zenith = outward;
             if (satview_upsidedown) zenith *= -1;
             here.equatorial_plane = align_points_3d(zenith, yaxis, center);
+            const auto& orbital_plane = cels[whereami]->location.orbital_plane;
+            const Point pole = rotate3D(Point(0, 1, 0), center, orbital_plane.v, -orbital_plane.a);
+            const Point forward(outward.y * pole.z - outward.z * pole.y,
+                outward.z * pole.x - outward.x * pole.z, outward.x * pole.y - outward.y * pole.x);
+            const Point local_forward = to_viewer_plane(forward);
+            azimuth_correction = std::atan2(local_forward.x, local_forward.z);
             viewchanged = true;
             return;
         }

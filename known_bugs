@@ -1,22 +1,4 @@
 
-Bugs found in the regression audit
+Labels sometimes appear for objects with less than 5 pixel separation from a brighter object.
 
-- The catalog reverses the components of GJ 65. It lists UV Ceti as A and BL Ceti as B. BL Ceti is A and UV Ceti is B.
-- SCR J1845-6357 A and B are searchable as separate stars, but neither has a component list and B has no orbital link to A.
-- Retrying an insertion for an object already in the catalog can give the same object a second slot.
-- The catalog accepts a numeric field with invalid trailing text if a null byte separates that text from the number. Make sure NOT to regress the existing function that some catalog text accepts units appended to a number, such as JD before a number or y (years), d (days), etc after a number.
-- The coordinate lookup places Polaris in Cepheus. It also assigns parts of the 89.9° north declination circle to different constellations depending on right ascension. The entire circle lies in Ursa Minor. This bug also affects alienorumids, which must be redone from scratch now.
-- A low-density, oblate giant can generate a ring whose inner radius lies inside the planet's equator.
-- In spaceship view, a procedural ring's visible inner bands can appear farther out than the ring's catalog radius indicates.
-- In horizon view, walking forward for one second at four metres per second covers only about 0.64 metres.
-- Taking a small step across the date line in horizon view can drop an armed rise alert.
-- Sky label colors can fall below the requested 4.5 contrast ratio after conversion to eight-bit color on both light and dark backgrounds.
-- Reordering the rows of a terrain input file can move terrain features in the generated elevation map even when every sample retains the same coordinates and height.
-
-Additional bugs noted by the developer:
-
-- Ctrl+V does not work from an artificial orbiter placed in orbit around an exoplanet.
-- The view from a satellite does not stay consistent; when having panned to face the direction of motion, the view eventually flips to face in the opposite direction instead.
-- Exoplanets have no estimated oblateness.
-- Clicking the random button on a planet's orbital inclination usually produces too-large results. Randomized inclinations should be mostly 0-90 degrees for satellites, with potentially up to 180 deg, while those for moons should follow the same distribution as the gen. fic. moons button, and those for planets should stay within a few degrees of coplanar to the system plane except in the case of hot Jupiters which have their own inclination distribution - find that info from the internet.
-- In system view, planets with rings often display an anomalous line at infinity distance when the rings are rotated to near edge-on.
+Arrow keys in spaceflight should steer the direction of flight like in a flight simulator, so that if the viewer was moving forward in the direction they were facing, they continue to do so, but sometimes the arrow keys produce the opposite steering direction instead.

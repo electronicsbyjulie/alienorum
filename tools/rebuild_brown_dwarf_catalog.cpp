@@ -14,13 +14,15 @@ using namespace alienorum;
 
 int main(int argc, char** argv)
 {
-    if (argc == 3 && std::string(argv[1]) == "--repair-ids")
+    const bool regenerate_ids = argc == 3 && std::string(argv[1]) == "--regenerate-ids";
+    if (regenerate_ids || (argc == 3 && std::string(argv[1]) == "--repair-ids"))
     {
         cels = new CelestialObject*[MAX_CELOBJS]();
         Star::load_main_seq_dat();
         read_cons_lines();
         CatalogReader reader;
         if (!reader.read_cons_boundaries() || !reader.read_condensed_star_cat()) return 1;
+        if (regenerate_ids) reader.read_stellar_systems(cels);
         std::vector<std::pair<Star*, std::string>> original_ids;
         for (int i = 1; cels[i]; ++i)
         {
@@ -28,7 +30,17 @@ int main(int argc, char** argv)
             auto* star = static_cast<Star*>(cels[i]);
             original_ids.emplace_back(star, star->alienorumid);
         }
-        repair_missing_catalog_ids();
+        if (regenerate_ids)
+        {
+            for (const auto& [star, old_id] : original_ids)
+            {
+                star->alienorumid.clear();
+                if (auto* boundary = identify_cons_from_coords(star->right_ascension, star->declination))
+                    snprintf(star->constellation, sizeof(star->constellation), "%s", boundary->abbrev.c_str());
+            }
+            fill_alienorum_ids();
+        }
+        else repair_missing_catalog_ids();
         std::ofstream crosswalk(argv[2]);
         if (!crosswalk) return 1;
         crosswalk << "Star\tHD\tHIP\tOld ID\tNew ID\n";

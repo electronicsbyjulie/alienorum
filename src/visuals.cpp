@@ -1355,6 +1355,7 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
         in.ring_inner_r = R;
         in.ring_outer_r = ((Planet*)cel)->ring_radius;
         in.ringx_map_texture = gputex_for(cel->ringx_map);
+        in.radial_ring_shadow = cel->ringx_map && cel->ringx_map->procedurally_generated;
     }
 
     // The GPU samples the same projected sky rows as CPU objects and the background.
@@ -1455,6 +1456,8 @@ void draw_ring_gpu(CelestialObject* cel, double arad)
     in.oblateness = cel->oblateness;
     in.ring_map_texture = gputex_for(cel->ring_map);
     in.ringx_map_texture = gputex_for(cel->ringx_map);
+    in.radial_color = cel->ring_map && cel->ring_map->procedurally_generated;
+    in.radial_opacity = cel->ringx_map && cel->ringx_map->procedurally_generated;
     in.fallback_color = IM_COL32(225, 208, 192, 255);   // matches the CPU path's default rgb
     const Color ring_light = Color::reflected_daylight(lightcen);
     in.incident_tint[0] = ring_light.red;
@@ -2220,10 +2223,14 @@ int draw_sphere(CelestialObject* cel, double arad)
         for (ringd = equatorial_radius; ringd <= pl->ring_radius; ringd += step1)
         {
             // Map longitude starts at -pi; the radial profile must never wrap.
-            double xmapd = std::min(std::nextafter(_pi, 0.0),
-                -_pi + (ringd - equatorial_radius) * _pi*2 / ringsize);
-            double ring_opacity = rxmap ? (255.0 * (1.0-pow((double)rxmap->color_at(0, xmapd).g/255, gossamer_rings))) : 0.5;
-            if (rmap) rgb = rmap->color_at(0, xmapd);
+            const auto radial_longitude = [&](const Map* map)
+            {
+                const double fraction = map->procedurally_generated ? ringd / pl->ring_radius
+                    : (ringd - equatorial_radius) / ringsize;
+                return std::min(std::nextafter(_pi, 0.0), -_pi + 2 * _pi * fraction);
+            };
+            double ring_opacity = rxmap ? (255.0 * (1.0-pow((double)rxmap->color_at(0, radial_longitude(rxmap)).g/255, gossamer_rings))) : 0.5;
+            if (rmap) rgb = rmap->color_at(0, radial_longitude(rmap));
             double lonlim = _pi*2+0.5*step2;
 
             for (lon=0; lon<lonlim; lon+=step2)

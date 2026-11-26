@@ -52,6 +52,7 @@ void Star::refresh_planet_statistics()
             if (planet->is_in_con_HZ()) ++has_hz_planets;
         }
     }
+    pl_indices = std::move(valid);
     planet_statistics_temperature = temperature;
     planet_statistics_magnitude = absolute_magnitude;
     planet_statistics_luminosity = bolometric_luminosity();

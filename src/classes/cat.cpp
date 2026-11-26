@@ -41,12 +41,21 @@
 
 namespace fs = std::filesystem;
 
+static constexpr const char* nearby_stellar_systems = "catalogs/nearby_stellar_systems.json";
+
 static json stellar_system_catalog()
 {
     std::ifstream input("catalogs/stellar_systems.json");
     if (!input) return json::object();
     json records;
     input >> records;
+    std::ifstream supplement(nearby_stellar_systems);
+    if (supplement)
+    {
+        json nearby;
+        supplement >> nearby;
+        for (auto& system : nearby.at("systems")) records["systems"].push_back(std::move(system));
+    }
     normalize_uncertain_numbers(records);
     return records;
 }
@@ -5388,7 +5397,7 @@ int CatalogReader::read_stellar_systems(CelestialObject** objects)
             if (!root)
             {
                 root = object;
-                root->HD = hd;
+                if (hd) root->HD = hd;
                 root->HIP = system.value("hip", root->HIP);
                 if (hd && hdcache) hdcache[hd] = root;
                 if (root->HIP && hipcache) hipcache[root->HIP] = root;
@@ -5427,7 +5436,8 @@ int CatalogReader::read_stellar_systems(CelestialObject** objects)
             }
             if (record.contains("mass")) object->mass = record.at("mass").get<double>() * solar_mass;
             if (record.contains("radius")) object->volumetric_mean_radius = record.at("radius").get<double>() * solar_radius;
-            if (!record.contains("temperature"))
+            if (!record.contains("temperature") && (created || !(object->temperature > 0)
+                || record.contains("spectral_type") || record.contains("mass")))
             {
                 const double index = record.contains("mass")
                     ? Star::get_mseqidx_from_mass(object->mass / solar_mass)
@@ -6475,11 +6485,14 @@ static std::string star_orbits_signature()
         hash ^= static_cast<unsigned char>(c);
         hash *= 1099511628211ULL;
     }
-    std::ifstream systems("catalogs/stellar_systems.json", std::ios::binary);
-    while (systems.get(c))
+    for (const char* filename : {"catalogs/stellar_systems.json", nearby_stellar_systems})
     {
-        hash ^= static_cast<unsigned char>(c);
-        hash *= 1099511628211ULL;
+        std::ifstream systems(filename, std::ios::binary);
+        while (systems.get(c))
+        {
+            hash ^= static_cast<unsigned char>(c);
+            hash *= 1099511628211ULL;
+        }
     }
     return "systems5-" + std::to_string(hash);
 }
@@ -9792,6 +9805,7 @@ bool CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, s
     new_planet->estimate_albedo_and_absmagn();
     new_planet->set_color_from_type(new_planet->is_in_con_HZ());
     new_planet->estimate_rotation();
+    new_planet->oblateness = new_planet->rotational_oblateness();
     new_planet->setup_atm_ring_props();
 
     // Append planet object to global array

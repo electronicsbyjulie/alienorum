@@ -2344,9 +2344,18 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::Text("%s", "Inclination");
             ImGui::SameLine(col1);
             ImGui::SetNextItemWidth(txtwid);
-            if (ImGui::InputDouble("##edtincl", &edit_incl, 0, 0, "%.9f"))
+            bool inclination_changed = ImGui::InputDouble("##edtincl", &edit_incl, 0, 0, "%.9f");
+            if (inclination_changed) orb->inclination = edit_incl * fiftyseventh;
+            ImGui::SameLine();
+            if (ImGui::Button("rnd##orbincl"))
             {
-                orb->inclination = edit_incl * fiftyseventh;
+                const double angle = frand(0, 1);
+                const double sense = frand(0, 1);
+                orb->inclination = sample_orbit_inclination(*cel, angle, sense);
+                inclination_changed = true;
+            }
+            if (inclination_changed)
+            {
                 cel->lock_equatorial_plane = false;
                 cel->user_edited = true;
                 viewchanged = true;
@@ -2354,13 +2363,6 @@ void draw_objedit_window(ImGuiIO& io)
                 else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
                 else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
                 else if (cel->typeclass() == class_satellite) ((Satellite*)cel)->update_location(simnow);
-            }
-            ImGui::SameLine();
-            if (ImGui::Button("rnd##orbincl"))
-            {
-                orb->inclination = pow(frand(0, half_pi), 3);
-                if (frand(0,1) < 0.03) orb->inclination = _pi - orb->inclination;
-                cel->user_edited = true;
             }
             ImGui::SameLine(col2);
             edit_node = cel->orbit->ascending_node * fiftyseven;

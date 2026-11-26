@@ -6664,7 +6664,7 @@ TEST_F(RenderingRegressionTest, DirectionalThrustKeepsSurfaceWalkingUnchanged)
     set(save_viewer_latlon, true);
     set(velocity, Point(0, 0, 1000));
     const Point previous = velocity;
-    const double step = walk_speed / (2 * _pi * world->volumetric_mean_radius);
+    const double step = walk_speed / world->volumetric_mean_radius;
     process_key_end();
     EXPECT_NEAR(viewer_lat, 0.3 + step, 1e-15);
     EXPECT_DOUBLE_EQ(viewer_lon, 0.2);
@@ -13008,5 +13008,45 @@ TEST_F(RenderingRegressionTest, PopulationDialogReopensWithControlsForTheCurrent
         EXPECT_EQ(ncelobjs, 3);
         close_fictional_region();
         EXPECT_TRUE(panel_text(draw_fictional_region).empty());
+    }
+}
+
+TEST_F(RenderingRegressionTest, NearEdgeOnSystemRingsStayInsideTheirProjectedExtent)
+{
+    auto* light = make_star();
+    auto* world = make_planet(light);
+    constexpr double radius = 1e7;
+    world->volumetric_mean_radius = radius;
+    world->ring_radius = 3 * radius;
+    world->amt_lit = 1;
+    world->location.local_position = Point(0, 0, radius * 1000);
+    world->tmprel = world->location.local_position;
+    set(here, CelestialLocation());
+    set(view_mode, vm_system);
+    set(system_view_yaw, 0.0);
+    set(system_view_pitch, 0.0);
+    world->drawnx = dispcx;
+    world->drawny = dispcy;
+    for (double tilt : {.2, -.2, .04, -.04, .001, -.001})
+    {
+        system_view_pitch = tilt;
+        impostor_begin_frame();
+        draw_ring_gpu(world, dispcx / 10);
+        const auto rgba = render();
+        ImGui::NewFrame();
+        int inside = 0, outside = 0;
+        for (int y = 0; y < render_height; ++y)
+            for (int x = 0; x < render_width; ++x)
+            {
+                if (rgba[(y * render_width + x) * 4] <= 5) continue;
+                const double position = std::hypot(x + .5 - dispcx, y + .5 - dispcy);
+                if (position <= dispcx * 3 / std::sqrt(91.0) + 3) ++inside;
+                else ++outside;
+            }
+        EXPECT_EQ(outside, 0) << tilt;
+        if (std::abs(tilt) >= .2)
+        {
+            EXPECT_GT(inside, 0) << tilt;
+        }
     }
 }

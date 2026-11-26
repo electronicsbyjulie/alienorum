@@ -9,6 +9,7 @@
 #include "../classes/satellite.h"
 #include "universe_fixture.h"
 #include "../housekeeping.h"
+#include "../inputs.h"
 
 using namespace alienorum;
 using json = nlohmann::json;
@@ -597,4 +598,55 @@ TEST(CSVParserTest, EscapedQuotesAndUtf8NamesCannotShiftOrbitalColumns)
 {
     const auto columns = parse_csv_row(u8"\"Étoile, \"\"B\"\"\",25544,,0,0.00067,");
     EXPECT_EQ(columns, (std::vector<std::string>{u8"Étoile, \"B\"", "25544", "", "0", "0.00067", ""}));
+}
+
+TEST_F(SatelliteViewerPlaneTest, EnteringSystemViewFromAnExoplanetOrbiterSurvivesTheFrameUpdate)
+{
+    auto* star = make_star();
+    auto* planet = make_planet(star);
+    auto* satellite = new Satellite();
+    satellite->orbit = new Orbit();
+    satellite->orbit->center = planet;
+    satellite->cenobj = star;
+    ASSERT_TRUE(append_cel(satellite));
+    const auto previous_camera = std::make_tuple(mycenobj, zoom, trackidx, statuswnd,
+        system_view_yaw, system_view_pitch, lbl_localsys);
+    mycenobj = star;
+    whereami = satellite->seqno;
+    view_mode = vm_spaceship;
+    process_key_cmd_ctrl_char('v');
+    set_viewer_location_and_plane();
+    EXPECT_EQ(view_mode, vm_system);
+    EXPECT_DOUBLE_EQ((here.system_center - star->location.system_center).magnitude(), 0);
+    std::tie(mycenobj, zoom, trackidx, statuswnd, system_view_yaw, system_view_pitch, lbl_localsys) = previous_camera;
+}
+
+TEST_F(SatelliteViewerPlaneTest, LocalForwardFollowsMotionAroundAnInclinedOrbit)
+{
+    auto* planet = make_planet(make_star());
+    auto* satellite = new Satellite();
+    satellite->orbit = new Orbit();
+    satellite->orbit->center = planet;
+    satellite->orbit->period = 7200;
+    satellite->orbit->semimajor_axis = 8e6;
+    satellite->orbit->epoch = J2000;
+    satellite->orbit->inclination = .7;
+    ASSERT_TRUE(append_cel(satellite));
+    whereami = satellite->seqno;
+    vplane_mode = vplane_local;
+    const double previous_correction = azimuth_correction;
+    for (int step = 0; step < 48; ++step)
+    {
+        const double time = J2000_TIME_T + step * 150;
+        satellite->update_location(time + 1);
+        const Point ahead = satellite->location.local_position;
+        satellite->update_location(time);
+        view_mode = vm_spaceship;
+        set_viewer_location_and_plane();
+        const Point motion = to_viewer_plane(ahead - satellite->location.local_position);
+        const Point camera = rotate3D(motion, center, yaxis, -azimuth_correction);
+        EXPECT_GT(camera.z, 0) << step;
+        EXPECT_NEAR(camera.x, 0, 1e-5 * motion.magnitude()) << step;
+    }
+    azimuth_correction = previous_correction;
 }
