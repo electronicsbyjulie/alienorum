@@ -2913,3 +2913,62 @@ TEST(ObjectSearchKeyboardRegression, AccentFoldingPreservesKeyboardPunctuationAn
     EXPECT_EQ(object_search_key(u8"é+ö-1"), "e+o-1");
     EXPECT_NE(object_search_key(u8"ν Ori"), object_search_key("NU Ori"));
 }
+
+TEST_F(SerializationTest, AnnotatingEveryNumericLeafPreservesAWholeSystem)
+{
+    Star* host = make_star("Audit primary");
+    Planet* planet = make_planet(host, "Audit primary b", 3 * AU);
+    planet->orbit->eccentricity = .35;
+    planet->sidereal_rotational_period = -42000;
+    planet->ring_inner_radius = 2e7;
+    planet->ring_radius = 4e7;
+    planet->ring_mean_opacity = .47;
+    planet->ensure_atmosphere()->surface_pressure = 48000;
+    planet->atm->ensure_composition()->CO2_portion = .63;
+    planet->atm->comp->N2_portion = .37;
+    Moon moon;
+    strcpy(moon.name, "Audit satellite");
+    moon.mass = lunar_mass;
+    moon.volumetric_mean_radius = 1.7e6;
+    moon.orbit = new Orbit();
+    moon.orbit->center = planet;
+    moon.orbit->semimajor_axis = 4e8;
+    moon.orbit->compute_period(moon.mass);
+    const json plain = {{"a", moon.to_json()}, {"b", planet->to_json()}, {"c", host->to_json()}};
+    auto annotated = plain.flatten();
+    int fields = 0;
+    for (auto& value : annotated)
+    {
+        if (!value.is_number()) continue;
+        value = value.dump() + "?";
+        ++fields;
+    }
+    ASSERT_GT(fields, 50);
+    delete_the_universe();
+    json expected;
+    for (const bool estimates : {false, true})
+    {
+        // Only mutate numeric leaves in situ. Flatten/unflatten maps empty arrays to null.
+        json document = plain;
+        if (estimates)
+            for (const auto& entry : annotated.items())
+            {
+                auto& leaf = document.at(json::json_pointer(entry.key()));
+                if (leaf.is_number()) leaf = entry.value();
+            }
+        ASSERT_TRUE(Serialization::load_document(document, cels, MAX_CELOBJS, false));
+        ASSERT_EQ(ncelobjs, 3);
+        auto* primary = find_loaded("Audit primary");
+        auto* world = find_loaded("Audit primary b");
+        auto* satellite = find_loaded("Audit satellite");
+        ASSERT_TRUE(primary && world && satellite);
+        ASSERT_TRUE(world->orbit && satellite->orbit);
+        EXPECT_EQ(world->orbit->center, primary);
+        EXPECT_EQ(satellite->orbit->center, world);
+        const json actual = {static_cast<Star*>(primary)->to_json(), static_cast<Planet*>(world)->to_json(),
+            static_cast<Moon*>(satellite)->to_json()};
+        if (estimates) EXPECT_EQ(actual, expected);
+        else expected = actual;
+        delete_the_universe();
+    }
+}

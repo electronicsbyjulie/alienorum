@@ -53,3 +53,31 @@ TEST(CraterProfileRegression, StampedLargeBasinsHaveReliefBeyondTheBackgroundNoi
     EXPECT_LT(*std::min_element(heights.begin(), heights.end()), -1.5 * scale);
     EXPECT_GT(*std::max_element(heights.begin(), heights.end()), .1 * scale);
 }
+
+TEST(CraterProfileRegression, APeakRingFormsAnAnnulusInsideTheCavity)
+{
+    for (double depth : {100.0, 600.0, 3000.0})
+    {
+        for (bool ring : {false, true})
+        {
+            const auto uplift = [&](double radius)
+            {
+                return CraterProfile::elevation(radius, depth, depth / 5, .08, depth / 3, ring)
+                    - CraterProfile::elevation(radius, depth, depth / 5, .08, 0, ring);
+            };
+            const double centre = CraterProfile::elevation(0, depth, depth / 5, .08, depth / 3, ring);
+            const double peak = CraterProfile::elevation(.3, depth, depth / 5, .08, depth / 3, ring);
+            if (ring)
+            {
+                EXPECT_GT(peak, centre + depth / 5);
+                EXPECT_GT(uplift(.3), uplift(.6));
+            }
+            else
+            {
+                EXPECT_GT(centre, peak + depth / 5);
+                EXPECT_GT(uplift(0), uplift(.3));
+            }
+            EXPECT_LT(std::abs(uplift(2)), depth * 1e-8);
+        }
+    }
+}

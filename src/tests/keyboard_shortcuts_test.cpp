@@ -437,3 +437,29 @@ TEST_F(KeyboardShortcutEvents, BracketsExclusivelyToggleRiseAndSetAlerts)
     EXPECT_FALSE(target->alert_rise);
     EXPECT_FALSE(target->alert_set);
 }
+
+TEST_F(KeyboardShortcutEvents, PressingDeleteWhileEditingTextPreservesTheSelectedPlanet)
+{
+    auto* planet = make_planet(make_star(), "Editable target");
+    planet->user_added = true;
+    selected = planet->seqno;
+    const bool prior_editing = editing;
+    char buffer[32] = "0123";
+    auto& io = ImGui::GetIO();
+    for (int i = 0; i < 4; ++i)
+    {
+        if (i == 2) io.AddKeyEvent(ImGuiKey_Delete, true);
+        if (i == 3) io.AddKeyEvent(ImGuiKey_Delete, false);
+        ImGui::NewFrame();
+        ImGui::Begin("Editor");
+        if (i == 0) ImGui::SetKeyboardFocusHere();
+        ImGui::InputText("Name", buffer, sizeof(buffer));
+        ImGui::End();
+        if (i == 2) EXPECT_TRUE(keyboard_edit_field_active());
+        process_keyboard_commands(io);
+        ImGui::EndFrame();
+    }
+    EXPECT_FALSE(planet->deleted);
+    EXPECT_EQ(selected, planet->seqno);
+    editing = prior_editing;
+}

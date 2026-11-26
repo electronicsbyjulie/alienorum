@@ -1820,3 +1820,21 @@ TEST(NeighborhoodFilterTest, BrownDwarfsHaveTheirOwnCategoryEvenWithoutLTYSpectr
     strcpy(star.spectral_type, "DA");
     EXPECT_FALSE(neighborhood_matches_type(star, NeighborhoodType::brown_dwarfs));
 }
+
+TEST(StellarRadiationTest, AResolvedRedGiantRadiatesInProportionToAreaAndFourthPowerOfTemperature)
+{
+    Star giant;
+    std::strcpy(giant.spectral_type, "K3III");
+    giant.volumetric_mean_radius = 18 * solar_radius;
+    giant.temperature = 4200;
+    const double reference = giant.bolometric_luminosity();
+    ASSERT_GT(reference, 0);
+    for (double radius : {.5, 1.0, 2.0})
+    for (double temperature : {.85, 1.0, 1.15})
+    {
+        giant.volumetric_mean_radius = 18 * solar_radius * radius;
+        giant.temperature = 4200 * temperature;
+        const double area = radius * radius, thermal = temperature * temperature;
+        EXPECT_NEAR(giant.bolometric_luminosity() / reference, area * thermal * thermal, 1e-10);
+    }
+}

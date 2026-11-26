@@ -268,3 +268,24 @@ TEST_F(IoPerformanceTest, WriterReleasesOwnedPayloadOnWorkerThread)
     EXPECT_NE(destroyed_on, std::thread::id());
     EXPECT_NE(destroyed_on, std::this_thread::get_id());
 }
+
+TEST_F(IoPerformanceTest, FailedAndThrowingWritesRetainPriorBytesAndAllowRetry)
+{
+    const auto save = directory / "scenario.json";
+    const auto first = [](std::ostream& out) { out << "original"; return true; };
+    ASSERT_TRUE(publish_file(save, first));
+    for (bool throws : {false, true})
+    {
+        EXPECT_FALSE(publish_file(save, [&](std::ostream& out)
+        {
+            out << "partial";
+            if (throws) throw std::runtime_error("interrupted");
+            return false;
+        }));
+        EXPECT_EQ(contents(save), "original");
+        EXPECT_EQ(std::distance(std::filesystem::directory_iterator(directory),
+            std::filesystem::directory_iterator()), 1);
+    }
+    ASSERT_TRUE(publish_file(save, [](std::ostream& out) { out << "recovered"; return true; }));
+    EXPECT_EQ(contents(save), "recovered");
+}

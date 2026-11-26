@@ -615,3 +615,21 @@ TEST_F(CurrentConditionsTest, RefreshShortcutCannotClearEarthCloudCooldown)
     EXPECT_FALSE(std::filesystem::exists("maps/Earth_clouds.jpg"));
     EXPECT_EQ(earth->weather_revision, 0u);
 }
+
+TEST(SurfacePhaseTest, OceanHeatAndPressureChooseIceWaterOrVaporAcrossTheTriplePoint)
+{
+    LocalClimate climate;
+    climate.contrast_k = climate.regional_k = climate.dry_belt_k = 0;
+    for (double kelvin : {220.0, 290.0, 410.0})
+    for (double pressure : {0.0, 400.0, 101325.0})
+    for (double salinity : {0.0, 35.0})
+    {
+        climate.mean_k = kelvin;
+        const auto surface = local_surface_state(climate, 1, 0, 0, 0, true, salinity, pressure);
+        ASSERT_NEAR(surface.temperature, kelvin, 1e-7);
+        const bool exposed_liquid = kelvin == 290 && pressure == 101325;
+        EXPECT_EQ(surface.liquid > .5, exposed_liquid) << kelvin << ", " << pressure;
+        EXPECT_EQ(surface.frozen_surface, kelvin == 220);
+        EXPECT_EQ(surface.evaporated_surface, kelvin == 410 || (kelvin == 290 && pressure < 611));
+    }
+}

@@ -746,3 +746,37 @@ TEST_F(GiantReflectancePlanetTest, AtmosphericBlueScatteringChangesGlareWithoutC
     EXPECT_DOUBLE_EQ(observed.green, observed_airless.green);
     EXPECT_DOUBLE_EQ(observed.blue, observed_airless.blue);
 }
+
+TEST(GiantReflectanceTest, IntegratedColorsLieInsideTheRangeOfTheirCloudBands)
+{
+    // A sum of positive blue and visual fluxes has a ratio between the
+    // individual B/V ratios. The same argument applies to V/R.
+    for (double mass : {14.0, 50.0, 318.0})
+    for (double axis : {.8, 2.0, 10.0})
+    for (double kelvin : {2600.0, 5778.0, 15000.0})
+    for (uint32_t seed : {0u, 0xabcdu})
+    {
+        GiantReflectanceInput world;
+        world.earth_masses = mass;
+        world.equivalent_axis_au = axis;
+        world.stellar_temperature_k = kelvin;
+        world.seed = seed;
+        const auto model = estimate_giant_reflectance(world);
+        ASSERT_TRUE(model.is_object());
+        const auto& bands = model.at("bands");
+        ASSERT_GE(bands.size(), 2u);
+        for (int color = 0; color < 2; ++color)
+        {
+            double low = INFINITY, high = -INFINITY;
+            for (const auto& band : bands)
+            {
+                double magnitude = band.at(color).get<double>();
+                low = std::min(low, magnitude);
+                high = std::max(high, magnitude);
+            }
+            const double disk = model.at(color == 0 ? "BV" : "VR").get<double>();
+            EXPECT_GE(disk, low - 1e-12);
+            EXPECT_LE(disk, high + 1e-12);
+        }
+    }
+}

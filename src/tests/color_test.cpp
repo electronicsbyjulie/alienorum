@@ -858,3 +858,38 @@ TEST(StarColorModeTest, TextureTintChangesModeWithoutRebuildingTheMap)
     EXPECT_NEAR(baked.green, expected.green, 1e-12);
     EXPECT_NEAR(baked.blue, expected.blue, 1e-12);
 }
+
+TEST(ColorTest, CompositedSkyLabelsMeetTheTextContrastThresholdOnBothBackgrounds)
+{
+    for (bool white : {false, true})
+    {
+        double worst = 21;
+        ImU32 worst_input = 0, worst_output = 0;
+        for (int r : {0, 55, 119, 173, 255})
+        for (int g : {0, 55, 119, 173, 255})
+        for (int b : {0, 55, 119, 173, 255})
+        for (int a : {0, 47, 128, 211, 255})
+        {
+            const ImU32 input = IM_COL32(r, g, b, a);
+            const ImU32 label = Color::ensure_wcag_contrast(input, white, 4.5, -1, true);
+            const double alpha = ((label >> IM_COL32_A_SHIFT) & 255) / 255.0;
+            const auto linear = [&](int shift)
+            {
+                const double encoded = (1 - alpha) * double(white)
+                    + alpha * ((label >> shift) & 255) / 255.0;
+                return encoded <= .04045 ? encoded / 12.92 : std::pow((encoded + .055) / 1.055, 2.4);
+            };
+            const double luminance = .2126 * linear(IM_COL32_R_SHIFT) + .7152 * linear(IM_COL32_G_SHIFT)
+                + .0722 * linear(IM_COL32_B_SHIFT);
+            const double contrast = white ? 1.05 / (.05 + luminance) : (.05 + luminance) / .05;
+            if (contrast < worst)
+            {
+                worst = contrast;
+                worst_input = input;
+                worst_output = label;
+            }
+        }
+        EXPECT_GE(worst, 4.5) << "white background " << white << ", input " << worst_input
+            << ", packed foreground " << worst_output;
+    }
+}

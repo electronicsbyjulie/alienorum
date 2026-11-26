@@ -165,3 +165,32 @@ TEST(CometMathTest, ViewerMagnitude_LogarithmicScaling)
     // Mag = 5.0 + (10.0 * -2.0) + (5.0 * -2.0) = 5.0 - 20.0 - 10.0 = -25.0
     EXPECT_NEAR(c.viewer_comet_magnitude(viewer), -25.0, 0.001);
 }
+
+TEST(CometMathTest, RelativeFluxTracksBothDistancesAfterSavingAroundADistantStar)
+{
+    Star host;
+    Comet source;
+    source.H1 = -1;
+    source.R1 = 10;
+    source.D1 = 5;
+    Comet comet;
+    ASSERT_TRUE(comet.from_json(source.to_json()));
+    comet.orbit = new Orbit();
+    comet.orbit->center = &host;
+    CelestialLocation viewer;
+    for (double distance : {0.0, 1e22})
+    {
+        host.location.galactic_center = comet.location.galactic_center
+            = viewer.galactic_center = Point(distance, -distance, 2 * distance);
+        for (double r : {.02, .3, 1.0, 3.0, 50.0})
+        {
+            comet.location.local_position = Point(0, r * AU, 0);
+            for (double delta : {.02, .5, 1.0, 15.0})
+            {
+                viewer.local_position = comet.location.local_position + Point(delta * AU, 0, 0);
+                const double flux = std::pow(10.0, -.4 * (comet.viewer_comet_magnitude(viewer) + 1));
+                EXPECT_NEAR(flux * std::pow(r, 4) * delta * delta, 1, 1e-9);
+            }
+        }
+    }
+}

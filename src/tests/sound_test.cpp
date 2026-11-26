@@ -653,3 +653,42 @@ TEST_F(SoundTest, ArmedRegistryTracksFlagCopiesReplacementAndDeletion)
     manager.check_rise_set_alerts();
     EXPECT_EQ(manager.horizon_alert_count(), 1u);
 }
+
+TEST_F(SoundTest, CrossingTheDateLineOnFootPreservesARiseAlert)
+{
+    Planet observer;
+    Star target;
+    CelestialObject* objects[] = {&observer, &target, nullptr};
+    const auto saved = std::make_tuple(cels, ncelobjs, here, view_mode, whereami,
+        viewer_lat, viewer_lon, play_rise_set_sound);
+    cels = objects;
+    ncelobjs = 2;
+    whereami = 0;
+    here = observer.location;
+    here.equatorial_plane.a = 0;
+    viewer_lat = 0;
+    view_mode = vm_horizon;
+    play_rise_set_sound = false;
+    auto manager = SoundManagerTestAccess::create({});
+    int alerts = 0;
+    manager->set_rise_callback([&](CelestialObject* body) { EXPECT_EQ(body, &target); ++alerts; });
+    for (bool cross_seam : {false, true})
+    {
+        const double start = cross_seam ? _pi - 1e-8 : .1;
+        viewer_lon = start;
+        target.alert_rise = true;
+        target.location.local_position = Point(0, -AU * .01, AU);
+        manager->reset_horizon_tracking();
+        manager->check_rise_set_alerts();
+        EXPECT_LT(target.prev_horizon_alt, 0);
+        const int before = alerts;
+        viewer_lon = cross_seam ? -_pi + 1e-8 : start + 2e-8;
+        target.location.local_position = Point(0, AU * .01, AU);
+        manager->check_rise_set_alerts();
+        manager->check_rise_set_alerts();
+        EXPECT_EQ(alerts, before + 1) << cross_seam;
+        EXPECT_FALSE(target.alert_rise) << cross_seam;
+    }
+    manager->leave_horizon();
+    std::tie(cels, ncelobjs, here, view_mode, whereami, viewer_lat, viewer_lon, play_rise_set_sound) = saved;
+}

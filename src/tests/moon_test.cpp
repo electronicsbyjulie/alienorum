@@ -322,3 +322,23 @@ TEST(MoonTest, TriaxialMoonClearanceUsesItsLargestSemiaxis)
     moon.orbit->center = &parent;
     EXPECT_GE(moon.minimum_safe_pericenter(), 1.1 * (parent.get_equatorial_radius() + moon.height * 0.5));
 }
+
+TEST(MoonTest, RingsOnDiffuseOblateGiantsClearTheEquator)
+{
+    Planet planet;
+    planet.volumetric_mean_radius = jupiter_radius;
+    planet.oblateness = .2;
+    const double equator = jupiter_radius / std::cbrt(.8);
+    for (double density : {.15, .25, .5, 1.0, 3.0})
+    {
+        planet.mass = density * 1e6 * sphere_volume(jupiter_radius);
+        for (unsigned seed = 0; seed < 64; ++seed)
+        {
+            planet.rng.seed(seed);
+            planet.generate_ring_parameters(true);
+            if (planet.ring_radius == 0) continue;
+            ASSERT_GT(planet.ring_inner_radius, equator) << density << " g/cm3, seed " << seed;
+            ASSERT_GT(planet.ring_radius, planet.ring_inner_radius);
+        }
+    }
+}

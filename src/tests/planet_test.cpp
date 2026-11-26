@@ -5574,3 +5574,143 @@ TEST_F(OceanPersistenceTest, PhysicalAtmosphereSetsTheHorizonAndLiveGradientEdit
     world->surface_air_gradient_k_m = .7;
     EXPECT_NEAR(world->atmospheric_horizon_lift(), lift, 1e-6);
 }
+
+TEST_F(LavaMapTest, MoltenSurfaceOffersNoLiquidShoreOrLivingForest)
+{
+    world->has_water = 1;
+    world->ensure_atmosphere()->surface_pressure = oneatm;
+    generate();
+    ASSERT_TRUE(world->surf_map->is_complete());
+    SurfaceBiomes biomes(173);
+    SurfaceSampler surface(world, world->surf_map, biomes, earth_radius, 1);
+    for (int lat = -85; lat <= 85; lat += 10)
+    {
+        for (int lon = -180; lon <= 180; lon += 10)
+        {
+            auto sample = surface.sample(lat * fiftyseventh, lon * fiftyseventh);
+            ASSERT_FALSE(sample.water || sample.vegetation) << lat << ", " << lon;
+            ASSERT_FALSE(surface.tree_site_at(lat * fiftyseventh, lon * fiftyseventh));
+        }
+    }
+    EXPECT_FALSE(find_nearest_shore(surface, 0, 0, 0).found);
+}
+
+TEST_F(PlanetClassificationEvidenceTest, FastJovianInLongOrbitHasZonalClouds)
+{
+    auto* planet = make_planet(make_star(), "Outer Jovian", 1.96 * AU);
+    planet->mass = jupiter_mass;
+    planet->volumetric_mean_radius = jupiter_radius;
+    planet->sidereal_rotational_period = 36000;
+    planet->orbit->period = 1000 * oneday;
+    planet->classify(false, true, true);
+    ASSERT_EQ(planet->type, gas_giant);
+    planet->rnd_seed = 7421;
+    planet->fictitious_map_height = 96;
+    planet->ring_status_known = true;
+    planet->ignore_map_files = true;
+    load_textures(planet);
+    Map* day = planet->get_day_map();
+    ASSERT_NE(day, nullptr);
+    ASSERT_TRUE(day->is_complete());
+    // Belts encircle the planet. Separated latitudes should differ more than
+    // opposite ends of the same parallel over most of the visible surface.
+    double across = 0, along = 0;
+    for (int lat = -60; lat < 60; lat += 3)
+    {
+        for (int lon = -180; lon < 180; lon += 10)
+        {
+            const auto green = [&](int latitude, int longitude)
+            {
+                return int(day->color_at(latitude * fiftyseventh, longitude * fiftyseventh).g);
+            };
+            const int start = green(lat, lon);
+            across += std::abs(start - green(lat + 14, lon));
+            along += std::abs(start - green(lat, lon + 180));
+        }
+    }
+    EXPECT_GT(across, 0);
+    EXPECT_GT(across, along);
+    EXPECT_DOUBLE_EQ(planet->sidereal_rotational_period, 36000);
+}
+
+TEST(TidalDissipationTest, HomologousSystemsAtTheSameDensityHaveCubicSurfaceFluxScaling)
+{
+    // At fixed density and orbital period the tide has constant fractional strain.
+    // Increasing all lengths by L multiplies gravitational binding energy by L^5
+    // and the radiating surface area by L^2, giving a flux ratio L^3.
+    constexpr double parent = 1.9e27, radius = 1.8e6, axis = 4.2e8;
+    const double motion = std::sqrt(6.67430e-11 * parent / std::pow(axis, 3));
+    for (double eccentricity : {1e-7, .02, .6})
+    {
+        for (double spin : {-2 * motion, motion, 3 * motion})
+        {
+            const double reference = tidal_surface_heat_flux(parent, radius, axis, eccentricity, motion, spin, .01);
+            ASSERT_GT(reference, 0);
+            for (double scale : {.2, .5, 2.0, 10.0})
+            {
+                const double volume = scale * scale * scale;
+                const double scaled = tidal_surface_heat_flux(parent * volume, radius * scale, axis * scale,
+                    eccentricity, motion, spin, .01);
+                EXPECT_NEAR(scaled / reference / volume, 1, 1e-12);
+            }
+        }
+    }
+}
+
+TEST_F(PlanetClassificationEvidenceTest, EveryPlanetFamilyHasADaylightMapAcrossCloudModesAndTheDateLine)
+{
+    struct RestoreSky
+    {
+        bool clouds = show_clouds;
+        ~RestoreSky() { show_clouds = clouds; }
+    } restore;
+    auto* sun = make_star();
+    struct Scenario
+    {
+        cel_obj_type type;
+        double kelvin;
+        bool giant;
+    };
+    const Scenario scenarios[] =
+    {
+        {rocky, 290, false}, {icy, 100, false}, {waterworld, 285, false}, {hycean, 315, false},
+        {lavaworld, 1800, false}, {clearskies, 1400, true}, {gas_giant, 130, true},
+        {hot_jupiter, 1600, true}, {ice_giant, 80, true}
+    };
+    for (const auto& scenario : scenarios)
+    {
+        const std::string name = "Map family " + std::to_string(scenario.type);
+        SCOPED_TRACE(name);
+        auto* planet = make_planet(sun, name.c_str());
+        planet->type = scenario.type;
+        planet->temperature = scenario.kelvin;
+        planet->mass = scenario.giant ? jupiter_mass : earth_mass;
+        planet->volumetric_mean_radius = scenario.giant ? jupiter_radius : earth_radius;
+        planet->sidereal_rotational_period = scenario.type == hot_jupiter ? planet->orbit->period : 36000;
+        planet->has_water = scenario.type == waterworld || scenario.type == hycean ? 1 : 0;
+        planet->rnd_seed = 123;
+        planet->fictitious_map_height = 32;
+        planet->ring_status_known = true;
+        planet->ignore_map_files = true;
+        load_textures(planet);
+        for (bool clouds : {false, true})
+        for (bool transparent : {false, true})
+        {
+            show_clouds = clouds;
+            planet->transparent_clouds = transparent;
+            Map* day = planet->get_day_map();
+            ASSERT_TRUE(day && day->is_complete());
+            ASSERT_GT(day->get_width(), 1u);
+            for (double lat : {-half_pi, -1.2, -.1, .8, half_pi})
+            for (double lon : {-3.14, -.55, 1.5, 3.14})
+            {
+                const RGB3 a = day->color_at_bilinear(lat, lon);
+                const RGB3 b = day->color_at_bilinear(lat, lon + 2 * _pi);
+                EXPECT_NEAR(int(a.r), int(b.r), 1);
+                EXPECT_NEAR(int(a.g), int(b.g), 1);
+                EXPECT_NEAR(int(a.b), int(b.b), 1);
+            }
+        }
+        if (scenario.type == lavaworld) ASSERT_TRUE(planet->night_map && planet->night_map->is_complete());
+    }
+}

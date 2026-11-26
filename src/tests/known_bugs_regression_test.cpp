@@ -829,3 +829,115 @@ TEST_F(KnownCatalogRegression, TrappistInnerWorldsUseTheObservedAirlessScenario)
         }
     }
 }
+
+TEST_F(KnownCatalogRegression, EveryAttachedOrbitInTheLoadedCatalogEndsAtALiveRootWithoutACycle)
+{
+    std::unordered_map<const CelestialObject*, int> indices;
+    for (int i = 0; i < ncelobjs; ++i)
+    {
+        ASSERT_NE(cels[i], nullptr) << i;
+        ASSERT_EQ(cels[i]->seqno, i) << cels[i]->name;
+        ASSERT_TRUE(indices.emplace(cels[i], i).second) << cels[i]->name;
+    }
+    // A parent can occur after its children. Memoize completed paths so even a
+    // deep hierarchy is checked in linear time without recursion.
+    std::vector<unsigned char> state(ncelobjs);
+    size_t edges = 0;
+    for (int start = 0; start < ncelobjs; ++start)
+    {
+        if (state[start] || cels[start]->deleted) continue;
+        int index = start;
+        std::vector<int> path;
+        while (state[index] == 0)
+        {
+            state[index] = 1;
+            path.push_back(index);
+            const auto* orbit = cels[index]->orbit;
+            if (!orbit || !orbit->center) break;
+            auto parent = indices.find(orbit->center);
+            ASSERT_NE(parent, indices.end()) << cels[index]->name;
+            ASSERT_FALSE(cels[parent->second]->deleted) << cels[index]->name;
+            index = parent->second;
+            ++edges;
+            ASSERT_NE(state[index], 1) << "Orbital cycle through " << cels[index]->name;
+        }
+        for (const int slot : path) state[slot] = 2;
+    }
+    EXPECT_GT(edges, 100u);
+}
+
+TEST_F(KnownCatalogRegression, ObservedStellarCompanionsLinkToTheirOwnPrimaryAfterCatalogLoad)
+{
+    // Independent component identifications from RECONS, Hubble, ESO and the GJ 65 observations.
+    // https://recons.org/TOP100.posted.htm
+    // https://science.nasa.gov/missions/hubble/hubble-applauds-waltzing-dwarfs/
+    // https://www.eso.org/public/images/eso0906d/
+    // https://uhra.herts.ac.uk/id/eprint/6627/1/Published_Version.pdf
+    struct Pair
+    {
+        const char* primary;
+        const char* companion;
+        char component;
+    };
+    const Pair pairs[] =
+    {
+        {"SCR J1845-6357 A", "SCR J1845-6357 B", 'B'},  // Late M dwarf with a T dwarf.
+        {"Luhman 16 A", "Luhman 16 B", 'B'},            // Two brown dwarfs.
+        {"Sirius", "GJ 244 B", 'B'},                    // Bright primary and a white dwarf.
+        {"Procyon", "GJ 280 B", 'B'},
+        {"61 Cygni", "61 Cygni B", 'B'},                // Wide pair of K dwarfs.
+        {"BL Ceti", "UV Ceti", 'B'},                    // Two separately named flare stars.
+        {"Rigil Kentaurus", "Toliman", 'B'},            // Close pair and distant tertiary.
+        {"Rigil Kentaurus", "Proxima Centauri", 'C'},
+        {"Keid", "GJ 166 B", 'B'},                      // 40 Eridani, with a tight BC pair.
+        {"Keid", "GJ 166 C", 'C'},
+        {"Theta1 Orionis C1", "Theta1 Orionis C2", 'B'}  // Massive binary in the Trapezium.
+    };
+    set_center_objects();
+    const auto find_star = [](const char* name) -> Star*
+    {
+        const int slot = find_object(name, true, 9e29, 0);
+        if (slot < 0 || cels[slot]->deleted || cels[slot]->typeclass() != class_star) return nullptr;
+        return static_cast<Star*>(cels[slot]);
+    };
+    Star* unrelated = find_star("Barnard's Star");
+    Star* other_trapezium_system = find_star("Theta1 Orionis A1");
+    EXPECT_NE(unrelated, nullptr);
+    EXPECT_NE(other_trapezium_system, nullptr);
+    const auto check = [&](const Pair& pair)
+    {
+        SCOPED_TRACE(std::string(pair.primary) + " / " + pair.companion);
+        Star* primary = find_star(pair.primary);
+        Star* companion = find_star(pair.companion);
+        ASSERT_NE(primary, nullptr);
+        ASSERT_NE(companion, nullptr);
+        ASSERT_NE(companion, primary);
+        // Both the unresolved-star display and the component list use this membership.
+        EXPECT_NE(primary->multisys, nullptr) << "Primary has no component list";
+        EXPECT_NE(companion->multisys, nullptr) << "Companion has no component list";
+        EXPECT_EQ(companion->multisys, primary->multisys);
+        if (primary->multisys)
+        {
+            EXPECT_EQ(primary->multisys->get_member('A'), primary);
+            EXPECT_EQ(primary->multisys->get_member(pair.component), companion);
+            for (auto* outsider : {unrelated, other_trapezium_system})
+            {
+                if (outsider)
+                {
+                    EXPECT_EQ(primary->multisys->is_member(outsider), 0);
+                }
+            }
+        }
+        // Navigation also follows orbital parents. A tertiary may reach A through B.
+        const CelestialObject* current = companion;
+        std::set<const CelestialObject*> visited;
+        while (current != primary && current && visited.insert(current).second)
+        {
+            EXPECT_NE(current, unrelated);
+            EXPECT_NE(current, other_trapezium_system);
+            current = current->orbit ? current->orbit->center : nullptr;
+        }
+        EXPECT_EQ(current, primary) << "Following the companion's orbit did not reach its primary";
+    };
+    for (const auto& pair : pairs) check(pair);
+}

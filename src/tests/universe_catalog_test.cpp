@@ -719,3 +719,39 @@ TEST_F(UniverseCatalogTest, ExistingVersionOneCatalogStillLoads)
     ASSERT_NE(find("FIC-100001"), nullptr);
     EXPECT_EQ(find("FIC-100001")->fictional_epoch_position.to_json(), expected.to_json());
 }
+
+TEST_F(UniverseCatalogTest, ACoherentBackupLoadsAfterAnEqualLengthWrongCatalogIsSubstituted)
+{
+    auto* host = populate();
+    const auto original_temperature = host->temperature;
+    save();
+    host->temperature = 5123;
+    save();
+    const auto committed = read_bytes(stem + ".dat");
+    ASSERT_FALSE(committed.empty());
+    std::string corrupted = committed;
+    auto digit = corrupted.find_first_of("123456789");
+    ASSERT_NE(digit, std::string::npos);
+    corrupted[digit] = corrupted[digit] == '8' ? '7' : '8';
+    {
+        std::ofstream out(directory / (stem + ".dat"), std::ios::binary);
+        out.write(corrupted.data(), corrupted.size());
+        ASSERT_TRUE(out.good());
+    }
+    delete_the_universe();
+    auto* sun = make_star("Sun");
+    ASSERT_TRUE(Serialization::load_file((directory / "universe.json").string(), cels, MAX_CELOBJS));
+    EXPECT_EQ(cels[0], sun);
+    const auto* loaded = find("FIC-100001");
+    ASSERT_NE(loaded, nullptr);
+    EXPECT_NEAR(loaded->temperature, original_temperature, .00051);
+    const int loaded_count = ncelobjs;
+    {
+        std::ofstream out(directory / (stem + ".dat.bak"), std::ios::binary);
+        out.write(corrupted.data(), corrupted.size());
+        ASSERT_TRUE(out.good());
+    }
+    EXPECT_FALSE(Serialization::load_file((directory / "universe.json").string(), cels, MAX_CELOBJS));
+    EXPECT_EQ(ncelobjs, loaded_count);
+    EXPECT_EQ(find("FIC-100001"), loaded);
+}

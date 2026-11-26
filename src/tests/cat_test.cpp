@@ -7130,3 +7130,124 @@ TEST_F(StellarRotationTest, CatalogEnvironmentAppliesToAnArbitraryPlanetDesignat
     EXPECT_FALSE(planet->atm->pressure_supplied);
     EXPECT_EQ(planet->atm->pressure_model.value("basis", ""), "test catalog");
 }
+
+TEST_F(CatalogParsingTest, SolarPlanetsAndMajorMoonsAgreeOnMassDistanceTimeAndGravityUnits)
+{
+    std::strcpy(cels[0]->name, "Sun");
+    CatalogReader reader;
+    ASSERT_GT(reader.read_local_planets(cels, MAX_CELOBJS), 0);
+    set_center_objects();
+    const std::pair<const char*, const char*> bodies[] =
+    {
+        {"Mercury", "Sun"}, {"Venus", "Sun"}, {"Earth", "Sun"}, {"Mars", "Sun"},
+        {"Jupiter", "Sun"}, {"Saturn", "Sun"}, {"Uranus", "Sun"}, {"Neptune", "Sun"},
+        {"Moon", "Earth"}, {"Io", "Jupiter"}, {"Europa", "Jupiter"}, {"Ganymede", "Jupiter"},
+        {"Callisto", "Jupiter"}, {"Titan", "Saturn"}, {"Triton", "Neptune"}
+    };
+    for (const auto& [name, parent] : bodies)
+    {
+        SCOPED_TRACE(name);
+        const int index = find_object(name);
+        ASSERT_GT(index, 0);
+        auto* body = static_cast<Planet*>(cels[index]);
+        const auto* orbit = body->orbit;
+        ASSERT_TRUE(orbit && orbit->center);
+        EXPECT_STREQ(orbit->center->name, parent);
+        ASSERT_GT(orbit->period, 0);
+        ASSERT_GT(orbit->semimajor_axis, 0);
+        const double dynamical_gm = std::pow(2 * _pi / orbit->period, 2) * std::pow(orbit->semimajor_axis, 3);
+        const double mass_kg = (orbit->center->mass + body->mass) / 1000;
+        EXPECT_NEAR(dynamical_gm / mass_kg, 6.67430e-11, .02 * 6.67430e-11);
+        const double radius = body->volumetric_mean_radius;
+        ASSERT_GT(radius, 0);
+        const double escape = CosmicShore::calculate_escape_velocity(*body);
+        EXPECT_NEAR(escape * escape / (2 * radius * 9.81 * body->estimate_surface_gravity()), 1, .01);
+        EXPECT_GT(orbit->semimajor_axis * (1 - orbit->eccentricity), orbit->center->get_equatorial_radius() + radius);
+    }
+    delete_the_universe();
+}
+
+TEST_F(StellarRotationTest, SscResolvesChildrenListedFirstAndUsesEachParentsOrbitUnits)
+{
+    std::ofstream("nested.ssc")
+        << "Location \"Summit\" \"Sol/Primary/Companion\" { LongLat [ -72 31 0 ] }\n"
+        << "\"Companion\" \"Sol/Primary\" { Class \"moon\" Radius 40 Mass 0.000001 "
+        << "EllipticalOrbit { PericenterDistance 90000 Eccentricity 0.25 Period 4 } }\n"
+        << "\"Primary\" \"Sol\" { Class \"planet\" Radius 7000 Mass 2 RotationPeriod 10 "
+        << "EllipticalOrbit { SemiMajorAxis 2 Period 3 } }\n";
+    SSCImport importer;
+    ASSERT_TRUE(importer.read("nested.ssc"));
+    ASSERT_EQ(importer.report.bodies_added, 2);
+    ASSERT_EQ(importer.report.bodies_skipped, 0);
+    const int primary = find_object("Primary", false, 9e29, 0);
+    const int companion = find_object("Companion", false, 9e29, 0);
+    ASSERT_GE(primary, 0);
+    ASSERT_GE(companion, 0);
+    const CelestialObject* planet = cels[primary];
+    const CelestialObject* moon = cels[companion];
+    ASSERT_NE(planet->orbit, nullptr);
+    ASSERT_NE(moon->orbit, nullptr);
+    EXPECT_EQ(planet->orbit->center, cels[0]);
+    EXPECT_EQ(moon->orbit->center, planet);
+    EXPECT_NEAR(planet->orbit->semimajor_axis, 2 * 149597870700.0, 1e5);
+    EXPECT_DOUBLE_EQ(planet->orbit->period, 3 * 365.25 * 86400);
+    EXPECT_DOUBLE_EQ(planet->sidereal_rotational_period, 36000);
+    EXPECT_DOUBLE_EQ(moon->orbit->period, 4 * 86400);
+    EXPECT_DOUBLE_EQ(moon->orbit->semimajor_axis, 120000000);
+    EXPECT_DOUBLE_EQ(moon->volumetric_mean_radius, 40000);
+    ASSERT_EQ(moon->nlocales, 1);
+    EXPECT_EQ(moon->locales[0].name, "Summit");
+    EXPECT_DOUBLE_EQ(moon->locales[0].lon, -72);
+    EXPECT_DOUBLE_EQ(moon->locales[0].lat, 31);
+}
+
+TEST_F(StellarRotationTest, SscConvertsHorizontalAndVerticalRingStripsToTheSamePhysicalBands)
+{
+    std::filesystem::create_directories("maps");
+    for (const bool vertical : {false, true})
+    {
+        const std::string name = vertical ? "Vertical" : "Horizontal";
+        png_image strip{};
+        strip.version = PNG_IMAGE_VERSION;
+        strip.width = vertical ? 1 : 8;
+        strip.height = vertical ? 8 : 1;
+        strip.format = PNG_FORMAT_RGBA;
+        std::vector<unsigned char> input(8 * 4, 255);
+        for (int k = 0; k < 8; ++k)
+        {
+            input[k * 4] = (k < 4) ? 23 : 241;
+            input[k * 4 + 3] = (k < 4) ? 255 : 0;
+        }
+        ASSERT_TRUE(png_image_write_to_file(&strip, (name + ".png").c_str(), 0, input.data(), 0, nullptr));
+        std::ofstream(name + ".ssc") << "\"" << name << "\" \"Sol\" { Radius 5000 Mass 1 "
+            << "EllipticalOrbit { SemiMajorAxis 1 Period 1 } "
+            << "Rings { Inner 10000 Outer 20000 Texture \"" << name << ".png\" } }\n";
+        SSCImport importer;
+        ASSERT_TRUE(importer.read(name + ".ssc"));
+        ASSERT_EQ(importer.report.textures_written, 2);
+        for (const bool transparency : {false, true})
+        {
+            png_image decoded{};
+            decoded.version = PNG_IMAGE_VERSION;
+            const std::string path = "maps/" + name + (transparency ? "_ringx.png" : "_ring.png");
+            ASSERT_TRUE(png_image_begin_read_from_file(&decoded, path.c_str()));
+            decoded.format = PNG_FORMAT_RGBA;
+            std::vector<unsigned char> pixels(PNG_IMAGE_SIZE(decoded));
+            ASSERT_TRUE(png_image_finish_read(&decoded, nullptr, pixels.data(), 0, nullptr));
+            for (const int radius_km : {7500, 12000, 17500})
+            {
+                const size_t column = size_t(decoded.width) * (radius_km - 5000) / 15000;
+                SCOPED_TRACE(name + " at " + std::to_string(radius_km));
+                const auto value = pixels[4 * column];
+                if (transparency)
+                {
+                    EXPECT_EQ(value, (radius_km == 12000) ? 0 : 255);
+                }
+                else if (radius_km >= 10000)
+                {
+                    EXPECT_EQ(value, (radius_km == 12000) ? 23 : 241);
+                }
+            }
+        }
+    }
+}

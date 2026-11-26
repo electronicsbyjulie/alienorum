@@ -362,3 +362,28 @@ TEST_F(ObjectSearchTest, SnapshotSearchHandlesALargeCatalog)
     std::cout << "Exact and approximate searches across 20000 objects: "
         << std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count() << " ms\n";
 }
+
+TEST_F(ObjectSearchTest, EveryActionOnARemovedNamesakePreservesTheLiveSelectionAndObserver)
+{
+    auto* current = make_star("Current observer");
+    auto* target = make_planet(current, "Shared label");
+    make_moon(target, "Shared label");
+    const auto results = search_objects("Shared label");
+    ASSERT_EQ(results.matches.size(), 2u);
+    const auto match = std::find_if(results.matches.begin(), results.matches.end(),
+        [target](const auto& entry) { return entry.address == target; });
+    ASSERT_NE(match, results.matches.end());
+    selected = trackidx = whereami = editidx = current->seqno;
+    target->deleted = true;
+    for (auto action : {ObjectSearchAction::go, ObjectSearchAction::track, ObjectSearchAction::rise,
+        ObjectSearchAction::set, ObjectSearchAction::edit, ObjectSearchAction::focus, ObjectSearchAction::select})
+    {
+        EXPECT_FALSE(apply_object_search_action(*match, action));
+        EXPECT_EQ(selected, current->seqno);
+        EXPECT_EQ(trackidx, current->seqno);
+        EXPECT_EQ(whereami, current->seqno);
+        EXPECT_EQ(editidx, current->seqno);
+        EXPECT_FALSE(target->alert_rise);
+        EXPECT_FALSE(target->alert_set);
+    }
+}

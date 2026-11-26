@@ -1274,3 +1274,87 @@ TEST(SurfaceRefractionTest, SuppliedGradientsOverrideTheEstimateAndReconstructTh
     EXPECT_DOUBLE_EQ(restored.range, hot.range);
     EXPECT_DOUBLE_EQ(restored.curvature, hot.curvature);
 }
+
+TEST(BlackbodyTest, IntegralOverWavelengthRecoversStefanBoltzmannExitance)
+{
+    // Integrate spectral radiance over log wavelength and the emitting hemisphere.
+    for (double temperature : {150.0, 290.0, 1300.0, 5772.0, 30000.0})
+    {
+        double radiance = 0;
+        const double step = std::log(1e8) / 2048;
+        for (int bin = 0; bin < 2048; ++bin)
+        {
+            const double wavelength = 1e-10 * std::exp((bin + .5) * step);
+            radiance += blackbody_flux(temperature, wavelength) * wavelength * step;
+        }
+        EXPECT_NEAR(_pi * radiance / std::pow(temperature, 4), 5.670374419e-8, 6e-11);
+    }
+}
+
+TEST(KeplerTest, CometsNearParabolicPerihelionResolveTinyTimeOffsets)
+{
+    for (double actual : {-1e-6, -1e-9, 1e-9, 1e-6})
+    {
+        const double parabolic_time = actual + actual * actual * actual / 3;
+        EXPECT_NEAR(solve_Barker(parabolic_time), actual, std::abs(actual) * 1e-6);
+        for (double eccentricity : {1.000001, 1.01, 1.5, 3.0})
+        {
+            // Series expressed without cancellation at perihelion.
+            const double anomaly = (eccentricity - 1) * actual
+                + eccentricity * actual * actual * actual / 6;
+            EXPECT_NEAR(solve_Kepler_hyperbolic(anomaly, eccentricity), actual,
+                std::abs(actual) * 1e-5) << eccentricity;
+        }
+    }
+}
+
+TEST(NumericValueTest, EmbeddedNullInCatalogFieldCannotHideTrailingGarbage)
+{
+    for (const auto& prefix : {"0", "-123.4", "1e5"})
+    {
+        const std::string field = std::string(prefix) + char(0) + "broken";
+        double value = 72;
+        EXPECT_FALSE(parse_numeric_value(field, value));
+        EXPECT_EQ(value, 72);
+    }
+}
+
+TEST(IsoStringTest, SecondsStayContinuousAtGregorianCenturyBoundaries)
+{
+    for (int year : {1900, 1996, 2000, 2004, 2038, 2096, 2100, 2200, 2400})
+    {
+        const std::string prefix = std::to_string(year);
+        const auto february = from_iso_string(prefix + "-02-28T23:59:59");
+        const auto march = from_iso_string(prefix + "-03-01T00:00:00");
+        const bool leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+        EXPECT_EQ(march - february, leap ? 86401 : 1) << year;
+    }
+}
+
+TEST(NoiseTest, RebuildingTerrainRetainsContinuousSlopesAcrossNegativeLatticeCoordinates)
+{
+    PerlinNoise field(4);
+    for (uint32_t seed : {0u, 41u, 0xffffffffu})
+    {
+        field.reseed(seed);
+        PerlinNoise fresh(seed);
+        for (int boundary : {-257, -256, -1, 0, 1, 255, 256})
+        {
+            for (int axis = 0; axis < 3; ++axis)
+            {
+                const auto value = [&](double delta)
+                {
+                    double xyz[] = {-.37, 1.23, .67};
+                    xyz[axis] = boundary + delta;
+                    const double sample = field.noise(xyz[0], xyz[1], xyz[2]);
+                    EXPECT_DOUBLE_EQ(sample, fresh.noise(xyz[0], xyz[1], xyz[2]));
+                    return sample;
+                };
+                constexpr double step = 1e-4;
+                const double left = value(-step), middle = value(0), right = value(step);
+                EXPECT_NEAR((middle - left) / step, (right - middle) / step, .002);
+                EXPECT_NEAR(value(.37), value(256.37), 1e-11);
+            }
+        }
+    }
+}

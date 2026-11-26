@@ -236,3 +236,20 @@ TEST(StellarAgeCalibrationTest, OrbitCompanionsUseThePrimaryEstimateAndHonorAuth
     tertiary.stellar_age = {{"value_gyr", 0.0}};
     EXPECT_DOUBLE_EQ(tertiary.estimate_age_gyr(), 0);
 }
+
+TEST(StellarEvolutionTest, MassiveStarsExhaustCoreHydrogenEarlierAcrossMetallicities)
+{
+    const auto& grid = StellarEvolutionGrid::instance();
+    for (double metal : {-1.0, -.3, 0.0, .3})
+    {
+        const double solar = grid.main_sequence_lifetime_gyr(1, metal);
+        const double a_star = grid.main_sequence_lifetime_gyr(2, metal);
+        const double b_star = grid.main_sequence_lifetime_gyr(8, metal);
+        const double o_star = grid.main_sequence_lifetime_gyr(25, metal);
+        EXPECT_GT(solar, a_star * 2);
+        EXPECT_GT(a_star, b_star * 5);
+        EXPECT_GT(b_star, o_star);
+        EXPECT_GT(o_star, 0);
+        EXPECT_LT(o_star, .03);
+    }
+}

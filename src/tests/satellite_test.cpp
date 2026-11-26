@@ -592,3 +592,9 @@ TEST(CSVParserTest, HandlesEmptyString)
     EXPECT_TRUE(parsed.empty() || (parsed.size() == 1 && parsed[0] == ""));
 }
 
+
+TEST(CSVParserTest, EscapedQuotesAndUtf8NamesCannotShiftOrbitalColumns)
+{
+    const auto columns = parse_csv_row(u8"\"Étoile, \"\"B\"\"\",25544,,0,0.00067,");
+    EXPECT_EQ(columns, (std::vector<std::string>{u8"Étoile, \"B\"", "25544", "", "0", "0.00067", ""}));
+}

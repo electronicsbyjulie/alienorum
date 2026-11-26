@@ -1378,3 +1378,35 @@ TEST_F(HousekeepingTest, MissingRotationDiagnosticKeepsTheFirstWarningAndRearmsA
     EXPECT_NE(output.find(second->name), std::string::npos);
     EXPECT_FALSE(first->to_json().contains("missing_rotation_reported"));
 }
+
+TEST_F(HousekeepingTest, MissingPlanetMagnitudesTrackReflectingAreaAndRetainMeasuredZero)
+{
+    auto* host = make_star();
+    auto* measured = make_planet(host, "Measured planet");
+    measured->absolute_magnitude = 0;
+    std::vector<Planet*> planets;
+    std::vector<double> relative_flux;
+    for (double size : {.25, 1.0, 4.0})
+    for (double reflectivity : {.05, .3, .95})
+    {
+        const std::string name = "Reflecting world " + std::to_string(planets.size());
+        auto* world = make_planet(host, name.c_str());
+        world->volumetric_mean_radius = size * earth_radius;
+        world->albedo = reflectivity;
+        world->absolute_magnitude = NAN;
+        planets.push_back(world);
+        relative_flux.push_back(size * size * reflectivity);
+    }
+    for (int pass = 0; pass < 2; ++pass)
+    {
+        set_center_objects();
+        EXPECT_DOUBLE_EQ(measured->absolute_magnitude, 0);
+        const double reference = planets.front()->absolute_magnitude;
+        for (size_t i = 1; i < planets.size(); ++i)
+        {
+            const double ratio = std::pow(10, -.4 * (planets[i]->absolute_magnitude - reference));
+            EXPECT_NEAR(ratio / (relative_flux[i] / relative_flux.front()), 1, 1e-8);
+        }
+    }
+    delete_the_universe();
+}

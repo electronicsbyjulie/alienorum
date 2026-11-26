@@ -12541,3 +12541,472 @@ TEST_F(RenderingRegressionTest, OriginalNamedKeysStillControlMovementAndDeletion
     press(ImGuiKey_Delete);
     EXPECT_TRUE(object->deleted);
 }
+
+TEST_F(RenderingRegressionTest, DistantPlanetZoomResolvesACircularLimbInSpaceshipPixels)
+{
+    class BandedMap : public Map
+    {
+        public:
+        BandedMap()
+        {
+            image_width = 256;
+            image_height = 128;
+            allocated = image_width * image_height;
+            red_data = new unsigned char[allocated];
+            green_data = new unsigned char[allocated];
+            blue_data = new unsigned char[allocated];
+            for (unsigned long i = 0; i < allocated; ++i)
+            {
+                const double band = std::sin((i / image_width + .5) * 8 * _pi / image_height);
+                red_data[i] = 128 + 105 * band;
+                green_data[i] = 128 - 105 * band;
+                blue_data[i] = 80;
+            }
+            touch_gen();
+        }
+    };
+    Star* sun = make_star();
+    auto* planet = make_planet(sun);
+    planet->looked_for_maps = true;
+    planet->surf_map = new BandedMap();
+    planet->albedo = .7;
+    planet->amt_lit = 1;
+    planet->drawnx = dispcx;
+    planet->drawny = dispcy;
+    double magnitudes[2] = {5, 5}, sizes[2]{}, bloom[2]{};
+    bool discs[2]{};
+    set(vmag_cache, static_cast<double*>(magnitudes));
+    set(angular_radius, static_cast<double*>(sizes));
+    set(bloomrad_cache, static_cast<double*>(bloom));
+    set(discinstead, static_cast<bool*>(discs));
+    set(labels2draw, std::vector<DrawLabel>{});
+    set(selected, -1);
+    set(show_localsys, true);
+    set(mycenobj, static_cast<CelestialObject*>(sun));
+    set(here, CelestialLocation());
+    set(sky_grad, std::map<int, RGB3>{});
+    set(show_clouds, false);
+    set(myeq, 0.0);
+    set(zoom, 1.0);
+    for (double distance : {1e3 * earth_radius, 1e6 * earth_radius, 1e9 * earth_radius})
+    {
+        planet->location.local_position = planet->tmprel = Point(0, 0, distance);
+        sun->location.local_position = sun->tmprel = Point(0, 0, distance - AU);
+        // An ideal sphere at this distance subtends a 32-pixel radius.
+        const double angle = std::asin(earth_radius / distance);
+        zoom = 32 / (dispcx * std::tan(angle));
+        sizes[planet->seqno] = angle;
+        impostor_begin_frame();
+        EXPECT_TRUE(draw_single_object(planet->seqno));
+        const auto pixels = render();
+        ImGui::NewFrame();
+        int holes = 0, spill = 0;
+        int red = 0, green = 0;
+        std::set<int> tones;
+        for (int y = 0; y < render_height; ++y)
+        {
+            for (int x = 0; x < render_width; ++x)
+            {
+                const double r = std::hypot(x + .5 - dispcx, y + .5 - dispcy);
+                const auto opacity = pixels[(y * render_width + x) * 4 + 3];
+                holes += r < 30 && opacity < 240;
+                spill += r > 34 && opacity > 16;
+                if (r < 24)
+                {
+                    const auto* rgb = &pixels[(y * render_width + x) * 4];
+                    const int difference = int(rgb[0]) - int(rgb[1]);
+                    red += difference > 20;
+                    green += difference < -20;
+                    tones.insert(difference);
+                }
+            }
+        }
+        EXPECT_EQ(holes, 0) << distance;
+        EXPECT_EQ(spill, 0) << distance;
+        EXPECT_GT(red, 100) << distance;
+        EXPECT_GT(green, 100) << distance;
+        EXPECT_GT(tones.size(), 48u) << distance;
+    }
+}
+
+TEST_F(RenderingRegressionTest, SpaceshipMilkyWayBandKeepsPhotographicColor)
+{
+    Galaxy* galaxy = new Galaxy();
+    strcpy(galaxy->name, "Milky Way");
+    galaxy->volumetric_mean_radius = 50000 * light_year;
+    galaxy->tmprel = Point(0, 0, 26000 * light_year);
+    append_cel(galaxy);
+    set(inside_galaxy_idx, galaxy->seqno);
+    set(show_galaxy_band, true);
+    set(whtbkgd, false);
+    set(redlight_mode, false);
+    set(azimuth, 0.0);
+    set(global_brightness, 4.0);
+    set(here, CelestialLocation());
+    std::array<double, 3> channels{};
+    for (int quadrant = 0; quadrant < 4; ++quadrant)
+    {
+        azimuth = quadrant * half_pi;
+        draw_galaxy_band();
+        const auto pixels = render();
+        ImGui::NewFrame();
+        unsigned lit = 0;
+        for (int y = 42; y < 66; ++y)
+        {
+            for (int x = 16; x < 176; ++x)
+            {
+                size_t i = (y * render_width + x) * 4;
+                lit += pixels[i + 1] > 5;
+                for (int c = 0; c < 3; ++c) channels[c] += pixels[i + c];
+            }
+        }
+        EXPECT_GT(lit, 500u) << quadrant;
+    }
+    // The central band of the installed panorama is mildly warm across all four quadrants.
+    ASSERT_GT(channels[1], 0);
+    EXPECT_NEAR(channels[0] / channels[1], 1.1, .08);
+    EXPECT_NEAR(channels[2] / channels[1], 1, .07);
+}
+
+TEST_F(RenderingRegressionTest, PlantCrownSitsAboveTrunkAndTrunkMeetsGroundProjection)
+{
+    set(view_mode, vm_horizon);
+    set(scenery_gpu_reference, false);
+    PlantMeshView view;
+    view.center_x = dispcx;
+    view.center_y = dispcy;
+    view.focal = 100;
+    view.ambient = 1;
+    PlantMeshInstance tree;
+    tree.base = ImVec4(0, -2, 10, 3);
+    tree.dimensions = ImVec4(1.2, 1, .25, .2);
+    tree.crown_color = IM_COL32(0, 220, 0, 255);
+    tree.trunk_color = IM_COL32(220, 0, 0, 255);
+    for (float distance : {10.f, 15.f, 25.f})
+    {
+        tree.base.z = distance;
+        ASSERT_TRUE(prepare_plant_mesh_gpu(view));
+        add_plant_mesh_gpu(tree, 32);
+        flush_plant_mesh_gpu();
+        const auto pixels = render();
+        ImGui::NewFrame();
+        int top_green = render_height, first_trunk = render_height, last_trunk = -1;
+        for (int row = 0; row < render_height; ++row)
+        {
+            const auto* rgb = &pixels[((render_height - 1 - row) * render_width
+                + static_cast<int>(dispcx)) * 4];
+            if (rgb[1] > rgb[0] + 20) top_green = std::min(top_green, row);
+            if (rgb[0] > rgb[1] + 20)
+            {
+                first_trunk = std::min(first_trunk, row);
+                last_trunk = row;
+            }
+        }
+        EXPECT_LT(top_green, first_trunk);
+        EXPECT_LE(first_trunk, last_trunk);
+        EXPECT_NEAR(last_trunk, dispcy + 2 * view.focal / distance, 2);
+    }
+}
+
+TEST_F(RenderingRegressionTest, EquatorialEarthGroundChangesFromNightToDayAtTheMarchEquinox)
+{
+    set(radio_silence, true);
+    Star* sun = make_star("Sun");
+    sun->distance = 0;
+    sun->cenobj = sun;
+    CatalogReader reader;
+    ASSERT_GT(reader.read_local_planets(cels, MAX_CELOBJS, sun), 0);
+    set_center_objects();
+    int index = find_object("Earth");
+    ASSERT_GT(index, 0);
+    auto* earth = static_cast<Planet*>(cels[index]);
+    earth->looked_for_maps = true;
+    // The same neutral ground at both longitudes isolates illumination from geography.
+    delete earth->surf_map;
+    earth->surf_map = new UniformCloudTestMap(160);
+    set(eclipsed_light, eclipsed_light);
+    set(eclipsed_fraction, eclipsed_fraction);
+    set(viewchanged, viewchanged);
+    surface_magnitudes.assign(ncelobjs, 999);
+    surface_radii.assign(ncelobjs, 0);
+    system_bloom.assign(ncelobjs, 0);
+    std::unique_ptr<bool[]> discs(new bool[ncelobjs]{});
+    set(vmag_cache, surface_magnitudes.data());
+    set(angular_radius, surface_radii.data());
+    set(bloomrad_cache, system_bloom.data());
+    set(discinstead, discs.get());
+    set(view_mode, vm_horizon);
+    set(whereami, index);
+    set(mycenobj, static_cast<CelestialObject*>(sun));
+    set(here, CelestialLocation());
+    set(npdummy.location, npdummy.location);
+    set(npaz, npaz);
+    set(trackidx, -1);
+    set(viewer_lat, 0.0);
+    set(viewer_lon, 0.0);
+    set(viewer_eye_height, 1.75);
+    set(altitude, -1.1);
+    set(show_grid, false);
+    set(show_clouds, false);
+    set(show_terrain, true);
+    set(luminous_flux, luminous_flux);
+    set(lsyscache, std::vector<CelestialObject*>{});
+    set(inside_galaxy_idx, -1);
+    set(redo_proper_motions, true);
+    set(JDnow, 2460389.5); // March 20, 2024 at 00:00 UTC.
+    set(simnow, simnow);
+    const auto ground = [&](double jd, double longitude)
+    {
+        JDnow = jd;
+        simnow = J2000_TIME_T + (jd - J2000) * oneday;
+        viewer_lon = longitude;
+        invalidate_frame_objects();
+        compute_object_draw_coordinates();
+        freeze_surface_time();
+        find_horizon();
+        draw_horizon();
+        const auto pixels = render();
+        ImGui::NewFrame();
+        double green = 0;
+        for (int y = 8; y < 32; ++y)
+            for (int x = 36; x < 156; ++x) green += pixels[(y * render_width + x) * 4 + 1];
+        return green / (24 * 120);
+    };
+    for (double longitude : {0.0, _pi})
+    {
+        const double midnight_utc = ground(2460389.5, longitude);
+        const double noon_utc = ground(2460390.0, longitude);
+        if (longitude == 0) EXPECT_GT(noon_utc, midnight_utc + 12);
+        else EXPECT_GT(midnight_utc, noon_utc + 12);
+    }
+    invalidate_frame_objects();
+}
+
+TEST_F(RenderingRegressionTest, GeneratedRingsBeginAtTheirCatalogRadiusInSpaceshipPixels)
+{
+    auto* sun = make_star();
+    auto* world = make_planet(sun);
+    constexpr double radius = 1e7;
+    world->rnd_seed = 395;
+    world->volumetric_mean_radius = radius;
+    world->ring_radius = 4 * radius;
+    world->ring_inner_radius = 2 * radius;
+    world->amt_lit = 1;
+    world->ring_map = new Map(world);
+    world->ringx_map = new Map(world);
+    world->ring_map->generate_ring_map(world, 2048,
+        world->ring_inner_radius / world->ring_radius, .8, world->ringx_map);
+    ASSERT_TRUE(world->ringx_map->is_complete());
+    const size_t columns = world->ringx_map->get_width();
+    std::vector<unsigned char> transparency(4 * columns * world->ringx_map->get_height());
+    world->ringx_map->export_rgba(transparency.data());
+    size_t opaque_columns = 0, inspected = 0;
+    for (size_t x = 0; x < columns; ++x)
+    {
+        const double physical_radius = 4 * (x + .5) / columns;
+        if (physical_radius < 2.1 || physical_radius > 2.4) continue;
+        ++inspected;
+        opaque_columns += transparency[x * 4 + 1] < 245;
+    }
+    ASSERT_GT(opaque_columns, inspected * .8);
+    world->location.local_position = world->tmprel = Point(0, 0, 10 * radius);
+    sun->location.local_position = sun->tmprel = Point(0, 0, 0);
+    world->location.equatorial_plane.v = xaxis;
+    world->location.equatorial_plane.a = half_pi;
+    set(here, CelestialLocation());
+    set(myeq, 0.0);
+    impostor_begin_frame();
+    draw_ring_gpu(world);
+    const auto pixels = render();
+    ImGui::NewFrame();
+    const auto lit_fraction = [&](double low, double high)
+    {
+        int total = 0, lit = 0;
+        for (int y = 0; y < render_height; ++y)
+        {
+            for (int x = 0; x < render_width; ++x)
+            {
+                // Face-on plane, ten radii from the observer, focal length in pixels.
+                const double r = 10 * std::hypot(x + .5 - dispcx, y + .5 - dispcy) / dispcx;
+                if (r < low || r > high) continue;
+                ++total;
+                lit += pixels[(y * render_width + x) * 4] > 8;
+            }
+        }
+        EXPECT_GT(total, 100);
+        return double(lit) / std::max(1, total);
+    };
+    EXPECT_EQ(lit_fraction(1.2, 1.8), 0);
+    ASSERT_GT(lit_fraction(3.2, 3.8), .5);
+    EXPECT_GT(lit_fraction(2.1, 2.4), .5);
+}
+
+TEST_F(RenderingRegressionTest, OneSecondOfForwardWalkingCoversFourMetresAtAnyLatitude)
+{
+    auto* world = make_planet(make_star());
+    set(view_mode, vm_horizon);
+    set(whereami, world->seqno);
+    set(trackidx, -1);
+    set(viewer_lat, 0.0);
+    set(viewer_lon, 0.0);
+    set(frame_dur, .25);
+    set(save_viewer_latlon, false);
+    set(viewchanged, false);
+    auto& io = ImGui::GetIO();
+    for (double latitude : {0.0, .8, -1.3})
+    {
+        for (double heading : {0.0, half_pi, 2.2})
+        {
+            viewer_lat = latitude;
+            viewer_lon = 1;
+            azimuth = heading;
+            io.AddKeyEvent(ImGuiKey_End, true);
+            for (int frame = 0; frame < 4; ++frame)
+            {
+                ImGui::EndFrame();
+                ImGui::NewFrame();
+                process_keyboard_commands(io);
+            }
+            io.AddKeyEvent(ImGuiKey_End, false);
+            ImGui::EndFrame();
+            ImGui::NewFrame();
+            const double haversine = std::pow(std::sin((viewer_lat - latitude) / 2), 2)
+                + std::cos(viewer_lat) * std::cos(latitude) * std::pow(std::sin((viewer_lon - 1) / 2), 2);
+            const double metres = 2 * world->volumetric_mean_radius * std::asin(std::sqrt(haversine));
+            EXPECT_NEAR(metres, 4, .005) << latitude << ", " << heading;
+        }
+    }
+}
+
+namespace
+{
+    std::string panel_text(const std::function<void()>& draw)
+    {
+        ImGui::EndFrame();
+        ImGui::GetIO().DisplaySize = ImVec2(1280, 1000);
+        ImGui::NewFrame();
+        ImGui::SetNextWindowPos(ImVec2(0, 0));
+        ImGui::SetNextWindowSize(ImVec2(1100, 900));
+        ImGui::LogToBuffer();
+        draw();
+        const std::string result = ImGui::GetCurrentContext()->LogBuffer.c_str();
+        ImGui::LogFinish();
+        return result;
+    }
+}
+
+TEST_F(RenderingRegressionTest, StatusClockShowsBothSidesOfCivilTimeChangesInBothHemispheres)
+{
+    make_planet(make_star());
+    set(themes, std::vector<std::string>{"default"});
+    set(themes_selected_idx, 0);
+    set(statuswnd, true);
+    set(view_mode, vm_spaceship);
+    set(whereami, -1);
+    set(viewer_dst, dst_none);
+    set(viewer_tz, 0.0);
+    set(simnow, 0.0);
+    struct Boundary
+    {
+        DST_Rule rule;
+        int offset;
+        int epoch;
+        const char *before, *after;
+    };
+    // Local civil dates from the 2024 IANA zone records at consecutive UTC seconds.
+    const Boundary transitions[] =
+    {
+        {dst_us_ca, -18000, 1710054000, "2024-03-10 01:59:59 -05:00", "2024-03-10 03:00:00 -04:00"},
+        {dst_us_ca, -18000, 1730613600, "2024-11-03 01:59:59 -04:00", "2024-11-03 01:00:00 -05:00"},
+        {dst_eu_uk, 0, 1711846800, "2024-03-31 00:59:59 +00:00", "2024-03-31 02:00:00 +01:00"},
+        {dst_eu_uk, 0, 1729990800, "2024-10-27 01:59:59 +01:00", "2024-10-27 01:00:00 +00:00"},
+        {dst_au, 36000, 1728144000, "2024-10-06 01:59:59 +10:00", "2024-10-06 03:00:00 +11:00"},
+        {dst_au, 36000, 1712419200, "2024-04-07 02:59:59 +11:00", "2024-04-07 02:00:00 +10:00"},
+        {dst_nz, 43200, 1727532000, "2024-09-29 01:59:59 +12:00", "2024-09-29 03:00:00 +13:00"},
+        {dst_nz, 43200, 1712412000, "2024-04-07 02:59:59 +13:00", "2024-04-07 02:00:00 +12:00"},
+        {dst_none, 20700, 1709230500, "2024-02-29 23:59:59 +05:45", "2024-03-01 00:00:00 +05:45"}
+    };
+    for (const auto& transition : transitions)
+    {
+        viewer_dst = transition.rule;
+        viewer_tz = transition.offset;
+        for (const int delta : {-1, 0})
+        {
+            simnow = transition.epoch + delta;
+            const char* expected = delta ? transition.before : transition.after;
+            const std::string text = panel_text([]() { draw_status_window(ImGui::GetIO()); });
+            EXPECT_NE(text.find(expected), std::string::npos) << expected;
+        }
+    }
+}
+
+TEST_F(RenderingRegressionTest, FavoritesPanelUpdatesAfterAddingAndRemovingStarsWithoutChangingSelection)
+{
+    Star* first = make_star("Primary favorite");
+    Star* second = make_star("Second favorite");
+    const auto original = std::filesystem::current_path();
+    const auto folder = std::filesystem::temp_directory_path() / ("alienorum_favorites_" +
+        std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    std::filesystem::create_directories(folder);
+    std::filesystem::current_path(folder);
+    restore.push_back([original, folder]()
+    {
+        std::filesystem::current_path(original);
+        std::filesystem::remove_all(folder);
+    });
+    set(themes, std::vector<std::string>{"default"});
+    set(themes_selected_idx, 0);
+    set(favestars, std::vector<Star*>{});
+    set(selected, second->seqno);
+    set(show_favestars, true);
+    const auto draw = []() { draw_favestars_window(ImGui::GetIO()); };
+    EXPECT_NE(panel_text(draw).find("Ctrl+D"), std::string::npos);
+    process_key_cmd_ctrl_char('d');
+    std::string text = panel_text(draw);
+    EXPECT_TRUE(second->is_faved);
+    EXPECT_NE(text.find(second->name), std::string::npos);
+    EXPECT_EQ(text.find(first->name), std::string::npos);
+    EXPECT_EQ(text.find("Ctrl+D"), std::string::npos);
+    EXPECT_EQ(selected, second->seqno);
+    EXPECT_EQ(json::parse(std::ifstream("user.json")).at("FaveStars"), json::array({second->name}));
+    process_key_cmd_ctrl_char('d');
+    text = panel_text(draw);
+    EXPECT_FALSE(second->is_faved);
+    EXPECT_NE(text.find("Ctrl+D"), std::string::npos);
+    EXPECT_EQ(text.find(second->name), std::string::npos);
+    EXPECT_EQ(selected, second->seqno);
+    EXPECT_EQ(json::parse(std::ifstream("user.json")).at("FaveStars"), json::array());
+}
+
+TEST_F(RenderingRegressionTest, PopulationDialogReopensWithControlsForTheCurrentGalaxy)
+{
+    make_star();
+    Galaxy* local = new Galaxy();
+    strcpy(local->name, "Milky Way");
+    local->reference_galaxy = true;
+    local->volumetric_mean_radius = 50000 * light_year;
+    append_cel(local);
+    Galaxy* remote = new Galaxy();
+    strcpy(remote->name, "Unphotographed spiral");
+    remote->location.galactic_center = Point(0, 0, 4);
+    remote->volumetric_mean_radius = 25000 * light_year;
+    append_cel(remote);
+    set(whereami, local->seqno);
+    for (auto* galaxy : {local, remote, local})
+    {
+        whereami = galaxy->seqno;
+        open_fictional_region();
+        const std::string text = panel_text(draw_fictional_region);
+        EXPECT_NE(text.find(galaxy->name), std::string::npos) << galaxy->name;
+        EXPECT_NE(text.find("Generate Preview"), std::string::npos);
+        EXPECT_NE(text.find("Galactocentric radius"), std::string::npos);
+        EXPECT_EQ(text.find("Distance from Sun") != std::string::npos, galaxy == local);
+        if (galaxy == remote)
+        {
+            EXPECT_NE(text.find("No image is available"), std::string::npos);
+        }
+        EXPECT_EQ(ncelobjs, 3);
+        close_fictional_region();
+        EXPECT_TRUE(panel_text(draw_fictional_region).empty());
+    }
+}

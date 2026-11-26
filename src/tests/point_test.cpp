@@ -436,3 +436,75 @@ TEST(PointTest, TinyAngularSeparationsHaveNoArtificialFloor)
         EXPECT_NEAR(find_3D_angle(Point(1, 0, 0), Point(cos(angle), sin(angle), 0), center), angle, 1e-15);
     EXPECT_DOUBLE_EQ(find_3D_angle(Point(1, 0, 0), Point(-1, 0, 0), center), _pi);
 }
+
+TEST(PlaneConversionTest, NearPolarSightLinesPreserveTheUnitOrbitPole)
+{
+    for (double declination : {-half_pi, -.7, 0.0, .7, half_pi})
+    {
+        const Point sight = Point::from_ra_dec(2.1, declination, 1e18);
+        for (double tilt : {.03, .8, 2.9})
+        {
+            for (double node : {0.0, 1.3, 5.6})
+            {
+                const auto plane = system_plane_from_incl_and_node(tilt, node, sight);
+                double result_tilt = 0, result_node = 0;
+                incl_and_node_from_system_plane(plane, result_tilt, result_node, sight);
+                EXPECT_NEAR(result_tilt, tilt, 1e-7) << declination;
+                EXPECT_NEAR(std::remainder(result_node - node, 2 * _pi), 0, 1e-7) << declination;
+            }
+        }
+    }
+}
+
+TEST(CelestialLocationTest, MeterScaleObserverOffsetsSurviveSharedExtragalacticOrigin)
+{
+    CelestialLocation viewer;
+    viewer.galactic_center = Point(55, -17, 31);
+    viewer.system_center = Point(5e18, -2e18, 9e18);
+    viewer.local_position = Point(1e9, -3e9, 4e9);
+    auto target = viewer;
+    target.local_position += Point(2, -3, 6);
+    EXPECT_DOUBLE_EQ(target.distance_to(viewer), 7);
+    EXPECT_DOUBLE_EQ(viewer.squared_distance_to(target), 49);
+    const auto start = target.local_position;
+    target.rebase_system(viewer);
+    EXPECT_DOUBLE_EQ(target.local_position.distance_to(start), 0);
+}
+
+TEST(ProjectionTest, CameraPickingRecoversTheSameRayThroughPanTiltAndZoom)
+{
+    const auto saved = view_mode;
+    view_mode = vm_spaceship;
+    for (const double pan : {-2.8, 0.0, 1.7})
+        for (const double tilt : {-1.3, 0.0, .9})
+            for (const double scale : {.25, 1.0, 50.0})
+                for (const Cartesian2D pixel : {Cartesian2D(0, 0), Cartesian2D(-.8, .3), Cartesian2D(.2, -.75)})
+                {
+                    const Point near_point(pixel, 17, pan, tilt, scale);
+                    const Point far_point(pixel, 1700, pan, tilt, scale);
+                    EXPECT_NEAR((far_point - near_point * 100).magnitude(), 0, 2e-10);
+                    const Cartesian2D projected(far_point, pan, tilt, scale);
+                    EXPECT_NEAR(projected.x, pixel.x, 1e-10);
+                    EXPECT_NEAR(projected.y, pixel.y, 1e-10);
+                }
+    view_mode = saved;
+}
+
+TEST(ProjectionTest, MovingAndScalingScreenCoordinatesPreservesPixelDistance)
+{
+    const Cartesian2D start(-4, 7), end(8, 12), translation(157, -81);
+    for (const double scale : {-2.0, .25, 1.5})
+    {
+        Cartesian2D left = start, right = end;
+        left += translation;
+        left *= scale;
+        right = (right + translation) * scale;
+        EXPECT_NEAR(left.distance_to(right), 13 * std::abs(scale), 1e-12);
+        left /= scale;
+        right = right / scale;
+        EXPECT_DOUBLE_EQ(left.x, 153);
+        EXPECT_DOUBLE_EQ(left.y, -74);
+        EXPECT_DOUBLE_EQ(right.x, 165);
+        EXPECT_DOUBLE_EQ(right.y, -69);
+    }
+}

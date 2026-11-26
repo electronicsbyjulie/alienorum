@@ -2139,3 +2139,51 @@ TEST_F(ExoConsTest, HeliocentricComparison_QuantifySimilarityWithConsline)
 }
 
 
+
+TEST_F(ConstellationTest, CoordinateLookupFindsBrightStarsWithoutUsingTheirDesignations)
+{
+    read_cons_lines();
+    CatalogReader reader;
+    ASSERT_GT(reader.read_cons_boundaries(), 0);
+    // Bright Star Catalogue J2000 positions, rounded well inside these constellations.
+    struct Reference
+    {
+        const char* name;
+        const char* abbreviation;
+        double hours, degrees;
+    };
+    const Reference stars[] =
+    {
+        {"Polaris", "UMi", 2.5302, 89.2642}, {"Achernar", "Eri", 1.6286, -57.2367},
+        {"Aldebaran", "Tau", 4.5987, 16.5092}, {"Capella", "Aur", 5.2782, 45.9981},
+        {"Betelgeuse", "Ori", 5.9195, 7.4069}, {"Canopus", "Car", 6.3992, -52.6958},
+        {"Sirius", "CMa", 6.7525, -16.7161}, {"Mimosa", "Cru", 12.7953, -59.6886},
+        {"Spica", "Vir", 13.4199, -11.1614}, {"Arcturus", "Boo", 14.2610, 19.1825},
+        {"Rigil Kentaurus", "Cen", 14.6599, -60.8353}, {"Antares", "Sco", 16.4901, -26.4319},
+        {"Vega", "Lyr", 18.6156, 38.7836}, {"Altair", "Aql", 19.8464, 8.8683},
+        {"Deneb", "Cyg", 20.6905, 45.2792}, {"Fomalhaut", "PsA", 22.9609, -29.6219}
+    };
+    for (const auto& sample : stars)
+    {
+        SCOPED_TRACE(sample.name);
+        const auto* constellation = identify_cons_from_coords(sample.hours * _pi / 12, sample.degrees * _pi / 180);
+        ASSERT_NE(constellation, nullptr);
+        EXPECT_EQ(constellation->abbrev, sample.abbreviation);
+    }
+}
+
+TEST_F(ConstellationTest, AllRightAscensionsNearEachCelestialPoleGiveTheSamePolarCap)
+{
+    read_cons_lines();
+    CatalogReader reader;
+    ASSERT_GT(reader.read_cons_boundaries(), 0);
+    for (int sign : {-1, 1})
+    {
+        for (int hours = 0; hours < 24; ++hours)
+        {
+            auto* region = identify_cons_from_coords(hours * _pi / 12, sign * 89.9 * fiftyseventh);
+            ASSERT_NE(region, nullptr) << hours << ", " << sign;
+            EXPECT_EQ(region->abbrev, sign > 0 ? "UMi" : "Oct") << hours << ", " << sign;
+        }
+    }
+}

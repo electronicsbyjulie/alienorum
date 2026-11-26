@@ -1010,3 +1010,21 @@ TEST(GalaxyCatalogMetadataTest, PhysicalAndDisplayPropertiesFollowCatalogRecords
     EXPECT_TRUE(restored.reference_galaxy);
     EXPECT_EQ(restored.internal_texture, "example.jpg");
 }
+
+TEST(GalaxyTest, MorphologySurvivesSavingSpiralsDwarfsAndEllipticals)
+{
+    const std::pair<const char*, bool> cases[] =
+    {
+        {"E0", true}, {"E7", true}, {"dE", true}, {"dSph", true}, {"Sc", false},
+        {"SB(s)c", false}, {"Im", false}, {"BCD", false}
+    };
+    for (const auto& sample : cases)
+    {
+        Galaxy g;
+        std::snprintf(g.morph_type, sizeof(g.morph_type), "%s", sample.first);
+        EXPECT_EQ(g.is_spheroidal_or_elliptical(), sample.second) << sample.first;
+        Galaxy restored;
+        ASSERT_TRUE(restored.from_json(g.to_json()));
+        EXPECT_EQ(restored.is_spheroidal_or_elliptical(), sample.second);
+    }
+}

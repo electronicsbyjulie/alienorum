@@ -3492,3 +3492,152 @@ TEST_F(ShoreNavigationTest, PlanetTexturesIgnoreBrightnessGammaAndRedlight)
         }
     }
 }
+
+TEST_F(ShoreNavigationTest, SolarTypeSpotCoresAreLocalizedInLatitudeAndLongitude)
+{
+    auto* sun = make_star("Spotted solar analogue");
+    sun->sidereal_rotational_period = 6 * oneday;
+    sun->BV_color = .65;
+    sun->fictitious_map_height = 192;
+    sun->rnd_seed = 9487;
+    Map photosphere(sun);
+    photosphere.generate_stellar_map(sun);
+    ASSERT_TRUE(photosphere.is_complete());
+    const int width = photosphere.get_width(), height = photosphere.get_height();
+    std::vector<unsigned char> image(width * height * 4);
+    photosphere.export_rgba(image.data());
+    std::vector<int> light(width * height);
+    for (size_t i = 0; i < light.size(); ++i)
+        light[i] = image[4*i] + image[4*i+1] + image[4*i+2];
+    auto sorted = light;
+    std::nth_element(sorted.begin(), sorted.begin() + sorted.size()/2, sorted.end());
+    const double dark = sorted[sorted.size()/2] * .82;
+    // Flood-fill umbrae across the longitude seam. A stripe, square artifact,
+    // or latitude/longitude mixup can preserve the average photosphere color.
+    int resolved = 0, compact = 0, shaped = 0, total = 0;
+    std::vector<bool> visited(light.size(), false);
+    for (int start = 0; start < width * height; ++start)
+    {
+        if (visited[start] || light[start] >= dark) continue;
+        std::vector<int> group{start};
+        visited[start] = true;
+        int low_lat = start / width, high_lat = low_lat;
+        int west = 0, east = 0;
+        for (size_t i = 0; i < group.size(); ++i)
+        {
+            const int x = group[i] % width, y = group[i] / width;
+            const int offset = (x - start % width + width + width/2) % width - width/2;
+            west = std::min(west, offset);
+            east = std::max(east, offset);
+            low_lat = std::min(low_lat, y);
+            high_lat = std::max(high_lat, y);
+            for (int next : {y*width + (x+1)%width, y*width + (x+width-1)%width,
+                group[i] - width, group[i] + width})
+            {
+                if (next < 0 || next >= width*height || visited[next] || light[next] >= dark) continue;
+                visited[next] = true;
+                group.push_back(next);
+            }
+        }
+        total += group.size();
+        if (group.size() < 8) continue;
+        ++resolved;
+        const double latitude = half_pi - _pi * (low_lat + high_lat) / (2 * height);
+        const double span = (east - west + 1) * std::cos(latitude);
+        const double aspect = span / (high_lat - low_lat + 1);
+        compact += aspect > .45 && aspect < 2.2;
+        shaped += group.size() < size_t((east - west + 1) * (high_lat - low_lat + 1));
+        EXPECT_LT(span, width / 8.0);
+        EXPECT_LT(high_lat - low_lat, height / 6);
+    }
+    EXPECT_GT(resolved, 0);
+    EXPECT_GT(compact, resolved / 2);
+    EXPECT_GT(shaped, resolved / 2);
+    EXPECT_LT(total, width * height / 8);
+}
+
+TEST(AtmosphereCompositionTest, EveryGasRetainsItsMolecularMassAtAnyMixingScale)
+{
+    // Integer atomic weights give independent checks in grams per mole.
+    const std::pair<const char*, int> species[] =
+    {
+        {"H2", 2}, {"He", 4}, {"N2", 28}, {"O2", 32}, {"O3", 48}, {"CO2", 44},
+        {"CH4", 16}, {"SO2", 64}, {"H2O", 18}, {"H2S", 34}, {"HCN", 27},
+        {"NH3", 17}, {"C2H6", 30}, {"N2O", 44}, {"CO", 28}, {"Ar", 40}
+    };
+    for (const auto& a : species)
+    {
+        for (const auto& b : species)
+        {
+            if (std::strcmp(a.first, b.first) == 0) continue;
+            for (double scale : {.001, 1.0, 3.0})
+            {
+                Planet planet;
+                auto* air = planet.ensure_atmosphere()->ensure_composition();
+                air->from_json({{a.first, scale * .3}, {b.first, scale * .7}});
+                air->enforce_integrity();
+                ASSERT_NEAR(air->mean_molar_mass() * 1000, .3 * a.second + .7 * b.second, .08)
+                    << a.first << ", " << b.first << ", scale " << scale;
+            }
+        }
+    }
+}
+
+TEST(ClimateEnergyTest, PlanetInterceptsOneQuarterOfStellarFluxAtEveryObliquity)
+{
+    // Integrating over equal-area latitude strips must give the ratio of a
+    // projected disk to a sphere, including pole-on illumination.
+    for (int degrees = -90; degrees <= 90; degrees += 3)
+    {
+        double average = 0;
+        for (int i = 0; i < 2048; ++i)
+            average += daily_stellar_heating((i + .5) / 1024 - 1, std::sin(degrees * fiftyseventh));
+        EXPECT_NEAR(average / 2048, .25, .00002) << degrees;
+    }
+}
+
+TEST_F(CelestialGlobalsTest, RetryingAnEarlierCatalogInsertionKeepsItsOriginalSlot)
+{
+    std::array<Star, 32> bodies;
+    for (auto& body : bodies) ASSERT_TRUE(append_cel(&body));
+    for (int index : {0, 3, 16, 31})
+    {
+        EXPECT_FALSE(append_cel(&bodies[index])) << index;
+        EXPECT_EQ(bodies[index].seqno, index);
+        EXPECT_EQ(ncelobjs, 32);
+    }
+}
+
+TEST(OrbitLocationTest, EllipsesSweepEqualAreasPerSecondThroughInclinedOrbits)
+{
+    Star host;
+    host.mass = solar_mass;
+    Planet world;
+    world.orbit = new Orbit();
+    auto& orbit = *world.orbit;
+    orbit.center = &host;
+    orbit.semimajor_axis = AU;
+    orbit.inclination = 1.07;
+    orbit.arg_periapsis = .83;
+    orbit.ascending_node = 2.1;
+    orbit.compute_period();
+    const auto position = [&](double t)
+    {
+        world.update_location(J2000_TIME_T + t);
+        return world.location.local_position * (1.0 / AU);
+    };
+    for (double e : {.01, .4, .8, .95})
+    {
+        orbit.eccentricity = e;
+        for (int sample = 0; sample < 32; ++sample)
+        {
+            const double t = sample * orbit.period / 32;
+            const auto r = position(t);
+            const auto v = (position(t + 5) - position(t - 5)) * .1;
+            const double angular_momentum = std::hypot(r.y*v.z-r.z*v.y,
+                r.z*v.x-r.x*v.z, r.x*v.y-r.y*v.x);
+            const double expected = 2 * _pi * std::sqrt(1-e*e) / orbit.period;
+            EXPECT_NEAR(angular_momentum / expected, 1, 3e-5) << e << ", phase " << sample;
+        }
+    }
+}

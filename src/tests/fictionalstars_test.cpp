@@ -1385,3 +1385,29 @@ TEST_F(FictionalStarsTest, PlanetaryHostSelectionAlwaysIncludesTheCenterStar)
         EXPECT_LE(batch.planet_hosts, std::max(1, int(std::lround(sample.count * .333))));
     }
 }
+
+TEST_F(FictionalStarsTest, RotatingAGalaxyRotatesEveryGeneratedSystemWithoutChangingItsPopulation)
+{
+    region.star_count = 128;
+    auto original = generate_fictional_stars(model, region);
+    ASSERT_TRUE(original.error.empty()) << original.error;
+    // Rotate the disk frame by ninety degrees around its height axis.
+    model.east = Point(0, 0, 1);
+    model.south = Point(-1, 0, 0);
+    auto rotated = generate_fictional_stars(model, region);
+    ASSERT_TRUE(rotated.error.empty()) << rotated.error;
+    ASSERT_EQ(original.stars.size(), rotated.stars.size());
+    for (size_t i = 0; i < original.stars.size(); ++i)
+    {
+        const auto& before = original.stars[i];
+        const auto& after = rotated.stars[i];
+        SCOPED_TRACE(before->origname);
+        EXPECT_EQ(after->origname, before->origname);
+        EXPECT_DOUBLE_EQ(after->mass, before->mass);
+        EXPECT_DOUBLE_EQ(after->temperature, before->temperature);
+        const Point first = before->location.system_center, second = after->location.system_center;
+        EXPECT_NEAR(second.x, -first.z, .00001 * light_year);
+        EXPECT_NEAR(second.y, first.y, .00001 * light_year);
+        EXPECT_NEAR(second.z, first.x, .00001 * light_year);
+    }
+}
