@@ -7537,6 +7537,36 @@ TEST_F(RenderingRegressionTest, RingOuterEdgeDoesNotLeakIntoTheInnerGap)
     ImGui::NewFrame();
 }
 
+TEST_F(RenderingRegressionTest, GeneratedRingTextureLeavesAnInnerGap)
+{
+    Planet* world = make_planet(make_star());
+    world->ring_map = new Map(world);
+    world->ringx_map = new Map(world);
+    world->ring_map->generate_ring_map(world, 1024, .5, .8, world->ringx_map);
+    ASSERT_TRUE(world->ringx_map->is_complete());
+
+    impostor_begin_frame();
+    RingImpostorInput input{};
+    input.cz = 10;
+    input.inner_r = 1;
+    input.outer_r = 5;
+    input.normal[2] = 1;
+    input.ring_map_texture = gputex_for(world->ring_map);
+    input.ringx_map_texture = gputex_for(world->ringx_map);
+    ASSERT_NE(input.ringx_map_texture, 0u);
+    input.self_luminous = true;
+    ASSERT_TRUE(queue_ring_impostor(input, 1, dispcx, dispcy, dispcx));
+    const auto pixels = render();
+    const auto red_at_offset = [&](int offset)
+    {
+        return pixels[(static_cast<int>(dispcy) * render_width
+            + static_cast<int>(dispcx) + offset) * 4];
+    };
+    EXPECT_EQ(red_at_offset(16), 0);
+    EXPECT_GT(red_at_offset(38), 10);
+    ImGui::NewFrame();
+}
+
 TEST_F(RenderingRegressionTest, RingsAddLightWithoutDarkeningTheSky)
 {
     const auto capture = [&](bool rings)

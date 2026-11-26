@@ -1470,6 +1470,19 @@ TEST(OrbitTest, OpenVersusClosedOrbits)
 // Map Tests
 // =====================================================================
 
+TEST(MapTest, GeneratedRingOpacityLeavesTheInnerGapTransparent)
+{
+    Planet world;
+    world.type = gas_giant;
+    world.rnd_seed = 1234;
+    world.ring_map = new Map(&world);
+    world.ringx_map = new Map(&world);
+    world.ring_map->generate_ring_map(&world, 1024, .5, .8, world.ringx_map);
+    ASSERT_TRUE(world.ringx_map->is_complete());
+    EXPECT_EQ(world.ringx_map->color_at(0, -half_pi).g, 255);
+    EXPECT_LT(world.ringx_map->color_at(0, half_pi).g, 255);
+}
+
 TEST(MapTest, GenerationCounterTracksUpdates)
 {
     Map m;

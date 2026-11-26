@@ -6019,7 +6019,8 @@ void alienorum::Map::generate_ring_map(CelestialObject *cel, int res, double rir
         rgb.r = 250;
         rgb.g = 250 - 0.5*red;
         rgb.b = 240 - red;
-        double sigma = sigmoid((double)(x-inx) * 0.05);
+        // Columns inside the gap must have a negative offset even with unsigned indices.
+        double sigma = sigmoid((static_cast<double>(x) - inx) * 0.05);
         xrgb.r = xrgb.g = xrgb.b = (sigma >= 0.05)
             ? (255 - (255.0 * mo
                 * sigma                                 // inner bound
