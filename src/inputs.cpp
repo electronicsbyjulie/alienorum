@@ -1401,15 +1401,16 @@ void process_keyboard_commands(ImGuiIO& io)
 
 void steer(Point axis, double sr)
 {
-    #if 1
     velocity = rotate3D(velocity, center, axis, -sr);
-    #else
-    double vel = velocity.magnitude();
-    Point facing = Point::from_ra_dec(azimuth, altitude, vel, myeq);
-    facing = to_viewer_plane(facing, 1);
-    velocity += rotate3D(facing, center, axis, -sr);
-    velocity.scale(vel);
-    #endif
+}
+
+static void steer_pitch(double change)
+{
+    const double previous_altitude = altitude;
+    if (trackidx < 0) altitude += change;
+    enforce_y_pan_limit();
+    const Point camera_right = rotate3D(xaxis, center, yaxis, azimuth + azimuth_correction);
+    steer(to_viewer_plane(camera_right, -1), trackidx < 0 ? altitude - previous_altitude : change);
 }
 
 void process_key_arrowup()
@@ -1419,11 +1420,7 @@ void process_key_arrowup()
         if (ImGui::IsKeyDown(ImGuiKey_LeftShift) || ImGui::IsKeyDown(ImGuiKey_RightShift)) steering_rate *= 0.1;
         if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl) || ImGui::IsKeyDown(ImGuiKey_RightCtrl)) steering_rate *= 0.01;
     }
-    Point pitch = to_viewer_plane(xaxis, -1);
-    steer(pitch, steering_rate);
-    if (trackidx<0) altitude += steering_rate;
-    if (altitude > half_pi) altitude = half_pi;
-    enforce_y_pan_limit();
+    steer_pitch(steering_rate);
 }
 
 void process_key_arrowdn()
@@ -1433,11 +1430,7 @@ void process_key_arrowdn()
         if (ImGui::IsKeyDown(ImGuiKey_LeftShift) || ImGui::IsKeyDown(ImGuiKey_RightShift)) steering_rate *= 0.1;
         if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl) || ImGui::IsKeyDown(ImGuiKey_RightCtrl)) steering_rate *= 0.01;
     }
-    Point pitch = to_viewer_plane(xaxis, -1);
-    steer(pitch, -steering_rate);
-    if (trackidx<0) altitude -= steering_rate;
-    if (altitude < -half_pi) altitude = -half_pi;
-    enforce_y_pan_limit();
+    steer_pitch(-steering_rate);
 }
 
 void process_key_arrowleft()

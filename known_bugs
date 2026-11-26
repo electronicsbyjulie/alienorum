@@ -1,4 +1,0 @@
-
-Labels sometimes appear for objects with less than 5 pixel separation from a brighter object.
-
-Arrow keys in spaceflight should steer the direction of flight like in a flight simulator, so that if the viewer was moving forward in the direction they were facing, they continue to do so, but sometimes the arrow keys produce the opposite steering direction instead.

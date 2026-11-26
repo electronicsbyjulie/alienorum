@@ -153,6 +153,8 @@ static bool label_screen_position(const CelestialObject* object, double& x, doub
     return std::isfinite(x) && std::isfinite(y);
 }
 
+static constexpr double object_label_separation = 5.0;
+
 static std::optional<bool> label_pair_resolved(const CelestialObject* object, const CelestialObject* parent)
 {
     // The observing body has no sky dot with which another object's label could merge.
@@ -161,7 +163,7 @@ static std::optional<bool> label_pair_resolved(const CelestialObject* object, co
     if (!label_screen_position(object, x, y) || !label_screen_position(parent, parent_x, parent_y))
         return std::nullopt;
     const double dx = x-parent_x, dy = y-parent_y;
-    return dx*dx+dy*dy >= 25.0;
+    return dx*dx+dy*dy >= object_label_separation * object_label_separation;
 }
 
 static bool moon_label_separated(const CelestialObject* object)
@@ -3480,7 +3482,111 @@ static double draw_comet(CelestialObject *cel, double appmag)
     return draw_px;
 }
 
-bool draw_single_object(int i)
+static bool satellite_marker_in_range(const CelestialObject* satellite)
+{
+    return view_mode == vm_model || !(satellite->tmprel.magnitude() > satellite->orbit->semimajor_axis * zoom * 6
+        && angular_radius[satellite->seqno] < 0.01 * fiftyseventh);
+}
+
+class BrighterLabelNeighbors
+{
+public:
+    struct StellarGroup
+    {
+        const CelestialObject* owner = nullptr;
+        double magnitude = std::numeric_limits<double>::infinity();
+        bool selected = false;
+    };
+
+private:
+    struct Entry
+    {
+        double x, y, magnitude;
+        const Star* stellar_identity;
+    };
+    std::unordered_map<uint64_t, std::vector<Entry>> cells;
+    std::unordered_map<const Star*, StellarGroup> stellar_groups;
+
+    static int cell_coordinate(double pixel)
+    {
+        return static_cast<int>(std::floor(pixel / object_label_separation));
+    }
+
+    static uint64_t cell_key(int x, int y)
+    {
+        return (uint64_t(uint32_t(x)) << 32) | uint32_t(y);
+    }
+
+public:
+    static bool in_range(const CelestialObject* object)
+    {
+        const double margin = object_label_separation;
+        return object->drawnx >= -margin && object->drawnx <= 2 * dispcx + margin
+            && object->drawny >= -margin && object->drawny <= 2 * dispcy + margin;
+    }
+
+    void add(CelestialObject* object)
+    {
+        const double magnitude = vmag_cache[object->seqno];
+        const Star* identity = object->typeclass() == class_star
+            ? stellar_display_target(static_cast<Star*>(object)) : nullptr;
+        if (identity && identity->multisys)
+        {
+            auto& group = stellar_groups[identity];
+            // Prefer the primary's position when it is drawable. A visible companion
+            // can carry the shared label if the primary was culled.
+            if (!group.owner || identity == object) group.owner = object;
+            group.magnitude = std::fmin(group.magnitude, magnitude);
+            group.selected = group.selected || object->seqno == selected;
+        }
+        if (std::isnan(magnitude)) return;
+        cells[cell_key(cell_coordinate(object->drawnx), cell_coordinate(object->drawny))]
+            .push_back({object->drawnx, object->drawny, magnitude, identity});
+    }
+
+    const StellarGroup* stellar_group(const Star* identity) const
+    {
+        if (!identity || !identity->multisys) return nullptr;
+        const auto group = stellar_groups.find(identity);
+        return group == stellar_groups.end() ? nullptr : &group->second;
+    }
+
+    void sort_by_brightness()
+    {
+        for (auto& cell : cells)
+        {
+            auto& entries = cell.second;
+            std::sort(entries.begin(), entries.end(),
+                [](const Entry& a, const Entry& b) { return a.magnitude < b.magnitude; });
+        }
+    }
+
+    bool has_brighter_neighbor(const CelestialObject* object, double magnitude, const Star* identity) const
+    {
+        if (cells.empty() || !in_range(object)) return false;
+        const int x = cell_coordinate(object->drawnx);
+        const int y = cell_coordinate(object->drawny);
+        for (int row = y - 1; row <= y + 1; ++row)
+        {
+            for (int column = x - 1; column <= x + 1; ++column)
+            {
+                const auto cell = cells.find(cell_key(column, row));
+                if (cell == cells.end()) continue;
+                for (const Entry& entry : cell->second)
+                {
+                    if (!(entry.magnitude < magnitude)) break;
+                    if (identity && entry.stellar_identity == identity) continue;
+                    const double dx = entry.x - object->drawnx;
+                    const double dy = entry.y - object->drawny;
+                    if (dx * dx + dy * dy < object_label_separation * object_label_separation) return true;
+                }
+            }
+        }
+        return false;
+    }
+};
+
+static bool paint_single_object(int i, const BrighterLabelNeighbors* label_neighbors)
 {
     if (exclude_observing_object(cels[i])) return false;
     cels[i]->label_shown = false;
@@ -3541,9 +3647,7 @@ bool draw_single_object(int i)
     else if (cls == class_satellite)
     {
         if (!show_sats || !cels[i]->orbit || !cels[i]->orbit->center) return false;
-        if (view_mode != vm_model && (cels[i]->tmprel.magnitude() > cels[i]->orbit->semimajor_axis*zoom*6)
-            && (angular_radius[i] < 0.01*fiftyseventh)
-            )
+        if (!satellite_marker_in_range(cels[i]))
         {
             cels[i]->drawnx = cels[i]->drawny = -1e9;
             return false;
@@ -3737,10 +3841,14 @@ bool draw_single_object(int i)
     if (view_mode == vm_model && !cels[i]->onscreen && i != selected) return true;
     Star *s = cls == class_star ? static_cast<Star*>(cels[i]) : nullptr;
     Star *label_star = stellar_display_target(s);
+    const auto* group = label_neighbors ? label_neighbors->stellar_group(label_star) : nullptr;
+    if (group && group->owner != cels[i]) return true;
+    const double label_magnitude = group ? group->magnitude : vmag_cache[i];
+    const bool label_selected = i == selected || (group && group->selected);
     const bool resolved_companion = s && label_star == s && s->get_component() > 'A';
     bool add_label = view_mode == vm_model && lbl_localsys && cls != class_star;
-    if ( (show_labels && s && (!cels[i]->orbit || resolved_companion) &&
-            ((!cbolbls_selected_idx && appmag <= appmagn_lblcut)
+    if ( (show_labels && s && (!cels[i]->orbit || resolved_companion || (group && label_star != s)) &&
+            ((!cbolbls_selected_idx && label_magnitude - sky_mag_shift <= appmagn_lblcut)
             || (cbolbls_selected_idx == lbltype_intrinsic && cels[i]->absolute_magnitude <= absmagn_lblcut)
             || (cbolbls_selected_idx == lbltype_nearby && here.distance_to(cels[i]->location) <= distance_lblcut)
             || (cbolbls_selected_idx == lbltype_Bayer && strlen(s->Bayer) && (!cons4lbl || s->matches_constellation(cons4lbl->abbrev.c_str())))
@@ -3763,7 +3871,7 @@ bool draw_single_object(int i)
                 || ((vmag_cache[i] < (mag_limit_adjusted + 1.3)) && angular_radius[i] >= 0.1 * fiftyseventh)
                )
            )
-        || i == selected)
+        || label_selected)
         add_label = true;
 
     if (!add_label && label_favestars && s)
@@ -3771,7 +3879,7 @@ bool draw_single_object(int i)
 
     if (add_label && !moon_label_separated(cels[i])) add_label = false;
 
-    if (add_label)
+    if (add_label && (!label_neighbors || !label_neighbors->has_brighter_neighbor(cels[i], label_magnitude, label_star)))
     {
         const char *dispname = label_star ? label_star->name : cels[i]->name;
         int l = strlen(dispname);
@@ -3897,19 +4005,24 @@ bool draw_single_object(int i)
             llbl.fontsz = lfontsz;
             llbl.pos = ImVec2(cels[i]->drawnx - sz.x/2, dy);
             llbl.color = Color::ensure_wcag_contrast(
-                    (i == selected) ? global_style.selected_color : global_style.objlbl_color, whtbkgd, 4.5, -1, true);
+                    label_selected ? global_style.selected_color : global_style.objlbl_color, whtbkgd, 4.5, -1, true);
             llbl.text = dispname;
             labels2draw.push_back(llbl);
         }
         #else
         ImGui::GetBackgroundDrawList()->AddText(font, lfontsz, ImVec2(cels[i]->drawnx - sz.x/2, dy),
             rgba_apply_redlight(Color::ensure_wcag_contrast(
-                (i == selected) ? global_style.selected_color : global_style.objlbl_color, whtbkgd, 4.5, -1, true)),
+                label_selected ? global_style.selected_color : global_style.objlbl_color, whtbkgd, 4.5, -1, true)),
             dispname);
         #endif
         cels[i]->label_shown = true;
     }
     return true;
+}
+
+bool draw_single_object(int i)
+{
+    return paint_single_object(i, nullptr);
 }
 
 void draw_galaxy_band()
@@ -4510,6 +4623,21 @@ void draw_objects()
 
     if (!cels[1]) return;
 
+    // Use the same projected candidates as the painter, irrespective of distance order.
+    BrighterLabelNeighbors label_neighbors;
+    if (show_labels || lbl_localsys || label_galaxies || label_favestars || selected >= 0)
+    {
+        for (const auto& layer : to_draw_layered)
+        {
+            CelestialObject* object = layer.second;
+            if (!BrighterLabelNeighbors::in_range(object) || (!show_localsys && object->cenobj == mycenobj)) continue;
+            if (object->typeclass() == class_satellite && (!show_sats || !object->orbit || !object->orbit->center
+                || !satellite_marker_in_range(object))) continue;
+            label_neighbors.add(object);
+        }
+        label_neighbors.sort_by_brightness();
+    }
+
     // Paint each label immediately after its object, before any nearer disc.
     std::stable_sort(to_draw_layered.begin(), to_draw_layered.end(), [](const auto &a, const auto &b)
     {
@@ -4518,7 +4646,7 @@ void draw_objects()
     n = to_draw_layered.size();
     for (j=0; j<n; j++)
     {
-        draw_single_object(to_draw_layered[j].second->seqno);
+        paint_single_object(to_draw_layered[j].second->seqno, &label_neighbors);
         draw_cached_labels();
         if (!cels[1]) return;
     }

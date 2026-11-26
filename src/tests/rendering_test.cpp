@@ -12542,6 +12542,249 @@ TEST_F(RenderingRegressionTest, OriginalNamedKeysStillControlMovementAndDeletion
     EXPECT_TRUE(object->deleted);
 }
 
+TEST_F(RenderingRegressionTest, ArrowSteeringKeepsForwardFlightAlignedWithTheCamera)
+{
+    make_star("Sol");
+    make_star("Reference star");
+    set(trackidx, -1);
+    set(velocity, Point());
+    set(azimuth_correction, 0.27);
+    set(here.equatorial_plane.v, Point(1, 2, -1));
+    set(here.equatorial_plane.a, 0.53);
+    set(zoom, 2.0);
+    const auto forward = [](double heading, double pitch)
+    {
+        return Point(std::sin(heading) * std::cos(pitch), std::sin(pitch),
+                     std::cos(heading) * std::cos(pitch));
+    };
+    const double speed = 1200;
+    const double step = _pi / 32;
+    auto& io = ImGui::GetIO();
+    for (double heading : {-2.6, -0.3, 0.9, 2.4})
+    {
+        for (double pitch : {-half_pi + 0.02, -0.65, 0.0, 0.55, half_pi - 0.02})
+        {
+            for (ImGuiKey key : {ImGuiKey_LeftArrow, ImGuiKey_RightArrow, ImGuiKey_UpArrow, ImGuiKey_DownArrow})
+            {
+                SCOPED_TRACE(::testing::Message() << heading << ", " << pitch << ", " << key);
+                azimuth = heading;
+                altitude = pitch;
+                velocity = to_viewer_plane(forward(heading + azimuth_correction, pitch) * speed, -1);
+                io.AddKeyEvent(key, true);
+                ImGui::EndFrame();
+                ImGui::NewFrame();
+                process_keyboard_commands(io);
+                io.AddKeyEvent(key, false);
+                ImGui::EndFrame();
+                ImGui::NewFrame();
+
+                const double expected_heading = heading
+                    + (key == ImGuiKey_LeftArrow ? -step : key == ImGuiKey_RightArrow ? step : 0);
+                const double expected_pitch = std::clamp(pitch
+                    + (key == ImGuiKey_DownArrow ? -step : key == ImGuiKey_UpArrow ? step : 0), -half_pi, half_pi);
+                EXPECT_NEAR(azimuth, expected_heading, 1e-12);
+                EXPECT_NEAR(altitude, expected_pitch, 1e-12);
+                EXPECT_NEAR(velocity.magnitude(), speed, 1e-9);
+                const Point expected = forward(expected_heading + azimuth_correction, expected_pitch);
+                EXPECT_NEAR((to_viewer_plane(velocity) * (1.0 / speed) - expected).magnitude(), 0, 1e-12);
+            }
+        }
+    }
+}
+
+TEST_F(RenderingRegressionTest, WarpingSunwardHidesClusteredPlanetLabelsUntilTheyResolve)
+{
+    Star* sun = make_star("Sun");
+    Star* departure = make_star("Departure");
+    for (Star* star : {sun, departure})
+    {
+        star->has_fictional_motion = true;
+        star->cenobj = star;
+    }
+    departure->location.system_center = departure->fictional_epoch_position = Point(0, 0, -100 * AU);
+    Planet* first = make_planet(sun, "Inner world", AU);
+    Planet* second = make_planet(sun, "Outer world", 1.5 * AU);
+    first->orbit->ascending_node = half_pi;
+    second->orbit->ascending_node = -half_pi;
+    set(here, CelestialLocation());
+    set(vplane_mode, vplane_ICRF);
+    set(whereami, departure->seqno);
+    set(mycenobj, static_cast<CelestialObject*>(departure));
+    set(trackidx, -1);
+    set(selected, -1);
+    set(velocity, Point());
+    set(simnow, double(J2000_TIME_T));
+    set(redo_proper_motions, true);
+    set(show_localsys, true);
+    set(lbl_localsys, true);
+    set(spin, 0.0);
+    set(viewchanged, false);
+    set(took_off_from, -1);
+    set(tookoff_countdown, 0);
+    set(viewer_locale, std::string());
+    set(lbllsys_mass_lim, 0);
+    set(show_orbits, false);
+    set(global_brightness, 1.0);
+    double magnitudes[4] = {}, sizes[4] = {}, bloom[4] = {};
+    bool discs[4] = {};
+    set(vmag_cache, static_cast<double*>(magnitudes));
+    set(angular_radius, static_cast<double*>(sizes));
+    set(bloomrad_cache, static_cast<double*>(bloom));
+    set(discinstead, static_cast<bool*>(discs));
+
+    process_key_cmd_char(':');
+    ASSERT_EQ(view_mode, vm_model);
+    process_key_cmd_char('w');
+    ASSERT_EQ(view_mode, vm_spaceship);
+    ASSERT_GT(velocity.z, 0);
+    const auto advance = [&](double distance)
+    {
+        const double seconds = distance / (velocity.magnitude() * target_frame_rate);
+        here.local_position += viewer_displacement(velocity, seconds);
+        compute_object_draw_coordinates();
+        draw_objects();
+    };
+    const auto separation = [sun](const CelestialObject* planet)
+    {
+        return std::hypot(planet->drawnx - sun->drawnx, planet->drawny - sun->drawny);
+    };
+    advance(60 * AU);
+    ASSERT_EQ(mycenobj, sun);
+    ImGui::EndFrame();
+    ImGui::NewFrame();
+    advance(0);
+    for (Planet* planet : {first, second})
+    {
+        SCOPED_TRACE(planet->name);
+        ASSERT_GT(planet->drawnx, 0) << sun->drawnx << ", " << planet->tmprel;
+        ASSERT_GT(sun->drawnx, 0) << sun->tmprel;
+        ASSERT_GT(separation(planet), 0);
+        ASSERT_LT(separation(planet), 5);
+        ASSERT_LT(magnitudes[sun->seqno], magnitudes[planet->seqno]);
+        EXPECT_FALSE(planet->label_shown);
+    }
+
+    ImGui::EndFrame();
+    ImGui::NewFrame();
+    advance(32 * AU);
+    for (Planet* planet : {first, second})
+    {
+        ASSERT_GE(separation(planet), 5);
+        EXPECT_TRUE(planet->label_shown);
+    }
+}
+
+TEST_F(RenderingRegressionTest, CompanionLabelReappearsAtFivePixelsFromItsBrighterPrimary)
+{
+    Star* primary = make_star("Binary primary");
+    primary->set_component('A', primary);
+    Star* companion = make_star("Binary companion B");
+    companion->make_companion_of(primary, 'B');
+    Star* foreground = make_star("Foreground star");
+    foreground->tmprel = Point(0, 0, light_year);
+    foreground->drawnx = 106;
+    foreground->drawny = 58;
+    foreground->tmp_vis_flag = true;
+    primary->cenobj = companion->cenobj = primary;
+    primary->tmprel = Point(0, 0, 10 * light_year);
+    companion->tmprel = Point(0, 0, 9 * light_year);
+    primary->drawnx = 94;
+    primary->drawny = 54;
+    double magnitudes[3] = {-1, 1, -2}, sizes[3] = {}, bloom[3] = {};
+    bool discs[3] = {};
+    set(vmag_cache, static_cast<double*>(magnitudes));
+    set(angular_radius, static_cast<double*>(sizes));
+    set(bloomrad_cache, static_cast<double*>(bloom));
+    set(discinstead, static_cast<bool*>(discs));
+    set(mycenobj, static_cast<CelestialObject*>(primary));
+    set(selected, companion->seqno);
+    set(trackidx, -1);
+    set(lbl_localsys, true);
+    set(lbllsys_mass_lim, 0);
+    set(show_localsys, true);
+    set(show_orbits, false);
+    set(global_brightness, 1.0);
+
+    for (const float dy : {3.99f, 4.0f, 4.01f, 3.99f})
+    {
+        SCOPED_TRACE(dy);
+        companion->drawnx = 97;
+        companion->drawny = 54 + dy;
+        draw_objects();
+        EXPECT_TRUE(primary->label_shown);
+        EXPECT_EQ(companion->label_shown, dy >= 4.0f);
+        ImGui::EndFrame();
+        ImGui::NewFrame();
+    }
+
+    companion->drawnx = 103;
+    companion->drawny = 58;
+    draw_objects();
+    EXPECT_TRUE(primary->label_shown);
+    EXPECT_FALSE(companion->label_shown);
+
+    ImGui::EndFrame();
+    ImGui::NewFrame();
+    foreground->deleted = true;
+    draw_objects();
+    EXPECT_TRUE(primary->label_shown);
+    EXPECT_TRUE(companion->label_shown);
+}
+
+TEST_F(RenderingRegressionTest, UnresolvedBinaryLabelsItsPrimaryEvenWhenTheCompanionIsBrighter)
+{
+    Star* primary = make_star("Fainter primary");
+    primary->set_component('A', primary);
+    Star* companion = make_star("Brighter companion B");
+    companion->make_companion_of(primary, 'B');
+    primary->cenobj = companion->cenobj = primary;
+    primary->drawnx = 94;
+    primary->drawny = companion->drawny = 54;
+    primary->tmprel = Point(0, 0, 10 * light_year);
+    companion->tmprel = Point(0, 0, 9 * light_year);
+    double magnitudes[2] = {2, -1}, sizes[2] = {}, bloom[2] = {};
+    bool discs[2] = {};
+    set(vmag_cache, static_cast<double*>(magnitudes));
+    set(angular_radius, static_cast<double*>(sizes));
+    set(bloomrad_cache, static_cast<double*>(bloom));
+    set(discinstead, static_cast<bool*>(discs));
+    set(mycenobj, static_cast<CelestialObject*>(primary));
+    set(show_localsys, true);
+    set(show_orbits, false);
+    set(show_labels, true);
+    set(lbl_localsys, false);
+    set(label_favestars, false);
+    set(selected, -1);
+    set(trackidx, -1);
+    set(cbolbls_selected_idx, lbltype_brightest);
+    set(appmagn_lblcut, 1.0);
+    set(sky_mag_shift, 0.0);
+    set(global_brightness, 1.0);
+
+    companion->drawnx = 98;
+    draw_objects();
+    EXPECT_TRUE(primary->label_shown);
+    EXPECT_FALSE(companion->label_shown);
+
+    ImGui::EndFrame();
+    ImGui::NewFrame();
+    show_labels = false;
+    selected = companion->seqno;
+    draw_objects();
+    EXPECT_TRUE(primary->label_shown);
+    EXPECT_FALSE(companion->label_shown);
+
+    ImGui::EndFrame();
+    ImGui::NewFrame();
+    companion->drawnx = 99;
+    show_labels = true;
+    appmagn_lblcut = 3;
+    selected = -1;
+    draw_objects();
+    EXPECT_TRUE(primary->label_shown);
+    EXPECT_TRUE(companion->label_shown);
+}
+
 TEST_F(RenderingRegressionTest, DistantPlanetZoomResolvesACircularLimbInSpaceshipPixels)
 {
     class BandedMap : public Map
