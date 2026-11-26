@@ -94,6 +94,7 @@ bool label_galaxies = true;
 bool show_galaxy_band = true;
 bool shortnames = false;
 bool showfails = false;
+bool show_tentative_exoplanets = false;
 int numfails = 0;
 double myeq = 0;
 bool exocons_is_generating = false;

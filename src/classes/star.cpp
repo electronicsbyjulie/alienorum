@@ -18,6 +18,7 @@
 #include "numeric.h"
 #include "neighborhoodfilter.h"
 #include "../globals.h"
+#include "star.h"
 
 using namespace alienorum;
 
@@ -31,7 +32,7 @@ void Star::refresh_planet_statistics()
 {
     std::lock_guard<std::recursive_mutex> lock(catalog_mutex);
     std::vector<int> valid;
-    has_hz_planets = 0;
+    has_planets = has_hz_planets = has_uncertain_planets = has_uncertain_hz_planets = 0;
     for (int index : pl_indices)
     {
         if (!cels || index < 0 || index >= ncelobjs || !cels[index] || cels[index]->deleted
@@ -39,10 +40,18 @@ void Star::refresh_planet_statistics()
         Planet* planet = static_cast<Planet*>(cels[index]);
         if (!planet->counts_for_host_statistics() || planet->get_light_center() != this) continue;
         valid.push_back(index);
-        if (planet->is_in_con_HZ()) ++has_hz_planets;
+
+        if (planet->catalog_candidate)
+        {
+            ++has_uncertain_planets;
+            if (planet->is_in_con_HZ()) ++has_uncertain_hz_planets;
+        }
+        else
+        {
+            ++has_planets;
+            if (planet->is_in_con_HZ()) ++has_hz_planets;
+        }
     }
-    pl_indices.swap(valid);
-    has_planets = static_cast<int>(pl_indices.size());
     planet_statistics_temperature = temperature;
     planet_statistics_magnitude = absolute_magnitude;
     planet_statistics_luminosity = bolometric_luminosity();
@@ -2526,6 +2535,16 @@ void Star::make_companion_of(Star *A, char comp)
 
     // A->set_component('A', A);
     set_component(comp, A);
+}
+
+int alienorum::Star::get_planet_count()
+{
+    return has_planets + (show_tentative_exoplanets ? has_uncertain_planets : 0);
+}
+
+int alienorum::Star::get_hz_planet_count()
+{
+    return has_hz_planets + (show_tentative_exoplanets ? has_uncertain_hz_planets : 0);
 }
 
 double Star::estimate_mass()

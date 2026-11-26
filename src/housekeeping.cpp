@@ -543,8 +543,6 @@ const std::vector<int>& frame_pick_candidates()
     return view_mode == vm_system || is_surface_map_view(view_mode) ? frame_objects().all : candidates;
 }
 
-bool show_tentative_exoplanets = false;
-
 bool object_passes_exoplanet_filter(const CelestialObject* object)
 {
     if (show_tentative_exoplanets) return true;
@@ -644,8 +642,8 @@ bool compute_object_location(CelestialObject* cel, bool* relative_valid)
             ? ((cel->cenobj == mycenobj && mycenobj)
                 || ((Star*)cel)->is_in_visible_box(Point(here))
                 || ((Star*)cel)->is_faved
-                || (cbolbls_selected_idx == lbltype_planets && (((Star*)cel)->has_planets >= planets_lblcut) )
-                || (cbolbls_selected_idx == lbltype_planethz && (((Star*)cel)->has_hz_planets) )
+                || (cbolbls_selected_idx == lbltype_planets && (((Star*)cel)->get_planet_count() >= planets_lblcut) )
+                || (cbolbls_selected_idx == lbltype_planethz && (((Star*)cel)->get_hz_planet_count()) )
                 )
             : true))) num_stars_in_box++;              // ANC
         if (i > 0)
@@ -654,8 +652,8 @@ bool compute_object_location(CelestialObject* cel, bool* relative_valid)
             if (!system_object && i!=selected && i!=trackidx && i!=editidx && i!=whereami && cel->cenobj!=mycenobj && !((Star*)cel)->is_faved)
             {
                 if (view_mode != vm_model && !star_in_box && !((Star*)cel)->is_universally_visible()
-                    && (cbolbls_selected_idx != lbltype_planets  || (((Star*)cel)->has_planets < planets_lblcut) )
-                    && (cbolbls_selected_idx != lbltype_planethz || !(((Star*)cel)->has_hz_planets) )
+                    && (cbolbls_selected_idx != lbltype_planets  || (((Star*)cel)->get_planet_count() < planets_lblcut) )
+                    && (cbolbls_selected_idx != lbltype_planethz || !(((Star*)cel)->get_hz_planet_count()) )
                     )
                 {
                     cel->drawnx = cel->drawny = -1e9;

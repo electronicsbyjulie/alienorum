@@ -2158,7 +2158,7 @@ void Planet::rebuild_host_statistics()
         if (!cels[i] || cels[i]->typeclass() != class_star) continue;
         Star* host = static_cast<Star*>(cels[i]);
         host->pl_indices.clear();
-        host->has_planets = host->has_hz_planets = 0;
+        host->has_planets = host->has_hz_planets = host->has_uncertain_planets = host->has_uncertain_hz_planets = 0;
     }
     for (int i = 0; i < ncelobjs; ++i)
     {

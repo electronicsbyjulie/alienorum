@@ -1204,11 +1204,11 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
         {
             ImGui::Separator();
             
-            const char *plural_s = (s->has_planets == 1) ? "" : "s",
-                 *plural_s_hz = (s->has_hz_planets == 1) ? "" : "s";
-            if (s->has_planets)
+            const char *plural_s = (s->get_planet_count() == 1) ? "" : "s",
+                 *plural_s_hz = (s->get_hz_planet_count() == 1) ? "" : "s";
+            if (s->get_planet_count())
             {
-                ImGui::Text("%d planet%s.", s->has_planets, plural_s);
+                ImGui::Text("%d planet%s.", s->get_planet_count(), plural_s);
                 if (s->has_hz_planets)
                 {
                     ImGui::Text("%d planet%s in HZ:", s->has_hz_planets, plural_s_hz);
@@ -3383,7 +3383,7 @@ const std::vector<int>& stellar_neighborhood_stars()
         if (!object || object->deleted || object->typeclass() != class_star) continue;
         auto* star = static_cast<Star*>(object);
         if (!neighborhood_matches_type(*star, neighborhood_type)) continue;
-        if (onlyhz ? !star->has_hz_planets : onlyplt && star->has_planets < minpl) continue;
+        if (onlyhz ? !star->get_hz_planet_count() : onlyplt && star->get_planet_count() < minpl) continue;
         if (onlyknp && !star->known_poles) continue;
         filtered.push_back(index);
         if (brightest && filtered.size() == 100) break;
@@ -3486,11 +3486,11 @@ void draw_stellar_neighborhood(ImGuiIO &io)
                 l = line.str().size();
                 if (l < 59) line << std::string(59-l, ' ');
 
-                if (s->has_planets)
+                if (s->get_planet_count())
                 {
-                    line << s->has_planets;
+                    line << s->get_planet_count();
                     line << "/";
-                    if (s->has_hz_planets) line << s->has_hz_planets;
+                    if (s->get_hz_planet_count()) line << s->get_hz_planet_count();
                     else line << "-";
                 }
                 l = line.str().size();

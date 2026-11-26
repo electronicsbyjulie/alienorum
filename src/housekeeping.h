@@ -9,7 +9,6 @@ void set_viewer_surface_location(bool also_set_plane);
 void set_viewer_location_and_plane();
 bool go_to_celestial_object(int index);
 Point viewer_displacement(const Point& motion, double elapsed_seconds);
-extern bool show_tentative_exoplanets;
 bool object_passes_exoplanet_filter(const CelestialObject* object);
 bool planetary_system_is_active(const CelestialObject* cel);
 void invalidate_frame_objects();

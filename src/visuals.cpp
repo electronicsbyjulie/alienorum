@@ -3740,8 +3740,8 @@ bool draw_single_object(int i)
             || (cbolbls_selected_idx == lbltype_Flamsteed && strlen(s->Flamsteed) && (!cons4lbl || s->matches_constellation(cons4lbl->abbrev.c_str())))
             || ((cbolbls_selected_idx == lbltype_Gould && s->GouldNo > 0) && (!cons4lbl || s->matches_constellation(cons4lbl->abbrev.c_str())))
             || (cbolbls_selected_idx == lbltype_sunlike && s->is_sunlike())
-            || (cbolbls_selected_idx == lbltype_planets && (s->has_planets >= planets_lblcut) )
-            || (cbolbls_selected_idx == lbltype_planethz && (s->has_hz_planets) )
+            || (cbolbls_selected_idx == lbltype_planets && (s->get_planet_count() >= planets_lblcut) )
+            || (cbolbls_selected_idx == lbltype_planethz && (s->get_hz_planet_count()) )
             || (cbolbls_selected_idx == lbltype_binary && (s->multisys))
             || (cbolbls_selected_idx == lbltype_knpole && cels[i]->known_poles)
             ))
@@ -4486,8 +4486,8 @@ void draw_objects()
                 if (appmag > mag_limit_adjusted && i
                     && (!istar->is_universally_visible())
                     && (angular_radius[i] < 0.01*fiftyseventh)
-                    && (cbolbls_selected_idx != lbltype_planets  || istar->has_planets < planets_lblcut)
-                    && (cbolbls_selected_idx != lbltype_planethz || !istar->has_hz_planets))
+                    && (cbolbls_selected_idx != lbltype_planets  || istar->get_planet_count() < planets_lblcut)
+                    && (cbolbls_selected_idx != lbltype_planethz || !istar->get_hz_planet_count()))
                     continue;
             }
         }

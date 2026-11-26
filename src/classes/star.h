@@ -97,6 +97,8 @@ namespace alienorum
         bool has_custom_name = false;
         int has_planets = 0;
         int has_hz_planets = 0;
+        int has_uncertain_planets = 0;
+        int has_uncertain_hz_planets = 0;
         double planet_statistics_temperature = NAN, planet_statistics_magnitude = NAN, planet_statistics_luminosity = NAN;
         std::vector<int> pl_indices;
         void refresh_planet_statistics();
@@ -174,6 +176,9 @@ namespace alienorum
         json to_json();
         bool from_json(const json& j);
         void make_companion_of(Star* primary, char comp = 'B');
+
+        int get_planet_count();
+        int get_hz_planet_count();
 
     protected:
         Box visible_area;
