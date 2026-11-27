@@ -562,6 +562,7 @@ bool Planet::estimate_surface_water(bool replace_supplied, const std::vector<dou
     if (scenario && !inventory.from_json(*scenario)) return false;
     const json inputs = CosmicShore::input_state(host, *this, inventory);
     if (!replace_supplied && heights.empty() && surface_water_model.is_object()
+        && surface_water_model.value("terrain", json()) != "gaussian_prior"
         && surface_water_model.value("input_state", json(nullptr)) == inputs
         && surface_water_model.contains("level") && surface_water_model["level"].is_number()
         && has_water == surface_water_model["level"].get<float>()) return true;
@@ -580,6 +581,7 @@ bool Planet::estimate_surface_water(bool replace_supplied, const std::vector<dou
     estimate.diagnostics["input_state"] = inputs;
     // Keep a calibrated terrain waterline while its physical budget is unchanged.
     if (!replace_supplied && heights.empty() && surface_water_model.is_object()
+        && surface_water_model.value("terrain", json()) != "gaussian_prior"
         && surface_water_model.contains("basis") && surface_water_model["basis"] == estimate.diagnostics["basis"]
         && surface_water_model.contains("level") && surface_water_model["level"].is_number()
         && has_water == surface_water_model["level"].get<float>()) return true;

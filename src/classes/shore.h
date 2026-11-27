@@ -73,6 +73,7 @@ namespace alienorum
         // Heights are normalized terrain samples with equal surface-area weights.
         static SurfaceWaterEstimate estimate_surface_water(const Planet& p, const json& budget,
             const std::vector<double>& heights = {});
+        static json surface_water_reference(const Planet& p);
     };
 }
 

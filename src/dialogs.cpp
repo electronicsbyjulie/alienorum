@@ -25,6 +25,7 @@
 #include "classes/precipitationcache.h"
 #include "classes/orbit_spacing.h"
 #include "classes/neighborhoodfilter.h"
+#include "classes/shore.h"
 #include "classes/watercoverage.h"
 #include "visuals.h"
 #include <cstdint>
@@ -2564,6 +2565,33 @@ void draw_objedit_window(ImGuiIO& io)
                 }
                 ImGui::SameLine();
                 ImGui::Text("%s", "How much the sky color resembles the ground color.");
+
+                const auto reference = CosmicShore::surface_water_reference(*p);
+                if (reference.is_object() && ImGui::TreeNode("Surface water reference"))
+                {
+                    if (reference.contains("ocean_coverage"))
+                    {
+                        ImGui::Text("Present ocean coverage %.1f%%", 100 * reference.at("ocean_coverage").get<double>());
+                        ImGui::Text("Global equivalent depth %.2f km", reference.at("equivalent_depth_m").get<double>() / 1000);
+                    }
+                    else
+                    {
+                        const auto& modern = reference.at("modern");
+                        const auto& ancient = reference.at("ancient");
+                        const auto& range = ancient.at("coverage_range");
+                        const auto& depths = ancient.at("depth_range_m");
+                        ImGui::Text("Modern Mars has no persistent surface liquid water.");
+                        ImGui::Text("Polar deposits span %.1f%% and contain %.0f m of water spread globally.",
+                            100 * modern.at("polar_deposit_footprint").get<double>(),
+                            modern.at("polar_equivalent_depth_m").get<double>());
+                        ImGui::Text("Ancient Mars, warm sea scenario %.1f%% at %.0f m global depth.",
+                            100 * ancient.at("pooled_coverage").get<double>(), ancient.at("equivalent_depth_m").get<double>());
+                        ImGui::Text("Pooling %.0f-%.0f m covers %.0f-%.0f%% on modern Mars terrain.",
+                            depths[0].get<double>(), depths[1].get<double>(),
+                            100 * range[0].get<double>(), 100 * range[1].get<double>());
+                    }
+                    ImGui::TreePop();
+                }
 
                 if (show_taucalc)
                 {

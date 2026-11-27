@@ -2116,6 +2116,60 @@ TEST_F(PlanetClassificationEvidenceTest, SurfaceWaterTracksRetainedCondensateRat
     EXPECT_DOUBLE_EQ(world->surface_water_model["equivalent_depth_m"].get<double>(), 0);
 }
 
+TEST_F(PlanetClassificationEvidenceTest, EarthOceanVolumeFallsNearObservedCoverage)
+{
+    Star* host = make_star();
+    Planet* world = make_planet(host);
+    const double ocean_volume_m3 = 1.335e18;
+    const double water_fraction = ocean_volume_m3 * 1000 / (world->mass * .001);
+    AtmosphericInventory inventory;
+    const json budget = {{"inventory", inventory.to_json()},
+        {"reservoir_mass_fractions", {{"H2O", {{"surface_storage", water_fraction}}}}}};
+    const auto surface = CosmicShore::estimate_surface_water(*world, budget);
+    ASSERT_TRUE(surface.valid);
+    EXPECT_EQ(surface.diagnostics.at("terrain"), "etopo_basin_prior");
+    EXPECT_NEAR(surface.diagnostics.at("coverage_fraction").get<double>(), .71, .01);
+    EXPECT_NEAR(surface.diagnostics.at("equivalent_depth_m").get<double>(), 2617, 5);
+}
+
+TEST_F(PlanetClassificationEvidenceTest, SolarCatalogExposesDistinctWaterReferenceScenarios)
+{
+    Star* sun = make_star("Sun");
+    CatalogReader reader;
+    ASSERT_GT(reader.read_local_planets(cels, MAX_CELOBJS, sun), 0);
+    Planet* earth = nullptr;
+    Planet* mars = nullptr;
+    for (int i = 1; i < ncelobjs; ++i)
+    {
+        if (cels[i]->typeclass() != class_planet) continue;
+        if (!std::strcmp(cels[i]->name, "Earth")) earth = static_cast<Planet*>(cels[i]);
+        if (!std::strcmp(cels[i]->name, "Mars")) mars = static_cast<Planet*>(cels[i]);
+    }
+    ASSERT_NE(earth, nullptr);
+    ASSERT_NE(mars, nullptr);
+    const auto earth_water = CosmicShore::surface_water_reference(*earth);
+    ASSERT_TRUE(earth_water.is_object());
+    EXPECT_NEAR(earth_water.at("ocean_coverage").get<double>(), .71, .005);
+    const auto mars_water = CosmicShore::surface_water_reference(*mars);
+    ASSERT_TRUE(mars_water.is_object());
+    EXPECT_DOUBLE_EQ(mars_water.at("modern").at("liquid_coverage").get<double>(), 0);
+    EXPECT_NEAR(mars_water.at("modern").at("polar_deposit_footprint").get<double>(), .015, .001);
+    EXPECT_DOUBLE_EQ(mars_water.at("modern").at("polar_equivalent_depth_m").get<double>(), 22);
+    const auto& ancient = mars_water.at("ancient");
+    EXPECT_NEAR(ancient.at("pooled_coverage").get<double>(), .2304, .003);
+    EXPECT_NEAR(ancient.at("waterline_m").get<double>(), -3452, 25);
+    EXPECT_NEAR(ancient.at("coverage_range")[0].get<double>(), .148, .003);
+    EXPECT_NEAR(ancient.at("coverage_range")[1].get<double>(), .325, .003);
+    EXPECT_DOUBLE_EQ(earth->get_surface_pressure(), 101325);
+    EXPECT_DOUBLE_EQ(mars->get_surface_pressure(), 636);
+
+    Planet restored;
+    ASSERT_TRUE(restored.from_json(mars->to_json()));
+    EXPECT_EQ(CosmicShore::surface_water_reference(restored), mars_water);
+    EXPECT_DOUBLE_EQ(restored.get_surface_pressure(), 636);
+    EXPECT_TRUE(CosmicShore::surface_water_reference(*make_planet(sun, "Mars")).is_null());
+}
+
 TEST_F(PlanetClassificationEvidenceTest, BasinVolumeAndSurfacePartitionControlTheWaterline)
 {
     Star* host = make_star();

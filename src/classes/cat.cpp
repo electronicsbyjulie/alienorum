@@ -6046,6 +6046,12 @@ static void apply_body_metadata(CelestialObject* body, const json& record)
     {
         auto* planet = static_cast<Planet*>(body);
         planet->surface_map_url = record.value("DeferredSurfMap", planet->surface_map_url);
+        const auto water_reference = record.find("WaterCoverageReference");
+        if (water_reference != record.end() && water_reference->is_string())
+        {
+            if (!planet->surface_geology.is_object()) planet->surface_geology = json::object();
+            planet->surface_geology["water_coverage_reference"] = *water_reference;
+        }
         if (!std::isfinite(planet->bond_albedo))
         {
             const auto bond = record.find("BondAlbedo");

@@ -12,6 +12,53 @@ namespace
 {
     constexpr double reference_age = 4.5; // Gyr
 
+    struct BasinPoint
+    {
+        double elevation_m, covered_fraction, water_depth_m;
+    };
+
+    // Equal-area samples from the bundled NOAA ETOPO 2022 and NASA MOLA grids.
+    // Water depth is the volume below each contour divided by the entire surface area.
+    constexpr BasinPoint earth_basins[] =
+    {
+        {-10417, 0, 0}, {-8000, .00029, .184}, {-7000, .00093, .736},
+        {-6000, .00664, 2.796}, {-5500, .04986, 14.679}, {-5000, .14986, 63.005},
+        {-4500, .26134, 165.564}, {-4000, .37681, 325.863}, {-3500, .47141, 538.855},
+        {-3000, .53573, 792.091}, {-2000, .59599, 1362.635}, {-1000, .62715, 1975.241},
+        {-500, .64158, 2292.065}, {-200, .65868, 2486.907}, {-50, .68663, 2587.205},
+        {0, .70863, 2622.106}, {50, .73149, 2658.143}, {200, .79090, 2772.543},
+        {500, .87172, 3022.943}, {1000, .92502, 3474.248}, {2000, .96878, 4426.424},
+        {4000, .99486, 6395.138}, {6508, 1, 8899.493}
+    };
+
+    constexpr BasinPoint mars_basins[] =
+    {
+        {-8200, 0, 0}, {-7500, .00010, .014}, {-6500, .00613, 1.884},
+        {-5500, .01310, 12.381}, {-5000, .02277, 20.122}, {-4500, .07029, 42.648},
+        {-4000, .14091, 94.689}, {-3750, .19178, 136.585}, {-3500, .22553, 189.096},
+        {-3250, .24903, 248.513}, {-3000, .27137, 313.513}, {-2750, .29332, 384.138},
+        {-2500, .31611, 460.535}, {-2000, .35610, 628.177}, {-1500, .39821, 817.290},
+        {-1000, .43512, 1025.871}, {0, .51257, 1499.362}, {3000, .92801, 3688.705},
+        {6000, .98479, 6580.298}, {10000, .99785, 10558.509},
+        {15000, .99930, 15552.192}, {21500, 1, 22050.665}
+    };
+
+    constexpr double earth_mean_elevation_m = -2391.493;
+    constexpr double earth_rms_relief_m = 2507.326;
+
+    template <size_t N>
+    BasinPoint fill_basins(const BasinPoint (&profile)[N], double depth)
+    {
+        const auto upper = std::lower_bound(profile, profile + N, depth,
+            [](const BasinPoint& point, double volume) { return point.water_depth_m < volume; });
+        if (upper == profile) return profile[0];
+        if (upper == profile + N) return {profile[N - 1].elevation_m + depth - profile[N - 1].water_depth_m, 1, depth};
+        const auto& lower = upper[-1];
+        const double fraction = (depth - lower.water_depth_m) / (upper->water_depth_m - lower.water_depth_m);
+        return {lower.elevation_m + fraction * (upper->elevation_m - lower.elevation_m),
+            lower.covered_fraction + fraction * (upper->covered_fraction - lower.covered_fraction), depth};
+    }
+
     double stellar_flux(Star& s, Planet& p)
     {
         if (p.get_light_center() != &s) return NAN;
@@ -984,6 +1031,41 @@ json CosmicShore::seasonal_volatiles(const json& budget, const ThermalOrbit& orb
     return result;
 }
 
+json CosmicShore::surface_water_reference(const Planet& p)
+{
+    if (!p.surface_geology.is_object()) return nullptr;
+    const auto reference = p.surface_geology.value("water_coverage_reference", json());
+    if (reference == "earth")
+    {
+        constexpr double ocean_depth_m = 2622.106;
+        const auto ocean = fill_basins(earth_basins, ocean_depth_m);
+        return {{"ocean_coverage", ocean.covered_fraction}, {"equivalent_depth_m", ocean_depth_m}};
+    }
+    if (reference == "mars")
+    {
+        // Carr and Head (2015), doi:10.1002/2014GL062464, place 22 m of the
+        // 34 m surface and near-surface water layer in the polar layered deposits.
+        // Mapped deposits span about 0.8 and 1.4 million square km in the north and south.
+        constexpr double mars_radius_m = 3389500;
+        constexpr double polar_deposit_area_m2 = 2.2e12;
+        constexpr double polar_depth_m = 22;
+        // A warm pooling scenario using present MOLA relief as a proxy for ancient terrain.
+        // The range brackets shallow and large seas. The full ancient inventory also
+        // includes water that could have been frozen or stored underground.
+        constexpr double low_depth_m = 100, central_depth_m = 200, high_depth_m = 500;
+        const auto basin = fill_basins(mars_basins, central_depth_m);
+        return {
+            {"modern", {{"liquid_coverage", 0.0}, {"polar_equivalent_depth_m", polar_depth_m},
+                {"polar_deposit_footprint", polar_deposit_area_m2 / (4 * _pi * mars_radius_m * mars_radius_m)}}},
+            {"ancient", {{"equivalent_depth_m", central_depth_m}, {"pooled_coverage", basin.covered_fraction},
+                {"waterline_m", basin.elevation_m}, {"depth_range_m", {low_depth_m, high_depth_m}},
+                {"coverage_range", {fill_basins(mars_basins, low_depth_m).covered_fraction,
+                    fill_basins(mars_basins, high_depth_m).covered_fraction}}}}
+        };
+    }
+    return nullptr;
+}
+
 SurfaceWaterEstimate CosmicShore::estimate_surface_water(const Planet& p, const json& budget,
     const std::vector<double>& heights)
 {
@@ -1053,20 +1135,11 @@ SurfaceWaterEstimate CosmicShore::estimate_surface_water(const Planet& p, const 
         }
         else
         {
-            // Gaussian hypsometry before terrain exists. E[max(z-X,0)] = z*Phi(z)+phi(z).
-            double low = -12, high = std::max(12.0, depth / relief + 1);
-            for (int iteration = 0; iteration < 80; ++iteration)
-            {
-                const double z = low + (high - low) * 0.5;
-                const double cdf = 0.5 * std::erfc(-z / std::sqrt(2.0));
-                const double density = std::exp(-0.5 * z * z) / std::sqrt(2 * _pi);
-                if (relief * (z * cdf + density) < depth) low = z;
-                else high = z;
-            }
-            const double z = low + (high - low) * 0.5;
-            coverage = 0.5 * std::erfc(-z / std::sqrt(2.0));
+            const auto basin = fill_basins(earth_basins, depth * earth_rms_relief_m / relief);
+            const double z = (basin.elevation_m - earth_mean_elevation_m) / earth_rms_relief_m;
+            coverage = basin.covered_fraction;
             // Initial procedural height scale only; sampled terrain replaces this waterline.
-            level = std::clamp(0.5 + 0.08 * z, 1e-6, 1.0);
+            level = coverage == 1 ? 1 : std::clamp(0.5 + 0.08 * z, 1e-6, 1.0);
             represented_depth = depth;
         }
     }
@@ -1086,7 +1159,7 @@ SurfaceWaterEstimate CosmicShore::estimate_surface_water(const Planet& p, const 
         {"interior_storage_mass_fraction", condensed - surface_fraction},
         {"equivalent_depth_m", depth}, {"represented_depth_m", represented_depth},
         {"basin_relief_m", relief}, {"coverage_fraction", coverage}, {"level", result.level},
-        {"terrain", heights.empty() ? "gaussian_prior" : "equal_area_samples"},
+        {"terrain", heights.empty() ? "etopo_basin_prior" : "equal_area_samples"},
         {"terrain_samples", heights.size()}, {"coverage_includes_ice", true},
         {"water_density_kg_m3", 1000},
         {"basis", basis},

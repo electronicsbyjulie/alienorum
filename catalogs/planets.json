@@ -136,6 +136,7 @@
         },
         "AtmosphericTau": 0.262,
         "BODYNAME": "Earth",
+        "WaterCoverageReference": "earth",
         "#RotationModelSource": "IERS Conventions (2010) Earth Rotation Angle, with UTC as a proxy for UT1, and the approximate JPL NAIF pole (https://iers-conventions.obspm.fr/content/tn36.pdf).",
         "RotationModel":
         {
@@ -211,6 +212,7 @@
         },
         "AtmosphericTau": 0.2358,
         "BODYNAME": "Mars",
+        "WaterCoverageReference": "mars",
         "RotationModel":
         {
             "pole_ra": [317.269202, -0.10927547, 0],
