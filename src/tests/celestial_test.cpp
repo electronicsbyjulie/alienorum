@@ -17,6 +17,7 @@
 #include "../classes/terrain_contours.h"
 #include "../classes/shore.h"
 #include "../classes/moon.h"
+#include "../classes/sunspots.h"
 #include "surface_phase_fixture.h"
 #include "universe_fixture.h"
 #include "../loaders.h"
@@ -3572,6 +3573,42 @@ TEST_F(ShoreNavigationTest, UpdatingGiantCloudTexturesUsesTheCurrentOblateness)
     planet->oblateness = 0;
     planet->mark_all_maps_for_regen();
     EXPECT_EQ(pixels(), spherical);
+}
+
+TEST(SunspotProfileTest, ResolvedSpotHasFilamentsAndAnOptionalLightBridge)
+{
+    SunspotProfile spot{.8, .50, .20, 0, .02, 41, false, false};
+    const auto deficit = [](const SunspotProfile& profile, double x, double y)
+    {
+        return profile.deficit(x, y, hypot(x, y));
+    };
+    double dark = 0, bright = 1;
+    for (int i = 0; i < 360; ++i)
+    {
+        const double angle = i * fiftyseventh;
+        const double sample = deficit(spot, .76*cos(angle), .76*sin(angle));
+        dark = std::max(dark, sample);
+        bright = std::min(bright, sample);
+    }
+    EXPECT_GT(dark - bright, .18);
+    EXPECT_GT(deficit(spot, 0, 0), dark + .30);
+    EXPECT_DOUBLE_EQ(deficit(spot, 1.6, 0), 0);
+
+    SunspotProfile bridged = spot;
+    bridged.light_bridge = true;
+    int columns_with_a_bridge = 0;
+    for (int x = -15; x <= 15; ++x)
+    {
+        double warming = 0;
+        for (int y = -14; y <= 14; ++y)
+            warming = std::max(warming, deficit(spot, x*.02, y*.02) - deficit(bridged, x*.02, y*.02));
+        columns_with_a_bridge += warming > .35;
+    }
+    EXPECT_GT(columns_with_a_bridge, 25);
+    EXPECT_DOUBLE_EQ(deficit(spot, 0, -.24), deficit(bridged, 0, -.24));
+
+    spot.pore = true;
+    EXPECT_GT(deficit(spot, .76, 0), dark + .25);
 }
 
 TEST_F(ShoreNavigationTest, SolarTypeSpotCoresAreLocalizedInLatitudeAndLongitude)

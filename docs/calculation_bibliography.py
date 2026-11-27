@@ -11,10 +11,56 @@ CITED_ARTICLES = {
     'Leconte-et-al-2015-atmospheric-tides.pdf': 'R20',
     'Snellen-et-al-2014-Beta-Pictoris-spin.pdf': 'R21',
     'Bryan-et-al-2020-spin-evolution.pdf': 'R22',
+    'Domiciano_2014_Achernar.pdf': 'R23',
+    'McAlister_2005_Regulus.pdf': 'R24',
+    'Zhao_2009_Alderamin_Rasalhague.pdf': 'R25',
+    'Bouchaud_2020_Altair.pdf': 'R26',
+    'Espinosa_Lara_Rieutord_2011_Gravity_Darkening.pdf': 'R27',
+    'Scharmer_2002_Penumbral_Filaments.pdf': 'R28',
+    'Klein-2021-Proxima-rotation.pdf': 'R29',
 }
 
 # Titles and first authors come from the articles. Use stable public identifiers.
 OTHER_ARTICLES = {
+    'Bourrier-2021-HD3167.pdf': (
+        'Bourrier et al. (2021), The Rossiter–McLaughlin effect revolutions. An ultra-short period planet and a warm mini-Neptune on perpendicular orbits.',
+        'https://arxiv.org/abs/2110.14214'),
+    'Brandt-2021-Beta-Pictoris-orbits.pdf': (
+        'Brandt et al. (2021), Precise Dynamical Masses and Orbital Fits for β Pic b and β Pic c.',
+        'https://arxiv.org/abs/2011.06215'),
+    'Evans-2024-Polaris.pdf': (
+        'Evans et al. (2024), The Orbit and Dynamical Mass of Polaris. Observations with the CHARA Array.',
+        'https://arxiv.org/abs/2407.09641'),
+    'Kervella-2022-Achernar.pdf': (
+        'Kervella et al. (2022), The binary system of the spinning-top Be star Achernar.',
+        'https://arxiv.org/abs/2209.07537'),
+    'Le-Bouquin-2009-Fomalhaut-spin.pdf': (
+        'Le Bouquin et al. (2009), The spin-orbit alignment of the Fomalhaut planetary system probed by optical long baseline interferometry.',
+        'https://arxiv.org/abs/0904.1688'),
+    'MacGregor-2017-Fomalhaut-ring.pdf': (
+        'MacGregor et al. (2017), A Complete ALMA Map of the Fomalhaut Debris Disk.',
+        'https://arxiv.org/abs/1705.05867'),
+    'Masuda-2015-HAT-P-7.pdf': (
+        'Masuda (2015), Determination of Three-dimensional Spin-orbit Angle with Joint Analysis of Asteroseismology, Transit Lightcurve, and the Rossiter–McLaughlin Effect.',
+        'https://arxiv.org/abs/1407.7332'),
+    'Resolved-planetesimal-belts.pdf': (
+        'Matrà et al. (2025), REsolved ALMA and SMA Observations of Nearby Stars. REASONS: A population of 74 resolved planetesimal belts at millimetre wavelengths.',
+        'https://arxiv.org/abs/2501.09058'),
+    'Watanabe-2022-WASP-33.pdf': (
+        'Watanabe et al. (2022), Nodal precession of WASP-33b for 11 yr by Doppler tomographic and transit photometric observations.',
+        'https://arxiv.org/abs/2203.02003'),
+    'Beichman-Sanghi-2025-Alpha-Centauri.pdf': (
+        'Beichman, Sanghi et al. (2025), Worlds Next Door: A Candidate Giant Planet Imaged in the Habitable Zone of α Cen A.',
+        'https://arxiv.org/abs/2508.03814'),
+    'Benedict-McArthur-2020-Proxima-c.pdf': (
+        'Benedict & McArthur (2020), A Moving Target—Revising the Mass of Proxima Centauri c.',
+        'https://doi.org/10.3847/2515-5172/ab9ca9'),
+    'Dumusque-2014-Toliman-spin.pdf': (
+        'Dumusque (2014), Deriving stellar inclination of slow rotators using stellar activity.',
+        'https://arxiv.org/abs/1409.3593'),
+    'Suarez-Mascareno-2025-Proxima-NIRPS.pdf': (
+        'Suárez Mascareño et al. (2025), Diving into the planetary system of Proxima with NIRPS.',
+        'https://arxiv.org/abs/2507.21751'),
     '10pc-multiplicity-2026.pdf': (
         'González-Payo et al. (2026), Characterisation of all known multiple stellar systems within 10 pc.',
         'https://arxiv.org/abs/2605.04094'),

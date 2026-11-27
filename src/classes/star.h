@@ -28,6 +28,8 @@ namespace alienorum
         std::string metallicity_ratio, metallicity_source;
         json stellar_abundances = nullptr;
         json stellar_rotation = nullptr;             // Period provenance and supplied/assumed pole fields.
+        bool manual_oblateness = false;
+        double effective_oblateness() const override;
         json stellar_age = nullptr;                  // Published age, uncertainties and source alternatives.
         json stellar_parameters = nullptr;           // Sources and assumptions for atmospheric and bulk properties.
         mutable std::array<double, 10> evolution_inputs{{NAN, NAN, NAN, NAN, NAN, NAN, NAN, NAN, NAN, NAN}};
@@ -126,6 +128,8 @@ namespace alienorum
         inline bool is_universally_visible() { return _is_always_visible || is_faved; }
 
         double estimate_temperature() const;        // Based on BV color
+        double thermal_reference_temperature() const;
+        static double gravity_darkened_temperature(double reference_kelvin, double flattening, double cos_latitude_squared);
         double estimate_luminosity(double tempK);   // Returns luminosity in solar units.
         double estimate_mass();
         void estimate_BV();                         // Blackbody value from estimated temperature from MK spectral type

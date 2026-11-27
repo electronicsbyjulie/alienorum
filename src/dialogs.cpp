@@ -945,28 +945,44 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
             ImGui::Text("RA:       %s", cels[i]->RA_as_hms(here, myeq).c_str());
             ImGui::Text("Decl:     %s", cels[i]->Decl_as_degms(here).c_str());
 
-            if (cels[i]->known_poles || (cels[i]->typeclass() == class_star &&
-                static_cast<Star*>(cels[i])->fictional_origin.is_object()))
+            const Star* star = cels[i]->typeclass() == class_star ? static_cast<Star*>(cels[i]) : nullptr;
+            const bool estimated_pole = star && star->stellar_rotation.is_object()
+                && star->stellar_rotation.value("inclination_supplied", false)
+                && (star->stellar_rotation.value("inclination_assumed", false)
+                    || star->stellar_rotation.value("node_assumed", false));
+            const bool fictional_pole = star && star->fictional_origin.is_object();
+            if (cels[i]->known_poles || cls == class_star || cls == class_planet || cls == class_moon)
             {
-                Point pole = rotate3D(yaxis, center, cels[i]->location.equatorial_plane.v, cels[i]->location.equatorial_plane.a);
-                double poleRA = std::fmod(find_angle(pole.z, -pole.x) - myeq + azimuth_correction + _pi, _pi*2),
-                       poleDecl = find_angle(sqrt(pole.x*pole.x+pole.z*pole.z), pole.y);
-                while (poleDecl > half_pi) poleDecl -= _pi*2;
-
-                // Pole has to be in ICRF coordinates to identify constellation.
-                Constellation *c = identify_cons_from_coords(poleRA, poleDecl);
+                const auto& equator = cels[i]->location.equatorial_plane;
+                Point pole = rotate3D(yaxis, center, equator.v, -equator.a);
+                const auto declination = [](const Point& direction)
+                {
+                    return std::atan2(direction.y, std::hypot(direction.x, direction.z));
+                };
+                const Constellation* c = identify_cons_from_coords(find_angle(pole.z, -pole.x), declination(pole));
 
                 // Convert it to local coordinates for RA/decl display.
-                pole = to_viewer_plane(pole, -1);
-                poleRA = std::fmod(find_angle(pole.z, -pole.x) - myeq + azimuth_correction + _pi, _pi*2);
-                poleDecl = find_angle(sqrt(pole.x*pole.x+pole.z*pole.z), pole.y);
-                while (poleDecl > half_pi) poleDecl -= _pi*2;
+                pole = to_viewer_plane(pole);
+                double poleRA = std::fmod(find_angle(pole.z, -pole.x) - myeq + azimuth_correction, 2 * _pi);
+                if (poleRA < 0) poleRA += 2 * _pi;
 
-                if (!cels[i]->known_poles) ImGui::TextUnformatted("Fictional rotation pole");
+                if (estimated_pole) ImGui::TextUnformatted("Estimated rotation pole");
+                else if (!cels[i]->known_poles && fictional_pole) ImGui::TextUnformatted("Fictional rotation pole");
+                else if (!cels[i]->known_poles) ImGui::TextUnformatted("Adopted rotation pole");
                 ImGui::Text("PoleRA:   %s", radians_to_hms(poleRA).c_str());
-                ImGui::Text("PoleDecl: %s", radians_to_degms(poleDecl).c_str());
+                ImGui::Text("PoleDecl: %s", radians_to_degms(declination(pole)).c_str());
 
-                if (c) ImGui::Text("          %s", c->name.c_str());
+                if (c) ImGui::Text("Rotation pole constellation: %s", c->name.c_str());
+                if (cels[i]->orbit)
+                {
+                    const auto& orbit = cels[i]->location.orbital_plane;
+                    const Point orbital_pole = rotate3D(yaxis, center, orbit.v, -orbit.a);
+                    if (const auto* orbital_constellation = identify_cons_from_coords(
+                        find_angle(orbital_pole.z, -orbital_pole.x), declination(orbital_pole)))
+                    {
+                        ImGui::Text("Orbital pole constellation: %s", orbital_constellation->name.c_str());
+                    }
+                }
             }
 
             ImGui::Separator();
@@ -1002,6 +1018,15 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
                     draw_elevation_readout(elev);
                 }
                 ImGui::Text("Temp:     %.1f K", p->surface_temperature_at(lat, lon));
+            }
+            else if (pcls == class_star && view_mode == vm_thermal)
+            {
+                const auto* star = static_cast<Star*>(cels[whereami]);
+                const double reference = star->thermal_reference_temperature();
+                const double cos_latitude = cos(lat);
+                if (std::isfinite(reference) && reference > 0)
+                    ImGui::Text("Est. temp.: %.1f K", Star::gravity_darkened_temperature(reference,
+                        star->effective_oblateness(), cos_latitude * cos_latitude));
             }
             #endif
         }
@@ -1075,7 +1100,15 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
                 else ImGui::Text("Rotation: %02d:%02d:%05.2f", hours, minutes, seconds);
             }
 
-            if (cels[i]->obliquity
+            if (cels[i]->typeclass() == class_star && cels[i]->orbit)
+            {
+                const auto& equator = cels[i]->location.equatorial_plane;
+                const auto& orbit = cels[i]->location.orbital_plane;
+                const double tilt = find_3D_angle(rotate3D(yaxis, center, equator.v, -equator.a),
+                    rotate3D(yaxis, center, orbit.v, -orbit.a), center);
+                if (tilt > 1e-6) ImGui::Text("Obliq.:   %.2f deg", tilt * fiftyseven);
+            }
+            else if (cels[i]->obliquity
                 && (!cels[i]->orbit || fabs(cels[i]->obliquity - cels[i]->orbit->inclination) > 1e-6)       // TODO: Fix moons.
                 ) ImGui::Text("Obliq.:   %.2f deg", cels[i]->obliquity * fiftyseven);                       // TODO: Sun.
             if (cels[i]->type == star)
@@ -1849,13 +1882,14 @@ void draw_objedit_window(ImGuiIO& io)
                 ImGui::TextUnformatted(bump_unit.symbol);
             }
 
-            double edit_oblt = cel->oblateness;
+            double edit_oblt = cel->effective_oblateness();
             ImGui::Text("%s", "Oblateness");
             ImGui::SameLine(col1);
             ImGui::SetNextItemWidth(txtwid);
             if (ImGui::InputDouble("##edtoblt", &edit_oblt, 0, 0, "%.5e"))
             {
                 cel->oblateness = edit_oblt;
+                if (cel->typeclass() == class_star) static_cast<Star*>(cel)->manual_oblateness = true;
                 cel->user_edited = true;
                 viewchanged = true;
                 if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);

@@ -87,7 +87,7 @@ namespace alienorum
         return Color(color.red/peak, color.green/peak, color.blue/peak);
     }
 
-    inline double brown_temperature(Star* star)
+    inline double brown_temperature(const Star* star)
     {
         if (std::isfinite(star->temperature) && star->temperature > 0) return star->temperature;
         const char type = star->spectral_type[0];

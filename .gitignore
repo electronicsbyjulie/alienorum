@@ -52,4 +52,5 @@ views
 !/catalogs/nearby_components.json
 !/catalogs/constellation_lookup.dat
 !/catalogs/nearby_stellar_systems.json
+!/catalogs/stellar_oblateness.json
 !/catalogs/giant_reflectance.txt

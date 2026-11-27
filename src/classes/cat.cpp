@@ -3783,10 +3783,15 @@ void CatalogReader::reconcile_exoplanet_inclinations(
         if (pincls[i] == 90 * fiftyseventh && (!planets[i] || !planets[i]->transiting)) pincls[i] = 0;
     }
 
+    const bool has_confirmed = std::any_of(planets.begin(), planets.end(), [](const Planet* planet)
+    {
+        return planet && !planet->catalog_candidate;
+    });
     std::vector<double> precise, available, transiting;
     for (size_t i = 0; i < n; ++i)
     {
         if (pincls[i] == 0) continue;
+        if (has_confirmed && planets[i] && planets[i]->catalog_candidate) continue;
         available.push_back(pincls[i]);
         const Planet* planet = planets[i];
         if (planet && planet->transiting) transiting.push_back(pincls[i]);
@@ -3851,14 +3856,14 @@ void CatalogReader::reconcile_exoplanet_inclinations(
     if (!anchor) anchor = precise_reference;
     if (!anchor) anchor = reference(available);
     if (!anchor && host_star) anchor = host_star->rot_heliocen_incl;
-    if (!anchor) return;
     if (host_star) host_star->planets_heliocen_inclination = anchor;
+    if (!anchor) return;
 
     for (size_t i = 0; i < n; ++i)
     {
         Planet* planet = planets[i];
         bool replace = pincls[i] == 0;
-        if (!replace && precise_reference && broad_exoplanet_inclination(planet) &&
+        if (!replace && precise_reference && planet && !planet->catalog_candidate && broad_exoplanet_inclination(planet) &&
             !hot_jupiter_inclination_exemption(planet))
         {
             const double lower = pincls[i] - fabs(planet->inclination_error_lower);
@@ -3916,6 +3921,14 @@ static void set_transit_phase(Planet& planet)
     const double along_quadrature = projection(half_pi);
     set_anomaly(atan2(along_quadrature, along_periapsis));
     host->update_location(simnow);
+}
+
+static Point stellar_sightline(const Star& star)
+{
+    const auto& location = star.location;
+    const auto& sun = cels[0]->location;
+    return (location.galactic_center - sun.galactic_center) * (1e6 * light_year)
+        + (location.system_center - sun.system_center) + (location.local_position - sun.local_position);
 }
 
 void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>& planet_celids,
@@ -4114,6 +4127,10 @@ void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>&
     for (auto const& [idx, row] : planet_celids)
     {
         Star *s = (Star*)cels[idx];
+        if (s->orbit) s->update_location(simnow);
+        const Point sightline = stellar_sightline(*s);
+        const auto is_confirmed = [](int id) { return !static_cast<Planet*>(cels[id])->catalog_candidate; };
+        const bool has_confirmed = std::any_of(row.begin(), row.end(), is_confirmed);
 
         double sysincl = 0, sysnode = 0;
         double stincl = s->rot_heliocen_incl ? s->rot_heliocen_incl : s->obliquity;
@@ -4128,7 +4145,8 @@ void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>&
         for (const int planet_id : row)
         {
             const Planet* planet = static_cast<Planet*>(cels[planet_id]);
-            if (!planet->transiting || !planet->orbit || !planet->orbit->heliocentric_node) continue;
+            if ((has_confirmed && !is_confirmed(planet_id)) || !planet->transiting || !planet->orbit
+                || planet->orbit->heliocentric_node_assumed || !planet->orbit->heliocentric_node) continue;
             transit_node_sin += sin(planet->orbit->heliocentric_node);
             transit_node_cos += cos(planet->orbit->heliocentric_node);
             have_transit_node = true;
@@ -4223,13 +4241,14 @@ void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>&
 
             if (planet_incls.find(designation) != planet_incls.end())
                 pincls.push_back(planet_incls[designation] * fiftyseventh);
-            else if (p->orbit)
+            else if (p->orbit && !p->orbit->heliocentric_inclination_assumed)
             {
                 pincls.push_back((p->orbit->heliocentric_inclination || p->orbit->heliocentric_node)
                     ? p->orbit->heliocentric_inclination : p->orbit->inclination);
             }
+            else pincls.push_back(0);
 
-            double p_node = p->orbit ? p->orbit->heliocentric_node : 0;
+            double p_node = p->orbit && !p->orbit->heliocentric_node_assumed ? p->orbit->heliocentric_node : 0;
             if (planet_nodes.find(designation) != planet_nodes.end())
                 p_node = planet_nodes[designation] * fiftyseventh;
             pnodes.push_back(p_node);
@@ -4316,6 +4335,8 @@ void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>&
         {
             inclination = accepted_exoplanet_inclination(inclination);
         }
+        const auto supplied_inclinations = pincls;
+        const auto supplied_nodes = pnodes;
         if (s->multisys)
         {
             for (char c = 'A'; c <= 'Z'; c++)
@@ -4368,6 +4389,7 @@ void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>&
         double pmeanincl=0, pmeannode=0;
         for (i=0; i<n; i++)
         {
+            if (has_confirmed && !is_confirmed(row[i])) continue;
             double sini = 1;
             if (pincls[i])
             {
@@ -4476,6 +4498,26 @@ void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>&
         {
             if (!pnodes[i])
             {
+                const auto* planet = static_cast<const Planet*>(cels[row[i]]);
+                const double angle = planet->orbit->host_spin_orbit_angle;
+                if (s->lock_equatorial_plane && s->stellar_rotation.is_object()
+                    && s->stellar_rotation.value("inclination_supplied", false)
+                    && std::isfinite(angle) && angle >= 0 && angle <= _pi)
+                {
+                    const double spin_inclination = s->rot_heliocen_incl;
+                    const double denominator = sin(spin_inclination) * sin(pincls[i]);
+                    if (denominator > 1e-8)
+                    {
+                        // True spin–orbit angles constrain the magnitude of the relative node.
+                        // Adopt the positive branch when the projected direction is unavailable.
+                        const double cosine = (cos(angle) - cos(spin_inclination) * cos(pincls[i])) / denominator;
+                        if (std::abs(cosine) <= 1.0 + 1e-8)
+                        {
+                            pnodes[i] = fmod(s->rot_heliocen_node + acos(std::clamp(cosine, -1.0, 1.0)) + 2 * _pi, 2 * _pi);
+                            continue;
+                        }
+                    }
+                }
                 double direct_delta = fabs(pincls[i] - sysincl);
                 double fold_delta = fabs((_pi - pincls[i]) - sysincl);
                 if (fold_delta < direct_delta)
@@ -4514,7 +4556,7 @@ void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>&
         if (sysnode) s->planets_heliocen_node = sysnode;
 
         s->location.local_system_plane = system_plane_from_incl_and_node((fabs(sysincl) >= 1e-6) ? sysincl : half_pi,
-                                         sysnode, s->location.system_center);
+                                         sysnode, sightline);
         s->lock_system_plane = true;
 
 #if _debug_exoplanet_inclinations
@@ -4539,10 +4581,12 @@ void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>&
             const double projected = sin(pincls[i]);
             if (p->msini > 0 && projected > 0.05 && p->mass_evidence != PlanetMeasurement::observed)
                 p->mass = p->msini / projected;
-            p->orbit->heliocentric_inclination = (fabs(sysincl) >= 1e-6) ? pincls[i] : half_pi;
+            const double sky_inclination = pincls[i] ? pincls[i] : half_pi;
+            p->orbit->heliocentric_inclination = sky_inclination;
             p->orbit->heliocentric_node = pnodes[i];
-            elements_in_new_reference_plane(system_plane_from_incl_and_node((fabs(sysincl) >= 1e-6) ? pincls[i] : half_pi,
-                                            pnodes[i], s->location.system_center),
+            p->orbit->heliocentric_inclination_assumed = supplied_inclinations[i] == 0 || sky_inclination != supplied_inclinations[i];
+            p->orbit->heliocentric_node_assumed = supplied_nodes[i] == 0;
+            elements_in_new_reference_plane(system_plane_from_incl_and_node(sky_inclination, pnodes[i], sightline),
                                             s->location.local_system_plane,
                                             p->orbit->inclination, p->orbit->ascending_node);
 
@@ -4572,7 +4616,7 @@ void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>&
 
         elements_in_new_reference_plane(system_plane_from_incl_and_node((fabs(sysincl) >= 1e-6) ? stincl : half_pi,
                                         stnode,
-                                        s->location.system_center),
+                                        sightline),
                                         s->location.local_system_plane,
                                         s->obliquity, s->equinox);
 
@@ -4588,7 +4632,7 @@ void CatalogReader::apply_exoplanet_names(const std::map<int, std::vector<int>>&
                     assert(i<n);
                     elements_in_new_reference_plane(system_plane_from_incl_and_node((fabs(sysincl) >= 1e-6) ? cincls[i] : half_pi,
                                                     cnodes[i],
-                                                    s->location.system_center),
+                                                    sightline),
                                                     s->location.local_system_plane,
                                                     comp->orbit->inclination, comp->orbit->ascending_node);
 
@@ -4929,7 +4973,7 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
                             p->orbit->mean_anomaly = 0;
                         }
                         else if (i == col_argperi) p->orbit->arg_periapsis = atof(field) * fiftyseventh;
-                        else if (i == col_oblt) p->obliquity = atof(field) * fiftyseventh;
+                        else if (i == col_oblt) p->orbit->host_spin_orbit_angle = atof(field) * fiftyseventh;
                         else if (i == col_sptp) spectral_type = field;
                         else if (i == col_srad) star_radius = atof(field) * solar_radius;
                         else if (i == col_smass) star_mass = atof(field) * solar_mass;
@@ -5274,8 +5318,10 @@ int CatalogReader::read_stellar_rotation_catalog(CelestialObject** objects)
         if (!object->stellar_rotation.is_object() && object->sidereal_rotational_period > 0 &&
             object->sidereal_rotational_period != 25 * oneday) continue;
         object->sidereal_rotational_period = measurement.days * oneday;
-        object->stellar_rotation = {{"period_seconds", object->sidereal_rotational_period},
-            {"estimated", false}, {"source", "J/ApJ/743/48"}, {"reference", measurement.reference}};
+        object->stellar_rotation["period_seconds"] = object->sidereal_rotational_period;
+        object->stellar_rotation["estimated"] = false;
+        object->stellar_rotation["source"] = "J/ApJ/743/48";
+        object->stellar_rotation["reference"] = measurement.reference;
         apply_rotation_fallback(object, objects[0]);
         ++count;
     }
@@ -5526,7 +5572,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels, int first_host)
     for (ncelobjs=0; cels[ncelobjs]; ncelobjs++);
     numfails = 0;
 
-    ExactStarSearchIndex orbit_lookup(first_host);
+    ExactStarSearchIndex orbit_lookup;
     if (!first_host)
     {
         for (int index = 0; cels[index]; ++index)
@@ -5560,8 +5606,18 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels, int first_host)
         }
     }
 
-    while (fgets(buffer, 1020, fp))
+    // Link the orbits first so stellar rotation rows can use the resolved companion geometry.
+    std::vector<std::string> spin_rows;
+    size_t spin_index = 0;
+    bool reading_spin_rows = false;
+    while (true)
     {
+        if (reading_spin_rows || !fgets(buffer, 1020, fp))
+        {
+            reading_spin_rows = true;
+            if (spin_index == spin_rows.size()) break;
+            snprintf(buffer, sizeof(buffer), "%s", spin_rows[spin_index++].c_str());
+        }
         if (*buffer == '#') continue;
         if (!trim(buffer).size()) continue;
 
@@ -5579,8 +5635,13 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels, int first_host)
             read_field_onebased(buffer, 289, 327, full_name);
             bdyname = trim(full_name);
             if (cenname.empty() || bdyname.empty()) continue;
-            buffer[248] = '\0';
         }
+        if (!reading_spin_rows && bdyname == "(stellar rotation)")
+        {
+            spin_rows.emplace_back(buffer);
+            continue;
+        }
+        if (long_names) buffer[248] = '\0';
         const char* censtr = cenname.c_str();
         A = nullptr;
         // Catalog rows can only attach to exact identifiers or aliases, never fuzzy guesses.
@@ -5596,7 +5657,7 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels, int first_host)
             continue;
         }
 
-        if (A->seqno < first_host) continue;
+        if (A->seqno < first_host && !reading_spin_rows) continue;
 
         read_field_onebased(buffer, 65, 75, field);
         const auto supplied_angle = [](const std::string& value)
@@ -5625,31 +5686,44 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels, int first_host)
             };
             double spin_inclination = _pi / 2, spin_node = 0;
             const bool has_inclination = angle(77, 87, spin_inclination);
-            const bool has_node = angle(65, 75, spin_node);
+            const bool inclination_assumed = strchr(field, '?') != nullptr;
+            const bool supplied_spin_node = angle(65, 75, spin_node);
+            const bool node_marked_assumed = strchr(field, '?') != nullptr;
+            const bool had_spin_node = A->stellar_rotation.is_object()
+                && A->stellar_rotation.value("node_supplied", false);
+            if (!supplied_spin_node)
+            {
+                if (had_spin_node) spin_node = A->rot_heliocen_node;
+                else if (A->orbit) spin_node = A->orbit->heliocentric_node;
+            }
             // An omitted inclination retains an existing pole, or uses the edge-on fallback.
             // Never promote the fallback into the measured rotation-inclination fields.
             if (has_inclination || (!A->lock_equatorial_plane && !A->rot_axis_known && !A->known_poles))
             {
-                A->location.equatorial_plane = system_plane_from_incl_and_node(spin_inclination, spin_node,
-                    A->location.system_center - cels[0]->location.system_center);
+                if (A->orbit) A->update_location(simnow);
+                A->location.equatorial_plane = system_plane_from_incl_and_node(spin_inclination, spin_node, stellar_sightline(*A));
                 if (has_inclination)
                 {
                     A->lock_equatorial_plane = true;
-                    A->known_poles = complete_pole;
                     A->obliquity = spin_inclination;
                     A->equinox = spin_node;
                     A->rot_heliocen_incl = spin_inclination;
+                    A->rot_heliocen_node = spin_node;
                 }
             }
-            if (has_inclination || has_node) A->known_poles = complete_pole;
-            if (has_node) A->rot_heliocen_node = spin_node;
+            if (has_inclination || supplied_spin_node)
+                A->known_poles = has_inclination && (supplied_spin_node || had_spin_node);
+            if (supplied_spin_node) A->rot_heliocen_node = spin_node;
             if (!A->stellar_rotation.is_object()) A->stellar_rotation = json::object();
             if (has_inclination || !A->stellar_rotation.contains("inclination_supplied"))
-                A->stellar_rotation["inclination_supplied"] = has_inclination;
-            if (has_node || !A->stellar_rotation.contains("node_supplied"))
             {
-                A->stellar_rotation["node_supplied"] = has_node;
-                A->stellar_rotation["node_assumed"] = !has_node || std::string(field).find('?') != std::string::npos;
+                A->stellar_rotation["inclination_supplied"] = has_inclination;
+                A->stellar_rotation["inclination_assumed"] = !has_inclination || inclination_assumed;
+            }
+            if (supplied_spin_node || !A->stellar_rotation.contains("node_supplied"))
+            {
+                A->stellar_rotation["node_supplied"] = supplied_spin_node;
+                A->stellar_rotation["node_assumed"] = !supplied_spin_node || node_marked_assumed;
             }
             read_field_onebased(buffer, 49, 63, field);
             std::string period_text = trim(field);
@@ -5704,6 +5778,8 @@ int CatalogReader::read_star_orbits_dat(CelestialObject **cels, int first_host)
         {
             A->disk_heliocen_inclination = inclination;
             A->disk_heliocen_node = ascending_node;
+            A->location.local_system_plane = new_orbital_plane;
+            if (!A->orbit) A->location.orbital_plane = new_orbital_plane;
 
             read_field_onebased(buffer, 101, 111, field);
             str = numeric_text(field);
@@ -6497,7 +6573,7 @@ static std::string star_orbits_signature()
             hash *= 1099511628211ULL;
         }
     }
-    return "systems5-" + std::to_string(hash);
+    return "systems6-" + std::to_string(hash);
 }
 
 static std::string baked_star_link_key(const json& key)
@@ -9668,13 +9744,11 @@ bool CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, s
     new_planet->inclination_error_upper = row.pl_orbinclerr1 * fiftyseventh;
     new_planet->inclination_error_lower = row.pl_orbinclerr2 * fiftyseventh;
 
-    if (!isnan(row.pl_trueobliq))
-        new_planet->obliquity = row.pl_trueobliq * fiftyseventh;
-
     // 3. Allocate and map the planetary Orbit data structure
     Orbit* orb = new_planet->orbit = new Orbit();
     orb->center = host_star;
     orb->center_name = host_star->name;
+    orb->host_spin_orbit_angle = row.pl_trueobliq * fiftyseventh;
 
     double pl_tranmid=0, pl_orbtper=0, pl_orblper=0;
 
@@ -9701,12 +9775,7 @@ bool CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, s
     }
 
     orb->inclination = inclination;
-    if (inclination)
-    {
-        host_star->planets_heliocen_inclination = inclination;
-        if (host_star->disk_heliocen_node) host_star->planets_heliocen_node = host_star->disk_heliocen_node;
-        else if (host_star->rot_heliocen_node) host_star->planets_heliocen_node = host_star->rot_heliocen_node;
-    }
+    orb->heliocentric_inclination = inclination;
 
     if (pl_orblper)
     {

@@ -24,6 +24,7 @@ catalogs/brown_dwarf_colors.txt
 catalogs/brown_dwarfs_20pc.json
 catalogs/nearby_components.json
 catalogs/nearby_stellar_systems.json
+catalogs/stellar_oblateness.json
 catalogs/constellation_lookup.dat
 catalogs/ultracool_dwarfs.json
 catalogs/asteroids.json

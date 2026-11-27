@@ -69,7 +69,7 @@ void set_viewer_surface_location(bool also_set_plane)
             && ((Moon*)cel)->width > zero_isnt_really_zero
             && ((Moon*)cel)->height > zero_isnt_really_zero);
 
-    double obl = 1.0 - cel->oblateness, equatorial_radius;
+    double obl = 1.0 - cel->effective_oblateness(), equatorial_radius;
     if (dwh)
         equatorial_radius = pow(((Moon*)cel)->depth * ((Moon*)cel)->width, 0.5) * .5;
     else
@@ -886,7 +886,7 @@ void compute_object_draw_coordinates()
         {
             for (i=0; cels[i]; i++)
             {
-                if (cels[i]->cenobj != mycenobj) continue;
+                if (cels[i]->deleted || cels[i]->cenobj != mycenobj) continue;
                 lsyscache.push_back(cels[i]);
             }
 

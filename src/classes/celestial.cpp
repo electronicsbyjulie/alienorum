@@ -31,6 +31,7 @@
 #include "wdcolor.h"
 #include "browncolor.h"
 #include "mdwarfcolor.h"
+#include "sunspots.h"
 #include "../loaders.h"
 
 using namespace alienorum;
@@ -1256,20 +1257,31 @@ void alienorum::CelestialObject::mark_all_maps_for_regen(bool discard_surface_bu
 
 bool alienorum::CelestialObject::operator<(const CelestialObject &other) const          // Return true if this < other.
 {
-    // Is same cenobj? If not, return cenobj comparison.
-    if (cenobj != other.cenobj) return *cenobj < *(other.cenobj);
+    // Group systems without comparing their centers recursively.
+    if (cenobj != other.cenobj)
+    {
+        if (!cenobj || !other.cenobj) return cenobj == nullptr;
+        if (cenobj->seqno != other.cenobj->seqno) return cenobj->seqno < other.cenobj->seqno;
+        return std::less<const CelestialObject*>{}(cenobj, other.cenobj);
+    }
 
     // Check class. Galaxy > star > planet/asteroid > moon > comet > artificial, reversed because we use this function for sort order.
     const cel_obj_class cls = typeclass(), ocls = other.typeclass();
     if (cls != ocls) return cls < ocls;
 
-    // Host star gets priority.
+    // The system center comes first among bodies of the same class.
+    if ((cenobj == this) != (cenobj == &other)) return cenobj == this;
     if (!orbit && other.orbit) return true;
     if (orbit && !other.orbit) return false;
 
-    // If same class, compare centers of orbit.
-    const CelestialObject *orbcen = (orbit ? orbit->center : this), *oorbcen = (other.orbit ? other.orbit->center : &other);
-    if (orbcen != oorbcen) return *orbcen < *oorbcen;
+    // An object without an orbital parent falls through to its own ordering fields.
+    const CelestialObject* orbcen = orbit && orbit->center != this ? orbit->center : nullptr;
+    const CelestialObject* oorbcen = other.orbit && other.orbit->center != &other ? other.orbit->center : nullptr;
+    if (orbcen != oorbcen)
+    {
+        if (!orbcen || !oorbcen) return orbcen == nullptr;
+        return *orbcen < *oorbcen;
+    }
 
     // If same center of orbit, compare semimajor axes.
     const double sma = (orbit ? orbit->semimajor_axis : 0), osma = (other.orbit ? other.orbit->semimajor_axis : 0);
@@ -1491,6 +1503,9 @@ json Orbit::to_json()
     };
     if (heliocentric_inclination) record["heliocentric_inclination"] = heliocentric_inclination*fiftyseven;
     if (heliocentric_node) record["heliocentric_node"] = heliocentric_node*fiftyseven;
+    if (heliocentric_inclination_assumed) record["heliocentric_inclination_assumed"] = true;
+    if (heliocentric_node_assumed) record["heliocentric_node_assumed"] = true;
+    if (std::isfinite(host_spin_orbit_angle)) record["host_spin_orbit_angle"] = host_spin_orbit_angle * fiftyseven;
     if (prec_node) record["prec_node"] = prec_node*fiftyseven*oneyear;
     if (proc_argperi) record["proc_argperi"] = proc_argperi*fiftyseven*oneyear;
     if (T_periapsis) record["T_periapsis"] = T_periapsis;
@@ -1511,6 +1526,9 @@ bool Orbit::from_json(json j)
     try { j.at("inclination").get_to(inclination); inclination *= fiftyseventh; } catch (...) { ; }
     heliocentric_inclination = j.value("heliocentric_inclination", 0.0) * fiftyseventh;
     heliocentric_node = j.value("heliocentric_node", 0.0) * fiftyseventh;
+    heliocentric_inclination_assumed = j.value("heliocentric_inclination_assumed", false);
+    heliocentric_node_assumed = j.value("heliocentric_node_assumed", false);
+    host_spin_orbit_angle = j.value("host_spin_orbit_angle", double(NAN)) * fiftyseventh;
     try { j.at("semimajor_axis").get_to(semimajor_axis); } catch (...) { ; }
     try { j.at("eccentricity").get_to(eccentricity); } catch (...) { ; }
     try { j.at("arg_periapsis").get_to(arg_periapsis); arg_periapsis *= fiftyseventh; } catch (...) { ; }
@@ -3744,7 +3762,7 @@ double CelestialObject::get_equatorial_radius()
     {
         static_cast<Star*>(this)->estimate_radius();
     }
-    double polar_ratio = 1.0 - oblateness;
+    double polar_ratio = 1.0 - effective_oblateness();
     if (!(polar_ratio > 0)) return volumetric_mean_radius;
     return volumetric_mean_radius / pow(polar_ratio, 1.0/3.0);
 }
@@ -5691,19 +5709,24 @@ void Map::generate_stellar_map(CelestialObject *cel)
         touch_gen();
         return;
     }
-    double T_eff, mass_solar, f_obl, radius_m, mass_g, surface_g, logg_cgs, p_rot_days, tau_conv_days, rossby, activity, spot_dT, gd_beta, gd_mean,
+    double T_eff, mass_solar, f_obl, radius_m, mass_g, surface_g, logg_cgs, p_rot_days, tau_conv_days, rossby, activity, spot_dT,
         scale_height, d_granule, granule_correction, cells_across, gran_scale, gran_nyquist, gran_amp, gran_dT, spot_base_deg, net_scale, plage_gain,
-        net_gain, mean_spot_rad, edge_scale, edge_amount, fil_scale, bv_at_teff, ref_max, inv_ref_max;
+        net_gain, bv_at_teff, ref_max, inv_ref_max;
     const double atomic_mass_unit = 1.66053906660e-27;                  // kg
-    std::vector<Point> spot_axis;
-    std::vector<double> spot_radius;
+    struct Spot
+    {
+        Point axis, along, across;
+        double cutoff;
+        SunspotProfile profile;
+    };
+    std::vector<Spot> spots;
     bool fully_convective, convective_envelope, spotted, granulated, polar_regime, has_faculae;
     Star *star = static_cast<Star*>(cel);
     Color wd_linear;
     const bool has_wd_color = star->resolve_wd_color(wd_linear);
     Color m_linear;
     const bool has_m_color = stellar_reference_color(star, m_linear);
-    int num_groups, num_spots;
+    int num_groups;
     Color ref_col;
     Map *fac = nullptr;
 
@@ -5718,7 +5741,7 @@ void Map::generate_stellar_map(CelestialObject *cel)
         cel->randomize();
 
         std::this_thread::sleep_for(std::chrono::milliseconds((int)frand(13,29)));
-        mtx.lock();
+        std::lock_guard<std::mutex> lock(mtx);
         generating_fic_texture = true;
 
         image_height = cel->fictitious_map_height;
@@ -5760,9 +5783,7 @@ void Map::generate_stellar_map(CelestialObject *cel)
                                         : ((logg_cgs < 3.5) ? cel->cel_frand(2.5, 9.0) : cel->cel_frand(0.4, 3.0));
         activity = fmin(1.0, 0.35 / fmax(0.05, rossby));
         spot_dT = fmax(150.0, fmin(0.541 * T_eff - 1323.0, 0.45 * T_eff));
-        gd_beta = convective_envelope ? 0.08 : 0.25;
-        f_obl = fmax(0.0, fmin(0.45, cel->oblateness));
-        gd_mean = 1.0 - 4.0 * f_obl / 3.0;
+        f_obl = cel->effective_oblateness();
 
         scale_height = kB * T_eff / (1.3 * atomic_mass_unit * surface_g);
         d_granule = 10.0 * scale_height;
@@ -5788,6 +5809,8 @@ void Map::generate_stellar_map(CelestialObject *cel)
         spot_base_deg = 0.35 + 7.0 * activity;
         num_groups = spotted ? (int)(activity * 7.0 + cel->cel_frand(0.8, 1.5)) : 0;
         polar_regime = (rossby < 0.12);
+        std::mt19937_64 detail_random(cel->rnd_seed ^ 0x6734c2eaU);
+        const auto detail = [&]() { return double(detail_random() >> 11) * 0x1.0p-53; };
 
         for (int gi = 0; gi < num_groups; gi++)
         {
@@ -5810,14 +5833,22 @@ void Map::generate_stellar_map(CelestialObject *cel)
                 double slat = fmax(-half_pi, fmin(half_pi, glat + cel->cel_frand(-0.4, 0.4) * spread));
                 double slon = glon + cel->cel_frand(-1.0, 1.0) * spread * 2.2 / fmax(0.25, cos(glat));
                 double cos_slat = cos(slat);
-                spot_axis.push_back(Point(cos_slat * cos(slon), cos_slat * sin(slon), sin(slat)));
 
                 // The head of the group is the main spot; the rest are subordinate to it.
-                double rad_deg = spot_base_deg * (mi == 0 ? cel->cel_frand(0.8, 1.6) : cel->cel_frand(0.25, 0.7));
-                spot_radius.push_back(fiftyseventh * rad_deg);
+                const double radius = fiftyseventh * spot_base_deg * (mi == 0 ? cel->cel_frand(0.8, 1.6) : cel->cel_frand(0.25, 0.7));
+                const Point axis(cos_slat*cos(slon), cos_slat*sin(slon), sin(slat));
+                const Point east(-sin(slon), cos(slon), 0);
+                const Point north(-sin(slat)*cos(slon), -sin(slat)*sin(slon), cos_slat);
+                const double tilt = _pi * detail(), aspect = .74 + .25 * detail();
+                const Point along = (east*cos(tilt) + north*sin(tilt)) * (1 / sin(radius));
+                const Point across = (north*cos(tilt) - east*sin(tilt)) * (1 / (sin(radius)*aspect));
+                const double pixel_size = _pi / (radius * aspect * image_height);
+                const SunspotProfile profile{2*_pi*detail(), .40 + .17*detail(), .11 + .16*detail(), .23*(detail() - .5),
+                    pixel_size, std::clamp(int(1.5 / pixel_size), 8, 80),
+                    mi != 0 && (pixel_size > .18 || detail() < .48), mi == 0 && detail() < .42};
+                spots.push_back({axis, along, across, cos(radius*2.35), profile});
             }
         }
-        num_spots = (int)spot_axis.size();
 
         has_faculae = spotted && (activity > 0.02);
         if (has_faculae && !cel->night_map)
@@ -5839,11 +5870,6 @@ void Map::generate_stellar_map(CelestialObject *cel)
         plage_gain = fmin(0.55, 0.20 + 0.5 * activity);           // excess over the photosphere
         net_gain = fmin(0.30, 0.08 + 0.35 * activity);
 
-        mean_spot_rad = fiftyseventh * fmax(0.2, spot_base_deg);
-        edge_scale = fmax(4.0, 2.5 / mean_spot_rad);
-        edge_amount = cel->cel_frand(0.45, 0.7);
-        fil_scale = edge_scale * 3.5;                         // penumbral filaments
-
         bv_at_teff = bv_of(T_eff);
         ref_col = has_wd_color
             ? wd_linear
@@ -5854,13 +5880,11 @@ void Map::generate_stellar_map(CelestialObject *cel)
     catch (...)
     {
         generating_fic_texture = false;
-        mtx.unlock();
         return;
     }
-    mtx.unlock();
 
     double theta, phi, sin_theta, nx, ny, nz;
-    double T_local, gd_factor, umbra, dist, warped;
+    const double visible_planck_temperature = Planck * speed_of_light / (V_band * kB);
     unsigned int x, y, idx;
 
     for (y = 0; y < image_height; ++y)
@@ -5868,7 +5892,7 @@ void Map::generate_stellar_map(CelestialObject *cel)
         theta = ((double)y / image_height) * _pi;            // 0 at the north pole, Pi at the south pole
         sin_theta = sin(theta);
         
-        gd_factor = pow((1.0 - 2.0 * f_obl * sin_theta * sin_theta) / gd_mean, gd_beta);
+        const double latitude_temperature = Star::gravity_darkened_temperature(T_eff, f_obl, sin_theta * sin_theta);
 
         for (x = 0; x < image_width; ++x)
         {
@@ -5880,50 +5904,37 @@ void Map::generate_stellar_map(CelestialObject *cel)
             idx = y * image_width + x;
             if (idx >= allocated) break;
 
-            T_local = T_eff * gd_factor;
-
+            double quiet_temperature = latitude_temperature;
             if (gran_dT > 0)
             {
-                double cell = ridged_fBm(nx * gran_scale, ny * gran_scale, nz * gran_scale, 3, 2.1, 0.5);
-                T_local -= gran_dT * (1.0 - cell);
+                const double cell = ridged_fBm(nx * gran_scale, ny * gran_scale, nz * gran_scale, 3, 2.1, 0.5);
+                quiet_temperature -= gran_dT * (1.0 - cell);
             }
+            quiet_temperature = fmax(1000, quiet_temperature);
 
             double plage = 0;
-            if (num_spots)
+            double deficit = 0;
+            for (const auto& spot : spots)
             {
-                warped = edge_amount * (fBm(nx * edge_scale, ny * edge_scale, nz * edge_scale, 5, 2.2, 0.55) - 0.5) * 2.0;
-                for (int i = 0; i < num_spots; i++)
+                if (nx*spot.axis.x + ny*spot.axis.y + nz*spot.axis.z <= spot.cutoff) continue;
+                const double along = nx*spot.along.x + ny*spot.along.y + nz*spot.along.z;
+                const double across = nx*spot.across.x + ny*spot.across.y + nz*spot.across.z;
+                const double radius = sqrt(along*along + across*across);
+                deficit = fmax(deficit, spot.profile.deficit(along, across, radius));
+                if (fac && !spot.profile.pore && radius > 1 && radius < 2.3)
                 {
-                    dist = acos(fmax(-1.0, fmin(1.0, nx * spot_axis[i].x + ny * spot_axis[i].y + nz * spot_axis[i].z)));
-                    double r = spot_radius[i] * (1.0 + warped);
-                    if (r <= 0) continue;
-
-                    if (has_faculae && dist >= r && dist < 2.6 * r)
-                    {
-                        double pt = (dist - r) / (1.6 * r);
-                        plage = fmax(plage, (1.0 - pt) * (1.0 - pt));
-                    }
-
-                    if (dist >= r) continue;
-
-                    if (dist < 0.45 * r)
-                    {
-                        umbra = 1.0;                                    // umbra: full deficit
-                    }
-                    else
-                    {
-                        double t = (dist - 0.45 * r) / (0.55 * r);
-                        double fil = fBm(nx * fil_scale, ny * fil_scale, nz * fil_scale, 3, 2.0, 0.5);
-                        umbra = 0.38 * (1.0 - t) * (0.7 + 0.6 * fil);
-                    }
-                    T_local = fmin(T_local, T_eff * gd_factor - spot_dT * umbra);
-                    plage = 0;                                          // no plage on the spot itself
+                    const double edge = (2.3 - radius) / 1.3;
+                    plage = fmax(plage, edge*edge);
                 }
             }
 
-            if (T_local < 1000.0) T_local = 1000.0;
-
-            double lum = pow(T_local / T_eff, 1.6);
+            const double T_local = fmax(1000, quiet_temperature - spot_dT * deficit);
+            double lum = pow(quiet_temperature / T_eff, 1.6);
+            if (T_local < quiet_temperature)
+            {
+                // Visible continuum contrast for a cool spot relative to nearby quiet photosphere.
+                lum *= expm1(visible_planck_temperature / quiet_temperature) / expm1(visible_planck_temperature / T_local);
+            }
             RGB3 rgb;
             if (has_wd_color)
             {
@@ -5953,7 +5964,7 @@ void Map::generate_stellar_map(CelestialObject *cel)
                     2, 2.0, 0.5);
                 net = fmax(0.0, (net - 0.72) / 0.28);               // keep only the ridges
 
-                double excess = fmin(1.0, plage_gain * plage + net_gain * net);
+                const double excess = fmin(1.0, plage_gain * plage + net_gain * net) * (1 - deficit);
                 fac->red_data[idx]   = (unsigned char)fmin(255.0, rgb.r * excess);
                 fac->green_data[idx] = (unsigned char)fmin(255.0, rgb.g * excess);
                 fac->blue_data[idx]  = (unsigned char)fmin(255.0, rgb.b * excess);

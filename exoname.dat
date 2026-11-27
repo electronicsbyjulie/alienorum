@@ -8,6 +8,11 @@
 #@planet HD 160691       308        d   Rocinante
 #@planet HD 160691       645        b   Quijote
 #@planet HD 160691      4019        e   Sancho
+# Tentative Proxima Centauri c combined astrometric fit, Benedict & McArthur (2020), doi:10.3847/2515-5172/ab9ca9, table 1.
+Proxima Centauri c                      Proxima Centauri c                                              133?        331?
+# Beta Pictoris sky-plane nodes, Brandt et al. (2021), https://arxiv.org/abs/2011.06215.
+beta Pic b                              Beta Pictoris b                                                 88.94       211.95
+beta Pic c                              Beta Pictoris c                                                 89.1        211
 55 Cnc Ae                               Janssen                 lavaworld               3771
 55 Cnc Ab                               Galileo                 hot_jupiter
 55 Cnc Ac                               Brahe                   gas_giant

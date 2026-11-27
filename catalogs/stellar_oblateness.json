@@ -1,0 +1,42 @@
+[
+    {
+        "hip": 7588,
+        "name": "Achernar A",
+        "equatorial_radius_solar": 9.16,
+        "polar_radius_solar": 6.78,
+        "source": "Domiciano de Souza et al. (2014), Table 6, PIONIER photospheric fit",
+        "doi": "10.1051/0004-6361/201424144"
+    },
+    {
+        "hip": 49669,
+        "name": "Regulus A",
+        "equatorial_radius_solar": 4.16,
+        "polar_radius_solar": 3.14,
+        "source": "McAlister et al. (2005), CHARA interferometry and spectroscopy",
+        "doi": "10.1086/430730"
+    },
+    {
+        "hip": 86032,
+        "name": "Rasalhague A",
+        "equatorial_radius_solar": 2.871,
+        "polar_radius_solar": 2.390,
+        "source": "Zhao et al. (2009), Table 4, CHARA interferometric fit",
+        "doi": "10.1088/0004-637X/701/1/209"
+    },
+    {
+        "hip": 97649,
+        "name": "Altair",
+        "equatorial_radius_solar": 2.008,
+        "polar_radius_solar": 1.565,
+        "source": "Bouchaud et al. (2020), two-dimensional ESTER fit to interferometry",
+        "doi": "10.1051/0004-6361/201936830"
+    },
+    {
+        "hip": 105199,
+        "name": "Alderamin",
+        "equatorial_radius_solar": 2.740,
+        "polar_radius_solar": 2.162,
+        "source": "Zhao et al. (2009), Table 3, CHARA fit with free gravity-darkening exponent",
+        "doi": "10.1088/0004-637X/701/1/209"
+    }
+]

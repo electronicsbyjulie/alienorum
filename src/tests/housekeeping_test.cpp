@@ -211,6 +211,38 @@ TEST_F(HousekeepingTest, CulledPlanetsRefreshHzCountsAfterDirectOrbitChanges)
     delete_the_universe();
 }
 
+TEST_F(HousekeepingTest, SystemViewSortsCatalogMembersWithoutOrbits)
+{
+    CandidateFrameRestore restore;
+    Star* host = make_star("System primary");
+    Star* first_companion = make_star("Brighter companion", .05 * solar_mass);
+    Star* second_companion = make_star("Fainter companion", .03 * solar_mass);
+    Star* duplicate = make_star("Retired catalog entry", .04 * solar_mass);
+    Planet* planet = make_planet(host);
+    host->cenobj = first_companion->cenobj = second_companion->cenobj = duplicate->cenobj = host;
+    duplicate->deleted = true;
+    mycenobj = host;
+    whereami = host->seqno;
+    selected = trackidx = editidx = -1;
+    view_mode = vm_spaceship;
+    lsyscache.clear();
+    double magnitudes[5]{}, radii[5]{}, bloom[5]{};
+    bool discs[5]{};
+    const auto previous_projection = std::make_tuple(vmag_cache, angular_radius, bloomrad_cache, discinstead);
+    vmag_cache = magnitudes;
+    angular_radius = radii;
+    bloomrad_cache = bloom;
+    discinstead = discs;
+
+    process_key_cmd_ctrl_char('v');
+    compute_object_draw_coordinates();
+
+    std::tie(vmag_cache, angular_radius, bloomrad_cache, discinstead) = previous_projection;
+    EXPECT_EQ(view_mode, vm_system);
+    EXPECT_EQ(lsyscache, (std::vector<CelestialObject*>{host, second_companion, first_companion, planet}));
+    lsyscache.clear();
+}
+
 TEST_F(HousekeepingTest, SystemViewUpdatesUnselectedMoonsBeforeSkyVisibilityChecks)
 {
     struct RestoreFrame

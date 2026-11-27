@@ -10,6 +10,8 @@ HD128620                HD128621                2.5170e+9       205.073     079.
 HD128621                (stellar rotation)      36.66d          205.073?    045
 # Proxima: osculating elements from the ICRS astrometry and velocities in Kervella et al. (2017), table 2.
 HD128620                Proxima Cen             546127y         14.4494     69.6036     40.9579     8643.34AU   .497979     179.9361            1991.25         M5.5V                           0.1221      0.1542      0.00005      2992
+# Proxima rotation: Klein et al. (2021), https://arxiv.org/abs/2010.14311, 47 +/-7 deg and 89.8 +/-4.0 d.
+Proxima Cen             (stellar rotation)      89.8d                       47
 
 # Atlas Aa1/Aa2 relative orbit: Torres et al. (2025), table 6, doi:10.3847/1538-4357/adf224.
 HD23850                 27 Tau B                290.9919d       334.202     107.863     335.697     1.768AU     .23565      0                   JD2450585.988
@@ -32,7 +34,7 @@ HD35841                 (cometary disk)                         167         084
 HD36546                 (cometary disk)                         257.3       080
 HD38206                 (cometary disk)                         084         084
 HD38858                 (cometary disk)                         060         040
-HD39060                 (cometary disk)                         030.0       086.6
+HD39060                 (cometary disk)                         210.0       086.6
 HD48682                 (cometary disk)                         110         060
 HD50571                 (cometary disk)                         121.9       080
 HD53143                 (cometary disk)                         157.5       056.1
@@ -77,7 +79,8 @@ HD202628                (cometary disk)                         129.9       057.
 HD205674                (cometary disk)                         138         056
 HD207129                (cometary disk)                         118         060.7
 TYC93404371             (cometary disk)                         130         040
-HD216956                (cometary disk)                         156.61      066.87
+# Fomalhaut outer ring, MacGregor et al. (2017), https://arxiv.org/abs/1705.05867.
+HD216956                (cometary disk)                         337.9       65.6
 HD216956C               (cometary disk)                         116         044
 HD218396                (cometary disk)                         051         039
 
@@ -111,7 +114,14 @@ HD13445                 Gliese 86 B             3e+9            234.2       126.
 # https://en.wikipedia.org/wiki/Fomalhaut
 # https://upload.wikimedia.org/wikipedia/commons/8/84/Fomalhaut_Dusty_Debris_Disk_%28MIRI_Compass_Image%29.png
 # https://en.wikipedia.org/wiki/Fomalhaut#/media/File:NASA's_Hubble_Reveals_Rogue_Planetary_Orbit_For_Fomalhaut_B.jpg
-HD216956                (debris disks)                          202         066.1
+# Le Bouquin et al. (2009), https://arxiv.org/abs/0904.1688, measured spin PA 65 deg.
+# Use the disk inclination for the spin inclination.
+HD216956                (stellar rotation)                      335         65.6?
+# Stellar inclination from Bourrier et al. (2021), https://arxiv.org/abs/2110.14214.
+HD3167                  (stellar rotation)                                  111.6
+# WASP-33 stellar inclination from the same fit as the planet's 108.19 deg spin-orbit angle.
+# Watanabe et al. (2022), https://arxiv.org/abs/2203.02003.
+HD15082                 (stellar rotation)                                  58.3?
 
 #Center Name            Member Name             Period_s        Node_deg    Incl_deg    Omega_deg   SMA_m       Eccn        Anomaly_deg         Epoch           SpType          AbsMagn         Msun        Rsun        Lum         TempK       Rotation
 
@@ -266,7 +276,8 @@ HD36584                 24 Dor B                2.51e+10        074.8       129.
 # Vega: measured 0.676 d signal, Hurt et al. 2021, https://arxiv.org/abs/2101.08801
 Vega                    (stellar rotation)      0.676d          057         006.2
 # Altair: model-derived 7 h 46 min, Bouchaud et al. 2020, https://arxiv.org/abs/1912.03138
-Altair                  (stellar rotation)      27960?          301.1       050.7
+# Projected spin PA is 301.1 deg east of north.
+Altair                  (stellar rotation)      27960?          211.1       050.7
 HD86320                 HD86320 B               2.004e+9        142.3       034.5       135.2       5.685e+12   .50         0                   2015.2326                                       1.6
 HD88522                 (companion orbit)                       198.3       076.0
 HD100453                (companion orbit)                       047         049
@@ -867,6 +878,8 @@ HD170756                AC Her B                1187.7d         155.1       142.
 
 # https://en.wikipedia.org/w/index.php?title=Achernar&oldid=1380318497
 HD10144                 Alp Eri B               7.0389y         310.91      30.32       172.05      7.35AU      0.7258      0                   2008.7582       A1V-A3V                         2           1.7         17.5        9064
+# Domiciano de Souza et al. (2014), doi:10.1051/0004-6361/201424144, visible pole PA 216.9 deg.
+HD10144                 (stellar rotation)                      126.9       60.6
 
 # https://en.wikipedia.org/w/index.php?title=AD_Andromedae&oldid=1374808592
 # HJD treated as JD.
@@ -1456,6 +1469,8 @@ HAT-P-41                HAT-P-41 B                                              
 
 # https://en.wikipedia.org/w/index.php?title=HAT-P-7&oldid=1374739568
 # Published components: A -> B; sequential names used below.
+# Asteroseismic inclination from Masuda (2015), https://arxiv.org/abs/1407.7332.
+HAT-P-7 A               (stellar rotation)                                  27?
 HAT-P-7                 HAT-P-7 B                                                                   730AU                                                       M5.5V                           0.21
 
 # https://en.wikipedia.org/w/index.php?title=HAT-P-7&oldid=1374739568

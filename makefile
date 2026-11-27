@@ -42,6 +42,7 @@ CLASSES_SRC = $(CLASSES_DIR)/fictionalstars.cpp $(CLASSES_DIR)/point.cpp $(CLASS
 			$(CLASSES_DIR)/cons.cpp $(CLASSES_DIR)/sscimport.cpp $(CLASSES_DIR)/exocons.cpp $(CLASSES_DIR)/sound.cpp $(CLASSES_DIR)/objectsearch.cpp
 TESTS_SRC = $(TESTS_DIR)/stellarage_test.cpp $(TESTS_DIR)/giantreflectance_test.cpp $(TESTS_DIR)/fictionalstars_test.cpp $(TESTS_DIR)/point_test.cpp $(TESTS_DIR)/color_test.cpp \
 			$(TESTS_DIR)/known_bugs_regression_test.cpp \
+			$(TESTS_DIR)/planes_test.cpp \
 			$(TESTS_DIR)/crater_profile_test.cpp \
 			$(TESTS_DIR)/objectsearch_test.cpp $(TESTS_DIR)/currentconditions_test.cpp \
 			$(TESTS_DIR)/celestial_test.cpp $(TESTS_DIR)/galaxy_test.cpp $(TESTS_DIR)/star_test.cpp \
@@ -170,6 +171,10 @@ tests: $(TESTS)
 	if [ $$rc -eq 0 ]; then echo "=== all test suites passed ==="; \
 	else echo "=== SOME TEST SUITES FAILED -- see above ==="; fi; \
 	exit $$rc
+
+.PHONY: test-view-modes
+test-view-modes: $(BIN)/alienorum
+	ALIENORUM_REPLAY_BINARY="$(abspath $(BIN)/alienorum)" python3 tools/test_view_mode_replay.py
 
 # The same test binaries under AddressSanitizer, built into their own obj/ and bin/ so they never
 # get mixed up with the ordinary ones. Use this whenever a test crashes, or a result depends on

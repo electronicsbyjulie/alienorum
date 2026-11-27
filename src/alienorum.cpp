@@ -41,7 +41,8 @@ using namespace alienorum;
 // of everything typed before it.
 struct CliCmd
 {
-    enum Kind { k_go, k_conswait, k_mode, k_track, k_find, k_zoom, k_alt, k_az, k_fkey, k_char, k_ctrl_char, k_import } kind;
+    enum Kind { k_go, k_conswait, k_mode, k_track, k_find, k_zoom, k_alt, k_az, k_fkey, k_char, k_ctrl_char, k_import,
+        k_viewprobe } kind;
     std::string s;
     int fkey = 0;
     char c = 0;
@@ -150,6 +151,7 @@ int main (int argc, char** argv)
 
     std::vector<CliCmd> cli_cmds;
     size_t cli_cmd_pos = 0;
+    bool replaying_views = false;
     auto push_str = [&](CliCmd::Kind k, const std::string& s) { CliCmd cmd; cmd.kind = k; cmd.s = s; cli_cmds.push_back(cmd); };
     auto push_fkey = [&](int n) { CliCmd cmd; cmd.kind = CliCmd::k_fkey; cmd.fkey = n; cli_cmds.push_back(cmd); };
     auto push_char = [&](char c) { CliCmd cmd; cmd.kind = CliCmd::k_char; cmd.c = c; cli_cmds.push_back(cmd); };
@@ -208,6 +210,14 @@ int main (int argc, char** argv)
         else if (!strcmp(argv[l], "go"))
         {
             if (const char* a = next_arg(argv[l])) push_str(CliCmd::k_go, a);
+        }
+        else if (!strcmp(argv[l], "viewprobe"))
+        {
+            if (const char* a = next_arg(argv[l]))
+            {
+                push_str(CliCmd::k_viewprobe, a);
+                replaying_views = true;
+            }
         }
         else if (!strcmp(argv[l], "cwait"))
         {
@@ -368,6 +378,7 @@ int main (int argc, char** argv)
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
     double main_scale = 1; // ImGui_ImplSDL2_GetContentScaleForDisplay(0);
     SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
+    if (replaying_views) window_flags = (SDL_WindowFlags)(window_flags | SDL_WINDOW_HIDDEN);
 
     std::string wtitle = "Alienorum";
     wtitle += " | F1 menu";
@@ -523,8 +534,9 @@ int main (int argc, char** argv)
         SDL_Event event;
         while (SDL_PollEvent(&event))
         {
-            ImGui_ImplSDL2_ProcessEvent(&event);
-            if (loading_frame && event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_F2 && !event.key.repeat)
+            // Live input can change a replayed shortcut or move it to a different object.
+            if (!replaying_views) ImGui_ImplSDL2_ProcessEvent(&event);
+            if (!replaying_views && loading_frame && event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_F2 && !event.key.repeat)
                 process_key_F2();
             if (event.type == SDL_QUIT ||
                 (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE && event.window.windowID == SDL_GetWindowID(window)))
@@ -958,6 +970,36 @@ int main (int argc, char** argv)
                         // Retry on the next frame so generation and line installation can progress.
                         if (ExoConsGenerator::current_vantage_pending()) --cli_cmd_pos;
                         break;
+                    case CliCmd::k_viewprobe:
+                    {
+                        // Replay commands run after drawing. Report the frame reached by the preceding input.
+                        const auto* object = whereami >= 0 && whereami < ncelobjs ? cels[whereami] : nullptr;
+                        json frame = {{"tag", cmd.s}, {"mode", view_mode}, {"index", whereami}};
+                        const Uint32 flags = SDL_GetWindowFlags(window);
+                        frame["viewport_hidden"] = (flags & SDL_WINDOW_HIDDEN) != 0 && (flags & SDL_WINDOW_SHOWN) == 0;
+                        if (view_mode == vm_system) frame["system_members"] = lsyscache.size();
+                        if (object)
+                        {
+                            frame["name"] = object->name;
+                            frame["class"] = object->typeclass();
+                            if (object->orbit && object->orbit->center) frame["parent"] = object->orbit->center->name;
+                            if (object->typeclass() == class_planet)
+                            {
+                                const auto* planet = static_cast<const Planet*>(object);
+                                frame["designation"] = planet->catalog_designation;
+                                frame["candidate"] = planet->catalog_candidate;
+                            }
+                            if (object->typeclass() == class_star)
+                            {
+                                const auto* star = static_cast<const Star*>(object);
+                                frame["confirmed_planets"] = star->has_planets;
+                                frame["uncertain_planets"] = star->has_uncertain_planets;
+                            }
+                        }
+                        const auto record = "\nVIEW_PROBE " + frame.dump(-1, ' ', false, json::error_handler_t::replace) + '\n';
+                        std::cout << record << std::flush;
+                        break;
+                    }
                     case CliCmd::k_mode:
                         if (cmd.s == "hz") view_mode = vm_horizon;
                         else if (cmd.s == "sun") view_mode = vm_sunclock;

@@ -133,6 +133,9 @@ namespace alienorum
 
         double heliocentric_inclination = 0;
         double heliocentric_node = 0;
+        bool heliocentric_inclination_assumed = false;
+        bool heliocentric_node_assumed = false;
+        double host_spin_orbit_angle = NAN;        // Radians between the host spin and this orbit.
 
         Rotation laplace;
         OsculatingElement *osculating = nullptr;
@@ -503,6 +506,7 @@ namespace alienorum
 
         CelestialObject* get_light_center();
         double estimate_surface_gravity();
+        virtual double effective_oblateness() const { return oblateness; }
         double get_equatorial_radius();
         double viewer_magnitude(CelestialLocation seen_from);
         static double distance_from_magnitudes(double apparent, double absolute);

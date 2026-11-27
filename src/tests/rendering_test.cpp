@@ -11537,6 +11537,49 @@ TEST_F(UniverseFixture, ThermalShortcutKeepsTheMapViewThroughTheCycle)
     delete_the_universe();
 }
 
+TEST_F(RenderingRegressionTest, StellarThermalShortcutDrawsHotPolesAndACoolEquator)
+{
+    make_star("Sol");
+    auto* star = make_star("Rapid rotator");
+    star->temperature = 8000;
+    star->oblateness = .22;
+    set(whereami, star->seqno);
+    set(trackidx, -1);
+    set(viewchanged, false);
+    set(show_grid, false);
+    process_key_cmd_char('$');
+    ASSERT_EQ(view_mode, vm_sunclock);
+    process_key_cmd_char('$');
+    ASSERT_EQ(view_mode, vm_bumpmap);
+    process_key_cmd_char('$');
+    ASSERT_EQ(view_mode, vm_thermal);
+
+    draw_sunclock();
+    const auto pixels = render();
+    gputex_finish_frame();
+    ImGui::NewFrame();
+    const auto intensity = [&](int row)
+    {
+        const size_t index = (row * render_width + 140) * 4;
+        return int(pixels[index]) + pixels[index + 1] + pixels[index + 2];
+    };
+    EXPECT_GT(intensity(12), intensity(54) + 100);
+    EXPECT_GT(intensity(95), intensity(54) + 100);
+    EXPECT_NEAR(intensity(12), intensity(95), 15);
+    EXPECT_FALSE(star->looked_for_maps);
+
+    set(is_an_obj_under_cursor, -1);
+    set(is_a_locale_under_cursor, static_cast<Locale*>(nullptr));
+    set(objinfwnd, true);
+    auto& io = ImGui::GetIO();
+    io.MousePos = ImVec2(dispcx, dispcy);
+    ImGui::LogToBuffer();
+    draw_objinf_window(io);
+    const std::string readout = ImGui::GetCurrentContext()->LogBuffer.c_str();
+    ImGui::LogFinish();
+    EXPECT_NE(readout.find("Est. temp.: 7548.0 K"), std::string::npos) << readout;
+}
+
 TEST_F(UniverseFixture, ThermalRasterMatchesLocalTemperatureEstimates)
 {
     auto* world = make_planet(make_star("Sol"));
@@ -12570,6 +12613,149 @@ TEST_F(RenderingRegressionTest, TentativePlanetFilterHidesAnEntireOrbitalBranch)
     ImGui::GetIO().AddKeyEvent(ImGuiKey_F8, false);
 }
 
+TEST_F(RenderingRegressionTest, ResolvedFlareFollowsTheTiltedDiscSilhouette)
+{
+    make_star("Sun");
+    auto* star = make_star("Flattened star");
+    star->looked_for_maps = true;
+    star->oblateness = .36;
+    const double radius = star->get_equatorial_radius();
+    star->location.local_position = star->tmprel = star->viewrel = Point(radius, 0, 7 * radius);
+    set(here, CelestialLocation());
+    set(myeq, 0.0);
+    set(show_localsys, true);
+    set(show_labels, false);
+    set(lbl_localsys, false);
+    set(whtbkgd, false);
+    set(selected, -1);
+    set(global_brightness, 1.0);
+    set(sky_mag_shift, 0.0);
+    double magnitudes[] = {0, -7}, radii[] = {0, asin(radius / star->tmprel.magnitude())}, bloom[2] = {};
+    bool discs[2] = {};
+    set(vmag_cache, static_cast<double*>(magnitudes));
+    set(angular_radius, static_cast<double*>(radii));
+    set(bloomrad_cache, static_cast<double*>(bloom));
+    set(discinstead, static_cast<bool*>(discs));
+    const auto shape = [&](const std::vector<unsigned char>& pixels, const std::vector<unsigned char>* mask)
+    {
+        double weight = 0, sum_x = 0, sum_y = 0, sum_xx = 0, sum_xy = 0, sum_yy = 0;
+        for (int y = 0; y < render_height; ++y)
+        {
+            for (int x = 0; x < render_width; ++x)
+            {
+                const size_t alpha = (y * render_width + x) * 4 + 3;
+                if (mask && (*mask)[alpha]) continue;
+                const double a = pixels[alpha];
+                weight += a;
+                sum_x += a*x;
+                sum_y += a*y;
+                sum_xx += a*x*x;
+                sum_xy += a*x*y;
+                sum_yy += a*y*y;
+            }
+        }
+        EXPECT_GT(weight, 1000);
+        const double xx = sum_xx / weight - pow(sum_x / weight, 2);
+        const double yy = sum_yy / weight - pow(sum_y / weight, 2);
+        const double xy = sum_xy / weight - sum_x * sum_y / (weight * weight);
+        const double separation = hypot(xx - yy, 2*xy);
+        return std::make_pair(.5 * atan2(2*xy, xx - yy), sqrt((xx + yy - separation) / (xx + yy + separation)));
+    };
+
+    for (ViewMode mode : {vm_spaceship, vm_skymap})
+    {
+        SCOPED_TRACE(mode);
+        set(view_mode, mode);
+        set(zoom, mode == vm_skymap ? 4.5 : 1.5);
+        const Cartesian2D projected(star->tmprel, 0, 0, zoom);
+        star->drawnx = dispcx + projected.x * dispcx;
+        star->drawny = dispcy + projected.y * dispcx;
+        for (double tilt : {0., .65, -.65})
+        {
+            SCOPED_TRACE(tilt);
+            star->location.equatorial_plane.v = zaxis;
+            star->location.equatorial_plane.a = tilt;
+            impostor_begin_frame();
+            draw_sphere(star, radii[1] * zoom);
+            const auto disc = render();
+            ImGui::NewFrame();
+            impostor_begin_frame();
+            EXPECT_TRUE(draw_single_object(star->seqno));
+            const auto painted = render();
+            ImGui::NewFrame();
+
+            const auto [disc_angle, disc_ratio] = shape(disc, nullptr);
+            const auto [flare_angle, flare_ratio] = shape(painted, &disc);
+            EXPECT_LT(disc_ratio, .75);
+            EXPECT_NEAR(flare_ratio, disc_ratio, .06);
+            EXPECT_NEAR(std::remainder(flare_angle - disc_angle, _pi), 0, .08);
+        }
+    }
+}
+
+TEST_F(RenderingRegressionTest, FlareElongationBuildsGraduallyAcrossThePointToDiscSwitch)
+{
+    make_star("Sun");
+    auto* star = make_star("Approaching a flattened star");
+    star->looked_for_maps = true;
+    star->oblateness = .42;
+    star->drawnx = dispcx;
+    star->drawny = dispcy;
+    set(here, CelestialLocation());
+    set(show_localsys, true);
+    set(show_labels, false);
+    set(lbl_localsys, false);
+    set(whtbkgd, false);
+    set(selected, -1);
+    set(global_brightness, 1.0);
+    set(sky_mag_shift, 0.0);
+    double magnitudes[] = {0, -4.5}, radii[2] = {}, bloom[2] = {};
+    bool discs[2] = {};
+    set(vmag_cache, static_cast<double*>(magnitudes));
+    set(angular_radius, static_cast<double*>(radii));
+    set(bloomrad_cache, static_cast<double*>(bloom));
+    set(discinstead, static_cast<bool*>(discs));
+
+    const auto halo_aspect = [&](double radius_px)
+    {
+        SCOPED_TRACE(radius_px);
+        radii[1] = radius_px / dispcx;
+        const double distance = star->get_equatorial_radius() / sin(radii[1]);
+        star->location.local_position = star->tmprel = star->viewrel = Point(0, 0, distance);
+        impostor_begin_frame();
+        EXPECT_TRUE(draw_single_object(star->seqno));
+        const auto pixels = render();
+        ImGui::NewFrame();
+
+        const double inner = std::max(4.0, radius_px * 1.15);
+        double xx = 0, yy = 0;
+        for (int y = 0; y < render_height; ++y)
+        {
+            for (int x = 0; x < render_width; ++x)
+            {
+                const double dx = x + .5 - dispcx, dy = y + .5 - dispcy;
+                if (dx*dx + dy*dy < inner*inner) continue;
+                const double alpha = pixels[(y * render_width + x) * 4 + 3];
+                xx += alpha*dx*dx;
+                yy += alpha*dy*dy;
+            }
+        }
+        EXPECT_GT(xx, 0);
+        return sqrt(yy / xx);
+    };
+
+    const double switch_radius = sphere_rad_threshold * dispcx;
+    const double before = halo_aspect(.98 * switch_radius);
+    const double after = halo_aspect(1.02 * switch_radius);
+    const double small = halo_aspect(2);
+    const double medium = halo_aspect(6);
+    const double large = halo_aspect(13);
+    EXPECT_NEAR(before, 1, .06);
+    EXPECT_NEAR(after, before, .035);
+    EXPECT_GT(small, medium + .06);
+    EXPECT_GT(medium, large + .08);
+}
+
 TEST_F(RenderingRegressionTest, BrightObjectPhotometryAuditMeasuresDotsDiscsAndGlare)
 {
     // Nominal V magnitudes at maximum Venus brightness and full lunar phase.
@@ -13417,6 +13603,36 @@ TEST_F(RenderingRegressionTest, StatusClockShowsBothSidesOfCivilTimeChangesInBot
             EXPECT_NE(text.find(expected), std::string::npos) << expected;
         }
     }
+}
+
+TEST_F(RenderingRegressionTest, ObjectPanelReportsTheEstimatedStellarNorthPoleAndOrbitalTilt)
+{
+    auto* primary = make_star("Pole test primary");
+    auto* companion = make_star("Pole test companion");
+    surface_magnitudes.assign(2, 0.0);
+    set(vmag_cache, surface_magnitudes.data());
+    companion->make_companion_of(primary, 'B');
+    companion->location.orbital_plane = Rotation{};
+    companion->location.equatorial_plane = align_points_3d(Point::from_ra_dec(half_pi, _pi / 6, 1), yaxis, center);
+    companion->stellar_rotation = {{"inclination_supplied", true}, {"node_assumed", true}};
+    companion->known_poles = false;
+    set(here, CelestialLocation{});
+    set(whereami, -1);
+    set(azimuth_correction, 0.0);
+    set(is_an_obj_under_cursor, companion->seqno);
+    set(is_a_locale_under_cursor, static_cast<Locale*>(nullptr));
+    set(trackidx, -1);
+    set(objinfwnd, true);
+
+    set(view_mode, vm_spaceship);
+    const auto spaceship = panel_text([]() { draw_objinf_window(ImGui::GetIO()); });
+    EXPECT_NE(spaceship.find("Estimated rotation pole"), std::string::npos) << spaceship;
+    EXPECT_NE(spaceship.find("PoleRA:   06:00:00.0"), std::string::npos) << spaceship;
+    EXPECT_NE(spaceship.find("PoleDecl: +30:00:00"), std::string::npos) << spaceship;
+
+    set(view_mode, vm_system);
+    const auto system = panel_text([]() { draw_objinf_window(ImGui::GetIO()); });
+    EXPECT_NE(system.find("Obliq.:   60.00 deg"), std::string::npos) << system;
 }
 
 TEST_F(RenderingRegressionTest, SystemObjectPanelRoundsRotationBeforeSplittingTheTime)

@@ -8,6 +8,7 @@
 #include <sstream>
 #include <mutex>
 #include <set>
+#include <unordered_map>
 #include "stellarevolution.h"
 #include "cons.h"
 #include "planet.h"
@@ -27,6 +28,55 @@ Star **hdcache = nullptr, **hipcache = nullptr;
 std::map<std::string, Star*> dmcache;
 std::vector<Star*> favestars;
 bool show_favestars = false, label_favestars = true;
+
+namespace
+{
+    const std::unordered_map<int, double>& stellar_flattening_catalog()
+    {
+        static const auto catalog = []()
+        {
+            std::unordered_map<int, double> result;
+            std::ifstream input("catalogs/stellar_oblateness.json");
+            if (!input) return result;
+            json records = json::parse(input, nullptr, false);
+            if (!records.is_array()) return result;
+            normalize_uncertain_numbers(records);
+            for (const auto& record : records)
+            {
+                if (!record.is_object() || !record.contains("hip") || !record["hip"].is_number_integer()
+                    || !record.contains("equatorial_radius_solar") || !record["equatorial_radius_solar"].is_number()
+                    || !record.contains("polar_radius_solar") || !record["polar_radius_solar"].is_number()) continue;
+                const int hip = record["hip"];
+                const double equator = record["equatorial_radius_solar"], pole = record["polar_radius_solar"];
+                if (hip > 0 && std::isfinite(equator) && pole > 0 && pole <= equator)
+                    result.emplace(hip, 1 - pole / equator);
+            }
+            return result;
+        }();
+        return catalog;
+    }
+}
+
+double Star::effective_oblateness() const
+{
+    if (manual_oblateness || oblateness != 0) return oblateness;
+    if (HIP > 0)
+    {
+        const auto& catalog = stellar_flattening_catalog();
+        const auto found = catalog.find(HIP);
+        if (found != catalog.end()) return found->second;
+    }
+
+    const double radius = volumetric_mean_radius, period = sidereal_rotational_period;
+    if (!(mass > 0 && radius > 0 && period > 0)
+        || !std::isfinite(mass) || !std::isfinite(radius) || !std::isfinite(period)) return 0;
+
+    // Equate the Roche potentials at the pole and equator. For the rendered spheroid,
+    // R_mean^3 = R_eq^2 R_pole, so q = Omega^2 R_mean^3/(G M) = 2f.
+    // The critical equator has R_eq = 1.5 R_pole (f = 1/3), the limit of this model.
+    const double omega = 2 * _pi / period;
+    return std::min(omega * omega * radius * radius * radius / (2 * G * mass), 1.0 / 3);
+}
 
 void Star::refresh_planet_statistics()
 {
@@ -893,6 +943,24 @@ double Star::estimate_temperature() const
     if (msqi >= mseqmin && msqi <= mseqmax) return interpolate_mseq_temp(msqi);
 
     return 2000;
+}
+
+double Star::thermal_reference_temperature() const
+{
+    if (std::isfinite(temperature) && temperature > 0) return temperature;
+    const char spectral_class = spectral_type[0];
+    if (spectral_class == 'L' || spectral_class == 'T' || spectral_class == 'Y') return brown_temperature(this);
+    if (!std::isfinite(BV_color)) return NAN;
+    if (spectral_class) return estimate_temperature();
+    return is_bv_observed || BV_color != 0 ? temperature_from_BV(BV_color) : NAN;
+}
+
+double Star::gravity_darkened_temperature(double reference_kelvin, double flattening, double cos_latitude_squared)
+{
+    const double f = fmax(0.0, fmin(.45, flattening));
+    const double beta = reference_kelvin < 7000 ? .08 : .25;
+    const double relative_gravity = (1 - 2*f*cos_latitude_squared) / (1 - 4*f/3);
+    return reference_kelvin * std::pow(relative_gravity, beta);
 }
 
 double Star::estimate_luminosity(double tempK)
@@ -2164,6 +2232,7 @@ json Star::to_json()
     towrite["parallax"] = parallax*fiftyseven*3600*1000;
     if (stellar_abundances.is_object() && !stellar_abundances.empty()) towrite["stellar_abundances"] = stellar_abundances;
     if (stellar_rotation.is_object()) towrite["stellar_rotation"] = stellar_rotation;
+    if (manual_oblateness) towrite["manual_oblateness"] = true;
     if (stellar_system.is_object()) towrite["stellar_system"] = stellar_system;
     if (catalog_frame.is_object()) towrite["catalog_frame"] = catalog_frame;
     if (has_fictional_motion && !fictional_origin.is_object())
@@ -2278,6 +2347,8 @@ bool Star::from_json(const json& j)
         ? j["stellar_abundances"] : json(nullptr);
     stellar_rotation = j.contains("stellar_rotation") && j["stellar_rotation"].is_object()
         ? j["stellar_rotation"] : json(nullptr);
+    manual_oblateness = j.value("manual_oblateness", false);
+    if (manual_oblateness && !j.contains("oblateness")) oblateness = 0;
     fictional_origin = j.value("fictional_origin", json(nullptr));
     const bool fictional_marker = j.value("fic", 0) == 1;
     if (fictional_marker && !fictional_origin.is_object()) fictional_origin = json::object();

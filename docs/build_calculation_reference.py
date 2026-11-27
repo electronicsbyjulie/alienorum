@@ -122,6 +122,11 @@ table(['Body', 'Observed f', 'Fallback f'], [
     ['Uranus', '0.02293', '0.02164'], ['Neptune', '0.01708', '0.01922'],
 ], [160,150,150])
 p('These benchmarks supply the inputs directly. A wide-orbit Jupiter analogue with its estimated 10.18-hour spin gives f ≈ 0.0594 with Jupiter’s volume-equivalent radius. A catalog entry of one Jupiter radius uses the catalog unit of 71,492 km and gives f ≈ 0.0635. Inferred flattening scales as P⁻² when the quadrupole is also inferred. The estimate omits permanent deformation, tidal elongation and wind-driven changes to the figure. Large q weakens the first-order approximation. The 0.30 limit bounds the generated shape. Invalid mass, radius or spin returns zero. Catalog and saved shape fields can also supply flattening directly.')
+sub('Rotational flattening for stars')
+p('Published photospheric radius fits supply f = 1 − R_pol/R_eq for cataloged stars identified by Hipparcos number [R23–R26]. The renderer applies this ratio to the star’s existing volume-equivalent radius. A manually entered flattening takes priority, including an explicitly spherical shape.')
+p('For other stars with a positive mass, radius, and spin period, Alienorum uses the Roche approximation of a centrally concentrated mass in uniform rotation [R23]. The pole and equator have equal effective potential. Substituting the volume relation for the rendered spheroid gives the following estimate.', 'Lead')
+eq(r'\frac{GM}{R_{pol}}=\frac{GM}{R_{eq}}+\frac{\omega^2 R_{eq}^2}{2},\qquad q=\frac{\omega^2R^3}{GM},\qquad f=\min\left(\frac{q}{2},\frac{1}{3}\right)')
+p('At the upper limit, the equatorial radius is 1.5 times the polar radius, and centrifugal acceleration balances equatorial gravity. The estimate inherits uncertainty in the spin, mass, and radius. Missing or invalid inputs give zero flattening. Differential rotation and tidal deformation are outside this model.')
 p('Astrometry locates the object before any local appearance is calculated. With distance d, right ascension α, and declination δ, its Cartesian position vector is:', 'Lead')
 eq(r'\mathbf{r}=d(\cos\delta\cos\alpha,\cos\delta\sin\alpha,\sin\delta)')
 p('Parallax gives distance through the reciprocal relation below, when parallax ϖ is in arcseconds and distance d_pc is in parsecs. Proper motion μ, in arcseconds per year, then gives the transverse speed v_t; the factor 4.74047 converts these astronomical units to kilometers per second:', 'Lead')
@@ -154,7 +159,17 @@ eq(r'n=\sqrt{\frac{G(M_c+M)}{a^3}},\quad P=\frac{2\pi}{n},\quad E-e\sin E=\mathc
 p('Once E is known, the distance r from the focus and the coordinates in the orbital plane follow directly. The x-axis points toward periapsis, while e controls the ellipse’s departure from a circle:', 'Lead')
 eq(r'r=a(1-e\cos E),\quad (x,y)=a(\cos E-e,\sqrt{1-e^2}\sin E)')
 p('The eccentric anomaly E is found numerically from Kepler’s equation. The resulting coordinates lie in the orbital plane. Rotations through the argument of periapsis, inclination, and longitude of the ascending node place that ellipse in three-dimensional space.')
-p('This follows a Keplerian trajectory. The spacing and clearance filters described below reject some obviously unsuitable arrangements, but they do not demonstrate long-term stability in a system of interacting bodies.')
+sub('Catalog planes and rotation poles')
+p('The inclination i is the angle between the pole and the direction toward the Sun. The sky-plane node Ω runs eastward from north. With unit vectors a pointing away from the Sun and e and n pointing east and north on the sky, the north pole is:', 'Lead')
+eq(r'\hat{p}=-\hat{a}\cos i+(\hat{e}\cos\Omega-\hat{n}\sin\Omega)\sin i')
+p('Visual binary elements refer to the catalog direction of the central star. A companion’s spin and its planets use the sightline to the companion itself. A stellar rotation inclination with a missing node keeps a previously supplied spin node when available, or adopts the companion orbit’s node. The rotation-pole readout identifies assumed angles as estimates. A bound star’s obliquity is the angle between its equatorial and orbital poles.')
+p('A planet with missing orientation can inherit it from a transit, a disk, other planetary measurements, the host star’s spin, or a stellar companion orbit. Different sources can supply the inclination and the node. A candidate keeps its own fitted angles. In a system containing confirmed planets, candidate angles do not set the shared fallback. Adopted angles are marked in saved orbits so a later catalog pass can distinguish them from supplied angles.')
+p('A measured stellar spin–orbit angle ψ relates the host’s rotation pole to the planet’s orbital pole. With observer-relative inclinations iₛ and iₚ, their relative node ΔΩ obeys:', 'Lead')
+eq(r'\cos\psi=\cos i_s\cos i_p+\sin i_s\sin i_p\cos\Delta\Omega')
+p('If the planet has no published node, the host spin inclination and a compatible value of ψ can supply the relative node. The positive solution is adopted when its projected direction is unconstrained. The resulting constraint affects the planet’s orbit. The planet’s own equator follows its separate rotation data or model. For HD 3167, the catalog includes the Bourrier et al. (2021) fit. Winn et al. (2026) found that the relative orientation of the two transiting planets remains unsettled.')
+p('For example, Proxima Centauri’s outer orbit follows the relative astrometry and radial velocities of Kervella et al. (2017). Its spin adopts a 47° inclination and 89.8-day rotation from Klein et al. [R29], with the outer orbit providing the assumed spin node. The inner planets use that estimated spin plane. Candidate Proxima c uses the tentative combined astrometric fit of Benedict & McArthur (2020), with inclination 133° and node 331°.')
+sub('Orbital clearances')
+p('The spacing and clearance filters assume Keplerian trajectories. They screen out some unsuitable arrangements. Long-term stability in an interacting system requires a separate calculation.')
 p('Satellite placement is constrained at both large and small distances. The Hill radius R_H estimates the scale on which the parent can retain satellites against the central body. The fluid Roche radius estimates where tides can disrupt a satellite, using parent radius R_c and parent and satellite densities ρ_c and ρ_s:', 'Lead')
 eq(r'R_H=a(1-e)\left(\frac{M}{3M_c}\right)^{1/3},\quad R_{Roche}\simeq2.44R_c(\rho_c/\rho_s)^{1/3}')
 p('A generated satellite must clear the parent and the applicable Roche limit, while remaining within an allowed fraction of the parent’s gravitational sphere of influence. Generated moons extend to at most 0.3 of that outer scale. Ring placement uses a fluid-disruption scenario.')
@@ -799,14 +814,19 @@ p('The activity amplitude A grows as Ro decreases, with bounds to limit the extr
 eq(r'A=\min(1,0.35/\max(0.05,Ro)),\quad \Delta T_{spot}=\max[150,\min(0.541T-1323,0.45T)]')
 p('Spots and granulation can be added to ordinary stars with cool envelopes below 7000 K. Stars below .35 solar masses are treated as fully convective. Activity A gives floor(7A+U(.8,1.5)) spot groups, each with two through five members.')
 p('Low Rossby number can favor polar groups. Otherwise fully convective stars are sampled uniformly by area, while other stars favor active latitudes ±5-35°. Initial spot angular size is .35+7A degrees, modified for each member by random factors. The pattern illustrates stellar activity rather than reconstructing a magnetic field.')
+p('Each spot is evaluated in its own tilted tangent plane. Uneven umbrae are surrounded by penumbrae with curved, tapered filaments and narrow dark lanes [R28]. Resolved umbrae can contain bright dots and occasional light bridges, and some smaller spots are penumbra-free pores. Fine structure is chosen according to the spot’s size in the generated texture.')
+p('If the spot profile removes a fraction d of the full temperature deficit, the apparent contrast relative to nearby quiet photosphere is approximated at a visible wavelength of 550 nm.', 'Lead')
+eq(r'T_{spot}=\max(1000\,\mathrm{K},T_{quiet}-d\,\Delta T_{spot}),\qquad I_{spot}/I_{quiet}\approx B_{550\,\mathrm{nm}}(T_{spot})/B_{550\,\mathrm{nm}}(T_{quiet})')
 p('Granule dimensions are tied to a photospheric pressure scale height H_photo. The estimate uses Boltzmann’s constant k_B, atomic mass unit m_u, gravity g, and an assumed particle-mass factor 1.3; the granule diameter cannot exceed half the star’s radius:', 'Lead')
 eq(r'H_{photo}=\frac{k_BT}{1.3m_ug},\quad d_{granule}=\min(10H_{photo},0.5R)')
 p('A correction factor of eight adjusts the visible granule count, and angular sampling limits the smallest resolved cells. Temperature contrast starts at .035T times a bounded square-root temperature factor. Larger-scale network and facular brightening depend on the activity setting.')
-p('Local temperature changes color through Planck B/V ratios. Gravity darkening uses exponent .08 for convective envelopes and .25 for radiative envelopes, together with a bounded oblateness proxy. These fields illustrate surface structure without solving radiative magnetohydrodynamics.')
+p('Gravity darkening makes the poles hotter than the equator on a rotating, flattened star [R27]. The stellar Thermal map and the base of the visible photosphere texture share an approximate latitude profile based on the reference temperature T, latitude φ, and flattening f.', 'Lead')
+eq(r'T(\phi)=T\left[\frac{1-2f\cos^2\phi}{1-4f/3}\right]^\beta,\qquad 0\leq f\leq 0.45')
+p('The exponent β is .08 below 7000 K and .25 at hotter reference temperatures, approximating convective and radiative envelopes. The Thermal map shows the smooth temperature profile in kelvins. A minimum color-scale width of one percent of T keeps small variations on nearly spherical stars from filling the entire palette. Spot and granulation effects are included in the visible photosphere texture, where local temperature changes the color through Planck B/V ratios.')
 p('Limb darkening reduces intensity toward the apparent edge of a stellar disk. Here μ is the cosine of the angle between the surface normal and the observer, and a and b are fitted coefficients. Normalization by I(1) sets the disk-center intensity to one:', 'Lead')
 eq(r'I(\mu)/I(1)=1-a(1-\mu)-b(1-\mu)^2')
 p('The quadratic limb-darkening coefficients depend on temperature and gravity. Published white-dwarf atmosphere colors and limb prescriptions can take priority for those objects.')
-p('Glare and coronal overlays help make features visible; they do not predict a calibrated telescope image. Likewise, glowing ground fissures and their thermal modulation remain procedural unless a measured map is explicitly supplied.')
+p('Glare and coronal overlays help make features visible. Small discs have nearly round flares. The projected ellipsoid’s center and shape are blended in with a smooth cubic ramp from one to twelve pixels of apparent radius, across both point and disc rendering. Perspective views use the tangent ellipse, and the sky map uses the local longitude and latitude projection. Glowing ground fissures and their thermal modulation remain procedural unless a measured map is explicitly supplied.')
 
 
 section('Periodic volatile exchange and cloud illumination', 'shore.cpp; cloudlighting.h')
@@ -948,7 +968,14 @@ references = [
 ('R19','Makarov & Efroimsky (2013), No pseudosynchronous rotation for terrestrial planets and moons. Tests discrete resonances against tidal equilibria for solid bodies.','https://arxiv.org/abs/1209.1616'),
 ('R20','Leconte et al. (2015), Asynchronous rotation of Earth-mass planets in the habitable zone of lower-mass stars. Shows how thermal atmospheric tides can change rotation.','https://arxiv.org/abs/1502.01952'),
 ('R21','Snellen et al. (2014), Fast spin of the young extrasolar planet β Pictoris b. Provides a spin measurement for a directly imaged giant.','https://arxiv.org/abs/1404.7506'),
-('R22','Bryan et al. (2020 preprint, published 2021), As the Worlds Turn: Constraining Spin Evolution in the Planetary-Mass Regime. Discusses contraction and giant spin measurements.','https://arxiv.org/abs/2010.07315')]
+('R22','Bryan et al. (2020 preprint, published 2021), As the Worlds Turn: Constraining Spin Evolution in the Planetary-Mass Regime. Discusses contraction and giant spin measurements.','https://arxiv.org/abs/2010.07315'),
+('R23','Domiciano de Souza et al. (2014), The environment of the fast rotating star Achernar. III. Photospheric parameters revealed by the VLTI. The Roche model and photospheric fit supply Achernar A’s flattening.','https://doi.org/10.1051/0004-6361/201424144'),
+('R24','McAlister et al. (2005), First Results from the CHARA Array. I. An Interferometric and Spectroscopic Study of the Fast Rotator α Leonis (Regulus).','https://doi.org/10.1086/430730'),
+('R25','Zhao et al. (2009), Imaging and Modeling Rapidly Rotating Stars. α Cephei and α Ophiuchi.','https://arxiv.org/abs/0906.2241'),
+('R26','Bouchaud et al. (2020), A realistic two-dimensional model of Altair.','https://arxiv.org/abs/1912.03138'),
+('R27','Espinosa Lara & Rieutord (2011), Gravity darkening in rotating stars. Describes the relation between local effective gravity and temperature and compares power-law profiles with rotating stellar models.','https://arxiv.org/abs/1109.3038'),
+('R28','Scharmer et al. (2002), Dark cores in sunspot penumbral filaments. Swedish 1-m Solar Telescope observations show fine structure in the photosphere.','https://www.isf.astro.su.se/publications/prints/scharmer02dark.pdf'),
+('R29','Klein et al. (2021), The large-scale magnetic field of Proxima Centauri near activity maximum. Fits the stellar rotation period and inclination from spectropolarimetry.','https://arxiv.org/abs/2010.14311')]
 
 if set(CITED_ARTICLES.values()) - {label for label, _, _ in references}:
     raise ValueError('A bibliography cross-reference does not match a numbered entry.')
@@ -977,7 +1004,7 @@ files += ['src/classes/cat.cpp', 'src/classes/planetinference.cpp', 'src/classes
           'src/inputs.cpp', 'src/classes/displayunits.h', 'src/classes/misc.h', 'src/sunclock_gpu.cpp',
           'tools/build_stellar_evolution_grid.py', 'catalogs/stellar_evolution.dat',
           'src/classes/planet.h', 'src/classes/sscimport.cpp', 'src/dialogs.cpp',
-          'docs/calculation_bibliography.py']
+          'catalogs/stellar_oblateness.json', 'src/classes/sunspots.h', 'docs/calculation_bibliography.py']
 table(['Source locator','SHA-256 prefix'], [(name,hashlib.sha256((ROOT/name).read_bytes()).hexdigest()[:16]) for name in dict.fromkeys(files)], [335,125])
 
 

@@ -1,6 +1,7 @@
 #include <cstring>
 #include <algorithm>
 #include <chrono>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <future>
@@ -621,6 +622,38 @@ TEST_F(StellarRotationTest, PartialRotationPolesAndCompanionOrbitsAreNotKnown)
     }
 }
 
+TEST_F(StellarRotationTest, CompanionSpinUsesItsOwnSightlineAndRetainsAnAssumedNode)
+{
+    Star* primary = target(99963);
+    Star* companion = target(99964);
+    primary->distance = 2 * parsec;
+    primary->update_location(simnow);
+    companion->make_companion_of(primary, 'B');
+    std::string orbit_row = row("HD99963", "20000y", "72", "24");
+    orbit_row.replace(24, 23, "HD99964                ");
+    orbit_row.replace(100, 0, " 3000AU");
+    auto catalog = std::ofstream("catalogs/star_orbits.dat");
+    catalog << row("HD99964", "19d", "36?") << '\n' << orbit_row << '\n';
+    catalog.close();
+    CatalogReader reader;
+    reader.read_star_orbits_dat(cels);
+    companion->update_location(simnow);
+    ASSERT_TRUE(companion->lock_equatorial_plane);
+    EXPECT_FALSE(companion->known_poles);
+    EXPECT_TRUE(companion->stellar_rotation.at("inclination_assumed"));
+    EXPECT_TRUE(companion->stellar_rotation.at("node_assumed"));
+    EXPECT_FALSE(companion->stellar_rotation.at("node_supplied"));
+    EXPECT_DOUBLE_EQ(companion->sidereal_rotational_period, 19 * oneday);
+    const Point sightline = companion->location.system_center + companion->location.local_position;
+    const auto& equator = companion->location.equatorial_plane;
+    const Point pole = rotate3D(yaxis, center, equator.v, -equator.a);
+    EXPECT_NEAR(find_3D_angle(pole, sightline * -1, center) * fiftyseven, 36, 1e-6);
+    EXPECT_GT(std::abs(find_3D_angle(pole, primary->location.system_center * -1, center) * fiftyseven - 36), 1e-4);
+    double inclination = 0, node = 0;
+    incl_and_node_from_system_plane(equator, inclination, node, sightline);
+    EXPECT_NEAR(node * fiftyseven, 24, 1e-6);
+}
+
 TEST_F(StellarRotationTest, EstimatedAnglesAndUnitsSurviveCatalogReload)
 {
     Star* primary = target(43834);
@@ -837,6 +870,47 @@ TEST_F(CatalogParsingTest, DISABLED_StarOrbitCatalogTiming)
             find_object(query.c_str(), true, 9e29, 1)) << query;
     }
     delete_the_universe();
+}
+
+TEST(TextureShutdownDeathTest, CancelledStellarTextureLetsPendingWorkFinish)
+{
+    ::testing::FLAGS_gtest_death_test_style = "threadsafe";
+    ASSERT_EXIT(
+    {
+        Star star;
+        std::strcpy(star.spectral_type, "G2V");
+        star.mass = solar_mass;
+        star.volumetric_mean_radius = solar_radius;
+        star.temperature = sun_temp;
+        star.BV_color = .65;
+        star.sidereal_rotational_period = 6 * oneday;
+        star.fictitious_map_height = 16;
+        star.rnd_seed = 9487;
+        Map photosphere(&star);
+
+        std::promise<void> release;
+        auto gate = release.get_future();
+        std::atomic<bool> finished{false};
+        if (!spawn_texture_task([&]()
+        {
+            gate.wait();
+            std::lock_guard<std::mutex> lock(mtx);
+            finished = true;
+        })) std::_Exit(2);
+
+        std::thread watchdog([]()
+        {
+            std::this_thread::sleep_for(std::chrono::seconds(5));
+            std::cerr << "Shutdown timed out waiting for pending texture work.\n";
+            std::_Exit(3);
+        });
+        abort_load = true;
+        photosphere.generate_stellar_map(&star);
+        if (photosphere.is_complete()) std::_Exit(4);
+        release.set_value();
+        wait_for_texture_tasks();
+        std::_Exit(finished && texture_loads_pending.load() == 0 ? 0 : 5);
+    }, ::testing::ExitedWithCode(0), "");
 }
 
 TEST(TextureTaskTest, ShutdownWaitsBeyondFiveSecondsAndRejectsNewWork)
@@ -3926,6 +4000,53 @@ TEST_F(CatalogParsingTest, UnknownPlanesFollowTransitDiskMeasurementRotationComp
             EXPECT_NEAR(inferred->mass / earth_mass, 2 / sin(expected[scenario] * fiftyseventh), 1e-5);
         }
         delete_the_universe();
+    }
+}
+
+TEST_F(CatalogParsingTest, CandidateFitsDoNotSetConfirmedPlanetsPlanes)
+{
+    Star* host = make_star("Catalog test host");
+    host->right_ascension = 1.7;
+    host->declination = 0.4;
+    host->distance = 15 * parsec;
+    host->rot_heliocen_incl = 46 * fiftyseventh;
+    host->rot_heliocen_node = 23 * fiftyseventh;
+    host->update_location(simnow);
+    std::map<int, std::vector<int>> planets;
+    TestCatalogReader reader;
+    unsigned int count = 0;
+    for (int i = 0; i < 3; ++i)
+    {
+        ExoRow row;
+        row.hostname = host->name;
+        row.pl_name = std::string(host->name) + " " + char('b' + i);
+        row.pl_orbper = 21 * (i + 1);
+        row.pl_msinie = 2;
+        row.catalog_candidate = i == 1;
+        row.pl_orbincl = i == 1 ? 133 : NAN;
+        row.pl_orbinclerr1 = 1;
+        row.pl_orbinclerr2 = -1;
+        ASSERT_TRUE(reader.add_exoplanet_from_row(row, host, planets, count));
+    }
+    const auto& ids = planets.at(host->seqno);
+    cels[ids[1]]->orbit->heliocentric_node = 112 * fiftyseventh;
+    for (int pass = 0; pass < 2; ++pass)
+    {
+        reader.apply_exoplanet_names(planets);
+        for (size_t i = 0; i < ids.size(); ++i)
+        {
+            auto* planet = static_cast<Planet*>(cels[ids[i]]);
+            planet->update_location(simnow);
+            const auto& plane = planet->location.orbital_plane;
+            const Point pole = rotate3D(yaxis, center, plane.v, -plane.a);
+            EXPECT_NEAR(find_3D_angle(pole, host->location.system_center * -1, center) * fiftyseven,
+                i == 1 ? 133 : 46, 1e-6);
+            EXPECT_NEAR(planet->orbit->heliocentric_node * fiftyseven, i == 1 ? 112 : 23, 1e-6);
+            Orbit restored;
+            ASSERT_TRUE(restored.from_json(planet->orbit->to_json()));
+            EXPECT_EQ(restored.heliocentric_inclination_assumed, i != 1);
+            EXPECT_EQ(restored.heliocentric_node_assumed, i != 1);
+        }
     }
 }
 

@@ -1150,59 +1150,60 @@ static Point ring_plane_normal(CelestialObject *cel)
         center, xaxis, altitude);
 }
 
-int draw_sphere_gpu(CelestialObject* cel, double arad)
+static Point sphere_axes(CelestialObject* cel, double equatorial_radius)
 {
-    if (exclude_observing_object(cel)) return 0;
-    Point cel_azrot = rotate3D(to_viewer_plane(cel->tmprel), center, yaxis, -(azimuth + azimuth_correction));
-    Point camera_space = rotate3D(cel_azrot, center, xaxis, altitude);
-    bool airy_rock = view_mode == vm_horizon && whereami > 0 && cels && cels[whereami] && uses_rocky_map(cels[whereami]->type) && ((Planet*)cels[whereami])->get_surface_pressure();
-    Point display_space = (view_mode == vm_horizon)
-        ? rotate3D(airy_rock ? refract_true_point(cel_azrot) : cel_azrot, center, xaxis, altitude)
-        : camera_space;
-    double R = cel->get_equatorial_radius();
-
-    if (view_mode == vm_system) camera_space = display_space = Point(0, 0, R * 10);
-
-    cel_obj_class cls = cel->typeclass();
-    bool dwh = (cls == class_moon)
-        && ((Moon*)cel)->depth > zero_isnt_really_zero
-        && ((Moon*)cel)->width > zero_isnt_really_zero
-        && ((Moon*)cel)->height > zero_isnt_really_zero;
-    double axis_x, axis_y, axis_z;
-    if (dwh)
+    if (cel->typeclass() == class_moon)
     {
-        axis_x = ((Moon*)cel)->width * 0.5;
-        axis_y = ((Moon*)cel)->height * 0.5;
-        axis_z = ((Moon*)cel)->depth * 0.5;
+        const auto* moon = static_cast<Moon*>(cel);
+        if (moon->width > zero_isnt_really_zero && moon->height > zero_isnt_really_zero
+            && moon->depth > zero_isnt_really_zero) return Point(moon->width, moon->height, moon->depth) * .5;
+    }
+    return Point(equatorial_radius, equatorial_radius * (1 - cel->effective_oblateness()), equatorial_radius);
+}
+
+static Point viewer_direction_to_body(CelestialObject* cel, Point direction)
+{
+    direction = to_viewer_plane(direction, -1);
+    direction = rotate3D(direction, center, cel->location.equatorial_plane.v, cel->location.equatorial_plane.a);
+    return rotate3D(direction, center, yaxis, cel->timeofday());
+}
+
+static Point camera_direction_to_body(CelestialObject* cel, Point direction)
+{
+    if (view_mode == vm_system)
+    {
+        direction = system_view_camera(cel).from_camera(direction);
     }
     else
     {
-        axis_x = axis_z = R;
-        axis_y = R * (1.0 - cel->oblateness);
+        direction = rotate3D(direction, center, xaxis, -altitude);
+        direction = rotate3D(direction, center, yaxis, azimuth + azimuth_correction);
     }
-    double bounding_r = fmax(axis_x, fmax(axis_y, axis_z));
-    // std::cout << cel->name << " bounding_r=" << bounding_r << std::endl;
+    return viewer_direction_to_body(cel, direction);
+}
 
+static bool disc_uses_refraction()
+{
+    return view_mode == vm_horizon && whereami > 0 && cels && cels[whereami]
+        && uses_rocky_map(cels[whereami]->type) && static_cast<Planet*>(cels[whereami])->get_surface_pressure();
+}
+
+int draw_sphere_gpu(CelestialObject* cel, double arad)
+{
+    if (exclude_observing_object(cel)) return 0;
+    const Point cel_azrot = rotate3D(to_viewer_plane(cel->tmprel), center, yaxis, -(azimuth + azimuth_correction));
+    Point camera_space = rotate3D(cel_azrot, center, xaxis, altitude);
+    Point display_space = disc_uses_refraction() ? rotate3D(refract_true_point(cel_azrot), center, xaxis, altitude) : camera_space;
+    const double R = cel->get_equatorial_radius();
+    if (view_mode == vm_system) camera_space = display_space = Point(0, 0, R * 10);
+
+    const cel_obj_class cls = cel->typeclass();
+    const Point axes = sphere_axes(cel, R);
+    const double bounding_r = std::max({axes.x, axes.y, axes.z});
     spawn_texture_load(cel);
 
-    auto undo_to_local = [&](Point p) -> Point
-    {
-        if (view_mode == vm_system)
-        {
-            p = system_view_camera(cel).from_camera(p);
-        }
-        else
-        {
-            p = rotate3D(p, center, xaxis, -altitude);
-            p = rotate3D(p, center, yaxis, azimuth + azimuth_correction);
-        }
-        p = to_viewer_plane(p, -1);
-        p = rotate3D(p, center, cel->location.equatorial_plane.v, cel->location.equatorial_plane.a);
-        p = rotate3D(p, center, yaxis, cel->timeofday());
-        return p;
-    };
-    Point basisX = undo_to_local(Point(1, 0, 0));
-    Point basisY = undo_to_local(Point(0, 1, 0));
+    const Point basisX = camera_direction_to_body(cel, Point(1, 0, 0));
+    const Point basisY = camera_direction_to_body(cel, Point(0, 1, 0));
 
     Color col = cls == class_star
         ? Color::color_from_star(4.2, (Star*)cel, cel->BV_color)
@@ -1266,7 +1267,7 @@ int draw_sphere_gpu(CelestialObject* cel, double arad)
 
     SphereImpostorInput in;
     in.cx = display_space.x; in.cy = display_space.y; in.cz = display_space.z; in.r = bounding_r;
-    in.axis_x = axis_x; in.axis_y = axis_y; in.axis_z = axis_z;
+    in.axis_x = axes.x; in.axis_y = axes.y; in.axis_z = axes.z;
     in.basisX[0] = basisX.x; in.basisX[1] = basisX.y; in.basisX[2] = basisX.z;
     in.basisY[0] = basisY.x; in.basisY[1] = basisY.y; in.basisY[2] = basisY.z;
     in.day_map_texture = gputex_for(day_map);
@@ -1666,7 +1667,7 @@ int draw_sphere(CelestialObject* cel, double arad)
                     }
                     if (!dwh)
                     {
-                        double obl = 1.0 - cel->oblateness;
+                        double obl = 1.0 - cel->effective_oblateness();
                         if (obl > zero_isnt_really_zero)
                         {
                             rel.y /= obl;
@@ -1773,7 +1774,7 @@ int draw_sphere(CelestialObject* cel, double arad)
     else
         equatorial_radius = cel->get_equatorial_radius();
 
-    double lat, lon, z_cutoff = d + equatorial_radius * 0.2, obl = 1.0 - cel->oblateness;
+    double lat, lon, z_cutoff = d + equatorial_radius * 0.2, obl = 1.0 - cel->effective_oblateness();
 
     if (!wireframe) spawn_texture_load(cel);
 
@@ -2402,12 +2403,89 @@ static void draw_radial_glow(ImVec2 c, double r_in, double r_out, RGB3 rgb,
     }
 }
 
-// Diffraction-style flare. A faint point source gets a four-point cross that fills out into
-// a full circle of rays as it brightens. A very bright or well-resolved source (the Sun, the
-// Moon) scatters its light into a hazy corona instead: sharp spikes wash out, and what is
-// left is a smooth core glow frayed by fine radiating streaks.
-void draw_flare(double flare, Color col, double vmag, double disc_px)
+struct FlareDisc
 {
+    ImVec2 position;
+    double radius;
+    double xx = 1, xy = 0, yy = 1;
+};
+
+static FlareDisc projected_flare_disc(CelestialObject* body, double radius)
+{
+    const auto fade_in = [](double size, double start, double end)
+    {
+        const double t = std::clamp((size - start) / (end - start), 0.0, 1.0);
+        return t*t*(3 - 2*t);
+    };
+    // Flare detail follows the apparent size in pixels on both sides of the point-to-disc switch.
+    const FlareDisc round{xycoord, radius * fade_in(radius, .5, 4.0)};
+    const double shape_weight = fade_in(radius, 1.0, 12.0);
+    if (shape_weight == 0) return round;
+    const Point axes = sphere_axes(body, body->get_equatorial_radius());
+    if (!(axes.x > 0 && axes.y > 0 && axes.z > 0) || (axes.x == axes.y && axes.y == axes.z)) return round;
+    const auto stretch = [&](Point p) { return Point(p.x * axes.x, p.y * axes.y, p.z * axes.z); };
+    const auto dot = [](Point a, Point b) { return a.x*b.x + a.y*b.y + a.z*b.z; };
+    const Point viewer_position = to_viewer_plane(body->tmprel);
+    const double focal_length = dispcx * zoom;
+    Point horizontal, vertical;
+    double dx = 0, dy = 0, depth = 1;
+    ImVec2 position = round.position;
+    double pixels = focal_length;
+    if (view_mode == vm_skymap)
+    {
+        // The longitude and latitude gradients provide the local sky-map projection.
+        const double flat_distance = hypot(viewer_position.x, viewer_position.z);
+        if (!(flat_distance > std::max({axes.x, axes.y, axes.z}))) return round;
+        const double distance = hypot(flat_distance, viewer_position.y);
+        const double x = viewer_position.x / flat_distance, z = viewer_position.z / flat_distance;
+        const double s = viewer_position.y / distance, c = flat_distance / distance;
+        horizontal = stretch(viewer_direction_to_body(body, Point(z, 0, -x))) * (1 / flat_distance);
+        vertical = stretch(viewer_direction_to_body(body, Point(x*s, -c, z*s))) * (1 / distance);
+        pixels /= _pi;
+    }
+    else
+    {
+        const Point yawed = rotate3D(viewer_position, center, yaxis, -(azimuth + azimuth_correction));
+        const Point camera = rotate3D(disc_uses_refraction() ? refract_true_point(yawed) : yawed, center, xaxis, altitude);
+        if (!(camera.z > 0)) return round;
+
+        const double inv_z = 1 / camera.z;
+        const Point forward = stretch(camera_direction_to_body(body, Point(0, 0, 1))) * inv_z;
+        depth -= forward.squared_magnitude();
+        if (!(depth > 0)) return round;
+        const double x = camera.x * inv_z, y = camera.y * inv_z;
+        horizontal = stretch(camera_direction_to_body(body, Point(1, 0, 0))) * inv_z - forward * x;
+        vertical = forward * y - stretch(camera_direction_to_body(body, Point(0, 1, 0))) * inv_z;
+
+        // The perspective ellipse's center shifts away from the center of the body.
+        // Working relative to the projected body center preserves precision for distant discs.
+        dx = -dot(horizontal, forward) / depth;
+        dy = -dot(vertical, forward) / depth;
+        position = ImVec2(dispcx + (x + dx) * pixels, dispcy + (-y + dy) * pixels);
+    }
+
+    // The dual conic of the projected limb gives squared semi-axes as eigenvalues.
+    const double xx = horizontal.squared_magnitude() / depth + dx*dx;
+    const double yy = vertical.squared_magnitude() / depth + dy*dy;
+    const double xy = dot(horizontal, vertical) / depth + dx*dy;
+    const double separation = hypot(xx - yy, 2*xy);
+    const double major = (xx + yy + separation) * .5, minor = (xx + yy - separation) * .5;
+    if (!(minor > 0) || !std::isfinite(major)) return round;
+    const double angle = .5 * atan2(2*xy, xx - yy);
+    const double s = sin(angle), c = cos(angle);
+    const double compression = shape_weight * (1 - sqrt(minor / major));
+    const ImVec2 flare_center(round.position.x + shape_weight * (position.x - round.position.x),
+        round.position.y + shape_weight * (position.y - round.position.y));
+    const double flare_radius = round.radius + shape_weight * (pixels * sqrt(major) - round.radius);
+    return {flare_center, flare_radius, 1 - compression*s*s, compression*s*c, 1 - compression*c*c};
+}
+
+// Faint point sources get diffraction spikes. Brighter and resolved sources get a halo
+// and fine rays, stretched together by the projected shape of the disc.
+static void draw_flare(double flare, Color col, double vmag, const FlareDisc& disc)
+{
+    const ImVec2 at = disc.position;
+    const double disc_px = disc.radius;
 
     if (whtbkgd)
     {
@@ -2438,16 +2516,18 @@ void draw_flare(double flare, Color col, double vmag, double disc_px)
     double base_len = (max_bloomrad * 1.5 + flare * 1.1);
     const double extent = std::max(0.0, disc_px) * 1.2 + base_len * 1.5;
     const ImVec2 screen = ImGui::GetIO().DisplaySize;
-    if (!std::isfinite(xycoord.x) || !std::isfinite(xycoord.y)
-        || xycoord.x + extent < 0 || xycoord.y + extent < 0
-        || xycoord.x - extent > screen.x || xycoord.y - extent > screen.y) return;
+    if (!std::isfinite(at.x) || !std::isfinite(at.y)
+        || at.x + extent < 0 || at.y + extent < 0
+        || at.x - extent > screen.x || at.y - extent > screen.y) return;
+    auto* draw = ImGui::GetBackgroundDrawList();
+    const int first_vertex = draw->VtxBuffer.Size;
     auto draw_streak = [&](double ang, double from_r, double to_r, double halfwidth, ImU32 c)
     {
         double dx = cos(ang), dy = sin(ang), px = -dy, py = dx;
-        ImVec2 base_a(xycoord.x + dx*from_r + px*halfwidth, xycoord.y + dy*from_r + py*halfwidth);
-        ImVec2 base_b(xycoord.x + dx*from_r - px*halfwidth, xycoord.y + dy*from_r - py*halfwidth);
-        ImVec2 tip(xycoord.x + dx*to_r, xycoord.y + dy*to_r);
-        ImGui::GetBackgroundDrawList()->AddTriangleFilled(base_a, base_b, tip, c);
+        ImVec2 base_a(at.x + dx*from_r + px*halfwidth, at.y + dy*from_r + py*halfwidth);
+        ImVec2 base_b(at.x + dx*from_r - px*halfwidth, at.y + dy*from_r - py*halfwidth);
+        ImVec2 tip(at.x + dx*to_r, at.y + dy*to_r);
+        draw->AddTriangleFilled(base_a, base_b, tip, c);
     };
 
     // Four rays around magnitude -10 and dimmer, when zoomed, filling in to a full circle if too bright.
@@ -2464,7 +2544,7 @@ void draw_flare(double flare, Color col, double vmag, double disc_px)
     if (haze > 0.01)
     {
         double halo_span = disc_px * 0.8 + base_len * 0.7;
-        draw_radial_glow(xycoord, fmax(1.0, disc_px * 0.85), disc_px/3 + halo_span, rgb,
+        draw_radial_glow(at, fmax(1.0, disc_px * 0.85), disc_px/3 + halo_span, rgb,
             230.0 * haze, 2.2);
 
         // Fine radiating streaks. These are what keep the corona from reading as circles:
@@ -2525,6 +2605,15 @@ void draw_flare(double flare, Color col, double vmag, double disc_px)
                 double frac = (double)j / nlayers;
                 draw_streak(ang, 0, len*frac, halfwidth * (1.0 - 0.55*frac), fcol);
             }
+        }
+    }
+    if (disc.xx != 1 || disc.xy != 0 || disc.yy != 1)
+    {
+        for (int i = first_vertex; i < draw->VtxBuffer.Size; ++i)
+        {
+            auto& p = draw->VtxBuffer[i].pos;
+            const double x = p.x - at.x, y = p.y - at.y;
+            p = ImVec2(at.x + disc.xx*x + disc.xy*y, at.y + disc.xy*x + disc.yy*y);
         }
     }
 }
@@ -3712,7 +3801,7 @@ static bool paint_single_object(int i, const BrighterLabelNeighbors* label_neigh
             Color col = cls == class_star
                 ? Color::color_from_star(appmag, (Star*)cels[i], cels[i]->BV_color + atm_yellowing)
                 : Color::color_from_planet(appmag, cels[i], planet_bv_correction + atm_yellowing);
-            draw_flare(flare * (1.0 - obsc), col, vmag_cache[i], f_ang);
+            draw_flare(flare * (1.0 - obsc), col, vmag_cache[i], projected_flare_disc(cels[i], f_ang));
         }
         if (obsc > 0) draw_corona(xycoord, f_ang, obsc, cels[i]->BV_color);
 
@@ -3755,7 +3844,9 @@ static bool paint_single_object(int i, const BrighterLabelNeighbors* label_neigh
 
         if (flare)
         {
-            draw_flare(flare, col, vmag_cache[i], 0);
+            const bool has_disc = cls == class_star || cls == class_planet || cls == class_moon;
+            const FlareDisc disc = has_disc ? projected_flare_disc(cels[i], f_ang) : FlareDisc{xycoord, 0};
+            draw_flare(flare, col, vmag_cache[i], disc);
             double f3 = flare / 3;
             if (cels[i]->onscreen && f3 > bigcel_sz)
             {
@@ -5226,7 +5317,7 @@ static void draw_sunclock_surface(CelestialObject *cel)
     daylight.normalize(1);
 
     int x, y, dx, dy, i, step=2, halfwid = 2 * static_cast<int>(dispcx / 2);
-    double lat, lon, obl = 1.0 - cel->oblateness, elevation;
+    double lat, lon, obl = 1.0 - cel->effective_oblateness(), elevation;
     // Opaque decks obscure geography; retain patchy weather over a visible surface.
     const bool hide_cloud_deck = cel->surf_map && (cel->overcast || !cel->transparent_clouds
         || (cel->cloud_map && cel->cloud_map->mean_cloud_opacity() >= cloud_opacity_threshold));
@@ -5513,27 +5604,39 @@ static void draw_thermal_map_surface(CelestialObject* body)
     static float coldest = 0, hottest = 0;
     static CelestialObject* cached_body = nullptr;
     static Map* cached_map = nullptr;
-    static double sampled_time = 0, sampled_temperature = 0;
+    static double sampled_time = 0, sampled_temperature = 0, sampled_flattening = 0;
     static unsigned int sampled_surface = 0, revision = 0;
     static std::chrono::steady_clock::time_point sampled_at;
     auto* draw = ImGui::GetBackgroundDrawList();
     const auto cls = body->typeclass();
     const bool planetary = cls == class_planet || cls == class_moon;
-    if (!planetary && (cls != class_star || !std::isfinite(body->temperature) || body->temperature <= 0))
+    const auto* star = cls == class_star ? static_cast<Star*>(body) : nullptr;
+    const double reference = star ? star->thermal_reference_temperature() : body->temperature;
+    if (!planetary && (!star || !std::isfinite(reference) || reference <= 0))
     {
         draw->AddText(ImVec2(5, 25), whtbkgd ? IM_COL32_BLACK : IM_COL32_WHITE, "No temperature estimate available");
         return;
     }
 
     const auto now = std::chrono::steady_clock::now();
-    const auto surface = body->surf_map ? body->surf_map->surface_revision() : 0;
-    const bool new_map = cached_body != body || cached_map != body->surf_map;
-    const bool climate_changed = sampled_temperature != body->temperature
+    Map* map = planetary ? body->surf_map : nullptr;
+    const auto surface = map ? map->surface_revision() : 0;
+    const bool new_map = cached_body != body || cached_map != map;
+    const double flattening = star ? star->effective_oblateness() : 0;
+    const bool climate_changed = sampled_temperature != reference || sampled_flattening != flattening
         || (planetary && (sampled_time != simnow || sampled_surface != surface));
     if (new_map || (climate_changed && now - sampled_at >= std::chrono::milliseconds(250)))
     {
         if (planetary) static_cast<Planet*>(body)->sample_current_local_temperatures(samples.data(), width, height);
-        else samples.fill(body->temperature);
+        else
+        {
+            for (int row = 0; row < height; ++row)
+            {
+                const double cos_latitude = sin((row + .5) * _pi / height);
+                const float temperature = Star::gravity_darkened_temperature(reference, flattening, cos_latitude * cos_latitude);
+                std::fill_n(samples.data() + row * width, width, temperature);
+            }
+        }
 
         coldest = INFINITY;
         hottest = -INFINITY;
@@ -5549,9 +5652,10 @@ static void draw_thermal_map_surface(CelestialObject* body)
                 if (!std::isfinite(temperature)) temperature = coldest;
         }
         cached_body = body;
-        cached_map = body->surf_map;
+        cached_map = map;
         sampled_time = simnow;
-        sampled_temperature = body->temperature;
+        sampled_temperature = reference;
+        sampled_flattening = flattening;
         sampled_surface = surface;
         sampled_at = now;
         ++revision;
@@ -5572,6 +5676,12 @@ static void draw_thermal_map_surface(CelestialObject* body)
     input.scalar_palette = SurfaceScalarPalette::fire;
     input.bump_minimum = coldest;
     input.bump_span = hottest - coldest;
+    if (star && input.bump_span < reference * .01)
+    {
+        // Preserve subtle differences on near-spherical stars without stretching them across the palette.
+        input.bump_minimum = (coldest + hottest - reference * .01) * .5;
+        input.bump_span = reference * .01;
+    }
     if (!input.bump_map_texture || !queue_sunclock_gpu(input, dispcx, dispcy))
     {
         constexpr int step = 4;
@@ -5591,7 +5701,7 @@ static void draw_thermal_map_surface(CelestialObject* body)
                 const double upper = samples[north * width + west] * (1 - fraction) + samples[north * width + east] * fraction;
                 const double lower = samples[south * width + west] * (1 - fraction) + samples[south * width + east] * fraction;
                 const double temperature = upper + (lower - upper) * (row - north);
-                const double value = input.bump_span > 0 ? (temperature - coldest) / input.bump_span : .5;
+                const double value = input.bump_span > 0 ? (temperature - input.bump_minimum) / input.bump_span : .5;
                 const Color rgb = Color::fire_from_unity_range(value);
                 draw->AddRectFilled(ImVec2(x, y), ImVec2(x + step, y + step),
                     ImGui::ColorConvertFloat4ToU32(ImVec4(rgb.red, rgb.green, rgb.blue, 1)));
@@ -5599,7 +5709,8 @@ static void draw_thermal_map_surface(CelestialObject* body)
         }
     }
 
-    const auto range = std::to_string(std::lround(coldest)) + " to " + std::to_string(std::lround(hottest)) + " K";
+    const auto range = (star ? "Estimated photosphere  " : "") + std::to_string(std::lround(coldest))
+        + " to " + std::to_string(std::lround(hottest)) + " K";
     draw->AddText(ImVec2(6, 26), IM_COL32_BLACK, range.c_str());
     draw->AddText(ImVec2(5, 25), IM_COL32_WHITE, range.c_str());
 }
@@ -5616,7 +5727,7 @@ void draw_sunclock()
 
     CelestialObject* cel = cels[whereami];
     if (!cel->nlocales) cel->read_locales("locales.json");
-    spawn_texture_load(cel);
+    if (view_mode != vm_thermal || cel->typeclass() != class_star) spawn_texture_load(cel);
     sclk_scale = half_pi / std::max(1, static_cast<int>(dispcx / 2)) / zoom;
 
     if (view_mode == vm_bumpmap || view_mode == vm_thermal)

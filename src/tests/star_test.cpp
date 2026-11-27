@@ -15,6 +15,49 @@
 
 using namespace alienorum;
 
+TEST(StellarOblatenessTest, PublishedPhotosphericRadiiOverrideRotationEstimate)
+{
+    Star star;
+    star.HIP = 97649;
+    star.mass = 1.86 * solar_mass;
+    star.volumetric_mean_radius = std::cbrt(2.008 * 2.008 * 1.565) * solar_radius;
+    star.sidereal_rotational_period = 25 * oneday;
+    const double flattening = star.effective_oblateness();
+    EXPECT_NEAR(flattening, .22062, .00001);
+    EXPECT_NEAR(star.get_equatorial_radius() / solar_radius, 2.008, 1e-9);
+    EXPECT_NEAR(star.get_equatorial_radius() * (1 - flattening) / solar_radius, 1.565, 1e-9);
+
+    star.oblateness = .1;
+    EXPECT_DOUBLE_EQ(star.effective_oblateness(), .1);
+    star.oblateness = 0;
+    star.manual_oblateness = true;
+    auto saved = star.to_json();
+    saved.erase("oblateness"); // A compact save can omit zero values.
+    Star restored;
+    restored.oblateness = .1;
+    ASSERT_TRUE(restored.from_json(saved));
+    EXPECT_DOUBLE_EQ(restored.effective_oblateness(), 0);
+}
+
+TEST(StellarOblatenessTest, RotationEstimateMatchesThePoleAndEquatorPotentials)
+{
+    Star star;
+    star.mass = 2 * solar_mass;
+    star.volumetric_mean_radius = 2 * solar_radius;
+    star.sidereal_rotational_period = .5 * oneday;
+    const double flattening = star.effective_oblateness();
+    EXPECT_GT(flattening, .05);
+    const double equator = star.get_equatorial_radius(), pole = equator * (1 - flattening);
+    const double equator_speed = 2 * _pi * equator / star.sidereal_rotational_period;
+    EXPECT_NEAR(G * star.mass / pole, G * star.mass / equator + .5 * equator_speed * equator_speed, 1);
+    star.sidereal_rotational_period *= 2;
+    EXPECT_LT(star.effective_oblateness(), flattening);
+    star.sidereal_rotational_period = .01 * oneday;
+    EXPECT_DOUBLE_EQ(star.effective_oblateness(), 1.0 / 3);
+    star.mass = 0;
+    EXPECT_DOUBLE_EQ(star.effective_oblateness(), 0);
+}
+
 TEST(MiraPulsationTest, ContinuumMatchesMiraInterferometryWithoutVisualRadiusInflation)
 {
     Star star;
