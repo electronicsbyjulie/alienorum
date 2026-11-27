@@ -4,6 +4,21 @@
 
 namespace alienorum
 {
+    struct EquilibriumTideSpin
+    {
+        double damping_factor;
+        double equilibrium_ratio;
+    };
+
+    // Leconte et al. (2010), N_a(e) and N(e), at zero obliquity.
+    inline EquilibriumTideSpin equilibrium_tide_spin(double eccentricity)
+    {
+        const double z = eccentricity * eccentricity, beta2 = 1 - z;
+        const double rotation = 1 + z * (3 + z * .375);
+        const double torque = 1 + z * (7.5 + z * (5.625 + z * .3125));
+        return {rotation / std::pow(beta2, 4.5), torque / (rotation * std::pow(beta2, 1.5))};
+    }
+
     // Orbit-averaged equilibrium tide, with zero spin obliquity. Full eccentricity
     // functions: Leconte et al. (2010), doi:10.1051/0004-6361/201014337.
     // k2/Q sets the lag at the dominant orbital or semidiurnal forcing frequency.
@@ -20,16 +35,14 @@ namespace alienorum
             || !std::isfinite(spin_rate) || !std::isfinite(k2_over_q) || k2_over_q < 0) return 0;
         const double z = eccentricity * eccentricity, beta2 = 1 - z;
         const double rotation = 1 + z * (3 + z * .375);
-        const double torque = 1 + z * (7.5 + z * (5.625 + z * .3125));
-        const double omega = rotation / std::pow(beta2, 4.5);
-        const double equilibrium_spin = torque / (rotation * std::pow(beta2, 1.5));
+        const auto tide = equilibrium_tide_spin(eccentricity);
         // Positive polynomial avoids cancellation for almost circular orbits.
         const double minimum = z * (3.5 + z * (11.25 + z * (28 + z * (685.0 / 64
             + z * (255.0 / 128 + z * 25.0 / 512))))) / (rotation * std::pow(beta2, 7.5));
         // An absent rotation uses the minimum-dissipation equilibrium spin.
-        const double offset = spin_rate == 0 ? 0 : spin_rate / mean_motion - equilibrium_spin;
-        const double shape = minimum + omega * offset * offset;
-        const double spin_ratio = spin_rate == 0 ? equilibrium_spin : spin_rate / mean_motion;
+        const double offset = spin_rate == 0 ? 0 : spin_rate / mean_motion - tide.equilibrium_ratio;
+        const double shape = minimum + tide.damping_factor * offset * offset;
+        const double spin_ratio = spin_rate == 0 ? tide.equilibrium_ratio : spin_rate / mean_motion;
         const double frequency_ratio = std::fmax(1.0, 2 * std::abs(spin_ratio - 1));
         constexpr double gravity_si = 6.6743015e-11, pi = 3.14159265358979323846;
         const double mass_per_axis_cubed = parent_mass_kg / axis_m / axis_m / axis_m;

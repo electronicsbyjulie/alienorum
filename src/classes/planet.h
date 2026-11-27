@@ -130,7 +130,8 @@ namespace alienorum
         json surface_geology = nullptr;
         bool raincheck = false;
 
-        void setup_atm_ring_props();
+        void setup_atm_ring_props(bool infer_rotation = false);
+        void apply_cosmic_shoreline(bool refresh_inferred_rotation);
         void apply_cosmic_shoreline();
         bool estimate_surface_water(bool replace_supplied = false, const std::vector<double>& heights = {});
         bool estimate_habitability();

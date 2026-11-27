@@ -1749,12 +1749,13 @@ void SSCImport::apply_orbit(const json &orb, CelestialObject *cel, CelestialObje
     }
 }
 
-void SSCImport::apply_rotation(const json &fields, CelestialObject *cel)
+bool SSCImport::apply_rotation(const json &fields, CelestialObject *cel)
 {
     double v;
     double meridian_epoch = J2000;                      // JD the prime meridian below is quoted at
 
-    if (get_num(fields, "RotationPeriod", v)) cel->sidereal_rotational_period = v * 3600.0;
+    bool supplied = get_num(fields, "RotationPeriod", v);
+    if (supplied) cel->sidereal_rotational_period = v * 3600.0;
     if (get_num(fields, "Obliquity", v)) cel->obliquity = v * fiftyseventh;
     if (get_num(fields, "EquatorAscendingNode", v)) cel->equinox = v * fiftyseventh;
     // What the same angle was called before EquatorAscendingNode replaced it, and what the
@@ -1780,12 +1781,17 @@ void SSCImport::apply_rotation(const json &fields, CelestialObject *cel)
 
     if (rot)
     {
-        if (get_num(*rot, "Period", v)) cel->sidereal_rotational_period = v * 3600.0;
+        if (get_num(*rot, "Period", v))
+        {
+            cel->sidereal_rotational_period = v * 3600.0;
+            supplied = true;
+        }
         else if (!fixed && cel->orbit && cel->orbit->period)
         {
             // A rotation model that states no period at all is how the format says "tidally
             // locked", and that is as much a statement about the spin as a number would be.
             cel->sidereal_rotational_period = cel->orbit->period;
+            supplied = true;
         }
         if (get_num(*rot, "Inclination", v)) cel->obliquity = v * fiftyseventh;
         if (get_num(*rot, "AscendingNode", v)) cel->equinox = v * fiftyseventh;
@@ -1797,7 +1803,12 @@ void SSCImport::apply_rotation(const json &fields, CelestialObject *cel)
         if (precessing && get_num(*rot, "PrecessionPeriod", v) && v)
             cel->precession = (_pi * 2) / (v * oneyear);
 
-        if (fixed)
+        if (fixed && (cel->typeclass() == class_planet || cel->typeclass() == class_moon))
+        {
+            cel->sidereal_rotational_period = 0;
+            supplied = true;
+        }
+        else if (fixed)
             report.note(std::string(cel->name) + " is stated as not rotating at all, which we have "
                 "no way of saying; it turns like any other body here.");
     }
@@ -1814,6 +1825,7 @@ void SSCImport::apply_rotation(const json &fields, CelestialObject *cel)
     }
 
     cel->known_poles = true;
+    return supplied;
 }
 
 // Which plane a moon's orbital elements are measured in. Theirs is a named reference frame,
@@ -2112,7 +2124,7 @@ bool SSCImport::read(const std::string &ssc_path)
             }
 
             apply_orbit_frame(blk.fields, cel);
-            apply_rotation(blk.fields, cel);
+            const bool rotation_supplied = apply_rotation(blk.fields, cel);
 
             imported[full_path] = cel;
             // A name in these files may list aliases after a colon ("Vulcan:40 Eri A I"), and a child
@@ -2200,7 +2212,7 @@ bool SSCImport::read(const std::string &ssc_path)
 
             apply_color(blk.fields, cel);
 
-            if (!cel->sidereal_rotational_period) pl->estimate_rotation();
+            if (!rotation_supplied) pl->estimate_rotation();
 
             const json *atmos = get_obj(blk.fields, "Atmosphere");
             bool all_weather = uses_gaseous_map(pl->type);
@@ -2213,7 +2225,7 @@ bool SSCImport::read(const std::string &ssc_path)
                 // tops are defined at instead, which is the level the rest of the app reasons about
                 // them at as well.
                 if (all_weather) pl->ensure_atmosphere()->surface_pressure = oneatm;
-                else pl->apply_cosmic_shoreline();
+                else pl->apply_cosmic_shoreline(!rotation_supplied);
                 if (pl->get_surface_pressure() <= 0) pl->ensure_atmosphere()->surface_pressure = oneatm;
                 if (pl->estimate_habitability())
                     pl->ensure_atmosphere()->ensure_composition()->generate_fictitious_habitable();

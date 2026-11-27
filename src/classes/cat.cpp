@@ -5024,11 +5024,8 @@ int CatalogReader::read_exoplanets_catalog(CelestialObject **cels, int max)
                 p->estimate_albedo_and_absmagn();
                 p->set_color_from_type(HZ);
 
-                // Estimate planet rotation.
-                p->estimate_rotation();
-
-                // Estimate atmosphere and rings.
-                p->setup_atm_ring_props();
+                // Estimate spin, shape, atmosphere and rings.
+                p->setup_atm_ring_props(true);
 
                 // Add planet to celestial bodies array.
                 append_cel(p);
@@ -9810,9 +9807,7 @@ bool CatalogReader::add_exoplanet_from_row(const ExoRow& row, Star* host_star, s
     apply_exoplanet_environment(*new_planet, row.pl_name);
     new_planet->estimate_albedo_and_absmagn();
     new_planet->set_color_from_type(new_planet->is_in_con_HZ());
-    new_planet->estimate_rotation();
-    new_planet->oblateness = new_planet->rotational_oblateness();
-    new_planet->setup_atm_ring_props();
+    new_planet->setup_atm_ring_props(true);
 
     // Append planet object to global array
     append_cel(new_planet);

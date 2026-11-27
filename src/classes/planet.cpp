@@ -46,6 +46,27 @@ namespace
     {
         return (life_hash(value) >> 11) * (1.0 / 9007199254740992.0);
     }
+
+    double tidal_dissipation(const Planet& planet)
+    {
+        if (std::isfinite(planet.tidal_k2_over_q)) return planet.tidal_k2_over_q;
+        return uses_gaseous_map(planet.type) ? 3e-6 : .003;
+    }
+
+    double spin_evolution_age_gyr(const CelestialObject* parent)
+    {
+        for (int depth = 0; parent && depth < 64; ++depth)
+        {
+            if (parent->typeclass() == class_star)
+            {
+                const double age = static_cast<const Star*>(parent)->estimate_age_gyr();
+                if (std::isfinite(age) && age >= 0) return age;
+                break;
+            }
+            parent = parent->orbit ? parent->orbit->center : nullptr;
+        }
+        return 4.5;
+    }
 }
 
 double Planet::host_luminosity_class_duration_gyr() const
@@ -339,8 +360,6 @@ std::vector<std::unique_ptr<Moon>> Planet::generate_fictional_moons(std::mt19937
             delete m;
             break;
         }
-        m->estimate_rotation();
-        if (!m->sidereal_rotational_period) m->sidereal_rotational_period = oneday;
         m->classify();
         m->enforce_orbit_clearance();
         if (m->orbit->semimajor_axis * (1 + m->orbit->eccentricity) > 0.3*cel->Hill_sphere_radius())
@@ -350,6 +369,9 @@ std::vector<std::unique_ptr<Moon>> Planet::generate_fictional_moons(std::mt19937
         }
         double disc_area = pow(m->volumetric_mean_radius / earth_radius, 2);
         m->absolute_magnitude = earth_absmag - log(disc_area * m->albedo / earth_albedo) / log(magnbase);
+        m->estimate_rotation();
+        if (!m->sidereal_rotational_period) m->sidereal_rotational_period = oneday;
+        const double initial_axis = m->orbit->semimajor_axis;
         m->apply_cosmic_shoreline();
 
         m->enforce_orbit_clearance();
@@ -371,6 +393,11 @@ std::vector<std::unique_ptr<Moon>> Planet::generate_fictional_moons(std::mt19937
                 delete m;
                 break;
             }
+        }
+        if (m->orbit->semimajor_axis != initial_axis)
+        {
+            m->estimate_rotation();
+            m->apply_cosmic_shoreline();
         }
         m->distance_known = true;
         m->update_location(simnow);
@@ -426,10 +453,12 @@ static void record_climate_consistency(Planet& planet)
     }
 }
 
-void alienorum::Planet::setup_atm_ring_props()
+void alienorum::Planet::setup_atm_ring_props(bool infer_rotation)
 {
     classify();
-    apply_cosmic_shoreline();
+    if (infer_rotation) estimate_rotation();
+    apply_cosmic_shoreline(infer_rotation);
+    if (infer_rotation) oblateness = rotational_oblateness();
     const bool habitable = estimate_habitability();
     if (!constrained_atmospheric_composition(*this))
     {
@@ -448,6 +477,11 @@ void alienorum::Planet::setup_atm_ring_props()
 }
 
 void alienorum::Planet::apply_cosmic_shoreline()
+{
+    apply_cosmic_shoreline(false);
+}
+
+void alienorum::Planet::apply_cosmic_shoreline(bool refresh_inferred_rotation)
 {
     if (atm && (atm->pressure_supplied ||
         (atm->pressure_model.is_object() &&
@@ -493,6 +527,7 @@ void alienorum::Planet::apply_cosmic_shoreline()
             }
             const bool gaseous = envelope.value("outcome", "") == "mini_neptune";
             const cel_obj_type old_type = type;
+            const double old_radius = volumetric_mean_radius;
             if (gaseous != uses_gaseous_map(type))
             {
                 type = gaseous ? ice_giant : rocky;
@@ -511,6 +546,9 @@ void alienorum::Planet::apply_cosmic_shoreline()
             classification_evidence["class_code"] = static_cast<int>(type);
             classification_evidence["density_g_cm3"] = mass / sphere_volume(volumetric_mean_radius) * 1e-6;
             if (old_type != type) classification_evidence["basis"] = "volatile_structure_scenarios";
+            // The volatile budget below uses tidal heat from the final geometry and spin.
+            if (refresh_inferred_rotation && (type != old_type || volumetric_mean_radius != old_radius))
+                estimate_rotation();
         }
         AtmosphericEstimate estimate = custom_inventory ? CosmicShore::estimate_atmosphere(host, *this, inventory)
             : CosmicShore::estimate_atmosphere(host, *this);
@@ -1826,37 +1864,105 @@ void Planet::estimate_radius()
 
 double Planet::rotational_oblateness() const
 {
-    if (!(volumetric_mean_radius > 0) || !(mass > 0) || !(sidereal_rotational_period > 0)) return 0;
-    const double spin = 2 * _pi / sidereal_rotational_period;
     const double radius = volumetric_mean_radius;
+    const double period = std::abs(sidereal_rotational_period);
+    if (!(radius > 0) || !(mass > 0) || !(period > 0)
+        || !std::isfinite(radius) || !std::isfinite(mass) || !std::isfinite(period)) return 0;
+    const double spin = 2 * _pi / period;
     const double rotational_parameter = spin * spin * radius * radius * radius / (G * mass);
     if (!std::isfinite(rotational_parameter)) return 0;
-    // First-order hydrostatic figure. When J2 is unknown, use a representative
-    // fluid Love number for the body's bulk composition.
-    const double love_number = uses_gaseous_map(type) ? .5 : .3;
-    const double quadrupole = J2 > 0 ? J2 : love_number * rotational_parameter / 3;
+    // The rocky reference is Earth's secular fluid response, about 0.94.
+    // The giant value is a representative approximation for giant interiors.
+    const double love_number = uses_gaseous_map(type) ? .5 : .94;
+    const double quadrupole = J2 > 0 && std::isfinite(J2) ? J2 : love_number * rotational_parameter / 3;
     return std::clamp(.5 * rotational_parameter + 1.5 * quadrupole, 0.0, .3);
 }
 
 void Planet::estimate_rotation()
 {
-    if (!orbit || !orbit->period) return;
-
-    double tidal_lock_threshold_days = 100 / (1.0 + 4.0 * orbit->eccentricity);         // This is a TOTAL guess. Accounts for Mercury (58d, ecc .205630, 3:2 resonance) and Iapetus (79d, ecc .0284, tidal).
-
-    if (orbit->period < (tidal_lock_threshold_days * oneday)
-        || type == hot_jupiter)
+    const bool gaseous = uses_gaseous_map(type);
+    const bool has_mass = std::isfinite(mass) && mass > 1;
+    const double radius = volumetric_mean_radius;
+    const bool has_radius = std::isfinite(radius) && radius > 0;
+    double spin_mass = mass;
+    if (!has_mass)
     {
-        sidereal_rotational_period = orbit->period;
+        if ((mass != 0 && !std::isnan(mass)) || !has_radius || typeclass() != class_planet) return;
+        // Use a representative bulk density for the spin calculation only.
+        spin_mass = gaseous ? jupiter_mass * std::pow(radius / jupiter_radius, 3)
+            : earth_mass * std::pow(radius / earth_radius, 3);
+        if (!(spin_mass > 1) || !std::isfinite(spin_mass)) return;
     }
-    else if (orbit->period < (250 * oneday) && orbit->eccentricity > 0.15)              // Mercury.
+    const double coefficient = type == ice_giant ? 1.74e6 : gaseous ? 1.11e6
+        : (type == waterworld || type == hycean) ? 2.06e6 : 2.38e6;
+    double initial_period = coefficient / std::log10(spin_mass);
+    assert(initial_period > 0);
+    if (has_mass) sidereal_rotational_period = initial_period;
+
+    if (!has_radius) return;
+    const double breakup_spin = std::sqrt(G * spin_mass / radius / radius / radius);
+    if (!(breakup_spin > 0) || !std::isfinite(breakup_spin)) return;
+    const double full_turn = 2 * _pi;
+    initial_period = std::max(initial_period, full_turn / breakup_spin);
+    if (has_mass) sidereal_rotational_period = initial_period;
+
+    if (!orbit || !orbit->center || orbit->center == this) return;
+    const CelestialObject* parent = orbit->center;
+    const double eccentricity = orbit->eccentricity;
+    const double dissipation = tidal_dissipation(*this);
+    if (!std::isfinite(parent->mass) || parent->mass <= 0 || !(dissipation > 0)
+        || !std::isfinite(eccentricity) || eccentricity < 0 || eccentricity >= 1) return;
+
+    const double total_gm = G * (parent->mass + (has_mass ? mass : 0));
+    const bool has_period = std::isfinite(orbit->period) && orbit->period > 0;
+    double axis = orbit->semimajor_axis;
+    if (!(axis > 0) && has_period)
+        axis = std::cbrt(total_gm * std::pow(orbit->period / full_turn, 2));
+    if (!std::isfinite(axis) || axis * (1 - eccentricity) <= radius) return;
+    const double motion = has_period ? full_turn / orbit->period : std::sqrt(total_gm / axis / axis / axis);
+    if (!(motion > 0) || !std::isfinite(motion)) return;
+
+    // Normalize the quadrupole torque by I = C M R^2. Masses and G both use grams.
+    // Barnes (2017), circular constant-phase-lag magnitude at zero obliquity.
+    const double parent_mass_per_axis_cubed = parent->mass / axis / axis / axis;
+    const double size_moment_per_mass = radius * radius * radius / spin_mass;
+    const double inertia_coefficient = gaseous ? .25 : .33;
+    const double spin_acceleration = 1.5 * dissipation * G * parent_mass_per_axis_cubed * parent_mass_per_axis_cubed
+        * size_moment_per_mass / inertia_coefficient;
+    if (!(spin_acceleration > 0) || !std::isfinite(spin_acceleration)) return;
+
+    const double age = spin_evolution_age_gyr(parent) * 1e9 * 365.25 * oneday;
+    if (age == 0) return;
+    const double initial = full_turn / initial_period;
+    double spin;
+    if (gaseous)
     {
-        sidereal_rotational_period = (2.0 / 3.0) * orbit->period;
+        // Leconte et al. (2010), constant time lag, normalized at the orbital frequency.
+        const auto tide = equilibrium_tide_spin(eccentricity);
+        const double equilibrium = motion * tide.equilibrium_ratio;
+        const double remaining = std::exp(-2 * (age * spin_acceleration / motion) * tide.damping_factor);
+        if (has_mass) spin = std::fma(initial - equilibrium, remaining, equilibrium);
+        else
+        {
+            // Use the equilibrium once the remaining offset is within 1% of its rate.
+            if (!(std::abs(initial - equilibrium) * remaining <= .01 * equilibrium)) return;
+            spin = equilibrium;
+        }
     }
-    else if (type == waterworld || type == hycean ) sidereal_rotational_period = 2.06e+6 / log(mass);              // WAG: average of solid and gas.
-    else if (type == ice_giant  ) sidereal_rotational_period = 1.74e+6 / log(mass);
-    else if (type == gas_giant  ) sidereal_rotational_period = 1.11e+6 / log(mass);
-    else sidereal_rotational_period = 2.38e+6 / log(mass);                              // rocky, icy, or lava world.
+    else
+    {
+        // Mercury-like capture scenario. Solid-body resonances depend on the interior and spin history
+        // (Noyelles et al. 2014), so this eccentricity criterion is an application assumption.
+        const double resonance = eccentricity >= .2 && initial >= 1.5 * motion ? 1.5 : 1;
+        const double target = resonance * motion;
+        const double change = target - initial;
+        const double correction = age * spin_acceleration;
+        if (!has_mass && correction < std::abs(change)) return;
+        spin = correction >= std::abs(change) ? target : initial + std::copysign(correction, change);
+    }
+    if (!(spin > 0) || !std::isfinite(spin) || (!has_mass && spin > breakup_spin)) return;
+    sidereal_rotational_period = full_turn / std::min(spin, breakup_spin);
+    assert(sidereal_rotational_period > 0);
 }
 
 // The IAU slope parameter G, which sets how steeply a body with a solid surface fades as it
@@ -2293,8 +2399,7 @@ double Planet::tidal_heat_flux() const
     const double spin = std::isfinite(sidereal_rotational_period) && sidereal_rotational_period != 0
         ? 2 * _pi / sidereal_rotational_period : 0;
     // Interior scenarios, not measurements. An explicit zero disables heating.
-    const double dissipation = std::isfinite(tidal_k2_over_q) ? tidal_k2_over_q
-        : uses_gaseous_map(type) ? 3e-6 : .003;
+    const double dissipation = tidal_dissipation(*this);
     return tidal_surface_heat_flux(parent->mass * .001, volumetric_mean_radius, axis,
         orbit->eccentricity, motion, spin, dissipation);
 }

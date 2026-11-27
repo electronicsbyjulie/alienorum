@@ -98,6 +98,7 @@ bool show_tentative_exoplanets = false;
 int numfails = 0;
 double myeq = 0;
 bool exocons_is_generating = false;
+bool use_imperial_units = false;
 
 // Use the Dev Dial to adjust values dynamically so you don't have to keep reloading the app just to tweak some constant.
 // Run the app with the dd cli arg to show the dev dial.

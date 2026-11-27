@@ -1113,7 +1113,7 @@ FictionalBatch alienorum::generate_fictional_stars(const FictionalGalaxy& galaxy
                 // Preserve mass/orbit draws and the independent moon stream.
                 std::mt19937_64 orientation_random(region.seed ^ uint64_t(planet->rnd_seed) ^ 0x8f2a693c51bd407eULL);
                 generate_fictional_planet_orientation(*planet, orientation_random);
-                planet->apply_cosmic_shoreline();
+                planet->apply_cosmic_shoreline(true);
                 planet->update_location(simnow);
                 planets.push_back(std::move(planet));
             }

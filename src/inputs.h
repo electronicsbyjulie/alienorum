@@ -17,6 +17,7 @@ void find_time_steps();
 void step_simulation_time(double days, bool preserve_solar_time = true);
 void process_key_cmd_char(char c);
 void process_key_cmd_ctrl_char(char c);
+void process_key_cmd_ctrl_alt_char(char c);
 bool keyboard_edit_field_active();
 void process_keyboard_commands(ImGuiIO &io);
 void process_key_arrowup();

@@ -74,7 +74,7 @@ namespace alienorum
         static void apply_orbit_frame(const json &fields, CelestialObject *cel);
         static void apply_color(const json &fields, CelestialObject *cel);
 
-        void apply_rotation(const json &fields, CelestialObject *cel);
+        bool apply_rotation(const json &fields, CelestialObject *cel);
         bool may_write_map(const std::string &dest);
         bool install_plain_texture(const std::string &src, CelestialObject *cel, const char *suffix);
         bool install_composited_surface(const std::string &surf_src, const std::string &cloud_src,

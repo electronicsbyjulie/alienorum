@@ -134,12 +134,144 @@ TEST(PlantFormTest, PositiveFiniteAcrossPressureAndGravityExtremes)
 
 TEST(PlanetRotationTest, ThreeToTwoResonanceHasThreeSpinsPerTwoOrbits)
 {
+    Star host;
+    host.mass = solar_mass;
+    host.stellar_age = {{"value_gyr", 4.5}};
     Planet planet;
+    planet.type = rocky;
+    planet.mass = 3.301e26;
+    planet.volumetric_mean_radius = 2439700;
     planet.orbit = new Orbit();
+    planet.orbit->center = &host;
     planet.orbit->period = 88 * oneday;
     planet.orbit->eccentricity = .2056;
     planet.estimate_rotation();
     EXPECT_NEAR(planet.sidereal_rotational_period / oneday, 58.6666666667, 1e-8);
+
+    host.stellar_age["value_gyr"] = .01;
+    planet.estimate_rotation();
+    EXPECT_NEAR(planet.sidereal_rotational_period / 3600, 25.4, .05);
+    host.stellar_age["value_gyr"] = 4.5;
+    planet.orbit->eccentricity = .01;
+    planet.estimate_rotation();
+    EXPECT_NEAR(planet.sidereal_rotational_period / oneday, 88, 1e-8);
+}
+
+TEST(PlanetRotationTest, FreeSpinFallsNearSolarSystemPeriods)
+{
+    Planet planet;
+    planet.type = rocky;
+    planet.mass = earth_mass;
+    planet.estimate_rotation();
+    EXPECT_NEAR(planet.sidereal_rotational_period / 3600, 23.80, .02);
+    planet.type = gas_giant;
+    planet.mass = jupiter_mass;
+    planet.estimate_rotation();
+    EXPECT_NEAR(planet.sidereal_rotational_period / 3600, 10.18, .02);
+    planet.type = clearskies;
+    planet.estimate_rotation();
+    EXPECT_NEAR(planet.sidereal_rotational_period / 3600, 10.18, .02);
+    planet.mass = 5.683e29;
+    planet.estimate_rotation();
+    EXPECT_NEAR(planet.sidereal_rotational_period / 3600, 10.36, .02);
+    planet.type = ice_giant;
+    planet.mass = 1.024e29;
+    planet.estimate_rotation();
+    EXPECT_NEAR(planet.sidereal_rotational_period / 3600, 16.66, .02);
+}
+
+TEST(PlanetRotationTest, FluidTidesRelaxTowardTheEccentricEquilibrium)
+{
+    Star host;
+    host.mass = solar_mass;
+    host.stellar_age = {{"value_gyr", 0}};
+    Planet planet;
+    planet.type = hot_jupiter;
+    planet.mass = jupiter_mass;
+    planet.volumetric_mean_radius = jupiter_radius;
+    planet.orbit = new Orbit();
+    planet.orbit->center = &host;
+    planet.orbit->period = 3 * oneday;
+    planet.orbit->eccentricity = .2;
+    planet.estimate_rotation();
+    EXPECT_NEAR(planet.sidereal_rotational_period / 3600, 10.18, .02);
+    host.stellar_age["value_gyr"] = .00001;
+    planet.estimate_rotation();
+    EXPECT_NEAR(planet.sidereal_rotational_period / 3600, 16.05, .02);
+    host.stellar_age["value_gyr"] = 5;
+    planet.estimate_rotation();
+    EXPECT_NEAR(planet.sidereal_rotational_period / oneday, 2.41564, .00002);
+    planet.orbit->eccentricity = 0;
+    planet.estimate_rotation();
+    EXPECT_NEAR(planet.sidereal_rotational_period / oneday, 3, 1e-8);
+    planet.tidal_k2_over_q = 0;
+    planet.estimate_rotation();
+    EXPECT_NEAR(planet.sidereal_rotational_period / 3600, 10.18, .02);
+}
+
+TEST(PlanetRotationTest, APlanetRaisesItsMoonsTideWhileTheStarSetsTheAge)
+{
+    Star host;
+    host.mass = solar_mass;
+    host.stellar_age = {{"value_gyr", 0}};
+    Planet primary;
+    primary.mass = 5.683e29;
+    primary.orbit = new Orbit();
+    primary.orbit->center = &host;
+    Moon moon;
+    moon.type = icy;
+    moon.mass = 1.806e24;
+    moon.volumetric_mean_radius = 735000;
+    moon.orbit = new Orbit();
+    moon.orbit->center = &primary;
+    moon.orbit->semimajor_axis = 3560820000;
+    moon.orbit->eccentricity = .0284;
+    moon.estimate_rotation();
+    EXPECT_NEAR(moon.sidereal_rotational_period / 3600, 27.25, .02);
+    host.stellar_age["value_gyr"] = 4.5;
+    moon.estimate_rotation();
+    EXPECT_NEAR(moon.sidereal_rotational_period / oneday, 79.32, .10);
+}
+
+TEST(PlanetRotationTest, AFluidPlanetWithoutMassGetsOnlyATidallySettledSpin)
+{
+    Star host;
+    host.mass = solar_mass;
+    host.stellar_age = {{"value_gyr", .00001}};
+    Planet planet;
+    planet.type = gas_giant;
+    planet.volumetric_mean_radius = jupiter_radius;
+    planet.orbit = new Orbit();
+    planet.orbit->center = &host;
+    planet.orbit->period = 3 * oneday;
+    planet.orbit->eccentricity = .2;
+    planet.estimate_rotation();
+    EXPECT_DOUBLE_EQ(planet.sidereal_rotational_period, 0);
+
+    host.stellar_age["value_gyr"] = 5;
+    planet.estimate_rotation();
+    EXPECT_NEAR(planet.sidereal_rotational_period / oneday, 2.41564, .00002);
+    EXPECT_DOUBLE_EQ(planet.mass, 0);
+
+    planet.sidereal_rotational_period = 0;
+    planet.orbit->period = 365 * oneday;
+    planet.estimate_rotation();
+    EXPECT_DOUBLE_EQ(planet.sidereal_rotational_period, 0);
+
+    planet.orbit->period = 3 * oneday;
+    planet.tidal_k2_over_q = 0;
+    planet.estimate_rotation();
+    EXPECT_DOUBLE_EQ(planet.sidereal_rotational_period, 0);
+}
+
+TEST(PlanetRotationTest, DiffuseGiantDoesNotSpinFasterThanBreakup)
+{
+    Planet planet;
+    planet.type = gas_giant;
+    planet.mass = jupiter_mass;
+    planet.volumetric_mean_radius = 4 * jupiter_radius;
+    planet.estimate_rotation();
+    EXPECT_NEAR(planet.sidereal_rotational_period / 3600, 22.92, .05);
 }
 
 class MoonLifeScenarioTest : public UniverseFixture
@@ -5783,6 +5915,25 @@ TEST(PlanetShapeTest, RotationAndGravityDetermineFlattening)
     EXPECT_NEAR(planet.rotational_oblateness(), fast / 4, 1e-12);
     planet.sidereal_rotational_period = 0;
     EXPECT_EQ(planet.rotational_oblateness(), 0);
+}
+
+TEST(PlanetShapeTest, SecularFlatteningMatchesEarthAndIgnoresSpinDirection)
+{
+    Planet planet;
+    planet.type = rocky;
+    planet.mass = 5.9722e27;
+    planet.volumetric_mean_radius = 6371000;
+    planet.sidereal_rotational_period = 86164.1;
+    // NASA Earth Fact Sheet equatorial and polar radii, in kilometres.
+    const double observed_flattening = (6378.1 - 6356.8) / 6378.1;
+    EXPECT_NEAR(planet.rotational_oblateness(), observed_flattening, .00003);
+    const double prograde = planet.rotational_oblateness();
+    planet.sidereal_rotational_period *= -1;
+    EXPECT_DOUBLE_EQ(planet.rotational_oblateness(), prograde);
+    planet.J2 = .00108263;
+    EXPECT_NEAR(planet.rotational_oblateness(), observed_flattening, .00003);
+    planet.J2 = INFINITY;
+    EXPECT_DOUBLE_EQ(planet.rotational_oblateness(), prograde);
 }
 
 TEST(PlanetOrbitTest, InclinationSamplerUsesTheOrbiterAndHost)

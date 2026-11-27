@@ -7201,6 +7201,29 @@ TEST_F(StellarRotationTest, SscResolvesChildrenListedFirstAndUsesEachParentsOrbi
     EXPECT_DOUBLE_EQ(moon->locales[0].lat, 31);
 }
 
+TEST_F(StellarRotationTest, SscEstimatesOnlyMissingPlanetarySpins)
+{
+    std::ofstream("rotation.ssc")
+        << "\"Free spin\" \"Sol\" { Class \"planet\" Radius 6371 Mass 1 EllipticalOrbit { SemiMajorAxis 4 } }\n"
+        << "\"Zero spin\" \"Sol\" { Class \"planet\" Radius 6371 Mass 1 RotationPeriod 0 "
+        << "EllipticalOrbit { SemiMajorAxis 4 } }\n"
+        << "\"Fixed spin\" \"Sol\" { Class \"planet\" Radius 6371 Mass 1 FixedRotation { MeridianAngle 37 } "
+        << "EllipticalOrbit { SemiMajorAxis 4 } }\n";
+    SSCImport importer;
+    ASSERT_TRUE(importer.read("rotation.ssc"));
+    ASSERT_EQ(importer.report.bodies_added, 3);
+    const int free = find_object("Free spin", false, 9e29, 0);
+    const int zero = find_object("Zero spin", false, 9e29, 0);
+    const int fixed = find_object("Fixed spin", false, 9e29, 0);
+    ASSERT_GE(free, 0);
+    ASSERT_GE(zero, 0);
+    ASSERT_GE(fixed, 0);
+    EXPECT_NEAR(cels[free]->sidereal_rotational_period / 3600, 23.80, .02);
+    EXPECT_DOUBLE_EQ(cels[zero]->sidereal_rotational_period, 0);
+    EXPECT_DOUBLE_EQ(cels[fixed]->sidereal_rotational_period, 0);
+    EXPECT_NEAR(cels[fixed]->lon_J2000_offset / fiftyseventh, 37, 1e-9);
+}
+
 TEST_F(StellarRotationTest, SscConvertsHorizontalAndVerticalRingStripsToTheSamePhysicalBands)
 {
     std::filesystem::create_directories("maps");
@@ -7327,6 +7350,27 @@ TEST_F(StellarRotationTest, NearbyComponentsFillAnIdentifiedSystemWithoutDuplica
     EXPECT_LT(find_object("GJ 9902 B", true, 9e29, 0), 0);
 }
 
+TEST_F(CatalogParsingTest, CloseRockyCandidateWithMissingMassReceivesSynchronousRotation)
+{
+    TestCatalogReader reader;
+    const auto close_file = [](FILE* file) { fclose(file); };
+    std::unique_ptr<FILE, decltype(close_file)> file(fopen("catalogs/exoplanets_planets.dat", "r"), close_file);
+    ASSERT_NE(file, nullptr);
+    ExoRow row;
+    while (reader.exorow_read_line(file.get(), row) && row.pl_name != "GJ 1153 d") {}
+    ASSERT_EQ(row.pl_name, "GJ 1153 d");
+    auto* host = make_star(row.hostname.c_str(), row.st_mass * solar_mass);
+    host->stellar_age = {{"value_gyr", 4.5}};
+    std::map<int, std::vector<int>> planets;
+    unsigned count = 0;
+    ASSERT_TRUE(reader.add_exoplanet_from_row(row, host, planets, count));
+    ASSERT_EQ(count, 1u);
+    const auto* imported = static_cast<const Planet*>(cels[planets.at(host->seqno).front()]);
+    EXPECT_EQ(imported->mass_evidence, PlanetMeasurement::unknown);
+    EXPECT_DOUBLE_EQ(imported->mass, 0);
+    EXPECT_NEAR(imported->sidereal_rotational_period / oneday, 2.1538197, 1e-8);
+}
+
 TEST_F(CatalogParsingTest, ImportedExoplanetsReceiveRotationBasedFlattening)
 {
     Star::load_main_seq_dat();
@@ -7346,7 +7390,9 @@ TEST_F(CatalogParsingTest, ImportedExoplanetsReceiveRotationBasedFlattening)
     ASSERT_EQ(count, 1u);
     ASSERT_EQ(cels[ncelobjs - 1]->typeclass(), class_planet);
     const auto* imported = static_cast<const Planet*>(cels[ncelobjs - 1]);
-    EXPECT_GT(imported->oblateness, 0);
+    EXPECT_NEAR(imported->volumetric_mean_radius, 71492000, 1);
+    EXPECT_NEAR(imported->sidereal_rotational_period / 3600, 10.18, .02);
+    EXPECT_NEAR(imported->oblateness, .06353, .0001);
     EXPECT_DOUBLE_EQ(imported->oblateness, imported->rotational_oblateness());
     delete_the_universe();
 }

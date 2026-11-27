@@ -11597,7 +11597,7 @@ TEST_F(RenderingRegressionTest, StatusPanelShowsTheNamedDevDialAndItsCurrentValu
     };
 
     const auto hidden = capture_status();
-    EXPECT_NE(hidden.find("Star colors:"), std::string::npos) << hidden;
+    EXPECT_NE(hidden.find("Star colors (Ctrl+J):"), std::string::npos) << hidden;
     EXPECT_EQ(dial_value(hidden), std::nullopt) << hidden;
     show_dev_dial = true;
     const auto shown = capture_status();
@@ -13416,6 +13416,293 @@ TEST_F(RenderingRegressionTest, StatusClockShowsBothSidesOfCivilTimeChangesInBot
             const std::string text = panel_text([]() { draw_status_window(ImGui::GetIO()); });
             EXPECT_NE(text.find(expected), std::string::npos) << expected;
         }
+    }
+}
+
+TEST_F(RenderingRegressionTest, SystemObjectPanelRoundsRotationBeforeSplittingTheTime)
+{
+    auto* world = surface();
+    set(view_mode, vm_system);
+    set(is_an_obj_under_cursor, world->seqno);
+    set(is_a_locale_under_cursor, static_cast<Locale*>(nullptr));
+    set(trackidx, -1);
+    set(objinfwnd, true);
+    const auto readout = [&]()
+    {
+        return panel_text([]() { draw_objinf_window(ImGui::GetIO()); });
+    };
+    const std::pair<double, const char*> examples[] =
+    {
+        {3700, "Rotation: 01:01:40.00"},
+        {65.25, "Rotation: 00:01:05.25"},
+        {59.999, "Rotation: 00:01:00.00"},
+        {3599.999, "Rotation: 01:00:00.00"},
+        {100 * 3600, "Rotation: 4:04:00:00.00"}
+    };
+    world->obliquity = 170 * fiftyseventh;
+    for (const auto& [period, expected] : examples)
+    {
+        world->sidereal_rotational_period = period;
+        const auto text = readout();
+        EXPECT_NE(text.find(expected), std::string::npos) << text;
+    }
+    world->sidereal_rotational_period = 0;
+    EXPECT_EQ(readout().find("Rotation:"), std::string::npos);
+}
+
+TEST_F(RenderingRegressionTest, SystemObjectPanelShowsOneTidalLabelForProgradeSynchronousSpin)
+{
+    auto* world = surface();
+    set(view_mode, vm_system);
+    set(is_an_obj_under_cursor, world->seqno);
+    set(is_a_locale_under_cursor, static_cast<Locale*>(nullptr));
+    set(trackidx, -1);
+    set(objinfwnd, true);
+    const auto readout = [&]()
+    {
+        return panel_text([]() { draw_objinf_window(ImGui::GetIO()); });
+    };
+    ASSERT_NE(world->orbit, nullptr);
+    world->orbit->period = 2 * oneday;
+    world->obliquity = 0;
+    world->sidereal_rotational_period = world->orbit->period * (1 + .5e-6);
+    const auto synchronous = readout();
+    const auto label = synchronous.find("Rotation: tidal");
+    ASSERT_NE(label, std::string::npos) << synchronous;
+    EXPECT_EQ(synchronous.find("Rotation:", label + 1), std::string::npos) << synchronous;
+
+    world->sidereal_rotational_period = world->orbit->period * (1 - 2e-6);
+    EXPECT_EQ(readout().find("Rotation: tidal"), std::string::npos);
+
+    world->sidereal_rotational_period = world->orbit->period;
+    world->obliquity = 170 * fiftyseventh;
+    EXPECT_NE(readout().find("Rotation: 2:00:00:00.00"), std::string::npos);
+
+    world->obliquity = 0;
+    world->sidereal_rotational_period = -world->orbit->period;
+    EXPECT_NE(readout().find("Rotation: 2:00:00:00.00"), std::string::npos);
+}
+
+TEST_F(RenderingRegressionTest, ImperialReadoutsConvertLocalMeasurementsAndKeepKelvinAndPressure)
+{
+    class ElevationMap : public SceneryTestMap
+    {
+        public:
+        ElevationMap() { bump_data = new double[allocated]; }
+        void elevation(double metres) { std::fill_n(bump_data, allocated, metres); }
+    };
+
+    auto* world = surface();
+    delete world->surf_map;
+    auto* map = new ElevationMap();
+    world->surf_map = map;
+    map->elevation(304.8);
+    world->ensure_atmosphere()->surface_pressure = 200000;
+    world->sidereal_rotational_period = oneday;
+    set(simnow, double(J2000_TIME_T));
+    set(JDnow, J2000);
+    set(iamhome, world->seqno);
+    set(is_an_obj_under_cursor, -1);
+    set(is_a_locale_under_cursor, static_cast<Locale*>(nullptr));
+    set(trackidx, -1);
+    set(statuswnd, true);
+    set(objinfwnd, true);
+    set(themes, std::vector<std::string>{"default"});
+    set(themes_selected_idx, 0);
+    set(use_imperial_units, false);
+    set(velocity, Point(1609.344 / 3600 / target_frame_rate, 0, 0));
+    const auto status = [&]()
+    {
+        view_mode = vm_horizon;
+        return panel_text([]() { draw_status_window(ImGui::GetIO()); });
+    };
+    const auto terrain = [&]()
+    {
+        view_mode = vm_thermal;
+        return panel_text([]() { draw_objinf_window(ImGui::GetIO()); });
+    };
+
+    const double temperature = world->surface_temperature_at(viewer_lat, viewer_lon);
+    char metric_temperature[48], imperial_temperature[48];
+    std::snprintf(metric_temperature, sizeof(metric_temperature), "%.1f K / %.1f C", temperature, temperature - 273.15);
+    std::snprintf(imperial_temperature, sizeof(imperial_temperature), "%.1f K / %.1f F", temperature, temperature * 1.8 - 459.67);
+    const auto metric = status();
+    EXPECT_NE(metric.find(metric_temperature), std::string::npos) << metric;
+    EXPECT_NE(metric.find("1.6093e+00 km/h"), std::string::npos) << metric;
+    EXPECT_NE(metric.find("2.00 bar"), std::string::npos) << metric;
+    EXPECT_NE(terrain().find("Elev:     0 km"), std::string::npos);
+
+    use_imperial_units = true;
+    const auto imperial = status();
+    EXPECT_NE(imperial.find(imperial_temperature), std::string::npos) << imperial;
+    EXPECT_NE(imperial.find("1.0000e+00 mph"), std::string::npos) << imperial;
+    EXPECT_NE(imperial.find("2.00 bar"), std::string::npos) << imperial;
+    EXPECT_NE(terrain().find("Elev:     1000 ft"), std::string::npos);
+    map->elevation(-3218.688);
+    EXPECT_NE(terrain().find("Elev:     -2.00 mi"), std::string::npos);
+}
+
+TEST_F(RenderingRegressionTest, ImperialDistanceRetainsAstronomicalUnits)
+{
+    auto* world = make_planet(make_star());
+    const CelestialLocation observer;
+    set(use_imperial_units, true);
+    const auto distance = [&](double metres)
+    {
+        world->location.local_position = Point(metres, 0, 0);
+        return world->scaled_distance(observer);
+    };
+    EXPECT_EQ(distance(0), "0.00000 ft");
+    EXPECT_EQ(distance(1609.343), "5279.99672 ft");
+    EXPECT_EQ(distance(1609.344), "1.00000 mi");
+    EXPECT_EQ(distance(1609344), "1000.00000 mi");
+    EXPECT_EQ(distance(AU), "1.00000 AU");
+    EXPECT_EQ(distance(2 * light_year), "2.00000 ly");
+    use_imperial_units = false;
+    EXPECT_EQ(distance(304.8), "304.80000 m");
+    EXPECT_EQ(distance(1609.344), "1.60934 km");
+}
+
+TEST_F(RenderingRegressionTest, ImperialRadiusEditKeepsFeetUntilTheFieldLosesFocus)
+{
+    auto* world = surface();
+    world->volumetric_mean_radius = 304.8;
+    set(editidx, world->seqno);
+    set(objedtwnd, false);
+    set(randomize_txgen, true);
+    set(show_taucalc, false);
+    ASSERT_TRUE(go_to_celestial_object(world->seqno));
+    objedtwnd = true;
+    set(cbo_edt_units, 0);
+    set(use_imperial_units, true);
+    auto& io = ImGui::GetIO();
+    const auto draw = [&]() { return panel_text([&]() { draw_objedit_window(io); }); };
+    draw();
+    const auto small = draw();
+    EXPECT_NE(small.find("1000.000000"), std::string::npos) << small;
+    EXPECT_NE(small.find("lb/ft^3"), std::string::npos) << small;
+    auto* window = ImGui::FindWindowByName("Edit Object");
+    ASSERT_NE(window, nullptr);
+    const ImGuiID tabs = window->GetID("##edittabs");
+    const ImGuiID radius = ImHashStr("##edtvmrad", 0, ImHashStr("Bulk", 0, tabs));
+    ImGui::ActivateItemByID(radius);
+    draw();
+    ASSERT_EQ(ImGui::GetActiveID(), radius);
+    io.AddInputCharactersUTF8("6000");
+    draw();
+    EXPECT_NEAR(world->volumetric_mean_radius, 1828.8, 1e-6);
+    const auto active = draw();
+    EXPECT_EQ(ImGui::GetActiveID(), radius);
+    EXPECT_NE(active.find("Radius { 6000 } { ft }"), std::string::npos) << active;
+    io.AddKeyEvent(ImGuiKey_Enter, true);
+    draw();
+    io.AddKeyEvent(ImGuiKey_Enter, false);
+    draw();
+    EXPECT_NE(ImGui::GetActiveID(), radius);
+    const auto large = draw();
+    EXPECT_NE(large.find("Radius { 1.136364 } { mi }"), std::string::npos) << large;
+    EXPECT_NEAR(world->volumetric_mean_radius, 1828.8, 1e-6);
+}
+
+TEST_F(RenderingRegressionTest, ImperialMassSwitchesToShortTonsAtTwoThousandPounds)
+{
+    auto* world = surface();
+    set(view_mode, vm_spaceship);
+    set(iamhome, world->seqno);
+    set(is_an_obj_under_cursor, world->seqno);
+    set(is_a_locale_under_cursor, static_cast<Locale*>(nullptr));
+    set(trackidx, -1);
+    set(objinfwnd, true);
+    set(use_imperial_units, true);
+    auto& io = ImGui::GetIO();
+    const auto info = [&]() { return panel_text([&]() { draw_objinf_window(io); }); };
+
+    world->mass = 902648.8163;
+    EXPECT_NE(info().find("1.99e+03 lb"), std::string::npos);
+    world->mass = 907184.74;
+    EXPECT_NE(info().find("1.00e+00 ton"), std::string::npos);
+    world->mass = 1814369.48;
+    EXPECT_NE(info().find("2.00e+00 ton"), std::string::npos);
+    use_imperial_units = false;
+    EXPECT_NE(info().find("1.81e+03 kg"), std::string::npos);
+
+    set(editidx, world->seqno);
+    set(objedtwnd, false);
+    set(randomize_txgen, true);
+    set(show_taucalc, false);
+    ASSERT_TRUE(go_to_celestial_object(world->seqno));
+    objedtwnd = true;
+    set(cbo_edt_units, 0);
+    world->mass = 907184.74;
+    world->volumetric_mean_radius = std::cbrt(world->mass / (4 * _pi / 3)) / 100;
+    use_imperial_units = true;
+    const auto editor = [&]() { return panel_text([&]() { draw_objedit_window(io); }); };
+    editor();
+    const auto exact = editor();
+    EXPECT_NE(exact.find("Mass { 1.000000000e+00 } { ton }"), std::string::npos) << exact;
+    EXPECT_NE(exact.find("Density 62.4 lb/ft^3"), std::string::npos) << exact;
+    world->mass = 902648.8163;
+    const auto below = editor();
+    EXPECT_NE(below.find("Mass { 1.990000000e+03 } { lb }"), std::string::npos) << below;
+}
+
+TEST_F(RenderingRegressionTest, ImperialPreferenceRoundTripsThroughUserSettingsAndDefaultsToMetric)
+{
+    const auto original = std::filesystem::current_path();
+    const auto folder = std::filesystem::temp_directory_path() / ("alienorum_units_" +
+        std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    std::filesystem::create_directories(folder);
+    std::filesystem::current_path(folder);
+    restore.push_back([original, folder]()
+    {
+        std::filesystem::current_path(original);
+        std::filesystem::remove_all(folder);
+    });
+    set(themes, std::vector<std::string>{"default"});
+    set(viewer_theme, std::string("default"));
+    set(themes_selected_idx, 0);
+    set(viewer_lat, .2);
+    set(viewer_lon, .3);
+    set(viewer_tz, 0.0);
+    set(viewer_home_lat, viewer_lat);
+    set(viewer_home_lon, viewer_lon);
+    set(viewer_home_tz, 0.0);
+    set(viewer_eye_height, 1.75);
+    set(viewer_locale, std::string());
+    set(viewer_gamma, global_gamma);
+    set(global_gamma, 1.0);
+    set(play_rise_set_sound, false);
+    set(rise_sound_path, std::string());
+    set(set_sound_path, std::string());
+    set(favestars, std::vector<Star*>{});
+    set(loading_msg, std::string());
+    set(use_imperial_units, true);
+    const bool previous_abort = abort_load.exchange(true);
+    restore.push_back([previous_abort]() { abort_load = previous_abort; });
+
+    // The startup loader reads settings before its first catalog abort checkpoint.
+    load_stuff();
+    EXPECT_FALSE(use_imperial_units);
+    std::ofstream("user.json") << R"({"Unrelated":123})";
+    use_imperial_units = true;
+    ASSERT_TRUE(save_user_json());
+    auto settings = json::parse(std::ifstream("user.json"));
+    EXPECT_EQ(settings.at("UseImperialUnits"), true);
+    EXPECT_EQ(settings.at("Unrelated"), 123);
+    use_imperial_units = false;
+    load_stuff();
+    EXPECT_TRUE(use_imperial_units);
+    use_imperial_units = false;
+    ASSERT_TRUE(save_user_json());
+    use_imperial_units = true;
+    load_stuff();
+    EXPECT_FALSE(use_imperial_units);
+    for (const char* contents : {"{}", R"({"UseImperialUnits":"true"})"})
+    {
+        std::ofstream("user.json") << contents;
+        use_imperial_units = true;
+        load_stuff();
+        EXPECT_FALSE(use_imperial_units);
     }
 }
 

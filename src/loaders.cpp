@@ -1711,6 +1711,7 @@ void load_stuff()
     Star::load_main_seq_dat();
 
     std::vector<std::string> lfaves;
+    use_imperial_units = false;
     fstream fs("user.json", std::ios::in);
     if (fs)
     {
@@ -1727,6 +1728,8 @@ void load_stuff()
         try { j.at("StarPoint").get_to(npointedstar); } catch(...) { ; }
         try { j.at("Gamma").get_to(viewer_gamma); global_gamma = viewer_gamma; } catch(...) { ; }
         try { j.at("PrettyStarColors").get_to(fancy_star_col); } catch (...) { ; }
+        const auto imperial = j.find("UseImperialUnits");
+        if (imperial != j.end() && imperial->is_boolean()) imperial->get_to(use_imperial_units);
         try
         {
             double eye_cm = 175.26;
@@ -2002,6 +2005,7 @@ bool save_user_json()
         j["Theme"] = themes[themes_selected_idx];
         j["Gamma"] = global_gamma;
         j["PrettyStarColors"] = fancy_star_col;
+        j["UseImperialUnits"] = use_imperial_units;
         j["EyeHeight"] = viewer_eye_height * 100.0;
 
         std::vector<std::string> favenames;

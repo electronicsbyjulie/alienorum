@@ -59,6 +59,18 @@ using json = nlohmann::json;
 #define water_freezing 273.15
 #define oneatm 101325
 #define inv_oneatm (1.0 / 101325)
+#define METRES_PER_FOOT 0.3048
+#define METRES_PER_MILE (5280.0 * METRES_PER_FOOT)
+#define METRES_PER_SECOND_PER_MPH (METRES_PER_MILE / 3600.0)
+#define GRAMS_PER_POUND 453.59237
+#define POUNDS_PER_SHORT_TON 2000.0
+#define GRAMS_PER_SHORT_TON (GRAMS_PER_POUND * POUNDS_PER_SHORT_TON)
+#define SQUARE_METRES_PER_SQUARE_FOOT (METRES_PER_FOOT * METRES_PER_FOOT)
+#define CUBIC_CENTIMETRES_PER_CUBIC_FOOT (1000000.0 * SQUARE_METRES_PER_SQUARE_FOOT * METRES_PER_FOOT)
+#define LB_PER_FT3_TO_G_PER_CM3 (GRAMS_PER_POUND / CUBIC_CENTIMETRES_PER_CUBIC_FOOT)
+#define G_PER_KG_TO_OZ_PER_LB (16.0 / 1000.0)
+#define FAHRENHEIT_PER_CELSIUS_DEGREE (9.0 / 5.0)
+#define WATER_FREEZING_FAHRENHEIT 32.0
 
 // https://doi.org/10.1051/0004-6361/202348690
 #define rocky_mass_cutoff (4.37 * earth_mass)
@@ -336,7 +348,8 @@ extern bool firstrun, done, show_grid, show_consln, show_xonsm, show_labels, sho
     generating_fic_texture, focus_findbox, whtbkgd, objinfwnd, statuswnd, objedtwnd, astwnd, cometwnd, satwnd, addcelwnd, hide_mouse, searched, show_terrain, show_clouds,
     draw_actual_conslines, explorer, neighborhood, locwnd, show_taucalc, randomize_txgen, save_viewer_latlon, have_Gliese, have_BSC, have_HIP,
     have_Uranio, have_WD, have_CCDM, have_SB9, have_astorb, have_comets, have_exo, have_RC3, have_UNGC, have_GCVS, fancy_star_col,
-    noexo, nosats, keyprobe, mouse_over_menu, menu_clicked, radio_silence, local_tmstep, shortnames, showfails, show_tentative_exoplanets;
+    noexo, nosats, keyprobe, mouse_over_menu, menu_clicked, radio_silence, local_tmstep, shortnames, showfails, show_tentative_exoplanets,
+    use_imperial_units;
 extern std::atomic<bool> abort_load;
 extern std::atomic<bool> load_completed;
 extern std::atomic<int> texture_loads_pending;

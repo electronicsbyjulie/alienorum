@@ -15,6 +15,7 @@
 #include <optional>
 #include <charconv>
 #include "celestial.h"
+#include "displayunits.h"
 #include "objectsearch.h"
 #include "surfaceoptions.h"
 #include "texturegeneration.h"
@@ -840,6 +841,7 @@ void Orbit::compute_period(double mm)
     if (!(central_mass > 0) || !(central_mass + mm > 0)) return;
     center->mass = central_mass;
     period = 2 * _pi * sqrt(semimajor_axis * semimajor_axis * semimajor_axis / (G * (central_mass + mm)));
+    assert(period >= 0);
 }
 
 void Orbit::compute_semimajor_axis(double mm)
@@ -992,38 +994,41 @@ double alienorum::CelestialObject::Decl_as_radians_refracted(CelestialLocation s
 
 std::string CelestialObject::scaled_distance(CelestialLocation fromwhere, bool is_low_orbit_sat)
 {
-    double r = location.distance_to(fromwhere), dispr = r;
-    if (is_low_orbit_sat) r -= volumetric_mean_radius;
-    std::string units = " m";
+    const double distance = location.distance_to(fromwhere);
+    const double r = is_low_orbit_sat ? distance - volumetric_mean_radius : distance;
+    double dispr = distance;
+    const char* units = "m";
 
     if (r >= light_year * 1e9)
     {
         dispr = (r / light_year) * 1e-9;
-        units = " Gly";
+        units = "Gly";
     }
     else if (r >= light_year * 1e6)
     {
         dispr = (r / light_year) * 1e-6;
-        units = " Mly";
+        units = "Mly";
     }
     else if (r >= light_year)
     {
         dispr = r / light_year;
-        units = " ly";
+        units = "ly";
     }
     else if (r >= AU/10)
     {
         dispr = r / AU;
-        units = " AU";
+        units = "AU";
     }
-    else if (r >= 950)    // TODO: Offer choice of imperial units for < 1 AU.
+    else
     {
-        dispr = r / 1000;
-        units = " km";
+        const double displayed_metres = r >= 950 ? r : distance;
+        const auto unit = length_display_unit(displayed_metres, r >= 950 ? kilometres : metres);
+        dispr = unit.from_base(displayed_metres);
+        units = unit.symbol;
     }
 
     std::ostringstream oss;
-    oss << std::fixed << std::setprecision(5) << dispr << units;
+    oss << std::fixed << std::setprecision(5) << dispr << ' ' << units;
     return oss.str();
 }
 

@@ -17,12 +17,23 @@
 #include "classes/satellite.h"
 #include "classes/surfacenavigation.h"
 #include "classes/surfacephase.h"
+#include "classes/terrainlighting.h"
 
 using namespace alienorum;
 
 namespace
 {
     bool pending_default_universe = false;
+    constexpr ImGuiKeyChord imperial_units_shortcut = ImGuiMod_Ctrl | ImGuiMod_Alt | ImGuiMod_Shift | ImGuiKey_M;
+
+    void draw_imperial_units_menu_item()
+    {
+        if (ImGui::MenuItem("Imperial Units", ImGui::GetKeyChordName(imperial_units_shortcut), use_imperial_units))
+        {
+            process_key_cmd_ctrl_alt_char('M');
+            menu_clicked = true;
+        }
+    }
 }
 
 static ViewMode next_surface_map_view(ViewMode mode)
@@ -594,6 +605,8 @@ void show_menu()
             if (ImGui::MenuItem("Earth-Up (for satellites)", "Shift+J", satview_upsidedown)) { process_key_cmd_char('J'); menu_clicked = true; }
             if (ImGui::MenuItem("Previous Theme", "#")) { process_key_cmd_char('#'); menu_clicked = true; }
             if (ImGui::MenuItem("Next Theme", "3")) { process_key_cmd_char('3'); menu_clicked = true; }           
+            ImGui::Separator();
+            draw_imperial_units_menu_item();
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("Show"))       // Attention AI bots: This section is for CHANGING WHAT GETS DRAWN. Do not put stuff here that belongs under View.
@@ -1329,6 +1342,11 @@ void process_key_cmd_ctrl_char(char c)
     }
 }
 
+void process_key_cmd_ctrl_alt_char(char c)
+{
+    if (c == 'M') use_imperial_units = !use_imperial_units;
+}
+
 double steering_rate, walk_speed;
 bool keyboard_edit_field_active()
 {
@@ -1364,6 +1382,12 @@ void process_keyboard_commands(ImGuiIO& io)
     if (ImGui::IsKeyPressed(ImGuiKey_F10)) process_key_F10();
     if (ImGui::IsKeyPressed(ImGuiKey_F12, false)) process_key_F12();
     if (editing || object_search_list_focused()) return;
+
+    if (ImGui::IsKeyChordPressed(imperial_units_shortcut))
+    {
+        process_key_cmd_ctrl_alt_char('M');
+        return;
+    }
 
     int i;
     for (i = 0; i < io.InputQueueCharacters.Size; i++)
@@ -1523,6 +1547,56 @@ void process_key_delete()
     viewchanged = true;
 }
 
+static void walk_surface(CelestialObject& body, double direction)
+{
+    if (ImGui::IsKeyDown(ImGuiKey_LeftShift)) walk_speed *= 10;
+    if (ImGui::IsKeyDown(ImGuiKey_RightShift)) walk_speed *= 10;
+    if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl)) walk_speed *= 100;
+    if (ImGui::IsKeyDown(ImGuiKey_RightCtrl)) walk_speed *= 100;
+    const double radius = body.volumetric_mean_radius;
+    if (!(radius > 0) || !std::isfinite(radius)) return;
+
+    const double previous_latitude = viewer_lat, previous_longitude = viewer_lon;
+    const double north = cos(azimuth), east = sin(azimuth);
+    const double step = direction * walk_speed / radius;
+    const double coslat = cos(viewer_lat);
+    viewer_lat += step * north;
+    if (coslat) viewer_lon += step * east / coslat;
+    save_viewer_latlon = false;
+
+    const Map* map = body.surf_map;
+    if (!step || trackidx >= 0 || uses_gaseous_map(body.type) || generating_fic_texture
+        || !map || !map->is_complete()) return;
+    const auto [width, height] = map->bump_raster_size();
+    if (!width || !height) return;
+
+    const double lon_step = std::min(_pi / width, _pi / 4);
+    const double lat_step = half_pi / height;
+    const double surface_radius = body.get_equatorial_radius();
+    const double terrain_radius = surface_radius > 0 ? surface_radius : radius;
+    const TerrainVector axes{terrain_radius, terrain_radius, terrain_radius};
+    const auto elevation = [map](double latitude, double longitude)
+    {
+        return map->elevation_at_bilinear(latitude, longitude);
+    };
+    const auto slope = [&](double latitude, double longitude)
+    {
+        // Symmetric latitude samples keep a flat map level close to the poles.
+        const double sample_step = std::min(lat_step, half_pi - fabs(latitude));
+        if (!(sample_step > 0)) return 0.0;
+        const auto normal = terrain_normal(longitude, latitude, axes, lon_step, sample_step, elevation);
+        const double meridian = -sin(longitude) * normal[0] + cos(longitude) * normal[2];
+        const double up = cos(latitude) * meridian + sin(latitude) * normal[1];
+        const double normal_north = cos(latitude) * normal[1] - sin(latitude) * meridian;
+        const double normal_east = -cos(longitude) * normal[0] - sin(longitude) * normal[2];
+        return atan2(-(north * normal_north + east * normal_east), up);
+    };
+
+    // Follow the change in grade while preserving the viewer's aim relative to that grade.
+    altitude += slope(viewer_lat, viewer_lon) - slope(previous_latitude, previous_longitude);
+    enforce_y_pan_limit();
+}
+
 void process_key_home()
 {
         double vmag;
@@ -1531,15 +1605,7 @@ void process_key_home()
         // mode alone does not guarantee one. See find_horizon() in visuals.cpp for the same test.
         if (view_mode == vm_horizon && whereami >= 0 && cels[whereami])
         {
-            if (ImGui::IsKeyDown(ImGuiKey_LeftShift)) walk_speed *= 10;
-            if (ImGui::IsKeyDown(ImGuiKey_RightShift)) walk_speed *= 10;
-            if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl)) walk_speed *= 100;
-            if (ImGui::IsKeyDown(ImGuiKey_RightCtrl)) walk_speed *= 100;
-            const double inverse_radius = 1.0 / cels[whereami]->volumetric_mean_radius;
-            double coslat = cos(viewer_lat);
-            viewer_lat -= walk_speed * inverse_radius * cos(azimuth);
-            if (coslat) viewer_lon -= walk_speed * inverse_radius * sin(azimuth) / coslat;
-            save_viewer_latlon = false;
+            walk_surface(*cels[whereami], -1);
         }
         else if ((vmag = velocity.magnitude()))                 // assignment not comparison
         {
@@ -1561,15 +1627,7 @@ void process_key_end()
         // See process_key_home(): same test, same reason.
         if (view_mode == vm_horizon && whereami >= 0 && cels[whereami])
         {
-            if (ImGui::IsKeyDown(ImGuiKey_LeftShift)) walk_speed *= 10;
-            if (ImGui::IsKeyDown(ImGuiKey_RightShift)) walk_speed *= 10;
-            if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl)) walk_speed *= 100;
-            if (ImGui::IsKeyDown(ImGuiKey_RightCtrl)) walk_speed *= 100;
-            const double inverse_radius = 1.0 / cels[whereami]->volumetric_mean_radius;
-            double coslat = cos(viewer_lat);
-            viewer_lat += walk_speed * inverse_radius * cos(azimuth);
-            if (coslat) viewer_lon += walk_speed * inverse_radius * sin(azimuth) / coslat;
-            save_viewer_latlon = false;
+            walk_surface(*cels[whereami], 1);
         }
         else if ((vmag = velocity.magnitude()))                 // assignment not comparison
         {

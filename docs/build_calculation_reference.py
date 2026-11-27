@@ -16,9 +16,11 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, Page
 from reportlab.platypus.tableofcontents import TableOfContents
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
+from calculation_bibliography import CITED_ARTICLES, OTHER_ARTICLES
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / 'docs' / 'Alienorum-calculation-reference.pdf'
+REVISION = '2026-11-27'
 FONT = Path('/usr/share/fonts/truetype/dejavu')
 pdfmetrics.registerFont(TTFont('DejaVu', str(FONT / 'DejaVuSerif.ttf')))
 pdfmetrics.registerFont(TTFont('DejaVuBold', str(FONT / 'DejaVuSerif-Bold.ttf')))
@@ -34,7 +36,7 @@ styles.add(ParagraphStyle(name='Cover', fontName='DejaVuBold', fontSize=28, lead
 story = []
 sections = []
 toc = TableOfContents()
-toc.levelStyles = [ParagraphStyle(name="ContentsEntry", fontName="DejaVu", fontSize=8.5, leading=12, spaceBefore=5, leftIndent=0, firstLineIndent=0)]
+toc.levelStyles = [ParagraphStyle(name="ContentsEntry", fontName="DejaVu", fontSize=8.5, leading=13, spaceBefore=0, leftIndent=0, firstLineIndent=0)]
 def symbol_markup(text):
     escaped = html.escape(str(text))
     return re.sub(r'[ℓℛℳ]', r'<font name="DejaVuSymbols">\g<0></font>', escaped)
@@ -80,7 +82,7 @@ def table(headers, rows, widths=None):
 story.append(Spacer(1,65))
 p('Alienorum\nCalculation Reference', 'Cover')
 p('Physical models, empirical estimates, and procedural appearance', 'Sub')
-p('Scientific audit: 13 November 2026 · Explanatory revision: 14 November 2026')
+p('Original scientific audit, 13 November 2026. Calculation reference updated ' + REVISION + '.')
 p('Alienorum starts with catalog measurements and fills gaps with physical models, empirical estimates, and explicit assumptions. This reference follows those calculations from stellar properties and orbits through atmospheres, climates, terrain, and vegetation. Each mathematical expression is placed alongside the question it addresses, the meaning of its symbols, and the limits of its interpretation.')
 p('Where a calculation accepts a measured or supplied quantity, that quantity takes priority over an estimate. The distinction matters when looking at a generated world: an illustrative atmosphere or landscape does not establish that an unresolved object actually has oceans, life, particular minerals, or the weather shown on screen.')
 p('The equations describe the scientific operations carried out by the application. To reproduce a particular result exactly, consult the corresponding implementation and its inputs. The final appendix gives source locations and file digests that identify the repository state used to build this document. The original scientific audit and this later explanatory revision are dated separately above.')
@@ -90,6 +92,7 @@ section('Reading the models and preserving evidence', 'planet.cpp; shore.cpp; nu
 p('It helps to distinguish three kinds of statement in the pages that follow. Some relations express conservation, geometry, or equilibrium thermodynamics under stated approximations. Others estimate a property by interpolating observations or published model grids. A third group supplies a workable scenario where the available evidence does not determine a unique answer. Procedural appearance belongs mainly to that third group.')
 p('A supplied number remains usable when it carries an uncertainty annotation. Zero is also a valid value and is treated differently from an absent measurement. Pressure, composition, radius, temperature, or water coverage entered in a catalog or editor can therefore constrain an inference or replace it altogether.')
 p('Saved or locked appearances may retain parameters from an earlier calculation. As a result, restoring an object can legitimately produce a different state from inferring it afresh from the same catalog entry.')
+p('The exoplanet catalog distinguishes confirmed, candidate and uncertain entries, and records whether a mass is observed, an RV lower bound or an estimate. A direct observation and a restatement of M sin i can lead to different inference paths. Per-object environmental annotations can supply pressure scenarios or retain evidence about bulk composition and geology. A pressure locked through such a scenario constrains atmospheric refreshes, and a zero-pressure scenario carries its own provenance.')
 p('Several compact functions are used throughout the reference. C(x;l,h) restricts x to the interval from l to h. The smoothstep S uses the restricted coordinate u to join two states with a flat slope at each end:', 'Lead')
 eq(r'C(x;l,h)=\min(h,\max(l,x)),\qquad S(x)=u^2(3-2u),\quad u=C(x;0,1)')
 p('A logistic transition ℓ provides another gradual change between zero and one. The separate notation U(l,h) means a uniform random draw between the lower bound l and upper bound h:', 'Lead')
@@ -108,7 +111,17 @@ p('These expressions use kilograms. Many application records, however, store mas
 p('The common surface-gravity estimator reports gravity relative to Earth. Calculations of scale height and atmospheric inventories instead use dimensional acceleration.')
 p('A flattened body has another geometric distinction: its equatorial radius R_eq exceeds its polar radius R_pol. Starting from the volume-equivalent radius R and oblateness f, the application uses:', 'Lead')
 eq(r'R_{eq}=\frac{R}{(1-f)^{1/3}},\qquad R_{pol}=(1-f)R_{eq}')
-p('Oblateness f measures how much shorter the polar radius is than the equatorial radius. The expressions distribute the supplied mean radius between those two axes while preserving the volume of an oblate spheroid. They prescribe the shape without solving for the rotating interior that would produce it.')
+p('Oblateness f measures how much shorter the polar radius is than the equatorial radius. The expressions distribute the mean radius between those two axes while preserving volume.')
+sub('Rotational flattening for catalog exoplanets')
+p('After estimating the planet’s classification, Alienorum estimates its spin and uses a first-order hydrostatic figure to estimate flattening [R11]. If atmosphere and interior inference change the planet’s class or radius, the import updates the spin before calculating flattening. The signed sidereal period P enters through its magnitude. Rotation in either direction produces the same centrifugal term.', 'Lead')
+eq(r'\omega=2\pi/|P|,\qquad q=\omega^2R^3/(GM),\qquad f=C[(q+3J_2)/2;0,0.30]')
+p('q is the ratio of centrifugal to gravitational acceleration at the volume-equivalent radius. Using this radius in place of the equatorial reference radius changes the result at higher order in flattening. A finite positive J₂ supplies the quadrupole term directly. Otherwise, the estimate uses J₂=k_f q/3, where k_f is a secular fluid response. The Earth-like fallback is 0.94 [R12]. The giant fallback is 0.50 for gas-map classes, including ice giants. Both are broad interior assumptions.')
+p('The comparison below uses the conventional Solar System gravitational parameters, volume-equivalent radii and sidereal periods with the fallback quadrupole. Earth checks the long-term rocky response, and the four outer planets check the shared giant approximation [R13].')
+table(['Body', 'Observed f', 'Fallback f'], [
+    ['Earth', '0.00334', '0.00335'], ['Jupiter', '0.06487', '0.06256'], ['Saturn', '0.09796', '0.10474'],
+    ['Uranus', '0.02293', '0.02164'], ['Neptune', '0.01708', '0.01922'],
+], [160,150,150])
+p('These benchmarks supply the inputs directly. A wide-orbit Jupiter analogue with its estimated 10.18-hour spin gives f ≈ 0.0594 with Jupiter’s volume-equivalent radius. A catalog entry of one Jupiter radius uses the catalog unit of 71,492 km and gives f ≈ 0.0635. Inferred flattening scales as P⁻² when the quadrupole is also inferred. The estimate omits permanent deformation, tidal elongation and wind-driven changes to the figure. Large q weakens the first-order approximation. The 0.30 limit bounds the generated shape. Invalid mass, radius or spin returns zero. Catalog and saved shape fields can also supply flattening directly.')
 p('Astrometry locates the object before any local appearance is calculated. With distance d, right ascension α, and declination δ, its Cartesian position vector is:', 'Lead')
 eq(r'\mathbf{r}=d(\cos\delta\cos\alpha,\cos\delta\sin\alpha,\sin\delta)')
 p('Parallax gives distance through the reciprocal relation below, when parallax ϖ is in arcseconds and distance d_pc is in parsecs. Proper motion μ, in arcseconds per year, then gives the transverse speed v_t; the factor 4.74047 converts these astronomical units to kilometers per second:', 'Lead')
@@ -146,14 +159,37 @@ p('Satellite placement is constrained at both large and small distances. The Hil
 eq(r'R_H=a(1-e)\left(\frac{M}{3M_c}\right)^{1/3},\quad R_{Roche}\simeq2.44R_c(\rho_c/\rho_s)^{1/3}')
 p('A generated satellite must clear the parent and the applicable Roche limit, while remaining within an allowed fraction of the parent’s gravitational sphere of influence. Generated moons extend to at most 0.3 of that outer scale. Ring placement uses a fluid-disruption scenario.')
 p('Material strength, irregular shape, orbital resonances, and long-term tidal migration can change real systems. Those effects are not integrated by these placement rules.')
-p('Where a rotation period is absent, the generator uses simple tidal-state rules. P_lock is an eccentricity-dependent orbital-period threshold. The second expression gives the spin period for the separate 3:2-resonance branch:', 'Lead')
-eq(r'P_{lock}=\frac{100}{1+4e}\;\mathrm{days},\qquad P_{spin}=\frac{2}{3}P_{orb}\quad(3{:}2)')
-p('When rotation is unknown, a short orbital period or the hot-giant classification can lead to synchronous rotation: the same face remains directed toward the parent. The threshold P_lock is a heuristic, rather than a calculation of the time required for tidal locking.')
-p('If the synchronous branch does not apply, an orbital period below 250 days together with e above 0.15 selects a Mercury-like 3:2 resonance. Three rotations then occur during two orbits, so P_spin is 2/3 of P_orb. The original audit corrected that period ratio.')
-p('Other default rotation periods follow A/ln(M), with M inserted numerically in grams and the result expressed in seconds. A is 2.06×10⁶ for ocean-rich classes, 1.74×10⁶ for ice giants, 1.11×10⁶ for gas giants, and 2.38×10⁶ for the remaining classes. The gram reference is part of the empirical convention; changing the mass unit without changing the calibration would change the result.')
+sub('Initial planetary spin and tidal evolution')
+p('For an absent spin, the application starts with a prograde, class-based period. P₀ uses the numerical mass in grams and gives seconds. Where mass and radius specify a spherical breakup limit, the estimate respects that limit at both the start and end of tidal evolution.', 'Lead')
+eq(r'P_0=\frac{A}{\log_{10}(M/1\,\mathrm{g})},\qquad P_{\rm break}=2\pi\sqrt{\frac{R^3}{GM}}')
+p('A is 2.06×10⁶ for water worlds and Hycean worlds, 1.74×10⁶ for ice giants, 1.11×10⁶ for the other gaseous classes, and 2.38×10⁶ for the remaining classes. This empirical prior approximates several Solar System rotation periods [R13]. For β Pictoris b it gives 9.84 hours at the 11 Jupiter masses adopted by Snellen et al., who inferred an 8.1 ± 1.0-hour day. Studies of young giants consider contraction and early angular momentum evolution [R21–R22].')
+table(['Body', 'Free-spin estimate, hours', 'Observed, hours'], [
+    ['Earth', '23.80', '23.93'], ['Jupiter', '10.18', '9.93'],
+    ['Saturn', '10.36', '10.66'], ['Neptune', '16.66', '16.11'],
+], [140,175,145])
+p('With a physical orbit and an immediate tide-raising parent of mass M_c, the spin changes over the host star’s observed or inferred age t. For moons, the planet raises the tide and the star sets the age. Without a usable stellar age the application adopts 4.5 Gyr. It holds orbital geometry and structure fixed and assumes zero tidal obliquity. The torque magnitude T₀ uses the circular constant-phase-lag limit [R17].')
+eq(r'T_0=\frac{3}{2}\frac{k_2}{Q}\frac{GM_c^2 R^5}{a^6},\qquad I=CMR^2,\qquad b_0=T_0/I')
+p('The moment coefficient C is 0.33 for surface worlds and 0.25 for the gaseous classes. The adopted k₂/Q is 0.003 and 3×10⁻⁶ respectively, unless supplied. A zero value or absent orbital geometry retains the free spin. Supplied spin periods are used in the normal data-loading paths.')
+p('A surface world changes its initial angular speed ω₀ toward a discrete spin-orbit resonance at rate b₀. The target is synchronous (n) except in a Mercury-like scenario: when e is at least 0.2 and the initial spin is at least 1.5n, the target is 1.5n. Resonance entry depends in reality on eccentricity history, triaxiality, and rheology [R18–R19]. The criterion approximates one possible outcome.')
+eq(r'\omega(t)=\omega_0+\mathrm{sgn}(\omega_*-\omega_0)\min(|\omega_*-\omega_0|,tb_0)')
+p('For Mercury’s present orbit and adopted dissipation, this scenario gives the observed 58.7-day endpoint after about 0.52 Gyr. Noyelles et al. find capture in 10–20 Myr for most Mercury histories in their rheology model [R18]. The timescale difference shows the limitations of the circular torque magnitude and assumed dissipation. Atmospheric tides, which can sustain asynchronous states such as Venus’s, are also outside this estimate [R20].')
+story.append(CondPageBreak(112))
+p('A gaseous world instead uses the zero-obliquity constant-time-lag equilibrium [R6], normalized by k₂Δt = (k₂/Q)/n. Its spin relaxes exponentially toward the eccentric equilibrium. The dimensionless quantities x_eq and Ω are given in the tidal heating section. A circular orbit has x_eq = 1. For e = 0.2 the equilibrium period is about 0.8052 times the orbital period.', 'Lead')
+eq(r'\omega(t)=nx_{eq}+(\omega_0-nx_{eq})e^{-t/\tau},\qquad \tau=\frac{n}{2b_0\Omega}')
+p('When a planet has a radius and orbit but no mass, the estimator uses an Earth-density scenario for surface worlds or a Jupiter-density scenario for gaseous worlds. That mass enters only the spin calculation. The application records a period if the surface-world scenario reaches its resonance, or if the gaseous scenario settles within one percent of its equilibrium rotation rate. The period reported is the resonance or equilibrium period, subject to the breakup limit. For example, the TOI-6713.01 candidate (GJ 1153 d) has a 2.15382-day orbit and a radius near 1.3 Earth radii. Its catalog orbit is circular, so the estimate is synchronous.')
+sub('Solar day')
 p('The cycle of daylight depends on rotation relative to the orbit, not relative to distant stars. Subtracting orbital from spin angular frequency gives the solar angular frequency:', 'Lead')
 eq(r'\omega_{solar}=2\pi\left(\frac{1}{P_{spin}}-\frac{1}{P_{orb}}\right)')
-p('The solar angular frequency describes how rapidly the direction of the star moves through the local sky. It depends on the difference between the spin and orbital frequencies, rather than on spin alone.')
+p('The solar angular frequency describes how rapidly the star moves through the local sky. The stellar day is 2π/|ω_solar|, with an infinite day for exact synchronism. Retrograde spin contributes a negative spin frequency. For a moon, the year in this formula is the orbit of the ancestor that directly orbits the illuminating star.')
+sub('Prime meridian and local solar time')
+p('For bodies with a catalog orientation model, IAU pole right ascension and declination are evaluated as polynomials in Julian centuries, and the prime meridian is evaluated in elapsed Julian days. Periodic sine terms adjust right ascension and meridian angle, and cosine terms adjust declination. The model epoch is JD 2451545.0. UTC is corrected to TT as a close approximation to TDB, except for an explicitly civil-time model. The evaluated pole and meridian rotate into the scene before computing the star’s local hour angle.')
+eq(r'\theta_j=c_{0j}+c_{1j}T+c_{2j}T^2,\quad \alpha=\alpha_0(T)+\sum_j a_j\sin\theta_j,\quad\delta=\delta_0(T)+\sum_j d_j\cos\theta_j')
+eq(r'W=W_0(d)+\sum_j w_j\sin\theta_j')
+p('Local solar noon is the crossing of the observer’s meridian by the principal star. The solar-time-preserving step searches near the requested epoch for the same local phase. Spin, orbital motion and the adopted meridian all contribute to that phase.')
+sub('Catalog satellite propagation and generated inclinations')
+p('Earth satellites with general-perturbations elements use SGP4 with WGS-72 constants. Each propagation starts from the epoch record and uses minutes since its fractional-second catalog epoch. The TEME position in kilometres rotates into the scene’s Earth-equatorial frame and converts to metres. Authored satellite orbits without those elements follow the Kepler path. The propagation is an orbit model with drag and perturbation terms appropriate to the catalog elements, rather than a reconstruction of later maneuvers.')
+p('Generated planetary inclinations usually follow 6°U⁴. A hot Jupiter around a star of at least 6250 K uses an isotropic draw, as do 10% of hot Jupiters around cooler hosts. The isotropic angle is acos(1-2U). A generated moon uses 18°U⁴ times C[(a/R_Roche-1)/10;0,1], with a 3% draw reflected to the retrograde branch. These scenario angles apply in the model’s reference plane. They should be distinguished from a measured observer-relative inclination.')
+p('Generated rings start at or beyond 1.1 equatorial radii. The proposed inner edge extends up to the greater of that minimum and 0.60 Roche radii. The outer edge lies between 1.15 times the inner edge and 0.98 Roche radii. A body with too little room for that span receives no generated ring.')
 p('When the application is minimized, it pauses position and appearance calculations. On restoration, monotonic elapsed time advances the simulation clock under the usual observer time-dilation rule, and orbital positions are evaluated at that new epoch. The idle interval is not applied as a camera-motion step.')
 
 section('Incident starlight, albedo, and equilibrium temperature', 'planet.cpp; patch.cpp; star.cpp')
@@ -183,7 +219,7 @@ p('Even at x=x_eq, an eccentric orbit can dissipate energy. H_min is the dimensi
 eq(r'H_{min}=\frac{z[3.5+11.25z+28z^2+(685/64)z^3+(255/128)z^4+(25/512)z^5]}{Ab^{15/2}}')
 p('The surface heat flux combines that minimum term with the extra dissipation from non-equilibrium spin. M_c is the tide-raising mass, R the heated body’s radius, a the orbital semimajor axis, and k₂/Q the assumed tidal response divided by its dissipation quality factor:', 'Lead')
 eq(r'q_{tide}=\frac{3(k_2/Q)GM_c^2R^3n}{4\pi a^6}\frac{H_{min}+\Omega(x-x_{eq})^2}{\max(1,2|x-1|)}')
-p('When spin is absent, the calculation uses x_eq, the equilibrium spin giving minimum dissipation in this model. The default k₂/Q is 0.003 for worlds with solid-surface maps and 3×10⁻⁶ for gaseous worlds. A supplied zero turns this heat source off.')
+p('When spin is absent, the calculation uses x_eq, the equilibrium spin giving minimum dissipation in this model. The heating calculation normalizes the lag at whichever is faster, orbital or semidiurnal forcing. Spin evolution for gaseous worlds uses orbital normalization and shares the eccentricity functions. The default k₂/Q is 0.003 for worlds with solid-surface maps and 3×10⁻⁶ for gaseous worlds. A supplied zero turns this heat source off.')
 p('The calculation omits a changing material response, ocean dissipation, obliquity tides, resonant forcing, and variation of Q over time. At high eccentricity it can predict heating too large for a plausible steady interior [R6].')
 
 section('Elemental abundances and formation composition', 'chemistry.cpp; salinity.h')
@@ -327,6 +363,17 @@ p('The reference partition assigns 90% of the erosion capacity to atmospheric ga
 p('The capture fraction c determines how much arriving material is initially retained. Material delivered throughout the history then survives the combined erosion and escape exposure according to V(d), with continuous limit V(0)=1. Diagnostic records separate prompt loss, later loss, retained delivery, and erosion of the original inventory. These are effective exposure assumptions rather than hydrodynamic impact simulations.')
 p('The visible crater population is treated separately. Increasing pressure reduces crater abundance through 1/(1+3p/p⊕), while larger B increases it. Suppressing craters in the appearance does not remove impacts from the physical volatile budget.')
 
+section('Joint estimates of planet structure and environment', 'planetinference.cpp; planet.cpp; shore.cpp; classification_model.json')
+p('Eligible worlds compete across solid and hydrogen-envelope scenarios. Observed mass and radius, supplied pressure and water settings, and authored composition constrain the comparison. Locked types, saved appearances and older authored bodies without measurement provenance follow their existing models. An RV minimum mass without an inclination uses three equal bins in cos i, with M=M_min/sin i. When both direct mass and its error bounds are available, the samples at the lower, central and upper masses carry weights 0.25, 0.50 and 0.25. A radius-only case uses a quarter-dex log-mass grid from 10⁻³ to 10³·⁵ Earth masses.')
+p('For Earth-scaled mass m, core fraction c and bulk water fraction w, the solid branch combines an iron-silicate radius law with a compressed-water volume proxy [R14]:', 'Lead')
+eq(r'R_{solid}/R_\oplus=(1.07-0.21c)m^{1/3.7}(1+1.7w)^{1/3}')
+p('Core fractions 0.10, 0.33 and 0.65 are weighted around the host-chemistry estimate, using width 0.20. Bulk water samples are zero, the estimated inventory, 1%, 10% and 50%. Carbon and nitrogen inventories compete at 0.1, 1 and 10 times the reference delivery. A supplied inventory can collapse these alternatives to a single composition. The envelope branch compares hydrogen-helium fractions of 0.1%, 1% and 10%, with the central branch favored. Below the giant threshold, its radius adds a Lopez-Fortney-style envelope thickness to a water-adjusted solid radius:', 'Lead')
+eq(r'R_{env}/R_\oplus=1.02m^{.27}(1+1.7w)^{1/3}+2.06m^{-.21}(f_e/.05)^{.59}F^{.044}(\max(.1,t)/5)^{-.18}')
+p('Here F is irradiation in Earth units and t is age in Gyr. At and above 127 Earth masses, the radius instead follows R_J times (m/317.8)⁻⁰·⁰⁴, clipped to 0.7–1.5 Jupiter radii. The giant pressure is a conventional one-bar cloud reference. The published solid fit covers 1–8 Earth masses and core fractions up to 0.40. The app explores a wider scenario grid and adds its own water-volume term.')
+p('A prediction y and observation x contribute the following log likelihood, using the measurement error on the appropriate side and scenario scatter s. Radius scatter is 8% of the solid prediction or 15% of the envelope prediction:', 'Lead')
+eq(r'\sigma=\sqrt{\sigma_{obs,\pm}^2+s^2},\qquad \ln L=-\frac{1}{2}[(y-x)/\sigma]^2-\ln\sigma')
+p('Structural likelihoods sum over mass and core samples before one coupled climate and surface-water evaluation per representative volatile branch. Supplied pressure enters on a log(1+p) scale. Supplied water constrains the modeled water level. Vacuum excludes the deep-envelope branch, and thin atmospheres or supplied surface water strongly penalize it. Weights are normalized across viable branches, summed by class, then the best-weighted branch of the winning class supplies the displayed representative. The scores reflect these priors and the sampled scenarios.')
+
 section('Water inventory, basin volume, and surface coverage', 'shore.cpp; watercoverage.h; planet.cpp')
 p('The first step from water inventory to surface coverage is to spread the available mass over the entire sphere. The resulting equivalent depth d_W is the depth of a hypothetical uniform water layer, using surface-accessible mass fraction f_W,surface and water density ρ_W:', 'Lead')
 eq(r'd_W=\frac{f_{W,surface}M}{4\pi R^2\rho_W},\quad \rho_W=1000\;\mathrm{kg\,m^{-3}}')
@@ -338,9 +385,9 @@ p('For a sampled terrain, each location below a trial waterline contributes its 
 eq(r'd_W=\frac{\sigma_h}{s_h}\frac{1}{N}\sum_j\max(0,h_0-h_j),\quad f_{area}=\frac{1}{N}\sum_j\mathbf{1}_{h_j<h_0}')
 p('The samples h_j are normalized terrain heights taken at equal-area locations, and s_h is their standard deviation. The solver adjusts the waterline h₀ by bisection until the summed basin volume matches the available water. The indicator in the area expression counts locations below that level.')
 p('A flat surface with any positive water inventory is fully covered. The visual waterline is stored within [0,1], but the represented physical water depth can extend above the highest sampled terrain.')
-p('Without a terrain map, a Gaussian elevation distribution supplies a preliminary basin model. In the following relation, z is the standardized waterline, Φ(z) the fraction of area below it, and φ(z) the normal probability density:', 'Lead')
-eq(r'\frac{d_W}{\sigma_h}=z\Phi(z)+\phi(z),\quad f_{area}=\Phi(z)')
-p('Before a terrain map exists, the model assumes a Gaussian distribution of elevations, or Gaussian hypsometry. Here Φ is the standard normal cumulative distribution and φ its probability density; z expresses the waterline in units of the relief scale. This supplies an initial coverage and a visual level clipped from 0.5+0.08z.')
+p('Before a terrain map exists, the model uses an equal-area basin table sampled from NOAA ETOPO 2022. The planetary water depth is rescaled to the Earth table’s RMS relief. Linear interpolation in equivalent depth gives the elevation and flooded fraction. Above the final contour, coverage reaches one and additional depth raises the waterline.', 'Lead')
+eq(r'd_{table}=d_W(2507.326\,\mathrm{m})/\sigma_h,\qquad z=(h_{table}+2391.493\,\mathrm{m})/(2507.326\,\mathrm{m})')
+p('The initial visual level is 0.5+0.08z clipped to [0.000001,1], with one used for full coverage. A previously saved Gaussian prior can be replaced as the estimate is recomputed. The Earth reference gives 70.863% at 2622.106 m of global equivalent depth. A separate MOLA table illustrates a warm ancient Mars scenario with 200 m of water and a 100–500 m bracket. Present Mars instead reports zero persistent liquid coverage and 22 m equivalent depth in the polar layered-deposit scenario. The illustrative references do not set an exoplanet’s water inventory.')
 p('Actual elevation samples later calibrate the level. The percentage editor measures equal-area coverage, so its percentage is generally different from the numerical waterline setting.')
 
 section('Salinity, freezing, boiling, and exposed liquid', 'salinity.h; surfaceclimate.h; surfacephase.h')
@@ -390,6 +437,12 @@ p('A periodic forcing can be decomposed into harmonics. For harmonic n with inpu
 eq(r'A_n^{out}=\frac{A_n^{in}}{\sqrt{1+(n\omega_{solar}\tau)^2}},\quad \phi_n=\tan^{-1}(n\omega_{solar}\tau)')
 p('The daytime illumination curve is represented by eight harmonics. For land, the diurnal response time is (2×10⁵+0.05C_A)/B. For water, the heat capacity blends between 4.18×10⁶ and 1.93×10⁶ J m⁻² K⁻¹ over a 263.15-283.15 K liquid transition, with 0.05C_A added.')
 p('Changes in stellar illumination modulate the external contribution to T⁴; the internal contribution stays constant. Where mean temperature is supplied, a √(1-e²) normalization prevents orbital eccentricity from silently changing the interpretation of that mean.')
+sub('Airless surfaces and synchronous atmospheres')
+p('For a rocky surface at pressure up to 1 Pa, live temperatures use a separate radiative balance. At fixed illumination or as a fallback, T⁴ is absorbed stellar flux times the positive incidence cosine plus basal heat flux, divided by σ. Basal heat is tidal flux plus emission at 2.7 K. For a rotating surface, a regolith heat reservoir integrates this balance with backward Euler over four cycles. This produces a lagged afternoon maximum and gradual cooling after sunset. Thermal maps and live surface readouts use the same temperature sampler, including the current water or ice mask and elevation where available.')
+eq(r'T^4=(F_{abs}\max(0,\mathbf{n}\cdot\mathbf{s})+F_{basal})/\sigma')
+eq(r'C_{reg}=300/\sqrt{|\omega_{solar}|},\qquad C_{reg}(T_{j+1}-T_j)/\Delta t=F_{abs}\max(0,\mu_j)+F_{basal}-\sigma T_{j+1}^4')
+p('A synchronous atmosphere reduces its original redistribution by the ratio τ_rad/(τ_rad+τ_cross). The atmospheric heat capacity is C_A, B is the feedback coefficient above, and τ_IR is infrared optical depth. R_g is the mixture’s specific gas constant and R is planetary radius.', 'Lead')
+eq(r'\tau_{rad}=C_A/[B\max(1,\tau_{IR})],\qquad \tau_{cross}=R/\sqrt{R_gT_m}')
 
 section('Sea ice as an enthalpy reservoir', 'iceclimate.h; surfaceclimate.h; planet.cpp')
 p('Freezing requires removal of latent heat, so sea ice is represented by an energy reservoir rather than an immediate temperature switch. For column depth D, L_A is the latent heat per unit area, f is frozen mass fraction, and h is the equivalent ice thickness:', 'Lead')
@@ -446,6 +499,9 @@ eq(r'R(\lambda)=C\left[\left(r_v+\frac{r_{IR}-r_v}{1+e^{(\lambda_e-\lambda)/w_e}
 p('The unabsorbed background has visible scattering r_v=U(.15,.65) and infrared scattering min(.90,r_v+.25). Its UV edge lies at U(320,380) nm, and its structural reflectance edge is max(700,max_j(λ_j+2s_j)). Together with the absorption bands, these choices make a hypothetical leaf-like reflectance spectrum.')
 p('This does not identify an alien pigment or calculate oxygenic photosynthetic efficiency. The display RGB values average reflectance over the overlapping windows 560-709, 480-599, and 400-509 nm. Absorption can therefore leave a dark spectrum; the result is not automatically normalized to unit brightness.')
 p('A separate appearance preference favors purple over green by 5:2 among sufficiently saturated candidates in those hue families. The generator can try up to 128 pigment mixtures; other hue families are accepted without that preference. This is an artistic population choice. It carries no empirical claim about extraterrestrial ecology, and stellar illumination is applied separately from intrinsic reflectance.')
+p('Related worlds can share a visual pigment family. A repeatable seed derived from the primary star selects a system spectrum using that star’s temperature. Each eligible world adds a broad accessory band from its own local draw. With local center λ₀, width s₀ and depth d₀, the new band has:', 'Lead')
+eq(r'\lambda_{new}=\lambda_0,\quad s_{new}=40+2s_0\;\mathrm{nm},\quad d_{new}=0.12+0.24d_0/(1+d_0)')
+p('The shared spectrum is a procedural family resemblance. The local draw still consumes the same random sequence. Previously authored vegetation colors and saved appearances retain their precedence.')
 
 
 section('Gradual forest margins', 'vegetation.h; surfacenavigation.cpp; celestial.cpp; visuals.cpp')
@@ -492,7 +548,7 @@ eq(r'p_j=p_s e^{-0.12j},\quad T_j=\max(T_{skin},T_{j-1}e^{-0.12\kappa})\quad(j=1
 p('When water is saturated, condensation partly offsets cooling. The moist correction includes latent heat L, moisture loading q, water-vapor gas constant R_v, and the mixture heat capacities per mole and per unit mass:', 'Lead')
 eq(r'\kappa=\frac{R_g}{c_{p,mol}}\frac{1+Lq/(R_sT)}{1+L^2q/(c_{p,s}R_vT^2)}\quad\mathrm{(saturated\ water)}')
 p('Unsaturated levels use κ=R_g/c_p,mol. Where water is saturated between 235 and 647 K, the moist correction uses latent heat L=2.5×10⁶ J kg⁻¹ and water-vapor gas constant R_v=461.5 J kg⁻¹ K⁻¹. The quantities q and c_p,s represent the moisture loading and specific heat capacity per unit mass in that correction.')
-p('The upper-temperature floor is the smaller of surface temperature and max(30,.72T_eq scaled to the local temperature bin). Seventeen surface-temperature bins cover .55-1.25 of the mean. This vertical profile estimates condensation conditions without solving a radiative-convective weather system.')
+p('The upper-temperature floor is min(T_local,max(30 K,0.72T_eq)). The stellar equilibrium temperature supplies the same floor across all seventeen local surface bins, which span 0.55–1.25 of the mean. Changing the ground temperature changes the parcel at launch. This vertical profile estimates condensation conditions without solving a radiative-convective weather system.')
 p('At each level, the vapor partial pressure x_i p_j is compared with saturation pressure p_sat,i. The largest weighted excess through the column defines b_i, a dimensionless measure of condensate availability:', 'Lead')
 eq(r'b_i=\max_j\left[e^{-0.12j}\max\left(0,1-\frac{p_{sat,i}(T_j)}{x_ip_j}\right)\right]')
 p('The availability factor bᵢ measures how much of a species could condense along the estimated vertical profile. It supplies the column paths for water or ice, CO₂, methane, and ammonia.')
@@ -535,6 +591,9 @@ section('Gaseous-world bands, vortices, and overcast decks', 'giantclouds.h; cel
 p('A giant planet’s cloud map begins with bands organized by latitude. The phase ψ combines latitude coordinate z, band frequency ν, phase offset φ, and broad and fine noise fields N_b and N_f. The smooth band weight B then selects between palette regions:', 'Lead')
 eq(r'\psi=z\nu+\phi+1.4N_b+1.2N_f,\quad B=S\left(\frac{0.5-0.5\cos\psi-0.18}{0.62}\right)')
 p('Spherical noise and latitude-dependent shear bend the boundaries of the bands. Broad structure uses scales 3.2 and 4.7; tracer detail starts at scale 12, with longitudinal shear .12 sin(zν+φ). Three-octave folds and threads add finer features.')
+p('For an oblate, non-synchronous giant, parametric latitude u maps to two band coordinates through a meridional integral. Put b=1-f and m_u=sqrt(b² cos²u+sin²u). Here a m_u is the distance per radian along the meridian and b cos u/m_u is the cosine of geodetic latitude. The signed integrals replace latitude and sine latitude in the palette and jet phases:', 'Lead')
+eq(r'\frac{dL}{du}=\sqrt{b/m_u},\qquad \frac{dZ}{du}=\sqrt{b/m_u}\,b\cos u/m_u,\qquad L(0)=Z(0)=0')
+p('A 256-step midpoint table per hemisphere and linear interpolation evaluate these coordinates. For a sphere, L=u and Z=sin u. This Rhines-inspired spacing correction holds spin and wind fixed and changes how the procedural bands are drawn.')
 p('As angular pixel size or local vortex strain increases, the smallest structures fade. This limits aliasing while retaining the larger cloud pattern.')
 p('To place a vortex in that band field, the model measures elliptical distance r from vortex center (λ_v,φ_v). Longitude separation is shortened by cos φ_v, while w_v and h_v set its angular width and height:', 'Lead')
 eq(r'r^2=\left[\frac{(\lambda-\lambda_v)\cos\varphi_v}{w_v}\right]^2+\left[\frac{\varphi-\varphi_v}{h_v}\right]^2')
@@ -588,6 +647,30 @@ p('Each boulder starts from a perturbed 26-vertex dome. Horizontal dimensions ar
 p('Three profile families give broad caps, unequal shoulders, or taller crests. The pressure-dependent slab preference changes the appearance distribution; it does not calculate erosion.')
 p('Molten surfaces combine warped six-octave terrain, fissures, trigonometric vent patterns, and low basins. Fissures lower the normalized terrain by .08; vents activate above .64 in their sine/cosine field.')
 p('Piecewise red, orange, and gold color ramps represent activity and are multiplied by a thermal-emission factor. Reflected basalt remains visible in daylight. The palette illustrates molten material without serving as a calibrated emission spectrum or a model of magma viscosity and convection.')
+
+section('Calibrated terrain, crater shapes, and volcanic districts', 'elevationgrid.h; terrain_contours.h; craterprofile.h; volcanicterrain.h; celestial.cpp')
+p('Calibrated elevation maps preserve physical scale and datum. Bilinear sampling wraps longitude and handles latitude at the poles. Imported relief and procedural noise can provide the coarse shape, with terrain provinces following elevation alongside an independent geological field. The Bump Map displays the normalized elevation across its range, while the Thermal Map evaluates the current surface sampler. A mapped color or brightness is a display value.')
+eq(r'h=(v/65535-0.5)\Delta h+h_0')
+p('Here v is the interpolated 16-bit sample, Δh is the full height span and h₀ is the midpoint elevation. In the generated terrain, a smooth transition over GM/R from 150 kJ kg⁻¹ to 2 MJ kg⁻¹ serves as a proxy for differentiation. A colder, lower-density crust receives a stronger ice fraction. Relaxation grows as temperature approaches the adopted melting scale 1400−1127f_ice K. These proxies and pressure-linked deposition control the balance of plains, basin relief, shelves, and uplands. Distinct liquid basins use the full shaped profile.')
+p('Crater depths use a lunar fresh-crater envelope, with diameter D in kilometres. For a simple or complex crater, depth in metres follows:', 'Lead')
+eq(r'd=1000\min(0.196D^{1.010},1.044D^{0.301})')
+p('The simple-to-complex transition diameter in metres is 15000×1.62/max(0.1,g) on rock and 6000×1.62/max(0.1,g) on ice, each clipped to 1200–60000 m. A smooth wall rises from a bowl or flat floor. Gaussian terms add a rim and, for complex cases, a central peak or a peak ring. Fresh bright ejecta alter albedo independently of the sun-facing slope.')
+p('Strongly heated solid surfaces can acquire volcanic districts at tidal flux F above 0.2 W m⁻². The size, activity, burial history and eruption layout are scenario choices. At activity A=min(1,ln(1+F)/ln 11), the number of districts is the integer part of 4πR²A/(3×10¹² m²), bounded to 2–420. Vent radii are log-uniform from 22 to 330 km and limited to 0.095R. Random axes, pit fractions and ages give overlapping shields, collapsed floors and older provinces.')
+eq(r'H=\min(rs,Y/(\rho g)),\qquad V_{flood}=0.025FSt/(\rho H_c),\qquad V_{flank}=cr^2H')
+p('Edifice height uses slope s and limiting stress Y=200 MPa with rock density 3000 kg m⁻³. Flood basalt budgets use catchment area S, an assumed accumulation interval t and cooling enthalpy H_c=1.5 MJ kg⁻¹. Floods preferentially connect paths lower in the terrain. Flank flows use a fraction c of edifice volume, with runout set by volume divided by flow width and thickness and limited by terrain and distance. Younger units can cover older material.')
+p('Near vacuum, slower-than-escape ejecta travel at most an angular distance min(0.13,v²/(gR)) under the ballistic scenario. A pale SO₂ frost deposit is possible when partial pressure meets p_sat=1670 exp[4510(1/197.64-1/T)] Pa below the triple-point temperature. Incandescence assigns 10% of tidal power to exposed melt at 1450 K and emissivity 0.95:', 'Lead')
+eq(r'f_{melt}=\min[0.002,0.10F/(0.95\sigma(1450\,\mathrm{K})^4)]')
+p('The melt fraction is shared among active vents according to relative floor area and filtered below the map’s pixel scale. Exoplanet-specific volcanic scenarios and their observational motivation are described in the volcanic terrain companion document. Terrain, summit activity and visible color are illustrative when observations resolve only an integrated spectrum.')
+
+section('Terrain illumination, local skyline, and walking pitch', 'terrainlighting.h; distantskyline.h; visuals.cpp; sunclock_gpu.cpp; inputs.cpp')
+p('A surface vertex starts on an ellipsoid. A physical height h shifts it radially. A normal is estimated from the cross product of centered north–south and east–west differences, oriented outward. The normal controls the local incidence cosine μ=n·s. The horizon view uses both nearby relief and distant ridge samples. Along a given bearing, the profile retains the greatest apparent elevation of terrain above the observer. Ridge shielding and the geometric horizon can delay or advance illumination of a slope.')
+eq(r'x=(R+h)\sin(d/R),\quad y=(R+h)\cos(d/R)-(R+h_0+h_{eye})+(1/(2R)-\kappa)d^2')
+p('In the skyline equation d is arc distance, h₀ is the observer’s ground height and κ is the effective curvature coefficient after refraction. Each bearing keeps the largest slope y/x, then takes its arctangent. The sample reach is the smaller of 2000 km and half the planetary radius.')
+p('For elevation above a spherical datum, the horizon dip adds the following term to the radial incidence cosine μ₀. The renderer uses a smooth finite-star ramp centered on this adjusted incidence:', 'Lead')
+eq(r'z=\max(0,h/R),\quad x=\mu_0+\sqrt{z(2+z)}/(1+z),\quad E=S[(1+x/\sin\theta_*)/2]')
+p('θ_* is the star’s angular radius. A point source uses a hard cutoff at x=0. The terrain normal changes direct light on a raised or sloping surface. Reference lighting retains ambient, twilight, and light from other visible objects. Ring shadows and elevated ridgelines use terrain height where the corresponding map is available.')
+p('Local terrain and scenery also receive the incident stellar color. As haze opacity rises, the tint blends from that color into the normalized haze-light spectrum. On a solid surface below 150 Pa, the horizon renderer scales the main star’s direct flux by the reciprocal of mean instellation to keep a readable exposure. Ambient light and starlight retain separate terms. This display scaling leaves physical heating and climate unchanged.')
+p('Home and End keep the viewer’s reference plane aligned with local gravity. The camera pitch receives the change in terrain slope along the viewer’s heading between the old and new positions. With local terrain normal n, up u and heading t, the sampled slope is atan2(-n·t,n·u). There is no slope offset while stationary. The basic walking distance is 4 m per second before keyboard modifiers.')
 
 section('Sky colors, extinction, yellowing, and dense haze', 'visuals.cpp; color.cpp; pressurehaze.h')
 p('For the broad sky-color estimate, C_sky is a three-channel color vector. A particulate fraction f_d interpolates between a fixed blue scattering color and the planetary surface color C_planet:', 'Lead')
@@ -785,16 +868,27 @@ section('Numerical coefficients for stellar and formation inference', 'star.cpp;
 p('The table below records the implemented bolometric-correction coefficients for the central stellar temperature range. Set x=log₁₀(T/K), then read each row from the constant coefficient upward: the first number multiplies x⁰, the next x¹, and so on. The entries reproduce the implementation rather than introduce a new fit.')
 table(['Range','Coefficients of x⁰, x¹, …'],[['x < 3.70','-19053.7291496456; 15514.4866764412; -4212.78819301717; 381.476328422343'],['3.70 ≤ x < 3.90','-37051.0203809015; 38567.2629965804; -15065.1486316025; 2617.24637119416; -170.623810323864'],['x ≥ 3.90','-118115.450538963; 137145.973583929; -63623.3812100225; 14741.2923562646; -1705.87278406872; 78.8731721804990']], [115,345])
 p('Outside the specified temperature range, the low-temperature and above-50000 K continuations described earlier replace this polynomial. Within the main-sequence table, a continuous spectral index provides interpolation; spectral parsing and endpoint rules determine the valid interval.')
-p('The stellar evolution-grid comparison first measures a normalized distance d between an observation and a candidate model. The temperature and luminosity differences are logarithmic, and the metallicity difference is in dex:', 'Lead')
+p('The stellar evolution-grid comparison first measures a normalized distance d between an observation and a candidate model. The temperature and luminosity differences are logarithmic, and the metallicity difference is in dex. The coefficients below are defaults. Supplied uncertainties can replace those scales:', 'Lead')
 eq(r'd^2=\left(\frac{\Delta\log_{10}T}{.035}\right)^2+\left(\frac{\Delta\log_{10}L}{.20}\right)^2+\left(\frac{\Delta[Fe/H]}{.40}\right)^2')
-p('Each model receives weight w based on that distance and optional mass and age penalties P_M and P_t. d_min is the smallest grid distance; the remaining terms express the adopted age and initial-mass population weighting:', 'Lead')
-eq(r'\ln w=-\frac{1}{2}[d^2-d^2_{min}+P_M+P_t]+\ln(10)(\log_{10}t_{yr}-9)-2.35\ln M_{initial}')
-p('The evolution-grid weight combines distance in the Hertzsprung-Russell diagram with optional mass and age penalties. Ordinary stellar phases also receive a constant-linear-time star-formation prior and a Salpeter initial-mass factor. The mass penalty uses squared logarithmic mass residuals with scale .30, or .04 for the compact-remnant grouping; the age penalty uses .30 dex.')
-p('Mass and age are summarized by medians. The .1 and .9 quantiles of model age bounds define the reported range, and summed weights select the phase. Cooling tracks omit the ordinary population prior. These summaries describe the adopted weighting procedure, rather than a universal Bayesian posterior for a star.')
+p('The ordinary grid integrates a Salpeter initial-mass function over each sampled initial-mass width ΔM and linear-time interval Δt. It sums those contributions when compressing points into cells. The fit weight combines this precomputed population weight with the full distance D², including any mass and age penalties:', 'Lead')
+eq(r'W_{cell}=\sum_i\Delta M_i\Delta t_iM_{initial,i}^{-2.35},\qquad \ln w=\ln W_{cell}-(D^2-D_{min}^2)/2')
+p('The mass residual is logarithmic, with scale 0.30 dex by default or 0.04 dex for cooling tracks. The age penalty uses 0.30 dex. Those constraints apply before selecting up to 128 ordinary grid candidates or 64 cooling candidates. Cooling rows use their own track weights. A published age or authored value can take priority, and matching host identifiers can supply calibrated temperature, luminosity and uncertainty inputs.')
+p('Weighted medians summarize mass and age. The 0.10 and 0.90 quantiles of model age bounds define the reported range. Phase weights divided by their sum give phase probabilities, and (Σw)²/Σw² is the effective sample count. These summaries describe the adopted grid and weighting procedure.')
+p('Total age and time in the current luminosity class are separate inputs. When the latter is absent, the appearance model assigns 5% of total age to subgiants, 2% to giants, 0.5% to bright giants, 0.1% to supergiants and 50% to white dwarfs. Ordinary main-sequence cases use total age. These residence times are procedural proxies for environmental history.')
 p('The cool-formation prior uses another log-odds score z_f. It combines planet mass m in Earth units, irradiation F, host metallicity, and a chemical offset Δ_chem. F_c and F_s define the onset and scale of the irradiation penalty:', 'Lead')
 eq(r'z_f=2\ln(m/4.37)-0.5\ln[1+\max(0,F-F_c)/F_s]+3[Fe/H]+\Delta_{chem}')
 p('For cool-formation envelope scenarios, z_f is a log-odds score. The current settings place the mass transition at 4.37 Earth masses, with coefficient two for logarithmic mass, three for metallicity, and .5 for irradiation. F_c=1 and F_s=100 in Earth-flux units.')
 p('The chemical offset Δ_chem, clipped to ±1.5, adjusts the iron-only estimate using refractory enrichment and a water-rich alternative. Applying the logistic function gives a scenario score. Where calibrated flux ranges overlap, it joins the empirical classifier with balanced classes; elsewhere it remains an explicit formation assumption. The JSON settings file appears in the digest appendix because these coefficients and limits can change.')
+
+section('Cool-star colors, reflected spectra, and display photometry', 'browncolor.h; mdwarfcolor.h; giantreflectance.cpp; planet.cpp; visuals.cpp')
+p('Cool stellar photospheres use temperature-dependent display-color grids to represent the effects of molecular bands. The brown-dwarf table interpolates CIE x and y, converts to XYZ with Y fixed to one, and maps XYZ to linear RGB. For out-of-gamut results it moves all channels toward white by the amount of the most negative channel, then normalizes by the peak. The resulting color describes chromaticity. The luminosity calculation supplies the brightness.')
+eq(r'X=x/y,\quad Y=1,\quad Z=(1-x-y)/y')
+p('Brown-dwarf temperature falls back to spectral subtype when no temperature is supplied. A missing spin uses the giant mass scaling, 1.11×10⁶/ln(M in grams) seconds, bounded initially to 1.5–12 hours and at least 1.3 breakup periods when mass and radius are known. The breakup period of the spherical approximation is 2π sqrt(R³/GM).')
+p('In giant-planet color predictions, the library’s sample solar spectrum S_λ is reweighted by a Planck ratio for the current host. Integrating the resulting reflected spectrum over a filter gives its weighted albedo and color. This preserves the host tint separately from the planet’s reflectance. A directly supplied Bond albedo takes precedence for the energy balance, including for tabulated giant-planet values.')
+eq(r'F_{ref,\lambda}=S_\lambda\,[B_\lambda(T_*)/B_\lambda(5778\,\mathrm{K})]R_\lambda')
+p('Astronomical visual flux ratios follow 10⁻⁰·⁴Δm. Display measurements in the photometry companion audit sum the linearized luminance of the rendered pixels. Exposure, flare caps and the choice of stellar color compress the ratios that reach the screen. They can change how different two bright objects appear even when the magnitude difference is unchanged.')
+sub('Imperial display scales')
+p('The optional unit setting converts readouts and editable fields at the interface. A length reaches miles at 1609.344 m. A mass reaches U.S. short tons at 2000 lb, with a pound equal to 453.59237 g. Density uses lb per cubic foot, and a Celsius readout uses 1.8T_C+32 in Fahrenheit. The scientific calculations retain their original units.')
 
 section('Worked examples and sensitivity', 'equations in this reference; implementation inputs stated below')
 sub('Terrestrial mass and radius')
@@ -807,7 +901,7 @@ p('With unit stellar flux and A_B=.30, the equilibrium temperature is about 254.
 sub('Water and relief')
 p('For the same mass and radius, a surface-water mass fraction of 2.3×10⁻⁴ gives the following equivalent global depth. This is a volume-per-area measure before basin geometry is considered:', 'Lead')
 eq(r'f_{W,surface}=2.3\times10^{-4}\quad\Rightarrow\quad d_W\simeq2693\;\mathrm{m}')
-p('For an RMS Gaussian relief of 2500 m, the depth above gives zΦ(z)+φ(z)=1.077. Solving yields z approximately .99 and coverage approximately .84. Those values follow from the assumed elevation distribution; Earth’s measured basins have another geometry.')
+p('With RMS relief of 2500 m, rescaling this depth into the Earth basin table and interpolating gives about 75% initial coverage. The same table gives about 71% at Earth’s adopted reference volume. A generated elevation map can change the inferred coverage as its own basins replace the prior.')
 p('Ten times the water inventory would not give ten times the coverage. Area fraction stops at one, whereas water can continue accumulating as greater depth.')
 sub('Vegetation scaling')
 p('The pressure factors can be inspected without assuming that a habitat is suitable for life. The table evaluates p_v and its crown multipliers from vacuum to 100 times terrestrial pressure:', 'Lead')
@@ -819,7 +913,8 @@ p('Uncertain radius, inventory, aerosol size, or albedo can therefore matter mor
 
 section('Audit changes and scientific limitations', 'audit edition, 13 November 2026')
 p('The original 13 November audit accompanied two behavior corrections. Vegetation crown scaling was changed to positive, bounded environmental factors because the earlier pressure relation diverged and changed sign below p⊕/e. Low-gravity trunk scaling was also made finite. Separately, a Mercury-like 3:2 spin state was corrected to rotation period 2P_orb/3, rather than 1.5P_orb.')
-p('Those default-estimation corrections retain supplied nonzero morphology settings and supplied rotation periods. The present revision rewrites the explanation; it does not introduce another physical calibration.')
+p('Those default-estimation corrections retain supplied nonzero morphology settings and supplied rotation periods. The November 27 revision also calibrates the rocky rotational fallback against Earth’s secular figure and documents the scope of the Solar System comparison.')
+p('The planetary spin revision uses a base-ten free-spin prior followed by age-dependent tidal evolution. The orbital section identifies the published assumptions and compares the resulting periods and Mercury capture scenario with observations and published estimates.')
 p('The original audit recorded passing results for two added morphology/rotation regression tests and all four existing thermal-opacity tests. Of nineteen focused volatile, rotation, and morphology checks, eighteen passed.')
 p('The remaining cold-moon check produced approximately 244575 Pa for its Titan-like case, compared with a target of 120000-180000 Pa, using an inferred host age near 5.85 Gyr. That test does not invoke the altered default rotation or morphology calculations. The volatile solver and thermal-opacity calibration were left unchanged, and the pressure mismatch was recorded as a calibration limitation. These are the historical audit results, rather than a claim that this prose revision repeats the entire scientific audit.')
 p('The Titan-calibrated ethane term was retained as an effective net cooling adjustment. Molecular ethane itself has infrared absorption; its negative contribution in this fitted model is not a claim about negative molecular opacity.')
@@ -829,29 +924,61 @@ p('Weather patterns are procedural, biosphere probabilities are speculative, and
 p('This reference explains the model families used to infer properties and construct appearance. Decorative constants, display-sampling choices, and synthetic names do not all have a physical derivation.')
 p('The source locations and digests that follow identify the implementation present when the document is built. They allow a later reader to distinguish that repository state from the original audit and from subsequent revisions.')
 
-section('Primary sources and calibration context', 'published articles and reference data, checked 13 November 2026')
-p('The references identify the observational data and published methods behind specific parts of the model. Each entry explains its role in the application; the application’s extra assumptions are described in the corresponding sections above.', 'Body')
+section('Bibliography', 'published articles and reference data')
+p('The numbered sources support particular models and comparisons described in this reference. The bibliography also includes articles and data reports collected for the project.', 'Body')
 references = [
 ('R1','Zahnle & Catling (2017), The cosmic shoreline. This paper motivates the atmospheric-retention trend and the use of XUV exposure as a historical factor.','https://arxiv.org/abs/1702.03386'),
 ('R2','Lopez & Fortney (2014), Understanding the Mass-Radius Relation for Sub-Neptunes. Their envelope-thickness fit supplies the radius relation; its published domain is stated in the envelope section.','https://arxiv.org/abs/1311.0329'),
 ('R3','Eisenman & Wettlaufer (2009), Nonlinear threshold behavior during the loss of Arctic sea ice. This work motivates the enthalpy and conductive-ice treatment. The parameters adopted for other worlds remain application scenarios.','https://arxiv.org/abs/0812.4777'),
 ('R4','NIST Chemistry WebBook, SRD 69, ethane infrared spectrum. These data establish that ethane absorbs infrared radiation. They do not prescribe the fitted net climate response used in the application.','https://webbook.nist.gov/cgi/cbook.cgi?ID=C74840&Index=0&Type=IR-SPEC'),
 ('R5','Torres (2010), On the Use of Empirical Bolometric Corrections for Stars. This supplies the corrected Flower coefficients used for the stellar bolometric correction.','https://arxiv.org/abs/1008.3913'),
-('R6','Leconte et al. (2010), Is tidal heating sufficient to explain bloated exoplanets? This is the reference for the full-eccentricity equilibrium-tide functions discussed in the heating section.','https://doi.org/10.1051/0004-6361/201014337'),
+('R6','Leconte et al. (2010), Is tidal heating sufficient to explain bloated exoplanets? Consistent calculations accounting for finite initial eccentricity. Source for the full-eccentricity equilibrium-tide functions used in giant spin and tidal heating.','https://doi.org/10.1051/0004-6361/201014337'),
 ('R7','Santos et al. (2017), Constraining planet structure from stellar chemistry. This work motivates estimating condensate proportions through stoichiometric abundance bookkeeping.','https://arxiv.org/abs/1711.00777'),
 ('R8','NIST Chemistry WebBook, nitrogen phase-change data, together with the Fray & Schmitt solid-vapor fits reproduced by Marboeuf et al. (2014). These provide the phase-change context for the nitrogen saturation relations.','https://webbook.nist.gov/cgi/cbook.cgi?ID=C7727379&Mask=4'),
 ('R9','Kopparapu et al. (2014), Habitable Zones Around Main-Sequence Stars: Dependence on Planetary Mass. The application uses the polynomial limits and coefficients listed in Table 1.','https://arxiv.org/abs/1404.5292'),
-('R10','Cahoy, Marley & Fortney (2010), Exoplanet albedo spectra and colors as a function of planet phase, separation, and metallicity. This work provides the context for the giant-planet reflection library.','https://doi.org/10.1088/0004-637X/724/1/189')]
+('R10','Cahoy, Marley & Fortney (2010), Exoplanet albedo spectra and colors as a function of planet phase, separation, and metallicity. This work provides the context for the giant-planet reflection library.','https://doi.org/10.1088/0004-637X/724/1/189'),
+('R11','Barnes & Fortney (2003), Measuring the Oblateness and Rotation of Transiting Extrasolar Giant Planets. Discusses rotational flattening and the role of planetary interiors.','https://arxiv.org/abs/astro-ph/0301156'),
+('R12','IERS Technical Note 21, rotational deformation. Gives k=0.94 in the fluid limit for Earth.','https://www.iers.org/SharedDocs/Publikationen/EN/IERS/Publications/tn/TechnNote21/tn21.pdf?__blob=publicationFile&v=1'),
+('R13','NASA Planetary Fact Sheets, conventional radii, mass and spin for the Solar System comparison.','https://nssdc.gsfc.nasa.gov/planetary/factsheet/'),
+('R14','Zeng, Sasselov & Jacobsen (2016), Mass-radius relation for rocky planets based on PREM. Supplies the iron-silicate scaling used by the solid scenario.','https://arxiv.org/abs/1512.08827'),
+('R15','NOAA ETOPO 2022, Earth topography and bathymetry. Source for the Earth basin table used before generated terrain is available.','https://www.ncei.noaa.gov/products/etopo-global-relief-model'),
+('R16','NASA Mars Global Surveyor MOLA gridded elevations. Source for the Mars basin reference.','https://pds-geosciences.wustl.edu/missions/mgs/megdr.html'),
+('R17','R. Barnes (2017), Tidal Locking of Habitable Exoplanets. Compares how phase-lag and time-lag models evolve planetary spin.','https://arxiv.org/abs/1708.02981'),
+('R18','Noyelles, Frouard, Makarov & Efroimsky (2014), Spin-orbit evolution of Mercury revisited. Models Mercury’s capture into spin-orbit resonance.','https://arxiv.org/abs/1307.0136'),
+('R19','Makarov & Efroimsky (2013), No pseudosynchronous rotation for terrestrial planets and moons. Tests discrete resonances against tidal equilibria for solid bodies.','https://arxiv.org/abs/1209.1616'),
+('R20','Leconte et al. (2015), Asynchronous rotation of Earth-mass planets in the habitable zone of lower-mass stars. Shows how thermal atmospheric tides can change rotation.','https://arxiv.org/abs/1502.01952'),
+('R21','Snellen et al. (2014), Fast spin of the young extrasolar planet β Pictoris b. Provides a spin measurement for a directly imaged giant.','https://arxiv.org/abs/1404.7506'),
+('R22','Bryan et al. (2020 preprint, published 2021), As the Worlds Turn: Constraining Spin Evolution in the Planetary-Mass Regime. Discusses contraction and giant spin measurements.','https://arxiv.org/abs/2010.07315')]
+
+if set(CITED_ARTICLES.values()) - {label for label, _, _ in references}:
+    raise ValueError('A bibliography cross-reference does not match a numbered entry.')
+
+def bibliography_entry(description, url):
+    entry = [Paragraph(prose_markup(description), styles['Body'])]
+    if url:
+        entry.append(Paragraph('<link href="' + html.escape(url, quote=True) + '" color="#245c85">'
+            + html.escape(url) + '</link>', styles['SmallText']))
+    story.append(KeepTogether(entry))
+
 for label, description, url in references:
-    p(label + '. ' + description)
-    story.append(Paragraph('<link href="' + html.escape(url, quote=True) + '" color="#245c85">' + html.escape(url) + '</link>', styles['SmallText']))
-p('The cited works support the particular methods or data named beside them. They do not independently validate every default, extrapolation, appearance probability, or rendering choice in Alienorum. The equations and application-specific qualifications in this reference describe how those ingredients are actually used.')
+    bibliography_entry(label + '. ' + description, url)
+sub('Additional literature')
+for description, url in sorted(OTHER_ARTICLES.values(), key=lambda record: record[0].casefold()):
+    bibliography_entry(description, url)
 
 section('Source traceability and reproduction', 'repository files at document build time')
 p('Each source file below is identified by the first sixteen hexadecimal characters of its SHA-256 digest. These locations connect the scientific explanation to reproducible implementation details; they also identify the repository state at document build time, which can include changes made after the original audit.')
 p('To rebuild the PDF, run docs/build_calculation_reference.py from the repository root with Python 3, ReportLab, Matplotlib, and NumPy available. The document embeds DejaVu fonts and equations rendered at 330 dpi, so the reader can view the mathematical notation directly.')
 files = ['src/classes/shore.cpp','src/classes/shore.h','src/classes/planet.cpp','src/classes/celestial.cpp','src/classes/star.cpp','src/classes/misc.cpp','src/classes/color.cpp','src/classes/chemistry.cpp','src/classes/patch.cpp','src/classes/climate.h','src/classes/thermalclimate.h','src/classes/iceclimate.h','src/classes/salinity.h','src/classes/surfaceclimate.h','src/classes/vegetation.h','src/classes/plantform.h','src/classes/plantmesh.h','src/classes/planttexture.h','src/classes/rockmeshcache.h','src/classes/cloudclimate.h','src/classes/giantclouds.h','src/classes/giantreflectance.cpp','src/classes/pressurehaze.h','src/classes/surfacerefraction.h','src/classes/tidalheat.h','src/classes/habitablezone.h','src/classes/noise.cpp','src/classes/stellarevolution.h','src/classes/cloudlighting.h','src/classes/surfacescatter.h','src/classes/surfacenavigation.cpp','src/classes/surfacenavigation.h','src/classes/surfacebiomes.h','src/classes/lavastatic.h','src/classes/clouds_gpu.cpp','src/classes/fictionalstars.cpp','src/fictionalstars_ui.cpp','src/visuals.cpp','src/windowidle.cpp','src/windowidle.h','src/sphere_impostor.cpp','src/alienorum.cpp','object_name_pool.dat','catalogs/NASA/classification_model.json','catalogs/giant_reflectance.json']
-table(['Source locator','SHA-256 prefix'], [(name,hashlib.sha256((ROOT/name).read_bytes()).hexdigest()[:16]) for name in files], [335,125])
+files += ['src/classes/cat.cpp', 'src/classes/planetinference.cpp', 'src/classes/elevationgrid.h',
+          'src/classes/terrainlighting.h', 'src/classes/distantskyline.h', 'src/classes/terrain_contours.h',
+          'src/classes/craterprofile.h', 'src/classes/volcanicterrain.h', 'src/classes/browncolor.h',
+          'src/classes/mdwarfcolor.h', 'src/classes/thermalclimate.h', 'src/classes/satellite.cpp',
+          'src/inputs.cpp', 'src/classes/displayunits.h', 'src/classes/misc.h', 'src/sunclock_gpu.cpp',
+          'tools/build_stellar_evolution_grid.py', 'catalogs/stellar_evolution.dat',
+          'src/classes/planet.h', 'src/classes/sscimport.cpp', 'src/dialogs.cpp',
+          'docs/calculation_bibliography.py']
+table(['Source locator','SHA-256 prefix'], [(name,hashlib.sha256((ROOT/name).read_bytes()).hexdigest()[:16]) for name in dict.fromkeys(files)], [335,125])
 
 
 def footer(canvas, doc):
@@ -860,7 +987,7 @@ def footer(canvas, doc):
     canvas.line(48,39,564,39)
     canvas.setFont('DejaVu',7)
     canvas.setFillColor(colors.HexColor('#46596a'))
-    canvas.drawString(48,26,'Alienorum · Calculation Reference · 2026-11-14')
+    canvas.drawString(48,26,'Alienorum · Calculation Reference · ' + REVISION)
     canvas.drawRightString(564,26,str(doc.page))
     canvas.restoreState()
 

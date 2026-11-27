@@ -5,8 +5,10 @@
 #include <iterator>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <vector>
 #include <gtest/gtest.h>
+#include "imgui_internal.h"
 #include "universe_fixture.h"
 #include "../classes/satellite.h"
 #include "../housekeeping.h"
@@ -295,6 +297,181 @@ protected:
         frame(false);
     }
 };
+
+TEST_F(KeyboardShortcutEvents, ImperialUnitsShortcutRequiresAllThreeModifiers)
+{
+    const bool saved = use_imperial_units;
+    use_imperial_units = false;
+    auto& io = ImGui::GetIO();
+    io.AddKeyEvent(ImGuiMod_Ctrl, true);
+    io.AddKeyEvent(ImGuiMod_Shift, true);
+    press(ImGuiKey_M);
+    EXPECT_FALSE(use_imperial_units);
+
+    io.AddKeyEvent(ImGuiMod_Alt, true);
+    io.AddKeyEvent(ImGuiKey_M, true);
+    frame(true);
+    EXPECT_TRUE(use_imperial_units);
+    for (int i = 0; i < 30; ++i) frame(true);
+    EXPECT_TRUE(use_imperial_units);
+    io.AddKeyEvent(ImGuiKey_M, false);
+    frame(true);
+    press(ImGuiKey_M);
+    EXPECT_FALSE(use_imperial_units);
+    use_imperial_units = saved;
+}
+
+TEST_F(KeyboardShortcutEvents, ViewMenuShowsImperialUnitsBelowTheThemeControls)
+{
+    const auto prior_flags = std::make_tuple(use_imperial_units, mouse_over_menu, menu_clicked);
+    use_imperial_units = false;
+    ImGui::NewFrame();
+    if (ImGui::BeginMainMenuBar())
+    {
+        ImGui::OpenPopup("View");
+        ImGui::EndMainMenuBar();
+    }
+    show_menu();
+    ImGui::EndFrame();
+
+    ImGui::NewFrame();
+    ImGui::LogToBuffer();
+    show_menu();
+    const std::string text = ImGui::GetCurrentContext()->LogBuffer.c_str();
+    ImGui::LogFinish();
+    const auto theme = text.find("Next Theme"), units = text.find("Imperial Units");
+    EXPECT_NE(theme, std::string::npos) << text;
+    EXPECT_NE(units, std::string::npos) << text;
+    EXPECT_LT(theme, units);
+    for (const char* part : {"Ctrl", "Alt", "Shift", "+M"})
+        EXPECT_NE(text.find(part, units), std::string::npos) << text;
+    const auto& popups = ImGui::GetCurrentContext()->OpenPopupStack;
+    const ImGuiWindow* popup = popups.empty() ? nullptr : popups.back().Window;
+    EXPECT_NE(popup, nullptr);
+    ImGui::EndFrame();
+    if (popup)
+    {
+        auto& io = ImGui::GetIO();
+        const float item_y = popup->Pos.y + popup->Size.y - ImGui::GetStyle().WindowPadding.y - ImGui::GetFontSize() / 2;
+        io.AddMousePosEvent(popup->Pos.x + 25, item_y);
+        io.AddMouseButtonEvent(0, true);
+        ImGui::NewFrame();
+        show_menu();
+        ImGui::EndFrame();
+        io.AddMouseButtonEvent(0, false);
+        ImGui::NewFrame();
+        show_menu();
+        EXPECT_TRUE(menu_clicked);
+        EXPECT_TRUE(use_imperial_units);
+        ImGui::EndFrame();
+    }
+    std::tie(use_imperial_units, mouse_over_menu, menu_clicked) = prior_flags;
+}
+
+TEST_F(KeyboardShortcutEvents, WalkingFollowsChangesInGradeWithGravityDefiningUp)
+{
+    class RampMap : public Map
+    {
+        public:
+        static unsigned long columns() { return 3600; }
+
+        RampMap()
+        {
+            image_width = columns();
+            image_height = 2;
+            allocated = image_width * image_height;
+            lon_scale = image_width / (2 * _pi);
+            lat_scale = image_height / _pi;
+            red_data = new unsigned char[allocated]{};
+            green_data = new unsigned char[allocated]{};
+            blue_data = new unsigned char[allocated]{};
+            bump_data = new double[allocated]{};
+            for (unsigned long row = 0; row < image_height; ++row)
+            {
+                const double heights[]{0, 5, 10, 15, 15, 15, 10, 5, 0};
+                std::copy(std::begin(heights), std::end(heights),
+                    bump_data + row * image_width + image_width / 2);
+            }
+            touch_gen();
+        }
+    };
+
+    auto state = std::tie(view_mode, whereami, trackidx, viewer_lat, viewer_lon, frame_dur, azimuth,
+        altitude, here, azimuth_correction, npaz, save_viewer_latlon, viewchanged, editing);
+    const auto saved = std::apply([](auto&... values) { return std::make_tuple(values...); }, state);
+    auto* world = make_planet(make_star());
+    const double cell = 2 * _pi / RampMap::columns();
+    world->volumetric_mean_radius = 10 / cell;
+    world->sidereal_rotational_period = 86400;
+    auto* ramp = new RampMap();
+    view_mode = vm_horizon;
+    whereami = world->seqno;
+    trackidx = -1;
+    viewer_lat = 0;
+    viewer_lon = -cell;
+    frame_dur = .25;
+    azimuth = half_pi;
+    constexpr double initial_altitude = .1;
+    altitude = initial_altitude;
+
+    // An ordinary frame covers one metre, even with no surface map.
+    press(ImGuiKey_End);
+    EXPECT_NEAR(viewer_lon, -.9 * cell, 1e-12);
+    EXPECT_DOUBLE_EQ(altitude, initial_altitude);
+    viewer_lon = -cell;
+    world->surf_map = ramp;
+
+    auto& io = ImGui::GetIO();
+    io.AddKeyEvent(ImGuiKey_LeftShift, true);
+    io.AddKeyEvent(ImGuiKey_End, true);
+    frame(true);
+    EXPECT_NEAR(viewer_lon, 0, 1e-12);
+    EXPECT_GT(altitude, initial_altitude);
+    frame(true);
+    EXPECT_NEAR(viewer_lon, cell, 1e-12);
+    const double uphill_altitude = altitude;
+    EXPECT_NEAR(uphill_altitude, initial_altitude + atan(.5), .002);
+    set_viewer_location_and_plane();
+    const Point radial = here.local_position - world->location.local_position;
+    const Point up = to_viewer_plane(radial * (1 / radial.magnitude()));
+    EXPECT_NEAR(up.x, 0, 1e-10);
+    EXPECT_NEAR(up.y, 1, 1e-10);
+    EXPECT_NEAR(up.z, 0, 1e-10);
+    frame(true);
+    EXPECT_NEAR(altitude, uphill_altitude, .002);
+    frame(true);
+    EXPECT_LT(altitude, uphill_altitude);
+    io.AddKeyEvent(ImGuiKey_End, false);
+    frame(true);
+    const double crest_altitude = altitude;
+    frame(true);
+    EXPECT_DOUBLE_EQ(altitude, crest_altitude);
+
+    press(ImGuiKey_Home);
+    EXPECT_NEAR(viewer_lon, 2 * cell, 1e-12);
+    EXPECT_GT(altitude, crest_altitude);
+    io.AddKeyEvent(ImGuiKey_LeftShift, false);
+    frame(true);
+
+    azimuth = 0;
+    altitude = initial_altitude;
+    press(ImGuiKey_End);
+    EXPECT_NEAR(viewer_lat, .1 * cell, 1e-12);
+    EXPECT_NEAR(altitude, initial_altitude, 1e-10);
+
+    viewer_lat = 0;
+    viewer_lon = 4 * cell;
+    azimuth = half_pi;
+    io.AddKeyEvent(ImGuiKey_LeftShift, true);
+    io.AddKeyEvent(ImGuiKey_End, true);
+    for (int i = 0; i < 3; ++i) frame(true);
+    EXPECT_NEAR(viewer_lon, 7 * cell, 1e-12);
+    EXPECT_NEAR(altitude, initial_altitude - atan(.5), .002);
+    for (int i = 0; i < 2; ++i) frame(true);
+    EXPECT_NEAR(viewer_lon, 9 * cell, 1e-12);
+    EXPECT_NEAR(altitude, initial_altitude, 1e-10);
+    state = saved;
+}
 
 TEST_F(KeyboardShortcutEvents, BracketsExclusivelyToggleRiseAndSetAlerts)
 {

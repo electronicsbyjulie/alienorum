@@ -1,3 +1,4 @@
+#define IMGUI_DEFINE_MATH_OPERATORS
 #include "classes/planetnames.h"
 #include <tuple>
 
@@ -17,10 +18,12 @@
 
 #include "dialogs.h"
 #include "classes/alienorumid.h"
+#include "classes/displayunits.h"
 #include "universe_save_progress.h"
 #include "inputs.h"
 #include "loaders.h"
 #include "housekeeping.h"
+#include "imgui_internal.h"
 #include "classes/clouds_gpu.h"
 #include "classes/precipitationcache.h"
 #include "classes/orbit_spacing.h"
@@ -31,6 +34,7 @@
 #include <cstdint>
 #include <algorithm>
 #include <cctype>
+#include <initializer_list>
 #include <unordered_map>
 
 using namespace alienorum;
@@ -308,7 +312,7 @@ void draw_status_window(ImGuiIO& io)            // the S panel
 
     std::string flagstr;
 
-    ImGui::Text("Star colors: %s", fancy_star_col ? "Pretty" : "Realistic");
+    ImGui::Text("Star colors (Ctrl+J): %s", fancy_star_col ? "Pretty" : "Realistic");
     flagstr = (std::string)"Zoom (*/): " + std::to_string(zoom);
     ImGui::Text("%s", flagstr.c_str());
 
@@ -493,9 +497,10 @@ void draw_status_window(ImGuiIO& io)            // the S panel
     std::string velocstr;
     if (velocmag < 0.01 * speed_of_light)
     {
+        const auto unit = use_imperial_units ? miles_per_hour : kilometres_per_hour;
         stringstream oss;
-        oss << std::scientific << std::setprecision(4) << (velocmag / 1000 * 3600);
-        velocstr = std::string("Velocity: ") + oss.str() + std::string(" km/h");
+        oss << "Velocity: " << std::scientific << std::setprecision(4) << unit.from_base(velocmag) << ' ' << unit.symbol;
+        velocstr = oss.str();
         oss.str("");
     }
     else if (velocmag < speed_of_light)
@@ -689,19 +694,19 @@ void draw_status_window(ImGuiIO& io)            // the S panel
             sssg << "Est. gravity: " << (f >= 0.01 ? std::fixed : std::scientific) << std::setprecision(3) << f << " g";
             ImGui::Text("%s", sssg.str().c_str());
             sssg.str("");
-            sssg << "Est. temp.:   " << std::fixed << std::setprecision(1)
             #if show_local_temp
-            << ((cels[whereami]->typeclass() == class_planet || cels[whereami]->typeclass() == class_moon)
+            const double kelvin = (cels[whereami]->typeclass() == class_planet || cels[whereami]->typeclass() == class_moon)
                 ? static_cast<Planet*>(cels[whereami])->surface_temperature_at(viewer_lat, viewer_lon)
-                : cels[whereami]->temperature)
+                : cels[whereami]->temperature;
             #else
-            << ((Planet*)cels[whereami])->estimate_surface_temperature()
+            const double kelvin = static_cast<Planet*>(cels[whereami])->estimate_surface_temperature();
             #endif
-            << " K";
+            sssg << "Est. temp.:   " << std::fixed << std::setprecision(1) << kelvin << " K / "
+                << local_temperature_display(kelvin) << (use_imperial_units ? " F" : " C");
             ImGui::Text("%s", sssg.str().c_str());
             sssg.str("");
             double bar = ((Planet*)cels[whereami])->get_surface_pressure() / 1e5;
-            sssg << "Pressure:     " << std::fixed << std::setprecision(bar<1 ? 5 : 2) << bar << " bar";
+            sssg << "Pressure:     " << (bar < 0.001 ? std::scientific : std::fixed) << std::setprecision(bar<1 ? 5 : 2) << bar << " bar";
             ImGui::Text("%s", sssg.str().c_str());
 
             CelestialObject *lcen = cels[whereami]->get_light_center();
@@ -827,6 +832,13 @@ void draw_status_window(ImGuiIO& io)            // the S panel
         is_mouse_over_window = true;
 }
 
+static void draw_elevation_readout(double elevation)
+{
+    const auto unit = length_display_unit(elevation, kilometres);
+    const int precision = unit.base_per_unit == miles.base_per_unit ? 2 : 0;
+    ImGui::Text("Elev:     %.*f %s", precision, unit.from_base(elevation), unit.symbol);
+}
+
 void draw_objinf_window(ImGuiIO& io)                // the N panel
 {
     if (!cels[1]) return;
@@ -852,7 +864,7 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
             if (p->surf_map)
             {
                 double elev = p->surf_map->elevation_at_bilinear(is_a_locale_under_cursor->lat * fiftyseventh, is_a_locale_under_cursor->lon * fiftyseventh);
-                ImGui::Text("Elev:     %.0f km", elev/1000);
+                draw_elevation_readout(elev);
             }
             const double temperature = p->surface_temperature_at(is_a_locale_under_cursor->lat * fiftyseventh,
                 is_a_locale_under_cursor->lon * fiftyseventh);
@@ -987,7 +999,7 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
                 if (p->surf_map)
                 {
                     double elev = p->surf_map->elevation_at_bilinear(lat, lon);
-                    ImGui::Text("Elev:     %.0f km", elev/1000);
+                    draw_elevation_readout(elev);
                 }
                 ImGui::Text("Temp:     %.1f K", p->surface_temperature_at(lat, lon));
             }
@@ -998,7 +1010,11 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
             if (cels[i]->temperature) ImGui::Text("Temp:     %.2f K", cels[i]->temperature);      // TODO: Fix solar system planet temperatures.
             if ((cls == class_planet || cls == class_moon)
                 && uses_rocky_map(cels[i]->type))
-                ImGui::Text("Atmosph.  %.6f bar", ((Planet*)cels[i])->get_surface_pressure() / oneatm);
+            {
+                double bar = ((Planet*)cels[i])->get_surface_pressure() / 1e5;
+                ImGui::Text(bar < 0.001 ? "Atmosph.  %.6e bar" : "Atmosph.  %.6f bar",
+                    bar);
+            }
             ImGui::Text("Gravity:  %.3f G", cels[i]->estimate_surface_gravity());
             ImGui::Separator();
         }
@@ -1036,6 +1052,29 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
                 ImGui::Text("Period:   %.2f d",   cels[i]->orbit->period / oneday);
                 if (cels[i]->orbit->inclination || (i == iamhome)) ImGui::Text("Incl.:    %.2f deg", cels[i]->orbit->inclination * fiftyseven);
             }
+
+            const double spin_period = cels[i]->sidereal_rotational_period;
+            const double orbit_period = cels[i]->orbit ? cels[i]->orbit->period : 0;
+            const bool synchronous = orbit_period > 0 && spin_period > 0
+                && std::abs(spin_period - orbit_period) < 1e-6 * orbit_period
+                && std::cos(cels[i]->obliquity) >= 0;
+            if (synchronous)
+            {
+                ImGui::Text("Rotation: tidal");
+            }
+            // Older records can carry the spin direction in the sign of the period.
+            else if (const double spin_centiseconds = std::abs(spin_period) * 100;
+                spin_centiseconds > 0 && spin_centiseconds < 0x1p63)
+            {
+                const long long duration = std::llround(spin_centiseconds);
+                const long long days = duration / 8640000;
+                const int hours = static_cast<int>(duration / 360000 % 24);
+                const int minutes = static_cast<int>(duration / 6000 % 60);
+                const double seconds = (duration % 6000) / 100.0;
+                if (days) ImGui::Text("Rotation: %lld:%02d:%02d:%05.2f", days, hours, minutes, seconds);
+                else ImGui::Text("Rotation: %02d:%02d:%05.2f", hours, minutes, seconds);
+            }
+
             if (cels[i]->obliquity
                 && (!cels[i]->orbit || fabs(cels[i]->obliquity - cels[i]->orbit->inclination) > 1e-6)       // TODO: Fix moons.
                 ) ImGui::Text("Obliq.:   %.2f deg", cels[i]->obliquity * fiftyseven);                       // TODO: Sun.
@@ -1068,8 +1107,12 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
         else if (i >= 0 && cels[i]->type == artificial)
         {
             if (is_surface_map_view(view_mode) && whereami >= 0)
-                ImGui::Text("Alt:      %.3f km",
-                    (cels[i]->location.distance_to(here) - cels[whereami]->volumetric_mean_radius) / 1000);  // TODO: Compensate for oblateness.
+            {
+                // TODO: Compensate for oblateness.
+                const double height = cels[i]->location.distance_to(here) - cels[whereami]->volumetric_mean_radius;
+                const auto unit = length_display_unit(height, kilometres);
+                ImGui::Text("Alt:      %.3f %s", unit.from_base(height), unit.symbol);
+            }
             else ImGui::Text("Dist:     %s", cels[i]->scaled_distance(here).c_str());
         }
         else if (i >= 0 && cels[i]->typeclass() == class_comet)
@@ -1157,7 +1200,10 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
         if (i >= 0 && (cls == class_planet || cls == class_moon) && static_cast<Planet*>(cels[i])->has_water > 0)
         {
             const json ocean = static_cast<Planet*>(cels[i])->ocean_chemistry();
-            ImGui::Text("Salinity: %s%.1f g/kg", ocean.value("estimated", true) ? "~" : "", ocean.at("salinity_g_kg").get<double>());
+            const double salinity = ocean.at("salinity_g_kg").get<double>();
+            ImGui::Text("Salinity: %s%.*f %s", ocean.value("estimated", true) ? "~" : "",
+                use_imperial_units ? 3 : 1, use_imperial_units ? salinity * G_PER_KG_TO_OZ_PER_LB : salinity,
+                use_imperial_units ? "oz/lb" : "g/kg");
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("%s\nNa: %s; Cl: %s", ocean.value("source", "").c_str(),
                     ocean.value("Na_proxy", "supplied").c_str(), ocean.value("Cl_proxy", "supplied").c_str());
@@ -1176,7 +1222,8 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
                 ImGui::Text("%s", oss.str().c_str());
                 oss.str("");
                 oss.clear();
-                oss << "          " << std::scientific << std::setprecision(2) << (cels[i]->mass / 1000) << " kg";
+                const auto unit = mass_display_unit(cels[i]->mass);
+                oss << "          " << std::scientific << std::setprecision(2) << unit.from_base(cels[i]->mass) << ' ' << unit.symbol;
                 ImGui::Text("%s", oss.str().c_str());
                 oss.str("");
                 oss.clear();
@@ -1194,7 +1241,9 @@ void draw_objinf_window(ImGuiIO& io)                // the N panel
                 ImGui::Text("%s", oss.str().c_str());
                 oss.str("");
                 oss.clear();
-                oss << "          " << std::scientific << std::setprecision(2) << (cels[i]->volumetric_mean_radius / 1000) << " km";
+                const double radius = cels[i]->volumetric_mean_radius;
+                const auto unit = length_display_unit(radius, kilometres);
+                oss << "          " << std::scientific << std::setprecision(2) << unit.from_base(radius) << ' ' << unit.symbol;
                 ImGui::Text("%s", oss.str().c_str());
                 oss.str("");
                 oss.clear();
@@ -1394,7 +1443,7 @@ void draw_addcel_window(ImGuiIO& io)
                     if (cboceltyp_selected_idx == 2) pl->set_geometric_albedo(Planet::jovian_geometric_albedo);
                     else pl->estimate_albedo_and_absmagn();
                     pl->estimate_rotation();
-                    pl->apply_cosmic_shoreline();
+                    pl->apply_cosmic_shoreline(true);
                     pl->sync_host_statistics();
                 }
                 editidx = ncelobjs-1;
@@ -1427,12 +1476,21 @@ double rp, ra;
 int last_edit_idx = -1;
 
 #define cbo_edt_num_units 4
-const char* mass_units[cbo_edt_num_units] = {"kg", "Sun", "Jup.", "Earth"};
-const double mass_units_conv[cbo_edt_num_units] = {1000, solar_mass, jupiter_mass, earth_mass};
-const char* size_units[cbo_edt_num_units] = {"km", "Sun", "Jup.", "Earth"};
-const double size_units_conv[cbo_edt_num_units] = {1000, solar_radius, jupiter_radius, earth_radius};
 bool sma_res_picker = false;
 static bool reset_editor_tab = false;
+
+static DisplayUnit measurement_editor_unit(DisplayUnit proposed, DisplayUnit current,
+    std::initializer_list<const char*> fields)
+{
+    const auto& context = *ImGui::GetCurrentContext();
+    for (const char* field : fields)
+    {
+        const ImGuiID id = ImGui::GetID(field);
+        // The input can write its final text after losing focus.
+        if (id == context.ActiveId || id == context.InputTextDeactivatedState.ID) return current;
+    }
+    return proposed;
+}
 
 void reset_closed_object_editor()
 {
@@ -1516,7 +1574,12 @@ void draw_objedit_window(ImGuiIO& io)
         };
         if (tc != class_satellite && begin_editor_tab("Bulk"))
         {
-            double edit_mass = cel->mass / mass_units_conv[cbo_edt_units];
+            static DisplayUnit linear_mass_unit = kilograms;
+            linear_mass_unit = measurement_editor_unit(mass_display_unit(cel->mass), linear_mass_unit, {"##edtmass"});
+            const DisplayUnit mass_units[cbo_edt_num_units]{linear_mass_unit,
+                {solar_mass, "Sun"}, {jupiter_mass, "Jup."}, {earth_mass, "Earth"}};
+            const auto mass_unit = mass_units[cbo_edt_units];
+            double edit_mass = mass_unit.from_base(cel->mass);
             ImGui::Text("%s", "Mass");
             ImGui::SameLine(col1);
             ImGui::SetNextItemWidth(txtwid);
@@ -1525,22 +1588,22 @@ void draw_objedit_window(ImGuiIO& io)
                 if (tc == class_planet || tc == class_moon)
                 {
                     Planet* body = static_cast<Planet*>(cel);
-                    body->set_explicit_mass(edit_mass * mass_units_conv[cbo_edt_units]);
+                    body->set_explicit_mass(mass_unit.to_base(edit_mass));
                     body->classify(body->is_in_con_HZ(), true);
                 }
-                else cel->mass = edit_mass * mass_units_conv[cbo_edt_units];
+                else cel->mass = mass_unit.to_base(edit_mass);
                 cel->user_edited = true;
                 viewchanged = true;
             }
 
             ImGui::SameLine();
             ImGui::SetNextItemWidth(txtwid/2.5);
-            if (ImGui::BeginCombo("##cboedtunitsm", mass_units[cbo_edt_units], 0))
+            if (ImGui::BeginCombo("##cboedtunitsm", mass_unit.symbol, 0))
             {
                 for (int n = 0; n < cbo_edt_num_units; n++)
                 {
                     const bool is_selected = (cbo_edt_units == n);
-                    if (ImGui::Selectable(mass_units[n], is_selected))
+                    if (ImGui::Selectable(mass_units[n].symbol, is_selected))
                     {
                         cbo_edt_units = n;
                     }
@@ -1553,7 +1616,13 @@ void draw_objedit_window(ImGuiIO& io)
             }
 
             ImGui::SameLine(col2);
-            double edit_radius = cel->volumetric_mean_radius / size_units_conv[cbo_edt_units];
+            static DisplayUnit linear_radius_unit = kilometres;
+            linear_radius_unit = measurement_editor_unit(length_display_unit(cel->volumetric_mean_radius, kilometres),
+                linear_radius_unit, {"##edtvmrad"});
+            const DisplayUnit size_units[cbo_edt_num_units]{linear_radius_unit,
+                {solar_radius, "Sun"}, {jupiter_radius, "Jup."}, {earth_radius, "Earth"}};
+            const auto radius_unit = size_units[cbo_edt_units];
+            double edit_radius = radius_unit.from_base(cel->volumetric_mean_radius);
             ImGui::Text("%s", "Radius");
             ImGui::SameLine(col3);
             ImGui::SetNextItemWidth(txtwid);
@@ -1563,10 +1632,10 @@ void draw_objedit_window(ImGuiIO& io)
                 if (tc == class_planet || tc == class_moon)
                 {
                     Planet* body = static_cast<Planet*>(cel);
-                    body->set_explicit_radius(edit_radius * size_units_conv[cbo_edt_units]);
+                    body->set_explicit_radius(radius_unit.to_base(edit_radius));
                     body->classify(body->is_in_con_HZ(), true);
                 }
-                else cel->volumetric_mean_radius = edit_radius * size_units_conv[cbo_edt_units];
+                else cel->volumetric_mean_radius = radius_unit.to_base(edit_radius);
                 assert(!isinf(cel->volumetric_mean_radius));
                 cel->user_edited = true;
                 viewchanged = true;
@@ -1584,12 +1653,12 @@ void draw_objedit_window(ImGuiIO& io)
 
             ImGui::SameLine();
             ImGui::SetNextItemWidth(txtwid/2.5);
-            if (ImGui::BeginCombo("##cboedtunitsr", size_units[cbo_edt_units], 0))
+            if (ImGui::BeginCombo("##cboedtunitsr", radius_unit.symbol, 0))
             {
                 for (int n = 0; n < cbo_edt_num_units; n++)
                 {
                     const bool is_selected = (cbo_edt_units == n);
-                    if (ImGui::Selectable(size_units[n], is_selected))
+                    if (ImGui::Selectable(size_units[n].symbol, is_selected))
                     {
                         cbo_edt_units = n;
                     }
@@ -1602,7 +1671,10 @@ void draw_objedit_window(ImGuiIO& io)
             }
 
             stringstream massss;
-            massss << "Density " << std::setprecision(3) << cel->density() << " g/cm^3";
+            const DisplayUnit density_unit = use_imperial_units
+                ? DisplayUnit{LB_PER_FT3_TO_G_PER_CM3, "lb/ft^3"}
+                : DisplayUnit{1, "g/cm^3"};
+            massss << "Density " << std::setprecision(3) << density_unit.from_base(cel->density()) << ' ' << density_unit.symbol;
             std::string dens = massss.str();
             ImGui::Text("%s", dens.c_str());
             ImGui::SameLine(col2);
@@ -1758,20 +1830,23 @@ void draw_objedit_window(ImGuiIO& io)
                 ImGui::SameLine(col2);
                 ImGui::Text("%s", "Bump Height");
                 auto* body = static_cast<Planet*>(cel);
-                double edit_bump_height = body->estimate_bump_scale();
+                const double bump_height = body->estimate_bump_scale();
+                static DisplayUnit bump_unit = metres;
+                bump_unit = measurement_editor_unit(length_display_unit(bump_height, metres), bump_unit, {"##edtbh"});
+                double edit_bump_height = bump_unit.from_base(bump_height);
                 ImGui::SameLine(col3);
                 ImGui::SetNextItemWidth(txtwid);
                 ImGui::BeginDisabled(texture_loads_pending.load() != 0);
                 if (ImGui::InputDouble("##edtbh", &edit_bump_height, 0, 0, "%.1f")
                     && std::isfinite(edit_bump_height) && edit_bump_height >= 0)
                 {
-                    body->set_bump_height(edit_bump_height);
+                    body->set_bump_height(bump_unit.to_base(edit_bump_height));
                     body->user_edited = true;
                     viewchanged = true;
                 }
                 ImGui::EndDisabled();
                 ImGui::SameLine();
-                ImGui::Text("%s", "m");
+                ImGui::TextUnformatted(bump_unit.symbol);
             }
 
             double edit_oblt = cel->oblateness;
@@ -1791,31 +1866,36 @@ void draw_objedit_window(ImGuiIO& io)
             if (cel->typeclass() == class_moon)
             {
                 Moon *m = (Moon*)cel;
-                double edt_dep = m->depth * 1e-3, edt_wid = m->width * 1e-3, edt_hei = m->height * 1e-3;
+                static DisplayUnit axes_unit = kilometres;
+                const double largest_axis = std::max({std::abs(m->depth), std::abs(m->width), std::abs(m->height)});
+                axes_unit = measurement_editor_unit(length_display_unit(largest_axis, kilometres),
+                    axes_unit, {"##edtdep", "##edtwid", "##edthei"});
+                double edt_dep = axes_unit.from_base(m->depth), edt_wid = axes_unit.from_base(m->width);
+                double edt_hei = axes_unit.from_base(m->height);
                 ImGui::SameLine();
                 ImGui::Text("%s", ", OR:");
 
                 ImGui::SameLine(col2);
-                ImGui::Text("%s", "D/W/H, km");
+                ImGui::Text("D/W/H, %s", axes_unit.symbol);
                 ImGui::SameLine(col3);
                 ImGui::SetNextItemWidth(txtwid/3);
                 if (ImGui::InputDouble("##edtdep", &edt_dep, 0, 0, "%.4f"))
                 {
-                    m->depth = edt_dep * 1e3;
+                    m->depth = axes_unit.to_base(edt_dep);
                     cel->user_edited = true;
                 }
                 ImGui::SameLine();
                 ImGui::SetNextItemWidth(txtwid/3);
                 if (ImGui::InputDouble("##edtwid", &edt_wid, 0, 0, "%.4f"))
                 {
-                    m->width = edt_wid * 1e3;
+                    m->width = axes_unit.to_base(edt_wid);
                     cel->user_edited = true;
                 }
                 ImGui::SameLine();
                 ImGui::SetNextItemWidth(txtwid/3);
                 if (ImGui::InputDouble("##edthei", &edt_hei, 0, 0, "%.4f"))
                 {
-                    m->height = edt_hei * 1e3;
+                    m->height = axes_unit.to_base(edt_hei);
                     cel->user_edited = true;
                 }
             }
@@ -1824,7 +1904,8 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::Text("%s", "Rotation, d");
             ImGui::SameLine(col1);
             ImGui::SetNextItemWidth(txtwid);
-            if (ImGui::InputDouble("##edtrot", &edit_rot, 0, 0, "%.6f"))
+            if (ImGui::InputDouble("##edtrot", &edit_rot, 0, 0, "%.6f")
+                && edit_rot >= 0 && std::isfinite(edit_rot * oneday))
             {
                 cel->use_manual_rotation();
                 cel->sidereal_rotational_period = edit_rot * oneday;
@@ -1918,20 +1999,23 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::SameLine();
             ImGui::Text("%s", "l.y.");
             ImGui::SameLine(col2);
-            double edit_rv = s->radial_velocity;
+            static DisplayUnit velocity_unit = metres_per_second;
+            velocity_unit = measurement_editor_unit(use_imperial_units ? miles_per_hour : metres_per_second,
+                velocity_unit, {"##edtrv"});
+            double edit_rv = velocity_unit.from_base(s->radial_velocity);
             ImGui::Text("%s", "Rad. Vel.");
             ImGui::SameLine(col3);
             ImGui::SetNextItemWidth(txtwid);
             if (ImGui::InputDouble("##edtrv", &edit_rv, 0, 0, "%.9f"))
             {
-                s->radial_velocity = edit_rv;
+                s->radial_velocity = velocity_unit.to_base(edit_rv);
                 s->update_location(simnow);
                 cel->user_edited = true;
                 viewchanged = true;
                 if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
             }
             ImGui::SameLine();
-            ImGui::Text("%s", "m/s");
+            ImGui::TextUnformatted(velocity_unit.symbol);
 
             ImGui::EndTabItem();
         }
@@ -2026,8 +2110,8 @@ void draw_objedit_window(ImGuiIO& io)
                 if (cel->typeclass() == class_planet
                     || cel->typeclass() == class_moon               // See Kepler-1625b.
                     ) ((Planet*)cel)->classify(((Planet*)cel)->is_in_con_HZ(), true);
-                rp = (orb->semimajor_axis * (1.0 - orb->eccentricity) - cen_radius) * 1e-3;
-                ra = (orb->semimajor_axis * (1.0 + orb->eccentricity) - cen_radius) * 1e-3;
+                rp = orb->semimajor_axis * (1.0 - orb->eccentricity) - cen_radius;
+                ra = orb->semimajor_axis * (1.0 + orb->eccentricity) - cen_radius;
                 if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
                 else if (cel->typeclass() == class_planet) ((Planet*)cel)->update_location(simnow);
                 else if (cel->typeclass() == class_moon) ((Moon*)cel)->update_location(simnow);
@@ -2061,7 +2145,7 @@ void draw_objedit_window(ImGuiIO& io)
             ImGui::SetNextItemWidth(txtwid);
             if (ImGui::InputDouble("##edtper", &edit_period, 0, 0, "%.9f"))
             {
-                if (edit_period)
+                if (edit_period > 0 && std::isfinite(edit_period * oneday))
                 {
                     cels[editidx]->orbit->period = edit_period * oneday;
                     if (cel->user_added) orb->compute_semimajor_axis(cel->mass);
@@ -2075,8 +2159,8 @@ void draw_objedit_window(ImGuiIO& io)
                     if (cel->typeclass() == class_planet
                         || cel->typeclass() == class_moon               // See Kepler-1625b.
                         ) ((Planet*)cel)->classify(((Planet*)cel)->is_in_con_HZ(), true);
-                    rp = (orb->semimajor_axis * (1.0 - orb->eccentricity) - cen_radius) * 1e-3;
-                    ra = (orb->semimajor_axis * (1.0 + orb->eccentricity) - cen_radius) * 1e-3;
+                    rp = orb->semimajor_axis * (1.0 - orb->eccentricity) - cen_radius;
+                    ra = orb->semimajor_axis * (1.0 + orb->eccentricity) - cen_radius;
                     cel->user_edited = true;
                     viewchanged = true;
                     if (cel->typeclass() == class_star) ((Star*)cel)->update_location(simnow);
@@ -2090,7 +2174,8 @@ void draw_objedit_window(ImGuiIO& io)
             if (cel->typeclass() != class_satellite)
             {
                 ImGui::SameLine();
-                if (ImGui::Button("tidal##edit_period"))
+                if (ImGui::Button("tidal##edit_period") && cel->orbit->period >= 0
+                    && std::isfinite(cel->orbit->period))
                 {
                     cel->use_manual_rotation();
                     cel->sidereal_rotational_period = cel->orbit->period;
@@ -2258,8 +2343,8 @@ void draw_objedit_window(ImGuiIO& io)
             {
                 if (tc == class_satellite && orb && orb->center)
                 {
-                    rp = (orb->semimajor_axis * (1.0 - orb->eccentricity) - cen_radius) * 1e-3;
-                    ra = (orb->semimajor_axis * (1.0 + orb->eccentricity) - cen_radius) * 1e-3;
+                    rp = orb->semimajor_axis * (1.0 - orb->eccentricity) - cen_radius;
+                    ra = orb->semimajor_axis * (1.0 + orb->eccentricity) - cen_radius;
                 }
                 else
                 {
@@ -2279,14 +2364,20 @@ void draw_objedit_window(ImGuiIO& io)
                 ImGui::Text("%.6f minutes", orb->period/60);
 
                 Satellite* sat = ((Satellite*)cel);
-                ImGui::Text("%s", "Periapsis, km");
+                static DisplayUnit periapsis_unit = kilometres, apoapsis_unit = kilometres;
+                periapsis_unit = measurement_editor_unit(length_display_unit(rp, kilometres), periapsis_unit, {"##edtperi"});
+                apoapsis_unit = measurement_editor_unit(length_display_unit(ra, kilometres), apoapsis_unit, {"##edtapo"});
+                double edit_periapsis = periapsis_unit.from_base(rp);
+                ImGui::Text("Periapsis, %s", periapsis_unit.symbol);
                 ImGui::SameLine(col1);
                 ImGui::SetNextItemWidth(txtwid);
-                if (ImGui::InputDouble("##edtperi", &rp, 0, 0, "%.9f") && rp<=ra)
+                const bool periapsis_edited = ImGui::InputDouble("##edtperi", &edit_periapsis, 0, 0, "%.9f");
+                if (periapsis_edited) rp = periapsis_unit.to_base(edit_periapsis);
+                if (periapsis_edited && rp <= ra)
                 {
                     if (rp < 0) rp = 0;
                     if (ra < 0) ra = 0;
-                    double rp1 = rp * 1e3+cen_radius, ra1 = ra * 1e3+cen_radius;
+                    double rp1 = rp + cen_radius, ra1 = ra + cen_radius;
                     double a = (rp1+ra1);
                     edit_eccn = (ra1-rp1)/a;
                     a *= 0.5;
@@ -2300,14 +2391,17 @@ void draw_objedit_window(ImGuiIO& io)
                     sat->update_location(simnow);
                 }
                 ImGui::SameLine(col2);
-                ImGui::Text("%s", "Apoapsis, km");
+                ImGui::Text("Apoapsis, %s", apoapsis_unit.symbol);
                 ImGui::SameLine(col3);
                 ImGui::SetNextItemWidth(txtwid);
-                if (ImGui::InputDouble("##edtapo", &ra, 0, 0, "%.9f") && rp<=ra)
+                double edit_apoapsis = apoapsis_unit.from_base(ra);
+                const bool apoapsis_edited = ImGui::InputDouble("##edtapo", &edit_apoapsis, 0, 0, "%.9f");
+                if (apoapsis_edited) ra = apoapsis_unit.to_base(edit_apoapsis);
+                if (apoapsis_edited && rp <= ra)
                 {
                     if (rp < 0) rp = 0;
                     if (ra < 0) ra = 0;
-                    double rp1 = rp * 1e3+cen_radius, ra1 = ra * 1e3+cen_radius;
+                    double rp1 = rp + cen_radius, ra1 = ra + cen_radius;
                     double a = (rp1+ra1);
                     edit_eccn = (ra1-rp1)/a;
                     a *= 0.5;
@@ -2572,7 +2666,9 @@ void draw_objedit_window(ImGuiIO& io)
                     if (reference.contains("ocean_coverage"))
                     {
                         ImGui::Text("Present ocean coverage %.1f%%", 100 * reference.at("ocean_coverage").get<double>());
-                        ImGui::Text("Global equivalent depth %.2f km", reference.at("equivalent_depth_m").get<double>() / 1000);
+                        const double depth = reference.at("equivalent_depth_m").get<double>();
+                        const auto unit = length_display_unit(depth, kilometres);
+                        ImGui::Text("Global equivalent depth %.2f %s", unit.from_base(depth), unit.symbol);
                     }
                     else
                     {
@@ -2580,14 +2676,22 @@ void draw_objedit_window(ImGuiIO& io)
                         const auto& ancient = reference.at("ancient");
                         const auto& range = ancient.at("coverage_range");
                         const auto& depths = ancient.at("depth_range_m");
+                        const double polar_depth = modern.at("polar_equivalent_depth_m").get<double>();
+                        const double ancient_depth = ancient.at("equivalent_depth_m").get<double>();
+                        const double low_depth = depths[0].get<double>(), high_depth = depths[1].get<double>();
+                        const auto polar_unit = length_display_unit(polar_depth, metres);
+                        const auto ancient_unit = length_display_unit(ancient_depth, metres);
+                        const auto range_unit = length_display_unit(high_depth, metres);
                         ImGui::Text("Modern Mars has no persistent surface liquid water.");
-                        ImGui::Text("Polar deposits span %.1f%% and contain %.0f m of water spread globally.",
-                            100 * modern.at("polar_deposit_footprint").get<double>(),
-                            modern.at("polar_equivalent_depth_m").get<double>());
-                        ImGui::Text("Ancient Mars, warm sea scenario %.1f%% at %.0f m global depth.",
-                            100 * ancient.at("pooled_coverage").get<double>(), ancient.at("equivalent_depth_m").get<double>());
-                        ImGui::Text("Pooling %.0f-%.0f m covers %.0f-%.0f%% on modern Mars terrain.",
-                            depths[0].get<double>(), depths[1].get<double>(),
+                        ImGui::Text("Polar deposits span %.1f%% and contain %.*f %s of water spread globally.",
+                            100 * modern.at("polar_deposit_footprint").get<double>(), polar_unit.base_per_unit == miles.base_per_unit ? 2 : 0,
+                            polar_unit.from_base(polar_depth), polar_unit.symbol);
+                        ImGui::Text("Ancient Mars, warm sea scenario %.1f%% at %.*f %s global depth.",
+                            100 * ancient.at("pooled_coverage").get<double>(), ancient_unit.base_per_unit == miles.base_per_unit ? 2 : 0,
+                            ancient_unit.from_base(ancient_depth), ancient_unit.symbol);
+                        const int range_precision = range_unit.base_per_unit == miles.base_per_unit ? 2 : 0;
+                        ImGui::Text("Pooling %.*f-%.*f %s covers %.0f-%.0f%% on modern Mars terrain.",
+                            range_precision, range_unit.from_base(low_depth), range_precision, range_unit.from_base(high_depth), range_unit.symbol,
                             100 * range[0].get<double>(), 100 * range[1].get<double>());
                     }
                     ImGui::TreePop();
@@ -2911,7 +3015,8 @@ void draw_objedit_window(ImGuiIO& io)
                 const double tidal_flux = p->tidal_heat_flux();
                 if (tidal_flux > 0)
                 {
-                    ImGui::Text("Estimated tidal heat: %.3g W/m^2", tidal_flux);
+                    ImGui::Text("Estimated tidal heat: %.3g %s", use_imperial_units ? tidal_flux * SQUARE_METRES_PER_SQUARE_FOOT : tidal_flux,
+                        use_imperial_units ? "W/ft^2" : "W/m^2");
                     if (ImGui::IsItemHovered()) ImGui::SetTooltip(
                         "Heat from orbital flexing and asynchronous rotation. Interior dissipation is uncertain.");
                 }
@@ -3526,7 +3631,11 @@ void draw_stellar_neighborhood(ImGuiIO &io)
                 l = line.str().size();
                 if (l < 68) line << std::string(68-l, ' ');
 
-                if (r < 0.1*AU) line << setprecision(3) << (r / 1000) << " km";
+                if (r < 0.1*AU)
+                {
+                    const auto unit = length_display_unit(r, kilometres);
+                    line << setprecision(3) << unit.from_base(r) << ' ' << unit.symbol;
+                }
                 else if (r < 0.1 * light_year) line << setprecision(3) << (r / AU) << " A.U.";
                 else line << setprecision(3) << (r / light_year) << " l.y.";
 
