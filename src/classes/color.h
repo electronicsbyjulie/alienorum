@@ -36,7 +36,7 @@ namespace alienorum
     struct VegetationSpectrum
     {
         int band_count = 0;
-        std::array<double, 5> centers_nm{}, widths_nm{}, depths{};
+        std::array<double, 6> centers_nm{}, widths_nm{}, depths{};
         double visible_scattering = 0.25;
         double infrared_scattering = 0.55;
         double uv_edge_nm = 350;
@@ -190,6 +190,8 @@ uint32_t rgba_apply_redlight(uint32_t input);
 ImVec4 rgba_apply_redlight(ImVec4 input);
 void apply_default_style();
 RGB3 generate_vegetation_color(std::mt19937 *rng, double stellar_temperature = sun_temp);
+RGB3 generate_system_vegetation_color(std::mt19937 *body_rng, double body_stellar_temperature,
+    uint32_t system_seed, double system_stellar_temperature);
 VegetationSpectrum generate_vegetation_spectrum(std::mt19937 *rng, double stellar_temperature = sun_temp);
 
 #endif

@@ -767,6 +767,100 @@ TEST_F(RenderingRegressionTest, Gj1061VegetationRemainsTreesAfterEditingItsBarre
     EXPECT_GT(trees, 0);
 }
 
+TEST_F(RenderingRegressionTest, TrappistVegetationMapsShareAPaletteWithDistinctShades)
+{
+    make_star("Sun");
+    class Reader : public CatalogReader
+    {
+        public:
+        using CatalogReader::exorow_from_json;
+        using CatalogReader::resolve_or_create_exostar;
+        using CatalogReader::add_exoplanet_from_row;
+    } reader;
+    Star::load_main_seq_dat();
+    std::ifstream input("catalogs/exoplanets.json");
+    ASSERT_TRUE(input.good());
+    const auto catalog = nlohmann::json::parse(input);
+    const std::set<std::string> targets{"TRAPPIST-1 d", "TRAPPIST-1 e", "TRAPPIST-1 f", "TRAPPIST-1 g"};
+    std::map<int, std::vector<int>> planets;
+    std::set<std::array<int, 3>> palettes;
+    unsigned int count = 0;
+    set(randomize_txgen, true);
+    set(show_taucalc, false);
+    set(objedtwnd, false);
+
+    for (const auto& record : catalog)
+    {
+        const auto name = record.value("pl_name", "");
+        if (!targets.count(name)) continue;
+        SCOPED_TRACE(name);
+        bool valid = false, added = false;
+        const auto row = Reader::exorow_from_json(record, &valid);
+        ASSERT_TRUE(valid);
+        auto* host = reader.resolve_or_create_exostar(row, false, &added);
+        ASSERT_NE(host, nullptr);
+        ASSERT_TRUE(reader.add_exoplanet_from_row(row, host, planets, count));
+        auto* world = static_cast<Planet*>(cels[ncelobjs - 1]);
+        world->ignore_map_files = world->looked_for_maps = true;
+        world->fictitious_map_height = 64;
+        // Give each catalog world a temperate, inhabited realization so this check
+        // isolates the palette from atmospheric and habitability estimates.
+        world->has_water = .35;
+        world->has_water_supplied = true;
+        world->has_life = world->has_plants = true;
+        auto* atmosphere = world->ensure_atmosphere();
+        atmosphere->surface_pressure = 10 * oneatm;
+        atmosphere->pressure_supplied = true;
+        *atmosphere->ensure_composition() = AtmosphereComposition{world};
+        atmosphere->comp->O2_portion = .10;
+        double lower = 0, upper = .90;
+        for (int step = 0; step < 24; ++step)
+        {
+            const double carbon_dioxide = (lower + upper) / 2;
+            atmosphere->comp->CO2_portion = carbon_dioxide;
+            atmosphere->comp->N2_portion = .90 - carbon_dioxide;
+            if (world->temperature_at_pressure(atmosphere->surface_pressure) < 294)
+            {
+                lower = carbon_dioxide;
+            }
+            else
+            {
+                upper = carbon_dioxide;
+            }
+        }
+        ASSERT_NEAR(world->temperature_at_pressure(atmosphere->surface_pressure), 294, .1);
+
+        load_textures(world);
+        ASSERT_TRUE(go_to_celestial_object(world->seqno));
+        ASSERT_NE(world->surf_map, nullptr);
+        ASSERT_TRUE(world->surf_map->is_complete());
+        const std::array<int, 3> palette{world->vegetation_r, world->vegetation_g, world->vegetation_b};
+        EXPECT_GT(palette[0] + palette[1] + palette[2], 0);
+        for (const auto& sibling : palettes)
+        {
+            for (size_t channel = 0; channel < palette.size(); ++channel)
+            {
+                EXPECT_GE(std::min(palette[channel], sibling[channel]) + 1,
+                    .69 * std::max(palette[channel], sibling[channel]));
+            }
+        }
+        EXPECT_TRUE(palettes.insert(palette).second);
+
+        int vegetated = 0;
+        for (int row_index = 0; row_index < 32; ++row_index)
+        {
+            const double lat = half_pi - (row_index + .5) * _pi / 32;
+            for (int column = 0; column < 64; ++column)
+            {
+                const double lon = -_pi + (column + .5) * 2 * _pi / 64;
+                vegetated += world->surf_map->material_at(lat, lon) == SurfaceMaterial::vegetation;
+            }
+        }
+        EXPECT_GT(vegetated, 0);
+    }
+    EXPECT_EQ(palettes.size(), targets.size());
+}
+
 TEST_F(RenderingRegressionTest, TextureGenerationCapturesOnlyItsOwnEditorsOptionsAndKeepsThemAcrossUiChanges)
 {
     auto* target = surface();
@@ -4369,6 +4463,148 @@ TEST_F(RenderingRegressionTest, AirlessMoonInterpolatesCoarseTerrainShading)
     EXPECT_EQ(pixels[4 * x + 3], 255);
     EXPECT_EQ(pixels[4 * ((render_height - 1) * render_width + x) + 3], 0);
     ImGui::NewFrame();
+}
+
+TEST_F(RenderingRegressionTest, AtmosphericReliefBlendsRockAndForestAndPreservesTheCoast)
+{
+    class CoastalReliefMap : public CraterLightingMap
+    {
+    public:
+        CoastalReliefMap() : CraterLightingMap(256, false, true)
+        {
+            for (size_t i = 0; i < allocated; ++i)
+            {
+                const auto column = i % image_width;
+                const bool water = column == image_width / 2;
+                const bool forest = !water && column % 2;
+                surface_materials[i] = water ? SurfaceMaterial::water
+                    : (forest ? SurfaceMaterial::vegetation : SurfaceMaterial::ground);
+                red_data[i] = water || forest ? 20 : 190;
+                green_data[i] = forest ? 190 : 25;
+                blue_data[i] = water ? 190 : 20;
+            }
+        }
+    };
+    auto* world = surface(true);
+    world->has_real_maps = true;
+    world->has_water = .1;
+    world->volumetric_mean_radius = 1000;
+    delete world->surf_map;
+    world->surf_map = new CoastalReliefMap();
+    set(viewer_eye_height, 40.0);
+    set(altitude, -.65);
+    set(show_clouds, false);
+    freeze_surface_time();
+    find_horizon();
+    draw_horizon();
+    const int stride = precipitation_stats.ground_sample_stride;
+    ASSERT_GT(stride, 1);
+    const auto channel = [](ImU32 color, int shift) { return (color >> shift) & 255; };
+    const auto dominant_channel = [&](ImU32 color)
+    {
+        const auto red = channel(color, IM_COL32_R_SHIFT), green = channel(color, IM_COL32_G_SHIFT);
+        return channel(color, IM_COL32_B_SHIFT) > std::max(red, green) ? 2 : int(green > red);
+    };
+    const auto& vertices = ImGui::GetBackgroundDrawList()->VtxBuffer;
+    int land_gradients = 0, coastal_gradients = 0;
+    for (int i = 0; i + 3 < vertices.Size; ++i)
+    {
+        const auto& tl = vertices[i];
+        const auto& tr = vertices[i + 1];
+        const auto& br = vertices[i + 2];
+        const auto& bl = vertices[i + 3];
+        if (tr.pos.x - tl.pos.x != stride || tr.pos.y != tl.pos.y || br.pos.x != tr.pos.x
+            || br.pos.y - tr.pos.y != stride || bl.pos.x != tl.pos.x || bl.pos.y != br.pos.y
+            || (tl.col & tr.col & br.col & bl.col & IM_COL32_A_MASK) != IM_COL32_A_MASK) continue;
+        const auto classes = {dominant_channel(tl.col), dominant_channel(tr.col),
+            dominant_channel(br.col), dominant_channel(bl.col)};
+        const auto [low, high] = std::minmax_element(classes.begin(), classes.end());
+        land_gradients += *low == 0 && *high == 1;
+        coastal_gradients += *low < 2 && *high == 2;
+    }
+    EXPECT_GT(land_gradients, 0);
+    EXPECT_EQ(coastal_gradients, 0);
+    const auto coarse = render();
+    ImGui::NewFrame();
+
+    SDL_Delay(12);
+    auto fine = coarse;
+    for (int frame = 0; frame < 15 && precipitation_stats.ground_sample_stride > 1; ++frame)
+    {
+        find_horizon();
+        draw_horizon();
+        fine = render();
+        ImGui::NewFrame();
+    }
+    ASSERT_EQ(precipitation_stats.ground_sample_stride, 1);
+    int water_pixels = 0, coast_differences = 0;
+    for (int y = render_height * 2 / 3; y < render_height; ++y)
+    {
+        for (int x = 0; x < render_width; ++x)
+        {
+            const size_t i = 4 * (y * render_width + x);
+            const bool fine_water = fine[i + 2] > std::max(fine[i], fine[i + 1]);
+            const bool coarse_water = coarse[i + 2] > std::max(coarse[i], coarse[i + 1]);
+            water_pixels += fine_water;
+            coast_differences += fine_water != coarse_water;
+        }
+    }
+    EXPECT_GT(water_pixels, 0);
+    EXPECT_EQ(coast_differences, 0);
+}
+
+TEST_F(RenderingRegressionTest, PlanetfallWaterImageIgnoresReliefInItsBasin)
+{
+    class BasinMap : public CraterLightingMap
+    {
+    public:
+        BasinMap() : CraterLightingMap(64, false, true)
+        {
+            for (size_t i = 0; i < allocated; ++i)
+            {
+                surface_materials[i] = SurfaceMaterial::water;
+                red_data[i] = 24;
+                green_data[i] = 69;
+                blue_data[i] = 137;
+                const double longitude = (i % image_width) * 2 * _pi / image_width - _pi;
+                bump_data[i] = 1000 + 800 * sin(12 * longitude);
+            }
+        }
+    };
+    auto* world = surface(true);
+    world->has_real_maps = true;
+    world->bump_has_bathymetry = true;
+    world->bump_height = world->m_bump_scale = 65535;
+    delete world->surf_map;
+    world->surf_map = new BasinMap();
+    auto* star = world->get_light_center();
+    star->absolute_magnitude = 4.85;
+    star->location.local_position = star->tmprel = Point(0, 1e11, 1e11);
+    set(viewer_lat, 25.402 * fiftyseventh);
+    set(viewer_lon, 50.429 * fiftyseventh);
+    set(azimuth, 45 * fiftyseventh);
+    set(altitude, .0);
+    set(show_clouds, false);
+    set(dragging, true);
+    const auto capture = [&](double bump_height)
+    {
+        world->set_bump_height(bump_height);
+        freeze_surface_time();
+        find_horizon();
+        draw_horizon();
+        auto pixels = render();
+        ImGui::NewFrame();
+        return pixels;
+    };
+    const auto flat = capture(0);
+    const auto exaggerated = capture(1048576);
+    ASSERT_GT(world->surf_map->elevation_at_bilinear(viewer_lat, viewer_lon), 1000);
+    const size_t water_pixel = 4 * (render_width / 2);
+    const size_t sky_pixel = 4 * ((render_height - 1) * render_width + render_width / 2);
+    EXPECT_EQ(flat[sky_pixel + 3], 0);
+    EXPECT_EQ(flat[water_pixel + 3], 255);
+    EXPECT_GT(flat[water_pixel + 2], flat[water_pixel]);
+    EXPECT_EQ(image_difference(exaggerated, flat), 0);
 }
 
 TEST_F(RenderingRegressionTest, EarthShoreFromPhoenixRefinesAfterPanningAtLowFrameRate)

@@ -773,7 +773,7 @@ double VegetationSpectrum::reflectance_at(double wavelength_nm) const
 {
     if (!std::isfinite(wavelength_nm) || wavelength_nm <= 0) return 0;
     double optical_depth = 0;
-    for (int band = 0; band < std::clamp(band_count, 0, 5); band++)
+    for (int band = 0; band < std::min(band_count, static_cast<int>(depths.size())); band++)
     {
         if (widths_nm[band] <= 0) continue;
         const double offset = (wavelength_nm - centers_nm[band]) / widths_nm[band];
@@ -805,7 +805,7 @@ RGB3 VegetationSpectrum::visible_rgb() const
              (unsigned char)(255 * btot / 110) };
 }
 
-RGB3 generate_vegetation_color(std::mt19937 *rng, double stellar_temperature)
+static VegetationSpectrum choose_vegetation_spectrum(std::mt19937 *rng, double stellar_temperature)
 {
     const auto family = [](const RGB3 &color)
     {
@@ -817,8 +817,8 @@ RGB3 generate_vegetation_color(std::mt19937 *rng, double stellar_temperature)
         return -1;
     };
 
-    const RGB3 original = generate_vegetation_spectrum(rng, stellar_temperature).visible_rgb();
-    const int original_family = family(original);
+    const auto original = generate_vegetation_spectrum(rng, stellar_temperature);
+    const int original_family = family(original.visible_rgb());
     if (original_family < 0) return original;
 
     // Artistic population preference: five purple worlds for every two green.
@@ -828,10 +828,30 @@ RGB3 generate_vegetation_color(std::mt19937 *rng, double stellar_temperature)
     if (original_family == preferred_family) return original;
     for (int attempt = 0; attempt < 128; attempt++)
     {
-        const RGB3 candidate = generate_vegetation_spectrum(rng, stellar_temperature).visible_rgb();
-        if (family(candidate) == preferred_family) return candidate;
+        const auto candidate = generate_vegetation_spectrum(rng, stellar_temperature);
+        if (family(candidate.visible_rgb()) == preferred_family) return candidate;
     }
     return original;
+}
+
+RGB3 generate_vegetation_color(std::mt19937 *rng, double stellar_temperature)
+{
+    return choose_vegetation_spectrum(rng, stellar_temperature).visible_rgb();
+}
+
+RGB3 generate_system_vegetation_color(std::mt19937 *body_rng, double body_stellar_temperature,
+    uint32_t system_seed, double system_stellar_temperature)
+{
+    std::mt19937 system_rng(system_seed);
+    auto spectrum = choose_vegetation_spectrum(&system_rng, system_stellar_temperature);
+    // Use the body's visible pigment draw for a broad accessory band. The same
+    // draws leave the climate and terrain generators at their original position.
+    const auto local = choose_vegetation_spectrum(body_rng, body_stellar_temperature);
+    const int band = spectrum.band_count++;
+    spectrum.centers_nm[band] = local.centers_nm[0];
+    spectrum.widths_nm[band] = 40 + 2 * local.widths_nm[0];
+    spectrum.depths[band] = .12 + .24 * local.depths[0] / (1 + local.depths[0]);
+    return spectrum.visible_rgb();
 }
 
 bool AlienStyle::load(std::string theme)

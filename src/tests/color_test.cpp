@@ -495,6 +495,35 @@ TEST(ColorProceduralTest, VegetationPreservesPaletteDiversityAroundBothTestHosts
     }
 }
 
+TEST(ColorProceduralTest, AccessoryPigmentsDarkenASharedSpectrumByDifferentAmounts)
+{
+    constexpr uint32_t system_seed = 42;
+    constexpr double temperature = 5100;
+    std::mt19937 system_rng(system_seed), first_rng(17), second_rng(31), repeat_rng(17), other_rng(17), legacy_rng(17);
+    const RGB3 base = generate_vegetation_color(&system_rng, temperature);
+    const RGB3 first = generate_system_vegetation_color(&first_rng, temperature, system_seed, temperature);
+    const RGB3 second = generate_system_vegetation_color(&second_rng, temperature, system_seed, temperature);
+    const RGB3 repeat = generate_system_vegetation_color(&repeat_rng, temperature, system_seed, temperature);
+    const RGB3 other = generate_system_vegetation_color(&other_rng, temperature, 91, temperature);
+    generate_vegetation_color(&legacy_rng, temperature);
+
+    for (const RGB3 color : {first, second})
+    {
+        EXPECT_LE(color.r, base.r);
+        EXPECT_LE(color.g, base.g);
+        EXPECT_LE(color.b, base.b);
+        EXPECT_LT(color.r + color.g + color.b, base.r + base.g + base.b);
+        EXPECT_GE(color.r + 1, .69 * base.r);
+        EXPECT_GE(color.g + 1, .69 * base.g);
+        EXPECT_GE(color.b + 1, .69 * base.b);
+    }
+    const auto channels = [](RGB3 color) { return std::array{color.r, color.g, color.b}; };
+    EXPECT_NE(channels(first), channels(second));
+    EXPECT_EQ(channels(first), channels(repeat));
+    EXPECT_NE(channels(first), channels(other));
+    EXPECT_TRUE(first_rng == legacy_rng);
+}
+
 TEST(ColorProceduralTest, PurpleVegetationOutnumbersGreenByTwoToThreeAcrossStellarSpectra)
 {
     for (double temperature : {3000.0, 5100.0, 6000.0, 7500.0, 10000.0})

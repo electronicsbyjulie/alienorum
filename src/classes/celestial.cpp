@@ -4295,10 +4295,29 @@ void Map::generate_rocky_map(CelestialObject *cel)
         else if (!p->preserve_loaded_parameters && p->has_water && habitat_possible && texture_randomization_enabled()
             && !p->vegetation_r && !p->vegetation_g && !p->vegetation_b)
         {
-            CelestialObject *light_center = cel->get_light_center();
-            const double stellar_temperature = light_center && light_center->typeclass() == class_star
-                ? static_cast<Star*>(light_center)->estimate_temperature() : sun_temp;
-            RGB3 veg_color = generate_vegetation_color(&cel->rng, stellar_temperature);
+            const auto* host = static_cast<Star*>(cel->get_light_center());
+            RGB3 veg_color;
+            if (host)
+            {
+                const Star* primary = host->multisys ? host->multisys->get_member('A') : nullptr;
+                if (!primary && host->cenobj && host->cenobj->typeclass() == class_star)
+                {
+                    primary = static_cast<const Star*>(host->cenobj);
+                }
+                if (!primary) primary = host;
+                const char* identity = primary->origname.empty() ? primary->name : primary->origname.c_str();
+                uint32_t system_seed = 2166136261u;
+                for (const char* c = identity; *c; ++c)
+                {
+                    system_seed = (system_seed ^ static_cast<unsigned char>(*c)) * 16777619u;
+                }
+                veg_color = generate_system_vegetation_color(&cel->rng, host->estimate_temperature(),
+                    system_seed, primary->estimate_temperature());
+            }
+            else
+            {
+                veg_color = generate_vegetation_color(&cel->rng);
+            }
             p->vegetation_r = veg_color.r;
             p->vegetation_g = veg_color.g;
             p->vegetation_b = veg_color.b;

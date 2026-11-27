@@ -53,6 +53,7 @@ namespace alienorum
         double tree_density_at(double latitude, double longitude);
         TreeAppearance tree_appearance_at(double latitude, double longitude, const std::vector<LocalClimate>& recent_climates);
         bool water_at(double latitude, double longitude);
+        double basin_elevation() const;
         double skyline_elevation(double latitude, double longitude);
         bool basin_at(double latitude, double longitude);
         bool water_at(double latitude, double longitude, WaterPatch& patch, bool include_frozen_basins = false);

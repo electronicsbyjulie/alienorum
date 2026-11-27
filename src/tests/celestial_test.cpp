@@ -1051,6 +1051,37 @@ TEST_F(ShoreNavigationTest, EarthSkylineUsesSeaLevelAboveBathymetry)
     EXPECT_GT(surface.skyline_elevation(mountain_lat, mountain_lon), 3000);
 }
 
+TEST_F(ShoreNavigationTest, EarthSkylineKeepsThePersianGulfFlatWithExaggeratedRelief)
+{
+    Planet* earth = make_planet(make_star(), "Earth");
+    earth->temperature = 288;
+    earth->temperature_supplied = true;
+    earth->has_water = .79;
+    earth->bump_has_bathymetry = true;
+    earth->bump_offset = -.5;
+    earth->bump_height = earth->m_bump_scale = 65535;
+    earth->ensure_atmosphere()->surface_pressure = oneatm;
+    earth->surf_map = new Map(earth);
+    ASSERT_TRUE(earth->surf_map->load_from_jpeg("maps/Earth_surf.jpg"));
+    ASSERT_TRUE(earth->surf_map->load_calibrated_bump("maps/Earth_bump.png", earth->bump_height, earth->bump_offset));
+    earth->set_bump_height(1048576);
+    SurfaceBiomes biomes;
+    SurfaceSampler surface(earth, earth->surf_map, biomes, earth_radius, 8);
+
+    // Water cells northeast of the observer at 25.402 N, 50.429 E.
+    for (const auto& site : {std::pair<double, double>{26.04184, 50.55458}, {25.73975, 51.47038}})
+    {
+        const double lat = site.first * fiftyseventh, lon = site.second * fiftyseventh;
+        ASSERT_TRUE(surface.water_at(lat, lon));
+        ASSERT_GT(earth->surf_map->elevation_at_bilinear(lat, lon), 0);
+        EXPECT_DOUBLE_EQ(surface.skyline_elevation(lat, lon), 0);
+    }
+    const double land_lat = 25.402 * fiftyseventh, land_lon = 50.429 * fiftyseventh;
+    ASSERT_FALSE(surface.water_at(land_lat, land_lon));
+    EXPECT_DOUBLE_EQ(surface.skyline_elevation(land_lat, land_lon),
+        earth->surf_map->elevation_at_bilinear(land_lat, land_lon));
+}
+
 TEST(SolarDayTest, VenusAndMoonHaveTheirSynodicDayLengths)
 {
     Star sun;

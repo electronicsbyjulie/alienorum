@@ -282,16 +282,16 @@ bool SurfaceSampler::water_at(double latitude, double longitude)
     return water && water_sample(info(latitude, longitude));
 }
 
+double SurfaceSampler::basin_elevation() const
+{
+    return planet && map && map->procedurally_generated && !planet->bump_has_bathymetry
+        ? planet->m_bump_scale * (planet->has_water - .5) : 0;
+}
+
 double SurfaceSampler::skyline_elevation(double latitude, double longitude)
 {
-    const double height = map->elevation_at_bilinear(latitude, longitude);
-    if (height >= 0 || !water || !planet || !planet->bump_has_bathymetry) return height;
-
-    // Match the relief map's geographic cell. The shoreline displacement is a visual effect.
-    const auto material = map->material_at(latitude, longitude);
-    if (material == SurfaceMaterial::ice || map->phase_ocean_at(latitude, longitude)
-        || water_sample({map->color_at(latitude, longitude), material})) return 0;
-    return height;
+    // Basin surfaces share one elevation even when the relief map disagrees at the coast.
+    return basin_at(latitude, longitude) ? basin_elevation() : map->elevation_at_bilinear(latitude, longitude);
 }
 
 bool SurfaceSampler::basin_at(double latitude, double longitude)
@@ -300,15 +300,13 @@ bool SurfaceSampler::basin_at(double latitude, double longitude)
     const auto value = info(latitude, longitude);
     if (water_sample(value) || value.second == SurfaceMaterial::ice) return true;
     if (value.second == SurfaceMaterial::frost) return false;
+    const bool procedural_basin = map->procedurally_generated && map->has_bump_data() && planet && planet->has_water > 0;
+    const bool has_phase = map->water_phase_revision() != 0;
+    if (!procedural_basin && !has_phase) return false;
     const auto coordinate = biomes ? field.coordinates(radius, latitude, longitude, strength)
         : std::make_pair(latitude, longitude);
-    if (map->phase_ocean_at(coordinate.first, coordinate.second)) return true;
-    if (map->procedurally_generated && map->has_bump_data() && planet && planet->has_water > 0)
-    {
-        const double level = planet->m_bump_scale * (planet->has_water - .5);
-        return map->elevation_at(coordinate.first, coordinate.second) <= level;
-    }
-    return false;
+    return (has_phase && map->phase_ocean_at(coordinate.first, coordinate.second))
+        || (procedural_basin && map->elevation_at(coordinate.first, coordinate.second) <= basin_elevation());
 }
 
 bool SurfaceSampler::water_at(double latitude, double longitude, WaterPatch& patch, bool include_frozen_basins)

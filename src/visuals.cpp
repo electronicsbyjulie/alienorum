@@ -6368,6 +6368,9 @@ void draw_horizon()
         const RGB3 distant_ground_rgb = rgb;
         const bool ocean_world = surface.ocean_world();
         const bool surface_water = surface.has_surface_water();
+        const auto material_key = std::make_tuple(surface_biomes, surface_water, surface.basin_elevation(),
+            surface_water && p->simulated_surface_life_allowed(), surface_water ? p->vegetation_r : 0,
+            surface_water ? p->vegetation_g : 0, surface_water ? p->vegetation_b : 0);
         const bool paint_biomes = surface_water || (surface_biomes && cel->type != lavaworld);
         const bool veiled_uniform_ground = haze.active() && !paint_biomes && map && map->is_complete()
             && !(horizon_distant_terrain && show_terrain && !gaseous && !ocean_world && map->has_bump_data());
@@ -6422,21 +6425,23 @@ void draw_horizon()
         };
         const TerrainLighting current_lighting{
             terrain_light, direct_flux, ambient_flux, solar_sine, is_day, instellation_scale, haze, terrain_tint};
-        const auto terrain_illumination = [&](const TerrainLighting& lighting, double lat, double lon, double incidence)
+        const auto terrain_illumination = [&](const TerrainLighting& lighting, double lat, double lon,
+            std::optional<double> slope_incidence)
         {
             if (!lighting.direct) return lighting.haze.surface_illumination(lighting.daylight, lighting.tint);
             const auto& direction = lighting.direction;
             const double radial_cosine = cos(lat) * (-sin(lon) * direction.x + cos(lon) * direction.z)
                 + sin(lat) * direction.y;
-            const double exposure = terrain_solar_exposure(radial_cosine,
-                skyline_elevation(lat, lon) / surface_radius, lighting.solar_radius_sine);
-            const double daylight = lighting.direct * fmax(0.0, incidence) * exposure;
+            const double elevation = slope_incidence ? skyline_elevation(lat, lon) : surface.basin_elevation();
+            const double exposure = terrain_solar_exposure(radial_cosine, elevation / surface_radius, lighting.solar_radius_sine);
+            const double daylight = lighting.direct * fmax(0.0, slope_incidence.value_or(radial_cosine)) * exposure;
             return lighting.haze.surface_illumination(adapted_daylight(daylight, lighting.ambient, lighting.instellation),
                 lighting.tint);
         };
         const auto sampled_illumination = [&](const TerrainLighting& lighting, double lat, double lon)
         {
             if (!lighting.direct) return lighting.haze.surface_illumination(lighting.daylight, lighting.tint);
+            if (surface.basin_at(lat, lon)) return terrain_illumination(lighting, lat, lon, std::nullopt);
             const auto normal = terrain_normal(lon, lat, terrain_axes, normal_lon_step, normal_lat_step, skyline_elevation);
             const auto& direction = lighting.direction;
             return terrain_illumination(lighting, lat, lon, normal[0] * direction.x + normal[1] * direction.y
@@ -6657,10 +6662,12 @@ void draw_horizon()
             static unsigned int cached_bump_generation = 0;
             static double cached_radius = 0;
             static bool cached_cpu_reference = false;
+            static auto cached_material_key = material_key;
 
             if (cached_whereami != whereami || cached_lat != viewer_lat || cached_lon != viewer_lon
                 || cached_eye_height != viewer_eye_height || cached_surface_lift != surface_lift || cached_bump_map != cel->surf_map
-                || cached_bump_generation != (cel->surf_map ? cel->surf_map->gen : 0) || cached_radius != surface_radius
+                || cached_bump_generation != local_surface_revision || cached_radius != surface_radius
+                || cached_material_key != material_key
                 || cached_cpu_reference != (horizon_terrain_cpu_reference || !performance_enabled(21)))
             {
                 if (cached_whereami != whereami)
@@ -6757,7 +6764,8 @@ void draw_horizon()
                 cached_eye_height = viewer_eye_height;
                 cached_surface_lift = surface_lift;
                 cached_bump_map = cel->surf_map;
-                cached_bump_generation = cel->surf_map ? cel->surf_map->gen : 0;
+                cached_bump_generation = local_surface_revision;
+                cached_material_key = material_key;
                 cached_radius = surface_radius;
                 cached_cpu_reference = horizon_terrain_cpu_reference || !performance_enabled(21);
             }
@@ -6810,6 +6818,12 @@ void draw_horizon()
             && cel->surf_map->is_complete() && cel->surf_map->has_bump_data())
         {
             static DistantSkyline distant_skyline;
+            static auto skyline_material_key = material_key;
+            if (skyline_material_key != material_key)
+            {
+                distant_skyline = DistantSkyline{};
+                skyline_material_key = material_key;
+            }
             distant_skyline.update(cel->surf_map, local_surface_revision, whereami,
                 viewer_lat, viewer_lon, surface_radius, surface_eye, surface_refraction.curvature,
                 skyline_elevation, horizon_distant_terrain_lighting && !calibrated_skyline, calibrated_skyline);
@@ -8472,15 +8486,16 @@ void draw_horizon()
             const double focal = surface_focal();
             const double sine = surface_sin_altitude(), cosine = surface_cos_altitude();
             const int motion_stride = horizon_mapped_terrain_always_per_pixel ? 1 : 4 * horizon_quality.ground_stride();
+            const bool interpolate_relief = airless_moon || (p && p->get_surface_pressure() > 0);
             const auto view_key = std::make_tuple(cel, map, local_surface_revision, whereami, viewer_lat, viewer_lon,
                 surface_eye, surface_radius, surface_curvature(), azimuth, altitude, zoom, dispcx, dispcy,
-                screen_w, ground_height, shore_displacement, redlight_mode);
+                screen_w, ground_height, shore_displacement, redlight_mode, interpolate_relief, material_key);
             const auto lighting_key = std::make_tuple(
                 std::round(terrain_light.x * 1000), std::round(terrain_light.y * 1000), std::round(terrain_light.z * 1000),
                 direct_flux, ambient_flux, solar_sine, instellation_scale, terrain_tint,
                 ground_light, haze.extinction, haze.light, haze.sky_opacity);
             struct ReliefTile { ImVec2 low, high; ImU32 color; std::array<ImU32, 3> corners{}; };
-            struct ReliefSample { double distance; ImU32 color; };
+            struct ReliefSample { double distance; ImU32 color; bool water = false; };
             struct ReliefPaint
             {
                 std::vector<ReliefTile> tiles;
@@ -8513,6 +8528,8 @@ void draw_horizon()
             };
             const auto paint_rows = [&](ReliefPaint& paint, std::chrono::steady_clock::time_point deadline)
             {
+                const int tile = paint.stride;
+                const bool interpolate_tiles = interpolate_relief && tile > 1;
                 const auto sightline = [&](double x, double y)
                 {
                     const double east = (x - dispcx) / focal;
@@ -8521,14 +8538,16 @@ void draw_horizon()
                     const double up = vertical * cosine + sine;
                     return std::make_pair(azimuth + atan2(east, north), up / fmax(1e-12, hypot(east, north)));
                 };
-                const auto sample_at = [&](const std::pair<double, double>& ray) -> ReliefSample
+                const auto sample_at = [&](const std::pair<double, double>& ray, bool classify_water = false) -> ReliefSample
                 {
                     const double distance = mapped_skyline->distance_at_slope(ray.first, ray.second);
                     if (!std::isfinite(distance)) return {distance, 0};
                     const auto [lat, lon] = surface_coord(distance, ray.first);
-                    const RGB3 sample = surface_sample(lat, lon);
+                    const auto sample = classify_water ? surface.sample(lat, lon)
+                        : SurfaceSampler::Sample{surface_sample(lat, lon)};
                     return {distance, pressure_haze_color(paint.lighting.haze,
-                        surface_color_with_light(sample, sampled_illumination(paint.lighting, lat, lon)), distance)};
+                        surface_color_with_light(sample.color, sampled_illumination(paint.lighting, lat, lon)), distance),
+                        sample.water};
                 };
                 const auto hits_terrain = [&](double x, double y)
                 {
@@ -8537,14 +8556,12 @@ void draw_horizon()
                 };
                 // Shade each surface tile at the first terrain hit. Resolve mixed sky
                 // and ground tiles at pixel centers to preserve the skyline.
-                const int tile = paint.stride;
-                const bool interpolate_tiles = airless_moon && tile > 1;
                 const auto sample_row = [&](std::vector<ReliefSample>& samples, int y)
                 {
                     const int columns = (screen_w + tile - 1) / tile;
                     samples.resize(columns + 1);
                     for (int i = 0; i <= columns; ++i)
-                        samples[i] = sample_at(sightline(std::min(screen_w, i * tile), y));
+                        samples[i] = sample_at(sightline(std::min(screen_w, i * tile), y), surface_water);
                 };
                 if (interpolate_tiles && paint.upper_samples.empty()) sample_row(paint.upper_samples, paint.next_row);
                 while (paint.next_row < ground_height)
@@ -8577,6 +8594,30 @@ void draw_horizon()
                             const double far_distance = std::max({tl.distance, tr.distance, bl.distance, br.distance});
                             // Resolve silhouettes and sudden depth changes at pixel centers.
                             mixed = !std::isfinite(far_distance) || far_distance > 2 * near_distance;
+                            if (!mixed && surface_water)
+                            {
+                                mixed = tl.water != tr.water || tl.water != bl.water || tl.water != br.water;
+                                // A narrow coast can cross the interior with all four corners on one material.
+                                for (int row = y; row < bottom && !mixed; ++row)
+                                {
+                                    for (int col = x; col < right; ++col)
+                                    {
+                                        const auto pixel_ray = sightline(col + .5, row + .5);
+                                        const double distance = mapped_skyline->distance_at_slope(pixel_ray.first, pixel_ray.second);
+                                        if (!std::isfinite(distance))
+                                        {
+                                            mixed = true;
+                                            break;
+                                        }
+                                        const auto [lat, lon] = surface_coord(distance, pixel_ray.first);
+                                        if (surface.water_at(lat, lon) != tl.water)
+                                        {
+                                            mixed = true;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
                             if (!mixed)
                             {
                                 if (tl.color == tr.color && tl.color == bl.color && tl.color == br.color)
@@ -8886,7 +8927,12 @@ void draw_horizon()
                 std::vector<WaveSpan> spans;
             };
             static std::vector<WaveRow> wave_rows;
-            const double wave_scale = water_cpu_reference ? 1.0 : horizon_quality.wave_scale();
+            // Keep wave detail in step with the mapped ground while it refines.
+            double wave_scale = horizon_quality.wave_scale();
+            if (mapped_skyline && horizon_quality.should_undo_terrain_refinement())
+                wave_scale = std::min(wave_scale, .75);
+            if (water_cpu_reference || (mapped_skyline && precipitation_stats.ground_sample_stride == 1))
+                wave_scale = 1.0;
             const int num_wave_rows = std::max(2, static_cast<int>(std::lround(WAVE_NUM_ROWS * wave_scale)));
             const int num_steps = std::max(1, static_cast<int>(std::lround(WAVE_STEPS_PER_ROW * wave_scale)));
             auto wave_key = std::make_tuple(whereami, R_planet, surface_radius, surface_eye, surface_lift,
