@@ -14,6 +14,7 @@
 #include "../globals.h"
 #include "../dialogs.h"
 #include "../loaders.h"
+#include "../classes/wdcolor.h"
 
 using namespace alienorum;
 
@@ -452,4 +453,59 @@ TEST(StellarPhotosphereRegression, HotPolesHaveABluerVisibleTexture)
     };
     EXPECT_GT(blue_to_red(0), blue_to_red(height / 2) + 0.01);
     EXPECT_GT(blue_to_red(height - 1), blue_to_red(height / 2) + 0.01);
+}
+
+TEST(StellarPhotosphereRegression, OpticalChromaticityChangesBeyondTheReferenceColorGrid)
+{
+    for (bool white_dwarf : {false, true})
+    {
+        SCOPED_TRACE(white_dwarf ? "DA white dwarf" : "hot O star");
+        Star star;
+        std::strcpy(star.name, "Optical chromaticity fixture");
+        std::strcpy(star.spectral_type, white_dwarf ? "DA5" : "O3V");
+        star.temperature = white_dwarf ? 11000 : 65000;
+        star.mass = (white_dwarf ? .6 : 30) * solar_mass;
+        star.volumetric_mean_radius = (white_dwarf ? .013 : 8) * solar_radius;
+        star.fictitious_map_height = 32;
+        star.manual_oblateness = true;
+
+        Color atmosphere;
+        if (white_dwarf)
+        {
+            ASSERT_TRUE(star.resolve_wd_color(atmosphere));
+        }
+        const auto by_latitude = [&](double flattening)
+        {
+            star.oblateness = flattening;
+            Map photosphere(&star);
+            photosphere.generate_stellar_map(&star);
+            const auto width = photosphere.get_width(), height = photosphere.get_height();
+            std::vector<unsigned char> rgb(width * height * 4);
+            photosphere.export_rgba(rgb.data());
+            const auto chromaticity = [&](unsigned long row)
+            {
+                const auto index = 4 * row * width;
+                Color linear(wd_srgb_decode(rgb[index] / 255.0),
+                    wd_srgb_decode(rgb[index+1] / 255.0), wd_srgb_decode(rgb[index+2] / 255.0));
+                const double intensity = linear.red + linear.green + linear.blue;
+                return Color(linear.red / intensity, linear.green / intensity, linear.blue / intensity);
+            };
+            return std::array<Color, 2>{chromaticity(0), chromaticity(height / 2)};
+        };
+
+        const auto flat = by_latitude(0);
+        EXPECT_DOUBLE_EQ(flat[0].red, flat[1].red);
+        EXPECT_DOUBLE_EQ(flat[0].blue, flat[1].blue);
+        if (white_dwarf)
+        {
+            const double sum = atmosphere.red + atmosphere.green + atmosphere.blue;
+            EXPECT_NEAR(flat[0].red, atmosphere.red / sum, .004);
+            EXPECT_NEAR(flat[0].blue, atmosphere.blue / sum, .004);
+        }
+        // Keep both O-star temperatures above the grid and make their
+        // continuum difference resolvable in the 8-bit texture.
+        const auto oblate = by_latitude(white_dwarf ? .28 : .44);
+        EXPECT_GT(oblate[0].blue, oblate[1].blue + .004);
+        EXPECT_GT(oblate[1].red, oblate[0].red + .004);
+    }
 }

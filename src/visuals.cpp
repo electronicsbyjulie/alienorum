@@ -6600,6 +6600,8 @@ void draw_horizon()
             return shared_surface ? surface_context.curvature : surface_refraction.curvature;
         };
         const bool calibrated_skyline = !ocean_world && has_mapped_horizon(cel);
+        const double eye_over_basin = calibrated_skyline && surface_water
+            ? surface_eye + skyline_elevation(viewer_lat, viewer_lon) - surface.basin_elevation() : surface_eye;
         const DistantSkyline* mapped_skyline = nullptr;
         // A synthetic surface extended to the reference horizon would fill mapped valleys.
         const bool terrain_mesh = show_terrain && surface_biomes
@@ -6668,6 +6670,38 @@ void draw_horizon()
                 cos(arc) - surface_sin_latitude() * sin_lat);
             return std::make_pair(latitude, longitude);
         };
+        const auto distance_to_level = [&](double slope, double eye)
+        {
+            const double curvature = surface_curvature();
+            const double discriminant = slope * slope - 4.0 * curvature * eye;
+            if (discriminant < 0) return double(INFINITY);
+            const double denominator = slope + sqrt(discriminant);
+            if (eye < 0) return denominator / (2 * curvature);
+            return denominator > 0 ? 2.0 * eye / denominator : double(INFINITY);
+        };
+        const auto mapped_distance = [&](double bearing, double slope)
+        {
+            const double distance = mapped_skyline->distance_at_slope(bearing, slope);
+            if (!surface_water) return distance;
+            if (std::isfinite(distance))
+            {
+                const double arc = distance / surface_radius;
+                const double basin_radius = surface_radius + surface.basin_elevation();
+                const double half_arc_sine = sin(.5 * arc);
+                const double basin_up = -eye_over_basin - 2 * basin_radius * half_arc_sine * half_arc_sine
+                    + surface_bending * distance * distance;
+                if (fabs(slope * basin_radius * sin(arc) - basin_up) < .01) return distance;
+                const auto [lat, lon] = surface_coord(distance, bearing);
+                if (!surface.basin_at(lat, lon)) return distance;
+            }
+
+            // The interpolated terrain intersection lies in a basin. Use the
+            // level surface only if this ray reaches the basin itself.
+            const double level = distance_to_level(-slope, eye_over_basin);
+            if (!std::isfinite(level) || level > std::min(2000000.0, surface_radius * .5)) return double(INFINITY);
+            const auto [water_lat, water_lon] = surface_coord(level, bearing);
+            return surface.basin_at(water_lat, water_lon) ? level : double(INFINITY);
+        };
         // The sea stays on the curved base surface; raised terrain has its own depth.
         const auto base_distance = [&](double screen_x, double screen_y)
         {
@@ -6675,21 +6709,10 @@ void draw_horizon()
             const double y = (dispcy - screen_y) / surface_focal();
             const double north = surface_cos_altitude() - y * surface_sin_altitude();
             const double up = y * surface_cos_altitude() + surface_sin_altitude();
-            if (mapped_skyline)
-                return mapped_skyline->distance(azimuth + atan2(x, north), atan2(up, hypot(x, north)));
-            const double slope = -up / fmax(1e-12, hypot(x, north));
-            const double curvature = surface_curvature();
-            const double discriminant = slope * slope - 4.0 * curvature * surface_eye;
-            const double root = shared_surface && discriminant >= 0 ? sqrt(discriminant) : 0;
-            if (discriminant >= 0 && slope + (shared_surface ? root : sqrt(discriminant)) > 0)
-            {
-                const double distance = 2.0 * surface_eye / (slope + (shared_surface ? root : sqrt(discriminant)));
-                if (distance <= surface_range)
-                {
-                    return distance;
-                }
-            }
-            return std::numeric_limits<double>::infinity();
+            const double slope = up / fmax(1e-12, hypot(x, north));
+            if (mapped_skyline) return mapped_distance(azimuth + atan2(x, north), slope);
+            const double distance = distance_to_level(-slope, surface_eye);
+            return distance <= surface_range ? distance : double(INFINITY);
         };
         // The projected horizon can disappear when every view ray faces the ground.
         bool full_ground_view = !gaseous
@@ -7071,6 +7094,8 @@ void draw_horizon()
         }
         else if (!veiled_uniform_ground && !mapped_skyline)
         {
+            const double* background_x = surface_water ? hz_dx : terrain_horizon_x;
+            const double* background_y = surface_water ? hz_dy : hzheight;
             int prior_horizon = -1;
             for (j = 0; j <= hznodes; j++)
             {
@@ -7079,11 +7104,11 @@ void draw_horizon()
                 {
                     for (int end = std::min(j + 7, hznodes); end > j; --end)
                     {
-                        const double first_x = terrain_horizon_x[prior_horizon % hznodes], last_x = terrain_horizon_x[end % hznodes];
+                        const double first_x = background_x[prior_horizon % hznodes], last_x = background_x[end % hznodes];
                         const bool offscreen = fmax(first_x, last_x) < -3 || fmin(first_x, last_x) > dispcx * 2 + 3;
                         const double error = horizon_quality.silhouette_error();
                         if ((offscreen || error > .025)
-                            && horizon_segment_within(terrain_horizon_x, hzheight, hznodes, prior_horizon, end, error))
+                            && horizon_segment_within(background_x, background_y, hznodes, prior_horizon, end, error))
                         {
                             terrain_lod_stats.horizon_segments_removed += end - j;
                             j = end;
@@ -7091,29 +7116,29 @@ void draw_horizon()
                         }
                     }
                 }
-                if (terrain_horizon_x[j%hznodes] > -1e5 && hzheight[j%hznodes] > -1e5)
+                if (background_x[j%hznodes] > -1e5 && background_y[j%hznodes] > -1e5)
                 {
                     j1 = j%hznodes;
-                    if (hz_fx > -1e8 && hz_fy < 1e8 && hz_fy > -1e4 && hzheight[j1] > -1e4 && fabs(hz_fx-terrain_horizon_x[j1]) < dispcx * zoom)
+                    if (hz_fx > -1e8 && hz_fy < 1e8 && hz_fy > -1e4 && background_y[j1] > -1e4 && fabs(hz_fx-background_x[j1]) < dispcx * zoom)
                     {
-                        if (altitude > (fiftyseventh * 40) && (hzheight[j1] <= 0 || hz_fy <= 0))
+                        if (altitude > (fiftyseventh * 40) && (background_y[j1] <= 0 || hz_fy <= 0))
                         {
                             goto _skip_hz_element;
                         }
-                        hz_y = hzheight[j1];
+                        hz_y = background_y[j1];
                         hz_y1 = hz_fy;
 
                         points[0] = ImVec2(hz_fx, hz_y1);
-                        points[1] = ImVec2(terrain_horizon_x[j1]+1, hz_y);
-                        points[2] = ImVec2(terrain_horizon_x[j1]+1, dispcy*2);
+                        points[1] = ImVec2(background_x[j1]+1, hz_y);
+                        points[2] = ImVec2(background_x[j1]+1, dispcy*2);
                         points[3] = ImVec2(hz_fx, dispcy*2);
 
                         ImGui::GetBackgroundDrawList()->AddConvexPolyFilled(points, 4, terraincol);
                     }
 
                     _skip_hz_element:
-                    hz_fx = terrain_horizon_x[j1];
-                    hz_fy = hzheight[j1];
+                    hz_fx = background_x[j1];
+                    hz_fy = background_y[j1];
                     prior_horizon = j;
                 }
             }
@@ -7128,6 +7153,7 @@ void draw_horizon()
             uint32_t generation = 0;
             RGB3 color;
             bool water = false;
+            bool ice = false;
         };
         static std::vector<GroundPixel> ground_pixels;
         static uint32_t ground_pixel_generation = 1;
@@ -7535,7 +7561,7 @@ void draw_horizon()
             using ProjectionKey = decltype(std::make_tuple(mesh_epoch, azimuth, altitude,
                 zoom, dispcx, dispcy, east_shift, north_shift, shared_surface, horizon_terrain_cpu_reference,
                 performance_enabled(22), performance_enabled(24), performance_enabled(25), performance_enabled(26),
-                bool(horizon_gpu_terrain_rasterization), horizon_terrain_gpu_reference));
+                bool(horizon_gpu_terrain_rasterization), horizon_terrain_gpu_reference, local_surface_revision));
             static std::optional<ProjectionKey> saved_projected_terrain_key;
             const bool retain_projection = horizon_fast_path(1) && performance_enabled(23) && !horizon_terrain_cpu_reference;
             std::optional<ProjectionKey> projected_terrain_key;
@@ -7543,7 +7569,8 @@ void draw_horizon()
             {
                 projected_terrain_key.emplace(mesh_epoch, azimuth, altitude, zoom, dispcx, dispcy, east_shift, north_shift, shared_surface,
                     horizon_terrain_cpu_reference, performance_enabled(22), performance_enabled(24),
-                    performance_enabled(25), performance_enabled(26), bool(horizon_gpu_terrain_rasterization), horizon_terrain_gpu_reference);
+                    performance_enabled(25), performance_enabled(26), bool(horizon_gpu_terrain_rasterization),
+                    horizon_terrain_gpu_reference, surface_water ? local_surface_revision : 0u);
             }
             if (!retain_projection || !projected_terrain_valid || saved_projected_terrain_key != projected_terrain_key)
             {
@@ -7710,6 +7737,15 @@ void draw_horizon()
                         terrain_raster.triangle(triangles[index], triangles[index + 1], triangles[index + 2],
                             !horizon_terrain_cpu_reference && performance_enabled(24));
                     }
+                }
+                if (surface_water)
+                {
+                    terrain_raster.clip_surface([&](double x, double y, double distance)
+                    {
+                        if (distance >= base_distance(x, y)) return false;
+                        const auto [lat, lon] = ground_coord_at_depth(x, y, distance);
+                        return surface.basin_at(lat, lon);
+                    });
                 }
                 if (retain_projection) saved_projected_terrain_key = projected_terrain_key;
                 projected_terrain_valid = retain_projection;
@@ -8231,6 +8267,7 @@ void draw_horizon()
                         const auto sample = surface.sample(coord.first, coord.second);
                         pixel.color = sample.color;
                         pixel.water = sample.water;
+                        pixel.ice = sample.material == SurfaceMaterial::ice;
                         ++precipitation_stats.ground_pixel_samples;
                     }
                 }
@@ -8241,7 +8278,7 @@ void draw_horizon()
             const auto filtered_water_color = [&](int x, int y, const GroundPixel& pixel)
             {
                 const auto& color = pixel.color;
-                if (!pixel.water) return color;
+                if (!pixel.water && !pixel.ice) return color;
                 // Approximate scattering with a sparse screen-space filter of
                 // cached samples. Keep material tags and the silhouette exact.
                 constexpr int half_radius = blur_radius / 2;
@@ -8258,7 +8295,7 @@ void draw_horizon()
                     if (nx < 0 || nx >= screen_w || ny < 0 || ny >= ground_height
                         || ny + 0.5 < min_hz_y_at_x[nx]) continue;
                     const auto& neighbor = sample_ground_pixel(nx, ny);
-                    if ((terrain_mesh && !std::isfinite(neighbor.depth)) || !neighbor.water) continue;
+                    if ((terrain_mesh && !std::isfinite(neighbor.depth)) || (!neighbor.water && !neighbor.ice)) continue;
                     red += tap[2] * neighbor.color.r;
                     green += tap[2] * neighbor.color.g;
                     blue += tap[2] * neighbor.color.b;
@@ -8284,7 +8321,7 @@ void draw_horizon()
                     {
                         if (y + 0.5 < min_hz_y_at_x[x]) continue;
                         const auto& pixel = sample_ground_pixel(x, y);
-                        if ((terrain_mesh && !std::isfinite(pixel.depth)) || !pixel.water) continue;
+                        if ((terrain_mesh && !std::isfinite(pixel.depth)) || (!pixel.water && !pixel.ice)) continue;
                         const RGB3 blended = filtered_water_color(x, y, pixel);
                         if (blended.r != pixel.color.r || blended.g != pixel.color.g || blended.b != pixel.color.b) return true;
                     }
@@ -8298,6 +8335,67 @@ void draw_horizon()
                 remember_channels(sample);
                 gpu_rectangles.push_back({left, top, right, bottom,
                     shade_ground(sample)});
+            };
+            const auto paint_wet_tile = [&](std::vector<HorizonGroundRect>& rectangles, int left, int top, int right, int bottom)
+            {
+                const int center_x = (left + right) / 2;
+                const double center_y = std::max(double((top + bottom) / 2), std::ceil(min_hz_y_at_x[center_x] - .5));
+                if (center_y < bottom)
+                {
+                    const auto& center = sample_ground_pixel(center_x, center_y);
+                    if (!terrain_mesh || std::isfinite(center.depth))
+                    {
+                        bool crosses_relief = false;
+                        if (terrain_mesh && (center.water || center.ice))
+                        {
+                            // A flat preview color is safe on level ground. Resolve
+                            // basin-colored tiles that also cover raised terrain.
+                            const auto& depths = terrain_raster.distances();
+                            for (int y = top; y < bottom && !crosses_relief; ++y)
+                            {
+                                for (int x = left; x < right; ++x)
+                                {
+                                    const float depth = depths[static_cast<size_t>(y) * screen_w + x];
+                                    if (depth > 0 && depth < base_distance(x + .5, y + .5))
+                                    {
+                                        crosses_relief = true;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        if (!crosses_relief)
+                        {
+                            remember_channels(center.color);
+                            rectangles.push_back({left, top, right, bottom, shade_ground(center.color)});
+                            return;
+                        }
+                    }
+                }
+                for (int y = top; y < bottom; ++y)
+                {
+                    int run_left = left;
+                    ImU32 previous = 0;
+                    for (int x = left; x <= right; ++x)
+                    {
+                        ImU32 color = 0;
+                        if (x < right && y + .5 >= min_hz_y_at_x[x])
+                        {
+                            const auto& pixel = sample_ground_pixel(x, y);
+                            if (!terrain_mesh || std::isfinite(pixel.depth))
+                            {
+                                remember_channels(pixel.color);
+                                color = shade_ground(pixel.color);
+                            }
+                        }
+                        if (color != previous)
+                        {
+                            if (previous) rectangles.push_back({run_left, y, x, y + 1, previous});
+                            run_left = x;
+                            previous = color;
+                        }
+                    }
+                }
             };
             // Subdivide map boundaries while drawing uniform regions as large patches.
             const auto patch = [&](const auto &self, int left, int top, int right, int bottom) -> void
@@ -8372,11 +8470,17 @@ void draw_horizon()
                         && base_distance(std::clamp<double>(dispcx, left + .5, right - .5), bottom - .5)
                             >= distant_shore_start
                         ? shore_stride : ground_stride;
-                    if (stride > 1)
+                    if (stride > 1 && gpu_ground)
                     {
                         for (int y = top; y < bottom; y += stride)
+                        {
                             for (int x = left; x < right; x += stride)
-                                sampled_gpu_tile(x, y, std::min(right, x + stride), std::min(bottom, y + stride));
+                            {
+                                const int end_x = std::min(right, x + stride), end_y = std::min(bottom, y + stride);
+                                if (surface_water) paint_wet_tile(gpu_rectangles, x, y, end_x, end_y);
+                                else sampled_gpu_tile(x, y, end_x, end_y);
+                            }
+                        }
                         return;
                     }
                     // Sample every pixel, then merge equal colors into horizontal runs.
@@ -8489,6 +8593,14 @@ void draw_horizon()
                             const int bottom = std::min(ground_height, y + 32);
                             if (bottom <= first) continue;
                             auto& tile = preview_tiles.emplace_back(GroundPreviewTile{x, y, right, bottom, {}});
+                            if (surface_water)
+                            {
+                                for (int row = y; row < bottom; row += sample_step)
+                                    for (int column = x; column < right; column += sample_step)
+                                        paint_wet_tile(tile.colors, column, row,
+                                            std::min(right, column + sample_step), std::min(bottom, row + sample_step));
+                                continue;
+                            }
                             const int rows = (bottom - y + sample_step - 1) / sample_step;
                             const int columns = (right - x + sample_step - 1) / sample_step;
                             std::array<std::array<ImU32, 5>, 5> colors;
@@ -8606,7 +8718,12 @@ void draw_horizon()
                 direct_flux, ambient_flux, solar_sine, instellation_scale, terrain_tint,
                 ground_light, haze.extinction, haze.light, haze.sky_opacity);
             struct ReliefTile { ImVec2 low, high; ImU32 color; std::array<ImU32, 3> corners{}; };
-            struct ReliefSample { double distance; ImU32 color; bool water = false; };
+            constexpr unsigned int water_group = 1, land_group = 2;
+            const auto blend_group = [](const SurfaceSampler::Sample& sample) -> unsigned int
+            {
+                return sample.water ? water_group : sample.material == SurfaceMaterial::ice ? 0 : land_group;
+            };
+            struct ReliefSample { double distance; ImU32 color; unsigned int group = 0; };
             struct ReliefPaint
             {
                 std::vector<ReliefTile> tiles;
@@ -8649,21 +8766,25 @@ void draw_horizon()
                     const double up = vertical * cosine + sine;
                     return std::make_pair(azimuth + atan2(east, north), up / fmax(1e-12, hypot(east, north)));
                 };
-                const auto sample_at = [&](const std::pair<double, double>& ray, bool classify_water = false) -> ReliefSample
+                const auto shade_hit = [&](const std::pair<double, double>& ray, double distance, bool classify_material) -> ReliefSample
                 {
-                    const double distance = mapped_skyline->distance_at_slope(ray.first, ray.second);
                     if (!std::isfinite(distance)) return {distance, 0};
                     const auto [lat, lon] = surface_coord(distance, ray.first);
-                    const auto sample = classify_water ? surface.sample(lat, lon)
+                    const auto sample = classify_material ? surface.sample(lat, lon)
                         : SurfaceSampler::Sample{surface_sample(lat, lon)};
                     return {distance, pressure_haze_color(paint.lighting.haze,
                         surface_color_with_light(sample.color, sampled_illumination(paint.lighting, lat, lon)), distance),
-                        sample.water};
+                        classify_material ? blend_group(sample) : 0};
+                };
+                const auto sample_at = [&](const std::pair<double, double>& ray, bool classify_water = false)
+                {
+                    return shade_hit(ray, mapped_distance(ray.first, ray.second), classify_water);
                 };
                 const auto hits_terrain = [&](double x, double y)
                 {
                     const auto [bearing, slope] = sightline(x, y);
-                    return mapped_skyline->covers_slope(bearing, slope);
+                    return surface_water ? std::isfinite(mapped_distance(bearing, slope))
+                        : mapped_skyline->covers_slope(bearing, slope);
                 };
                 // Shade each surface tile at the first terrain hit. Resolve mixed sky
                 // and ground tiles at pixel centers to preserve the skyline.
@@ -8693,7 +8814,9 @@ void draw_horizon()
                     {
                         const int right = std::min(screen_w, x + tile);
                         const auto ray = sightline((x + right) * .5, (y + bottom) * .5);
-                        const bool hit = mapped_skyline->covers_slope(ray.first, ray.second);
+                        const double basin_depth = surface_water ? mapped_distance(ray.first, ray.second) : double(INFINITY);
+                        const bool hit = surface_water ? std::isfinite(basin_depth)
+                            : mapped_skyline->covers_slope(ray.first, ray.second);
                         bool mixed = tile > 1 && (hits_terrain(x + .5, y + .5) != hit || hits_terrain(right - .5, y + .5) != hit
                             || hits_terrain(x + .5, bottom - .5) != hit || hits_terrain(right - .5, bottom - .5) != hit);
                         if (interpolate_tiles && hit && !mixed)
@@ -8707,21 +8830,25 @@ void draw_horizon()
                             mixed = !std::isfinite(far_distance) || far_distance > 2 * near_distance;
                             if (!mixed && surface_water)
                             {
-                                mixed = tl.water != tr.water || tl.water != bl.water || tl.water != br.water;
-                                // A narrow coast can cross the interior with all four corners on one material.
+                                // Ice can blend with either side of the coastline. A tile
+                                // containing both open water and land must use exact samples.
+                                unsigned int groups = tl.group | tr.group | bl.group | br.group;
+                                mixed = groups == (water_group | land_group);
+                                // A narrow coast can cross a tile without touching its corners.
                                 for (int row = y; row < bottom && !mixed; ++row)
                                 {
                                     for (int col = x; col < right; ++col)
                                     {
                                         const auto pixel_ray = sightline(col + .5, row + .5);
-                                        const double distance = mapped_skyline->distance_at_slope(pixel_ray.first, pixel_ray.second);
+                                        const double distance = mapped_distance(pixel_ray.first, pixel_ray.second);
                                         if (!std::isfinite(distance))
                                         {
                                             mixed = true;
                                             break;
                                         }
                                         const auto [lat, lon] = surface_coord(distance, pixel_ray.first);
-                                        if (surface.water_at(lat, lon) != tl.water)
+                                        groups |= blend_group(surface.sample(lat, lon));
+                                        if (groups == (water_group | land_group))
                                         {
                                             mixed = true;
                                             break;
@@ -8745,7 +8872,9 @@ void draw_horizon()
                         }
                         if (!mixed)
                         {
-                            run(x, hit ? sample_at(ray).color : 0);
+                            const ImU32 color = surface_water ? shade_hit(ray, basin_depth, false).color
+                                : hit ? sample_at(ray).color : 0;
+                            run(x, color);
                             if (hit) for (int column = x; column < right; ++column)
                                 paint.columns[column] = std::min(paint.columns[column], double(y));
                             continue;
@@ -8849,9 +8978,11 @@ void draw_horizon()
                 const double center_y = .25 * (polygon[0].y + polygon[1].y + polygon[2].y + polygon[3].y);
                 if (terrain_mesh && terrain_raster.distance_at(center_x, center_y) < layer->distance) continue;
                 const auto [lat, lon] = surface_coord(layer->distance, .5 * (layer->bearing_left + layer->bearing_right));
+                if (surface_water && surface.basin_at(lat, lon)) continue;
                 const double incidence = layer->normal[0] * light[0] + layer->normal[1] * light[1] + layer->normal[2] * light[2];
+                const RGB3 layer_rgb = surface_water ? surface_sample(lat, lon) : distant_ground_rgb;
                 const ImU32 color = pressure_haze_color(haze,
-                    surface_color_with_light(distant_ground_rgb, terrain_illumination(current_lighting, lat, lon, incidence)), layer->distance);
+                    surface_color_with_light(layer_rgb, terrain_illumination(current_lighting, lat, lon, incidence)), layer->distance);
                 terrain_draw->AddQuadFilled(polygon[0], polygon[1], polygon[2], polygon[3], color);
             }
             terrain_draw->Flags = saved_flags;

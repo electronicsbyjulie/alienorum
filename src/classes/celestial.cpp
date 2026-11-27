@@ -5711,7 +5711,7 @@ void Map::generate_stellar_map(CelestialObject *cel)
     }
     double T_eff, mass_solar, f_obl, radius_m, mass_g, surface_g, logg_cgs, p_rot_days, tau_conv_days, rossby, activity, spot_dT,
         scale_height, d_granule, granule_correction, cells_across, gran_scale, gran_nyquist, gran_amp, gran_dT, spot_base_deg, net_scale, plage_gain,
-        net_gain, bv_at_teff, ref_max, inv_ref_max;
+        net_gain;
     const double atomic_mass_unit = 1.66053906660e-27;                  // kg
     struct Spot
     {
@@ -5724,17 +5724,10 @@ void Map::generate_stellar_map(CelestialObject *cel)
     Star *star = static_cast<Star*>(cel);
     Color wd_linear;
     const bool has_wd_color = star->resolve_wd_color(wd_linear);
-    Color m_linear;
-    const bool has_m_color = stellar_reference_color(star, m_linear);
+    Color reference_color;
+    bool use_atmosphere_color = has_wd_color;
     int num_groups;
-    Color ref_col;
     Map *fac = nullptr;
-
-    // Blackbody B-V, to vary the hue according to local temperature.
-    auto bv_of = [color_correction](double T) -> double
-    {
-        return log(blackbody_flux(T, V_band) / blackbody_flux(T, B_band)) * invlogmagnbase - color_correction;
-    };
     
     try
     {
@@ -5757,10 +5750,7 @@ void Map::generate_stellar_map(CelestialObject *cel)
         std::cout << "Allocated " << allocated << " pixels for fictitious stellar map." << std::endl;
 
         stellar_regime_t regime = stellar_regime(cel);
-        T_eff = has_m_color ? (is_m_color_source(star) ? m_dwarf_temperature(star)
-            : ((star->temperature <= 0 && !star->spectral_type[0])
-                ? Star::interpolate_mseq_temp(Star::get_mseqidx_from_BV(star->BV_color)) : star->estimate_temperature()))
-            : ((cel->temperature > 0) ? cel->temperature : Star::temperature_from_BV(cel->BV_color));
+        T_eff = star->thermal_reference_temperature();
         if (star->is_mira_variable() && star->mira_pulsation.is_object())
             T_eff = star->mira_pulsation.value("mean_temperature_K", T_eff);
         if (!(T_eff > 0) || isnan(T_eff) || isinf(T_eff)) T_eff = sun_temp;
@@ -5870,12 +5860,18 @@ void Map::generate_stellar_map(CelestialObject *cel)
         plage_gain = fmin(0.55, 0.20 + 0.5 * activity);           // excess over the photosphere
         net_gain = fmin(0.30, 0.08 + 0.35 * activity);
 
-        bv_at_teff = bv_of(T_eff);
-        ref_col = has_wd_color
-            ? wd_linear
-            : Color::color_from_magnitude_indices(0, cel->BV_color, cel->BV_color, default_brightness, color_correction);
-        ref_max = fmax(ref_col.red, fmax(ref_col.green, ref_col.blue));
-        inv_ref_max = (ref_max > 0) ? (1.0 / ref_max) : 1.0;
+        if (has_wd_color) reference_color = wd_linear;
+        else if (stellar_reference_color(star, reference_color))
+        {
+            use_atmosphere_color = true;
+            reference_color = m_dwarf_linear_color(T_eff);
+        }
+        else
+        {
+            reference_color = Color::color_from_magnitude_indices(
+                0, cel->BV_color, cel->BV_color, default_brightness, color_correction);
+            reference_color.normalize(1);
+        }
     }
     catch (...)
     {
@@ -5885,6 +5881,26 @@ void Map::generate_stellar_map(CelestialObject *cel)
 
     double theta, phi, sin_theta, nx, ny, nz;
     const double visible_planck_temperature = Planck * speed_of_light / (V_band * kB);
+    const double red_planck_temperature = Planck * speed_of_light / (R_band * kB);
+    const double blue_planck_temperature = Planck * speed_of_light / (B_band * kB);
+    const auto optical_ratios = [&](double kelvin)
+    {
+        const double visual = expm1(visible_planck_temperature / kelvin);
+        return Color(visual / expm1(red_planck_temperature / kelvin), 1,
+            visual / expm1(blue_planck_temperature / kelvin));
+    };
+    const Color reference_ratios = optical_ratios(fmax(1000, T_eff));
+    const double reference_luminance = reference_color.luminance();
+    const auto photosphere_color = [&](double kelvin)
+    {
+        // Take the local change in each band relative to the star's reference
+        // spectrum. Luminance enters separately through the intensity model.
+        const Color ratios = optical_ratios(kelvin);
+        Color color(reference_color.red * ratios.red / reference_ratios.red,
+            reference_color.green, reference_color.blue * ratios.blue / reference_ratios.blue);
+        const double scale = reference_luminance / color.luminance();
+        return Color(color.red * scale, color.green * scale, color.blue * scale);
+    };
     unsigned int x, y, idx;
 
     for (y = 0; y < image_height; ++y)
@@ -5892,7 +5908,8 @@ void Map::generate_stellar_map(CelestialObject *cel)
         theta = ((double)y / image_height) * _pi;            // 0 at the north pole, Pi at the south pole
         sin_theta = sin(theta);
         
-        const double latitude_temperature = Star::gravity_darkened_temperature(T_eff, f_obl, sin_theta * sin_theta);
+        const double latitude_temperature = fmax(1000, Star::gravity_darkened_temperature(T_eff, f_obl, sin_theta * sin_theta));
+        const Color latitude_color = photosphere_color(latitude_temperature);
 
         for (x = 0; x < image_width; ++x)
         {
@@ -5935,24 +5952,12 @@ void Map::generate_stellar_map(CelestialObject *cel)
                 // Visible continuum contrast for a cool spot relative to nearby quiet photosphere.
                 lum *= expm1(visible_planck_temperature / quiet_temperature) / expm1(visible_planck_temperature / T_local);
             }
-            RGB3 rgb;
-            if (has_wd_color)
-            {
-                rgb = wd_srgb_from_linear(Color(wd_linear.red * lum,
-                    wd_linear.green * lum, wd_linear.blue * lum));
-            }
-            else if (has_m_color)
-            {
-                const Color local = m_dwarf_linear_color(T_local);
-                rgb = wd_srgb_from_linear(Color(local.red*lum, local.green*lum, local.blue*lum));
-            }
-            else
-            {
-                double bv_local = cel->BV_color + (bv_of(T_local) - bv_at_teff);
-                rgb = Color::rgb_from_color(
-                    Color::color_from_magnitude_indices(0, bv_local, bv_local, default_brightness, color_correction),
-                    lum * inv_ref_max, 1.0 / default_gamma, false);
-            }
+            const Color local_color = T_local == latitude_temperature ? latitude_color : photosphere_color(T_local);
+            // Fit bright pixels to the display range with a shared scale so their hue survives.
+            lum = fmin(lum, 1.0 / std::max({local_color.red, local_color.green, local_color.blue}));
+            const RGB3 rgb = use_atmosphere_color
+                ? wd_srgb_from_linear(Color(local_color.red * lum, local_color.green * lum, local_color.blue * lum))
+                : Color::rgb_from_color(local_color, lum, 1.0 / default_gamma, false);
 
             red_data[idx]   = rgb.r;
             green_data[idx] = rgb.g;
@@ -5972,7 +5977,7 @@ void Map::generate_stellar_map(CelestialObject *cel)
         }
     }
 
-    if (has_m_color)
+    if (use_atmosphere_color && !has_wd_color)
     {
         unsigned char peak = 0;
         for (unsigned long i = 0; i < allocated; ++i)

@@ -18,6 +18,12 @@ CITED_ARTICLES = {
     'Espinosa_Lara_Rieutord_2011_Gravity_Darkening.pdf': 'R27',
     'Scharmer_2002_Penumbral_Filaments.pdf': 'R28',
     'Klein-2021-Proxima-rotation.pdf': 'R29',
+    'Huygens-Titan-Fulchignoni-2005.pdf': 'R30',
+    'Triton-Sicardy-2024.pdf': 'R31',
+    'Pluto-Nitrogen-Lewis-2020.pdf': 'R32',
+    'Galilean-Satellites-Shibaike-2019.pdf': 'R33',
+    'Io-Atmosphere-Tsang-2016.pdf': 'R34',
+    'Galilean-Aurorae-de-Kleer-2023.pdf': 'R35',
 }
 
 # Titles and first authors come from the articles. Use stable public identifiers.

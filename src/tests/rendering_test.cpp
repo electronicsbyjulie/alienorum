@@ -4935,6 +4935,103 @@ TEST_F(RenderingRegressionTest, ShorelineShowsLandAndShimmeringSeaFromBothSides)
     }
 }
 
+TEST_F(RenderingRegressionTest, RaisedCoastalTerrainCannotPaintWaterAboveSeaLevel)
+{
+    class NarrowBasinMap : public Map
+    {
+        public:
+        NarrowBasinMap(double radius, bool frozen)
+        {
+            image_width = 4;
+            image_height = 65536;
+            allocated = image_width * image_height;
+            lat_scale = (image_height - 1.0) / _pi;
+            lon_scale = image_width / (2 * _pi);
+            red_data = new unsigned char[allocated];
+            green_data = new unsigned char[allocated];
+            blue_data = new unsigned char[allocated];
+            bump_data = new double[allocated];
+            surface_materials.resize(allocated);
+            for (unsigned long index = 0; index < allocated; ++index)
+            {
+                const double north = radius * (half_pi - (index / image_width) / lat_scale);
+                const bool basin = north < 185 || (north >= 230 && north < 275);
+                const bool ice = frozen && basin && north >= 20;
+                const bool vegetation = !basin && index % image_width == 2;
+                const bool ridge = north >= 190 && north < 390;
+                red_data[index] = basin || vegetation ? 0 : 210;
+                green_data[index] = ice ? 180 : vegetation ? 230 : basin ? 0 : 140;
+                blue_data[index] = basin ? 235 : 45;
+                surface_materials[index] = ice ? SurfaceMaterial::ice : basin ? SurfaceMaterial::water
+                    : vegetation ? SurfaceMaterial::vegetation : SurfaceMaterial::ground;
+                // Conflicting elevations model relief that straddles a narrow coastal inlet.
+                bump_data[index] = ridge ? 65 : 0;
+            }
+            touch_gen();
+        }
+    };
+    auto* world = surface(true);
+    world->volumetric_mean_radius = 20000;
+    world->vegetation_r = world->vegetation_g = world->vegetation_b = 0;
+    delete world->surf_map;
+    world->surf_map = nullptr;
+    set(show_clouds, false);
+    set(altitude, 0.0);
+    set(horizon_ground_detail_reference, true);
+    const auto check_frame = [&](bool frozen)
+    {
+        find_horizon();
+        draw_horizon();
+        const auto frame = render();
+        int basin_above = 0, water_below = 0, ice_below = 0, land_above = 0;
+        for (int y = 0; y < render_height; ++y)
+        {
+            for (int x = render_width / 4; x < 3 * render_width / 4; ++x)
+            {
+                const size_t pixel = ((render_height - 1 - y) * render_width + x) * 4;
+                const int red = frame[pixel], green = frame[pixel + 1], blue = frame[pixel + 2];
+                const bool water = red < 4 && green < 4 && blue > 55;
+                const bool ice = red < 4 && green > 40 && blue > green;
+                if (y < render_height / 2)
+                {
+                    basin_above += water || ice;
+                    land_above += (red > 70 && red > 2 * blue) || (green > 70 && green > 2 * blue);
+                }
+                else
+                {
+                    water_below += water;
+                    ice_below += ice;
+                }
+            }
+        }
+        EXPECT_EQ(basin_above, 0);
+        EXPECT_GT(water_below, 50);
+        if (frozen) EXPECT_GT(ice_below, 20);
+        EXPECT_GT(land_above, 10);
+        ImGui::NewFrame();
+    };
+    for (bool frozen : {false, true})
+    {
+        SCOPED_TRACE(frozen ? "water and ice" : "open water");
+        auto* old_map = world->surf_map;
+        world->surf_map = new NarrowBasinMap(world->volumetric_mean_radius, frozen);
+        delete old_map;
+        for (bool mapped : {false, true})
+        {
+            SCOPED_TRACE(mapped ? "mapped elevation profiles" : "procedural terrain mesh");
+            world->has_real_maps = mapped;
+            for (bool cpu : {true, false})
+            {
+                SCOPED_TRACE(cpu ? "CPU painting" : "accelerated painting");
+                set(horizon_terrain_cpu_reference, cpu);
+                set(horizon_terrain_gpu_reference, cpu);
+                set(horizon_ground_gpu_reference, cpu);
+                check_frame(frozen);
+            }
+        }
+    }
+}
+
 TEST_F(RenderingRegressionTest, WaterHasNoRocksOrPlants)
 {
     Planet *world = surface(true);

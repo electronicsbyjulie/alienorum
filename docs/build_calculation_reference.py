@@ -292,11 +292,12 @@ eq(r'k_W=k[1+500\ell((\langle F\rangle-1.15)/0.025)]')
 p('For strongly irradiated worlds, the smooth steam transition increases the water-loss rate above the heavy-gas rate. This represents a possible loss history. In the cold-world branch, this water-loss term is zero. At age zero, none of the interior pool has yet been released. The portion assigned to deep storage is removed before the surface condensation calculation.')
 
 section('Cold volatile worlds and nitrogen frost', 'shore.cpp; shore.h')
-p('Cold, low-density worlds use a separate treatment because much of their volatile inventory can be ice and nitrogen can condense at the surface. The branch is selected below a bulk density of 3000 kg m⁻³ and below 0.08 times Earth’s orbit-averaged irradiation. These thresholds choose a model regime; they do not demonstrate an icy interior.')
-p('The cold-world ice fraction is estimated by mixing the specific volumes, or reciprocal densities, of effective rock and ice components. The clipping bounds prevent the density proxy from implying an arbitrarily small or large ice share:', 'Lead')
-eq(r'f_{ice}=C\left[\frac{1/\rho-1/3500}{1/1300-1/3500};0.05,0.7\right]')
-p('The density estimate mixes specific volumes using effective rock and ice densities of 3500 and 1300 kg m⁻³. The resulting f_ice becomes the water inventory. Accessible nitrogen is min(0.01,1.35×10⁻⁴ f_ice/0.51 times the nitrogen abundance scale), while 0.01 of retained water is allocated to the surface.')
-p('These choices anchor a Titan-scale scenario. They do not follow a detailed differentiation or outgassing history.')
+p('Below a stellar equilibrium temperature of 150 K, the application uses a cold volatile budget. The equilibrium temperature uses absorbed starlight at the stellar semimajor axis and the body’s Bond albedo. The cutoff is a model choice. The coupled surface climate separately accounts for tidal heating and atmospheric opacity.')
+p('Bulk density estimates the water-ice fraction within the cold branch. The estimate mixes the specific volumes of effective rock and compressed ice components at 3500 and 1300 kg m⁻³. Dense cold bodies can have a zero ice inventory.', 'Lead')
+eq(r'f_{ice}=C\left[\frac{1/\rho-1/3500}{1/1300-1/3500};0,0.7\right]')
+p('The resulting ice fraction becomes the default water inventory, with 0.01 of retained water allocated to the surface. The default CO₂ inventory is scaled by f_ice/0.51. Accessible nitrogen, expressed as equivalent molecular nitrogen mass, is the smaller of 0.01 or 8.35×10⁻⁵ times f_ice/0.51 times the stellar nitrogen abundance scale.')
+p('The nitrogen normalization uses Titan’s Huygens pressure of 146,700 Pa [R30]. Titan is an inventory-limited nitrogen atmosphere in this model. Triton and Pluto instead have frost-buffered pressures of order 1 Pa [R31, R32], set mainly by nitrogen frost temperature when a finite reservoir is available.')
+p('The density proxy reproduces the broad Galilean pattern of water-poor Io, an intermediate inventory for Europa, and substantial ice for Ganymede and Callisto [R33]. All four enter the cold branch and retain negligible bulk gas in the calibration. Io’s volcanic sulfur dioxide and the oxygen-bearing exospheres of Europa, Ganymede, and Callisto are separate processes outside this bulk budget [R34, R35].')
 p('A temperature-like proxy T_x represents the thermal scale for historical nitrogen escape. The dimensionless binding parameter λ compares escape energy for nitrogen, with molar mass 0.028 kg mol⁻¹, against thermal energy. R_g is the molar gas constant:', 'Lead')
 eq(r'T_x=\max(2.7,10^4\sqrt{\langle F\rangle\bar A}),\quad \lambda=\frac{0.028v_{esc}^2}{2R_gT_x}')
 p('The effective nitrogen loss coefficient k_N combines the activity factor Ā with the strong suppression of thermal escape at large λ:', 'Lead')
@@ -822,7 +823,10 @@ eq(r'H_{photo}=\frac{k_BT}{1.3m_ug},\quad d_{granule}=\min(10H_{photo},0.5R)')
 p('A correction factor of eight adjusts the visible granule count, and angular sampling limits the smallest resolved cells. Temperature contrast starts at .035T times a bounded square-root temperature factor. Larger-scale network and facular brightening depend on the activity setting.')
 p('Gravity darkening makes the poles hotter than the equator on a rotating, flattened star [R27]. The stellar Thermal map and the base of the visible photosphere texture share an approximate latitude profile based on the reference temperature T, latitude φ, and flattening f.', 'Lead')
 eq(r'T(\phi)=T\left[\frac{1-2f\cos^2\phi}{1-4f/3}\right]^\beta,\qquad 0\leq f\leq 0.45')
-p('The exponent β is .08 below 7000 K and .25 at hotter reference temperatures, approximating convective and radiative envelopes. The Thermal map shows the smooth temperature profile in kelvins. A minimum color-scale width of one percent of T keeps small variations on nearly spherical stars from filling the entire palette. Spot and granulation effects are included in the visible photosphere texture, where local temperature changes the color through Planck B/V ratios.')
+p('The exponent β is .08 below 7000 K and .25 at hotter reference temperatures, approximating convective and radiative envelopes. The Thermal map shows the smooth temperature profile in kelvins. A minimum color-scale width of one percent of T keeps small variations on nearly spherical stars from filling the entire palette.')
+p('In the regular stellar texture, the local temperature T includes spot and granulation effects. The linear red and blue channels are adjusted relative to the star’s reference spectrum at T₀. For each of those channels, the adjustment is the change in its Planck radiance relative to the visual band:', 'Lead')
+eq(r'q_\lambda(T)=\frac{B_\lambda(T)/B_V(T)}{B_\lambda(T_0)/B_V(T_0)},\qquad \lambda\in\{R,B\}')
+p('The adjusted color is normalized to the reference luminance before the intensity model is applied. This gives cooler regions a redder hue and hotter regions a bluer hue, including on white dwarfs with calibrated reference colors. Bright pixels are scaled together across all channels when they exceed the display range.')
 p('Limb darkening reduces intensity toward the apparent edge of a stellar disk. Here μ is the cosine of the angle between the surface normal and the observer, and a and b are fitted coefficients. Normalization by I(1) sets the disk-center intensity to one:', 'Lead')
 eq(r'I(\mu)/I(1)=1-a(1-\mu)-b(1-\mu)^2')
 p('The quadratic limb-darkening coefficients depend on temperature and gravity. Published white-dwarf atmosphere colors and limb prescriptions can take priority for those objects.')
@@ -975,7 +979,13 @@ references = [
 ('R26','Bouchaud et al. (2020), A realistic two-dimensional model of Altair.','https://arxiv.org/abs/1912.03138'),
 ('R27','Espinosa Lara & Rieutord (2011), Gravity darkening in rotating stars. Describes the relation between local effective gravity and temperature and compares power-law profiles with rotating stellar models.','https://arxiv.org/abs/1109.3038'),
 ('R28','Scharmer et al. (2002), Dark cores in sunspot penumbral filaments. Swedish 1-m Solar Telescope observations show fine structure in the photosphere.','https://www.isf.astro.su.se/publications/prints/scharmer02dark.pdf'),
-('R29','Klein et al. (2021), The large-scale magnetic field of Proxima Centauri near activity maximum. Fits the stellar rotation period and inclination from spectropolarimetry.','https://arxiv.org/abs/2010.14311')]
+('R29','Klein et al. (2021), The large-scale magnetic field of Proxima Centauri near activity maximum. Fits the stellar rotation period and inclination from spectropolarimetry.','https://arxiv.org/abs/2010.14311'),
+('R30','Fulchignoni et al. (2005), In situ measurements of the physical characteristics of Titan’s environment. Huygens surface pressure and temperature.','https://doi.org/10.1038/nature04314'),
+('R31','Sicardy et al. (2024), Constraints on the evolution of the Triton atmosphere from occultations, 1989–2022.','https://doi.org/10.1051/0004-6361/202348756'),
+('R32','Lewis et al. (2020), Distribution and energy balance of Pluto’s nitrogen ice, as seen by New Horizons in 2015.','https://arxiv.org/abs/1912.02333'),
+('R33','Shibaike et al. (2019), The Galilean Satellites Formed Slowly from Pebbles. Table 2 compiles bulk ice estimates.','https://doi.org/10.3847/1538-4357/ab46a7'),
+('R34','Tsang, Spencer & Richter (2016), The collapse of Io’s primary atmosphere in Jupiter eclipse.','https://doi.org/10.1002/2016JE005025'),
+('R35','de Kleer et al. (2023), The Optical Aurorae of Europa, Ganymede, and Callisto.','https://doi.org/10.3847/PSJ/acb53c')]
 
 if set(CITED_ARTICLES.values()) - {label for label, _, _ in references}:
     raise ValueError('A bibliography cross-reference does not match a numbered entry.')

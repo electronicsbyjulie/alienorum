@@ -1388,7 +1388,7 @@ TEST_F(PlanetClassificationEvidenceTest, ColdVolatilesRecoverMoonPressuresWithou
         {"Pluto", 1.303e22, 1.1883e6, 39.482, 0.2, 2.0, true},
         {"Ganymede", 1.4819e23, 2.6312e6, 5.204, 0, 1e-3, true},
         {"Callisto", 1.0759e23, 2.4103e6, 5.204, 0, 1e-3, true},
-        {"Europa", 4.8e22, 1.5608e6, 5.204, 0, 1e-3, false},
+        {"Europa", 4.8e22, 1.5608e6, 5.204, 0, 1e-3, true},
         {"Enceladus", 1.08022e20, 252100, 9.5826, 0, 1e-3, true},
         {"Moon", 7.349e22, 1.73737e6, 1, 0, 1e-3, false}
     };
@@ -1414,6 +1414,57 @@ TEST_F(PlanetClassificationEvidenceTest, ColdVolatilesRecoverMoonPressuresWithou
         EXPECT_DOUBLE_EQ(CosmicShore::estimate_atmosphere(*host, *world).pressure, estimate.pressure);
         EXPECT_EQ(world->atm, nullptr);
     }
+}
+
+TEST_F(PlanetClassificationEvidenceTest, ColdBudgetSeparatesWaterIceFromBulkAtmosphere)
+{
+    Star* host = make_star();
+    Planet* primary = make_planet(host, "Anonymous primary", 5.204 * AU);
+    struct Example { double mass_kg, radius_m, ice_low, ice_high; };
+    // Bulk composition ranges, including Io without a water-ice inventory.
+    const Example examples[] =
+    {
+        {8.932e22, 1.8216e6, 0, 0},
+        {4.800e22, 1.5608e6, .04, .14},
+        {1.482e23, 2.6312e6, .42, .58},
+        {1.076e23, 2.4103e6, .44, .60}
+    };
+    for (const auto& example : examples)
+    {
+        Planet* world = make_planet(host, "Anonymous satellite");
+        world->orbit->center = primary;
+        world->orbit->semimajor_axis = 1e9;
+        world->mass = example.mass_kg * 1000;
+        world->volumetric_mean_radius = example.radius_m;
+        world->type = rocky;
+        world->bond_albedo = .3;
+        auto estimate = CosmicShore::estimate_atmosphere(*host, *world);
+        ASSERT_TRUE(estimate.valid);
+        EXPECT_EQ(estimate.diagnostics["regime"], "cold_volatiles");
+        const double ice = estimate.diagnostics["inventory"]["water_mass_fraction"].get<double>();
+        EXPECT_GE(ice, example.ice_low);
+        EXPECT_LE(ice, example.ice_high);
+        EXPECT_GE(estimate.pressure, 0);
+        EXPECT_LT(estimate.pressure, 1e-3);
+    }
+}
+
+TEST_F(PlanetClassificationEvidenceTest, EquilibriumTemperatureSelectsTheVolatileBudget)
+{
+    Star* host = make_star();
+    Planet* world = make_planet(host, "Anonymous world", 3 * AU);
+    world->mass = 4.8e25;
+    world->volumetric_mean_radius = 1.5608e6;
+    world->type = rocky;
+    world->bond_albedo = 0;
+    auto warm = CosmicShore::estimate_atmosphere(*host, *world);
+    ASSERT_TRUE(warm.valid);
+    EXPECT_EQ(warm.diagnostics["regime"], "terrestrial");
+    world->bond_albedo = .6;
+    auto cold = CosmicShore::estimate_atmosphere(*host, *world);
+    ASSERT_TRUE(cold.valid);
+    EXPECT_EQ(cold.diagnostics["regime"], "cold_volatiles");
+    EXPECT_EQ(cold.diagnostics["cold_volatiles"]["model"], "cold_volatile_budget_v1");
 }
 
 TEST_F(PlanetClassificationEvidenceTest, NitrogenFrostUsesMeasuredPhaseCurvesAndFiniteReservoirs)

@@ -231,6 +231,31 @@ namespace alienorum
             return width && height ? inverse_depth : empty;
         }
 
+        // Apply the material mask after either rasterizer has interpolated depth.
+        template <class Reject>
+        void clip_surface(const Reject& reject)
+        {
+            int first_row = height;
+            for (int top : column_top) first_row = std::min(first_row, top);
+            std::fill(column_top.begin(), column_top.end(), height);
+            for (int y = first_row; y < height; ++y)
+            {
+                for (int x = 0; x < width; ++x)
+                {
+                    const size_t index = static_cast<size_t>(y) * width + x;
+                    if (!(inverse_depth[index] > 0)) continue;
+                    if (reject(x + .5, y + .5, surface_distance[index]))
+                    {
+                        inverse_depth[index] = surface_distance[index] = 0;
+                    }
+                    else if (column_top[x] == height)
+                    {
+                        column_top[x] = y;
+                    }
+                }
+            }
+        }
+
         void store(int x, int y, double depth, double distance)
         {
             if (x < 0 || y < 0 || x >= width || y >= height) return;

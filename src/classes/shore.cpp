@@ -11,6 +11,10 @@ using namespace alienorum;
 namespace
 {
     constexpr double reference_age = 4.5; // Gyr
+    constexpr double cold_budget_temperature_k = 150;
+    constexpr double cold_reference_ice_fraction = .51;
+    constexpr double cold_reference_nitrogen_fraction = 8.35e-5;
+    constexpr char cold_budget_model[] = "cold_volatile_budget_v1";
 
     struct BasinPoint
     {
@@ -102,10 +106,18 @@ namespace
         return std::min(CosmicShore::pressure_ceiling, reference_pa * std::exp(std::min(100.0, exponent)));
     }
 
-    bool cold_volatile_regime(const Planet& p, double flux)
+    bool cold_volatile_regime(double temperature)
     {
-        const double density = p.mass * 0.001 / (4 * _pi / 3 * std::pow(p.volumetric_mean_radius, 3));
-        return std::isfinite(density) && density > 0 && density < 3000 && flux < 0.08;
+        return std::isfinite(temperature) && temperature >= 0 && temperature < cold_budget_temperature_k;
+    }
+
+    double cold_ice_fraction(const Planet& p)
+    {
+        const double density = p.mass * .001 / sphere_volume(p.volumetric_mean_radius);
+        if (!std::isfinite(density) || density <= 0) return 0;
+        // Effective specific volumes for a mixed rock and compressed water interior.
+        // Dense bodies can have zero water ice, even in the cold climate regime.
+        return std::clamp((1 / density - 1.0 / 3500) / (1.0 / 1300 - 1.0 / 3500), 0.0, .7);
     }
 
     struct FormationDelivery
@@ -135,14 +147,9 @@ namespace
         // A broad accretion/impact-retention proxy, normalized at Earth; not an occurrence fit.
         result.mass_factor = std::pow(std::clamp(mass, .0001, 100.0), .25);
         result.heavy_factor = result.mass_factor * (.5 + .5 * std::sqrt(result.water_factor));
-        result.cold = std::isfinite(CosmicShore::calculate_escape_velocity(p)) && cold_volatile_regime(p, stellar_flux(s, p));
-        if (result.cold)
-        {
-            const double density = p.mass * .001 / sphere_volume(p.volumetric_mean_radius);
-            // Additive specific volumes for compressed water/ice and rock. This is an
-            // interior scenario, not a unique inversion of bulk density.
-            result.ice_fraction = std::clamp((1 / density - 1.0 / 3500) / (1.0 / 1300 - 1.0 / 3500), .05, .7);
-        }
+        result.cold = std::isfinite(CosmicShore::calculate_escape_velocity(p))
+            && cold_volatile_regime(p.equilibrium_temperature());
+        if (result.cold) result.ice_fraction = cold_ice_fraction(p);
         return result;
     }
 
@@ -371,10 +378,12 @@ AtmosphericInventory CosmicShore::default_inventory(Star& s, Planet& p)
     inventory.nitrogen_mass_fraction = std::min(.01, inventory.nitrogen_mass_fraction * delivery.heavy_factor * nitrogen_scale);
     if (delivery.cold)
     {
-        // N2-equivalent nitrogen released from ammonia/organics in ice-rich interiors.
-        // The accessible inventory is a Titan-scale scenario calibration, not bulk ice content.
+        // Calibrate accessible nitrogen to the Huygens pressure scale and use a
+        // shared ice-related delivery prior. doi:10.1038/nature04314.
+        const double ice_delivery = delivery.ice_fraction / cold_reference_ice_fraction;
         inventory.water_mass_fraction = delivery.ice_fraction;
-        inventory.nitrogen_mass_fraction = std::min(.01, 1.35e-4 * delivery.ice_fraction / .51 * nitrogen_scale);
+        inventory.nitrogen_mass_fraction = std::min(.01, cold_reference_nitrogen_fraction * ice_delivery * nitrogen_scale);
+        inventory.co2_mass_fraction *= ice_delivery;
     }
     // Pressure-dependent ocean/mantle exchange can store substantial water at depth.
     // This simple partition is a scenario, inspired by Cowan & Abbot (2014),
@@ -393,11 +402,14 @@ json CosmicShore::input_state(Star& s, Planet& p, const AtmosphericInventory& in
     const auto number = [](double value) { return std::isfinite(value) ? json(value) : json(nullptr); };
     const bool authored = p.atm && p.atm->comp && (!p.atm->pressure_model.is_object()
         || p.atm->pressure_model.value("generated_composition", json(nullptr)) != p.atm->comp->to_json());
-    return json::array({"volatile_budget_v5", number(p.mass), number(p.volumetric_mean_radius), static_cast<int>(p.type),
+    const double equilibrium = p.equilibrium_temperature();
+    auto state = json::array({"volatile_budget_v5", number(p.mass), number(p.volumetric_mean_radius), static_cast<int>(p.type),
         number(stellar_flux(s, p)), number(s.mass), number(s.metallicity), s.metallicity_ratio,
         s.is_main_sequence(), number(p.albedo), inventory.to_json(), s.has_disk, number(s.disk_inner_edge_sma),
-        number(p.equilibrium_temperature()), p.has_supplied_mean_temperature() ? number(p.temperature) : json(nullptr),
+        number(equilibrium), p.has_supplied_mean_temperature() ? number(p.temperature) : json(nullptr),
         authored ? p.atm->comp->to_json() : json(nullptr), number(p.tidal_heat_flux())});
+    if (cold_volatile_regime(equilibrium)) state.push_back(cold_budget_model);
+    return state;
 }
 
 const json& CosmicShore::envelope_scenario(Star& s, Planet& p, const AtmosphericInventory& inventory)
@@ -470,14 +482,15 @@ const json& CosmicShore::envelope_scenario(Star& s, Planet& p, const Atmospheric
 double CosmicShore::radiative_temperature(Planet& p, double pressure_pa,
     const AtmosphereComposition* composition, bool nitrogen_frost, const AtmosphericInventory* inventory)
 {
-    double equilibrium = p.effective_radiating_temperature();
+    const double stellar_equilibrium = p.equilibrium_temperature();
+    const double tidal_flux = p.tidal_heat_flux();
+    double equilibrium = std::pow(std::pow(stellar_equilibrium, 4) + tidal_flux / STEFAN_BOLTZMANN, .25);
     double tau = composition ? atmospheric_tau(pressure_pa * 0.000009869,
         composition->CO2_portion, composition->CH4_portion, composition->H2O_portion, composition->N2O_portion,
         composition->O3_portion, composition->SO2_portion, composition->H2S_portion, composition->CO_portion,
         composition->HCN_portion, composition->H2_portion, composition->NH3_portion, composition->C2H6_portion) : 0;
-    CelestialObject* light = p.get_light_center();
-    const double flux = light && light->typeclass() == class_star ? stellar_flux(*static_cast<Star*>(light), p) : NAN;
-    if (inventory && cold_volatile_regime(p, flux))
+    if (inventory && cold_volatile_regime(stellar_equilibrium) && p.get_light_center()
+        && p.get_light_center()->typeclass() == class_star)
     {
         if (inventory->cold_temperature_k > 0) return inventory->cold_temperature_k;
         // Temperature is referenced to the stellar semimajor axis; seasonal
@@ -485,7 +498,7 @@ double CosmicShore::radiative_temperature(Planet& p, double pressure_pa,
         if (nitrogen_frost)
         {
             const double stellar = nitrogen_frost_temperature(p.est_bolometric_flux(), *inventory);
-            equilibrium = std::pow(std::pow(stellar, 4) + p.tidal_heat_flux() / STEFAN_BOLTZMANN, .25);
+            equilibrium = std::pow(std::pow(stellar, 4) + tidal_flux / STEFAN_BOLTZMANN, .25);
         }
         if (composition)
         {
@@ -531,7 +544,8 @@ AtmosphericEstimate CosmicShore::estimate_atmosphere(Star& s, Planet& p, const A
     if (!std::isfinite(velocity) || velocity <= 0) return result;
     const double flux = stellar_flux(s, p);
     if (!std::isfinite(flux) || flux <= 0) return result;
-    const bool cold = cold_volatile_regime(p, flux);
+    const double equilibrium = p.equilibrium_temperature();
+    const bool cold = cold_volatile_regime(equilibrium);
     const double planet_mass = p.mass / earth_mass;
     const double radius = p.volumetric_mean_radius / earth_radius;
     if (!std::isfinite(planet_mass) || !std::isfinite(radius) || planet_mass <= 0 || radius <= 0) return result;
@@ -822,6 +836,8 @@ AtmosphericEstimate CosmicShore::estimate_atmosphere(Star& s, Planet& p, const A
     diagnostic["release_and_retention_stage"] = "Before_excess_late_bombardment";
     diagnostic["carbon_atmospheric_share"] = carbon_air;
     diagnostic["regime"] = cold ? "cold_volatiles" : "terrestrial";
+    diagnostic["budget_selection"] = {{"equilibrium_temperature_k", equilibrium},
+        {"cold_below_k", cold_budget_temperature_k}};
     diagnostic["column_weight_pa"]["CO2"] = co2;
     diagnostic["column_weight_pa"]["N2"] = nitrogen;
     diagnostic["column_weight_pa"]["H2O"] = water;
@@ -831,6 +847,7 @@ AtmosphericEstimate CosmicShore::estimate_atmosphere(Star& s, Planet& p, const A
     {
         result.diagnostics["cold_volatiles"] =
         {
+            {"model", cold_budget_model},
             {"escape_temperature_proxy_k", escape_temperature}, {"nitrogen_binding_parameter", binding_parameter},
             {"effective_loss_rate_gyr", loss_rate}, {"release_time_gyr", release_time},
             {"nitrogen_frost", nitrogen_frost},
