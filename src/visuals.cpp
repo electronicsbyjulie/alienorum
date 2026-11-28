@@ -6467,6 +6467,7 @@ void draw_horizon()
         if (p) p->update_surface_phase(viewer_lat, viewer_lon);
         SurfaceSampler surface(p, map, biome_field, surface_radius, shore_displacement);
         if (horizon_fast_path(204)) surface.capture_life_rules();
+        surface.use_measured_shore(viewer_lat, viewer_lon);
         const bool water_favorable = surface.water_favorable();
         const bool surface_biomes = surface.has_biomes();
         const double biome_angle = SurfaceBiomes::angular_bound(surface_radius, shore_displacement);
@@ -6480,7 +6481,7 @@ void draw_horizon()
         const RGB3 distant_ground_rgb = rgb;
         const bool ocean_world = surface.ocean_world();
         const bool surface_water = surface.has_surface_water();
-        const auto material_key = std::make_tuple(surface_biomes, surface_water, surface.basin_elevation(),
+        const auto material_key = std::make_tuple(surface_biomes, surface_water, surface.has_measured_shore(), surface.basin_elevation(),
             surface_water && surface.surface_life_allowed(), surface_water ? p->vegetation_r : 0,
             surface_water ? p->vegetation_g : 0, surface_water ? p->vegetation_b : 0);
         const bool paint_biomes = surface_water || (surface_biomes && cel->type != lavaworld);
@@ -8728,28 +8729,52 @@ void draw_horizon()
 
         if (mapped_skyline)
         {
+            const auto relief_started = std::chrono::steady_clock::now();
             ImDrawList* ground = ImGui::GetBackgroundDrawList();
             const double focal = surface_focal();
             const double sine = surface_sin_altitude(), cosine = surface_cos_altitude();
             const int motion_stride = horizon_mapped_terrain_always_per_pixel ? 1 : 4 * horizon_quality.ground_stride();
             const bool interpolate_relief = airless_moon || (p && p->get_surface_pressure() > 0);
             double dry_slope = -INFINITY;
+            double wet_slope = -INFINITY;
+            if (surface.has_measured_shore() && interpolate_relief && horizon_fast_path(206)
+                && !horizon_terrain_cpu_reference && eye_over_basin > 0 && surface_curvature() > 0
+                && surface.basin_at(viewer_lat, viewer_lon))
+            {
+                for (double reach = 2048; reach >= 2; reach *= .5)
+                {
+                    SurfaceSampler::Sample material;
+                    const double cap = reach / surface_radius + 1e-10;
+                    const bool basin = horizon_fast_path(209) && surface.shore_basin_within_cap(viewer_lat, viewer_lon, cap);
+                    if (!basin && (!surface.uniform_sample(viewer_lat, viewer_lon, cap, material)
+                        || (!material.water && material.material != SurfaceMaterial::ice))) continue;
+                    // Bound both the first profile hit and the nearer intersection with sea level.
+                    wet_slope = std::min(mapped_skyline->minimum_profile_slope(reach),
+                        -eye_over_basin / reach - surface_curvature() * reach);
+                    break;
+                }
+            }
             if (surface_water && interpolate_relief && horizon_fast_path(203) && !horizon_terrain_cpu_reference
                 && !surface.basin_at(viewer_lat, viewer_lon))
             {
-                // Within one atlas pixel, displaced color, material, phase and basin tests agree.
+                // Measured relief can certify dry ground across a color atlas boundary.
+                // Otherwise all displaced samples must stay in one dry atlas pixel.
                 const double displacement_angle = surface_biomes ? biome_angle : 0;
                 for (double reach = 2048; reach >= 2; reach *= .5)
                 {
                     RGB3 color;
-                    if (map->color_within_cap(viewer_lat, viewer_lon,
-                        reach / surface_radius + displacement_angle + 1e-10, color, false))
+                    const double angle = reach / surface_radius + 1e-10;
+                    const bool dry = surface.has_measured_shore()
+                        ? surface.shore_dry_within_cap(viewer_lat, viewer_lon, angle)
+                        : map->color_within_cap(viewer_lat, viewer_lon, angle + displacement_angle, color, false);
+                    if (dry)
                     {
                         dry_slope = mapped_skyline->minimum_profile_slope(reach);
                         break;
                     }
                 }
             }
+            const double certified_slope = std::max(dry_slope, wet_slope);
             const auto view_key = std::make_tuple(cel, map, local_surface_revision, whereami, viewer_lat, viewer_lon,
                 surface_eye, surface_radius, surface_curvature(), azimuth, altitude, zoom, dispcx, dispcy,
                 screen_w, ground_height, shore_displacement, redlight_mode, interpolate_relief, material_key);
@@ -8872,8 +8897,8 @@ void draw_horizon()
                             reuse_basin_material ? &center_point : nullptr) : double(INFINITY);
                         const bool hit = surface_water ? std::isfinite(basin_depth)
                             : mapped_skyline->covers_slope(ray.first, ray.second);
-                        bool dry_tile = false;
-                        if (interpolate_tiles && hit && std::isfinite(dry_slope))
+                        bool uniform_tile = false;
+                        if (interpolate_tiles && hit && std::isfinite(certified_slope))
                         {
                             const double top_vertical = (dispcy - y) / focal;
                             const double bottom_vertical = (dispcy - bottom) / focal;
@@ -8881,9 +8906,9 @@ void draw_horizon()
                             const double north = std::max(fabs(cosine - top_vertical * sine), fabs(cosine - bottom_vertical * sine));
                             const double east = std::max(fabs(x - dispcx), fabs(right - dispcx)) / focal;
                             // Negative slopes are highest with the largest horizontal denominator.
-                            dry_tile = up < 0 && up / fmax(1e-12, hypot(east, north)) + 1e-12 < dry_slope;
+                            uniform_tile = up < 0 && up / fmax(1e-12, hypot(east, north)) + 1e-12 < certified_slope;
                         }
-                        bool mixed = tile > 1 && !dry_tile && (hits_terrain(x + .5, y + .5) != hit || hits_terrain(right - .5, y + .5) != hit
+                        bool mixed = tile > 1 && !uniform_tile && (hits_terrain(x + .5, y + .5) != hit || hits_terrain(right - .5, y + .5) != hit
                             || hits_terrain(x + .5, bottom - .5) != hit || hits_terrain(right - .5, bottom - .5) != hit);
                         if (interpolate_tiles && hit && !mixed)
                         {
@@ -8894,7 +8919,7 @@ void draw_horizon()
                             const double far_distance = std::max({tl.distance, tr.distance, bl.distance, br.distance});
                             // Resolve silhouettes and sudden depth changes at pixel centers.
                             mixed = !std::isfinite(far_distance) || far_distance > 2 * near_distance;
-                            if (!mixed && surface_water && !dry_tile)
+                            if (!mixed && surface_water && !uniform_tile)
                             {
                                 // Ice can blend with either side of the coastline. A tile
                                 // containing both open water and land must use exact samples.
@@ -9022,6 +9047,8 @@ void draw_horizon()
                 else ground->AddRectFilled(tile.low, tile.high, tile.color);
             }
             if (!min_hz_y_at_x.empty()) min_hz_y = *std::min_element(min_hz_y_at_x.begin(), min_hz_y_at_x.end());
+            precipitation_stats.ground_paint_milliseconds = std::chrono::duration<double, std::milli>(
+                std::chrono::steady_clock::now() - relief_started).count();
         }
         #if horizon_distant_terrain_lighting
         if (lit_distant_skyline && !mapped_skyline && !full_ground_view)
@@ -9315,6 +9342,7 @@ void draw_horizon()
             auto bounds_key = std::make_tuple(map, local_surface_revision,
                 map && map->is_complete(), generating_fic_texture, water_favorable, surface_biomes,
                 p && surface.surface_life_allowed(), ocean_world, p ? p->has_water : 0.0f, cel->type, terrain_mesh, shore_displacement,
+                surface.has_measured_shore(),
                 p ? p->vegetation_r : 0, p ? p->vegetation_g : 0, p ? p->vegetation_b : 0, water_cpu_reference, bool(PERF_P052_WAVES && performance_enabled(52)));
             static decltype(bounds_key) saved_bounds_key;
             static double bounds_latitude = NAN, bounds_longitude = NAN, bounds_padding = 0;
@@ -9903,6 +9931,7 @@ void draw_horizon()
                     scenery_range + canopy_margin, scenery_spacing, static_cast<std::uint64_t>(whereami), !performance_enabled(40));
                 auto scenery_key = std::make_tuple(whereami, scenery_cache.generation(), R_planet, map,
                     local_surface_revision, generating_fic_texture, water_favorable, surface_radius, shore_displacement,
+                    surface.has_measured_shore(),
                     p ? p->has_water : 0.0f, p ? p->type : cel->type,
                     p ? p->vegetation_r : 0, p ? p->vegetation_g : 0, p ? p->vegetation_b : 0,
                     crown_scale, scenery_range, has_plants, P_surf,
@@ -9912,6 +9941,8 @@ void draw_horizon()
                 static std::vector<bool> plant, bare_of_scenery, canopy_clear;
                 static std::vector<RGB3> scenery_colors;
                 static std::vector<TreeAppearance> tree_appearances;
+                const bool retain_tree_density = horizon_fast_path(207) && has_plants && map
+                    && map->is_complete() && !generating_fic_texture;
                 if (!scenery_valid || saved_scenery_key != scenery_key)
                 {
                     plant.assign(scenery.size(), false);
@@ -9923,6 +9954,22 @@ void draw_horizon()
                     auto& canopy_radii = frame_scratch_enabled()
                         ? canopy_scratch.acquire(whereami, dispcx * 2, dispcy * 2) : local_canopy_radii;
                     canopy_radii.assign(scenery.size(), 0);
+                    static std::vector<double> tree_densities;
+                    if (retain_tree_density)
+                    {
+                        // Density follows the original terrain and established habitat. The
+                        // seasonal pass still checks current water, frost, and crown appearance.
+                        auto density_key = std::make_tuple(p, map, map->instance_id(), map->gen, scenery_cache.generation(),
+                            surface_radius, shore_displacement, surface_biomes, p->type, map->procedurally_generated,
+                            p->has_water, p->m_bump_scale, p->vegetation_r, p->vegetation_g, p->vegetation_b,
+                            p->veg_min_temp, p->veg_max_temp);
+                        static decltype(density_key) saved_density_key = density_key;
+                        if (saved_density_key != density_key || tree_densities.size() != scenery.size())
+                        {
+                            tree_densities.assign(scenery.size(), NAN);
+                            saved_density_key = density_key;
+                        }
+                    }
                     for (size_t index = 0; index < scenery.size(); index++)
                     {
                         scenery_cache.project(index);
@@ -9944,7 +9991,12 @@ void draw_horizon()
                             scenery_colors[index] = surface.color_at(object.latitude, object.longitude);
                         }
                         if (bare_of_scenery[index] || !has_plants) continue;
-                        const double density = surface.tree_density_at(object.latitude, object.longitude);
+                        double density = retain_tree_density ? tree_densities[index] : NAN;
+                        if (!std::isfinite(density))
+                        {
+                            density = surface.tree_density_at(object.latitude, object.longitude);
+                            if (retain_tree_density) tree_densities[index] = density;
+                        }
                         const double draw = (scenery_hash(object.id ^ 0x7665676574617465ULL) >> 11) * 0x1.0p-53;
                         plant[index] = draw < density;
                         if (plant[index])

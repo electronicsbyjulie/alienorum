@@ -278,6 +278,7 @@ namespace alienorum
         void generate_surface_rings(CelestialObject *cel);
 
         static unsigned int next_gen();
+        const unsigned int instance_generation = next_gen();
 
         public:
         unsigned int gen = 0;
@@ -289,6 +290,7 @@ namespace alienorum
         void set_owner(CelestialObject* owner) { mcel = owner; }
 
         void touch_gen() { gen = next_gen(); }
+        unsigned int instance_id() const { return instance_generation; }
         unsigned int surface_revision() const;
         uint64_t water_phase_revision() const;
         std::shared_ptr<SurfacePhase> phase_state() const { return water_phase; }
@@ -320,6 +322,7 @@ namespace alienorum
             return bump_data && image_height;
         }
         bool has_calibrated_bump() const { return !calibrated_bump.empty(); }
+        const ElevationGrid& calibrated_elevations() const { return calibrated_bump; }
         inline bool has_rgb_data() const
         {
             return red_data && green_data && blue_data && image_height;

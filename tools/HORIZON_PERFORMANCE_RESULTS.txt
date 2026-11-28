@@ -25,8 +25,9 @@ forest, Venus-like hot haze, an airless rock, and a lava world. Modes: stationar
 continuous panning, normal walking, and tenfold walking. Eight alternating paired
 rounds confirm retained candidates; borderline regressions receive further checks.
 Median and p95 completed-frame results both matter. Preparation and CPU results
-provide supporting evidence. A retained candidate must show an improvement and
-no supported completed-frame regression, especially in the three moving modes.
+provide supporting evidence. For trials 203 onward, retention calls for at least
+a 15 percent reduction in median completed frame time in the target scene,
+with controls checked for regressions.
 Image and live-invalidation tests are required as well. No gain is inferred from
 timing noise, and a faster stationary view does not excuse slower movement.
 
@@ -458,9 +459,9 @@ The same differences reproduced with the earlier per-sample eligibility path.
 The fixture has no mapped elevation data, so neither mapped-relief candidate
 is active. No existing test was edited.
 
-Open terrain work
------------------
-The measured coast still takes about a second per frame with software OpenGL.
+Follow-up to trials 203–205
+---------------------------
+At the end of trial 205 the coast took about a second per frame with software OpenGL.
 Profile the exact mixed-tile scan against wave classification and draw
 submission before selecting another optimization. A coastal material atlas
 could certify uniformly wet and dry regions across multiple source pixels.
@@ -480,3 +481,114 @@ to retain site selections through these edits.
 Separately measure depth uploads, projected shadows and GPU crown
 shading with nearby volumetric crowns visibly active. Confirm any candidate
 on hardware OpenGL in addition to the software path.
+
+Calibrated Earth coast replay
+-----------------------------
+At latitude 23.255 degrees and longitude -16.030 degrees, the color atlas puts
+ocean over measured land roughly 44 metres above sea level. The archived build
+and the build with trials 203 through 205 both show the same inland blue wedges.
+The horizon renderer now uses calibrated bathymetry for geometry, visible
+material, and dry-tile certification. The color atlas supplies surface colors,
+with a nearby swatch where its material disagrees with the elevation.
+
+The new rendering regression checks land and offshore samples independently,
+then checks the foreground while panning across three headings. All ten
+focused rendering tests passed. In one software OpenGL application replay
+with clouds off, four timed pan blocks per executable gave median frame times
+of 801.53 and 226.79 ms. The tested foreground crop went from 61,191 blue
+pixels to zero.
+
+Measured shoreline navigation and plant placement
+-------------------------------------------------
+Find Shore now uses the same calibrated sea level as the horizon renderer.
+The search retains geographic cells that straddle sea level, bounds their
+distance and heading scores, and subdivides the closest candidates. It lands
+on the dry side of a checked land-to-water crossing. The shortcut regression
+starts at the former inland result and verifies positive relief within five
+centimetres of sea level, a westward move, and the original viewing direction.
+In the application replay, Ctrl+F previously left the displayed position at
+23.255 N, 16.030 W. The corrected shortcut moved it to 23.265 N, 16.116 W
+and kept the original 250-degree heading.
+
+The established plant habitat cache follows the lifetime of the source map.
+Map revisions still refresh visible scenery, and radius or pressure changes
+still update projection and crown appearance. The existing stationary scenery
+test now passes through the radius, pressure, and map revision checks. The
+existing frost and thaw plant-site regression also passes.
+
+Trial 206: Certify uniformly wet mapped terrain
+----------------------------------------------
+The renderer proves that a viewing footprint lies below sea level in the
+calibrated elevation grid and has uniform source color and material. For
+covered rays it bounds the terrain-profile hit and the analytic sea-level
+intersection. Actual shoreline transitions still use detailed sampling.
+
+Eight alternating pairs per scene, four moving poses per arm, 1280x800,
+Mesa llvmpipe. Every measured image matched exactly.
+Scene            Median before/after     Paired change     p95 before/after
+Open Atlantic      728.35 /  75.44 ms       -89.67%          778.71 /  78.38 ms
+Measured coast     632.59 / 636.04 ms        +0.80%          659.94 / 667.06 ms
+The coast median interval ran from 0.68 percent faster to 1.54 percent slower.
+Mapped painting and draw-list emission took a median of 47.11 ms in the
+optimized Atlantic run and 563.12 ms in the mixed coast run. These results
+motivated the coastal certificate in trial 209.
+
+Run with python3 tools/run_horizon_trials.py --trial 206 --frames 4 --output PATH.
+
+Trial 207: Retain plant-site density through clock updates
+---------------------------------------------------------
+Within a retained scenery patch, density depends on the source terrain and
+established habitat. A per-site cache keeps that value while the renderer
+refreshes current water coverage, frost, canopy clearance and crown appearance.
+Map revisions, terrain inputs, species inputs and a new scenery patch refresh
+the cached densities.
+
+Eight alternating pairs, four poses per arm, 1280x800, Mesa llvmpipe. The
+forest view panned while the simulation clock advanced one hour per pose.
+Both paths drew volumetric plants and every measured image matched exactly.
+Median completed frame time fell from 96.10 to 80.10 ms, a 17.06 percent
+reduction with a paired interval of 15.13 to 18.23 percent. The p95 fell from
+97.82 to 82.04 ms. Median preparation fell from 85.84 to 68.48 ms. The test
+targets clock-driven scenery refresh within a patch.
+An independent repeat gave 97.13 to 81.19 ms, a 17.18 percent paired
+reduction, with an interval of 10.94 to 19.61 percent and identical images.
+
+Run with python3 tools/run_horizon_trials.py --trial 207 --frames 4 --output PATH.
+
+Trial 208: Clip elevation cells to the requested footprint
+---------------------------------------------------------
+Checking bilinear extrema within the footprint can prove a region submerged
+even when a contributing source vertex lies above sea level. The tighter
+elevation bound alone left the mixed coast at 624.92 / 627.27 ms in a
+two-pair pilot, with exact image matches. The color-atlas requirement still
+limited wet terrain certification. There is no standalone fast path for this
+pilot.
+
+Trial 209 — Prove wet terrain across color atlas boundaries
+---------------------------------------------------------
+The renderer uses the clipped elevation bound over the submerged portion of
+the view without requiring uniform atlas colors. Overlapping surface-phase
+patches defer to the existing material checks, including patches published
+before the revision counter advances. Corner colors and depth checks still
+run, and tiles near a land-to-water crossing keep the detailed scan.
+
+Eight alternating pairs per scene, four moving poses per arm, 1280x800,
+Mesa llvmpipe. Every measured image matched exactly with the phase guard
+in place. The paired interval for the mixed coast was 79.60 to 81.87 percent
+faster. The open Atlantic already used trial 206 in both arms.
+Scene            Median before/after     Paired change     p95 before/after
+Measured coast     655.76 / 129.10 ms       -81.22%          720.66 / 137.73 ms
+Open Atlantic       82.55 /  77.05 ms        -6.90%           86.07 /  83.33 ms
+
+Median mapped painting in the mixed coast fell from 562.68 to 45.47 ms.
+The remaining paint and the rest of horizon preparation both account for
+substantial time in this fixture. Future profiling can distinguish per-ray
+work at real shoreline transitions from the cost of assembling the horizon
+profiles, with hardware OpenGL and walking across the coast as separate runs.
+
+A separate full application replay panned from the offshore side with clouds
+off. The median of four timed pan blocks fell from 879.77 to 323.74 ms per
+frame, a 63.20 percent reduction on software OpenGL. This replay included the
+application's adaptive quality and ran with the offline catalog flags.
+
+Run with python3 tools/run_horizon_trials.py --trial 209 --frames 4 --output PATH.

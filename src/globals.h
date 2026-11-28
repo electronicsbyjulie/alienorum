@@ -49,6 +49,7 @@ extern bool splash, menu, magnitude_test, redo_proper_motions, fdlg_shown;
 extern bool dittrsa;
 extern std::atomic<bool> is_reloading;
 extern bool take_snapshot;
+extern bool snapshot_without_interface;
 extern CelestialObject npdummy;
 extern char xplorfor[name_max_len];
 extern CelestialObject *last_xplored_cen, *last_neighb_cen;

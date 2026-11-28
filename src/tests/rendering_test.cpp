@@ -4706,6 +4706,129 @@ TEST_F(RenderingRegressionTest, DryMappedReliefRefinesAfterPanningAtLowFrameRate
     EXPECT_EQ(capture(), 1);
 }
 
+TEST_F(RenderingRegressionTest, MeasuredEarthShoreKeepsCoastalForegroundOnLand)
+{
+    auto* earth = surface(true);
+    earth->has_water = .79;
+    earth->has_real_maps = true;
+    earth->bump_has_bathymetry = true;
+    earth->sidereal_rotational_period = 86164.1;
+    delete earth->surf_map;
+    earth->surf_map = new Map(earth);
+    ASSERT_TRUE(earth->surf_map->load_from_jpeg("maps/Earth_surf.jpg"));
+    ASSERT_TRUE(earth->surf_map->load_calibrated_bump("maps/Earth_bump.png", 65535, -.5));
+    set(viewer_lat, 23.255 * fiftyseventh);
+    set(viewer_lon, -16.030 * fiftyseventh);
+    set(zoom, 5.128661);
+    set(altitude, 3.66 * fiftyseventh);
+    set(show_clouds, false);
+    set(dragging, true);
+
+    // The photograph has a blue texel over measured land west of the observer.
+    const double inland_lon = -16.035 * fiftyseventh;
+    const double offshore_lon = -16.25 * fiftyseventh;
+    const auto source = earth->surf_map->color_at(viewer_lat, inland_lon);
+    ASSERT_GT(source.b, source.r);
+    ASSERT_GT(earth->surf_map->elevation_at_bilinear(viewer_lat, inland_lon), 30);
+    ASSERT_LT(earth->surf_map->elevation_at_bilinear(viewer_lat, offshore_lon), 0);
+    SurfaceBiomes field(static_cast<uint32_t>(whereami));
+    SurfaceSampler sampler(earth, earth->surf_map, field, earth->get_equatorial_radius(), shore_displacement);
+    sampler.use_measured_shore(viewer_lat, viewer_lon);
+    EXPECT_FALSE(sampler.sample(viewer_lat, inland_lon).water);
+    EXPECT_TRUE(sampler.sample(viewer_lat, offshore_lon).water);
+
+    for (double heading : {210.0, 214.0, 220.0})
+    {
+        set(azimuth, heading * fiftyseventh);
+        freeze_surface_time();
+        find_horizon();
+        draw_horizon();
+        const auto image = render();
+        size_t blue_ground = 0;
+        size_t visible_land = 0;
+        for (int y = 6; y < 23; ++y)
+        {
+            for (int x = 8; x < render_width - 8; ++x)
+            {
+                const size_t pixel = 4 * (y * render_width + x);
+                if (image[pixel + 2] > image[pixel] + 48) ++blue_ground;
+                if (image[pixel + 3] == 255 && image[pixel] > image[pixel + 2] + 8) ++visible_land;
+            }
+        }
+        EXPECT_EQ(blue_ground, 0u) << heading;
+        EXPECT_GT(visible_land, 1000u) << heading;
+        ImGui::NewFrame();
+    }
+}
+
+TEST_F(RenderingRegressionTest, FindShoreUsesMeasuredEarthCoast)
+{
+    auto* earth = surface(true);
+    earth->has_water = .79;
+    earth->has_real_maps = true;
+    earth->bump_has_bathymetry = true;
+    earth->sidereal_rotational_period = 86164.1;
+    delete earth->surf_map;
+    earth->surf_map = new Map(earth);
+    ASSERT_TRUE(earth->surf_map->load_from_jpeg("maps/Earth_surf.jpg"));
+    ASSERT_TRUE(earth->surf_map->load_calibrated_bump("maps/Earth_bump.png", 65535, -.5));
+    set(viewer_lat, 23.255 * fiftyseventh);
+    set(viewer_lon, -16.030 * fiftyseventh);
+    set(azimuth, 250 * fiftyseventh);
+    set(viewer_locale, viewer_locale);
+    set(selected_locale, selected_locale);
+    set(is_a_locale_under_cursor, is_a_locale_under_cursor);
+    set(velocity, velocity);
+    set(save_viewer_latlon, save_viewer_latlon);
+    set(viewchanged, viewchanged);
+    set(here, here);
+    set(npdummy.location, npdummy.location);
+    set(npaz, npaz);
+
+    ASSERT_TRUE(process_find_shore());
+    EXPECT_DOUBLE_EQ(azimuth, 250 * fiftyseventh);
+    const double elevation = earth->surf_map->elevation_at_bilinear(viewer_lat, viewer_lon);
+    EXPECT_GT(elevation, 0);
+    EXPECT_LT(elevation, .05);
+    EXPECT_LT(viewer_lon * fiftyseven, -16.05);
+    EXPECT_GT(viewer_lon * fiftyseven, -16.35);
+    ASSERT_TRUE(process_find_shore());
+    EXPECT_NEAR(earth->surf_map->elevation_at_bilinear(viewer_lat, viewer_lon), elevation, .05);
+}
+
+TEST_F(RenderingRegressionTest, MeasuredBasinCoverageDefersToLocalPhasePatches)
+{
+    auto* earth = surface(true);
+    earth->has_water = .79;
+    earth->has_real_maps = true;
+    earth->bump_has_bathymetry = true;
+    delete earth->surf_map;
+    auto* map = earth->surf_map = new Map(earth);
+    ASSERT_TRUE(map->load_from_jpeg("maps/Earth_surf.jpg"));
+    ASSERT_TRUE(map->load_calibrated_bump("maps/Earth_bump.png", 65535, -.5));
+    constexpr double latitude = 23.255 * fiftyseventh, longitude = -16.25 * fiftyseventh;
+    constexpr double angle = .00001;
+    SurfaceBiomes field(static_cast<uint32_t>(whereami));
+    SurfaceSampler sampler(earth, map, field, earth->get_equatorial_radius(), 0);
+    sampler.use_measured_shore(latitude, longitude);
+    ASSERT_TRUE(sampler.shore_basin_within_cap(latitude, longitude, angle));
+
+    map->update_water_phase_tile(uniform_phase_climate(290), 0, latitude, longitude, 35, oneatm, .79, 65535, false);
+    const auto phase = map->phase_state();
+    ASSERT_TRUE(phase);
+    ASSERT_EQ(map->water_phase_revision(), 0u);
+    phase->tiles[SurfacePhase::key(0, 0)].rect = {0, 0, SurfacePhase::tile_width, SurfacePhase::tile_height};
+    EXPECT_TRUE(sampler.shore_basin_within_cap(latitude, longitude, angle));
+
+    const auto column = static_cast<unsigned long>((longitude + _pi) * map->get_width() / (2 * _pi));
+    const auto row = static_cast<unsigned long>(ceil((half_pi - latitude) * map->get_height() / _pi));
+    const auto tile_x = column / SurfacePhase::tile_width, tile_y = row / SurfacePhase::tile_height;
+    phase->tiles[SurfacePhase::key(tile_x, tile_y)].rect = {
+        tile_x * SurfacePhase::tile_width, tile_y * SurfacePhase::tile_height,
+        SurfacePhase::tile_width, SurfacePhase::tile_height};
+    EXPECT_FALSE(sampler.shore_basin_within_cap(latitude, longitude, angle));
+}
+
 TEST_F(RenderingRegressionTest, HorizonObserverUsesMappedElevationAndSeesBelowLevelFromSummit)
 {
     Planet* world = surface();

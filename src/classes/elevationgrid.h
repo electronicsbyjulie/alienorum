@@ -133,6 +133,37 @@ namespace alienorum
             return (values[index] / 65535.0 - .5) * span + offset;
         }
 
+        bool on_one_side_of_sea_level(double latitude, double longitude, double angle, bool above) const
+        {
+            constexpr double pi = 3.14159265358979323846;
+            if (empty() || !std::isfinite(latitude) || !std::isfinite(longitude)
+                || !std::isfinite(angle) || angle < 0 || fabs(latitude) + angle >= pi / 2) return false;
+            const double longitude_radius = angle / cos(fabs(latitude) + angle);
+            double wrapped = fmod(longitude + pi, 2 * pi);
+            if (wrapped < 0) wrapped += 2 * pi;
+            if (wrapped <= longitude_radius || wrapped + longitude_radius >= 2 * pi) return false;
+            const long left = static_cast<long>(floor((wrapped - longitude_radius) * width / (2 * pi) - .5));
+            const long right = static_cast<long>(floor((wrapped + longitude_radius) * width / (2 * pi) - .5)) + 1;
+            const auto row = [&](double lat)
+            {
+                return static_cast<unsigned int>(std::clamp((pi / 2 - lat) * height / pi - .5, 0.0, double(height - 1)));
+            };
+            const auto top = row(latitude + angle);
+            const auto bottom = std::min(row(latitude - angle) + 1, height - 1);
+            if (right - left > 16 || bottom - top > 16) return false;
+            // Bilinear interpolation stays within the extrema of the contributing cells.
+            for (unsigned int y = top; y <= bottom; ++y)
+            {
+                for (long x = left; x <= right; ++x)
+                {
+                    const auto column = (x + width) % width;
+                    const double elevation = elevation_at_index(static_cast<size_t>(y) * width + column);
+                    if ((above ? elevation : -elevation) <= 1e-8) return false;
+                }
+            }
+            return true;
+        }
+
         double sample(double latitude, double longitude) const
         {
             if (empty() || !std::isfinite(latitude) || !std::isfinite(longitude)) return 0;

@@ -55,11 +55,18 @@ def main():
     parser.add_argument('--modes')
     parser.add_argument('--scene-timeout', type=int)
     args = parser.parse_args()
-    mapped = args.trial in (203, 204, 205)
-    scenes = args.scenes or ('phoenix,shore,forest' if args.trial == 204 else
-                             'phoenix,shore' if mapped else 'ice,earth,ocean,forest,venus,airless,lava')
-    scene_timeout = args.scene_timeout or (540 if mapped else 90)
-    test = 'PairedMappedReliefPanning' if mapped else 'PairedHorizonPaths'
+    variants = {
+        203: ('PairedMappedReliefPanning', 'phoenix,shore', 540),
+        204: ('PairedMappedReliefPanning', 'phoenix,shore,forest', 540),
+        205: ('PairedMappedReliefPanning', 'phoenix,shore', 540),
+        206: ('PairedMeasuredWaterCoverage', 'atlantic,measured-coast', 540),
+        207: ('PairedTreeDensityDuringTimeChanges', 'forest', 90),
+        209: ('PairedMeasuredWaterCoverage', 'atlantic,measured-coast', 540),
+    }
+    default = ('PairedHorizonPaths', 'ice,earth,ocean,forest,venus,airless,lava', 90)
+    test, default_scenes, default_timeout = variants.get(args.trial, default)
+    scenes = args.scenes or default_scenes
+    scene_timeout = args.scene_timeout or default_timeout
     args.output.mkdir(parents=True, exist_ok=True)
     all_rows, all_results = [], []
     for scene in scenes.split(','):

@@ -213,6 +213,152 @@ TEST_F(HorizonTrialTest, PairedHorizonPaths)
     SDL_SetWindowSize(window, 192, 108);
 }
 
+TEST_F(HorizonTrialTest, PairedMeasuredWaterCoverage)
+{
+    const char* requested = std::getenv("ALIENORUM_HORIZON_TRIAL");
+    const unsigned trial = requested ? static_cast<unsigned>(std::atoi(requested)) : 0;
+    if (trial != 206 && trial != 209) GTEST_SKIP() << "Explicit measured water performance trial only.";
+    const char* scene_arg = std::getenv("ALIENORUM_HORIZON_SCENE");
+    const std::string scene = scene_arg ? scene_arg : "atlantic";
+    ASSERT_TRUE(scene == "atlantic" || scene == "measured-coast");
+    const char* rounds_arg = std::getenv("ALIENORUM_HORIZON_ROUNDS");
+    const char* frames_arg = std::getenv("ALIENORUM_HORIZON_FRAMES");
+    const int rounds = rounds_arg ? std::atoi(rounds_arg) : 8;
+    const int frames = frames_arg ? std::atoi(frames_arg) : 6;
+    ASSERT_GT(rounds, 0);
+    ASSERT_GT(frames, 0);
+
+    Planet* world = configure_scene("forest");
+    delete world->surf_map;
+    world->surf_map = new Map(world);
+    world->has_real_maps = world->bump_has_bathymetry = true;
+    world->sidereal_rotational_period = 86164.1;
+    world->has_life = true;
+    ASSERT_TRUE(world->surf_map->load_from_jpeg("maps/Earth_surf.jpg"));
+    ASSERT_TRUE(world->surf_map->load_calibrated_bump("maps/Earth_bump.png", 65535, -.5));
+    set(horizon_reference_trial, 0u);
+    set(show_clouds, false);
+    set(dragging, true);
+    viewer_lat = 23.255 * fiftyseventh;
+    viewer_lon = (scene == "atlantic" ? -20 : -16.16) * fiftyseventh;
+    altitude = -.12;
+    struct RestoreQuality
+    {
+        ~RestoreQuality() { update_horizon_quality(0); }
+    } restore_quality;
+    const auto milliseconds = [](auto start, auto end)
+    {
+        return std::chrono::duration<double, std::milli>(end - start).count();
+    };
+    for (int round = 0; round < rounds; ++round)
+    {
+        std::vector<std::vector<unsigned char>> images;
+        for (int arm = 0; arm < 2; ++arm)
+        {
+            const bool reference = (arm == 0) != (round % 2 != 0);
+            horizon_reference_trial = reference ? trial : 0;
+            update_horizon_quality(0);
+            for (int frame = -3; frame < frames; ++frame)
+            {
+                update_horizon_quality(.19);
+                azimuth = 1.3 + frame * .024;
+                freeze_surface_time();
+                const auto start = std::chrono::steady_clock::now();
+                const double cpu_start = cpu_clock_ms();
+                find_horizon();
+                draw_horizon();
+                const auto prepared = std::chrono::steady_clock::now();
+                const double cpu = cpu_clock_ms() - cpu_start;
+                submit_frame();
+                const auto finished = std::chrono::steady_clock::now();
+                if (frame >= 0)
+                {
+                    std::vector<unsigned char> pixels(render_width * render_height * 4);
+                    glReadPixels(0, 0, render_width, render_height, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+                    if (arm == 0) images.push_back(std::move(pixels));
+                    else EXPECT_EQ(image_difference(pixels, images[frame]), 0) << scene << ' ' << round << ' ' << frame;
+                    std::cout << "HORIZON_SAMPLE," << trial << ',' << scene << ",pan," << round << ','
+                        << (reference ? "before" : "after") << ',' << frame << ',' << milliseconds(start, prepared) << ','
+                        << cpu << ',' << milliseconds(start, finished) << ',' << precipitation_stats.ground_sample_stride << std::endl;
+                    std::cout << "HORIZON_MAPPED_PAINT," << scene << ',' << round << ','
+                        << (reference ? "before" : "after") << ',' << frame << ','
+                        << precipitation_stats.ground_paint_milliseconds << '\n';
+                }
+                ImGui::NewFrame();
+            }
+        }
+    }
+    SDL_SetWindowSize(window, 192, 108);
+}
+
+TEST_F(HorizonTrialTest, PairedTreeDensityDuringTimeChanges)
+{
+    const char* requested = std::getenv("ALIENORUM_HORIZON_TRIAL");
+    if (!requested || std::atoi(requested) != 207) GTEST_SKIP() << "Explicit plant performance trial only.";
+    const char* rounds_arg = std::getenv("ALIENORUM_HORIZON_ROUNDS");
+    const char* frames_arg = std::getenv("ALIENORUM_HORIZON_FRAMES");
+    const int rounds = rounds_arg ? std::atoi(rounds_arg) : 8;
+    const int frames = frames_arg ? std::atoi(frames_arg) : 6;
+    ASSERT_GT(rounds, 0);
+    ASSERT_GT(frames, 0);
+    Planet* world = configure_scene("forest");
+    delete world->surf_map;
+    world->surf_map = new BlueBiomeTestMap(SurfaceMaterial::vegetation);
+    world->plant_crown_size = 2;
+    world->plant_crown_oblateness = .5;
+    world->plant_trunk_width = .25;
+    world->plant_trunk_height = 5;
+    world->has_life = true;
+    world->has_plants = true;
+    set(show_clouds, false);
+    set(horizon_reference_trial, 0u);
+    set(simnow, 0.0);
+    viewer_lat = .0001;
+    viewer_lon = .4;
+    const auto milliseconds = [](auto start, auto end)
+    {
+        return std::chrono::duration<double, std::milli>(end - start).count();
+    };
+    for (int round = 0; round < rounds; ++round)
+    {
+        std::vector<std::vector<unsigned char>> images;
+        for (int arm = 0; arm < 2; ++arm)
+        {
+            const bool reference = (arm == 0) != (round % 2 != 0);
+            horizon_reference_trial = reference ? 207 : 0;
+            bool drew_plants = false;
+            for (int frame = -2; frame < frames; ++frame)
+            {
+                simnow = oneday * 80 + frame * 3600;
+                azimuth = 1.3 + frame * .014;
+                freeze_surface_time();
+                const auto start = std::chrono::steady_clock::now();
+                const double cpu_start = cpu_clock_ms();
+                find_horizon();
+                draw_horizon();
+                const auto prepared = std::chrono::steady_clock::now();
+                const double cpu = cpu_clock_ms() - cpu_start;
+                submit_frame();
+                const auto finished = std::chrono::steady_clock::now();
+                if (frame >= 0)
+                {
+                    drew_plants |= plant_mesh_stats().instances > 0;
+                    std::vector<unsigned char> pixels(render_width * render_height * 4);
+                    glReadPixels(0, 0, render_width, render_height, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+                    if (arm == 0) images.push_back(std::move(pixels));
+                    else EXPECT_EQ(image_difference(pixels, images[frame]), 0) << round << ' ' << frame;
+                    std::cout << "HORIZON_SAMPLE,207,forest,time," << round << ','
+                        << (reference ? "before" : "after") << ',' << frame << ',' << milliseconds(start, prepared) << ','
+                        << cpu << ',' << milliseconds(start, finished) << ',' << precipitation_stats.ground_sample_stride << std::endl;
+                }
+                ImGui::NewFrame();
+            }
+            EXPECT_TRUE(drew_plants);
+        }
+    }
+    SDL_SetWindowSize(window, 192, 108);
+}
+
 TEST_F(HorizonTrialTest, PairedMappedReliefPanning)
 {
     const char* requested = std::getenv("ALIENORUM_HORIZON_TRIAL");

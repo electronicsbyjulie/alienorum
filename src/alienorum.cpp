@@ -127,6 +127,24 @@ bool save_snapshot_png(const std::string& filename, int width, int height)
     return alienorum::save_snapshot_pixels(filename, width, height, std::move(pixels));
 }
 
+static void render_draw_lists(const ImDrawData& frame, int first, int end)
+{
+    if (first == end) return;
+
+    ImDrawData layer;
+    layer.Valid = frame.Valid;
+    layer.DisplayPos = frame.DisplayPos;
+    layer.DisplaySize = frame.DisplaySize;
+    layer.FramebufferScale = frame.FramebufferScale;
+    layer.OwnerViewport = frame.OwnerViewport;
+    layer.Textures = frame.Textures;
+    for (int i = first; i < end; ++i)
+    {
+        layer.AddDrawList(frame.CmdLists[i]);
+    }
+    ImGui_ImplOpenGL3_RenderDrawData(&layer);
+}
+
 int main (int argc, char** argv)
 {
     int i, l, n;
@@ -536,8 +554,11 @@ int main (int argc, char** argv)
         {
             // Live input can change a replayed shortcut or move it to a different object.
             if (!replaying_views) ImGui_ImplSDL2_ProcessEvent(&event);
-            if (!replaying_views && loading_frame && event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_F2 && !event.key.repeat)
+            if (!replaying_views && loading_frame && event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_F2
+                && !event.key.repeat && !(event.key.keysym.mod & (KMOD_SHIFT | KMOD_CTRL | KMOD_ALT | KMOD_GUI)))
+            {
                 process_key_F2();
+            }
             if (event.type == SDL_QUIT ||
                 (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE && event.window.windowID == SDL_GetWindowID(window)))
             {
@@ -1151,7 +1172,7 @@ int main (int argc, char** argv)
 
             was_mouse_down = is_mouse_down;
         }
-        if (argsfs || (!io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_F11, false)))
+        if (argsfs || (ImGui::IsKeyPressed(ImGuiKey_F11, false) && function_key_modifiers(io) == 0))
         {
             process_key_F11();
             argsfs = false;
@@ -1189,19 +1210,22 @@ int main (int argc, char** argv)
         // The splash draw data contains no catalog objects. GPU presentation can
         // block, so allow the loader to publish rows while this frame is rendered.
         if (loading_frame) catalog_lock.unlock();
+        const bool capture_scene = take_snapshot && snapshot_without_interface;
+        ImDrawList* scene = capture_scene ? ImGui::GetBackgroundDrawList() : nullptr;
         ImGui::Render();
+        ImDrawData* frame = ImGui::GetDrawData();
         glViewport(0, 0, (int)io.DisplaySize.x, (int)io.DisplaySize.y);
         glClearColor(background.x * background.w, background.y * background.w, background.z * background.w, background.w);
         glClear(GL_COLOR_BUFFER_BIT);
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-        gputex_finish_frame();
-        if (PERF_P095 && !layout_path.empty() && io.WantSaveIniSettings)
+        // Capture the scene and its overlays before drawing the windows.
+        const int scene_lists = capture_scene && frame->CmdListsCount && frame->CmdLists[0] == scene ? 1 : 0;
+        if (capture_scene)
         {
-            size_t size = 0;
-            const char* text = ImGui::SaveIniSettingsToMemory(&size);
-            if (!alienorum::save_layout_text(layout_path, std::string(text, size)))
-                std::cerr << "Failed to queue window layout." << std::endl;
-            io.WantSaveIniSettings = false;
+            render_draw_lists(*frame, 0, scene_lists);
+        }
+        else
+        {
+            ImGui_ImplOpenGL3_RenderDrawData(frame);
         }
         if (take_snapshot)
         {
@@ -1254,7 +1278,21 @@ int main (int argc, char** argv)
             else
                 std::cerr << "Failed to save " << shnapsot_fname.str() << " to disk." << std::endl;
             take_snapshot = false;
+            snapshot_without_interface = false;
             if (loading_frame) catalog_lock.unlock();
+        }
+        if (capture_scene)
+        {
+            render_draw_lists(*frame, scene_lists, frame->CmdListsCount);
+        }
+        gputex_finish_frame();
+        if (PERF_P095 && !layout_path.empty() && io.WantSaveIniSettings)
+        {
+            size_t size = 0;
+            const char* text = ImGui::SaveIniSettingsToMemory(&size);
+            if (!alienorum::save_layout_text(layout_path, std::string(text, size)))
+                std::cerr << "Failed to queue window layout." << std::endl;
+            io.WantSaveIniSettings = false;
         }
         SDL_GL_SwapWindow(window);
         if (loading_frame) catalog_lock.lock();

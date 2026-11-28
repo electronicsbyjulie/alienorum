@@ -21,6 +21,7 @@ bool splash = true, menu = false, magnitude_test = false, redo_proper_motions = 
 bool dittrsa = false;
 std::atomic<bool> is_reloading(false);
 bool take_snapshot = false;
+bool snapshot_without_interface = false;
 CelestialObject npdummy;
 char xplorfor[name_max_len];
 CelestialObject *last_xplored_cen = nullptr, *last_neighb_cen = nullptr;

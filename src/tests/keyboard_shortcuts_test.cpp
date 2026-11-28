@@ -321,6 +321,43 @@ TEST_F(KeyboardShortcutEvents, ImperialUnitsShortcutRequiresAllThreeModifiers)
     use_imperial_units = saved;
 }
 
+TEST_F(KeyboardShortcutEvents, SnapshotShortcutsRequireTheirExactModifiers)
+{
+    const auto saved = std::make_tuple(take_snapshot, snapshot_without_interface);
+    take_snapshot = false;
+    snapshot_without_interface = false;
+
+    press(ImGuiKey_F12, true);
+    EXPECT_FALSE(take_snapshot);
+    press(ImGuiKey_F12, true, true);
+    EXPECT_FALSE(take_snapshot);
+
+    press(ImGuiKey_F12, false, true);
+    EXPECT_TRUE(take_snapshot);
+    EXPECT_TRUE(snapshot_without_interface);
+
+    take_snapshot = false;
+    press(ImGuiKey_F12);
+    EXPECT_TRUE(take_snapshot);
+    EXPECT_FALSE(snapshot_without_interface);
+
+    std::tie(take_snapshot, snapshot_without_interface) = saved;
+}
+
+TEST_F(KeyboardShortcutEvents, ModifiedFunctionKeysLeaveUnmodifiedCommandsIdle)
+{
+    const auto saved = std::make_tuple(show_tentative_exoplanets, local_tmstep);
+    press(ImGuiKey_F8, true);
+    press(ImGuiKey_F8, false, true);
+    press(ImGuiKey_F10, true);
+    press(ImGuiKey_F10, false, true);
+    EXPECT_EQ(std::tie(show_tentative_exoplanets, local_tmstep), saved);
+
+    press(ImGuiKey_F10);
+    EXPECT_NE(local_tmstep, std::get<1>(saved));
+    std::tie(show_tentative_exoplanets, local_tmstep) = saved;
+}
+
 TEST_F(KeyboardShortcutEvents, ViewMenuShowsImperialUnitsBelowTheThemeControls)
 {
     const auto prior_flags = std::make_tuple(use_imperial_units, mouse_over_menu, menu_clicked);

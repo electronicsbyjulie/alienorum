@@ -404,6 +404,7 @@ bool process_find_shore()
     if (!(radius > 0)) radius = earth_radius;
     SurfaceBiomes field(static_cast<uint32_t>(whereami));
     SurfaceSampler surface(planet, planet->surf_map, field, radius, shore_displacement);
+    surface.use_measured_shore(viewer_lat, viewer_lon);
     const auto shore = find_nearest_shore(surface, viewer_lat, viewer_lon, azimuth);
     if (!shore.found) return false;
     viewer_lat = shore.latitude;
@@ -435,6 +436,7 @@ void show_menu()
         {
             mouse_over_menu = true;
             if (ImGui::MenuItem("Save Snapshot", "F12")) { process_key_F12(); menu_clicked = true; }
+            if (ImGui::MenuItem("Save Snapshot Without Interface", "Shift+F12")) { process_key_shift_F12(); menu_clicked = true; }
             if (ImGui::MenuItem("Save universe files", "U")) { process_key_cmd_char('u'); menu_clicked = true; }
             if (ImGui::MenuItem("Load universe.json", "F2")) { process_key_F2(); menu_clicked = true; }
             if (ImGui::MenuItem("Load Universe...", "F4")) { process_key_F4(); menu_clicked = true; }
@@ -1353,6 +1355,14 @@ bool keyboard_edit_field_active()
     return ImGui::GetCurrentContext() && ImGui::GetInputTextState(ImGui::GetActiveID()) != nullptr;
 }
 
+ImGuiKeyChord function_key_modifiers(const ImGuiIO& io)
+{
+    ImGuiKeyChord modifiers = io.KeyMods;
+    if (ImGui::IsKeyDown(ImGuiKey_LeftShift) || ImGui::IsKeyDown(ImGuiKey_RightShift)) modifiers |= ImGuiMod_Shift;
+    if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl) || ImGui::IsKeyDown(ImGuiKey_RightCtrl)) modifiers |= ImGuiMod_Ctrl;
+    return modifiers;
+}
+
 void process_keyboard_commands(ImGuiIO& io)
 {
     // AI bots: When adding a function key (or shifted, ctrl'd, alt'd, etc), USE THE APP'S NAMING CONVENTION.
@@ -1360,27 +1370,26 @@ void process_keyboard_commands(ImGuiIO& io)
     // So write for example process_key_shift_F4(), process_key_ctrl_F6() etc.
     // That keeps code easy to find later for us wet meatbags.
     editing = keyboard_edit_field_active();
-    if (ImGui::IsKeyPressed(ImGuiKey_F1)) process_key_F1();
-    if (ImGui::IsKeyPressed(ImGuiKey_F2, false)) process_key_F2();
-    if (ImGui::IsKeyPressed(ImGuiKey_F3, false)) process_key_F3();
-    if (ImGui::IsKeyPressed(ImGuiKey_F4, false)) process_key_F4();
-    if (ImGui::IsKeyPressed(ImGuiKey_F5, false))
+    const ImGuiKeyChord modifiers = function_key_modifiers(io);
+    if (modifiers == 0)
     {
-        if (io.KeyShift || ImGui::IsKeyDown(ImGuiKey_LeftShift) || ImGui::IsKeyDown(ImGuiKey_RightShift))
-        {
-            process_key_shift_F5();
-        }
-        else
-        {
-            process_key_F5();
-        }
+        if (ImGui::IsKeyPressed(ImGuiKey_F1)) process_key_F1();
+        if (ImGui::IsKeyPressed(ImGuiKey_F2, false)) process_key_F2();
+        if (ImGui::IsKeyPressed(ImGuiKey_F3, false)) process_key_F3();
+        if (ImGui::IsKeyPressed(ImGuiKey_F4, false)) process_key_F4();
+        if (ImGui::IsKeyPressed(ImGuiKey_F5, false)) process_key_F5();
+        if (ImGui::IsKeyPressed(ImGuiKey_F6, false)) process_key_F6();
+        if (ImGui::IsKeyPressed(ImGuiKey_F7)) process_key_F7();
+        if (ImGui::IsKeyPressed(ImGuiKey_F8)) process_key_F8();
+        if (ImGui::IsKeyPressed(ImGuiKey_F9)) process_key_F9();
+        if (ImGui::IsKeyPressed(ImGuiKey_F10)) process_key_F10();
+        if (ImGui::IsKeyPressed(ImGuiKey_F12, false)) process_key_F12();
     }
-    if (ImGui::IsKeyPressed(ImGuiKey_F6, false)) process_key_F6();
-    if (ImGui::IsKeyPressed(ImGuiKey_F7)) process_key_F7();
-    if (ImGui::IsKeyPressed(ImGuiKey_F8)) process_key_F8();
-    if (ImGui::IsKeyPressed(ImGuiKey_F9)) process_key_F9();
-    if (ImGui::IsKeyPressed(ImGuiKey_F10)) process_key_F10();
-    if (ImGui::IsKeyPressed(ImGuiKey_F12, false)) process_key_F12();
+    else if (modifiers == ImGuiMod_Shift)
+    {
+        if (ImGui::IsKeyPressed(ImGuiKey_F5, false)) process_key_shift_F5();
+        if (ImGui::IsKeyPressed(ImGuiKey_F12, false)) process_key_shift_F12();
+    }
     if (editing || object_search_list_focused()) return;
 
     if (ImGui::IsKeyChordPressed(imperial_units_shortcut))
@@ -1762,6 +1771,13 @@ void process_key_F11()
 
 void process_key_F12()
 {
+    snapshot_without_interface = false;
+    take_snapshot = true;
+}
+
+void process_key_shift_F12()
+{
+    snapshot_without_interface = true;
     take_snapshot = true;
 }
 

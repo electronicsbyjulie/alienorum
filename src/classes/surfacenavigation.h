@@ -25,6 +25,12 @@ namespace alienorum
         std::shared_ptr<const VegetationHabitat> vegetation_habitat;
         double vegetation_freezing = 273.15, vegetation_boiling = 373.15;
         std::optional<bool> frame_surface_life, frame_land_plants;
+        bool measured_shore = false;
+        double shore_latitude = 0, shore_longitude = 0;
+        std::optional<RGB3> dry_swatch, wet_swatch;
+        std::pair<RGB3, SurfaceMaterial> texture_info(double latitude, double longitude);
+        std::pair<RGB3, SurfaceMaterial> measured_info(double latitude, double longitude, bool in_basin);
+        RGB3 shore_swatch(bool in_basin);
 
         public:
         struct Sample
@@ -42,6 +48,10 @@ namespace alienorum
         };
         SurfaceSampler(Planet *body, Map *surface, SurfaceBiomes &noise, double world_radius, double displacement);
         void capture_life_rules();
+        void use_measured_shore(double latitude, double longitude);
+        bool has_measured_shore() const { return measured_shore; }
+        bool shore_dry_within_cap(double latitude, double longitude, double angle) const;
+        bool shore_basin_within_cap(double latitude, double longitude, double angle) const;
         bool surface_life_allowed() const;
         bool land_plants_allowed() const;
         void use_local_tile(LocalSurfaceTile& tile) { local_tile = &tile; }
