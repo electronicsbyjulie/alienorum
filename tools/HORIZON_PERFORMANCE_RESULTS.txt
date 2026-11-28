@@ -366,3 +366,117 @@ matrices. All test children exited.
 Final logs: /tmp/horizon-trials-final-tests.log,
 /tmp/horizon-trials-final-control/, and
 /tmp/horizon-trials-final-validated-poses/.
+
+Mapped relief and vegetation trials
+===================================
+
+Acceptance uses a 15 percent reduction in median completed horizon-frame time
+on an affected workload, image comparisons for every measured pose, and a
+check of the tail and control workloads. Frame completion includes OpenGL
+submission and glFinish. Pixel readback occurs outside timed samples.
+
+Trial 203: Certify dry ground in mapped relief tiles
+---------------------------------------------------
+The reference scans individual rays in coarse tiles to find hidden coastlines.
+The candidate bounds the terrain hit of every ray in a certified tile. The
+bound uses the lowest skyline profile slope at a known distance in every
+bearing, and the highest ray slope possible inside the tile. The cap for that
+distance includes biome displacement and fits in one dry atlas pixel. Tiles
+outside that proof still use the original scan.
+
+Eight alternating pairs, four moving poses per arm, 1280x800, Mesa llvmpipe.
+The per-frame life-rule cache was active in both arms.
+Scene      Median before/after     Paired reduction    p95 before/after
+Phoenix     489.27 /   96.45 ms         80.31%           494.61 /  104.38 ms
+Coast      1333.73 / 1338.43 ms         -0.37%          1345.78 / 1351.94 ms
+The coast median interval ran from 0.03 percent faster to 0.70 percent slower.
+The saved images matched exactly at every measured pose in both scenes.
+
+Run with python3 tools/run_horizon_trials.py --trial 203 --frames 4 --output PATH.
+
+Trial 204: Capture surface life rules per render frame
+----------------------------------------------------
+CPU stack sampling during mapped panning exposed repeated stellar-age JSON
+construction during individual map samples. The horizon sampler now captures
+surface-life and plant eligibility once per frame. Use a fresh sampler on the
+next frame so edits to the planet or stellar host take effect.
+
+Eight alternating pairs, three moving poses per arm, 480x300, Mesa llvmpipe.
+The dry-tile shortcut was active in both arms. These two scenes use Earth map
+assets on a test planet around a secondary star and exercise inferred stellar
+ages. The real Earth has a direct eligibility path.
+Scene      Median before/after     Paired reduction    p95 before/after
+Phoenix     122.11 /   26.38 ms         78.37%           123.64 /   41.20 ms
+Coast      4344.58 /  260.40 ms         94.01%          4392.36 /  264.73 ms
+The saved images matched exactly at every measured pose in both scenes.
+
+A separate procedural forest walk used the same resolution and paired protocol,
+with rendered plant meshes in every arm. The images also matched exactly.
+Completed frames were 20.56 / 21.56 ms. The paired interval included zero;
+CPU preparation was effectively unchanged at 6.78 / 6.84 ms. The cache targets
+repeated eligibility queries in mapped terrain, with no demonstrated forest
+walking gain in this fixture.
+
+Run with python3 tools/run_horizon_trials.py --trial 204 --frames 3 --output PATH.
+
+Trial 205: Reuse the material at a mapped terrain hit
+----------------------------------------------------
+Mapped rays that test a basin can pass their geographic coordinates, material
+and basin classification to the shoreline scan and shading. Rays that take
+the geometric shortcut still sample the original coordinates when shading or
+classification calls for it. Color, depth and image checks use the same poses.
+
+Eight alternating coastal pairs, four moving poses per arm, 1280x800, Mesa
+llvmpipe. Both earlier candidates were active in both arms. Median completed
+frames went from 1321.23 to 1005.80 ms, a 23.75 percent reduction. The paired
+interval was 23.53 to 24.18 percent faster. The p95 fell from 1331.70 to
+1014.67 ms. All measured images matched exactly.
+The two-pair Phoenix control also matched exactly and ran 97.66 / 87.92 ms.
+That small run checked the final combination of paths on dry terrain.
+
+Run with python3 tools/run_horizon_trials.py --trial 205 --scenes shore --frames 4 --output PATH.
+
+Full application replay
+-----------------------
+The original and rebuilt executables entered Earth horizon view through the
+normal application loader, then replayed identical consecutive azimuth steps
+from Phoenix with clouds off. Four timed blocks per executable included the
+normal frame loop and swaps, on Mesa software OpenGL with a hidden window and
+the noexo and nosat launch arguments. The median of the per-block frame times
+was 963.94 ms before and 341.89 ms after, a 64.53 percent reduction. This is a
+single process pair. The alternating fixture trials supply the individual
+candidate comparisons above.
+
+Focused rendering checks
+------------------------
+Fourteen of fifteen existing mapped relief, shoreline and plant checks passed,
+including tree-site stability through published frost and thaw.
+StationarySceneryProjectionTracksCameraShapeMapAndPlantEdits differed by 714
+pixels after the radius edit and 26 after the pressure edit. Both assertions
+follow a map generation increment without any change to the source pixels.
+The same differences reproduced with the earlier per-sample eligibility path.
+The fixture has no mapped elevation data, so neither mapped-relief candidate
+is active. No existing test was edited.
+
+Open terrain work
+-----------------
+The measured coast still takes about a second per frame with software OpenGL.
+Profile the exact mixed-tile scan against wave classification and draw
+submission before selecting another optimization. A coastal material atlas
+could certify uniformly wet and dry regions across multiple source pixels.
+Water phase, basin level, biome displacement and uncertain boundaries must
+participate in certification. Keep pixel checks for narrow coast crossings,
+ice edges, shoreline continuity during walks and edits to the source map.
+
+Plant layout and appearance currently share one scenery cache revision. Measure
+plant-site selection and canopy clearance when walking across patch boundaries
+and when the local surface phase publishes. A plant-site cache keyed to the
+permanent terrain could preserve site selections through seasonal appearance
+updates. The stationary projection failure points to the habitat cache: a map
+generation update can replace its baseline using the edited radius or pressure.
+Distinguish an unchanged map's revision from a new terrain source before trying
+to retain site selections through these edits.
+
+Separately measure depth uploads, projected shadows and GPU crown
+shading with nearby volumetric crowns visibly active. Confirm any candidate
+on hardware OpenGL in addition to the software path.

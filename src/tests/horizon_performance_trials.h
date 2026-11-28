@@ -212,3 +212,111 @@ TEST_F(HorizonTrialTest, PairedHorizonPaths)
     horizon_reference_trial = 0;
     SDL_SetWindowSize(window, 192, 108);
 }
+
+TEST_F(HorizonTrialTest, PairedMappedReliefPanning)
+{
+    const char* requested = std::getenv("ALIENORUM_HORIZON_TRIAL");
+    if (!requested) GTEST_SKIP() << "Explicit horizon performance trial only.";
+    const unsigned trial = static_cast<unsigned>(std::atoi(requested));
+    ASSERT_TRUE(trial == 203 || trial == 204 || trial == 205);
+    const char* scene_arg = std::getenv("ALIENORUM_HORIZON_SCENE");
+    const std::string scene = scene_arg ? scene_arg : "phoenix";
+    const bool forest = scene == "forest";
+    ASSERT_TRUE(scene == "phoenix" || scene == "shore" || (forest && trial == 204));
+    const char* rounds_arg = std::getenv("ALIENORUM_HORIZON_ROUNDS");
+    const int rounds = rounds_arg ? std::atoi(rounds_arg) : 8;
+    const char* frames_arg = std::getenv("ALIENORUM_HORIZON_FRAMES");
+    const int frames = frames_arg ? std::atoi(frames_arg) : 6;
+    ASSERT_GT(rounds, 0);
+    ASSERT_GT(frames, 0);
+
+    Planet* world = configure_scene("forest");
+    if (trial == 204)
+    {
+        render_width = 480;
+        render_height = 300;
+        SDL_SetWindowSize(window, render_width, render_height);
+        SDL_PumpEvents();
+        SDL_GL_SwapWindow(window);
+        dispcx = render_width * .5;
+        dispcy = render_height * .5;
+        ImGui::GetIO().DisplaySize = ImVec2(render_width, render_height);
+        ImGui::EndFrame();
+        ImGui::NewFrame();
+    }
+    delete world->surf_map;
+    if (forest)
+    {
+        world->surf_map = new BlueBiomeTestMap(SurfaceMaterial::vegetation);
+        world->plant_crown_size = 2;
+        world->plant_crown_oblateness = .5;
+        world->plant_trunk_width = .25;
+        world->plant_trunk_height = 5;
+    }
+    else
+    {
+        world->surf_map = new Map(world);
+        world->has_real_maps = true;
+        world->sidereal_rotational_period = 86164.1;
+        ASSERT_TRUE(world->surf_map->load_from_jpeg("maps/Earth_surf.jpg"));
+        ASSERT_TRUE(world->surf_map->load_from_png("maps/Earth_bump.png", true, world->estimate_bump_scale()));
+    }
+    set(show_clouds, false);
+    set(horizon_reference_trial, 0u);
+    set(dragging, true);
+    viewer_lat = forest ? .0001 : (scene == "shore" ? 31.782 : 33.448) * fiftyseventh;
+    viewer_lon = forest ? .4 : (scene == "shore" ? -113.625 : -112.073) * fiftyseventh;
+    altitude = scene == "shore" ? .12 : 0;
+    struct RestoreHorizonQuality
+    {
+        ~RestoreHorizonQuality() { update_horizon_quality(0); }
+    } restore_quality;
+
+    const auto milliseconds = [](auto first, auto last)
+    {
+        return std::chrono::duration<double, std::milli>(last - first).count();
+    };
+    for (int round = 0; round < rounds; ++round)
+    {
+        std::vector<std::vector<unsigned char>> first_images;
+        for (int arm = 0; arm < 2; ++arm)
+        {
+            const bool reference = (arm == 0) != (round % 2 != 0);
+            horizon_reference_trial = reference ? trial : 0;
+            update_horizon_quality(0);
+            bool drew_plant_meshes = false;
+            for (int frame = -3; frame < frames; ++frame)
+            {
+                update_horizon_quality(.19);
+                if (forest) viewer_lat = .0001 + frame / earth_radius;
+                azimuth = (forest ? 1.3 : (scene == "shore" ? 255 : 70) * fiftyseventh) + frame * .024;
+                freeze_surface_time();
+                const auto start = std::chrono::steady_clock::now();
+                const double cpu_start = cpu_clock_ms();
+                find_horizon();
+                draw_horizon();
+                const auto prepared = std::chrono::steady_clock::now();
+                const double cpu = cpu_clock_ms() - cpu_start;
+                submit_frame();
+                const auto finished = std::chrono::steady_clock::now();
+                if (frame >= 0)
+                {
+                    drew_plant_meshes = drew_plant_meshes || plant_mesh_stats().instances > 0;
+                    std::vector<unsigned char> pixels(render_width * render_height * 4);
+                    glReadPixels(0, 0, render_width, render_height, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+                    if (arm == 0) first_images.push_back(std::move(pixels));
+                    else EXPECT_EQ(image_difference(pixels, first_images[frame]), 0) << scene << ' ' << round << ' ' << frame;
+                    std::cout << "HORIZON_SAMPLE," << trial << ',' << scene << (forest ? ",walk," : ",pan,") << round << ','
+                        << (reference ? "before" : "after") << ',' << frame << ',' << milliseconds(start, prepared) << ','
+                        << cpu << ',' << milliseconds(start, finished) << ',' << precipitation_stats.ground_sample_stride << std::endl;
+                }
+                ImGui::NewFrame();
+            }
+            if (forest)
+            {
+                EXPECT_TRUE(drew_plant_meshes);
+            }
+        }
+    }
+    SDL_SetWindowSize(window, 192, 108);
+}

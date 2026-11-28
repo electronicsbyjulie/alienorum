@@ -85,6 +85,22 @@ SurfaceSampler::SurfaceSampler(Planet *body, Map *surface, SurfaceBiomes &noise,
     water = ocean || (biomes && planet->has_water);
 }
 
+void SurfaceSampler::capture_life_rules()
+{
+    frame_surface_life = !planet || planet->simulated_surface_life_allowed();
+    frame_land_plants = planet && planet->simulated_land_plants_allowed();
+}
+
+bool SurfaceSampler::surface_life_allowed() const
+{
+    return frame_surface_life ? *frame_surface_life : !planet || planet->simulated_surface_life_allowed();
+}
+
+bool SurfaceSampler::land_plants_allowed() const
+{
+    return frame_land_plants ? *frame_land_plants : planet && planet->simulated_land_plants_allowed();
+}
+
 std::pair<RGB3, SurfaceMaterial> SurfaceSampler::info(double latitude, double longitude)
 {
     if (!map) return {RGB3(0, 8, 24), SurfaceMaterial::unknown};
@@ -115,7 +131,7 @@ std::pair<RGB3, SurfaceMaterial> SurfaceSampler::info(double latitude, double lo
 bool SurfaceSampler::vegetation_color(const RGB3 &sample) const
 {
     if (!planet || !map || !uses_rocky_map(planet->type) || !favorable || !planet->has_water
-        || !planet->simulated_surface_life_allowed()
+        || !surface_life_allowed()
         || !(planet->vegetation_r || planet->vegetation_g || planet->vegetation_b)) return false;
     const double delta = fabs(Color::hue_from_rgb(sample.r, sample.g, sample.b)
         - Color::hue_from_rgb(planet->vegetation_r, planet->vegetation_g, planet->vegetation_b));
@@ -126,7 +142,7 @@ bool SurfaceSampler::vegetation_color(const RGB3 &sample) const
 
 bool SurfaceSampler::vegetation_at(double latitude, double longitude)
 {
-    if (planet && !planet->simulated_surface_life_allowed()) return false;
+    if (!surface_life_allowed()) return false;
     const auto sample = info(latitude, longitude);
     return sample.second == SurfaceMaterial::unknown ? vegetation_color(sample.first)
         : sample.second == SurfaceMaterial::vegetation;
@@ -134,7 +150,7 @@ bool SurfaceSampler::vegetation_at(double latitude, double longitude)
 
 double SurfaceSampler::vegetation_density_at(double latitude, double longitude)
 {
-    if (!planet || !map || !planet->simulated_surface_life_allowed()) return 0;
+    if (!planet || !map || !surface_life_allowed()) return 0;
     if (!vegetation_habitat)
     {
         const double pressure = planet->get_surface_pressure();
@@ -187,7 +203,7 @@ double alienorum::vegetation_cover_fraction(const RGB3& ground, const RGB3& foli
 bool SurfaceSampler::tree_site_at(double latitude, double longitude)
 {
     if (!planet || !map || !map->is_complete() || !uses_rocky_map(planet->type)
-        || !planet->simulated_land_plants_allowed() || !planet->has_water
+        || !land_plants_allowed() || !planet->has_water
         || !(planet->vegetation_r || planet->vegetation_g || planet->vegetation_b)) return false;
     // Tree identity follows permanent terrain, never the published frost/foliage color.
     const auto coordinate = biomes ? field.coordinates(radius, latitude, longitude, strength)
@@ -250,7 +266,7 @@ TreeAppearance SurfaceSampler::tree_appearance_at(double latitude, double longit
 SurfaceSampler::Sample SurfaceSampler::sample(double latitude, double longitude)
 {
     const auto value = info(latitude, longitude);
-    const bool vegetation = (!planet || planet->simulated_surface_life_allowed())
+    const bool vegetation = surface_life_allowed()
         && (value.second == SurfaceMaterial::unknown
             ? vegetation_color(value.first) : value.second == SurfaceMaterial::vegetation);
     return {value.first, value.second, water_sample(value), vegetation};
@@ -262,7 +278,7 @@ bool SurfaceSampler::uniform_sample(double latitude, double longitude, double an
     if (!map || !map->is_complete() || generating_fic_texture || !std::isfinite(angle) || angle < 0
         || !map->color_within_cap(latitude, longitude, angle + (biomes ? bound : 0), color, true)) return false;
     const auto value = std::make_pair(color, map->material_at(latitude, longitude));
-    result = {color, value.second, water_sample(value), (!planet || planet->simulated_surface_life_allowed())
+    result = {color, value.second, water_sample(value), surface_life_allowed()
         && (value.second == SurfaceMaterial::unknown
             ? vegetation_color(color) : value.second == SurfaceMaterial::vegetation)};
     return true;
@@ -294,10 +310,11 @@ double SurfaceSampler::skyline_elevation(double latitude, double longitude)
     return basin_at(latitude, longitude) ? basin_elevation() : map->elevation_at_bilinear(latitude, longitude);
 }
 
-bool SurfaceSampler::basin_at(double latitude, double longitude)
+bool SurfaceSampler::basin_at(double latitude, double longitude, std::pair<RGB3, SurfaceMaterial>* sampled)
 {
     if (!water || !map) return false;
     const auto value = info(latitude, longitude);
+    if (sampled) *sampled = value;
     if (water_sample(value) || value.second == SurfaceMaterial::ice) return true;
     if (value.second == SurfaceMaterial::frost) return false;
     const bool procedural_basin = map->procedurally_generated && map->has_bump_data() && planet && planet->has_water > 0;
@@ -317,7 +334,7 @@ bool SurfaceSampler::water_at(double latitude, double longitude, WaterPatch& pat
         return classify();
     const WaterPatch::Key key = {map, include_frozen_basins ? map->gen : map->surface_revision(), planet, radius, strength, biomes, ocean, favorable,
         planet->has_water != 0, planet->type, planet->vegetation_r, planet->vegetation_g, planet->vegetation_b,
-        include_frozen_basins, planet->simulated_surface_life_allowed()};
+        include_frozen_basins, surface_life_allowed()};
     const double padding = std::min(32.0, radius * .001);
     const double latitude_delta = sin((latitude - patch.latitude) * .5);
     const double longitude_delta = sin((longitude - patch.longitude) * .5);

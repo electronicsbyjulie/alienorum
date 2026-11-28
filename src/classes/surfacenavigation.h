@@ -4,6 +4,7 @@
 #include "planet.h"
 #include "surfacebiomes.h"
 #include <memory>
+#include <optional>
 #include <tuple>
 
 namespace alienorum
@@ -23,8 +24,7 @@ namespace alienorum
         LocalSurfaceTile* local_tile = nullptr;
         std::shared_ptr<const VegetationHabitat> vegetation_habitat;
         double vegetation_freezing = 273.15, vegetation_boiling = 373.15;
-
-        bool water_sample(const std::pair<RGB3, SurfaceMaterial> &sample) const;
+        std::optional<bool> frame_surface_life, frame_land_plants;
 
         public:
         struct Sample
@@ -41,6 +41,9 @@ namespace alienorum
             bool attempted = false, uniform = false, value = false;
         };
         SurfaceSampler(Planet *body, Map *surface, SurfaceBiomes &noise, double world_radius, double displacement);
+        void capture_life_rules();
+        bool surface_life_allowed() const;
+        bool land_plants_allowed() const;
         void use_local_tile(LocalSurfaceTile& tile) { local_tile = &tile; }
         std::pair<RGB3, SurfaceMaterial> info(double latitude, double longitude);
         Sample sample(double latitude, double longitude);
@@ -52,10 +55,11 @@ namespace alienorum
         bool tree_site_at(double latitude, double longitude);
         double tree_density_at(double latitude, double longitude);
         TreeAppearance tree_appearance_at(double latitude, double longitude, const std::vector<LocalClimate>& recent_climates);
+        bool water_sample(const std::pair<RGB3, SurfaceMaterial>& sample) const;
         bool water_at(double latitude, double longitude);
         double basin_elevation() const;
         double skyline_elevation(double latitude, double longitude);
-        bool basin_at(double latitude, double longitude);
+        bool basin_at(double latitude, double longitude, std::pair<RGB3, SurfaceMaterial>* sampled = nullptr);
         bool water_at(double latitude, double longitude, WaterPatch& patch, bool include_frozen_basins = false);
         bool base_water(unsigned long column, unsigned long row) const;
         bool water_favorable() const { return favorable; }

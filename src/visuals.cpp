@@ -6466,6 +6466,7 @@ void draw_horizon()
         biome_field.set_world(static_cast<uint32_t>(whereami));
         if (p) p->update_surface_phase(viewer_lat, viewer_lon);
         SurfaceSampler surface(p, map, biome_field, surface_radius, shore_displacement);
+        if (horizon_fast_path(204)) surface.capture_life_rules();
         const bool water_favorable = surface.water_favorable();
         const bool surface_biomes = surface.has_biomes();
         const double biome_angle = SurfaceBiomes::angular_bound(surface_radius, shore_displacement);
@@ -6480,7 +6481,7 @@ void draw_horizon()
         const bool ocean_world = surface.ocean_world();
         const bool surface_water = surface.has_surface_water();
         const auto material_key = std::make_tuple(surface_biomes, surface_water, surface.basin_elevation(),
-            surface_water && p->simulated_surface_life_allowed(), surface_water ? p->vegetation_r : 0,
+            surface_water && surface.surface_life_allowed(), surface_water ? p->vegetation_r : 0,
             surface_water ? p->vegetation_g : 0, surface_water ? p->vegetation_b : 0);
         const bool paint_biomes = surface_water || (surface_biomes && cel->type != lavaworld);
         const bool veiled_uniform_ground = haze.active() && !paint_biomes && map && map->is_complete()
@@ -6549,10 +6550,11 @@ void draw_horizon()
             return lighting.haze.surface_illumination(adapted_daylight(daylight, lighting.ambient, lighting.instellation),
                 lighting.tint);
         };
-        const auto sampled_illumination = [&](const TerrainLighting& lighting, double lat, double lon)
+        const auto sampled_illumination = [&](const TerrainLighting& lighting, double lat, double lon,
+            std::optional<bool> basin = std::nullopt)
         {
             if (!lighting.direct) return lighting.haze.surface_illumination(lighting.daylight, lighting.tint);
-            if (surface.basin_at(lat, lon)) return terrain_illumination(lighting, lat, lon, std::nullopt);
+            if (basin ? *basin : surface.basin_at(lat, lon)) return terrain_illumination(lighting, lat, lon, std::nullopt);
             const auto normal = terrain_normal(lon, lat, terrain_axes, normal_lon_step, normal_lat_step, skyline_elevation);
             const auto& direction = lighting.direction;
             return terrain_illumination(lighting, lat, lon, normal[0] * direction.x + normal[1] * direction.y
@@ -6679,10 +6681,17 @@ void draw_horizon()
             if (eye < 0) return denominator / (2 * curvature);
             return denominator > 0 ? 2.0 * eye / denominator : double(INFINITY);
         };
-        const auto mapped_distance = [&](double bearing, double slope)
+        struct MappedSurfacePoint
+        {
+            std::pair<RGB3, SurfaceMaterial> material;
+            std::pair<double, double> coordinates;
+            std::optional<bool> basin;
+        };
+        const auto mapped_distance = [&](double bearing, double slope, MappedSurfacePoint* point = nullptr)
         {
             const double distance = mapped_skyline->distance_at_slope(bearing, slope);
             if (!surface_water) return distance;
+            auto* material = point ? &point->material : nullptr;
             if (std::isfinite(distance))
             {
                 const double arc = distance / surface_radius;
@@ -6692,7 +6701,15 @@ void draw_horizon()
                     + surface_bending * distance * distance;
                 if (fabs(slope * basin_radius * sin(arc) - basin_up) < .01) return distance;
                 const auto [lat, lon] = surface_coord(distance, bearing);
-                if (!surface.basin_at(lat, lon)) return distance;
+                if (!surface.basin_at(lat, lon, material))
+                {
+                    if (point)
+                    {
+                        point->coordinates = {lat, lon};
+                        point->basin = false;
+                    }
+                    return distance;
+                }
             }
 
             // The interpolated terrain intersection lies in a basin. Use the
@@ -6700,7 +6717,13 @@ void draw_horizon()
             const double level = distance_to_level(-slope, eye_over_basin);
             if (!std::isfinite(level) || level > std::min(2000000.0, surface_radius * .5)) return double(INFINITY);
             const auto [water_lat, water_lon] = surface_coord(level, bearing);
-            return surface.basin_at(water_lat, water_lon) ? level : double(INFINITY);
+            if (!surface.basin_at(water_lat, water_lon, material)) return double(INFINITY);
+            if (point)
+            {
+                point->coordinates = {water_lat, water_lon};
+                point->basin = true;
+            }
+            return level;
         };
         // The sea stays on the curved base surface; raised terrain has its own depth.
         const auto base_distance = [&](double screen_x, double screen_y)
@@ -8022,7 +8045,7 @@ void draw_horizon()
             // remain valid while the scene is relit.
             sample_inputs[15] = sample_inputs[16] = sample_inputs[21] = 0;
             auto sample_key = std::make_tuple(cel, map, viewer_lat, viewer_lon,
-                p && p->simulated_surface_life_allowed(), std::move(sample_inputs));
+                p && surface.surface_life_allowed(), std::move(sample_inputs));
             static decltype(sample_key) saved_sample_key;
             const bool retain_samples = paint_biomes && map && map->is_complete() && !generating_fic_texture;
             use_ground_pixels = retain_samples;
@@ -8710,6 +8733,23 @@ void draw_horizon()
             const double sine = surface_sin_altitude(), cosine = surface_cos_altitude();
             const int motion_stride = horizon_mapped_terrain_always_per_pixel ? 1 : 4 * horizon_quality.ground_stride();
             const bool interpolate_relief = airless_moon || (p && p->get_surface_pressure() > 0);
+            double dry_slope = -INFINITY;
+            if (surface_water && interpolate_relief && horizon_fast_path(203) && !horizon_terrain_cpu_reference
+                && !surface.basin_at(viewer_lat, viewer_lon))
+            {
+                // Within one atlas pixel, displaced color, material, phase and basin tests agree.
+                const double displacement_angle = surface_biomes ? biome_angle : 0;
+                for (double reach = 2048; reach >= 2; reach *= .5)
+                {
+                    RGB3 color;
+                    if (map->color_within_cap(viewer_lat, viewer_lon,
+                        reach / surface_radius + displacement_angle + 1e-10, color, false))
+                    {
+                        dry_slope = mapped_skyline->minimum_profile_slope(reach);
+                        break;
+                    }
+                }
+            }
             const auto view_key = std::make_tuple(cel, map, local_surface_revision, whereami, viewer_lat, viewer_lon,
                 surface_eye, surface_radius, surface_curvature(), azimuth, altitude, zoom, dispcx, dispcy,
                 screen_w, ground_height, shore_displacement, redlight_mode, interpolate_relief, material_key);
@@ -8719,6 +8759,7 @@ void draw_horizon()
                 ground_light, haze.extinction, haze.light, haze.sky_opacity);
             struct ReliefTile { ImVec2 low, high; ImU32 color; std::array<ImU32, 3> corners{}; };
             constexpr unsigned int water_group = 1, land_group = 2;
+            const bool reuse_basin_material = horizon_fast_path(205) && !horizon_terrain_cpu_reference;
             const auto blend_group = [](const SurfaceSampler::Sample& sample) -> unsigned int
             {
                 return sample.water ? water_group : sample.material == SurfaceMaterial::ice ? 0 : land_group;
@@ -8766,10 +8807,20 @@ void draw_horizon()
                     const double up = vertical * cosine + sine;
                     return std::make_pair(azimuth + atan2(east, north), up / fmax(1e-12, hypot(east, north)));
                 };
-                const auto shade_hit = [&](const std::pair<double, double>& ray, double distance, bool classify_material) -> ReliefSample
+                const auto shade_hit = [&](const std::pair<double, double>& ray, double distance, bool classify_material,
+                    const MappedSurfacePoint* point = nullptr) -> ReliefSample
                 {
                     if (!std::isfinite(distance)) return {distance, 0};
-                    const auto [lat, lon] = surface_coord(distance, ray.first);
+                    const auto [lat, lon] = point && point->basin ? point->coordinates : surface_coord(distance, ray.first);
+                    if (point && point->basin && (classify_material || !airless_moon))
+                    {
+                        const auto& material = point->material;
+                        const unsigned int group = !classify_material ? 0 : surface.water_sample(material) ? water_group
+                            : material.second == SurfaceMaterial::ice ? 0 : land_group;
+                        return {distance, pressure_haze_color(paint.lighting.haze,
+                            surface_color_with_light(material.first, sampled_illumination(paint.lighting, lat, lon, point->basin)),
+                            distance), group};
+                    }
                     const auto sample = classify_material ? surface.sample(lat, lon)
                         : SurfaceSampler::Sample{surface_sample(lat, lon)};
                     return {distance, pressure_haze_color(paint.lighting.haze,
@@ -8778,7 +8829,9 @@ void draw_horizon()
                 };
                 const auto sample_at = [&](const std::pair<double, double>& ray, bool classify_water = false)
                 {
-                    return shade_hit(ray, mapped_distance(ray.first, ray.second), classify_water);
+                    MappedSurfacePoint point;
+                    const double distance = mapped_distance(ray.first, ray.second, reuse_basin_material ? &point : nullptr);
+                    return shade_hit(ray, distance, classify_water, &point);
                 };
                 const auto hits_terrain = [&](double x, double y)
                 {
@@ -8814,10 +8867,23 @@ void draw_horizon()
                     {
                         const int right = std::min(screen_w, x + tile);
                         const auto ray = sightline((x + right) * .5, (y + bottom) * .5);
-                        const double basin_depth = surface_water ? mapped_distance(ray.first, ray.second) : double(INFINITY);
+                        MappedSurfacePoint center_point;
+                        const double basin_depth = surface_water ? mapped_distance(ray.first, ray.second,
+                            reuse_basin_material ? &center_point : nullptr) : double(INFINITY);
                         const bool hit = surface_water ? std::isfinite(basin_depth)
                             : mapped_skyline->covers_slope(ray.first, ray.second);
-                        bool mixed = tile > 1 && (hits_terrain(x + .5, y + .5) != hit || hits_terrain(right - .5, y + .5) != hit
+                        bool dry_tile = false;
+                        if (interpolate_tiles && hit && std::isfinite(dry_slope))
+                        {
+                            const double top_vertical = (dispcy - y) / focal;
+                            const double bottom_vertical = (dispcy - bottom) / focal;
+                            const double up = std::max(top_vertical * cosine + sine, bottom_vertical * cosine + sine);
+                            const double north = std::max(fabs(cosine - top_vertical * sine), fabs(cosine - bottom_vertical * sine));
+                            const double east = std::max(fabs(x - dispcx), fabs(right - dispcx)) / focal;
+                            // Negative slopes are highest with the largest horizontal denominator.
+                            dry_tile = up < 0 && up / fmax(1e-12, hypot(east, north)) + 1e-12 < dry_slope;
+                        }
+                        bool mixed = tile > 1 && !dry_tile && (hits_terrain(x + .5, y + .5) != hit || hits_terrain(right - .5, y + .5) != hit
                             || hits_terrain(x + .5, bottom - .5) != hit || hits_terrain(right - .5, bottom - .5) != hit);
                         if (interpolate_tiles && hit && !mixed)
                         {
@@ -8828,7 +8894,7 @@ void draw_horizon()
                             const double far_distance = std::max({tl.distance, tr.distance, bl.distance, br.distance});
                             // Resolve silhouettes and sudden depth changes at pixel centers.
                             mixed = !std::isfinite(far_distance) || far_distance > 2 * near_distance;
-                            if (!mixed && surface_water)
+                            if (!mixed && surface_water && !dry_tile)
                             {
                                 // Ice can blend with either side of the coastline. A tile
                                 // containing both open water and land must use exact samples.
@@ -8840,14 +8906,29 @@ void draw_horizon()
                                     for (int col = x; col < right; ++col)
                                     {
                                         const auto pixel_ray = sightline(col + .5, row + .5);
-                                        const double distance = mapped_distance(pixel_ray.first, pixel_ray.second);
+                                        MappedSurfacePoint point;
+                                        const double distance = mapped_distance(pixel_ray.first, pixel_ray.second,
+                                            reuse_basin_material ? &point : nullptr);
                                         if (!std::isfinite(distance))
                                         {
                                             mixed = true;
                                             break;
                                         }
-                                        const auto [lat, lon] = surface_coord(distance, pixel_ray.first);
-                                        groups |= blend_group(surface.sample(lat, lon));
+                                        if (reuse_basin_material)
+                                        {
+                                            if (!point.basin)
+                                            {
+                                                const auto [lat, lon] = surface_coord(distance, pixel_ray.first);
+                                                point.material = surface.info(lat, lon);
+                                            }
+                                            groups |= surface.water_sample(point.material) ? water_group
+                                                : point.material.second == SurfaceMaterial::ice ? 0 : land_group;
+                                        }
+                                        else
+                                        {
+                                            const auto [lat, lon] = surface_coord(distance, pixel_ray.first);
+                                            groups |= blend_group(surface.sample(lat, lon));
+                                        }
                                         if (groups == (water_group | land_group))
                                         {
                                             mixed = true;
@@ -8872,7 +8953,7 @@ void draw_horizon()
                         }
                         if (!mixed)
                         {
-                            const ImU32 color = surface_water ? shade_hit(ray, basin_depth, false).color
+                            const ImU32 color = surface_water ? shade_hit(ray, basin_depth, false, &center_point).color
                                 : hit ? sample_at(ray).color : 0;
                             run(x, color);
                             if (hit) for (int column = x; column < right; ++column)
@@ -9233,7 +9314,7 @@ void draw_horizon()
 
             auto bounds_key = std::make_tuple(map, local_surface_revision,
                 map && map->is_complete(), generating_fic_texture, water_favorable, surface_biomes,
-                p && p->simulated_surface_life_allowed(), ocean_world, p ? p->has_water : 0.0f, cel->type, terrain_mesh, shore_displacement,
+                p && surface.surface_life_allowed(), ocean_world, p ? p->has_water : 0.0f, cel->type, terrain_mesh, shore_displacement,
                 p ? p->vegetation_r : 0, p ? p->vegetation_g : 0, p ? p->vegetation_b : 0, water_cpu_reference, bool(PERF_P052_WAVES && performance_enabled(52)));
             static decltype(bounds_key) saved_bounds_key;
             static double bounds_latitude = NAN, bounds_longitude = NAN, bounds_padding = 0;
@@ -9800,7 +9881,7 @@ void draw_horizon()
                 const double scenery_spacing = sqrt(_pi * ROCK_MAX_DIST * ROCK_MAX_DIST / ROCK_COUNT);
                 const double crown_scale = p ? fmax(p->plant_trunk_width, p->plant_crown_size) : 0;
                 const double canopy_margin = 2 * ROCK_MAX_SIZE * crown_scale + 0.1;
-                const bool has_plants = p && p->simulated_land_plants_allowed()
+                const bool has_plants = p && surface.land_plants_allowed()
                     && (p->vegetation_r || p->vegetation_g || p->vegetation_b);
                 // Reconstruct the preceding three weeks independently of frame rate or time seeks.
                 const double tree_epoch = has_plants ? floor(simnow / 3600.0) * 3600.0 : 0;

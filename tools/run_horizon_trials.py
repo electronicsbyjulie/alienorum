@@ -46,17 +46,23 @@ def summarize(rows):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--trial', type=int, required=True)
-    parser.add_argument('--scenes', default='ice,earth,ocean,forest,venus,airless,lava')
+    parser.add_argument('--scenes')
     parser.add_argument('--rounds', type=int, default=8)
     parser.add_argument('--frames', type=int, default=6)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--binary', type=Path, default=Path('bin/performance_benchmark_test'))
     parser.add_argument('--headless', action='store_true')
     parser.add_argument('--modes')
+    parser.add_argument('--scene-timeout', type=int)
     args = parser.parse_args()
+    mapped = args.trial in (203, 204, 205)
+    scenes = args.scenes or ('phoenix,shore,forest' if args.trial == 204 else
+                             'phoenix,shore' if mapped else 'ice,earth,ocean,forest,venus,airless,lava')
+    scene_timeout = args.scene_timeout or (540 if mapped else 90)
+    test = 'PairedMappedReliefPanning' if mapped else 'PairedHorizonPaths'
     args.output.mkdir(parents=True, exist_ok=True)
     all_rows, all_results = [], []
-    for scene in args.scenes.split(','):
+    for scene in scenes.split(','):
         env = os.environ.copy()
         env.update(ALIENORUM_HORIZON_TRIAL=str(args.trial), ALIENORUM_HORIZON_SCENE=scene,
                    ALIENORUM_HORIZON_ROUNDS=str(args.rounds), ALIENORUM_HORIZON_FRAMES=str(args.frames))
@@ -64,15 +70,15 @@ def main():
             env['ALIENORUM_HORIZON_MODES'] = args.modes
         else:
             env.pop('ALIENORUM_HORIZON_MODES', None)
-        command = ['timeout', '--kill-after=2s', '90s', str(args.binary.resolve()),
-                   '--gtest_filter=HorizonTrialTest.PairedHorizonPaths']
+        command = ['timeout', '--kill-after=2s', f'{scene_timeout}s', str(args.binary.resolve()),
+                   f'--gtest_filter=HorizonTrialTest.{test}']
         if args.headless:
             command = ['xvfb-run', '-a'] + command
         log_path = args.output / (scene + '.log')
         with log_path.open('w') as log:
             child = subprocess.Popen(command, env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
             try:
-                code = child.wait(timeout=100)
+                code = child.wait(timeout=scene_timeout + 10)
             except (subprocess.TimeoutExpired, KeyboardInterrupt):
                 os.killpg(child.pid, signal.SIGKILL)
                 child.wait()

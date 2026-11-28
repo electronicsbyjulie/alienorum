@@ -202,6 +202,18 @@ namespace alienorum
             return distance_at_slope(bearing, tan(elevation));
         }
 
+        double minimum_profile_slope(double distance) const
+        {
+            const auto end = std::upper_bound(profile_distances.begin(), profile_distances.end(), distance);
+            if (end == profile_distances.begin()) return -std::numeric_limits<double>::infinity();
+            const size_t row = end - profile_distances.begin() - 1;
+            const size_t rows = profile_distances.size();
+            double slope = profile_slopes[row];
+            for (int column = 1; column < columns; ++column)
+                slope = std::min(slope, profile_slopes[column * rows + row]);
+            return slope;
+        }
+
         bool covers_slope(double bearing, double slope) const
         {
             const size_t rows = profile_distances.size();
